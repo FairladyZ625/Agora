@@ -2,6 +2,8 @@
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 from typing import Optional
 
 import typer
@@ -60,6 +62,17 @@ def _require_archon_token(archon_token: Optional[str]) -> str:
     if expected and provided != expected:
         raise ValueError("invalid archon-token")
     return provided
+
+
+def _run_cmd(args: list[str], cwd: Optional[str] = None) -> None:
+    """Run external command and surface readable errors."""
+    try:
+        subprocess.run(args, cwd=cwd, check=True)
+    except FileNotFoundError as exc:
+        raise ValueError(f"command not found: {args[0]}") from exc
+    except subprocess.CalledProcessError as exc:
+        joined = " ".join(args)
+        raise ValueError(f"command failed ({exc.returncode}): {joined}") from exc
 
 
 @app.command()
@@ -377,6 +390,68 @@ def serve(
         host=host,
         port=port,
     )
+
+
+@app.command(name="setup-openclaw-plugin")
+def setup_openclaw_plugin(
+    plugin_dir: str = typer.Option(
+        str(Path(__file__).resolve().parents[2] / "extensions" / "agora-plugin"),
+        "--plugin-dir",
+        help="Agora 插件目录",
+    ),
+    server_url: str = typer.Option(
+        "http://127.0.0.1:8420",
+        "--server-url",
+        help="Agora HTTP Server URL",
+    ),
+    link: bool = typer.Option(
+        True,
+        "--link/--copy",
+        help="使用 link 模式安装本地插件（开发推荐）",
+    ),
+):
+    """一键安装并配置 OpenClaw Agora 插件。"""
+    if shutil.which("openclaw") is None:
+        console.print("[red]✗[/red] 未找到 openclaw 命令，请先安装 OpenClaw CLI")
+        raise typer.Exit(1)
+    if shutil.which("npm") is None:
+        console.print("[red]✗[/red] 未找到 npm 命令，请先安装 Node.js/npm")
+        raise typer.Exit(1)
+
+    plugin_path = Path(plugin_dir).expanduser().resolve()
+    if not plugin_path.exists():
+        console.print(f"[red]✗[/red] 插件目录不存在: {plugin_path}")
+        raise typer.Exit(1)
+
+    try:
+        console.print("[cyan]→[/cyan] 构建插件...")
+        _run_cmd(["npm", "install"], cwd=str(plugin_path))
+        _run_cmd(["npm", "run", "build"], cwd=str(plugin_path))
+
+        console.print("[cyan]→[/cyan] 安装插件到 OpenClaw...")
+        install_cmd = ["openclaw", "plugins", "install"]
+        if link:
+            install_cmd.append("-l")
+        install_cmd.append(str(plugin_path))
+        _run_cmd(install_cmd)
+
+        console.print("[cyan]→[/cyan] 写入插件配置 serverUrl...")
+        _run_cmd(
+            [
+                "openclaw",
+                "config",
+                "set",
+                "plugins.entries.agora.config.serverUrl",
+                server_url,
+            ]
+        )
+        _run_cmd(["openclaw", "plugins", "enable", "agora"])
+
+        console.print("[green]✓[/green] Agora 插件已安装并配置完成")
+        console.print("  建议重启 OpenClaw Gateway 后执行: `openclaw plugins info agora`")
+    except ValueError as e:
+        console.print(f"[red]✗[/red] 安装失败: {e}")
+        raise typer.Exit(1)
 
 
 @app.command()
