@@ -1,7 +1,7 @@
 """Task manager — CRUD + state management.
 
 Orchestrates task creation, state transitions, and stage advancement
-using StateMachine and DatabaseManager.
+using GateKeeper, PermissionManager, ProgressSync, and StateMachine.
 """
 import json
 from pathlib import Path
@@ -9,18 +9,30 @@ from typing import Optional
 
 from .db import DatabaseManager
 from .enums import TaskState
+from .gate_keeper import GateKeeper
+from .mode_controller import ModeController
+from .permission import PermissionManager
+from .progress_sync import ProgressSync
 from .state_machine import StateMachine
 
 
 class TaskManager:
     """Task manager — CRUD + state management."""
 
-    def __init__(self, db: DatabaseManager, templates_dir: str = None):
+    def __init__(self, db: DatabaseManager, templates_dir: str = None,
+                 permission: PermissionManager | None = None,
+                 config: dict | None = None):
         self.db = db
         self.state_machine = StateMachine()
         self.templates_dir = templates_dir or str(
             Path(__file__).parent.parent / "templates"
         )
+        cfg = config or {}
+        self.permission = permission or PermissionManager(cfg)
+        archon_users = list(self.permission.archon_users)
+        self.gate_keeper = GateKeeper(db, archon_users=archon_users)
+        self.progress = ProgressSync(db)
+        self.mode_controller = ModeController(db)
 
     def load_template(self, task_type: str) -> dict:
         """Load a task template JSON by type name."""
@@ -31,17 +43,10 @@ class TaskManager:
 
     def create_task(self, title: str, task_type: str, creator: str = "archon",
                     description: str = "", priority: str = "normal") -> dict:
-        """Create a task (two-phase: draft -> created -> active).
-
-        MVP: skips Discord Thread creation, goes draft -> created -> active directly.
-        """
-        # 1. Load template
+        """Create a task (two-phase: draft -> created -> active)."""
         template = self.load_template(task_type)
-
-        # 2. Generate task_id
         task_id = self.db.generate_task_id()
 
-        # 3. Build default team from template
         team = {"members": []}
         for role, config in template.get("defaultTeam", {}).items():
             suggested = config.get("suggested", [])
@@ -51,131 +56,220 @@ class TaskManager:
                 "agentId": agent_id,
                 "model_preference": config.get("model_preference", ""),
             })
-        # 4. Build workflow from template stages
+
         workflow = {
             "type": template.get("defaultWorkflow", "linear"),
             "stages": template.get("stages", []),
         }
 
-        # 5. Insert task (state=draft)
         task = self.db.insert_task(
-            task_id=task_id,
-            title=title,
-            task_type=task_type,
-            creator=creator,
-            team=team,
-            workflow=workflow,
-            priority=priority,
-            description=description,
+            task_id=task_id, title=title, task_type=task_type,
+            creator=creator, team=team, workflow=workflow,
+            priority=priority, description=description,
         )
 
-        # 6. flow_log: created
-        self.db.insert_flow_log(
-            task_id, event="created", kind="flow",
-            detail={"task_type": task_type, "template": template["name"]},
-            actor=creator,
+        self.progress.record_state_change(
+            task_id, from_state="init", to_state="draft",
+            actor=creator, detail={"task_type": task_type, "template": template["name"]},
         )
 
-        # 7. draft -> created
         task = self.db.update_task(task_id, task["version"], state="created")
-        self.db.insert_flow_log(
-            task_id, event="provisioned", kind="flow",
-            from_state="draft", to_state="created",
-            actor="system",
+        self.progress.record_state_change(
+            task_id, from_state="draft", to_state="created", actor="system",
         )
 
-        # 8. created -> active, set current_stage to first stage
         first_stage_id = workflow["stages"][0]["id"]
         task = self.db.update_task(
             task_id, task["version"],
-            state="active",
-            current_stage=first_stage_id,
+            state="active", current_stage=first_stage_id,
         )
-
-        # 9. flow_log: stage_enter + stage_history
-        self.db.insert_flow_log(
-            task_id, event="stage_enter", kind="flow",
-            stage_id=first_stage_id,
-            from_state="created", to_state="active",
-            actor="system",
+        self.progress.record_state_change(
+            task_id, from_state="created", to_state="active", actor="system",
         )
         self.db.enter_stage(task_id, first_stage_id)
-
         return task
 
     def get_task(self, task_id: str) -> Optional[dict]:
-        """Get a task by ID."""
         return self.db.get_task(task_id)
 
     def list_tasks(self, state_filter: Optional[str] = None) -> list[dict]:
-        """List tasks, optionally filtered by state."""
         return self.db.list_tasks(state_filter)
 
     def advance_task(self, task_id: str, caller_id: str = "archon") -> dict:
-        """Advance task to next stage. Delegates to StateMachine.advance()."""
-        task = self.db.get_task(task_id)
-        if task is None:
-            raise ValueError(f"Task {task_id} not found")
+        """Advance task to next stage using GateKeeper for gate checks."""
+        task = self._get_task_or_raise(task_id)
         if task["state"] != TaskState.ACTIVE:
-            raise ValueError(
-                f"Task {task_id} is in state '{task['state']}', expected 'active'"
+            raise ValueError(f"Task {task_id} is in state '{task['state']}', expected 'active'")
+
+        current_stage_id = task.get("current_stage")
+        if not current_stage_id:
+            raise ValueError(f"Task {task_id} has no current_stage set")
+
+        current_stage = self.state_machine.get_current_stage(task["workflow"], current_stage_id)
+
+        # Use GateKeeper instead of StateMachine.check_gate
+        if not self.gate_keeper.check_gate(task, current_stage, caller_id):
+            raise PermissionError(
+                f"Gate check failed for stage '{current_stage_id}' "
+                f"(gate type: {current_stage.get('gate', {}).get('type')})"
             )
-        return self.state_machine.advance(self.db, task, caller_id)
+
+        next_stage = self.state_machine.get_next_stage(task["workflow"], current_stage_id)
+        version = task["version"]
+
+        self.db.exit_stage(task_id, current_stage_id, reason="advance")
+        self.progress.record_stage_advance(
+            task_id, from_stage=current_stage_id,
+            to_stage=next_stage["id"] if next_stage else "done",
+            actor=caller_id,
+        )
+
+        if next_stage is None:
+            task = self.db.update_task(task_id, version, state="done")
+            self.progress.record_state_change(task_id, "active", "done", actor=caller_id)
+            return task
+        else:
+            task = self.db.update_task(task_id, version, current_stage=next_stage["id"])
+            self.db.enter_stage(task_id, next_stage["id"])
+            return task
+
+    def approve_task(self, task_id: str, approver_id: str, comment: str = "") -> dict:
+        """Record an approval for the current stage."""
+        task = self._get_task_or_raise(task_id)
+        stage = self.state_machine.get_current_stage(task["workflow"], task["current_stage"])
+        approver_role = stage.get("gate", {}).get("approver_role", "reviewer")
+        self.gate_keeper.record_approval(task_id, task["current_stage"], approver_role, approver_id, comment)
+        self.progress.record_gate_result(task_id, task["current_stage"], "approval", True, actor=approver_id)
+        return self.db.get_task(task_id)
+
+    def reject_task(self, task_id: str, rejector_id: str, reason: str = "") -> dict:
+        """Reject — record in flow_log (no DB table for rejections, just log)."""
+        task = self._get_task_or_raise(task_id)
+        self.progress.record_gate_result(task_id, task["current_stage"], "approval", False, actor=rejector_id)
+        self.db.insert_flow_log(
+            task_id, event="rejected", kind="flow",
+            stage_id=task["current_stage"], actor=rejector_id,
+            detail={"reason": reason},
+        )
+        return self.db.get_task(task_id)
+
+    def archon_approve(self, task_id: str, reviewer_id: str, comment: str = "") -> dict:
+        """Archon approves the current stage's archon_review gate."""
+        task = self._get_task_or_raise(task_id)
+        self.gate_keeper.record_archon_review(task_id, task["current_stage"], "approved", reviewer_id, comment)
+        self.progress.record_archon_decision(task_id, task["current_stage"], "approved", actor=reviewer_id, comment=comment)
+        return self.db.get_task(task_id)
+
+    def archon_reject(self, task_id: str, reviewer_id: str, reason: str = "") -> dict:
+        """Archon rejects the current stage."""
+        task = self._get_task_or_raise(task_id)
+        self.gate_keeper.record_archon_review(task_id, task["current_stage"], "rejected", reviewer_id, reason)
+        self.progress.record_archon_decision(task_id, task["current_stage"], "rejected", actor=reviewer_id, comment=reason)
+        return self.db.get_task(task_id)
+
+    def confirm_task(self, task_id: str, voter_id: str, vote: str = "approve", comment: str = "") -> dict:
+        """Record a quorum vote."""
+        task = self._get_task_or_raise(task_id)
+        result = self.gate_keeper.record_quorum_vote(task_id, task["current_stage"], voter_id, vote, comment)
+        self.db.insert_flow_log(
+            task_id, event="quorum_vote", kind="flow",
+            stage_id=task["current_stage"], actor=voter_id,
+            detail={"vote": vote, "approved": result["approved"], "total": result["total"]},
+        )
+        return {**self.db.get_task(task_id), "quorum": result}
+
+    def complete_subtask(self, task_id: str, subtask_id: str, caller_id: str,
+                         output: str = "") -> dict:
+        """Mark a subtask as done."""
+        task = self._get_task_or_raise(task_id)
+        self.db.update_subtask(task_id, subtask_id, status="done", output=output)
+        self.progress.record_subtask_event(
+            task_id, task["current_stage"], subtask_id, "done", actor=caller_id,
+        )
+        return self.db.get_task(task_id)
+
+    def force_advance(self, task_id: str, reason: str = "") -> dict:
+        """Force advance past the current gate (archon override)."""
+        task = self._get_task_or_raise(task_id)
+        if task["state"] != TaskState.ACTIVE:
+            raise ValueError(f"Task {task_id} is in state '{task['state']}', expected 'active'")
+        self.db.insert_flow_log(
+            task_id, event="force_advance", kind="flow",
+            stage_id=task["current_stage"], actor="archon",
+            detail={"reason": reason},
+        )
+        # Bypass gate check — directly advance via state machine internals
+        current_stage_id = task["current_stage"]
+        workflow = task["workflow"]
+        next_stage = self.state_machine.get_next_stage(workflow, current_stage_id)
+        self.db.exit_stage(task_id, current_stage_id, reason="force_advance")
+        if next_stage is None:
+            task = self.db.update_task(task_id, task["version"], state="done")
+            self.progress.record_state_change(task_id, "active", "done", actor="archon")
+        else:
+            task = self.db.update_task(task_id, task["version"], current_stage=next_stage["id"])
+            self.db.enter_stage(task_id, next_stage["id"])
+            self.progress.record_stage_advance(task_id, current_stage_id, next_stage["id"], actor="archon")
+        return task
+
+    def unblock_task(self, task_id: str, reason: str = "") -> dict:
+        """Unblock a blocked task back to active."""
+        return self.update_task_state(task_id, TaskState.ACTIVE, reason=reason or "unblocked")
+
+    def pause_task(self, task_id: str, reason: str = "") -> dict:
+        """Pause an active task."""
+        return self.update_task_state(task_id, TaskState.PAUSED, reason=reason or "paused")
+
+    def resume_task(self, task_id: str) -> dict:
+        """Resume a paused task."""
+        return self.update_task_state(task_id, TaskState.ACTIVE, reason="resumed")
+
+    def cancel_task(self, task_id: str, reason: str = "") -> dict:
+        """Cancel a task."""
+        return self.update_task_state(task_id, TaskState.CANCELLED, reason=reason or "cancelled")
 
     def update_task_state(self, task_id: str, new_state: str,
                           reason: str = "") -> dict:
-        """Update task state directly (for pause/resume/cancel/block/unblock).
-
-        Validates transition legality, writes flow_log.
-        """
-        task = self.db.get_task(task_id)
-        if task is None:
-            raise ValueError(f"Task {task_id} not found")
-
+        """Update task state directly (for pause/resume/cancel/block/unblock)."""
+        task = self._get_task_or_raise(task_id)
         old_state = task["state"]
         if not self.state_machine.validate_transition(old_state, new_state):
-            raise ValueError(
-                f"Invalid transition: {old_state} -> {new_state}"
-            )
+            raise ValueError(f"Invalid transition: {old_state} -> {new_state}")
 
         update_kwargs = {"state": new_state}
-        # Clear error_detail when unblocking or cancelling
         if new_state in (TaskState.ACTIVE, TaskState.CANCELLED):
             update_kwargs["error_detail"] = None
 
         task = self.db.update_task(task_id, task["version"], **update_kwargs)
-        self.db.insert_flow_log(
-            task_id, event="state_change", kind="flow",
-            from_state=old_state, to_state=new_state,
-            detail={"reason": reason} if reason else None,
-            actor="system",
+        self.progress.record_state_change(
+            task_id, from_state=old_state, to_state=new_state,
+            actor="system", detail={"reason": reason} if reason else None,
         )
         return task
 
     def cleanup_orphaned(self, task_id: Optional[str] = None) -> int:
-        """Clean up orphaned tasks. Returns count of cleaned tasks."""
+        """Clean up orphaned tasks."""
         conn = self.db.connect()
         if task_id:
             rows = conn.execute(
-                "SELECT id FROM tasks WHERE id = ? AND state = 'orphaned'",
-                (task_id,)
+                "SELECT id FROM tasks WHERE id = ? AND state = 'orphaned'", (task_id,)
             ).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT id FROM tasks WHERE state = 'orphaned'"
-            ).fetchall()
+            rows = conn.execute("SELECT id FROM tasks WHERE state = 'orphaned'").fetchall()
 
         count = 0
         for row in rows:
             tid = row["id"]
             with self.db.get_connection() as c:
-                c.execute("DELETE FROM subtasks WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM flow_log WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM progress_log WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM stage_history WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM archon_reviews WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM approvals WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM quorum_votes WHERE task_id = ?", (tid,))
-                c.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+                for table in ("subtasks", "flow_log", "progress_log", "stage_history",
+                              "archon_reviews", "approvals", "quorum_votes", "tasks"):
+                    key = "id" if table == "tasks" else "task_id"
+                    c.execute(f"DELETE FROM {table} WHERE {key} = ?", (tid,))
             count += 1
         return count
+
+    def _get_task_or_raise(self, task_id: str) -> dict:
+        task = self.db.get_task(task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+        return task
