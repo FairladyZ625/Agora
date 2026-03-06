@@ -1,4 +1,5 @@
-/docs/
+# Private docs (OpenClaw copies)
+/docs/private/
 *.db
 *.db-wal
 *.db-shm
