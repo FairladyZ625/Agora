@@ -1,5 +1,5 @@
 {
-  "name": "@agora/openclaw-plugin",
+  "name": "agora",
   "version": "0.1.0",
   "private": true,
   "description": "Agora OpenClaw plugin via HTTP bridge",
@@ -8,6 +8,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
