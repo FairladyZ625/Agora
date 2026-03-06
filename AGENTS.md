@@ -25,7 +25,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ├── ...
 ├── 10-WALKTHROUGH/ # 交接复盘索引
 ├── 01-PLANS/       # 现有架构设计文档（过渡保留）
-├── plans/          # 任务工作区（每次任务独立目录）
+├── 09-PLANNING/TASKS/ # 任务工作区（每次任务独立目录）
 │   └── <YYYY-MM-DD-任务名>/
 └── walkthrough/    # 开发总结（现有主目录）
 ```
@@ -34,9 +34,9 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 
 - **所有过程记录文件严禁放在项目根目录**（包括 `task_plan.md` / `findings.md` / `progress.md` / `notes.md`）。
 - 所有非平凡任务的过程文件必须放在：
-  - `docs/plans/<YYYY-MM-DD-任务名>/task_plan.md`
-  - `docs/plans/<YYYY-MM-DD-任务名>/findings.md`
-  - `docs/plans/<YYYY-MM-DD-任务名>/progress.md`
+  - `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/task_plan.md`
+  - `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/findings.md`
+  - `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/progress.md`
 - `docs/` 是独立 Git 仓库，文档只在 `docs` 仓库提交维护；**不要把 docs 文档提交到主仓库**。
 - 每个新任务必须创建独立文件夹，不可与历史任务共用同一组过程文件。
 
@@ -57,9 +57,9 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 
 **所有非平凡任务必须使用 `planning-with-files` skill**，创建三个核心文件：
 
-- `docs/plans/<YYYY-MM-DD-任务名>/task_plan.md` — 任务计划和阶段追踪
-- `docs/plans/<YYYY-MM-DD-任务名>/findings.md` — 研究发现和知识积累
-- `docs/plans/<YYYY-MM-DD-任务名>/progress.md` — 执行日志和进度记录
+- `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/task_plan.md` — 任务计划和阶段追踪
+- `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/findings.md` — 研究发现和知识积累
+- `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/progress.md` — 执行日志和进度记录
 
 **调用方式**:
 
@@ -194,7 +194,7 @@ docs/
 ├── ...
 ├── 10-WALKTHROUGH/     # 交接/复盘索引
 ├── 01-PLANS/           # 现有架构文档（过渡保留）
-├── plans/              # 任务过程文件（每次任务独立目录）
+├── 09-PLANNING/TASKS/  # 任务过程文件（每次任务独立目录）
 │   ├── 2026-03-06-week2-adapter-integration/
 │   │   ├── plan.md
 │   │   ├── notes.md
@@ -217,7 +217,7 @@ docs/
 - 实施进度必须更新 `07-implementation-plan.md`
 - 每周结束必须写 Walkthrough 文档
 - 所有文档提交到 docs 仓库，不提交到主仓库
-- 所有过程记录必须位于 `docs/plans/<YYYY-MM-DD-任务名>/` 任务目录
+- 所有过程记录必须位于 `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/` 任务目录
 
 ---
 
@@ -233,7 +233,7 @@ docs/
 
 ### 实现计划
 
-- Week 2 计划：`docs/plans/2026-03-06-week2-adapter-integration/plan.md`（包含完整测试和实现代码）
+- Week 2 计划：`docs/09-PLANNING/TASKS/2026-03-06-week2-adapter-integration/plan.md`（包含完整测试和实现代码）
 
 ### Walkthrough
 
@@ -248,7 +248,7 @@ docs/
 
 - 配置目录：`/Users/lizeyu/.openclaw/`
 - 源码目录：`/Users/lizeyu/Projects/openclaw/`
-- Agora 设计文档副本：`/Users/lizeyu/.openclaw/docs/plans/agora/`
+- Agora 设计文档副本：`/Users/lizeyu/.openclaw/docs/09-PLANNING/TASKS/agora/`
 
 ### 集成方式
 
