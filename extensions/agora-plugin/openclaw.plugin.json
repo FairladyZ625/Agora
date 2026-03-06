@@ -1,0 +1,21 @@
+{
+  "id": "agora",
+  "name": "Agora Orchestration",
+  "description": "Multi-Agent Democratic Orchestration for OpenClaw",
+  "entry": "dist/index.js",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "serverUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:8420"
+      }
+    }
+  },
+  "uiHints": {
+    "serverUrl": {
+      "label": "Agora Server URL",
+      "help": "HTTP endpoint of the Agora Python server"
+    }
+  }
+}

@@ -1,4 +1,9 @@
 """Agora CLI — typer-based command-line interface for task management."""
+import json
+import os
+from pathlib import Path
+from typing import Optional
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -12,9 +17,49 @@ console = Console()
 
 def get_manager() -> TaskManager:
     """Initialize DB + TaskManager."""
-    db = DatabaseManager(db_path="tasks.db")
+    db_path = os.getenv("AGORA_DB_PATH", "tasks.db")
+    db = DatabaseManager(db_path=db_path)
     db.initialize()
-    return TaskManager(db)
+    return TaskManager(db, config=_load_cli_config())
+
+
+def _load_cli_config(config_path: Optional[str] = None) -> dict:
+    """Load CLI config from explicit path/env/default package config."""
+    explicit = config_path or os.getenv("AGORA_CONFIG_PATH")
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit))
+    candidates.extend([
+        Path(__file__).resolve().parents[1] / "config" / "agora.example.json",
+        Path(__file__).resolve().parents[2] / "config" / "agora.example.json",
+    ])
+
+    for path in candidates:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return {}
+
+
+def _resolve_agent_caller(caller: str,
+                          agent_id: Optional[str],
+                          session_key: Optional[str]) -> str:
+    """Resolve caller identity, preferring explicit agent auth."""
+    if agent_id:
+        if not session_key:
+            raise ValueError("agent-id requires --session-key")
+        return agent_id
+    return caller
+
+
+def _require_archon_token(archon_token: Optional[str]) -> str:
+    """Validate archon token from CLI option or environment."""
+    expected = os.getenv("AGORA_ARCHON_TOKEN")
+    provided = archon_token or expected
+    if not provided:
+        raise ValueError("archon-token is required (or set AGORA_ARCHON_TOKEN)")
+    if expected and provided != expected:
+        raise ValueError("invalid archon-token")
+    return provided
 
 
 @app.command()
@@ -97,11 +142,14 @@ def list_tasks(
 def advance(
     task_id: str = typer.Argument(..., help="任务 ID"),
     caller: str = typer.Option("archon", "--caller", help="调用者 ID"),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Agent 身份 ID"),
+    session_key: Optional[str] = typer.Option(None, "--session-key", help="Agent 会话密钥"),
 ):
     """推进任务到下一阶段。"""
     mgr = get_manager()
     try:
-        task = mgr.advance_task(task_id, caller_id=caller)
+        actor = _resolve_agent_caller(caller, agent_id, session_key)
+        task = mgr.advance_task(task_id, caller_id=actor)
         if task['state'] == 'done':
             console.print(f"[green]✓[/green] 任务 {task_id} 已完成!")
         else:
@@ -115,12 +163,15 @@ def advance(
 def approve(
     task_id: str = typer.Argument(..., help="任务 ID"),
     caller: str = typer.Option("archon", "--caller", help="审批者 ID"),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Agent 身份 ID"),
+    session_key: Optional[str] = typer.Option(None, "--session-key", help="Agent 会话密钥"),
     comment: str = typer.Option("", "--comment", help="审批备注"),
 ):
     """审批通过当前阶段。"""
     mgr = get_manager()
     try:
-        mgr.approve_task(task_id, approver_id=caller, comment=comment)
+        actor = _resolve_agent_caller(caller, agent_id, session_key)
+        mgr.approve_task(task_id, approver_id=actor, comment=comment)
         console.print(f"[green]✓[/green] 任务 {task_id} 已审批通过")
     except (ValueError, PermissionError) as e:
         console.print(f"[red]✗[/red] 审批失败: {e}")
@@ -132,13 +183,16 @@ def reject(
     task_id: str = typer.Argument(..., help="任务 ID"),
     reason: str = typer.Option("", "--reason", help="驳回原因"),
     caller: str = typer.Option("archon", "--caller", help="驳回者 ID"),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Agent 身份 ID"),
+    session_key: Optional[str] = typer.Option(None, "--session-key", help="Agent 会话密钥"),
 ):
     """驳回当前阶段。"""
     mgr = get_manager()
     try:
-        mgr.reject_task(task_id, rejector_id=caller, reason=reason)
+        actor = _resolve_agent_caller(caller, agent_id, session_key)
+        mgr.reject_task(task_id, rejector_id=actor, reason=reason)
         console.print(f"[yellow]![/yellow] 任务 {task_id} 已驳回")
-    except ValueError as e:
+    except (ValueError, PermissionError) as e:
         console.print(f"[red]✗[/red] 驳回失败: {e}")
         raise typer.Exit(1)
 
@@ -146,11 +200,15 @@ def reject(
 def archon_approve(
     task_id: str = typer.Argument(..., help="任务 ID"),
     caller: str = typer.Option("lizeyu", "--caller", help="Archon 用户 ID"),
+    archon_token: Optional[str] = typer.Option(
+        None, "--archon-token", envvar="AGORA_ARCHON_TOKEN", help="Archon 鉴权 token"
+    ),
     comment: str = typer.Option("", "--comment", help="备注"),
 ):
     """Archon 审批通过。"""
     mgr = get_manager()
     try:
+        _require_archon_token(archon_token)
         mgr.archon_approve(task_id, reviewer_id=caller, comment=comment)
         console.print(f"[green]✓[/green] Archon 已审批通过 {task_id}")
     except (ValueError, PermissionError) as e:
@@ -163,10 +221,14 @@ def archon_reject(
     task_id: str = typer.Argument(..., help="任务 ID"),
     reason: str = typer.Option("", "--reason", help="驳回原因"),
     caller: str = typer.Option("lizeyu", "--caller", help="Archon 用户 ID"),
+    archon_token: Optional[str] = typer.Option(
+        None, "--archon-token", envvar="AGORA_ARCHON_TOKEN", help="Archon 鉴权 token"
+    ),
 ):
     """Archon 驳回。"""
     mgr = get_manager()
     try:
+        _require_archon_token(archon_token)
         mgr.archon_reject(task_id, reviewer_id=caller, reason=reason)
         console.print(f"[yellow]![/yellow] Archon 已驳回 {task_id}")
     except (ValueError, PermissionError) as e:
@@ -179,12 +241,15 @@ def confirm(
     task_id: str = typer.Argument(..., help="任务 ID"),
     vote: str = typer.Option("approve", "--vote", help="投票: approve/reject"),
     caller: str = typer.Option("archon", "--caller", help="投票者 ID"),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Agent 身份 ID"),
+    session_key: Optional[str] = typer.Option(None, "--session-key", help="Agent 会话密钥"),
     comment: str = typer.Option("", "--comment", help="备注"),
 ):
     """Quorum 投票。"""
     mgr = get_manager()
     try:
-        result = mgr.confirm_task(task_id, voter_id=caller, vote=vote, comment=comment)
+        actor = _resolve_agent_caller(caller, agent_id, session_key)
+        result = mgr.confirm_task(task_id, voter_id=actor, vote=vote, comment=comment)
         quorum = result.get("quorum", {})
         console.print(f"[green]✓[/green] 已投票 ({vote}) — 当前 {quorum.get('approved', 0)}/{quorum.get('total', 0)}")
     except (ValueError, PermissionError) as e:
@@ -197,14 +262,17 @@ def subtask_done(
     task_id: str = typer.Argument(..., help="任务 ID"),
     subtask_id: str = typer.Argument(..., help="子任务 ID"),
     caller: str = typer.Option("archon", "--caller", help="调用者 ID"),
+    agent_id: Optional[str] = typer.Option(None, "--agent-id", help="Agent 身份 ID"),
+    session_key: Optional[str] = typer.Option(None, "--session-key", help="Agent 会话密钥"),
     output: str = typer.Option("", "--output", help="子任务输出"),
 ):
     """标记子任务完成。"""
     mgr = get_manager()
     try:
-        mgr.complete_subtask(task_id, subtask_id, caller_id=caller, output=output)
+        actor = _resolve_agent_caller(caller, agent_id, session_key)
+        mgr.complete_subtask(task_id, subtask_id, caller_id=actor, output=output)
         console.print(f"[green]✓[/green] 子任务 {subtask_id} 已完成")
-    except ValueError as e:
+    except (ValueError, PermissionError) as e:
         console.print(f"[red]✗[/red] 失败: {e}")
         raise typer.Exit(1)
 
@@ -212,11 +280,15 @@ def subtask_done(
 @app.command(name="force-advance")
 def force_advance(
     task_id: str = typer.Argument(..., help="任务 ID"),
+    archon_token: Optional[str] = typer.Option(
+        None, "--archon-token", envvar="AGORA_ARCHON_TOKEN", help="Archon 鉴权 token"
+    ),
     reason: str = typer.Option("", "--reason", help="强制推进原因"),
 ):
     """强制推进（Archon 覆盖）。"""
     mgr = get_manager()
     try:
+        _require_archon_token(archon_token)
         task = mgr.force_advance(task_id, reason=reason)
         if task['state'] == 'done':
             console.print(f"[green]✓[/green] 任务 {task_id} 已强制完成!")
@@ -282,6 +354,29 @@ def cancel(
     except ValueError as e:
         console.print(f"[red]✗[/red] 取消失败: {e}")
         raise typer.Exit(1)
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="监听地址"),
+    port: int = typer.Option(8420, "--port", help="监听端口"),
+    db_path: str = typer.Option("tasks.db", "--db-path", help="SQLite 数据库路径"),
+    config_path: Optional[str] = typer.Option(None, "--config-path", help="配置文件路径"),
+):
+    """启动 FastAPI HTTP 服务。"""
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]✗[/red] 缺少依赖 uvicorn，请先安装 `uvicorn[standard]`")
+        raise typer.Exit(1)
+
+    from agora.server.app import create_app
+
+    uvicorn.run(
+        create_app(db_path=db_path, config_path=config_path),
+        host=host,
+        port=port,
+    )
 
 
 @app.command()

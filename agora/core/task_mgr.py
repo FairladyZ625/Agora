@@ -97,6 +97,11 @@ class TaskManager:
 
     def advance_task(self, task_id: str, caller_id: str = "archon") -> dict:
         """Advance task to next stage using GateKeeper for gate checks."""
+        if not self.permission.can_advance(caller_id):
+            raise PermissionError(
+                f"caller {caller_id} has canAdvance=false for /task advance"
+            )
+
         task = self._get_task_or_raise(task_id)
         if task["state"] != TaskState.ACTIVE:
             raise ValueError(f"Task {task_id} is in state '{task['state']}', expected 'active'")
@@ -137,6 +142,7 @@ class TaskManager:
         """Record an approval for the current stage."""
         task = self._get_task_or_raise(task_id)
         stage = self.state_machine.get_current_stage(task["workflow"], task["current_stage"])
+        self.gate_keeper.route_gate_command(task, stage, "/task approve", approver_id)
         approver_role = stage.get("gate", {}).get("approver_role", "reviewer")
         self.gate_keeper.record_approval(task_id, task["current_stage"], approver_role, approver_id, comment)
         self.progress.record_gate_result(task_id, task["current_stage"], "approval", True, actor=approver_id)
@@ -145,6 +151,8 @@ class TaskManager:
     def reject_task(self, task_id: str, rejector_id: str, reason: str = "") -> dict:
         """Reject — record in flow_log (no DB table for rejections, just log)."""
         task = self._get_task_or_raise(task_id)
+        stage = self.state_machine.get_current_stage(task["workflow"], task["current_stage"])
+        self.gate_keeper.route_gate_command(task, stage, "/task reject", rejector_id)
         self.progress.record_gate_result(task_id, task["current_stage"], "approval", False, actor=rejector_id)
         self.db.insert_flow_log(
             task_id, event="rejected", kind="flow",
@@ -156,6 +164,8 @@ class TaskManager:
     def archon_approve(self, task_id: str, reviewer_id: str, comment: str = "") -> dict:
         """Archon approves the current stage's archon_review gate."""
         task = self._get_task_or_raise(task_id)
+        stage = self.state_machine.get_current_stage(task["workflow"], task["current_stage"])
+        self.gate_keeper.route_gate_command(task, stage, "/task archon-approve", reviewer_id)
         self.gate_keeper.record_archon_review(task_id, task["current_stage"], "approved", reviewer_id, comment)
         self.progress.record_archon_decision(task_id, task["current_stage"], "approved", actor=reviewer_id, comment=comment)
         return self.db.get_task(task_id)
@@ -163,6 +173,8 @@ class TaskManager:
     def archon_reject(self, task_id: str, reviewer_id: str, reason: str = "") -> dict:
         """Archon rejects the current stage."""
         task = self._get_task_or_raise(task_id)
+        stage = self.state_machine.get_current_stage(task["workflow"], task["current_stage"])
+        self.gate_keeper.route_gate_command(task, stage, "/task archon-reject", reviewer_id)
         self.gate_keeper.record_archon_review(task_id, task["current_stage"], "rejected", reviewer_id, reason)
         self.progress.record_archon_decision(task_id, task["current_stage"], "rejected", actor=reviewer_id, comment=reason)
         return self.db.get_task(task_id)
@@ -170,6 +182,8 @@ class TaskManager:
     def confirm_task(self, task_id: str, voter_id: str, vote: str = "approve", comment: str = "") -> dict:
         """Record a quorum vote."""
         task = self._get_task_or_raise(task_id)
+        stage = self.state_machine.get_current_stage(task["workflow"], task["current_stage"])
+        self.gate_keeper.route_gate_command(task, stage, "/task confirm", voter_id)
         result = self.gate_keeper.record_quorum_vote(task_id, task["current_stage"], voter_id, vote, comment)
         self.db.insert_flow_log(
             task_id, event="quorum_vote", kind="flow",
@@ -182,9 +196,21 @@ class TaskManager:
                          output: str = "") -> dict:
         """Mark a subtask as done."""
         task = self._get_task_or_raise(task_id)
+        subtask = next(
+            (st for st in self.db.get_subtasks(task_id) if st["id"] == subtask_id),
+            None,
+        )
+        if subtask is None:
+            raise ValueError(f"Subtask {subtask_id} not found in task {task_id}")
+        if not self.permission.verify_subtask_done(caller_id, subtask["assignee"]):
+            raise PermissionError(
+                f"{caller_id} 无权完成子任务 {subtask_id}（assignee={subtask['assignee']}）"
+            )
+
         self.db.update_subtask(task_id, subtask_id, status="done", output=output)
         self.progress.record_subtask_event(
-            task_id, task["current_stage"], subtask_id, "done", actor=caller_id,
+            task_id, subtask.get("stage_id") or task["current_stage"],
+            subtask_id, "done", actor=caller_id,
         )
         return self.db.get_task(task_id)
 

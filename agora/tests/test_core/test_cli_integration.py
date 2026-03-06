@@ -1,4 +1,7 @@
 """CLI integration tests — TaskManager methods through full lifecycle."""
+import json
+from datetime import datetime, timezone
+
 import pytest
 from agora.core.db import DatabaseManager
 from agora.core.task_mgr import TaskManager
@@ -139,8 +142,21 @@ class TestUnblock:
 
 class TestConfirmQuorum:
     def test_quorum_vote(self, mgr):
-        task = mgr.create_task("快速测试", "quick")
-        tid = task["id"]
+        now = datetime.now(timezone.utc).isoformat()
+        team = {"members": [
+            {"role": "architect", "agentId": "opus"},
+            {"role": "developer", "agentId": "sonnet"},
+        ]}
+        workflow = {"stages": [
+            {"id": "vote", "name": "投票", "mode": "discuss", "gate": {"type": "quorum", "required": 2}},
+        ]}
+        with mgr.db.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO tasks (id, version, title, type, priority, creator, state, current_stage, team, workflow, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("OC-901", 1, "Quorum Test", "quick", "normal", "archon", "active", "vote",
+                 json.dumps(team), json.dumps(workflow), now, now)
+            )
+        tid = "OC-901"
         result = mgr.confirm_task(tid, voter_id="opus", vote="approve")
         assert result["quorum"]["approved"] == 1
         assert result["quorum"]["total"] == 1
@@ -148,8 +164,21 @@ class TestConfirmQuorum:
 
 class TestRejectTask:
     def test_reject_records_log(self, mgr):
-        task = mgr.create_task("快速测试", "quick")
-        tid = task["id"]
+        now = datetime.now(timezone.utc).isoformat()
+        team = {"members": [
+            {"role": "developer", "agentId": "sonnet"},
+            {"role": "reviewer", "agentId": "glm5"},
+        ]}
+        workflow = {"stages": [
+            {"id": "review", "name": "审查", "mode": "discuss", "gate": {"type": "approval", "approver_role": "reviewer"}},
+        ]}
+        with mgr.db.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO tasks (id, version, title, type, priority, creator, state, current_stage, team, workflow, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("OC-902", 1, "Reject Test", "coding", "normal", "archon", "active", "review",
+                 json.dumps(team), json.dumps(workflow), now, now)
+            )
+        tid = "OC-902"
         mgr.reject_task(tid, rejector_id="glm5", reason="质量不够")
         logs = mgr.db.get_flow_logs(tid)
         assert any(log["event"] == "rejected" for log in logs)

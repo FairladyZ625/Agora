@@ -14,14 +14,17 @@ from typing import Optional
 class DatabaseManager:
     """SQLite database manager with WAL mode and optimistic locking."""
 
-    def __init__(self, db_path: str = "tasks.db"):
+    def __init__(self, db_path: str = "tasks.db", check_same_thread: bool = True):
         self.db_path = db_path
+        self.check_same_thread = check_same_thread
         self._conn: Optional[sqlite3.Connection] = None
 
     def connect(self) -> sqlite3.Connection:
         """Create connection with WAL mode and row factory."""
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
+            self._conn = sqlite3.connect(
+                self.db_path, check_same_thread=self.check_same_thread
+            )
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
