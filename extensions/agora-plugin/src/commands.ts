@@ -246,7 +246,7 @@ function formatHelp(): string {
   ].join("\n");
 }
 
-function tokenize(raw: string): string[] {
+export function tokenize(raw: string): string[] {
   const tokens: string[] = [];
   const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
   let match: RegExpExecArray | null;

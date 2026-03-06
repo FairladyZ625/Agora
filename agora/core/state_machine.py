@@ -44,7 +44,7 @@ class StateMachine:
         Supported gate types (MVP):
         - command: verify caller_id is in task.team.members (MVP: any caller passes)
         - all_subtasks_done: all subtasks status == 'done'
-        - archon_review: query archon_reviews table (MVP: simplified to command behavior)
+        - archon_review: latest review decision in archon_reviews must be 'approved'
         - approval: query approvals table
         """
         gate = stage.get("gate", {})
@@ -55,8 +55,15 @@ class StateMachine:
             return caller_id is not None
 
         if gate_type in (GateType.ARCHON_REVIEW, "archon_review"):
-            # MVP: simplified to command behavior (no Dashboard yet)
-            return caller_id is not None
+            task_id = task["id"]
+            stage_id = stage["id"]
+            conn = db.connect()
+            row = conn.execute(
+                "SELECT decision FROM archon_reviews WHERE task_id = ? AND stage_id = ? "
+                "ORDER BY reviewed_at DESC LIMIT 1",
+                (task_id, stage_id),
+            ).fetchone()
+            return row is not None and row["decision"] == "approved"
 
         if gate_type in (GateType.ALL_SUBTASKS_DONE, "all_subtasks_done"):
             task_id = task["id"]
