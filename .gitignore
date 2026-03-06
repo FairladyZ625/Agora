@@ -8,3 +8,9 @@ __pycache__/
 .venv/
 dist/
 *.egg-info/
+
+# Process notes must live under docs/plans/<task-folder>/, never at repo root
+/task_plan.md
+/findings.md
+/progress.md
+/notes.md

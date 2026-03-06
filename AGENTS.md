@@ -19,10 +19,26 @@ agora/
 └── config/         # 配置示例
 
 docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
-├── 01-PLANS/       # 架构设计文档
-├── plans/          # 实现计划
-└── walkthrough/    # 开发总结
+├── 01-GOVERNANCE/  # 治理规范
+├── 02-PRODUCT/     # 产品需求
+├── 03-ARCHITECTURE/# 架构文档索引
+├── ...
+├── 10-WALKTHROUGH/ # 交接复盘索引
+├── 01-PLANS/       # 现有架构设计文档（过渡保留）
+├── plans/          # 任务工作区（每次任务独立目录）
+│   └── <YYYY-MM-DD-任务名>/
+└── walkthrough/    # 开发总结（现有主目录）
 ```
+
+## 文档落盘强制规则（新增，最高优先级）
+
+- **所有过程记录文件严禁放在项目根目录**（包括 `task_plan.md` / `findings.md` / `progress.md` / `notes.md`）。
+- 所有非平凡任务的过程文件必须放在：
+  - `docs/plans/<YYYY-MM-DD-任务名>/task_plan.md`
+  - `docs/plans/<YYYY-MM-DD-任务名>/findings.md`
+  - `docs/plans/<YYYY-MM-DD-任务名>/progress.md`
+- `docs/` 是独立 Git 仓库，文档只在 `docs` 仓库提交维护；**不要把 docs 文档提交到主仓库**。
+- 每个新任务必须创建独立文件夹，不可与历史任务共用同一组过程文件。
 
 ## 技术栈
 
@@ -41,9 +57,9 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 
 **所有非平凡任务必须使用 `planning-with-files` skill**，创建三个核心文件：
 
-- `task_plan.md` — 任务计划和阶段追踪
-- `findings.md` — 研究发现和知识积累
-- `progress.md` — 执行日志和进度记录
+- `docs/plans/<YYYY-MM-DD-任务名>/task_plan.md` — 任务计划和阶段追踪
+- `docs/plans/<YYYY-MM-DD-任务名>/findings.md` — 研究发现和知识积累
+- `docs/plans/<YYYY-MM-DD-任务名>/progress.md` — 执行日志和进度记录
 
 **调用方式**:
 
@@ -57,6 +73,7 @@ Skill(skill="planning-with-files")
 - 每 2 次搜索/浏览操作后立即保存发现到 `findings.md`
 - 所有错误必须记录到 `task_plan.md` 的 "Errors Encountered" 表格
 - 3 次失败后升级给用户
+- 禁止在仓库根目录创建过程记录文件
 
 ### 2. 测试驱动开发 (TDD)
 
@@ -171,17 +188,27 @@ git push
 
 ```
 docs/
-├── 01-PLANS/           # 架构设计文档（23 个 markdown 文件）
-│   ├── 01-architecture.md
-│   ├── 02-task-lifecycle.md
-│   ├── ENUMS.md
-│   └── ...
-├── plans/              # 实现计划
-│   └── 2026-03-06-week2-adapter-integration.md
-└── walkthrough/        # 开发总结
+├── 01-GOVERNANCE/      # 治理规则
+├── 02-PRODUCT/         # 产品文档
+├── 03-ARCHITECTURE/    # 架构索引与ADR
+├── ...
+├── 10-WALKTHROUGH/     # 交接/复盘索引
+├── 01-PLANS/           # 现有架构文档（过渡保留）
+├── plans/              # 任务过程文件（每次任务独立目录）
+│   ├── 2026-03-06-week2-adapter-integration/
+│   │   ├── plan.md
+│   │   ├── notes.md
+│   │   └── task_plan.md
+│   └── 2026-03-06-init-to-week2-full-audit/
+│       ├── task_plan.md
+│       ├── findings.md
+│       ├── progress.md
+│       └── review-init-to-week2.md
+└── walkthrough/        # 现有 walkthrough 主目录
     ├── README.md
     ├── week1-core-skeleton.md
-    └── week2-adapter-integration.md
+    ├── week2-adapter-integration.md
+    └── week2-handover.md
 ```
 
 ### 文档更新规则
@@ -190,6 +217,7 @@ docs/
 - 实施进度必须更新 `07-implementation-plan.md`
 - 每周结束必须写 Walkthrough 文档
 - 所有文档提交到 docs 仓库，不提交到主仓库
+- 所有过程记录必须位于 `docs/plans/<YYYY-MM-DD-任务名>/` 任务目录
 
 ---
 
@@ -205,7 +233,7 @@ docs/
 
 ### 实现计划
 
-- Week 2 计划：`docs/plans/2026-03-06-week2-adapter-integration.md`（包含完整测试和实现代码）
+- Week 2 计划：`docs/plans/2026-03-06-week2-adapter-integration/plan.md`（包含完整测试和实现代码）
 
 ### Walkthrough
 
