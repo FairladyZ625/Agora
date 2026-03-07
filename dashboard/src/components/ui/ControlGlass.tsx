@@ -1,14 +1,14 @@
 import type { CSSProperties, ReactNode } from 'react';
-import LiquidGlass from 'liquid-glass-react';
+import { cn } from '@/lib/cn';
 
 const radiusMap = {
-  md: 16,
-  lg: 18,
+  md: 'md',
+  lg: 'lg',
 } as const;
 
 const densityPaddingMap = {
-  flush: '0px',
-  compact: '8px 12px',
+  flush: 'flush',
+  compact: 'compact',
 } as const;
 
 interface ControlGlassProps {
@@ -19,10 +19,6 @@ interface ControlGlassProps {
   density?: keyof typeof densityPaddingMap;
 }
 
-function isJsdom() {
-  return typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
-}
-
 export function ControlGlass({
   children,
   className,
@@ -30,28 +26,14 @@ export function ControlGlass({
   radius = 'lg',
   density = 'flush',
 }: ControlGlassProps) {
-  if (isJsdom()) {
-    return (
-      <div className={className} style={style}>
-        {children}
-      </div>
-    );
-  }
-
   return (
-    <LiquidGlass
-      className={className}
+    <div
+      className={cn('control-glass', className)}
+      data-radius={radiusMap[radius]}
+      data-density={densityPaddingMap[density]}
       style={style}
-      cornerRadius={radiusMap[radius]}
-      padding={densityPaddingMap[density]}
-      blurAmount={0.08}
-      saturation={135}
-      aberrationIntensity={1.2}
-      displacementScale={34}
-      elasticity={0.18}
-      mode="standard"
     >
       {children}
-    </LiquidGlass>
+    </div>
   );
 }

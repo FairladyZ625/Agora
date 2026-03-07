@@ -921,11 +921,51 @@ a {
   position: relative;
 }
 
+.control-glass {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--liquid-shell-border);
+  background: var(--liquid-shell-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.control-glass::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  border: 1px solid var(--liquid-ribbon-border);
+  background: var(--liquid-ribbon-bg);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.control-glass[data-radius='md'] {
+  border-radius: var(--radius-md);
+}
+
+.control-glass[data-radius='lg'] {
+  border-radius: var(--radius-lg);
+}
+
+.control-glass[data-density='flush'] {
+  padding: 0;
+}
+
+.control-glass[data-density='compact'] {
+  padding: var(--space-2) var(--space-3);
+}
+
 .glass-control {
   display: inline-flex;
 }
 
 .glass-control__button {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 8px;
