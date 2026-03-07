@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Eye, EyeOff, Link2, Palette, RefreshCcw, Shield } from 'lucide-react';
 import * as api from '@/lib/api';
 import { settingsPageCopy } from '@/lib/dashboardCopy';
+import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 
@@ -28,6 +29,7 @@ export function SettingsPage() {
   const [showToken, setShowToken] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const { showMessage } = useFeedbackStore();
 
   const testConnection = async () => {
     setStatus('loading');
@@ -35,9 +37,11 @@ export function SettingsPage() {
       await api.healthCheck();
       setStatus('success');
       setMessage(settingsPageCopy.healthSuccess);
+      showMessage('连接成功', settingsPageCopy.healthSuccess, 'success');
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : settingsPageCopy.healthFailureFallback);
+      showMessage('网关未连通', '当前后端暂不可达，前端继续运行在可交互的 mock 阶段。', 'warning');
     }
   };
 
@@ -94,7 +98,10 @@ export function SettingsPage() {
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => setApiConfig(localBase, localToken)}
+            onClick={() => {
+              setApiConfig(localBase, localToken);
+              showMessage('配置已保存', '新的 API 基址和令牌已经写入本地工作台。', 'success');
+            }}
             className="button-primary"
           >
             {settingsPageCopy.saveAction}
@@ -165,7 +172,10 @@ export function SettingsPage() {
             <button
               key={option.value}
               type="button"
-              onClick={() => setMode(option.value)}
+              onClick={() => {
+                setMode(option.value);
+                showMessage('外观已切换', `当前主题已切换到${option.label}。`, 'info');
+              }}
               className="surface-panel surface-panel--muted text-left"
               style={mode === option.value ? { borderColor: 'var(--color-primary)' } : undefined}
             >

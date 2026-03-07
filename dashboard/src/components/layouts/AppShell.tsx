@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopNav } from './TopNav';
 import { useLocation } from 'react-router';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { ExperienceNotice } from '@/components/ui/ExperienceNotice';
+import { AgoraIntro } from '@/components/ui/AgoraIntro';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -10,28 +13,59 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [introActive, setIntroActive] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !sessionStorage.getItem('agora-intro-seen');
+  });
   const location = useLocation();
+  const isMobile = useMediaQuery('(max-width: 767px)');
+
+  useEffect(() => {
+    if (!introActive) return;
+    const timer = window.setTimeout(() => {
+      sessionStorage.setItem('agora-intro-seen', '1');
+      setIntroActive(false);
+    }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [introActive]);
+
+  const handleReplayIntro = useCallback(() => {
+    setIntroActive(true);
+  }, []);
 
   return (
-    <div className="flex min-h-screen bg-[var(--color-bg-base)] text-[var(--color-text-primary)]">
+    <div className="app-shell text-[var(--color-text-primary)]">
+      <AgoraIntro active={introActive} />
+      <ExperienceNotice />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        mobileOpen={mobileNavOpen}
+        mobileOpen={isMobile && mobileNavOpen}
         onCloseMobile={() => setMobileNavOpen(false)}
+        isMobile={isMobile}
       />
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <TopNav onOpenMobileNav={() => setMobileNavOpen(true)} />
+      <div className="app-shell__main">
+        <TopNav
+          isMobile={isMobile}
+          onOpenMobileNav={() => setMobileNavOpen(true)}
+          onReplayIntro={handleReplayIntro}
+        />
 
         <main className="flex-1 overflow-y-auto">
-          <div key={location.pathname} className="page-enter mx-auto w-full max-w-[1320px] px-4 py-6 md:px-6">
+          <div
+            key={location.pathname}
+            className="page-enter app-frame px-4 py-6 md:px-6"
+          >
             {children}
           </div>
         </main>
 
-        <footer className="border-t px-4 py-3 md:px-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}>
-          <div className="mx-auto flex max-w-[1320px] items-center justify-between text-[11px] font-medium text-[var(--color-text-tertiary)]">
+        <footer
+          className="app-shell__footer border-t"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}
+        >
+          <div className="app-frame app-shell__footer-inner flex items-center justify-between px-4 py-3 text-[11px] font-medium text-[var(--color-text-tertiary)] md:px-6">
             <span className="flex items-center gap-2">
               <span className="status-dot status-dot--info" />
               Agora orchestration layer

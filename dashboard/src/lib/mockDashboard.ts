@@ -342,6 +342,15 @@ export const MOCK_REVIEW_QUEUE: ReviewDecision[] = [
   },
 ];
 
+export function createMockTasks(): Task[] {
+  return structuredClone(MOCK_TASKS);
+}
+
+export function getMockTaskStatus(taskId: string): TaskStatus | null {
+  const status = MOCK_TASK_STATUS[taskId];
+  return status ? structuredClone(status) : null;
+}
+
 export function formatRelativeTimestamp(value: string): string {
   const timestamp = new Date(value).getTime();
   if (Number.isNaN(timestamp)) {

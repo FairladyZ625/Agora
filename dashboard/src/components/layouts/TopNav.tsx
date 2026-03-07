@@ -1,7 +1,8 @@
-import { Menu, Monitor, Moon, RefreshCw, Sun } from 'lucide-react';
+import { Menu, Monitor, Moon, RefreshCw, Sparkles, Sun } from 'lucide-react';
 import { pageMetaCopy } from '@/lib/dashboardCopy';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useLocation } from 'react-router';
 
 const themeCycle: ThemeMode[] = ['light', 'dark', 'system'];
@@ -13,18 +14,16 @@ function IconButton({
   label,
   children,
   spinning,
-  mobileOnly,
 }: {
-  onClick: () => void;
+  onClick: () => void | Promise<void>;
   label: string;
   children: React.ReactNode;
   spinning?: boolean;
-  mobileOnly?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={mobileOnly ? 'icon-button md:hidden' : 'icon-button'}
+      className="icon-button"
       aria-label={label}
       title={label}
     >
@@ -33,14 +32,25 @@ function IconButton({
   );
 }
 
-export function TopNav({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
+export function TopNav({
+  isMobile,
+  onOpenMobileNav,
+  onReplayIntro,
+}: {
+  isMobile: boolean;
+  onOpenMobileNav: () => void;
+  onReplayIntro: () => void;
+}) {
   const { mode, setMode } = useThemeStore();
-  const { fetchTasks, loading, tasks } = useTaskStore();
+  const { fetchTasks, loading, tasks, dataSource } = useTaskStore();
+  const { showMessage } = useFeedbackStore();
   const location = useLocation();
 
   const nextTheme = () => {
     const idx = themeCycle.indexOf(mode);
-    setMode(themeCycle[(idx + 1) % themeCycle.length]);
+    const nextMode = themeCycle[(idx + 1) % themeCycle.length];
+    setMode(nextMode);
+    showMessage('外观已切换', `当前主题切换到${themeLabels[nextMode]}。`, 'info');
   };
 
   const ThemeIcon = themeIcons[mode];
@@ -49,13 +59,36 @@ export function TopNav({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const activeCount = tasks.filter((task) => task.state === 'in_progress').length;
   const reviewCount = tasks.filter((task) => task.state === 'gate_waiting').length;
 
+  const refreshWorkspace = async () => {
+    const source = await fetchTasks();
+    showMessage(
+      source === 'live' ? '已同步真实任务' : '已切回演示态势',
+      source === 'live'
+        ? 'Agora 已从真实接口刷新当前工作区。'
+        : '后端暂不可达，当前按钮和页面继续使用可交互的 mock 工作流。',
+      source === 'live' ? 'success' : 'warning',
+    );
+  };
+
   return (
-    <header className="sticky top-0 z-20 border-b backdrop-blur-md" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}>
-      <div className="mx-auto flex max-w-[1320px] items-center justify-between gap-4 px-4 py-4 md:px-6">
+    <header className="app-topbar sticky top-0 z-20 border-b backdrop-blur-md" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}>
+      <div className="app-frame flex items-center justify-between gap-4 px-4 py-4 md:px-6">
         <div className="flex min-w-0 items-start gap-3">
-          <IconButton onClick={onOpenMobileNav} label="打开导航" mobileOnly>
-            <Menu size={18} />
-          </IconButton>
+          {isMobile ? (
+            <IconButton onClick={onOpenMobileNav} label="打开导航">
+              <Menu size={18} />
+            </IconButton>
+          ) : (
+            <button
+              type="button"
+              className="topbar-sigil"
+              onClick={onReplayIntro}
+              aria-label="重播 Agora 入场动效"
+              title="重播 Agora 入场动效"
+            >
+              <Sparkles size={16} />
+            </button>
+          )}
           <div className="min-w-0">
             <p className="page-kicker">{meta.kicker}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -76,9 +109,11 @@ export function TopNav({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
         <div className="flex items-center gap-2">
           <div className="hidden items-center gap-2 rounded-full border px-3 py-2 text-[12px] text-[var(--color-text-secondary)] md:flex" style={{ borderColor: 'var(--color-border)' }}>
             <span className="status-dot status-dot--info" />
-            {activeCount > 0 ? `${activeCount} 正在编排` : '队列平稳'}
+            {dataSource === 'live'
+              ? activeCount > 0 ? `${activeCount} 正在编排` : '队列平稳'
+              : '演示态势已接管'}
           </div>
-          <IconButton onClick={() => fetchTasks()} label="刷新" spinning={loading}>
+          <IconButton onClick={refreshWorkspace} label="刷新" spinning={loading}>
             <RefreshCw size={16} />
           </IconButton>
           <IconButton onClick={nextTheme} label={themeLabels[mode]}>

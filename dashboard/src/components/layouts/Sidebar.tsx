@@ -18,6 +18,7 @@ interface SidebarProps {
   onToggle: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  isMobile: boolean;
 }
 
 const navItems = [
@@ -32,6 +33,7 @@ export function Sidebar({
   onToggle,
   mobileOpen,
   onCloseMobile,
+  isMobile,
 }: SidebarProps) {
   return (
     <>
@@ -46,7 +48,7 @@ export function Sidebar({
 
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex border-r transition-[transform,width] duration-200 md:static md:translate-x-0',
+          'app-sidebar fixed inset-y-3 left-3 z-40 flex transition-[transform,width,opacity] duration-300 md:static md:inset-auto md:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
         style={{
@@ -73,25 +75,27 @@ export function Sidebar({
                       {shellCopy.brandName}
                     </h1>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onCloseMobile}
-                    className="icon-button md:hidden"
-                    aria-label="关闭侧边栏"
-                  >
-                    <X size={16} />
-                  </button>
+                  {isMobile && mobileOpen && (
+                    <button
+                      type="button"
+                      onClick={onCloseMobile}
+                      className="icon-button"
+                      aria-label="关闭侧边栏"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
                 <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-secondary)]">
                   {shellCopy.brandSummary}
                 </p>
               </div>
             )}
-            {collapsed && (
+            {collapsed && isMobile && mobileOpen && (
               <button
                 type="button"
                 onClick={onCloseMobile}
-                className="icon-button md:hidden"
+                className="icon-button"
                 aria-label="关闭侧边栏"
               >
                 <X size={16} />

@@ -84,6 +84,9 @@ describe('dashboard visual rescue target structure', () => {
 
     expect(screen.getByText('Agora 指挥广场')).toBeInTheDocument();
     expect(screen.getByText('辩论，裁决，执行')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重播 Agora 入场动效' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '打开导航' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '关闭侧边栏' })).not.toBeInTheDocument();
   });
 
   it('rebuilds the tasks page into a dense list and detail workspace', () => {
@@ -100,6 +103,7 @@ describe('dashboard visual rescue target structure', () => {
     expect(screen.getByText('裁决中心')).toBeInTheDocument();
     expect(screen.getByText('待裁决任务')).toBeInTheDocument();
     expect(screen.getByText('裁决说明')).toBeInTheDocument();
+    expect(screen.getByText('当前为 mock 可交互模式，所有裁决都会立即反馈到演示态势。')).toBeInTheDocument();
   });
 
   it('restructures settings into grouped operational preferences', () => {

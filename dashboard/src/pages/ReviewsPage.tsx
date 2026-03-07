@@ -3,10 +3,12 @@ import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { reviewsPageCopy } from '@/lib/dashboardCopy';
 import { MOCK_REVIEW_QUEUE } from '@/lib/mockDashboard';
+import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTaskStore } from '@/stores/taskStore';
 
 export function ReviewsPage() {
-  const { tasks, fetchTasks } = useTaskStore();
+  const { tasks, fetchTasks, resolveReview, dataSource } = useTaskStore();
+  const { showMessage } = useFeedbackStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
 
@@ -33,6 +35,23 @@ export function ReviewsPage() {
   }, [tasks]);
 
   const selected = queue.find((item) => item.id === selectedId) ?? queue[0] ?? null;
+
+  const handleDecision = async (decision: 'approve' | 'reject') => {
+    if (!selected) return;
+    const source = await resolveReview(selected.id, decision, note);
+    showMessage(
+      decision === 'approve' ? '裁决已下达' : '任务已退回',
+      source === 'live'
+        ? decision === 'approve'
+          ? '真实接口已收到批准指令。'
+          : '真实接口已收到驳回指令。'
+        : decision === 'approve'
+          ? 'Mock 工作流已把任务重新送回执行主线。'
+          : 'Mock 工作流已把任务退回待修订状态。',
+      decision === 'approve' ? 'success' : 'warning',
+    );
+    setNote('');
+  };
 
   return (
     <div className="page-enter space-y-6">
@@ -155,15 +174,20 @@ export function ReviewsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button type="button" className="button-danger">
+                <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
                   <XCircle size={16} />
                   {reviewsPageCopy.rejectAction}
                 </button>
-                <button type="button" className="button-primary">
+                <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
                   <CheckCircle2 size={16} />
                   {reviewsPageCopy.approveAction}
                 </button>
               </div>
+              <p className="text-[12px] text-[var(--color-text-tertiary)]">
+                {dataSource === 'live'
+                  ? '当前正在操作真实裁决接口。'
+                  : '当前为 mock 可交互模式，所有裁决都会立即反馈到演示态势。'}
+              </p>
             </div>
           ) : (
             <div className="empty-state">
