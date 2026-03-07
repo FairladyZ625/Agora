@@ -148,24 +148,26 @@ export function ReviewsPage() {
   return (
     <div className="workspace-page workspace-page--locked">
       <section className="surface-panel surface-panel--workspace workbench-shell">
-        <div className="workbench-shell__hero">
-          <div className="space-y-3">
-            <p className="page-kicker">{reviewsPageCopy.kicker}</p>
-            <h2 className="page-title">{reviewsPageCopy.workbenchTitle}</h2>
-            <p className="page-summary">{reviewsPageCopy.workbenchSummary}</p>
-          </div>
-          <div className="workbench-hero__stats">
-            <div className="inline-stat">
-              <span className="inline-stat__label">{reviewsPageCopy.metricLabels.queue}</span>
-              <span className="inline-stat__value">{filteredQueue.length}</span>
+        <div className="workbench-header">
+          <div className="workbench-header__top">
+            <div className="space-y-3">
+              <p className="page-kicker">{reviewsPageCopy.kicker}</p>
+              <h2 className="page-title">{reviewsPageCopy.workbenchTitle}</h2>
+              <p className="page-summary">{reviewsPageCopy.workbenchSummary}</p>
             </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">{reviewsPageCopy.metricLabels.highestRisk}</span>
-              <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'critical') ? reviewsPageCopy.metricValues.highestRisk : '正常'}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">{reviewsPageCopy.metricLabels.defaultAction}</span>
-              <span className="inline-stat__value">{reviewsPageCopy.metricValues.defaultAction}</span>
+            <div className="workbench-hero__stats">
+              <div className="inline-stat">
+                <span className="inline-stat__label">{reviewsPageCopy.metricLabels.queue}</span>
+                <span className="inline-stat__value">{filteredQueue.length}</span>
+              </div>
+              <div className="inline-stat">
+                <span className="inline-stat__label">{reviewsPageCopy.metricLabels.highestRisk}</span>
+                <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'critical') ? reviewsPageCopy.metricValues.highestRisk : '正常'}</span>
+              </div>
+              <div className="inline-stat">
+                <span className="inline-stat__label">{reviewsPageCopy.metricLabels.defaultAction}</span>
+                <span className="inline-stat__value">{reviewsPageCopy.metricValues.defaultAction}</span>
+              </div>
             </div>
           </div>
         </div>

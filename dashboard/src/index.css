@@ -337,6 +337,7 @@ body {
   min-width: 0;
   flex: 1;
   flex-direction: column;
+  padding: 0 12px 12px;
 }
 
 .app-shell__footer {
@@ -591,6 +592,7 @@ a {
   min-height: 0;
   height: 100%;
   overflow: auto;
+  padding: 0 !important;
 }
 
 .workspace-page {
@@ -627,27 +629,105 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.app-topbar {
+  margin: 0 auto 16px;
+  width: min(var(--content-max-width), calc(100% - 24px));
+  border-radius: 24px;
+  box-shadow: var(--topbar-shell-shadow);
+  border: 1px solid var(--color-border) !important;
+}
+
+.topbar-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+}
+
+.topbar-sigil {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--topbar-sigil-bg);
+  border: 1px solid var(--topbar-sigil-border);
+  box-shadow: var(--topbar-sigil-shadow);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: transform 160ms ease;
+}
+
+.topbar-sigil:hover {
+  transform: scale(1.05);
+}
+
+.workbench-header {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px 32px 0;
+}
+
+.workbench-header__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.workbench-header__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+}
+
+.workbench-header__search-container {
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
+}
+
+.input-shell--centered {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 20px;
+  border-radius: 24px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--field-inset-shadow);
+  transition: all 200ms ease;
+}
+
+.input-shell--centered:focus-within {
+  border-color: var(--color-primary);
+  background: var(--color-bg-elevated);
+  box-shadow: 0 0 0 4px var(--color-primary-bg);
+}
+
 .workbench-toolbar {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 22px;
-  padding-top: 16px;
-  border-top: 1px solid var(--review-divider);
-}
-
-.workbench-toolbar__search {
-  flex: 1;
-  min-width: 0;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--review-divider);
+  background: transparent;
 }
 
 .workbench-toolbar__actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .workbench-toolbar__filter-anchor {

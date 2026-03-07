@@ -71,9 +71,9 @@ export function TopNav({
   };
 
   return (
-    <header className="app-topbar sticky top-0 z-20 border-b backdrop-blur-md" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}>
+    <header className="app-topbar sticky top-0 z-20 backdrop-blur-md" style={{ background: 'var(--color-panel-strong)' }}>
       <div className="app-frame flex items-center justify-between gap-4 px-4 py-4 md:px-6">
-        <div className="flex min-w-0 items-start gap-3">
+        <div className="flex items-center gap-3">
           {isMobile ? (
             <IconButton onClick={onOpenMobileNav} label="打开导航">
               <Menu size={18} />
@@ -89,36 +89,34 @@ export function TopNav({
               <Sparkles size={16} />
             </button>
           )}
-          <div className="min-w-0">
-            <p className="page-kicker">{meta.kicker}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="text-[18px] font-semibold tracking-tight text-[var(--color-text-primary)] md:text-[20px]">
-                {meta.title}
-              </h1>
-              <span className="topbar-chip">
-                <span className="status-dot status-dot--success" />
-                {reviewCount > 0 ? `${reviewCount} 待裁决` : '系统在线'}
-              </span>
-            </div>
-            <p className="mt-1 max-w-[640px] text-[13px] leading-5 text-[var(--color-text-secondary)]">
-              {meta.caption}
-            </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-[16px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+              {meta.title}
+            </h1>
+            <span className="topbar-chip">
+              <span className="status-dot status-dot--success" />
+              {reviewCount > 0 ? `${reviewCount} 待裁决` : '系统在线'}
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-2 rounded-full border px-3 py-2 text-[12px] text-[var(--color-text-secondary)] md:flex" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="flex items-center gap-4">
+          <div className="hidden items-center gap-2 rounded-full border px-3 py-2 text-[12px] text-[var(--color-text-secondary)] md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
             <span className="status-dot status-dot--info" />
             {dataSource === 'live'
               ? activeCount > 0 ? `${activeCount} 正在编排` : '队列平稳'
               : '演示态势已接管'}
           </div>
-          <IconButton onClick={refreshWorkspace} label="刷新" spinning={loading}>
-            <RefreshCw size={16} />
-          </IconButton>
-          <IconButton onClick={nextTheme} label={themeLabels[mode]}>
-            <ThemeIcon size={16} />
-          </IconButton>
+
+          <div className="topbar-actions-group">
+            <IconButton onClick={refreshWorkspace} label="刷新" spinning={loading}>
+              <RefreshCw size={16} />
+            </IconButton>
+            <div className="mx-1 h-4 w-[1px] bg-[var(--color-border)]" />
+            <IconButton onClick={nextTheme} label={themeLabels[mode]}>
+              <ThemeIcon size={16} />
+            </IconButton>
+          </div>
         </div>
       </div>
     </header>

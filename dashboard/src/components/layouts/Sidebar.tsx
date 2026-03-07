@@ -55,47 +55,32 @@ export function Sidebar({
           background: 'var(--color-panel)',
           borderColor: 'var(--color-border)',
           boxShadow: 'var(--shadow-lg)',
-          width: collapsed ? 88 : 284,
+          width: collapsed ? 72 : 192,
         }}
       >
         <div className="flex h-full w-full flex-col">
           <div
-            className="flex items-start gap-3 border-b px-4 py-4"
+            className="relative flex items-center justify-center border-b px-3 py-4"
             style={{ borderColor: 'var(--color-border)' }}
           >
-            <BrandLogo collapsed={collapsed} />
+            <BrandLogo
+              collapsed={collapsed}
+              className={!collapsed ? "absolute left-3 top-1/2 -translate-y-1/2" : ''}
+            />
+
             {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-text-tertiary)]">
-                      {shellCopy.brandRail}
-                    </p>
-                    <h1 className="mt-1 text-[18px] font-semibold tracking-tight text-[var(--color-text-primary)]">
-                      {shellCopy.brandName}
-                    </h1>
-                  </div>
-                  {isMobile && mobileOpen && (
-                    <button
-                      type="button"
-                      onClick={onCloseMobile}
-                      className="icon-button"
-                      aria-label="关闭侧边栏"
-                    >
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
-                <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-secondary)]">
-                  {shellCopy.brandSummary}
-                </p>
+              <div className="flex-1 text-center">
+                <h1 className="text-[28px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+                  {shellCopy.brandName}
+                </h1>
               </div>
             )}
-            {collapsed && isMobile && mobileOpen && (
+
+            {isMobile && mobileOpen && (
               <button
                 type="button"
                 onClick={onCloseMobile}
-                className="icon-button"
+                className="icon-button absolute right-3 top-1/2 -translate-y-1/2"
                 aria-label="关闭侧边栏"
               >
                 <X size={16} />

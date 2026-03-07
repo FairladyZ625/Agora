@@ -1,11 +1,14 @@
+import { cn } from '@/lib/cn';
+
 interface BrandLogoProps {
   collapsed?: boolean;
+  className?: string;
 }
 
-export function BrandLogo({ collapsed = false }: BrandLogoProps) {
+export function BrandLogo({ collapsed = false, className }: BrandLogoProps) {
   return (
     <div
-      className="brand-mark"
+      className={cn("brand-mark", className)}
       aria-label={collapsed ? 'Agora' : 'Agora 指挥广场'}
       role="img"
     >

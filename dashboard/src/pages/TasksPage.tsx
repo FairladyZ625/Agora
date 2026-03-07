@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Clock3, Filter, Link2, PanelRightOpen, Workflow } from 'lucide-react';
+import { ArrowRight, Clock3, Filter, Link2, PanelRightOpen, Search, Workflow } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import { tasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
@@ -157,41 +157,46 @@ export function TasksPage() {
   return (
     <div className="workspace-page workspace-page--locked">
       <section className="surface-panel surface-panel--workspace workbench-shell">
-        <div className="workbench-shell__hero">
-          <div className="space-y-3">
-            <p className="page-kicker">{tasksPageCopy.kicker}</p>
-            <h2 className="page-title">{tasksPageCopy.workbenchTitle}</h2>
-            <p className="page-summary">{tasksPageCopy.workbenchSummary}</p>
+        <div className="workbench-header">
+          <div className="workbench-header__top">
+            <div className="space-y-3">
+              <p className="page-kicker">{tasksPageCopy.kicker}</p>
+              <h2 className="page-title">{tasksPageCopy.workbenchTitle}</h2>
+              <p className="page-summary">{tasksPageCopy.workbenchSummary}</p>
+            </div>
+            <div className="workbench-hero__stats">
+              <div className="inline-stat">
+                <span className="inline-stat__label">当前命中</span>
+                <span className="inline-stat__value">{filteredTasks.length}</span>
+              </div>
+              <div className="inline-stat">
+                <span className="inline-stat__label">待审批</span>
+                <span className="inline-stat__value">{filteredTasks.filter((task) => task.state === 'gate_waiting').length}</span>
+              </div>
+              <div className="inline-stat">
+                <span className="inline-stat__label">当前焦点</span>
+                <span className="inline-stat__value">{activeTask?.current_stage ?? tasksPageCopy.stageFallback}</span>
+              </div>
+            </div>
           </div>
-          <div className="workbench-hero__stats">
-            <div className="inline-stat">
-              <span className="inline-stat__label">当前命中</span>
-              <span className="inline-stat__value">{filteredTasks.length}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">待审批</span>
-              <span className="inline-stat__value">{filteredTasks.filter((task) => task.state === 'gate_waiting').length}</span>
-            </div>
-            <div className="inline-stat">
-              <span className="inline-stat__label">当前焦点</span>
-              <span className="inline-stat__value">{activeTask?.current_stage ?? tasksPageCopy.stageFallback}</span>
+
+          <div className="workbench-header__center">
+            <div className="workbench-header__search-container">
+              <label className="input-shell--centered">
+                <Search size={18} className="text-[var(--color-text-tertiary)]" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={tasksPageCopy.searchPlaceholder}
+                  className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-text-tertiary)]"
+                />
+              </label>
             </div>
           </div>
         </div>
 
         <div className="workbench-toolbar">
-          <div className="workbench-toolbar__search">
-            <label className="input-shell flex-1">
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={tasksPageCopy.searchPlaceholder}
-                className="w-full bg-transparent text-[14px] outline-none placeholder:text-[var(--color-text-tertiary)]"
-              />
-            </label>
-          </div>
-
           <div className="workbench-toolbar__actions">
             <div className="workbench-toolbar__filter-anchor">
               <ControlGlass className="glass-control" padding="0px" cornerRadius={18}>
