@@ -19,15 +19,15 @@ agora/
 └── config/         # 配置示例
 
 docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
+├── 00-RAW-PRDS/       # 现有架构设计文档（过渡保留）
 ├── 01-GOVERNANCE/  # 治理规范
 ├── 02-PRODUCT/     # 产品需求
 ├── 03-ARCHITECTURE/# 架构文档索引
 ├── ...
-├── 10-WALKTHROUGH/ # 交接复盘索引
-├── 11-REFERENCE/   # 文档库规范与参考
-├── 01-PLANS/       # 现有架构设计文档（过渡保留）
 ├── 09-PLANNING/TASKS/ # 任务工作区（每次任务独立目录）
 │   └── <YYYY-MM-DD-任务名>/
+├── 10-WALKTHROUGH/ # 交接复盘索引
+├── 11-REFERENCE/   # 文档库规范与参考
 └── walkthrough/    # 开发总结（现有主目录）
 ```
 
@@ -154,8 +154,8 @@ Skill(skill="feature-dev")
 
 **所有架构变更必须同步更新原有计划文档**，保持代码和文档一致性：
 
-- 修改 `docs/01-PLANS/01-architecture.md` — 架构变更
-- 修改 `docs/01-PLANS/07-implementation-plan.md` — 实施进度
+- 修改 `docs/00-RAW-PRDS/01-architecture.md` — 架构变更
+- 修改 `docs/00-RAW-PRDS/07-implementation-plan.md` — 实施进度
 - 修改相关设计文档
 
 ---
@@ -165,7 +165,7 @@ Skill(skill="feature-dev")
 ### Python 代码规范
 
 - 枚举使用 `class XxxState(str, Enum)` 模式（EscalationLevel 除外，使用 `int, Enum`）
-- 所有枚举值必须与 `docs/01-PLANS/ENUMS.md` 完全一致
+- 所有枚举值必须与 `docs/00-RAW-PRDS/ENUMS.md` 完全一致
 - JSON 字段用 TEXT 存储在 SQLite 中
 - 所有写操作使用事务（BEGIN → 操作 → COMMIT）
 - 乐观锁：UPDATE 时校验 version 字段
@@ -213,7 +213,7 @@ docs/
 ├── 03-ARCHITECTURE/    # 架构索引与ADR
 ├── ...
 ├── 10-WALKTHROUGH/     # 交接/复盘索引
-├── 01-PLANS/           # 现有架构文档（过渡保留）
+├── 00-RAW-PRDS/           # 现有架构文档（过渡保留）
 ├── 09-PLANNING/TASKS/  # 任务过程文件（每次任务独立目录）
 │   ├── 2026-03-06-week2-adapter-integration/
 │   │   ├── plan.md
@@ -233,7 +233,7 @@ docs/
 
 ### 文档更新规则
 
-- 架构变更必须更新 `01-PLANS/01-architecture.md`
+- 架构变更必须更新 `00-RAW-PRDS/01-architecture.md`
 - 实施进度必须更新 `07-implementation-plan.md`
 - 每周结束必须写 Walkthrough 文档
 - 所有文档提交到 docs 仓库，不提交到主仓库
@@ -245,11 +245,11 @@ docs/
 
 ### 核心设计文档
 
-- 架构：`docs/01-PLANS/01-architecture.md`
-- 生命周期：`docs/01-PLANS/02-task-lifecycle.md`
-- 枚举定义：`docs/01-PLANS/ENUMS.md`
-- 命令 API：`docs/01-PLANS/06-commands-api.md`
-- 实施计划：`docs/01-PLANS/07-implementation-plan.md`
+- 架构：`docs/00-RAW-PRDS/01-architecture.md`
+- 生命周期：`docs/00-RAW-PRDS/02-task-lifecycle.md`
+- 枚举定义：`docs/00-RAW-PRDS/ENUMS.md`
+- 命令 API：`docs/00-RAW-PRDS/06-commands-api.md`
+- 实施计划：`docs/00-RAW-PRDS/07-implementation-plan.md`
 
 ### 实现计划
 
