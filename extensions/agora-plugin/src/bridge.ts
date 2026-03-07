@@ -1,5 +1,8 @@
 export class AgoraBridge {
-  constructor(private readonly serverUrl: string) {}
+  constructor(
+    private readonly serverUrl: string,
+    private readonly apiToken?: string,
+  ) {}
 
   async createTask(title: string, type: string, creator: string): Promise<any> {
     return this.request("/api/tasks", {
@@ -112,11 +115,16 @@ export class AgoraBridge {
   }
 
   private async request(path: string, init: { method?: string; body?: unknown } = {}): Promise<any> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.apiToken && this.apiToken.trim()) {
+      headers.Authorization = `Bearer ${this.apiToken.trim()}`;
+    }
+
     const res = await fetch(`${this.serverUrl}${path}`, {
       method: init.method || "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
 

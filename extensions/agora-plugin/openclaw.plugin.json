@@ -9,6 +9,10 @@
       "serverUrl": {
         "type": "string",
         "default": "http://127.0.0.1:8420"
+      },
+      "apiToken": {
+        "type": "string",
+        "default": ""
       }
     }
   },
@@ -16,6 +20,10 @@
     "serverUrl": {
       "label": "Agora Server URL",
       "help": "HTTP endpoint of the Agora Python server"
+    },
+    "apiToken": {
+      "label": "Agora API Token",
+      "help": "Optional Bearer token used for authenticated Agora API requests"
     }
   }
 }

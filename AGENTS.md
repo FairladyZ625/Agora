@@ -24,6 +24,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ├── 03-ARCHITECTURE/# 架构文档索引
 ├── ...
 ├── 10-WALKTHROUGH/ # 交接复盘索引
+├── 11-REFERENCE/   # 文档库规范与参考
 ├── 01-PLANS/       # 现有架构设计文档（过渡保留）
 ├── 09-PLANNING/TASKS/ # 任务工作区（每次任务独立目录）
 │   └── <YYYY-MM-DD-任务名>/
@@ -39,6 +40,22 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/progress.md`
 - `docs/` 是独立 Git 仓库，文档只在 `docs` 仓库提交维护；**不要把 docs 文档提交到主仓库**。
 - 每个新任务必须创建独立文件夹，不可与历史任务共用同一组过程文件。
+- 所有文档写作与使用必须遵循：`docs/11-REFERENCE/docs-library-standard.md`（强制规范）。
+
+## 文档规范引用（强制）
+
+- 规范文件：
+  - `docs/11-REFERENCE/docs-library-standard.md`
+  - `docs/11-REFERENCE/engineering-standard.md`
+  - `docs/11-REFERENCE/testing-standard.md`
+  - `docs/11-REFERENCE/execution-workflow-standard.md`
+  - `docs/11-REFERENCE/walkthrough-standard.md`
+- 适用范围：所有 Agent、所有文档类型（计划/发现/进度/用户文档/集成文档/walkthrough）
+- 执行要求：
+  - 写文档前先读该规范；
+  - 文档目录、命名、模板结构必须符合规范；
+  - 评审文档时按规范中的“文档评审清单”逐项检查。
+  - 开发执行必须遵循 `planning-with-files + ralph-loop` 持续收敛流程。
 
 ## 技术栈
 
@@ -118,7 +135,10 @@ Skill(skill="feature-dev")
 
 ### 4. Walkthrough 文档
 
-**每个开发周期结束后必须写 Walkthrough 文档**，记录到 `docs/walkthrough/` 目录：
+**每个开发周期结束后必须写 Walkthrough 文档**，记录到 `docs/10-WALKTHROUGH/` 目录，并严格遵循：
+
+- `docs/11-REFERENCE/walkthrough-standard.md`
+- 每次任务完成必须新增或更新对应 walkthrough，并同步更新 `docs/10-WALKTHROUGH/README.md` 索引。
 
 - 开发过程总结
 - 架构决策记录
@@ -127,8 +147,8 @@ Skill(skill="feature-dev")
 
 **格式参考**:
 
-- `docs/walkthrough/week1-core-skeleton.md`
-- `docs/walkthrough/week2-adapter-integration.md`
+- `docs/10-WALKTHROUGH/week1-core-skeleton.md`
+- `docs/10-WALKTHROUGH/week2-adapter-integration.md`
 
 ### 5. 架构变更同步
 

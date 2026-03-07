@@ -35,4 +35,26 @@ describe("AgoraBridge", () => {
     const bridge = new AgoraBridge("http://127.0.0.1:8420");
     await expect(bridge.listTasks()).rejects.toThrow("Agora API 500: boom");
   });
+
+  it("sends bearer token when configured", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420", "sec-token");
+    await bridge.listTasks();
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.Authorization).toBe("Bearer sec-token");
+  });
+
+  it("does not send bearer token when not configured", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.listTasks();
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers.Authorization).toBeUndefined();
+  });
 });

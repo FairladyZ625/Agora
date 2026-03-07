@@ -409,6 +409,12 @@ def setup_openclaw_plugin(
         "--link/--copy",
         help="使用 link 模式安装本地插件（开发推荐）",
     ),
+    api_token: Optional[str] = typer.Option(
+        None,
+        "--api-token",
+        envvar="AGORA_API_TOKEN",
+        help="Agora API Bearer token（可选，开启 api_auth 时建议配置）",
+    ),
 ):
     """一键安装并配置 OpenClaw Agora 插件。"""
     if shutil.which("openclaw") is None:
@@ -445,6 +451,17 @@ def setup_openclaw_plugin(
                 server_url,
             ]
         )
+        if api_token:
+            console.print("[cyan]→[/cyan] 写入插件配置 apiToken...")
+            _run_cmd(
+                [
+                    "openclaw",
+                    "config",
+                    "set",
+                    "plugins.entries.agora.config.apiToken",
+                    api_token,
+                ]
+            )
         _run_cmd(["openclaw", "plugins", "enable", "agora"])
 
         console.print("[green]✓[/green] Agora 插件已安装并配置完成")
