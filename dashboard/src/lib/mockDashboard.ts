@@ -342,6 +342,10 @@ export const MOCK_REVIEW_QUEUE: ReviewDecision[] = [
   },
 ];
 
+export function getDisplayTasks(tasks: Task[]): Task[] {
+  return tasks.length > 0 ? tasks : MOCK_TASKS;
+}
+
 export function createMockTasks(): Task[] {
   return structuredClone(MOCK_TASKS);
 }

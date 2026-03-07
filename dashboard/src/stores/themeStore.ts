@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
+const DARK_MEDIA = '(prefers-color-scheme: dark)';
+
 interface ThemeStore {
   mode: ThemeMode;
   resolved: 'light' | 'dark';
@@ -11,9 +13,7 @@ interface ThemeStore {
 
 function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
   if (mode !== 'system') return mode;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light';
+  return window.matchMedia(DARK_MEDIA).matches ? 'dark' : 'light';
 }
 
 function applyTheme(resolved: 'light' | 'dark') {
@@ -46,12 +46,11 @@ export const useThemeStore = create<ThemeStore>()(
 
 // Listen for system theme changes
 if (typeof window !== 'undefined') {
-  window
-    .matchMedia('(prefers-color-scheme: dark)')
-    .addEventListener('change', () => {
-      const { mode, setMode } = useThemeStore.getState();
-      if (mode === 'system') {
-        setMode('system');
-      }
-    });
+  window.matchMedia(DARK_MEDIA).addEventListener('change', () => {
+    const { mode, setMode } = useThemeStore.getState();
+    if (mode === 'system') {
+      setMode('system');
+    }
+  });
 }
+

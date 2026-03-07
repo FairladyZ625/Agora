@@ -12,12 +12,7 @@ import { Link } from 'react-router';
 import { dashboardHomeCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { StateBadge } from '@/components/ui/StateBadge';
-import { formatRelativeTimestamp, MOCK_TASKS } from '@/lib/mockDashboard';
-import type { Task } from '@/types/task';
-
-function getDisplayTasks(tasks: Task[]) {
-  return tasks.length > 0 ? tasks : MOCK_TASKS;
-}
+import { formatRelativeTimestamp, getDisplayTasks } from '@/lib/mockDashboard';
 
 export function DashboardHome() {
   const tasks = useTaskStore((state) => state.tasks);
@@ -209,13 +204,13 @@ export function DashboardHome() {
                 <h3 className="section-title">{dashboardHomeCopy.reviewTitle}</h3>
               </div>
               <span className="status-pill status-pill--warning">
-                {reviewItems.length || MOCK_TASKS.filter((task) => task.state === 'gate_waiting').length}
+                {reviewItems.length}
                 {dashboardHomeCopy.reviewCountUnit}
               </span>
             </div>
 
             <div className="mt-5 space-y-3">
-              {(reviewItems.length > 0 ? reviewItems : MOCK_TASKS.filter((task) => task.state === 'gate_waiting')).slice(0, 2).map((task) => (
+              {reviewItems.slice(0, 2).map((task) => (
                 <Link key={task.id} to="/reviews" className="decision-card">
                   <div className="flex items-start justify-between gap-3">
                     <div>

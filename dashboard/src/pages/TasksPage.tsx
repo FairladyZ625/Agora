@@ -4,11 +4,11 @@ import { useNavigate, useParams } from 'react-router';
 import { tasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
-import { formatRelativeTimestamp, getMockTaskStatus, MOCK_TASK_STATUS, MOCK_TASKS } from '@/lib/mockDashboard';
-import type { Task } from '@/types/task';
+import { formatRelativeTimestamp, getDisplayTasks, getMockTaskStatus, MOCK_TASK_STATUS } from '@/lib/mockDashboard';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import { toggleValue } from '@/lib/utils';
 
 const taskStates = [
   { value: 'in_progress', label: '进行中' },
@@ -24,13 +24,6 @@ const priorities = [
   { value: 'low', label: '低' },
 ] as const;
 
-function buildTaskList(tasks: Task[]) {
-  return tasks.length > 0 ? tasks : MOCK_TASKS;
-}
-
-function toggleValue(current: string[], value: string) {
-  return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
-}
 
 export function TasksPage() {
   const tasks = useTaskStore((state) => state.tasks);
@@ -52,7 +45,7 @@ export function TasksPage() {
     void fetchTasks();
   }, [fetchTasks]);
 
-  const taskList = buildTaskList(tasks);
+  const taskList = getDisplayTasks(tasks);
   const availableTeams = useMemo(() => [...new Set(taskList.map((task) => task.team))], [taskList]);
   const availableWorkflows = useMemo(() => [...new Set(taskList.map((task) => task.workflow))], [taskList]);
 
@@ -89,7 +82,6 @@ export function TasksPage() {
 
   const activeTask =
     filteredTasks.find((task) => task.id === (taskId ?? selectedTaskId)) ??
-    filteredTasks.find((task) => task.id === selectedTaskId) ??
     filteredTasks[0] ??
     null;
 
@@ -102,7 +94,7 @@ export function TasksPage() {
 
   const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
 
-  const taskSections = [
+  const taskSections = useMemo(() => [
     {
       label: tasksPageCopy.filterSectionLabels.state,
       options: taskStates.map((item) => ({
@@ -143,7 +135,7 @@ export function TasksPage() {
       selected: workflowFilter,
       onToggle: (value: string) => setWorkflowFilter((current) => toggleValue(current, value)),
     },
-  ];
+  ], [taskList, stateFilter, priorityFilter, teamFilter, workflowFilter, availableTeams, availableWorkflows]);
 
   const clearFilters = () => {
     setStateFilter([]);

@@ -156,7 +156,6 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
         await api.archonReject(id, note || '需要补充修改后重新提交。');
       }
       await get().fetchTasks();
-      await get().selectTask(id);
       return 'live';
     }
 

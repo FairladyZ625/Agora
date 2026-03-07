@@ -21,6 +21,7 @@ interface WorkbenchFilterPopoverProps {
   onClear: () => void;
   onClose: () => void;
   footer?: ReactNode;
+  clearLabel?: string;
 }
 
 export function WorkbenchFilterPopover({
@@ -31,6 +32,7 @@ export function WorkbenchFilterPopover({
   onClear,
   onClose,
   footer,
+  clearLabel = '清除条件',
 }: WorkbenchFilterPopoverProps) {
   return (
     <div
@@ -41,7 +43,7 @@ export function WorkbenchFilterPopover({
       <div className="filter-popover__header">
         <div>
           <p className="page-kicker">{title}</p>
-          <h4 className="filter-popover__title">筛选条件</h4>
+          <h4 className="filter-popover__title">{title}</h4>
         </div>
         <button type="button" className="button-ghost" onClick={onClose}>
           关闭
@@ -82,7 +84,7 @@ export function WorkbenchFilterPopover({
 
       <div className="filter-popover__footer">
         <button type="button" className="button-ghost" onClick={onClear}>
-          清除条件
+          {clearLabel}
         </button>
         {footer}
       </div>

@@ -9,6 +9,7 @@ import { useTaskStore } from '@/stores/taskStore';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import { toggleValue } from '@/lib/utils';
 
 type QueueScope = 'all' | 'critical' | 'high';
 
@@ -16,10 +17,6 @@ const queueScopes: { value: QueueScope; label: string }[] = [
   { value: 'critical', label: '关键' },
   { value: 'high', label: '高优先级' },
 ];
-
-function toggleValue(current: string[], value: string) {
-  return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
-}
 
 export function ReviewsPage() {
   const tasks = useTaskStore((state) => state.tasks);
@@ -110,7 +107,7 @@ export function ReviewsPage() {
     setNote('');
   };
 
-  const reviewSections = [
+  const reviewSections = useMemo(() => [
     {
       label: reviewsPageCopy.filterSectionLabels.priority,
       options: [
@@ -141,7 +138,7 @@ export function ReviewsPage() {
       selected: creatorFilter,
       onToggle: (value: string) => setCreatorFilter((current) => toggleValue(current, value)),
     },
-  ];
+  ], [queue, priorityFilter, gateFilter, creatorFilter, availableGates, availableCreators]);
 
   const clearFilters = () => {
     setPriorityFilter([]);
