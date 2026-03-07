@@ -1,61 +1,21 @@
-import { motion } from 'framer-motion';
-
 interface BrandLogoProps {
   collapsed?: boolean;
 }
 
-export function BrandLogo({ collapsed }: BrandLogoProps) {
+export function BrandLogo({ collapsed = false }: BrandLogoProps) {
   return (
-    <div className="relative flex items-center justify-center w-8 h-8 shrink-0">
-      {/* Background ambient glow */}
-      <div className="absolute inset-0 rounded-lg opacity-60 mix-blend-screen blur-[6px]"
-           style={{ background: 'var(--color-primary-glow)' }} />
-      
-      {/* Glassmorphic base */}
-      <div className="absolute inset-0 rounded-lg border shadow-inner backdrop-blur-md"
-           style={{
-             background: 'linear-gradient(135deg, rgba(8, 145, 178, 0.4), rgba(6, 182, 212, 0.1))',
-             borderColor: 'var(--color-glass-border-strong)',
-           }} />
-
-      {/* The Super Symbol (Modern Amphitheater / Nexus) */}
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="relative z-10 w-5 h-5 text-white"
-        style={{ filter: 'drop-shadow(0 0 2px rgba(255,255,255,0.5))' }}
-      >
-        {/* Animated Ascend Lines */}
-        <motion.path
-          d="M12 21V11"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.5, ease: 'easeOut', repeat: Infinity, repeatType: 'reverse', repeatDelay: 2 }}
-        />
-        <motion.path
-          d="M7 21V15"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.5, ease: 'easeOut', delay: 0.2, repeat: Infinity, repeatType: 'reverse', repeatDelay: 2 }}
-        />
-        <motion.path
-          d="M17 21V15"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.5, ease: 'easeOut', delay: 0.4, repeat: Infinity, repeatType: 'reverse', repeatDelay: 2 }}
-        />
-        {/* Core Nexus Sphere */}
-        <circle cx="12" cy="7" r="3" fill="currentColor" />
+    <div
+      className="brand-mark"
+      aria-label={collapsed ? 'Agora' : 'Agora Operational Commons'}
+      role="img"
+    >
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-7 w-7">
+        <rect x="1" y="1" width="26" height="26" rx="9" className="brand-mark__frame" />
+        <path d="M7 18.5C8.9 15.6 11 14 14 14s5.1 1.6 7 4.5" className="brand-mark__line" />
+        <path d="M8.8 15.2c1.3-2 2.9-3 5.2-3s3.9 1 5.2 3" className="brand-mark__line brand-mark__line--muted" />
+        <path d="M10.7 12.2c.9-1.1 1.9-1.7 3.3-1.7s2.4.6 3.3 1.7" className="brand-mark__line brand-mark__line--muted" />
+        <path d="M14 8.2v10.1" className="brand-mark__spine" />
+        <circle cx="14" cy="8.2" r="1.8" className="brand-mark__node" />
       </svg>
     </div>
   );

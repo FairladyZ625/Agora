@@ -4,135 +4,156 @@ import {
   ListTodo,
   ShieldCheck,
   Settings,
+  PanelLeftOpen,
+  X,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { BrandLogo } from '../ui/BrandLogo';
+import { cn } from '@/lib/cn';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
 }
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: '概览' },
-  { to: '/tasks', icon: ListTodo, label: '任务' },
-  { to: '/reviews', icon: ShieldCheck, label: '审批' },
-  { to: '/settings', icon: Settings, label: '设置' },
+  { to: '/', icon: LayoutDashboard, label: '概览', hint: '品牌主舞台' },
+  { to: '/tasks', icon: ListTodo, label: '任务', hint: '执行工作区' },
+  { to: '/reviews', icon: ShieldCheck, label: '审批', hint: '裁决队列' },
+  { to: '/settings', icon: Settings, label: '设置', hint: '连接与偏好' },
 ];
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({
+  collapsed,
+  onToggle,
+  mobileOpen,
+  onCloseMobile,
+}: SidebarProps) {
   return (
-    <motion.aside
-      initial={false}
-      animate={{ width: collapsed ? 64 : 240 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="flex flex-col shrink-0 glass-panel m-3 mr-0 overflow-hidden relative z-20"
-      style={{
-        borderRight: '1px solid var(--color-glass-border)',
-        boxShadow: 'var(--shadow-lg)',
-      }}
-    >
-      {/* Subtle ambient gradient overlay for sidebar specifically */}
-      <div className="absolute inset-0 pointer-events-none opacity-20"
-           style={{ background: 'linear-gradient(to bottom, var(--color-primary-bg), transparent)' }} />
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          aria-label="关闭导航"
+          onClick={onCloseMobile}
+        />
+      )}
 
-      {/* Header / Logo */}
-      <div
-        className="flex items-center gap-3 h-[60px] shrink-0 relative z-10"
-        style={{
-          padding: collapsed ? '0 16px' : '0 20px',
-          borderBottom: '1px solid var(--color-border)',
-        }}
-      >
-        <BrandLogo collapsed={collapsed} />
-        {!collapsed && (
-          <motion.div 
-            initial={{ opacity: 0, x: -10 }} 
-            animate={{ opacity: 1, x: 0 }}
-            className="flex flex-col overflow-hidden"
-          >
-            <span
-              className="font-bold text-base leading-tight tracking-tight text-glow"
-              style={{ color: 'var(--color-text-primary)' }}
-            >
-              Agora
-            </span>
-            <span
-              className="text-[10px] leading-tight font-medium uppercase tracking-widest"
-              style={{ color: 'var(--color-primary)' }}
-            >
-               Control
-            </span>
-          </motion.div>
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 flex border-r transition-[transform,width] duration-200 md:static md:translate-x-0',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
-      </div>
-
-      {/* Navigation */}
-      <nav
-        className="flex-1 py-4 space-y-1 relative z-10"
-        style={{ padding: collapsed ? '16px 8px' : '16px 12px' }}
-      >
-        {navItems.map(({ to, icon: Icon, label }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            className={({ isActive }) => `
-              relative flex items-center gap-3 rounded-[10px] font-medium transition-all duration-300
-              ${collapsed ? 'justify-center py-2.5' : 'justify-start px-3 py-2.5'}
-              ${isActive ? 'active-nav-item' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-text-primary)]'}
-            `}
-          >
-            {({ isActive }) => (
-              <>
-                {/* Active Indicator Glow */}
-                {isActive && (
-                  <motion.div
-                    layoutId="sidebar-active-pill"
-                    className="absolute inset-0 rounded-[10px] bg-[var(--color-sidebar-active-bg)] border border-[var(--color-glass-border-strong)]"
-                    style={{ boxShadow: 'var(--shadow-glow)' }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                  />
-                )}
-                
-                {isActive && !collapsed && (
-                  <motion.div
-                    layoutId="sidebar-active-bar"
-                    className="absolute left-0 top-1/4 bottom-1/4 w-[3px] bg-[var(--color-primary)] rounded-r-md shadow-[0_0_8px_var(--color-primary)]"
-                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                  />
-                )}
-
-                <Icon size={18} className="shrink-0 relative z-10" style={{ color: isActive ? 'var(--color-primary)' : 'inherit' }} />
-                {!collapsed && <span className="relative z-10 text-[13.5px] tracking-wide" style={{ color: isActive ? 'var(--color-text-primary)' : 'inherit' }}>{label}</span>}
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-
-      {/* Collapse toggle */}
-      <motion.button
-        whileHover={{ scale: 1.02, backgroundColor: 'var(--color-sidebar-hover)' }}
-        whileTap={{ scale: 0.98 }}
-        onClick={onToggle}
-        className="flex items-center justify-center h-12 shrink-0 relative z-10"
         style={{
-          borderTop: '1px solid var(--color-border)',
-          color: 'var(--color-text-tertiary)',
-          cursor: 'pointer',
-          background: 'transparent',
-          border: 'none',
-          borderTopStyle: 'solid',
-          borderTopWidth: '1px',
-          borderTopColor: 'var(--color-border)',
+          background: 'var(--color-panel)',
+          borderColor: 'var(--color-border)',
+          boxShadow: 'var(--shadow-lg)',
+          width: collapsed ? 88 : 284,
         }}
-        aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
       >
-        {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
-      </motion.button>
-    </motion.aside>
+        <div className="flex h-full w-full flex-col">
+          <div
+            className="flex items-start gap-3 border-b px-4 py-4"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            <BrandLogo collapsed={collapsed} />
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-text-tertiary)]">
+                      Brand rail
+                    </p>
+                    <h1 className="mt-1 text-[18px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+                      Agora
+                    </h1>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onCloseMobile}
+                    className="icon-button md:hidden"
+                    aria-label="关闭侧边栏"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-secondary)]">
+                  Freedom of ideas. Discipline of execution.
+                </p>
+              </div>
+            )}
+            {collapsed && (
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="icon-button md:hidden"
+                aria-label="关闭侧边栏"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-3 py-5">
+            {!collapsed && (
+              <p className="nav-section-label">
+                Workspace
+              </p>
+            )}
+            <nav className="space-y-1.5">
+              {navItems.map(({ to, icon: Icon, label, hint }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={to === '/'}
+                  onClick={onCloseMobile}
+                  className={({ isActive }) =>
+                    isActive ? 'nav-link nav-link--active' : 'nav-link'
+                  }
+                >
+                  <Icon size={18} className="shrink-0" />
+                  {!collapsed && (
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium">{label}</div>
+                      <div className="nav-meta">{hint}</div>
+                    </div>
+                  )}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+
+          <div
+            className="border-t px-3 py-3"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            {!collapsed && (
+              <div className="rounded-2xl border px-3 py-3" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-text-primary)]">
+                  <PanelLeftOpen size={14} />
+                  Debate. Decide. Execute.
+                </div>
+                <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-tertiary)]">
+                  品牌页负责表达 Agora，工具页负责压缩决策时间。
+                </p>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={onToggle}
+              className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border text-[13px] font-medium text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+              style={{ borderColor: 'var(--color-border)' }}
+              aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
+            >
+              {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopNav } from './TopNav';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useLocation } from 'react-router';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -9,57 +9,35 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
 
   return (
-    <div
-      className="flex h-screen overflow-hidden text-[var(--color-text-primary)]"
-      style={{
-        background: 'var(--color-bg-base)',
-        backgroundImage: 'var(--app-bg-gradient)',
-        backgroundAttachment: 'fixed',
-      }}
-    >
+    <div className="flex min-h-screen bg-[var(--color-bg-base)] text-[var(--color-text-primary)]">
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
       />
 
-      <div className="flex flex-1 flex-col overflow-hidden min-w-0 relative z-10">
-        <TopNav />
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <TopNav onOpenMobileNav={() => setMobileNavOpen(true)} />
 
-        <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={window.location.pathname}
-              initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, y: -10 }}
-              transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-              className="max-w-[1400px] mx-auto w-full"
-              style={{ padding: '24px 32px' }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+        <main className="flex-1 overflow-y-auto">
+          <div key={location.pathname} className="page-enter mx-auto w-full max-w-[1320px] px-4 py-6 md:px-6">
+            {children}
+          </div>
         </main>
 
-        {/* Status bar */}
-        <footer
-          className="flex items-center justify-between px-8 py-2 text-[11px] shrink-0 font-medium"
-          style={{
-            color: 'var(--color-text-tertiary)',
-            borderTop: '1px solid var(--color-glass-border)',
-            background: 'var(--color-surface)',
-            backdropFilter: 'blur(12px)',
-          }}
-        >
-          <span className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] shadow-[0_0_8px_var(--color-primary)] animate-pulse" />
-            Agora Orchestration Layer
-          </span>
-          <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>
-            System Core v0.1.0-alpha
-          </span>
+        <footer className="border-t px-4 py-3 md:px-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}>
+          <div className="mx-auto flex max-w-[1320px] items-center justify-between text-[11px] font-medium text-[var(--color-text-tertiary)]">
+            <span className="flex items-center gap-2">
+              <span className="status-dot status-dot--info" />
+              Agora orchestration layer
+            </span>
+            <span className="font-mono tracking-[0.18em]">SYSTEM CORE v0.1.0-alpha</span>
+          </div>
         </footer>
       </div>
     </div>

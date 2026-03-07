@@ -1,165 +1,176 @@
-import { ShieldCheck, Clock, CheckCircle2, XCircle, MessageSquare } from 'lucide-react';
-import { motion } from 'framer-motion';
-
-const MOCK_REVIEWS = [
-  {
-    id: 'TSK-002',
-    title: '任务编排器状态机重构',
-    gate: 'archon_review',
-    creator: 'lizeyu',
-    waitTime: '8 分钟',
-    description: '重构核心状态机逻辑，引入事件驱动模式替代轮询检查。',
-  },
-  {
-    id: 'TSK-009',
-    title: 'Agent 通信协议 v2 设计',
-    gate: 'archon_review',
-    creator: 'craftsman-2',
-    waitTime: '25 分钟',
-    description: '新增消息确认机制和优先级队列支持。',
-  },
-];
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, scale: 0.95, y: 10 },
-  show: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-};
+import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
+import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
+import { MOCK_REVIEW_QUEUE } from '@/lib/mockDashboard';
+import { useTaskStore } from '@/stores/taskStore';
 
 export function ReviewsPage() {
+  const { tasks, fetchTasks } = useTaskStore();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    void fetchTasks();
+  }, [fetchTasks]);
+
+  const queue = useMemo(() => {
+    const liveQueue = tasks
+      .filter((task) => task.state === 'gate_waiting')
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        creator: task.creator,
+        gate: task.current_stage ?? 'archon_review',
+        waitTime: '刚刚',
+        summary: task.description ?? '等待 Archon 最终判断是否进入下一执行阶段。',
+        priority: task.priority,
+        impact: `影响 ${task.team} 的下一轮派发`,
+        state: task.state,
+      }));
+
+    return liveQueue.length > 0 ? liveQueue : MOCK_REVIEW_QUEUE;
+  }, [tasks]);
+
+  const selected = queue.find((item) => item.id === selectedId) ?? queue[0] ?? null;
+
   return (
-    <motion.div 
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="space-y-6 max-w-3xl mx-auto"
-    >
-      <motion.div variants={itemVariants}>
-        <h2 className="text-2xl font-semibold tracking-tight text-glow" style={{ color: 'var(--color-text-primary)' }}>
-          审批中心
-        </h2>
-        <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
-          Archon Decision Gate
+    <div className="page-enter space-y-6">
+      <section className="space-y-2">
+        <p className="page-kicker">Decision Queue</p>
+        <h2 className="page-title">审批与裁决</h2>
+        <p className="page-summary">
+          当任务进入 gate waiting，界面要让人类判断成本和下一动作一眼可见，而不是继续堆卡片。
         </p>
-      </motion.div>
+      </section>
 
-      {/* Review count summary */}
-      <motion.div
-        variants={itemVariants}
-        className="glass-panel flex items-center gap-4 px-6 py-4 shadow-md"
-        style={{
-          background: 'var(--color-warning-bg)',
-          borderColor: 'var(--color-warning-border)',
-        }}
-      >
-        <ShieldCheck size={22} style={{ color: 'var(--color-warning)' }} className="animate-pulse" />
-        <span className="text-[14px] font-bold tracking-wide" style={{ color: 'var(--color-warning-text)' }}>
-          {MOCK_REVIEWS.length} 个任务正在等待裁决
-        </span>
-      </motion.div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="metric-card">
+          <p className="metric-label">待裁决条目</p>
+          <p className="metric-value">{queue.length}</p>
+          <p className="metric-note">当前进入人工裁决门的任务数</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">最高风险</p>
+          <p className="metric-value">Critical</p>
+          <p className="metric-note">优先清掉阻塞调度主线的变更</p>
+        </div>
+        <div className="metric-card">
+          <p className="metric-label">默认动作</p>
+          <p className="metric-value">Human review</p>
+          <p className="metric-note">关键任务必须保留 human-in-the-loop</p>
+        </div>
+      </div>
 
-      {/* Review cards */}
-      <div className="space-y-5">
-        {MOCK_REVIEWS.map((review) => (
-          <motion.div 
-            variants={itemVariants} 
-            key={review.id} 
-            className="glass-card overflow-hidden"
-          >
-            {/* Header */}
-            <div
-              className="flex items-start justify-between px-6 py-4"
-              style={{ borderBottom: '1px solid var(--color-glass-border)' }}
-            >
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-3">
-                  <span
-                    className="text-[12px] font-mono font-medium"
-                    style={{ color: 'var(--color-text-tertiary)' }}
-                  >
-                    {review.id}
-                  </span>
-                  <span
-                    className="text-[15px] font-semibold"
-                    style={{ color: 'var(--color-text-primary)' }}
-                  >
-                    {review.title}
-                  </span>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(360px,0.92fr)]">
+        <section className="surface-panel">
+          <div className="section-title-row">
+            <div>
+              <p className="page-kicker">Pending human gate</p>
+              <h3 className="section-title">待裁决任务</h3>
+            </div>
+            <span className="status-pill status-pill--warning">{queue.length} 条</span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {queue.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setSelectedId(item.id)}
+                className={item.id === selected?.id ? 'task-row task-row--active' : 'task-row'}
+              >
+                <div className="flex items-start justify-between gap-3 text-left">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{item.id}</span>
+                      <h4 className="truncate text-[15px] font-medium text-[var(--color-text-primary)]">
+                        {item.title}
+                      </h4>
+                    </div>
+                    <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                      {item.summary}
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <PriorityBadge priority={item.priority} />
+                      <StateBadge state={item.state} />
+                    </div>
+                  </div>
+                  <span className="text-[12px] text-[var(--color-text-tertiary)]">{item.waitTime}</span>
                 </div>
-                <div className="flex items-center gap-4 text-[12px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
-                  <span>创建者: {review.creator}</span>
-                  <span className="flex items-center gap-1.5">
-                    <Clock size={12} /> 已等待 {review.waitTime}
-                  </span>
-                  <span className="badge-glass shadow-sm" style={{ background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', borderColor: 'var(--color-warning-border)' }}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] animate-pulse shadow-[0_0_4px_var(--color-warning)]" />
-                    {review.gate}
-                  </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="surface-panel">
+          {selected ? (
+            <div className="space-y-6">
+              <div className="section-title-row">
+                <div>
+                  <p className="page-kicker">Decision workspace</p>
+                  <h3 className="section-title">当前裁决对象</h3>
+                </div>
+                <PriorityBadge priority={selected.priority} />
+              </div>
+
+              <div className="rounded-2xl border px-4 py-4" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{selected.id}</span>
+                  <StateBadge state={selected.state} />
+                </div>
+                <h4 className="mt-3 text-[18px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+                  {selected.title}
+                </h4>
+                <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                  {selected.summary}
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="detail-card">
+                  <ShieldAlert size={16} className="detail-card__icon" />
+                  <span className="detail-card__label">当前 Gate</span>
+                  <strong className="detail-card__value">{selected.gate}</strong>
+                </div>
+                <div className="detail-card">
+                  <CheckCircle2 size={16} className="detail-card__icon" />
+                  <span className="detail-card__label">业务影响</span>
+                  <strong className="detail-card__value">{selected.impact}</strong>
                 </div>
               </div>
-            </div>
 
-            {/* Description */}
-            <div className="px-6 py-4" style={{ background: 'var(--color-surface-hover)' }}>
-              <p className="text-[14px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                {review.description}
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: '1px solid var(--color-glass-border)' }}>
-              <div className="flex items-center gap-3 flex-1 px-3 py-2 rounded-lg" style={{ background: 'var(--color-bg-muted)', border: '1px solid var(--color-border)' }}>
-                <MessageSquare size={16} style={{ color: 'var(--color-text-tertiary)' }} />
-                <input
-                  type="text"
-                  placeholder="添加裁决缘由（驳回时必填）..."
-                  className="flex-1 text-[13px] bg-transparent font-medium"
-                  style={{
-                    color: 'var(--color-text-primary)',
-                    border: 'none',
-                    outline: 'none',
-                  }}
+              <div className="space-y-2">
+                <label htmlFor="decision-note" className="text-[13px] font-medium text-[var(--color-text-primary)]">
+                  裁决说明
+                </label>
+                <textarea
+                  id="decision-note"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  className="textarea-shell"
+                  placeholder="记录你的裁决依据、风险判断或回滚要求。"
                 />
               </div>
-              <div className="flex items-center gap-3 ml-6 shrink-0">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold shadow-sm"
-                  style={{
-                    background: 'var(--color-danger-bg)',
-                    color: 'var(--color-danger)',
-                    border: '1px solid var(--color-danger-border)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <XCircle size={16} /> 驳回
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05, boxShadow: '0 0 16px rgba(16, 185, 129, 0.4)' }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold shadow-sm"
-                  style={{
-                    background: 'var(--color-success)',
-                    color: '#fff',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <CheckCircle2 size={16} /> 批准执行
-                </motion.button>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" className="button-danger">
+                  <XCircle size={16} />
+                  驳回
+                </button>
+                <button type="button" className="button-primary">
+                  <CheckCircle2 size={16} />
+                  批准执行
+                </button>
               </div>
             </div>
-          </motion.div>
-        ))}
+          ) : (
+            <div className="empty-state">
+              <p className="text-[15px] font-medium text-[var(--color-text-primary)]">当前没有待裁决任务</p>
+              <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">系统将在有新 gate waiting 任务时显示在这里。</p>
+            </div>
+          )}
+        </section>
       </div>
-    </motion.div>
+    </div>
   );
 }

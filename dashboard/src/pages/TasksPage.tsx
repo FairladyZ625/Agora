@@ -1,181 +1,243 @@
-import { Search, Filter } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useDeferredValue, useEffect, useState } from 'react';
+import { Clock3, Filter, Layers3, Link2, Workflow } from 'lucide-react';
+import { useTaskStore } from '@/stores/taskStore';
+import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
+import { formatRelativeTimestamp, MOCK_TASK_STATUS, MOCK_TASKS } from '@/lib/mockDashboard';
+import type { Task } from '@/types/task';
 
-const MOCK_TASKS = [
-  { id: 'TSK-001', title: '实现 Agent 权限分级验证', state: 'in_progress', creator: 'archon', priority: 'high', updated: '2 分钟前' },
-  { id: 'TSK-002', title: '任务编排器状态机重构', state: 'gate_waiting', creator: 'lizeyu', priority: 'normal', updated: '8 分钟前' },
-  { id: 'TSK-003', title: '结构化日志脱敏过滤器', state: 'completed', creator: 'craftsman-1', priority: 'normal', updated: '1 小时前' },
-  { id: 'TSK-004', title: 'OpenClaw 插件 Bridge 测试', state: 'completed', creator: 'archon', priority: 'low', updated: '3 小时前' },
-  { id: 'TSK-005', title: '数据库 WAL 模式性能调优', state: 'in_progress', creator: 'lizeyu', priority: 'high', updated: '5 小时前' },
-  { id: 'TSK-006', title: 'CI/CD Pipeline 双 Job 配置', state: 'completed', creator: 'archon', priority: 'normal', updated: '昨天' },
-  { id: 'TSK-007', title: 'Craftsmen Shell Adapter 封装', state: 'pending', creator: 'lizeyu', priority: 'normal', updated: '昨天' },
-  { id: 'TSK-008', title: 'FastAPI 路由重构与中间件', state: 'in_progress', creator: 'archon', priority: 'high', updated: '2 天前' },
+const taskStates = [
+  { value: 'all', label: '全部' },
+  { value: 'in_progress', label: '进行中' },
+  { value: 'gate_waiting', label: '待审批' },
+  { value: 'completed', label: '已完成' },
 ];
 
-const stateConfig: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  in_progress: { bg: 'var(--color-info-bg)', text: 'var(--color-info-text)', border: 'var(--color-info-border)', label: '进行中' },
-  gate_waiting: { bg: 'var(--color-warning-bg)', text: 'var(--color-warning-text)', border: 'var(--color-warning-border)', label: '待审批' },
-  completed: { bg: 'var(--color-success-bg)', text: 'var(--color-success-text)', border: 'var(--color-success-border)', label: '已完成' },
-  failed: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', border: 'var(--color-danger-border)', label: '失败' },
-  pending: { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', border: 'var(--color-border)', label: '等待中' },
-};
-
-const priorityConfig: Record<string, { color: string }> = {
-  critical: { color: 'var(--color-danger)' },
-  high: { color: 'var(--color-warning)' },
-  normal: { color: 'var(--color-text-tertiary)' },
-  low: { color: 'var(--color-text-tertiary)' },
-};
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 15 },
-  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-};
+function buildTaskList(tasks: Task[]) {
+  return tasks.length > 0 ? tasks : MOCK_TASKS;
+}
 
 export function TasksPage() {
+  const {
+    tasks,
+    selectedTaskId,
+    selectedTaskStatus,
+    fetchTasks,
+    selectTask,
+  } = useTaskStore();
+  const [query, setQuery] = useState('');
+  const [stateFilter, setStateFilter] = useState('all');
+  const deferredQuery = useDeferredValue(query);
+
+  useEffect(() => {
+    void fetchTasks();
+  }, [fetchTasks]);
+
+  const taskList = buildTaskList(tasks);
+  const lowered = deferredQuery.trim().toLowerCase();
+  const filteredTasks = taskList.filter((task) => {
+    const matchesState = stateFilter === 'all' || task.state === stateFilter;
+    const matchesQuery =
+      lowered.length === 0 ||
+      task.id.toLowerCase().includes(lowered) ||
+      task.title.toLowerCase().includes(lowered) ||
+      task.creator.toLowerCase().includes(lowered);
+    return matchesState && matchesQuery;
+  });
+
+  useEffect(() => {
+    if (filteredTasks.length === 0) {
+      return;
+    }
+    if (selectedTaskId && filteredTasks.some((task) => task.id === selectedTaskId)) {
+      return;
+    }
+    void selectTask(filteredTasks[0].id);
+  }, [filteredTasks, selectedTaskId, selectTask]);
+
+  const activeTask =
+    filteredTasks.find((task) => task.id === selectedTaskId) ?? filteredTasks[0] ?? null;
+  const activeStatus =
+    activeTask && selectedTaskStatus?.task.id === activeTask.id
+      ? selectedTaskStatus
+      : activeTask
+        ? MOCK_TASK_STATUS[activeTask.id]
+        : null;
+
   return (
-    <motion.div 
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="space-y-6"
-    >
-      <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-glow" style={{ color: 'var(--color-text-primary)' }}>
-            任务列表
-          </h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
-            Agora Global Action Log
-          </p>
-        </div>
-      </motion.div>
+    <div className="page-enter space-y-6">
+      <section className="space-y-2">
+        <p className="page-kicker">Task Workspace</p>
+        <h2 className="page-title">任务工作区</h2>
+        <p className="page-summary">
+          从列表扫视当前执行态势，在右侧保持任务详情、状态迁移和子任务拆分的上下文连续。
+        </p>
+      </section>
 
-      {/* Toolbar */}
-      <motion.div variants={itemVariants} className="flex items-center gap-3">
-        <div
-          className="glass-panel flex items-center gap-2 flex-1 h-10 px-4 shadow-sm"
-        >
-          <Search size={16} style={{ color: 'var(--color-text-tertiary)' }} />
-          <input
-            type="text"
-            placeholder="搜索任务 ID 或标题..."
-            className="flex-1 text-[14px] bg-transparent"
-            style={{
-              color: 'var(--color-text-primary)',
-              outline: 'none',
-              border: 'none',
-            }}
-          />
-        </div>
-        <motion.button
-          whileHover={{ scale: 1.02, backgroundColor: 'var(--color-surface-hover)' }}
-          whileTap={{ scale: 0.98 }}
-          className="glass-panel flex items-center gap-2 h-10 px-4 text-[13px] font-medium transition-colors shadow-sm cursor-pointer"
-          style={{ color: 'var(--color-text-secondary)' }}
-        >
-          <Filter size={15} /> 筛选
-        </motion.button>
-      </motion.div>
+      <section className="surface-panel">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <label className="input-shell flex-1">
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="按任务标题、ID、创建者搜索"
+              className="w-full bg-transparent text-[14px] outline-none placeholder:text-[var(--color-text-tertiary)]"
+            />
+          </label>
 
-      {/* Table */}
-      <motion.div variants={itemVariants} className="glass-panel overflow-hidden shadow-sm">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--color-glass-border)' }}>
-              {['ID', '标题', '状态', '优先级', '创建者', '更新'].map((h) => (
-                <th
-                  key={h}
-                  className="text-left text-[12px] font-semibold uppercase tracking-wider px-5 py-3"
-                  style={{ color: 'var(--color-text-tertiary)' }}
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_TASKS.map((task) => {
-              const sc = stateConfig[task.state] ?? stateConfig.pending;
-              const pc = priorityConfig[task.priority] ?? priorityConfig.normal;
-              return (
-                <motion.tr
-                  key={task.id}
-                  whileHover={{ backgroundColor: 'var(--color-surface-hover)' }}
-                  className="transition-colors duration-150 cursor-pointer"
-                  style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
-                >
-                  <td className="px-5 py-3">
-                    <span className="text-[13px] font-mono font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {task.id}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="text-[14px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
-                      {task.title}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="badge-glass shadow-sm" style={{ background: sc.bg, color: sc.text, borderColor: sc.border }}>
-                      {sc.label}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="text-[13px] font-medium tracking-wide" style={{ color: pc.color }}>
-                      {task.priority}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
-                      {task.creator}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {task.updated}
-                    </span>
-                  </td>
-                </motion.tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* Pagination */}
-        <div
-          className="flex items-center justify-between px-5 py-3"
-          style={{ borderTop: '1px solid var(--color-glass-border)' }}
-        >
-          <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
-            共 {MOCK_TASKS.length} 个任务
-          </span>
-          <div className="flex items-center gap-1.5">
-            {[1, 2, 3].map((p) => (
-              <motion.button
-                key={p}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                className="flex items-center justify-center w-8 h-8 rounded-lg text-[13px] font-medium cursor-pointer"
-                style={{
-                  background: p === 1 ? 'var(--color-primary-bg)' : 'transparent',
-                  color: p === 1 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                  border: 'none',
-                }}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="hidden text-[12px] font-medium text-[var(--color-text-tertiary)] md:inline-flex">
+              <Filter size={14} className="mr-1.5" />
+              状态筛选
+            </span>
+            {taskStates.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setStateFilter(item.value)}
+                className={stateFilter === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
               >
-                {p}
-              </motion.button>
+                {item.label}
+              </button>
             ))}
           </div>
         </div>
-      </motion.div>
-    </motion.div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(360px,0.88fr)]">
+        <section className="surface-panel">
+          <div className="section-title-row">
+            <div>
+              <p className="page-kicker">Execution ledger</p>
+              <h3 className="section-title">任务清单</h3>
+            </div>
+            <span className="status-pill status-pill--neutral">{filteredTasks.length} 条</span>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {filteredTasks.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => void selectTask(task.id)}
+                className={task.id === activeTask?.id ? 'task-row task-row--active' : 'task-row'}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{task.id}</span>
+                      <h4 className="truncate text-[15px] font-medium text-[var(--color-text-primary)]">
+                        {task.title}
+                      </h4>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <StateBadge state={task.state} />
+                      <PriorityBadge priority={task.priority} />
+                    </div>
+                  </div>
+                  <span className="text-[12px] text-[var(--color-text-tertiary)]">
+                    {formatRelativeTimestamp(task.updated_at)}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[var(--color-text-secondary)]">
+                  <span>{task.creator}</span>
+                  <span>{task.team}</span>
+                  <span>{task.workflow}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="surface-panel">
+          {activeTask ? (
+            <div className="space-y-6">
+              <div className="section-title-row">
+                <div>
+                  <p className="page-kicker">Task detail</p>
+                  <h3 className="section-title">任务详情</h3>
+                </div>
+                <StateBadge state={activeTask.state} />
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="detail-card">
+                  <Layers3 size={16} className="detail-card__icon" />
+                  <span className="detail-card__label">当前阶段</span>
+                  <strong className="detail-card__value">{activeTask.current_stage ?? 'backlog'}</strong>
+                </div>
+                <div className="detail-card">
+                  <Workflow size={16} className="detail-card__icon" />
+                  <span className="detail-card__label">执行工作流</span>
+                  <strong className="detail-card__value">{activeTask.workflow}</strong>
+                </div>
+                <div className="detail-card">
+                  <Link2 size={16} className="detail-card__icon" />
+                  <span className="detail-card__label">负责团队</span>
+                  <strong className="detail-card__value">{activeTask.team}</strong>
+                </div>
+                <div className="detail-card">
+                  <Clock3 size={16} className="detail-card__icon" />
+                  <span className="detail-card__label">最近更新</span>
+                  <strong className="detail-card__value">{formatRelativeTimestamp(activeTask.updated_at)}</strong>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border px-4 py-4" style={{ borderColor: 'var(--color-border)' }}>
+                <p className="page-kicker">Mission brief</p>
+                <p className="mt-2 text-[15px] font-medium text-[var(--color-text-primary)]">{activeTask.title}</p>
+                <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                  {activeTask.description ?? '暂无描述。'}
+                </p>
+              </div>
+
+              <div>
+                <h4 className="section-title">执行时间线</h4>
+                <div className="mt-4 space-y-3">
+                  {(activeStatus?.flow_log ?? []).map((entry) => (
+                    <div key={entry.id} className="timeline-item">
+                      <div className="timeline-item__rail" />
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[13px] font-medium text-[var(--color-text-primary)]">{entry.event}</span>
+                          <span className="text-[12px] text-[var(--color-text-tertiary)]">
+                            {formatRelativeTimestamp(entry.created_at)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                          {entry.detail ?? '无补充说明。'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="section-title">子任务拆分</h4>
+                <div className="mt-4 space-y-3">
+                  {(activeStatus?.subtasks ?? []).map((subtask) => (
+                    <div key={subtask.id} className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{subtask.title}</p>
+                        <p className="mt-2 text-[12px] text-[var(--color-text-secondary)]">
+                          {subtask.assignee} / {subtask.craftsman_type ?? 'generalist'}
+                        </p>
+                      </div>
+                      <span className="status-pill status-pill--neutral">{subtask.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p className="text-[15px] font-medium text-[var(--color-text-primary)]">没有匹配的任务</p>
+              <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">尝试调整搜索关键字或切回全部状态。</p>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
   );
 }
