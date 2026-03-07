@@ -19,16 +19,19 @@ agora/
 └── config/         # 配置示例
 
 docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
-├── 00-RAW-PRDS/       # 现有架构设计文档（过渡保留）
-├── 01-GOVERNANCE/  # 治理规范
-├── 02-PRODUCT/     # 产品需求
-├── 03-ARCHITECTURE/# 架构文档索引
-├── ...
+├── 00-RAW-PRDS/       # 历史架构/需求原始文档（过渡保留）
+├── 01-GOVERNANCE/     # 治理规范
+├── 02-PRODUCT/        # 产品文档与用户指南
+├── 03-ARCHITECTURE/   # 架构索引与设计文档
+├── 04-DEVELOPMENT/    # 开发规范与实施指南
+├── 05-TEST-QA/        # 测试策略与验收模板
+├── 06-INTEGRATIONS/   # 外部系统集成
+├── 07-OPERATIONS/     # 运维与 runbook
+├── 08-SECURITY/       # 安全与合规
 ├── 09-PLANNING/TASKS/ # 任务工作区（每次任务独立目录）
 │   └── <YYYY-MM-DD-任务名>/
-├── 10-WALKTHROUGH/ # 交接复盘索引
-├── 11-REFERENCE/   # 文档库规范与参考
-└── walkthrough/    # 开发总结（现有主目录）
+├── 10-WALKTHROUGH/    # 交接复盘索引
+└── 11-REFERENCE/      # 文档库规范与参考
 ```
 
 ## 文档落盘强制规则（新增，最高优先级）
@@ -208,33 +211,25 @@ git push
 
 ```
 docs/
-├── 01-GOVERNANCE/      # 治理规则
-├── 02-PRODUCT/         # 产品文档
-├── 03-ARCHITECTURE/    # 架构索引与ADR
-├── ...
-├── 10-WALKTHROUGH/     # 交接/复盘索引
-├── 00-RAW-PRDS/           # 现有架构文档（过渡保留）
+├── 00-RAW-PRDS/        # 历史文档（过渡保留）
+├── 01-GOVERNANCE/
+├── 02-PRODUCT/
+├── 03-ARCHITECTURE/
+├── 04-DEVELOPMENT/
+├── 05-TEST-QA/
+├── 06-INTEGRATIONS/
+├── 07-OPERATIONS/
+├── 08-SECURITY/
 ├── 09-PLANNING/TASKS/  # 任务过程文件（每次任务独立目录）
-│   ├── 2026-03-06-week2-adapter-integration/
-│   │   ├── plan.md
-│   │   ├── notes.md
-│   │   └── task_plan.md
-│   └── 2026-03-06-init-to-week2-full-audit/
-│       ├── task_plan.md
-│       ├── findings.md
-│       ├── progress.md
-│       └── review-init-to-week2.md
-└── walkthrough/        # 现有 walkthrough 主目录
-    ├── README.md
-    ├── week1-core-skeleton.md
-    ├── week2-adapter-integration.md
-    └── week2-handover.md
+│   └── <YYYY-MM-DD-任务名>/
+├── 10-WALKTHROUGH/     # 交接/复盘
+└── 11-REFERENCE/       # 文档库规范与模板
 ```
 
 ### 文档更新规则
 
 - 架构变更必须更新 `00-RAW-PRDS/01-architecture.md`
-- 实施进度必须更新 `07-implementation-plan.md`
+- 实施进度必须更新 `00-RAW-PRDS/07-implementation-plan.md`
 - 每周结束必须写 Walkthrough 文档
 - 所有文档提交到 docs 仓库，不提交到主仓库
 - 所有过程记录必须位于 `docs/09-PLANNING/TASKS/<YYYY-MM-DD-任务名>/` 任务目录
@@ -257,8 +252,8 @@ docs/
 
 ### Walkthrough
 
-- Week 1 总结：`docs/walkthrough/week1-core-skeleton.md`
-- Week 2 总结：`docs/walkthrough/week2-adapter-integration.md`
+- Week 1 总结：`docs/10-WALKTHROUGH/week1-core-skeleton.md`
+- Week 2 总结：`docs/10-WALKTHROUGH/week2-adapter-integration.md`
 
 ---
 
