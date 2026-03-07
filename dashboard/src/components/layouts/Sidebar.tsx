@@ -9,6 +9,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
+import { shellCopy } from '@/lib/dashboardCopy';
 import { BrandLogo } from '../ui/BrandLogo';
 import { cn } from '@/lib/cn';
 
@@ -66,10 +67,10 @@ export function Sidebar({
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--color-text-tertiary)]">
-                      Brand rail
+                      {shellCopy.brandRail}
                     </p>
                     <h1 className="mt-1 text-[18px] font-semibold tracking-tight text-[var(--color-text-primary)]">
-                      Agora
+                      {shellCopy.brandName}
                     </h1>
                   </div>
                   <button
@@ -82,7 +83,7 @@ export function Sidebar({
                   </button>
                 </div>
                 <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-secondary)]">
-                  Freedom of ideas. Discipline of execution.
+                  {shellCopy.brandSummary}
                 </p>
               </div>
             )}
@@ -101,7 +102,7 @@ export function Sidebar({
           <div className="flex-1 overflow-y-auto px-3 py-5">
             {!collapsed && (
               <p className="nav-section-label">
-                Workspace
+                {shellCopy.workspaceLabel}
               </p>
             )}
             <nav className="space-y-1.5">
@@ -135,10 +136,10 @@ export function Sidebar({
               <div className="rounded-2xl border px-3 py-3" style={{ borderColor: 'var(--color-border)' }}>
                 <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-text-primary)]">
                   <PanelLeftOpen size={14} />
-                  Debate. Decide. Execute.
+                  {shellCopy.railStatement}
                 </div>
                 <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-tertiary)]">
-                  品牌页负责表达 Agora，工具页负责压缩决策时间。
+                  {shellCopy.railSummary}
                 </p>
               </div>
             )}

@@ -6,7 +6,7 @@ export function BrandLogo({ collapsed = false }: BrandLogoProps) {
   return (
     <div
       className="brand-mark"
-      aria-label={collapsed ? 'Agora' : 'Agora Operational Commons'}
+      aria-label={collapsed ? 'Agora' : 'Agora 指挥广场'}
       role="img"
     >
       <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-7 w-7">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
+import { reviewsPageCopy } from '@/lib/dashboardCopy';
 import { MOCK_REVIEW_QUEUE } from '@/lib/mockDashboard';
 import { useTaskStore } from '@/stores/taskStore';
 
@@ -22,9 +23,9 @@ export function ReviewsPage() {
         creator: task.creator,
         gate: task.current_stage ?? 'archon_review',
         waitTime: '刚刚',
-        summary: task.description ?? '等待 Archon 最终判断是否进入下一执行阶段。',
+        summary: task.description ?? reviewsPageCopy.queueFallbackSummary,
         priority: task.priority,
-        impact: `影响 ${task.team} 的下一轮派发`,
+        impact: `${reviewsPageCopy.queueFallbackImpactPrefix} ${task.team} ${reviewsPageCopy.queueFallbackImpactSuffix}`,
         state: task.state,
       }));
 
@@ -36,28 +37,26 @@ export function ReviewsPage() {
   return (
     <div className="page-enter space-y-6">
       <section className="surface-panel surface-panel--intro space-y-2">
-        <p className="page-kicker">Decision Queue</p>
-        <h2 className="page-title">审批与裁决</h2>
-        <p className="page-summary">
-          当任务进入 gate waiting，界面要让人类判断成本和下一动作一眼可见，而不是继续堆卡片。
-        </p>
+        <p className="page-kicker">{reviewsPageCopy.kicker}</p>
+        <h2 className="page-title">{reviewsPageCopy.title}</h2>
+        <p className="page-summary">{reviewsPageCopy.summary}</p>
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="metric-card metric-card--warning">
-          <p className="metric-label">待裁决条目</p>
+          <p className="metric-label">{reviewsPageCopy.metricLabels.queue}</p>
           <p className="metric-value">{queue.length}</p>
-          <p className="metric-note">当前进入人工裁决门的任务数</p>
+          <p className="metric-note">{reviewsPageCopy.metricNotes.queue}</p>
         </div>
         <div className="metric-card metric-card--danger">
-          <p className="metric-label">最高风险</p>
-          <p className="metric-value">Critical</p>
-          <p className="metric-note">优先清掉阻塞调度主线的变更</p>
+          <p className="metric-label">{reviewsPageCopy.metricLabels.highestRisk}</p>
+          <p className="metric-value">{reviewsPageCopy.metricValues.highestRisk}</p>
+          <p className="metric-note">{reviewsPageCopy.metricNotes.highestRisk}</p>
         </div>
         <div className="metric-card metric-card--primary">
-          <p className="metric-label">默认动作</p>
-          <p className="metric-value">Human review</p>
-          <p className="metric-note">关键任务必须保留 human-in-the-loop</p>
+          <p className="metric-label">{reviewsPageCopy.metricLabels.defaultAction}</p>
+          <p className="metric-value">{reviewsPageCopy.metricValues.defaultAction}</p>
+          <p className="metric-note">{reviewsPageCopy.metricNotes.defaultAction}</p>
         </div>
       </div>
 
@@ -65,10 +64,13 @@ export function ReviewsPage() {
         <section className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">Pending human gate</p>
-              <h3 className="section-title">待裁决任务</h3>
+              <p className="page-kicker">{reviewsPageCopy.queueKicker}</p>
+              <h3 className="section-title">{reviewsPageCopy.queueTitle}</h3>
             </div>
-            <span className="status-pill status-pill--warning">{queue.length} 条</span>
+            <span className="status-pill status-pill--warning">
+              {queue.length}
+              {reviewsPageCopy.queueCountUnit}
+            </span>
           </div>
 
           <div className="mt-5 space-y-3">
@@ -107,8 +109,8 @@ export function ReviewsPage() {
             <div className="space-y-6">
               <div className="section-title-row">
                 <div>
-                  <p className="page-kicker">Decision workspace</p>
-                  <h3 className="section-title">当前裁决对象</h3>
+                  <p className="page-kicker">{reviewsPageCopy.workspaceKicker}</p>
+                  <h3 className="section-title">{reviewsPageCopy.workspaceTitle}</h3>
                 </div>
                 <PriorityBadge priority={selected.priority} />
               </div>
@@ -129,44 +131,44 @@ export function ReviewsPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="detail-card">
                   <ShieldAlert size={16} className="detail-card__icon" />
-                  <span className="detail-card__label">当前 Gate</span>
+                  <span className="detail-card__label">{reviewsPageCopy.gateLabel}</span>
                   <strong className="detail-card__value">{selected.gate}</strong>
                 </div>
                 <div className="detail-card">
                   <CheckCircle2 size={16} className="detail-card__icon" />
-                  <span className="detail-card__label">业务影响</span>
+                  <span className="detail-card__label">{reviewsPageCopy.impactLabel}</span>
                   <strong className="detail-card__value">{selected.impact}</strong>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label htmlFor="decision-note" className="text-[13px] font-medium text-[var(--color-text-primary)]">
-                  裁决说明
+                  {reviewsPageCopy.noteLabel}
                 </label>
                 <textarea
                   id="decision-note"
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   className="textarea-shell"
-                  placeholder="记录你的裁决依据、风险判断或回滚要求。"
+                  placeholder={reviewsPageCopy.notePlaceholder}
                 />
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <button type="button" className="button-danger">
                   <XCircle size={16} />
-                  驳回
+                  {reviewsPageCopy.rejectAction}
                 </button>
                 <button type="button" className="button-primary">
                   <CheckCircle2 size={16} />
-                  批准执行
+                  {reviewsPageCopy.approveAction}
                 </button>
               </div>
             </div>
           ) : (
             <div className="empty-state">
-              <p className="text-[15px] font-medium text-[var(--color-text-primary)]">当前没有待裁决任务</p>
-              <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">系统将在有新 gate waiting 任务时显示在这里。</p>
+              <p className="text-[15px] font-medium text-[var(--color-text-primary)]">{reviewsPageCopy.emptyTitle}</p>
+              <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{reviewsPageCopy.emptySummary}</p>
             </div>
           )}
         </section>

@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Link2, Palette, RefreshCcw, Shield } from 'lucide-react';
 import * as api from '@/lib/api';
+import { settingsPageCopy } from '@/lib/dashboardCopy';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 
 const themeOptions: { value: ThemeMode; label: string; description: string }[] = [
-  { value: 'light', label: 'Light', description: '清晰浅色工作台' },
-  { value: 'dark', label: 'Dark', description: '低照度高密度操作界面' },
-  { value: 'system', label: 'System', description: '跟随系统偏好' },
+  { value: 'light', label: settingsPageCopy.appearanceLabels.light, description: settingsPageCopy.appearanceDescriptions.light },
+  { value: 'dark', label: settingsPageCopy.appearanceLabels.dark, description: settingsPageCopy.appearanceDescriptions.dark },
+  { value: 'system', label: settingsPageCopy.appearanceLabels.system, description: settingsPageCopy.appearanceDescriptions.system },
 ];
 
 export function SettingsPage() {
@@ -33,35 +34,33 @@ export function SettingsPage() {
     try {
       await api.healthCheck();
       setStatus('success');
-      setMessage('Agora Core 可达，网关连通正常。');
+      setMessage(settingsPageCopy.healthSuccess);
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : '连接失败');
+      setMessage(error instanceof Error ? error.message : settingsPageCopy.healthFailureFallback);
     }
   };
 
   return (
     <div className="page-enter space-y-6">
       <section className="surface-panel surface-panel--intro space-y-2">
-        <p className="page-kicker">System Preferences</p>
-        <h2 className="page-title">连接、节拍与外观</h2>
-        <p className="page-summary">
-          设置页应该像操作面板，而不是大而空的表单页。分组要清楚，字段要密，反馈要即时。
-        </p>
+        <p className="page-kicker">{settingsPageCopy.kicker}</p>
+        <h2 className="page-title">{settingsPageCopy.title}</h2>
+        <p className="page-summary">{settingsPageCopy.summary}</p>
       </section>
 
       <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>
-            <p className="page-kicker">Gateway identity</p>
-            <h3 className="section-title">连接与身份</h3>
+            <p className="page-kicker">{settingsPageCopy.gatewayKicker}</p>
+            <h3 className="section-title">{settingsPageCopy.gatewayTitle}</h3>
           </div>
           <Link2 size={16} className="text-[var(--color-primary)]" />
         </div>
 
         <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <label className="space-y-2">
-            <span className="field-label">API Base Endpoint</span>
+            <span className="field-label">{settingsPageCopy.endpointLabel}</span>
             <input
               type="text"
               value={localBase}
@@ -71,20 +70,20 @@ export function SettingsPage() {
           </label>
 
           <label className="space-y-2">
-            <span className="field-label">Access Token</span>
+            <span className="field-label">{settingsPageCopy.tokenLabel}</span>
             <div className="relative">
               <input
                 type={showToken ? 'text' : 'password'}
                 value={localToken}
                 onChange={(event) => setLocalToken(event.target.value)}
                 className="input-shell pr-12"
-                placeholder="留空表示匿名只读"
+                placeholder={settingsPageCopy.tokenPlaceholder}
               />
               <button
                 type="button"
                 onClick={() => setShowToken((current) => !current)}
                 className="icon-button absolute right-2 top-1/2 -translate-y-1/2"
-                aria-label={showToken ? '隐藏 Token' : '显示 Token'}
+                aria-label={showToken ? settingsPageCopy.tokenHideLabel : settingsPageCopy.tokenShowLabel}
               >
                 {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -98,14 +97,14 @@ export function SettingsPage() {
             onClick={() => setApiConfig(localBase, localToken)}
             className="button-primary"
           >
-            保存配置
+            {settingsPageCopy.saveAction}
           </button>
           <button type="button" onClick={testConnection} className="button-secondary">
-            检测连通性
+            {settingsPageCopy.testAction}
           </button>
           {status !== 'idle' && (
             <span className={status === 'success' ? 'status-pill status-pill--success' : status === 'error' ? 'status-pill status-pill--danger' : 'status-pill status-pill--info'}>
-              {status === 'loading' ? '检测中' : message}
+              {status === 'loading' ? settingsPageCopy.healthLoading : message}
             </span>
           )}
         </div>
@@ -114,15 +113,15 @@ export function SettingsPage() {
       <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>
-            <p className="page-kicker">Refresh cadence</p>
-            <h3 className="section-title">同步策略</h3>
+            <p className="page-kicker">{settingsPageCopy.refreshKicker}</p>
+            <h3 className="section-title">{settingsPageCopy.refreshTitle}</h3>
           </div>
           <RefreshCcw size={16} className="text-[var(--color-warning)]" />
         </div>
 
         <div className="mt-5 space-y-5">
           <div>
-            <span className="field-label">轮询间隔</span>
+            <span className="field-label">{settingsPageCopy.refreshLabel}</span>
             <div className="mt-3 flex flex-wrap gap-2">
               {[3, 5, 10, 30].map((seconds) => (
                 <button
@@ -139,12 +138,12 @@ export function SettingsPage() {
 
           <div className="detail-card">
             <Shield size={16} className="detail-card__icon" />
-            <span className="detail-card__label">页面隐藏时暂停轮询</span>
+            <span className="detail-card__label">{settingsPageCopy.pauseLabel}</span>
             <button
               type="button"
               onClick={() => setPauseOnHidden(!pauseOnHidden)}
               className={pauseOnHidden ? 'toggle toggle--active' : 'toggle'}
-              aria-label="页面隐藏时暂停轮询"
+              aria-label={settingsPageCopy.pauseLabel}
             >
               <span className="toggle__knob" />
             </button>
@@ -155,8 +154,8 @@ export function SettingsPage() {
       <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>
-            <p className="page-kicker">Appearance</p>
-            <h3 className="section-title">外观偏好</h3>
+            <p className="page-kicker">{settingsPageCopy.appearanceKicker}</p>
+            <h3 className="section-title">{settingsPageCopy.appearanceTitle}</h3>
           </div>
           <Palette size={16} className="text-[var(--color-info)]" />
         </div>

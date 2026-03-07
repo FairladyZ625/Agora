@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { Clock3, Filter, Layers3, Link2, Workflow } from 'lucide-react';
+import { tasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp, MOCK_TASK_STATUS, MOCK_TASKS } from '@/lib/mockDashboard';
@@ -66,11 +67,9 @@ export function TasksPage() {
   return (
     <div className="page-enter space-y-6">
       <section className="surface-panel surface-panel--intro space-y-2">
-        <p className="page-kicker">Task Workspace</p>
-        <h2 className="page-title">任务工作区</h2>
-        <p className="page-summary">
-          从列表扫视当前执行态势，在右侧保持任务详情、状态迁移和子任务拆分的上下文连续。
-        </p>
+        <p className="page-kicker">{tasksPageCopy.kicker}</p>
+        <h2 className="page-title">{tasksPageCopy.title}</h2>
+        <p className="page-summary">{tasksPageCopy.summary}</p>
       </section>
 
       <section className="surface-panel surface-panel--toolbar">
@@ -80,7 +79,7 @@ export function TasksPage() {
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="按任务标题、ID、创建者搜索"
+              placeholder={tasksPageCopy.searchPlaceholder}
               className="w-full bg-transparent text-[14px] outline-none placeholder:text-[var(--color-text-tertiary)]"
             />
           </label>
@@ -88,7 +87,7 @@ export function TasksPage() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="hidden text-[12px] font-medium text-[var(--color-text-tertiary)] md:inline-flex">
               <Filter size={14} className="mr-1.5" />
-              状态筛选
+              {tasksPageCopy.filterLabel}
             </span>
             {taskStates.map((item) => (
               <button
@@ -108,10 +107,13 @@ export function TasksPage() {
         <section className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">Execution ledger</p>
-              <h3 className="section-title">任务清单</h3>
+              <p className="page-kicker">{tasksPageCopy.listKicker}</p>
+              <h3 className="section-title">{tasksPageCopy.listTitle}</h3>
             </div>
-            <span className="status-pill status-pill--neutral">{filteredTasks.length} 条</span>
+            <span className="status-pill status-pill--neutral">
+              {filteredTasks.length}
+              {tasksPageCopy.listCountUnit}
+            </span>
           </div>
 
           <div className="mt-5 space-y-3">
@@ -154,8 +156,8 @@ export function TasksPage() {
             <div className="space-y-6">
               <div className="section-title-row">
                 <div>
-                  <p className="page-kicker">Task detail</p>
-                  <h3 className="section-title">任务详情</h3>
+                  <p className="page-kicker">{tasksPageCopy.detailKicker}</p>
+                  <h3 className="section-title">{tasksPageCopy.detailTitle}</h3>
                 </div>
                 <StateBadge state={activeTask.state} />
               </div>
@@ -163,36 +165,36 @@ export function TasksPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="detail-card">
                   <Layers3 size={16} className="detail-card__icon" />
-                  <span className="detail-card__label">当前阶段</span>
-                  <strong className="detail-card__value">{activeTask.current_stage ?? 'backlog'}</strong>
+                  <span className="detail-card__label">{tasksPageCopy.stageLabel}</span>
+                  <strong className="detail-card__value">{activeTask.current_stage ?? tasksPageCopy.stageFallback}</strong>
                 </div>
                 <div className="detail-card">
                   <Workflow size={16} className="detail-card__icon" />
-                  <span className="detail-card__label">执行工作流</span>
+                  <span className="detail-card__label">{tasksPageCopy.workflowLabel}</span>
                   <strong className="detail-card__value">{activeTask.workflow}</strong>
                 </div>
                 <div className="detail-card">
                   <Link2 size={16} className="detail-card__icon" />
-                  <span className="detail-card__label">负责团队</span>
+                  <span className="detail-card__label">{tasksPageCopy.teamLabel}</span>
                   <strong className="detail-card__value">{activeTask.team}</strong>
                 </div>
                 <div className="detail-card">
                   <Clock3 size={16} className="detail-card__icon" />
-                  <span className="detail-card__label">最近更新</span>
+                  <span className="detail-card__label">{tasksPageCopy.updatedLabel}</span>
                   <strong className="detail-card__value">{formatRelativeTimestamp(activeTask.updated_at)}</strong>
                 </div>
               </div>
 
               <div className="rounded-2xl border px-4 py-4" style={{ borderColor: 'var(--color-border)' }}>
-                <p className="page-kicker">Mission brief</p>
+                <p className="page-kicker">{tasksPageCopy.briefKicker}</p>
                 <p className="mt-2 text-[15px] font-medium text-[var(--color-text-primary)]">{activeTask.title}</p>
                 <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
-                  {activeTask.description ?? '暂无描述。'}
+                  {activeTask.description ?? tasksPageCopy.briefFallback}
                 </p>
               </div>
 
               <div>
-                <h4 className="section-title">执行时间线</h4>
+                <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>
                 <div className="mt-4 space-y-3">
                   {(activeStatus?.flow_log ?? []).map((entry) => (
                     <div key={entry.id} className="timeline-item">
@@ -205,7 +207,7 @@ export function TasksPage() {
                           </span>
                         </div>
                         <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
-                          {entry.detail ?? '无补充说明。'}
+                          {entry.detail ?? tasksPageCopy.timelineEmptyDetail}
                         </p>
                       </div>
                     </div>
@@ -214,14 +216,14 @@ export function TasksPage() {
               </div>
 
               <div>
-                <h4 className="section-title">子任务拆分</h4>
+                <h4 className="section-title">{tasksPageCopy.subtasksTitle}</h4>
                 <div className="mt-4 space-y-3">
                   {(activeStatus?.subtasks ?? []).map((subtask) => (
                     <div key={subtask.id} className="data-row">
                       <div className="min-w-0 flex-1">
                         <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{subtask.title}</p>
                         <p className="mt-2 text-[12px] text-[var(--color-text-secondary)]">
-                          {subtask.assignee} / {subtask.craftsman_type ?? 'generalist'}
+                          {subtask.assignee} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
                         </p>
                       </div>
                       <span className="status-pill status-pill--neutral">{subtask.status}</span>
@@ -232,8 +234,8 @@ export function TasksPage() {
             </div>
           ) : (
             <div className="empty-state">
-              <p className="text-[15px] font-medium text-[var(--color-text-primary)]">没有匹配的任务</p>
-              <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">尝试调整搜索关键字或切回全部状态。</p>
+              <p className="text-[15px] font-medium text-[var(--color-text-primary)]">{tasksPageCopy.emptyTitle}</p>
+              <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{tasksPageCopy.emptySummary}</p>
             </div>
           )}
         </section>

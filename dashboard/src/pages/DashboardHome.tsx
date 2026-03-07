@@ -9,6 +9,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { Link } from 'react-router';
+import { dashboardHomeCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { StateBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp, MOCK_TASKS } from '@/lib/mockDashboard';
@@ -31,25 +32,25 @@ export function DashboardHome() {
     {
       label: '运行中的编排',
       value: displayTasks.filter((task) => task.state === 'in_progress').length,
-      note: '当前仍在推进的多 agent 任务',
+      note: dashboardHomeCopy.metricNotes.active,
       icon: Orbit,
     },
     {
       label: '待裁决事项',
       value: reviewItems.length,
-      note: '需要 human-in-the-loop 的关键门控',
+      note: dashboardHomeCopy.metricNotes.waiting,
       icon: Scale,
     },
     {
       label: '活跃 craftsman',
       value: 6,
-      note: '当前接入并响应的执行工匠',
+      note: dashboardHomeCopy.metricNotes.craftsmen,
       icon: UsersRound,
     },
     {
       label: '最近执行节拍',
       value: '12m',
-      note: '上一次完成节点到现在的间隔',
+      note: dashboardHomeCopy.metricNotes.cadence,
       icon: Clock3,
     },
   ];
@@ -59,31 +60,30 @@ export function DashboardHome() {
       <section className="page-enter surface-panel surface-panel--hero">
         <div className="hero-grid">
           <div className="hero-copy-block">
-            <p className="page-kicker">Agora / Operational Commons</p>
+            <p className="page-kicker">{dashboardHomeCopy.kicker}</p>
             <h2 className="hero-display mt-3 text-[40px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)] md:text-[56px]">
-              Agora
+              {dashboardHomeCopy.title}
             </h2>
             <p className="hero-copy mt-4 max-w-[56ch] text-[15px] leading-7 text-[var(--color-text-secondary)] md:text-[16px]">
-              Agora 不是一个普通的控制台名字，它代表一个让 agents 辩论、让 humans 裁决、
-              再让 machines 纪律执行的操作广场。首页首先要解释这个系统是什么，而不是只展示四个 KPI。
+              {dashboardHomeCopy.summary}
             </p>
             <p className="hero-axiom mt-4 text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)] md:text-[17px]">
-              Agents debate. Humans decide. Machines execute.
+              {dashboardHomeCopy.slogan}
             </p>
 
             <div className="hero-actions">
               <Link to="/tasks" className="button-primary">
-                查看任务流
+                {dashboardHomeCopy.primaryAction}
                 <ArrowRight size={16} />
               </Link>
               <Link to="/reviews" className="button-secondary">
-                进入决策队列
+                {dashboardHomeCopy.secondaryAction}
               </Link>
             </div>
 
             {error && (
               <div className="mt-5 rounded-2xl border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-[13px] text-[var(--color-danger-text)]">
-                当前同步失败：{error}
+                {dashboardHomeCopy.syncErrorMessage}
               </div>
             )}
           </div>
@@ -92,53 +92,48 @@ export function DashboardHome() {
             <div className="surface-panel surface-panel--hero-side">
               <div className="section-title-row">
                 <div>
-                  <p className="page-kicker">System pulse</p>
-                  <h3 className="section-title">治理与执行同时在线</h3>
+                  <p className="page-kicker">{dashboardHomeCopy.pulseKicker}</p>
+                  <h3 className="section-title">{dashboardHomeCopy.pulseTitle}</h3>
                 </div>
                 <span className="status-pill status-pill--success">
-                  {loading ? '同步中' : 'Online'}
+                  {loading
+                    ? dashboardHomeCopy.pulseStatusLoading
+                    : dashboardHomeCopy.pulseStatusReady}
                 </span>
               </div>
               <div className="hero-sigil" aria-hidden="true">
                 <div className="hero-sigil__ring hero-sigil__ring--outer" />
                 <div className="hero-sigil__ring hero-sigil__ring--middle" />
                 <div className="hero-sigil__ring hero-sigil__ring--inner" />
-                <div className="hero-sigil__core">Agora</div>
-                <span className="hero-sigil__label hero-sigil__label--left">Debate</span>
-                <span className="hero-sigil__label hero-sigil__label--right">Decide</span>
-                <span className="hero-sigil__label hero-sigil__label--bottom">Dispatch</span>
+                <div className="hero-sigil__core">{dashboardHomeCopy.title}</div>
+                <span className="hero-sigil__label hero-sigil__label--left">
+                  {dashboardHomeCopy.pulseOrbitLabels.left}
+                </span>
+                <span className="hero-sigil__label hero-sigil__label--right">
+                  {dashboardHomeCopy.pulseOrbitLabels.right}
+                </span>
+                <span className="hero-sigil__label hero-sigil__label--bottom">
+                  {dashboardHomeCopy.pulseOrbitLabels.bottom}
+                </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="inline-stat">
-                  <span className="inline-stat__label">辩论输入</span>
-                  <span className="inline-stat__value">多 agent 汇流</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">裁决出口</span>
-                  <span className="inline-stat__value">Archon Gate</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">执行方式</span>
-                  <span className="inline-stat__value">Structured Dispatch</span>
-                </div>
+                {dashboardHomeCopy.pulseItems.map((item) => (
+                  <div key={item.label} className="inline-stat">
+                    <span className="inline-stat__label">{item.label}</span>
+                    <span className="inline-stat__value">{item.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="surface-panel surface-panel--muted surface-panel--glasslet">
-                <p className="page-kicker">Brand core</p>
-                <h3 className="section-title">广场，而不是后台</h3>
-                <p className="section-copy">
-                  品牌表达靠舞台结构、清晰叙事和统一节奏，不靠堆模糊和发光。
-                </p>
-              </div>
-              <div className="surface-panel surface-panel--muted surface-panel--glasslet">
-                <p className="page-kicker">Operator promise</p>
-                <h3 className="section-title">高密度，但不凌乱</h3>
-                <p className="section-copy">
-                  内页维持工作台效率，重要动作和状态始终在第一视野内闭环。
-                </p>
-              </div>
+              {dashboardHomeCopy.sideNotes.map((item) => (
+                <div key={item.title} className="surface-panel surface-panel--muted surface-panel--glasslet">
+                  <p className="page-kicker">{item.kicker}</p>
+                  <h3 className="section-title">{item.title}</h3>
+                  <p className="section-copy">{item.body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -168,11 +163,11 @@ export function DashboardHome() {
         <section className="page-enter surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">Operational feed</p>
-              <h3 className="section-title">最近任务流转</h3>
+              <p className="page-kicker">{dashboardHomeCopy.feedKicker}</p>
+              <h3 className="section-title">{dashboardHomeCopy.feedTitle}</h3>
             </div>
             <Link to="/tasks" className="button-ghost">
-              全部任务
+              {dashboardHomeCopy.feedAction}
             </Link>
           </div>
 
@@ -187,7 +182,7 @@ export function DashboardHome() {
                     </h4>
                   </div>
                   <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
-                    {task.description ?? '等待新的执行上下文。'}
+                    {task.description ?? dashboardHomeCopy.emptyTaskDescription}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-tertiary)]">
                     <span>{task.creator}</span>
@@ -207,11 +202,12 @@ export function DashboardHome() {
           <section className="page-enter surface-panel surface-panel--workspace">
             <div className="section-title-row">
               <div>
-                <p className="page-kicker">Decision rail</p>
-                <h3 className="section-title">待裁决任务</h3>
+                <p className="page-kicker">{dashboardHomeCopy.reviewKicker}</p>
+                <h3 className="section-title">{dashboardHomeCopy.reviewTitle}</h3>
               </div>
               <span className="status-pill status-pill--warning">
-                {reviewItems.length || MOCK_TASKS.filter((task) => task.state === 'gate_waiting').length} 条
+                {reviewItems.length || MOCK_TASKS.filter((task) => task.state === 'gate_waiting').length}
+                {dashboardHomeCopy.reviewCountUnit}
               </span>
             </div>
 
@@ -228,7 +224,7 @@ export function DashboardHome() {
                     <ShieldCheck size={16} className="text-[var(--color-warning)]" />
                   </div>
                   <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
-                    进入 Archon 审批门，当前阶段为 {task.current_stage ?? 'review'}。
+                    {dashboardHomeCopy.reviewDescriptionPrefix} {task.current_stage ?? dashboardHomeCopy.fallbackDecisionStage}。
                   </p>
                 </Link>
               ))}
@@ -238,15 +234,15 @@ export function DashboardHome() {
           <section className="page-enter surface-panel surface-panel--muted surface-panel--workspace">
             <div className="section-title-row">
               <div>
-                <p className="page-kicker">Agora principle</p>
-                <h3 className="section-title">品牌语义落点</h3>
+                <p className="page-kicker">{dashboardHomeCopy.principleKicker}</p>
+                <h3 className="section-title">{dashboardHomeCopy.principleTitle}</h3>
               </div>
               <Sparkles size={16} className="text-[var(--color-primary)]" />
             </div>
             <ul className="mt-4 space-y-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
-              <li>首页先解释广场、辩论、裁决、执行的关系，再呈现实时状态。</li>
-              <li>内页优先保证扫描效率和动作闭环，不让品牌表达压过任务本身。</li>
-              <li>所有 panel、badge、按钮和 section header 共用同一套视觉语言。</li>
+              {dashboardHomeCopy.principleBullets.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </section>
         </div>

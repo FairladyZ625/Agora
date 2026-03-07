@@ -72,7 +72,7 @@ describe('dashboard visual rescue target structure', () => {
       screen.getByText('Agents debate. Humans decide. Machines execute.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /查看任务流/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /进入决策队列/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /进入裁决中心/i })).toBeInTheDocument();
   });
 
   it('turns the app shell into a contextual operational rail', () => {
@@ -82,22 +82,22 @@ describe('dashboard visual rescue target structure', () => {
       </AppShell>,
     );
 
-    expect(screen.getByText('Operational Commons')).toBeInTheDocument();
-    expect(screen.getByText('Debate, decide, execute.')).toBeInTheDocument();
+    expect(screen.getByText('Agora 指挥广场')).toBeInTheDocument();
+    expect(screen.getByText('辩论，裁决，执行')).toBeInTheDocument();
   });
 
   it('rebuilds the tasks page into a dense list and detail workspace', () => {
     renderWithRouter(<TasksPage />);
 
-    expect(screen.getByText('任务详情')).toBeInTheDocument();
-    expect(screen.getByText('执行时间线')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '任务详情' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '执行时间线' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('按任务标题、ID、创建者搜索')).toBeInTheDocument();
   });
 
   it('rebuilds the reviews page as a decision queue workspace', () => {
     renderWithRouter(<ReviewsPage />);
 
-    expect(screen.getByText('Decision Queue')).toBeInTheDocument();
+    expect(screen.getByText('裁决中心')).toBeInTheDocument();
     expect(screen.getByText('待裁决任务')).toBeInTheDocument();
     expect(screen.getByText('裁决说明')).toBeInTheDocument();
   });
@@ -105,8 +105,16 @@ describe('dashboard visual rescue target structure', () => {
   it('restructures settings into grouped operational preferences', () => {
     renderWithRouter(<SettingsPage />);
 
-    expect(screen.getByText('连接与身份')).toBeInTheDocument();
-    expect(screen.getByText('同步策略')).toBeInTheDocument();
-    expect(screen.getByText('外观偏好')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '连接与身份' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '同步策略' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '外观偏好' })).toBeInTheDocument();
+  });
+
+  it('uses formalized product copy on the home page', () => {
+    renderWithRouter(<DashboardHome />);
+
+    expect(screen.getByText('Agora / 多 Agent 指挥广场')).toBeInTheDocument();
+    expect(screen.getByText('系统脉冲')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /进入裁决中心/i })).toBeInTheDocument();
   });
 });
