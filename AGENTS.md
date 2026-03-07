@@ -53,6 +53,11 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - `docs/` 是独立 Git 仓库，文档只在 `docs` 仓库提交维护；**不要把 docs 文档提交到主仓库**。
 - 每个新任务必须创建独立文件夹，不可与历史任务共用同一组过程文件。
 - 所有文档写作与使用必须遵循：`docs/11-REFERENCE/docs-library-standard.md`（强制规范）。
+- **Agora 项目唯一实施单一视图（SSoT）固定为**：`docs/Agora-实施排期.md`
+  - 该文件统一维护：实现计划、实现计审、实现状态矩阵、待开发清单、当前优先级
+  - 所有新 wave 开始前必须先读该文件
+  - 所有非平凡开发完成后必须先更新该文件，再更新对应任务过程文档与 walkthrough
+  - 禁止额外创建并行的“总表型计划 / 状态矩阵 / 进度总览”文档
 
 ## 文档规范引用（强制）
 
@@ -269,6 +274,7 @@ docs/
 
 ### 文档更新规则
 
+- `docs/Agora-实施排期.md` 是 Agora 项目的当前实施口径与唯一填写入口
 - 架构变更必须更新 `00-RAW-PRDS/01-architecture.md`
 - 实施进度必须更新 `00-RAW-PRDS/07-implementation-plan.md`
 - 每周结束必须写 Walkthrough 文档
@@ -281,6 +287,7 @@ docs/
 
 ### 核心设计文档
 
+- 实施总表：`docs/Agora-实施排期.md`（**当前实现状态、开发顺序、实现计审唯一入口**）
 - 架构：`docs/00-RAW-PRDS/01-architecture.md`
 - 生命周期：`docs/00-RAW-PRDS/02-task-lifecycle.md`
 - 枚举定义：`docs/00-RAW-PRDS/ENUMS.md`

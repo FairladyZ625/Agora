@@ -186,6 +186,20 @@ Agora 可能不适合你，如果：
 - **可视化面板** — Dashboard 实时展示任务状态、Agent 活动、Gate 审批
 - **框架无关** — Adapter 架构，适配多平台多生态
 
+## Implementation SSoT
+
+Agora 当前的实施口径、实现计审、状态矩阵和待开发优先级，统一维护在：
+
+- [docs/Agora-实施排期.md](/Users/lizeyu/Projects/Agora/docs/Agora-实施排期.md)
+
+使用规则：
+
+- 想知道“现在做到哪里了”，看这一个文件
+- 想知道“下一波应该做什么”，看这一个文件
+- 做完任何非平凡开发后，先更新这一个文件，再更新任务过程文档和 walkthrough
+
+`docs/00-RAW-PRDS/` 继续保存原始需求和历史方案，但不再单独承担当前实施状态的唯一口径。
+
 ---
 
 ## Roadmap
