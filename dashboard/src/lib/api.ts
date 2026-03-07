@@ -1,4 +1,5 @@
 import type { ApiHealthDto, ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
+import type { CreateTaskInput } from '@/types/task';
 
 class ApiError extends Error {
   status: number;
@@ -68,7 +69,100 @@ export function getTaskStatus(taskId: string): Promise<ApiTaskStatusDto> {
   return request<ApiTaskStatusDto>(`/tasks/${taskId}/status`);
 }
 
+export function createTask(input: CreateTaskInput): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>('/tasks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // ── Task Operations ──────────────────────────────
+
+export function advanceTask(taskId: string, callerId: string): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/advance`, {
+    method: 'POST',
+    body: JSON.stringify({ caller_id: callerId }),
+  });
+}
+
+export function approveTask(taskId: string, approverId: string, comment = ''): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ approver_id: approverId, comment }),
+  });
+}
+
+export function rejectTask(taskId: string, rejectorId: string, reason: string): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ rejector_id: rejectorId, reason }),
+  });
+}
+
+export function confirmTask(
+  taskId: string,
+  voterId: string,
+  vote: 'approve' | 'reject',
+  comment = '',
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ voter_id: voterId, vote, comment }),
+  });
+}
+
+export function subtaskDone(
+  taskId: string,
+  subtaskId: string,
+  callerId: string,
+  output = '',
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/subtask-done`, {
+    method: 'POST',
+    body: JSON.stringify({ subtask_id: subtaskId, caller_id: callerId, output }),
+  });
+}
+
+export function forceAdvanceTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/force-advance`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function pauseTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/pause`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function resumeTask(taskId: string): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/resume`, {
+    method: 'POST',
+  });
+}
+
+export function cancelTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function unblockTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/unblock`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function cleanupTasks(taskId?: string): Promise<{ cleaned: number }> {
+  return request<{ cleaned: number }>('/tasks/cleanup', {
+    method: 'POST',
+    body: JSON.stringify(taskId ? { task_id: taskId } : {}),
+  });
+}
 
 export function archonApprove(
   taskId: string,

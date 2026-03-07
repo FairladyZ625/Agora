@@ -30,6 +30,13 @@ export interface Task {
   memberCount: number;
   isReviewStage: boolean;
   sourceState: string;
+  stageName?: string | null;
+  gateType?: string | null;
+  teamMembers?: Array<{
+    role: string;
+    agentId: string;
+    model_preference: string;
+  }>;
   scheduler: unknown;
   scheduler_snapshot: unknown;
   discord: unknown;
@@ -87,4 +94,32 @@ export interface TaskStatus {
 
 export interface HealthStatus {
   status: string;
+}
+
+export interface CreateTaskInput {
+  title: string;
+  type: string;
+  creator: string;
+  description: string;
+  priority: TaskPriority | string;
+}
+
+export type TaskAction =
+  | 'advance'
+  | 'approve'
+  | 'reject'
+  | 'confirm'
+  | 'subtask_done'
+  | 'force_advance'
+  | 'pause'
+  | 'resume'
+  | 'cancel'
+  | 'unblock';
+
+export interface TaskActionPayload {
+  taskId: string;
+  actorId?: string;
+  note?: string;
+  vote?: 'approve' | 'reject';
+  subtaskId?: string;
 }
