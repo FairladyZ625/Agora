@@ -11,7 +11,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<DashboardHome />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:taskId" element={<TasksPage />} />
         <Route path="/reviews" element={<ReviewsPage />} />
+        <Route path="/reviews/:reviewId" element={<ReviewsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

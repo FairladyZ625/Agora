@@ -52,10 +52,10 @@ export function AppShell({ children }: AppShellProps) {
           onReplayIntro={handleReplayIntro}
         />
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-hidden">
           <div
             key={location.pathname}
-            className="page-enter app-frame px-4 py-6 md:px-6"
+            className="page-enter app-frame app-frame--page px-4 py-6 md:px-6"
           >
             {children}
           </div>
