@@ -214,6 +214,146 @@ class DatabaseManager:
                   json.dumps(artifacts) if artifacts else None, actor))
             return cursor.lastrowid
 
+    # ── Archive Jobs ──
+
+    def list_archive_jobs(
+        self,
+        status_filter: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> list[dict]:
+        """List archive jobs with joined task metadata."""
+        conn = self.connect()
+        conditions: list[str] = []
+        params: list[str] = []
+        if status_filter:
+            conditions.append("aj.status = ?")
+            params.append(status_filter)
+        if task_id:
+            conditions.append("aj.task_id = ?")
+            params.append(task_id)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        rows = conn.execute(
+            f"""
+            SELECT aj.*, t.title AS task_title, t.type AS task_type
+            FROM archive_jobs aj
+            JOIN tasks t ON t.id = aj.task_id
+            {where_clause}
+            ORDER BY aj.requested_at DESC, aj.id DESC
+            """,
+            params,
+        ).fetchall()
+        return [self._parse_archive_job_row(r) for r in rows]
+
+    def get_archive_job(self, job_id: int) -> Optional[dict]:
+        """Get an archive job by ID."""
+        conn = self.connect()
+        row = conn.execute(
+            """
+            SELECT aj.*, t.title AS task_title, t.type AS task_type
+            FROM archive_jobs aj
+            JOIN tasks t ON t.id = aj.task_id
+            WHERE aj.id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._parse_archive_job_row(row)
+
+    def retry_archive_job(self, job_id: int) -> dict:
+        """Reset a failed archive job back to pending."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE archive_jobs
+                SET status = ?, commit_hash = NULL, completed_at = NULL, requested_at = ?
+                WHERE id = ?
+                """,
+                ("pending", now, job_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Archive job {job_id} not found")
+        return self.get_archive_job(job_id)
+
+    # ── Todos ──
+
+    def insert_todo(
+        self,
+        text: str,
+        due: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        """Insert a todo item."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO todos (text, status, due, created_at, tags)
+                VALUES (?, 'pending', ?, ?, ?)
+                """,
+                (text, due, now, json.dumps(tags or [])),
+            )
+            todo_id = cursor.lastrowid
+        todo = self.get_todo(todo_id)
+        if todo is None:
+            raise ValueError(f"Todo {todo_id} not found after insert")
+        return todo
+
+    def list_todos(self, status_filter: Optional[str] = None) -> list[dict]:
+        """List todo items."""
+        conn = self.connect()
+        if status_filter:
+            rows = conn.execute(
+                "SELECT * FROM todos WHERE status = ? ORDER BY created_at DESC, id DESC",
+                (status_filter,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM todos ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+        return [self._parse_todo_row(r) for r in rows]
+
+    def get_todo(self, todo_id: int) -> Optional[dict]:
+        """Get todo by ID."""
+        conn = self.connect()
+        row = conn.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
+        if row is None:
+            return None
+        return self._parse_todo_row(row)
+
+    def update_todo(self, todo_id: int, **kwargs) -> dict:
+        """Update todo fields."""
+        if not kwargs:
+            todo = self.get_todo(todo_id)
+            if todo is None:
+                raise ValueError(f"Todo {todo_id} not found")
+            return todo
+
+        if "tags" in kwargs and isinstance(kwargs["tags"], list):
+            kwargs["tags"] = json.dumps(kwargs["tags"])
+
+        set_clause = ", ".join(f"{key} = ?" for key in kwargs)
+        values = list(kwargs.values())
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                f"UPDATE todos SET {set_clause} WHERE id = ?",
+                values + [todo_id],
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Todo {todo_id} not found")
+
+        todo = self.get_todo(todo_id)
+        if todo is None:
+            raise ValueError(f"Todo {todo_id} not found after update")
+        return todo
+
+    def delete_todo(self, todo_id: int) -> bool:
+        """Delete a todo item."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
+            return cursor.rowcount > 0
+
     # ── Helpers ──
 
     def _parse_task_row(self, row: sqlite3.Row) -> dict:
@@ -222,6 +362,22 @@ class DatabaseManager:
         for key in ("team", "workflow", "scheduler", "scheduler_snapshot", "discord", "metrics"):
             if d.get(key):
                 d[key] = json.loads(d[key])
+        return d
+
+    def _parse_archive_job_row(self, row: sqlite3.Row) -> dict:
+        """Parse archive job row, deserializing payload."""
+        d = dict(row)
+        if d.get("payload"):
+            d["payload"] = json.loads(d["payload"])
+        return d
+
+    def _parse_todo_row(self, row: sqlite3.Row) -> dict:
+        """Parse todo row, deserializing tags."""
+        d = dict(row)
+        if d.get("tags"):
+            d["tags"] = json.loads(d["tags"])
+        else:
+            d["tags"] = []
         return d
 
     def generate_task_id(self) -> str:

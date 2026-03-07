@@ -123,3 +123,15 @@ CREATE TABLE IF NOT EXISTS archive_jobs (
   completed_at  DATETIME
 );
 CREATE INDEX IF NOT EXISTS idx_archive_jobs_status ON archive_jobs(status, requested_at);
+
+CREATE TABLE IF NOT EXISTS todos (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  text          TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  due           TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at  TEXT,
+  tags          TEXT,
+  promoted_to   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_todos_status_created ON todos(status, created_at);

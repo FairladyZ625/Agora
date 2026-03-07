@@ -294,6 +294,29 @@ class TaskManager:
             count += 1
         return count
 
+    def promote_todo(
+        self,
+        todo_id: int,
+        task_type: str = "quick",
+        creator: str = "archon",
+        priority: str = "normal",
+    ) -> dict:
+        """Promote a todo item into a formal task."""
+        todo = self.db.get_todo(todo_id)
+        if todo is None:
+            raise ValueError(f"Todo {todo_id} not found")
+        if todo.get("promoted_to"):
+            raise ValueError(f"Todo {todo_id} already promoted to {todo['promoted_to']}")
+
+        task = self.create_task(
+            title=todo["text"],
+            task_type=task_type,
+            creator=creator,
+            priority=priority,
+        )
+        updated_todo = self.db.update_todo(todo_id, promoted_to=task["id"])
+        return {"todo": updated_todo, "task": task}
+
     def _get_task_or_raise(self, task_id: str) -> dict:
         task = self.db.get_task(task_id)
         if task is None:

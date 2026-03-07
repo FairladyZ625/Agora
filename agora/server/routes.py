@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from agora.core.dashboard_queries import DashboardQueryService
 from agora.core.db import DatabaseManager
 from agora.core.task_mgr import TaskManager
 
@@ -145,10 +146,34 @@ class CleanupRequest(BaseModel):
     task_id: Optional[str] = None
 
 
+class ArchiveRetryRequest(BaseModel):
+    reason: str = ""
+
+
+class TodoCreateRequest(BaseModel):
+    text: str
+    due: Optional[str] = None
+    tags: list[str] = []
+
+
+class TodoUpdateRequest(BaseModel):
+    text: Optional[str] = None
+    due: Optional[str] = None
+    tags: Optional[list[str]] = None
+    status: Optional[str] = None
+
+
+class TodoPromoteRequest(BaseModel):
+    type: str = "quick"
+    creator: str = "archon"
+    priority: str = "normal"
+
+
 def create_router(db_path: str = "tasks.db", config_path: str | None = None) -> APIRouter:
     router = APIRouter()
     config = _load_config(config_path)
     mgr = _build_manager(db_path, config)
+    dashboard = DashboardQueryService(mgr.db, mgr.templates_dir)
     auth = ApiAuth(config)
     bearer = HTTPBearer(auto_error=False)
 
@@ -315,6 +340,90 @@ def create_router(db_path: str = "tasks.db", config_path: str | None = None) -> 
             logger.info("cleanup_orphaned count=%s task_id=%s", count, payload.task_id)
             return {"cleaned": count}
         except (PermissionError, ValueError, FileNotFoundError) as exc:
+            _translate_error(exc)
+
+    @router.get("/agents/status", dependencies=[Depends(require_api_auth)])
+    def agents_status():
+        return dashboard.get_agents_status()
+
+    @router.get("/archive/jobs", dependencies=[Depends(require_api_auth)])
+    def list_archive_jobs(status: Optional[str] = None, task_id: Optional[str] = None):
+        return mgr.db.list_archive_jobs(status_filter=status, task_id=task_id)
+
+    @router.get("/archive/jobs/{job_id}", dependencies=[Depends(require_api_auth)])
+    def get_archive_job(job_id: int):
+        job = mgr.db.get_archive_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Archive job {job_id} not found")
+        return job
+
+    @router.post("/archive/jobs/{job_id}/retry", dependencies=[Depends(require_api_auth)])
+    def retry_archive_job(job_id: int, payload: ArchiveRetryRequest):
+        try:
+            job = mgr.db.retry_archive_job(job_id)
+            logger.info("archive_job_retried id=%s reason=%s", job_id, payload.reason)
+            return job
+        except ValueError as exc:
+            _translate_error(exc)
+
+    @router.get("/todos", dependencies=[Depends(require_api_auth)])
+    def list_todos(status: Optional[str] = None):
+        return mgr.db.list_todos(status_filter=status)
+
+    @router.post("/todos", dependencies=[Depends(require_api_auth)])
+    def create_todo(payload: TodoCreateRequest):
+        return mgr.db.insert_todo(payload.text, due=payload.due, tags=payload.tags)
+
+    @router.patch("/todos/{todo_id}", dependencies=[Depends(require_api_auth)])
+    def update_todo(todo_id: int, payload: TodoUpdateRequest):
+        try:
+            updates: dict = {}
+            if payload.text is not None:
+                updates["text"] = payload.text
+            if payload.due is not None:
+                updates["due"] = payload.due
+            if payload.tags is not None:
+                updates["tags"] = payload.tags
+            if payload.status is not None:
+                updates["status"] = payload.status
+                if payload.status == "done":
+                    updates["completed_at"] = mgr.db.connect().execute(
+                        "SELECT datetime('now')"
+                    ).fetchone()[0]
+                elif payload.status == "pending":
+                    updates["completed_at"] = None
+            return mgr.db.update_todo(todo_id, **updates)
+        except ValueError as exc:
+            _translate_error(exc)
+
+    @router.delete("/todos/{todo_id}", dependencies=[Depends(require_api_auth)])
+    def delete_todo(todo_id: int):
+        deleted = mgr.db.delete_todo(todo_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Todo {todo_id} not found")
+        return {"deleted": True}
+
+    @router.post("/todos/{todo_id}/promote", dependencies=[Depends(require_api_auth)])
+    def promote_todo(todo_id: int, payload: TodoPromoteRequest):
+        try:
+            return mgr.promote_todo(
+                todo_id,
+                task_type=payload.type,
+                creator=payload.creator,
+                priority=payload.priority,
+            )
+        except (PermissionError, ValueError, FileNotFoundError) as exc:
+            _translate_error(exc)
+
+    @router.get("/templates", dependencies=[Depends(require_api_auth)])
+    def list_templates():
+        return dashboard.list_templates()
+
+    @router.get("/templates/{template_id}", dependencies=[Depends(require_api_auth)])
+    def get_template(template_id: str):
+        try:
+            return dashboard.get_template(template_id)
+        except ValueError as exc:
             _translate_error(exc)
 
     @router.get("/health")
