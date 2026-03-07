@@ -35,7 +35,7 @@ export function ReviewsPage() {
 
   return (
     <div className="page-enter space-y-6">
-      <section className="space-y-2">
+      <section className="surface-panel surface-panel--intro space-y-2">
         <p className="page-kicker">Decision Queue</p>
         <h2 className="page-title">审批与裁决</h2>
         <p className="page-summary">
@@ -44,17 +44,17 @@ export function ReviewsPage() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="metric-card">
+        <div className="metric-card metric-card--warning">
           <p className="metric-label">待裁决条目</p>
           <p className="metric-value">{queue.length}</p>
           <p className="metric-note">当前进入人工裁决门的任务数</p>
         </div>
-        <div className="metric-card">
+        <div className="metric-card metric-card--danger">
           <p className="metric-label">最高风险</p>
           <p className="metric-value">Critical</p>
           <p className="metric-note">优先清掉阻塞调度主线的变更</p>
         </div>
-        <div className="metric-card">
+        <div className="metric-card metric-card--primary">
           <p className="metric-label">默认动作</p>
           <p className="metric-value">Human review</p>
           <p className="metric-note">关键任务必须保留 human-in-the-loop</p>
@@ -62,7 +62,7 @@ export function ReviewsPage() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(360px,0.92fr)]">
-        <section className="surface-panel">
+        <section className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
               <p className="page-kicker">Pending human gate</p>
@@ -102,7 +102,7 @@ export function ReviewsPage() {
           </div>
         </section>
 
-        <section className="surface-panel">
+        <section className="surface-panel surface-panel--workspace">
           {selected ? (
             <div className="space-y-6">
               <div className="section-title-row">

@@ -65,7 +65,7 @@ export function TasksPage() {
 
   return (
     <div className="page-enter space-y-6">
-      <section className="space-y-2">
+      <section className="surface-panel surface-panel--intro space-y-2">
         <p className="page-kicker">Task Workspace</p>
         <h2 className="page-title">任务工作区</h2>
         <p className="page-summary">
@@ -73,7 +73,7 @@ export function TasksPage() {
         </p>
       </section>
 
-      <section className="surface-panel">
+      <section className="surface-panel surface-panel--toolbar">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <label className="input-shell flex-1">
             <input
@@ -105,7 +105,7 @@ export function TasksPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(360px,0.88fr)]">
-        <section className="surface-panel">
+        <section className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
               <p className="page-kicker">Execution ledger</p>
@@ -149,7 +149,7 @@ export function TasksPage() {
           </div>
         </section>
 
-        <section className="surface-panel">
+        <section className="surface-panel surface-panel--workspace">
           {activeTask ? (
             <div className="space-y-6">
               <div className="section-title-row">

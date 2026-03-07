@@ -42,7 +42,7 @@ export function SettingsPage() {
 
   return (
     <div className="page-enter space-y-6">
-      <section className="space-y-2">
+      <section className="surface-panel surface-panel--intro space-y-2">
         <p className="page-kicker">System Preferences</p>
         <h2 className="page-title">连接、节拍与外观</h2>
         <p className="page-summary">
@@ -50,7 +50,7 @@ export function SettingsPage() {
         </p>
       </section>
 
-      <section className="surface-panel">
+      <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">Gateway identity</p>
@@ -111,7 +111,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="surface-panel">
+      <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">Refresh cadence</p>
@@ -152,7 +152,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="surface-panel">
+      <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">Appearance</p>

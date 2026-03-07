@@ -58,16 +58,16 @@ export function DashboardHome() {
     <div className="space-y-6">
       <section className="page-enter surface-panel surface-panel--hero">
         <div className="hero-grid">
-          <div>
+          <div className="hero-copy-block">
             <p className="page-kicker">Agora / Operational Commons</p>
-            <h2 className="mt-3 text-[40px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)] md:text-[56px]">
+            <h2 className="hero-display mt-3 text-[40px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)] md:text-[56px]">
               Agora
             </h2>
-            <p className="mt-4 max-w-[56ch] text-[15px] leading-7 text-[var(--color-text-secondary)] md:text-[16px]">
+            <p className="hero-copy mt-4 max-w-[56ch] text-[15px] leading-7 text-[var(--color-text-secondary)] md:text-[16px]">
               Agora 不是一个普通的控制台名字，它代表一个让 agents 辩论、让 humans 裁决、
               再让 machines 纪律执行的操作广场。首页首先要解释这个系统是什么，而不是只展示四个 KPI。
             </p>
-            <p className="mt-4 text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)] md:text-[17px]">
+            <p className="hero-axiom mt-4 text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)] md:text-[17px]">
               Agents debate. Humans decide. Machines execute.
             </p>
 
@@ -89,7 +89,7 @@ export function DashboardHome() {
           </div>
 
           <div className="space-y-4">
-            <div className="surface-panel surface-panel--muted">
+            <div className="surface-panel surface-panel--hero-side">
               <div className="section-title-row">
                 <div>
                   <p className="page-kicker">System pulse</p>
@@ -98,6 +98,15 @@ export function DashboardHome() {
                 <span className="status-pill status-pill--success">
                   {loading ? '同步中' : 'Online'}
                 </span>
+              </div>
+              <div className="hero-sigil" aria-hidden="true">
+                <div className="hero-sigil__ring hero-sigil__ring--outer" />
+                <div className="hero-sigil__ring hero-sigil__ring--middle" />
+                <div className="hero-sigil__ring hero-sigil__ring--inner" />
+                <div className="hero-sigil__core">Agora</div>
+                <span className="hero-sigil__label hero-sigil__label--left">Debate</span>
+                <span className="hero-sigil__label hero-sigil__label--right">Decide</span>
+                <span className="hero-sigil__label hero-sigil__label--bottom">Dispatch</span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="inline-stat">
@@ -116,14 +125,14 @@ export function DashboardHome() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="surface-panel surface-panel--muted">
+              <div className="surface-panel surface-panel--muted surface-panel--glasslet">
                 <p className="page-kicker">Brand core</p>
                 <h3 className="section-title">广场，而不是后台</h3>
                 <p className="section-copy">
                   品牌表达靠舞台结构、清晰叙事和统一节奏，不靠堆模糊和发光。
                 </p>
               </div>
-              <div className="surface-panel surface-panel--muted">
+              <div className="surface-panel surface-panel--muted surface-panel--glasslet">
                 <p className="page-kicker">Operator promise</p>
                 <h3 className="section-title">高密度，但不凌乱</h3>
                 <p className="section-copy">
@@ -136,8 +145,11 @@ export function DashboardHome() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(({ label, value, note, icon: Icon }) => (
-          <div key={label} className="page-enter metric-card">
+        {metrics.map(({ label, value, note, icon: Icon }, index) => (
+          <div
+            key={label}
+            className={`page-enter metric-card ${index === 0 ? 'metric-card--primary' : index === 1 ? 'metric-card--warning' : index === 2 ? 'metric-card--success' : 'metric-card--neutral'}`}
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="metric-label">{label}</p>
@@ -153,7 +165,7 @@ export function DashboardHome() {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.9fr)]">
-        <section className="page-enter surface-panel">
+        <section className="page-enter surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
               <p className="page-kicker">Operational feed</p>
@@ -192,7 +204,7 @@ export function DashboardHome() {
         </section>
 
         <div className="space-y-6">
-          <section className="page-enter surface-panel">
+          <section className="page-enter surface-panel surface-panel--workspace">
             <div className="section-title-row">
               <div>
                 <p className="page-kicker">Decision rail</p>
@@ -223,7 +235,7 @@ export function DashboardHome() {
             </div>
           </section>
 
-          <section className="page-enter surface-panel surface-panel--muted">
+          <section className="page-enter surface-panel surface-panel--muted surface-panel--workspace">
             <div className="section-title-row">
               <div>
                 <p className="page-kicker">Agora principle</p>
