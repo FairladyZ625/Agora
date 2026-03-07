@@ -22,7 +22,12 @@ function toggleValue(current: string[], value: string) {
 }
 
 export function ReviewsPage() {
-  const { tasks, fetchTasks, resolveReview, selectTask, selectedTaskStatus, dataSource } = useTaskStore();
+  const tasks = useTaskStore((state) => state.tasks);
+  const fetchTasks = useTaskStore((state) => state.fetchTasks);
+  const resolveReview = useTaskStore((state) => state.resolveReview);
+  const selectTask = useTaskStore((state) => state.selectTask);
+  const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const dataSource = useTaskStore((state) => state.dataSource);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { reviewId } = useParams<{ reviewId: string }>();
@@ -175,7 +180,7 @@ export function ReviewsPage() {
         <div className="workbench-toolbar">
           <div className="workbench-toolbar__actions">
             <div className="workbench-toolbar__filter-anchor">
-              <ControlGlass className="glass-control" padding="0px" cornerRadius={18}>
+              <ControlGlass className="glass-control" density="flush" radius="lg">
                 <button
                   type="button"
                   className="glass-control__button"
@@ -255,7 +260,7 @@ export function ReviewsPage() {
                       className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
                     >
                       <div className="review-table__task">
-                        <span className="font-mono text-[11px] text-[var(--color-text-tertiary)]">{item.id}</span>
+                        <span className="type-mono-xs">{item.id}</span>
                         <strong className="review-table__title">{item.title}</strong>
                         <p className="review-table__summary">{item.summary}</p>
                       </div>
@@ -268,8 +273,8 @@ export function ReviewsPage() {
                   ))
                 ) : (
                   <div className="empty-state">
-                    <p className="text-[15px] font-medium text-[var(--color-text-primary)]">{reviewsPageCopy.emptyTitle}</p>
-                    <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{reviewsPageCopy.emptySummary}</p>
+                    <p className="type-heading-sm">{reviewsPageCopy.emptyTitle}</p>
+                    <p className="type-body-sm mt-2">{reviewsPageCopy.emptySummary}</p>
                   </div>
                 )}
               </div>
@@ -289,13 +294,13 @@ export function ReviewsPage() {
 
                 <div className="inspector-hero">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{selected.id}</span>
+                    <span className="type-mono-sm">{selected.id}</span>
                     <StateBadge state={selected.state} />
                   </div>
-                  <h4 className="mt-3 text-[22px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)]">
+                  <h4 className="type-heading-md mt-3">
                     {selected.title}
                   </h4>
-                  <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                  <p className="type-body-sm mt-3">
                     {selected.summary}
                   </p>
                 </div>
@@ -314,7 +319,7 @@ export function ReviewsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="decision-note" className="text-[13px] font-medium text-[var(--color-text-primary)]">
+                  <label htmlFor="decision-note" className="type-label-sm">
                     {reviewsPageCopy.noteLabel}
                   </label>
                   <textarea
@@ -346,7 +351,7 @@ export function ReviewsPage() {
                   {reviewsPageCopy.detailAction}
                 </button>
 
-                <p className="text-[12px] text-[var(--color-text-tertiary)]">
+                <p className="type-text-xs">
                   {dataSource === 'live'
                     ? '当前正在操作真实裁决接口。'
                     : '当前为 mock 可交互模式，所有裁决都会立即反馈到演示态势。'}
@@ -354,8 +359,8 @@ export function ReviewsPage() {
               </div>
             ) : (
               <div className="empty-state">
-                <p className="text-[15px] font-medium text-[var(--color-text-primary)]">{reviewsPageCopy.emptyTitle}</p>
-                <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{reviewsPageCopy.emptySummary}</p>
+                <p className="type-heading-sm">{reviewsPageCopy.emptyTitle}</p>
+                <p className="type-body-sm mt-2">{reviewsPageCopy.emptySummary}</p>
               </div>
             )}
           </aside>
@@ -370,13 +375,13 @@ export function ReviewsPage() {
         >
           <div className="sheet-summary">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{selected.id}</span>
+              <span className="type-mono-sm">{selected.id}</span>
               <PriorityBadge priority={selected.priority} />
             </div>
-            <h4 className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)]">
+            <h4 className="type-heading-lg mt-3">
               {selected.title}
             </h4>
-            <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">{selected.summary}</p>
+            <p className="type-body-sm mt-3">{selected.summary}</p>
           </div>
 
           <section className="sheet-section">
@@ -387,10 +392,10 @@ export function ReviewsPage() {
                   <div className="timeline-item__rail" />
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-medium text-[var(--color-text-primary)]">{entry.event}</span>
-                      <span className="text-[12px] text-[var(--color-text-tertiary)]">{entry.stage_id ?? 'unknown-stage'}</span>
+                      <span className="type-label-sm">{entry.event}</span>
+                      <span className="type-text-xs">{entry.stage_id ?? 'unknown-stage'}</span>
                     </div>
-                    <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                    <p className="type-body-sm mt-2">
                       {entry.detail ?? reviewsPageCopy.queueFallbackSummary}
                     </p>
                   </div>
@@ -405,10 +410,10 @@ export function ReviewsPage() {
               {selectedStatus.progress_log.map((entry) => (
                 <div key={entry.id} className="data-row">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-[var(--color-text-primary)]">{entry.actor}</p>
-                    <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">{entry.content}</p>
+                    <p className="type-label-sm">{entry.actor}</p>
+                    <p className="type-body-sm mt-2">{entry.content}</p>
                   </div>
-                  <span className="text-[12px] text-[var(--color-text-tertiary)]">{entry.stage_id ?? 'stage'}</span>
+                  <span className="type-text-xs">{entry.stage_id ?? 'stage'}</span>
                 </div>
               ))}
             </div>

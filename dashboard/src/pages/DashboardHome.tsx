@@ -20,7 +20,10 @@ function getDisplayTasks(tasks: Task[]) {
 }
 
 export function DashboardHome() {
-  const { tasks, loading, error, fetchTasks } = useTaskStore();
+  const tasks = useTaskStore((state) => state.tasks);
+  const loading = useTaskStore((state) => state.loading);
+  const error = useTaskStore((state) => state.error);
+  const fetchTasks = useTaskStore((state) => state.fetchTasks);
 
   useEffect(() => {
     void fetchTasks();
@@ -61,13 +64,13 @@ export function DashboardHome() {
         <div className="hero-grid">
           <div className="hero-copy-block">
             <p className="page-kicker">{dashboardHomeCopy.kicker}</p>
-            <h2 className="hero-display mt-3 text-[40px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)] md:text-[56px]">
+            <h2 className="hero-display mt-3">
               {dashboardHomeCopy.title}
             </h2>
-            <p className="hero-copy mt-4 max-w-[56ch] text-[15px] leading-7 text-[var(--color-text-secondary)] md:text-[16px]">
+            <p className="hero-copy mt-4">
               {dashboardHomeCopy.summary}
             </p>
-            <p className="hero-axiom mt-4 text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)] md:text-[17px]">
+            <p className="hero-axiom mt-4">
               {dashboardHomeCopy.slogan}
             </p>
 
@@ -82,7 +85,7 @@ export function DashboardHome() {
             </div>
 
             {error && (
-              <div className="mt-5 rounded-2xl border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-[13px] text-[var(--color-danger-text)]">
+              <div className="inline-alert inline-alert--danger mt-5">
                 {dashboardHomeCopy.syncErrorMessage}
               </div>
             )}
@@ -159,7 +162,7 @@ export function DashboardHome() {
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.9fr)]">
+      <div className="home-content-grid">
         <section className="page-enter surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
@@ -176,19 +179,19 @@ export function DashboardHome() {
               <div key={task.id} className="data-row">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{task.id}</span>
-                    <h4 className="truncate text-[15px] font-medium text-[var(--color-text-primary)]">
+                    <span className="type-mono-sm">{task.id}</span>
+                    <h4 className="type-heading-sm truncate">
                       {task.title}
                     </h4>
                   </div>
-                  <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                  <p className="type-body-sm mt-2">
                     {task.description ?? dashboardHomeCopy.emptyTaskDescription}
                   </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[var(--color-text-tertiary)]">
+                  <div className="type-text-xs mt-3 flex flex-wrap items-center gap-2">
                     <span>{task.creator}</span>
-                    <span className="text-[var(--color-border-strong)]">/</span>
+                    <span className="meta-separator">/</span>
                     <span>{task.team}</span>
-                    <span className="text-[var(--color-border-strong)]">/</span>
+                    <span className="meta-separator">/</span>
                     <span>{formatRelativeTimestamp(task.updated_at)}</span>
                   </div>
                 </div>
@@ -216,14 +219,14 @@ export function DashboardHome() {
                 <Link key={task.id} to="/reviews" className="decision-card">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{task.id}</p>
-                      <h4 className="mt-1 text-[15px] font-medium text-[var(--color-text-primary)]">
+                      <p className="type-mono-sm">{task.id}</p>
+                      <h4 className="type-heading-sm mt-1">
                         {task.title}
                       </h4>
                     </div>
-                    <ShieldCheck size={16} className="text-[var(--color-warning)]" />
+                    <ShieldCheck size={16} className="icon-accent-warning" />
                   </div>
-                  <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                  <p className="type-body-sm mt-3">
                     {dashboardHomeCopy.reviewDescriptionPrefix} {task.current_stage ?? dashboardHomeCopy.fallbackDecisionStage}。
                   </p>
                 </Link>
@@ -237,9 +240,9 @@ export function DashboardHome() {
                 <p className="page-kicker">{dashboardHomeCopy.principleKicker}</p>
                 <h3 className="section-title">{dashboardHomeCopy.principleTitle}</h3>
               </div>
-              <Sparkles size={16} className="text-[var(--color-primary)]" />
+              <Sparkles size={16} className="icon-accent-primary" />
             </div>
-            <ul className="mt-4 space-y-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+            <ul className="home-principles mt-4 space-y-3">
               {dashboardHomeCopy.principleBullets.map((item) => (
                 <li key={item}>{item}</li>
               ))}

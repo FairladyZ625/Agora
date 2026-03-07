@@ -1,12 +1,22 @@
 import type { CSSProperties, ReactNode } from 'react';
 import LiquidGlass from 'liquid-glass-react';
 
+const radiusMap = {
+  md: 16,
+  lg: 18,
+} as const;
+
+const densityPaddingMap = {
+  flush: '0px',
+  compact: '8px 12px',
+} as const;
+
 interface ControlGlassProps {
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
-  cornerRadius?: number;
-  padding?: string;
+  radius?: keyof typeof radiusMap;
+  density?: keyof typeof densityPaddingMap;
 }
 
 function isJsdom() {
@@ -17,8 +27,8 @@ export function ControlGlass({
   children,
   className,
   style,
-  cornerRadius = 18,
-  padding = '0px',
+  radius = 'lg',
+  density = 'flush',
 }: ControlGlassProps) {
   if (isJsdom()) {
     return (
@@ -32,8 +42,8 @@ export function ControlGlass({
     <LiquidGlass
       className={className}
       style={style}
-      cornerRadius={cornerRadius}
-      padding={padding}
+      cornerRadius={radiusMap[radius]}
+      padding={densityPaddingMap[density]}
       blurAmount={0.08}
       saturation={135}
       aberrationIntensity={1.2}

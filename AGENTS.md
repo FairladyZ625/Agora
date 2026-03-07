@@ -70,6 +70,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 评审文档时按规范中的“文档评审清单”逐项检查。
   - 开发执行必须遵循 `planning-with-files + ralph-loop` 持续收敛流程。
   - **前端开发必须先读 `dashboard-frontend-standard.md`**，遵循技术栈、设计基调和检查清单。
+  - **Dashboard 前端新增约束**：所有尺寸治理必须同步更新 `dashboard/scripts/check-visual-governance.mjs`；新增尺寸 token、布局原语或组件尺寸 API 时，必须同步更新 `dashboard-frontend-standard.md`。
 
 ## 技术栈
 
@@ -91,6 +92,12 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - 设计基调：**沉稳克制高信息密度**，参考 Linear/Raycast，**禁止紫色**
 - Light / Dark / System 三态主题
 - 详细规范：`docs/11-REFERENCE/dashboard-frontend-standard.md`
+- Dashboard 前端强制治理规则：
+  - 颜色、字号、间距、圆角、宽度、断点全部先定义 token，再允许消费
+  - 禁止在 `.tsx/.ts` 中使用 Tailwind arbitrary value
+  - 禁止基础组件暴露自由尺寸字符串/数字 API
+  - 禁止页面私有定义局部容器宽度与 split 比例
+  - 移动端必须按独立布局规则设计，不接受“桌面堆叠即适配”
 
 ### 开发环境一键启动
 

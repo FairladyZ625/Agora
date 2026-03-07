@@ -1,9 +1,10 @@
-import { Menu, Monitor, Moon, RefreshCw, Sparkles, Sun } from 'lucide-react';
+import { Menu, Monitor, Moon, RefreshCw, Sun } from 'lucide-react';
 import { pageMetaCopy } from '@/lib/dashboardCopy';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useLocation } from 'react-router';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 
 const themeCycle: ThemeMode[] = ['light', 'dark', 'system'];
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
@@ -27,7 +28,7 @@ function IconButton({
       aria-label={label}
       title={label}
     >
-      <span className={spinning ? 'animate-spin text-[var(--color-primary)]' : ''}>{children}</span>
+      <span className={spinning ? 'animate-spin icon-accent-primary' : ''}>{children}</span>
     </button>
   );
 }
@@ -35,14 +36,15 @@ function IconButton({
 export function TopNav({
   isMobile,
   onOpenMobileNav,
-  onReplayIntro,
 }: {
   isMobile: boolean;
   onOpenMobileNav: () => void;
-  onReplayIntro: () => void;
 }) {
   const { mode, setMode } = useThemeStore();
-  const { fetchTasks, loading, tasks, dataSource } = useTaskStore();
+  const fetchTasks = useTaskStore((state) => state.fetchTasks);
+  const loading = useTaskStore((state) => state.loading);
+  const tasks = useTaskStore((state) => state.tasks);
+  const dataSource = useTaskStore((state) => state.dataSource);
   const { showMessage } = useFeedbackStore();
   const location = useLocation();
 
@@ -71,7 +73,7 @@ export function TopNav({
   };
 
   return (
-    <header className="app-topbar sticky top-0 z-20 backdrop-blur-md" style={{ background: 'var(--color-panel-strong)' }}>
+    <header className="app-topbar sticky top-0 z-20" style={{ background: 'var(--color-panel-strong)' }}>
       <div className="app-frame flex items-center justify-between gap-4 px-4 py-4 md:px-6">
         <div className="flex items-center gap-3">
           {isMobile ? (
@@ -79,18 +81,10 @@ export function TopNav({
               <Menu size={18} />
             </IconButton>
           ) : (
-            <button
-              type="button"
-              className="topbar-sigil"
-              onClick={onReplayIntro}
-              aria-label="重播 Agora 入场动效"
-              title="重播 Agora 入场动效"
-            >
-              <Sparkles size={16} />
-            </button>
+            <BrandLogo collapsed className="topbar-brand-mark" />
           )}
           <div className="flex items-center gap-2">
-            <h1 className="text-[16px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+            <h1 className="type-heading-nav">
               {meta.title}
             </h1>
             <span className="topbar-chip">
@@ -101,7 +95,7 @@ export function TopNav({
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-2 rounded-full border px-3 py-2 text-[12px] text-[var(--color-text-secondary)] md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
+          <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
             <span className="status-dot status-dot--info" />
             {dataSource === 'live'
               ? activeCount > 0 ? `${activeCount} 正在编排` : '队列平稳'
@@ -112,7 +106,7 @@ export function TopNav({
             <IconButton onClick={refreshWorkspace} label="刷新" spinning={loading}>
               <RefreshCw size={16} />
             </IconButton>
-            <div className="mx-1 h-4 w-[1px] bg-[var(--color-border)]" />
+            <div className="topbar-separator" />
             <IconButton onClick={nextTheme} label={themeLabels[mode]}>
               <ThemeIcon size={16} />
             </IconButton>

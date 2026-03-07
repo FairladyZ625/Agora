@@ -70,7 +70,7 @@ export function Sidebar({
 
             {!collapsed && (
               <div className="flex-1 text-center">
-                <h1 className="text-[28px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+                <h1 className="sidebar-brand-title">
                   {shellCopy.brandName}
                 </h1>
               </div>
@@ -108,7 +108,7 @@ export function Sidebar({
                   <Icon size={18} className="shrink-0" />
                   {!collapsed && (
                     <div className="min-w-0">
-                      <div className="text-[14px] font-medium">{label}</div>
+                      <div className="sidebar-nav-title">{label}</div>
                       <div className="nav-meta">{hint}</div>
                     </div>
                   )}
@@ -123,11 +123,11 @@ export function Sidebar({
           >
             {!collapsed && (
               <div className="rounded-2xl border px-3 py-3" style={{ borderColor: 'var(--color-border)' }}>
-                <div className="flex items-center gap-2 text-[12px] font-medium text-[var(--color-text-primary)]">
+                <div className="sidebar-rail-title">
                   <PanelLeftOpen size={14} />
                   {shellCopy.railStatement}
                 </div>
-                <p className="mt-2 text-[12px] leading-5 text-[var(--color-text-tertiary)]">
+                <p className="sidebar-rail-copy mt-2">
                   {shellCopy.railSummary}
                 </p>
               </div>
@@ -135,7 +135,7 @@ export function Sidebar({
             <button
               type="button"
               onClick={onToggle}
-              className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border text-[13px] font-medium text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+              className="sidebar-toggle-button mt-3"
               style={{ borderColor: 'var(--color-border)' }}
               aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
             >

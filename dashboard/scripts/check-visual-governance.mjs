@@ -5,6 +5,11 @@ const projectRoot = new URL('..', import.meta.url);
 const srcDir = path.join(projectRoot.pathname, 'src');
 const allowedCssFile = path.join(srcDir, 'index.css');
 const colorPattern = /#(?:[0-9a-fA-F]{3,8})\b|rgba?\(|hsla?\(/;
+const arbitraryTailwindPattern =
+  /\b(?:text|tracking|grid-cols|bg|border|rounded|h|w|min-w|max-w|px|py|pt|pb|pl|pr|mt|mb|ml|mr)-\[[^\]]+\]/;
+const freeSizePropPattern =
+  /padding="[^"]+"|cornerRadius=\{[^}]+\}|style=\{\{[^}]*\b(?:width|height|minWidth|maxWidth|padding|gap|borderRadius):/;
+const governedCssProperties = ['padding', 'margin', 'gap', 'width', 'height', 'border-radius', 'font-size'];
 const allowedExtensions = new Set(['.ts', '.tsx', '.css']);
 const failures = [];
 
@@ -30,6 +35,12 @@ function inspectFile(filePath) {
     lines.forEach((line, index) => {
       if (colorPattern.test(line)) {
         failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} raw color literal is not allowed outside src/index.css theme tokens`);
+      }
+      if (arbitraryTailwindPattern.test(line)) {
+        failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} Tailwind arbitrary value is not allowed; use semantic classes or top-level tokens`);
+      }
+      if (path.basename(filePath) !== 'ControlGlass.tsx' && freeSizePropPattern.test(line)) {
+        failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} free-form size props are not allowed; use controlled component variants or top-level layout tokens`);
       }
     });
     return;
@@ -65,4 +76,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Frontend visual governance check passed.');
+console.log(`Frontend visual governance check passed. Governed CSS properties seed: ${governedCssProperties.join(', ')}`);

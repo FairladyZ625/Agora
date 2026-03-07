@@ -59,10 +59,10 @@ export function SettingsPage() {
             <p className="page-kicker">{settingsPageCopy.gatewayKicker}</p>
             <h3 className="section-title">{settingsPageCopy.gatewayTitle}</h3>
           </div>
-          <Link2 size={16} className="text-[var(--color-primary)]" />
+          <Link2 size={16} className="icon-accent-primary" />
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="settings-form-grid mt-5">
           <label className="space-y-2">
             <span className="field-label">{settingsPageCopy.endpointLabel}</span>
             <input
@@ -123,7 +123,7 @@ export function SettingsPage() {
             <p className="page-kicker">{settingsPageCopy.refreshKicker}</p>
             <h3 className="section-title">{settingsPageCopy.refreshTitle}</h3>
           </div>
-          <RefreshCcw size={16} className="text-[var(--color-warning)]" />
+          <RefreshCcw size={16} className="icon-accent-warning" />
         </div>
 
         <div className="mt-5 space-y-5">
@@ -164,7 +164,7 @@ export function SettingsPage() {
             <p className="page-kicker">{settingsPageCopy.appearanceKicker}</p>
             <h3 className="section-title">{settingsPageCopy.appearanceTitle}</h3>
           </div>
-          <Palette size={16} className="text-[var(--color-info)]" />
+          <Palette size={16} className="icon-accent-info" />
         </div>
 
         <div className="mt-5 grid gap-3 lg:grid-cols-3">
@@ -179,8 +179,8 @@ export function SettingsPage() {
               className="surface-panel surface-panel--muted text-left"
               style={mode === option.value ? { borderColor: 'var(--color-primary)' } : undefined}
             >
-              <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{option.label}</p>
-              <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">{option.description}</p>
+              <p className="type-heading-xs">{option.label}</p>
+              <p className="type-body-sm mt-2">{option.description}</p>
             </button>
           ))}
         </div>

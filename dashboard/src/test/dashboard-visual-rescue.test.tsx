@@ -12,20 +12,23 @@ const setApiConfig = vi.fn();
 const setRefreshInterval = vi.fn();
 const setPauseOnHidden = vi.fn();
 
+const taskStoreState = {
+  tasks: [],
+  loading: false,
+  detailLoading: false,
+  error: null,
+  selectedTaskId: null,
+  selectedTaskStatus: null,
+  filters: { state: null, search: '' },
+  fetchTasks,
+  selectTask: vi.fn(async () => undefined),
+  setFilters: vi.fn(),
+  clearError: vi.fn(),
+};
+
 vi.mock('@/stores/taskStore', () => ({
-  useTaskStore: () => ({
-    tasks: [],
-    loading: false,
-    detailLoading: false,
-    error: null,
-    selectedTaskId: null,
-    selectedTaskStatus: null,
-    filters: { state: null, search: '' },
-    fetchTasks,
-    selectTask: vi.fn(async () => undefined),
-    setFilters: vi.fn(),
-    clearError: vi.fn(),
-  }),
+  useTaskStore: (selector?: (state: typeof taskStoreState) => unknown) =>
+    selector ? selector(taskStoreState) : taskStoreState,
 }));
 
 vi.mock('@/stores/themeStore', () => ({
@@ -82,9 +85,9 @@ describe('dashboard visual rescue target structure', () => {
       </AppShell>,
     );
 
-    expect(screen.getByText('Agora 指挥广场')).toBeInTheDocument();
-    expect(screen.getByText('辩论，裁决，执行')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '重播 Agora 入场动效' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Agora 指挥广场' })).toBeInTheDocument();
+    expect(screen.getByText('Agora')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重播 Agora 入场动效' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '打开导航' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).not.toBeInTheDocument();
   });

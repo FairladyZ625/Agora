@@ -33,13 +33,11 @@ function toggleValue(current: string[], value: string) {
 }
 
 export function TasksPage() {
-  const {
-    tasks,
-    selectedTaskId,
-    selectedTaskStatus,
-    fetchTasks,
-    selectTask,
-  } = useTaskStore();
+  const tasks = useTaskStore((state) => state.tasks);
+  const selectedTaskId = useTaskStore((state) => state.selectedTaskId);
+  const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const fetchTasks = useTaskStore((state) => state.fetchTasks);
+  const selectTask = useTaskStore((state) => state.selectTask);
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
   const [query, setQuery] = useState('');
@@ -183,13 +181,13 @@ export function TasksPage() {
           <div className="workbench-header__center">
             <div className="workbench-header__search-container">
               <label className="input-shell--centered">
-                <Search size={18} className="text-[var(--color-text-tertiary)]" />
+                <Search size={18} className="icon-muted" />
                 <input
                   type="text"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={tasksPageCopy.searchPlaceholder}
-                  className="w-full bg-transparent text-[15px] outline-none placeholder:text-[var(--color-text-tertiary)]"
+                  className="input-text"
                 />
               </label>
             </div>
@@ -199,7 +197,7 @@ export function TasksPage() {
         <div className="workbench-toolbar">
           <div className="workbench-toolbar__actions">
             <div className="workbench-toolbar__filter-anchor">
-              <ControlGlass className="glass-control" padding="0px" cornerRadius={18}>
+              <ControlGlass className="glass-control" density="flush" radius="lg">
                 <button
                   type="button"
                   className="glass-control__button"
@@ -262,7 +260,7 @@ export function TasksPage() {
                   >
                     <div className="dense-row__main">
                       <div className="dense-row__titleblock">
-                        <span className="font-mono text-[11px] text-[var(--color-text-tertiary)]">{task.id}</span>
+                        <span className="type-mono-xs">{task.id}</span>
                         <strong className="dense-row__title">{task.title}</strong>
                       </div>
                       <div className="dense-row__meta">
@@ -278,8 +276,8 @@ export function TasksPage() {
 
                 {filteredTasks.length === 0 ? (
                   <div className="empty-state">
-                    <p className="text-[15px] font-medium text-[var(--color-text-primary)]">{tasksPageCopy.emptyTitle}</p>
-                    <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{tasksPageCopy.emptySummary}</p>
+                    <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
+                    <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
                   </div>
                 ) : null}
               </div>
@@ -298,11 +296,11 @@ export function TasksPage() {
                 </div>
 
                 <div className="inspector-hero">
-                  <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{activeTask.id}</span>
-                  <h4 className="mt-3 text-[22px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)]">
+                  <span className="type-mono-sm">{activeTask.id}</span>
+                  <h4 className="type-heading-md mt-3">
                     {activeTask.title}
                   </h4>
-                  <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                  <p className="type-body-sm mt-3">
                     {activeTask.description ?? tasksPageCopy.briefFallback}
                   </p>
                 </div>
@@ -338,12 +336,12 @@ export function TasksPage() {
                         <div className="timeline-item__rail" />
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[13px] font-medium text-[var(--color-text-primary)]">{entry.event}</span>
-                            <span className="text-[12px] text-[var(--color-text-tertiary)]">
+                            <span className="type-label-sm">{entry.event}</span>
+                            <span className="type-text-xs">
                               {formatRelativeTimestamp(entry.created_at)}
                             </span>
                           </div>
-                          <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                          <p className="type-body-sm mt-2">
                             {entry.detail ?? tasksPageCopy.timelineEmptyDetail}
                           </p>
                         </div>
@@ -363,8 +361,8 @@ export function TasksPage() {
               </div>
             ) : (
               <div className="empty-state">
-                <p className="text-[15px] font-medium text-[var(--color-text-primary)]">{tasksPageCopy.emptyTitle}</p>
-                <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{tasksPageCopy.emptySummary}</p>
+                <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
+                <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
               </div>
             )}
           </aside>
@@ -378,11 +376,11 @@ export function TasksPage() {
           onClose={() => navigate('/tasks')}
         >
           <div className="sheet-summary">
-            <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{activeTask.id}</span>
-            <h4 className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-[var(--color-text-primary)]">
+            <span className="type-mono-sm">{activeTask.id}</span>
+            <h4 className="type-heading-lg mt-3">
               {activeTask.title}
             </h4>
-            <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+            <p className="type-body-sm mt-3">
               {activeTask.description ?? tasksPageCopy.briefFallback}
             </p>
           </div>
@@ -395,12 +393,12 @@ export function TasksPage() {
                   <div className="timeline-item__rail" />
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-medium text-[var(--color-text-primary)]">{entry.event}</span>
-                      <span className="text-[12px] text-[var(--color-text-tertiary)]">
+                      <span className="type-label-sm">{entry.event}</span>
+                      <span className="type-text-xs">
                         {formatRelativeTimestamp(entry.created_at)}
                       </span>
                     </div>
-                    <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                    <p className="type-body-sm mt-2">
                       {entry.detail ?? tasksPageCopy.timelineEmptyDetail}
                     </p>
                   </div>
@@ -415,10 +413,10 @@ export function TasksPage() {
               {(activeStatus?.progress_log ?? []).map((entry) => (
                 <div key={entry.id} className="data-row">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-[var(--color-text-primary)]">{entry.actor}</p>
-                    <p className="mt-2 text-[13px] leading-6 text-[var(--color-text-secondary)]">{entry.content}</p>
+                    <p className="type-label-sm">{entry.actor}</p>
+                    <p className="type-body-sm mt-2">{entry.content}</p>
                   </div>
-                  <span className="text-[12px] text-[var(--color-text-tertiary)]">{formatRelativeTimestamp(entry.created_at)}</span>
+                  <span className="type-text-xs">{formatRelativeTimestamp(entry.created_at)}</span>
                 </div>
               ))}
             </div>
@@ -430,8 +428,8 @@ export function TasksPage() {
               {(activeStatus?.subtasks ?? []).map((subtask) => (
                 <div key={subtask.id} className="data-row">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-medium text-[var(--color-text-primary)]">{subtask.title}</p>
-                    <p className="mt-2 text-[12px] text-[var(--color-text-secondary)]">
+                    <p className="type-heading-xs">{subtask.title}</p>
+                    <p className="type-text-xs mt-2">
                       {subtask.assignee} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
                     </p>
                   </div>
