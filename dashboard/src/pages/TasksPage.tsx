@@ -213,6 +213,7 @@ export function TasksPage() {
                   title={tasksPageCopy.filterAction}
                   emptyLabel={tasksPageCopy.filterEmpty}
                   sections={taskSections}
+                  align="end"
                   onClear={clearFilters}
                   onClose={() => setFilterOpen(false)}
                   footer={
@@ -346,16 +347,14 @@ export function TasksPage() {
                   </div>
                 </div>
 
-                <ControlGlass className="glass-control glass-control--cta" padding="0px" cornerRadius={20}>
-                  <button
-                    type="button"
-                    className="glass-control__button glass-control__button--primary"
-                    onClick={() => navigate(`/tasks/${activeTask.id}`)}
-                  >
-                    <ArrowRight size={16} />
-                    {tasksPageCopy.detailAction}
-                  </button>
-                </ControlGlass>
+                <button
+                  type="button"
+                  className="button-primary w-full justify-center"
+                  onClick={() => navigate(`/tasks/${activeTask.id}`)}
+                >
+                  <ArrowRight size={16} />
+                  {tasksPageCopy.detailAction}
+                </button>
               </div>
             ) : (
               <div className="empty-state">

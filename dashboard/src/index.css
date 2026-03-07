@@ -610,6 +610,7 @@ a {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  overflow: visible;
 }
 
 .workbench-shell__hero {
@@ -672,28 +673,24 @@ a {
   cursor: pointer;
 }
 
-.glass-control__button--primary {
-  min-width: 100%;
-  justify-content: center;
-}
-
-.glass-control--cta {
-  width: 100%;
-}
-
 .filter-popover {
   position: absolute;
-  right: 0;
+  left: 0;
   top: calc(100% + 12px);
   z-index: 30;
-  width: 380px;
-  max-width: min(380px, calc(100vw - 48px));
+  width: 420px;
+  max-width: min(420px, calc(100vw - 48px));
   border: 1px solid var(--color-border);
   border-radius: 24px;
   background: var(--color-panel-strong);
   box-shadow: var(--shadow-lg);
   backdrop-filter: blur(24px);
   padding: 18px;
+}
+
+.filter-popover--align-end {
+  left: auto;
+  right: 0;
 }
 
 .filter-popover__header,
@@ -717,6 +714,8 @@ a {
   flex-direction: column;
   gap: 16px;
   margin-top: 16px;
+  max-height: min(52vh, 420px);
+  overflow: auto;
 }
 
 .filter-popover__section {

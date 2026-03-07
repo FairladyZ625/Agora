@@ -17,6 +17,7 @@ interface WorkbenchFilterPopoverProps {
   title: string;
   emptyLabel: string;
   sections: FilterSection[];
+  align?: 'start' | 'end';
   onClear: () => void;
   onClose: () => void;
   footer?: ReactNode;
@@ -26,12 +27,17 @@ export function WorkbenchFilterPopover({
   title,
   emptyLabel,
   sections,
+  align = 'start',
   onClear,
   onClose,
   footer,
 }: WorkbenchFilterPopoverProps) {
   return (
-    <div className="filter-popover" role="dialog" aria-label={title}>
+    <div
+      className={align === 'end' ? 'filter-popover filter-popover--align-end' : 'filter-popover'}
+      role="dialog"
+      aria-label={title}
+    >
       <div className="filter-popover__header">
         <div>
           <p className="page-kicker">{title}</p>
