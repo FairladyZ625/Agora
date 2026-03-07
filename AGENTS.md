@@ -18,6 +18,15 @@ agora/
 ├── tests/          # 测试
 └── config/         # 配置示例
 
+dashboard/          # 前端 Dashboard（React + TypeScript + Vite）
+├── src/
+│   ├── components/ # ui/ (基础) + features/ (业务) + layouts/ (布局)
+│   ├── stores/     # Zustand 状态管理
+│   ├── lib/        # API Client + 工具函数
+│   ├── types/      # TypeScript 类型定义
+│   └── pages/      # 页面组件
+└── dist/           # 生产构建产物（FastAPI 静态挂载 /dashboard/）
+
 docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ├── 00-RAW-PRDS/       # 历史架构/需求原始文档（过渡保留）
 ├── 01-GOVERNANCE/     # 治理规范
@@ -53,21 +62,41 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - `docs/11-REFERENCE/testing-standard.md`
   - `docs/11-REFERENCE/execution-workflow-standard.md`
   - `docs/11-REFERENCE/walkthrough-standard.md`
+  - `docs/11-REFERENCE/dashboard-frontend-standard.md`(**Dashboard 前端开发权威规范**)
 - 适用范围：所有 Agent、所有文档类型（计划/发现/进度/用户文档/集成文档/walkthrough）
 - 执行要求：
   - 写文档前先读该规范；
   - 文档目录、命名、模板结构必须符合规范；
   - 评审文档时按规范中的“文档评审清单”逐项检查。
   - 开发执行必须遵循 `planning-with-files + ralph-loop` 持续收敛流程。
+  - **前端开发必须先读 `dashboard-frontend-standard.md`**，遵循技术栈、设计基调和检查清单。
 
 ## 技术栈
+
+### 后端
 
 - Python 3.11+
 - SQLite（WAL 模式 + 乐观锁）
 - typer（CLI 框架）
-- FastAPI + uvicorn（HTTP Server）
+- FastAPI + uvicorn（HTTP Server，端口 8420）
 - pytest（测试框架）
 - enum.Enum + str mixin
+
+### 前端（Dashboard）
+
+- Vite 7.x + React 19.x + TypeScript 5.x（strict mode）
+- Tailwind CSS 4.x（样式 + CSS 变量主题）
+- Zustand 5.x（状态管理）
+- React Router 7.x + Lucide React（图标）
+- 设计基调：**沉稳克制高信息密度**，参考 Linear/Raycast，**禁止紫色**
+- Light / Dark / System 三态主题
+- 详细规范：`docs/11-REFERENCE/dashboard-frontend-standard.md`
+
+### 开发环境一键启动
+
+```bash
+./docs/02-PRODUCT/scripts/dev-start.sh
+```
 
 ---
 
