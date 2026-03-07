@@ -5,6 +5,7 @@ import * as api from '@/lib/api';
 
 vi.mock('@/lib/api', () => ({
   listTasks: vi.fn(),
+  getTask: vi.fn(),
   getTaskStatus: vi.fn(),
   archonApprove: vi.fn(),
   archonReject: vi.fn(),
@@ -113,6 +114,31 @@ describe('task store live API mode', () => {
     expect(state.selectedTaskId).toBe('OC-001');
     expect(state.selectedTaskStatus).toBeNull();
     expect(state.error).toContain('status unavailable');
+  });
+
+  it('loads task summary and status together when selecting a task', async () => {
+    vi.mocked(api.getTask).mockResolvedValue(
+      buildTaskDto({
+        title: '来自 getTask 的标题',
+        current_stage: 'review',
+      }),
+    );
+    vi.mocked(api.getTaskStatus).mockResolvedValue(
+      buildTaskStatusDto({
+        task: buildTaskDto({
+          title: '来自 status 的标题',
+          current_stage: 'develop',
+        }),
+      }),
+    );
+
+    await useTaskStore.getState().selectTask('OC-001');
+    const state = useTaskStore.getState();
+
+    expect(api.getTask).toHaveBeenCalledWith('OC-001');
+    expect(api.getTaskStatus).toHaveBeenCalledWith('OC-001');
+    expect(state.selectedTaskStatus?.task.title).toBe('来自 getTask 的标题');
+    expect(state.selectedTaskStatus?.task.current_stage).toBe('review');
   });
 
   it('refreshes the selected task after a successful approval', async () => {

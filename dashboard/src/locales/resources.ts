@@ -96,9 +96,9 @@ export const resources = {
           bottom: '派发',
         },
         pulseItems: {
-          debateEntry: { label: '辩论入口', value: '多 Agent 汇流' },
-          decisionExit: { label: '裁决出口', value: 'Archon Gate' },
-          dispatchMode: { label: '执行方式', value: 'Structured Dispatch' },
+          running: { label: '运行中' },
+          waiting: { label: '待裁决' },
+          latestCompleted: { label: '最近完成' },
         },
         sideNotes: {
           brand: {
@@ -115,13 +115,14 @@ export const resources = {
         metrics: {
           activeLabel: '运行中的编排',
           waitingLabel: '待裁决事项',
-          craftsmenLabel: '活跃 craftsman',
-          cadenceLabel: '最近执行节拍',
+          participantsLabel: '当前参与 Agent',
+          latestCompletedLabel: '最近完成节点',
           activeNote: '当前仍在推进的多 Agent 任务',
           waitingNote: '需要 human-in-the-loop 的关键门控',
-          craftsmenNote: '当前接入并响应的执行工匠',
-          cadenceNote: '最近一次完成节点与现在的间隔',
+          participantsNote: '当前活跃任务里可识别到的参与 Agent 数量',
+          latestCompletedNote: '最近一个完成任务距今的时间间隔',
         },
+        latestCompletedFallback: '暂无完成任务',
         feedKicker: '执行流',
         feedTitle: '最近任务流转',
         feedAction: '全部任务',
@@ -151,6 +152,7 @@ export const resources = {
           inProgress: '进行中',
           gateWaiting: '待审批',
           completed: '已完成',
+          interrupted: '中断 / 停滞',
         },
       },
       createTask: {
@@ -479,9 +481,9 @@ export const resources = {
           bottom: 'Dispatch',
         },
         pulseItems: {
-          debateEntry: { label: 'Debate entry', value: 'Multi-agent convergence' },
-          decisionExit: { label: 'Decision exit', value: 'Archon Gate' },
-          dispatchMode: { label: 'Dispatch mode', value: 'Structured Dispatch' },
+          running: { label: 'Running now' },
+          waiting: { label: 'Awaiting decision' },
+          latestCompleted: { label: 'Latest completion' },
         },
         sideNotes: {
           brand: {
@@ -498,13 +500,14 @@ export const resources = {
         metrics: {
           activeLabel: 'Active orchestrations',
           waitingLabel: 'Pending decisions',
-          craftsmenLabel: 'Active craftsmen',
-          cadenceLabel: 'Latest execution cadence',
+          participantsLabel: 'Known active agents',
+          latestCompletedLabel: 'Latest completed node',
           activeNote: 'Multi-agent tasks that are still in motion',
           waitingNote: 'Critical gates that still require human-in-the-loop decisions',
-          craftsmenNote: 'Execution craftsmen currently connected and responding',
-          cadenceNote: 'Elapsed time since the latest completed node',
+          participantsNote: 'Distinct known agents visible in the active task set',
+          latestCompletedNote: 'Elapsed time since the most recently completed task',
         },
+        latestCompletedFallback: 'No completed tasks yet',
         feedKicker: 'Execution stream',
         feedTitle: 'Recent task flow',
         feedAction: 'All tasks',
@@ -534,6 +537,7 @@ export const resources = {
           inProgress: 'In progress',
           gateWaiting: 'Awaiting review',
           completed: 'Completed',
+          interrupted: 'Interrupted',
         },
       },
       createTask: {

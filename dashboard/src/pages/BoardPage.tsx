@@ -22,11 +22,15 @@ export function BoardPage() {
         { state: 'in_progress', label: boardCopy.columns.inProgress },
         { state: 'gate_waiting', label: boardCopy.columns.gateWaiting },
         { state: 'completed', label: boardCopy.columns.completed },
+        { state: 'interrupted', label: boardCopy.columns.interrupted },
       ] as const;
 
       return boardColumns.map((column) => ({
         ...column,
-        tasks: tasks.filter((task) => task.state === column.state),
+        tasks:
+          column.state === 'interrupted'
+            ? tasks.filter((task) => ['paused', 'blocked', 'cancelled'].includes(task.state))
+            : tasks.filter((task) => task.state === column.state),
       }));
     },
     [boardCopy, tasks],
@@ -49,7 +53,7 @@ export function BoardPage() {
       </section>
 
       <section className="surface-panel surface-panel--workspace">
-        <div className="grid gap-4 lg:grid-cols-4">
+        <div className="grid gap-4 xl:grid-cols-5">
           {columns.map((column) => (
             <div key={column.state} className="surface-panel surface-panel--muted space-y-3">
               <div className="section-title-row">

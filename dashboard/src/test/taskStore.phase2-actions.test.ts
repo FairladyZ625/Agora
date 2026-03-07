@@ -86,6 +86,7 @@ function buildTaskStatusDto(overrides: Partial<ApiTaskStatusDto> = {}): ApiTaskS
 describe('task store phase 2 actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto());
     useTaskStore.setState({
       tasks: [],
       selectedTaskId: 'OC-001',
@@ -99,6 +100,7 @@ describe('task store phase 2 actions', () => {
 
   it('creates a task and refreshes the live list', async () => {
     vi.mocked(api.createTask).mockResolvedValue(buildTaskDto({ id: 'OC-009', title: '新任务' }));
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto({ id: 'OC-009', title: '新任务' }));
     vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto({ id: 'OC-009', title: '新任务' })]);
     vi.mocked(api.getTaskStatus).mockResolvedValue(buildTaskStatusDto({ task: buildTaskDto({ id: 'OC-009', title: '新任务' }) }));
 
@@ -123,6 +125,7 @@ describe('task store phase 2 actions', () => {
 
   it('executes an advance action and refreshes the selected task context', async () => {
     vi.mocked(api.advanceTask).mockResolvedValue(buildTaskDto({ current_stage: 'review' }));
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto({ current_stage: 'review' }));
     vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto({ current_stage: 'review' })]);
     vi.mocked(api.getTaskStatus).mockResolvedValue(buildTaskStatusDto({ task: buildTaskDto({ current_stage: 'review' }) }));
 
@@ -137,6 +140,7 @@ describe('task store phase 2 actions', () => {
 
   it('reports subtask completion through the dedicated API and refreshes detail state', async () => {
     vi.mocked(api.subtaskDone).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto());
     vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto()]);
     vi.mocked(api.getTaskStatus).mockResolvedValue(
       buildTaskStatusDto({

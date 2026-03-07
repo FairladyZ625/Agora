@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   ArrowRight,
   Clock3,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router';
 import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
+import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
 import { useTaskStore } from '@/stores/taskStore';
 import { StateBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
@@ -25,31 +26,35 @@ export function DashboardHome() {
     void fetchTasks();
   }, [fetchTasks]);
 
-  const displayTasks = tasks;
-  const reviewItems = displayTasks.filter((task) => task.state === 'gate_waiting');
+  const homeMetrics = useMemo(
+    () => deriveDashboardHomeMetrics(tasks, dashboardHomeCopy.latestCompletedFallback),
+    [dashboardHomeCopy.latestCompletedFallback, tasks],
+  );
+  const displayTasks = homeMetrics.recentTasks;
+  const reviewItems = homeMetrics.reviewItems;
   const metrics = [
     {
       label: dashboardHomeCopy.metricLabels.active,
-      value: displayTasks.filter((task) => task.state === 'in_progress').length,
+      value: homeMetrics.activeCount,
       note: dashboardHomeCopy.metricNotes.active,
       icon: Orbit,
     },
     {
       label: dashboardHomeCopy.metricLabels.waiting,
-      value: reviewItems.length,
+      value: homeMetrics.waitingCount,
       note: dashboardHomeCopy.metricNotes.waiting,
       icon: Scale,
     },
     {
-      label: dashboardHomeCopy.metricLabels.craftsmen,
-      value: 6,
-      note: dashboardHomeCopy.metricNotes.craftsmen,
+      label: dashboardHomeCopy.metricLabels.participants,
+      value: homeMetrics.participantCount,
+      note: dashboardHomeCopy.metricNotes.participants,
       icon: UsersRound,
     },
     {
-      label: dashboardHomeCopy.metricLabels.cadence,
-      value: '12m',
-      note: dashboardHomeCopy.metricNotes.cadence,
+      label: dashboardHomeCopy.metricLabels.latestCompleted,
+      value: homeMetrics.latestCompletedLabel,
+      note: dashboardHomeCopy.metricNotes.latestCompleted,
       icon: Clock3,
     },
   ];
@@ -116,12 +121,18 @@ export function DashboardHome() {
                 </span>
               </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {dashboardHomeCopy.pulseItems.map((item) => (
-                  <div key={item.label} className="inline-stat">
-                    <span className="inline-stat__label">{item.label}</span>
-                    <span className="inline-stat__value">{item.value}</span>
-                  </div>
-                ))}
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{dashboardHomeCopy.pulseItemLabels.running}</span>
+                  <span className="inline-stat__value">{homeMetrics.activeCount}</span>
+                </div>
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{dashboardHomeCopy.pulseItemLabels.waiting}</span>
+                  <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
+                </div>
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{dashboardHomeCopy.pulseItemLabels.latestCompleted}</span>
+                  <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
+                </div>
               </div>
             </div>
 

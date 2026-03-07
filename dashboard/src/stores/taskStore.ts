@@ -33,6 +33,11 @@ async function refreshTaskContext(get: () => TaskStore, taskId: string) {
   await get().selectTask(taskId);
 }
 
+async function loadTaskStatus(taskId: string): Promise<TaskStatus> {
+  const [task, status] = await Promise.all([api.getTask(taskId), api.getTaskStatus(taskId)]);
+  return mapTaskStatusDto({ ...status, task });
+}
+
 export const useTaskStore = create<TaskStore>()((set, get) => ({
   tasks: [],
   selectedTaskId: null,
@@ -54,7 +59,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       // Refresh detail if a task is selected
       const { selectedTaskId } = get();
       if (selectedTaskId) {
-        const taskStatus = mapTaskStatusDto(await api.getTaskStatus(selectedTaskId));
+        const taskStatus = await loadTaskStatus(selectedTaskId);
         set({ selectedTaskStatus: taskStatus });
       }
       return 'live';
@@ -76,7 +81,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     }
     set({ selectedTaskId: id, detailLoading: true, error: null });
     try {
-      const taskStatus = mapTaskStatusDto(await api.getTaskStatus(id));
+      const taskStatus = await loadTaskStatus(id);
       set({ selectedTaskStatus: taskStatus, detailLoading: false });
     } catch (err) {
       set({

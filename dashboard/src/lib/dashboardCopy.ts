@@ -54,11 +54,11 @@ export function useDashboardHomeCopy() {
       right: t('home.pulseOrbitLabels.right'),
       bottom: t('home.pulseOrbitLabels.bottom'),
     },
-    pulseItems: [
-      { label: t('home.pulseItems.debateEntry.label'), value: t('home.pulseItems.debateEntry.value') },
-      { label: t('home.pulseItems.decisionExit.label'), value: t('home.pulseItems.decisionExit.value') },
-      { label: t('home.pulseItems.dispatchMode.label'), value: t('home.pulseItems.dispatchMode.value') },
-    ],
+    pulseItemLabels: {
+      running: t('home.pulseItems.running.label'),
+      waiting: t('home.pulseItems.waiting.label'),
+      latestCompleted: t('home.pulseItems.latestCompleted.label'),
+    },
     sideNotes: [
       {
         kicker: t('home.sideNotes.brand.kicker'),
@@ -74,15 +74,16 @@ export function useDashboardHomeCopy() {
     metricLabels: {
       active: t('home.metrics.activeLabel'),
       waiting: t('home.metrics.waitingLabel'),
-      craftsmen: t('home.metrics.craftsmenLabel'),
-      cadence: t('home.metrics.cadenceLabel'),
+      participants: t('home.metrics.participantsLabel'),
+      latestCompleted: t('home.metrics.latestCompletedLabel'),
     },
     metricNotes: {
       active: t('home.metrics.activeNote'),
       waiting: t('home.metrics.waitingNote'),
-      craftsmen: t('home.metrics.craftsmenNote'),
-      cadence: t('home.metrics.cadenceNote'),
+      participants: t('home.metrics.participantsNote'),
+      latestCompleted: t('home.metrics.latestCompletedNote'),
     },
+    latestCompletedFallback: t('home.latestCompletedFallback'),
     feedKicker: t('home.feedKicker'),
     feedTitle: t('home.feedTitle'),
     feedAction: t('home.feedAction'),
@@ -113,6 +114,7 @@ export function useBoardPageCopy() {
       inProgress: t('board.columns.inProgress'),
       gateWaiting: t('board.columns.gateWaiting'),
       completed: t('board.columns.completed'),
+      interrupted: t('board.columns.interrupted'),
     },
   };
 }

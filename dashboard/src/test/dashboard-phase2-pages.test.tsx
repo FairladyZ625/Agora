@@ -99,6 +99,16 @@ vi.mock('@/stores/feedbackStore', () => ({
 
 describe('dashboard phase 2 routes', () => {
   it('adds board and create-task routes to the main app shell', () => {
+    taskStoreState.tasks = [
+      ...taskStoreState.tasks,
+      {
+        ...taskStoreState.tasks[0],
+        id: 'OC-002',
+        title: '暂停中的任务',
+        state: 'paused',
+        sourceState: 'paused',
+      },
+    ];
     render(
       <MemoryRouter initialEntries={['/board']}>
         <App />
@@ -107,6 +117,8 @@ describe('dashboard phase 2 routes', () => {
 
     expect(screen.getByRole('heading', { name: '任务看板' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /创建 任务入口/i })).toBeInTheDocument();
+    expect(screen.getByText('中断 / 停滞')).toBeInTheDocument();
+    expect(screen.getByText('暂停中的任务')).toBeInTheDocument();
   });
 
   it('renders the create task workspace on the dedicated route', () => {
