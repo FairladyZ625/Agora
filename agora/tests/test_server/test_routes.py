@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from agora.server.app import create_app
+from agora.server.app import _resolve_dashboard_dir, create_app
 
 
 @pytest.fixture
@@ -136,6 +136,11 @@ class TestDashboardRoute:
         assert r.status_code == 200
         assert "text/html" in r.headers.get("content-type", "")
 
+    def test_dashboard_nested_route_returns_shell(self, client):
+        r = client.get("/dashboard/tasks")
+        assert r.status_code == 200
+        assert "text/html" in r.headers.get("content-type", "")
+
 
 class TestApiAuth:
     def test_missing_token_rejected_when_auth_enabled(self, secure_client):
@@ -168,3 +173,27 @@ class TestApiAuth:
     def test_health_is_public_even_when_auth_enabled(self, secure_client):
         r = secure_client.get("/api/health")
         assert r.status_code == 200
+
+
+class TestDashboardMountStrategy:
+    def test_prefers_dist_build_for_dashboard_mount(self, tmp_path):
+        project_root = tmp_path / "project"
+        dashboard_dir = project_root / "dashboard"
+        dist_dir = dashboard_dir / "dist"
+        dist_dir.mkdir(parents=True)
+        (dist_dir / "index.html").write_text("<html>dist</html>", encoding="utf-8")
+        (dashboard_dir / "index.html").write_text("<html>src</html>", encoding="utf-8")
+
+        resolved = _resolve_dashboard_dir(project_root)
+
+        assert resolved == dist_dir
+
+    def test_falls_back_to_dashboard_source_when_dist_is_missing(self, tmp_path):
+        project_root = tmp_path / "project"
+        dashboard_dir = project_root / "dashboard"
+        dashboard_dir.mkdir(parents=True)
+        (dashboard_dir / "index.html").write_text("<html>src</html>", encoding="utf-8")
+
+        resolved = _resolve_dashboard_dir(project_root)
+
+        assert resolved == dashboard_dir

@@ -98,6 +98,11 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 禁止基础组件暴露自由尺寸字符串/数字 API
   - 禁止页面私有定义局部容器宽度与 split 比例
   - 移动端必须按独立布局规则设计，不接受“桌面堆叠即适配”
+  - 真实 API 对接必须先定义 `types/api.ts` DTO，再通过 mapper 转成 `types/task.ts` ViewModel
+  - 页面和布局组件禁止直接消费后端 DTO
+  - 运行时禁止 silent mock fallback；请求失败必须显示真实错误
+  - 新增接口接入前必须先写 mapper/store 测试，再写页面接线
+  - Vite `/api` 代理与本地联调默认端口固定为 `8420`
 
 ### 开发环境一键启动
 

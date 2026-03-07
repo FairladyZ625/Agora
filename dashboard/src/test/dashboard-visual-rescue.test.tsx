@@ -5,23 +5,28 @@ import { DashboardHome } from '@/pages/DashboardHome';
 import { TasksPage } from '@/pages/TasksPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { createMockTasks, getMockTaskStatus } from '@/lib/mockDashboard';
 
 const fetchTasks = vi.fn(async () => undefined);
 const setMode = vi.fn();
 const setApiConfig = vi.fn();
 const setRefreshInterval = vi.fn();
 const setPauseOnHidden = vi.fn();
+const resolveReview = vi.fn(async () => 'live');
+
+const mockTasks = createMockTasks();
 
 const taskStoreState = {
-  tasks: [],
+  tasks: mockTasks,
   loading: false,
   detailLoading: false,
   error: null,
-  selectedTaskId: null,
-  selectedTaskStatus: null,
+  selectedTaskId: 'TSK-001',
+  selectedTaskStatus: getMockTaskStatus('TSK-001'),
   filters: { state: null, search: '' },
   fetchTasks,
   selectTask: vi.fn(async () => undefined),
+  resolveReview,
   setFilters: vi.fn(),
   clearError: vi.fn(),
 };
@@ -62,10 +67,14 @@ function renderWithRouter(node: React.ReactNode, initialEntries: string[] = ['/'
 describe('dashboard visual rescue target structure', () => {
   beforeEach(() => {
     fetchTasks.mockClear();
+    resolveReview.mockClear();
     setMode.mockClear();
     setApiConfig.mockClear();
     setRefreshInterval.mockClear();
     setPauseOnHidden.mockClear();
+    taskStoreState.tasks = createMockTasks();
+    taskStoreState.selectedTaskId = 'TSK-001';
+    taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-001');
   });
 
   it('adds a branded home hero that explains the Agora operating model', () => {
@@ -101,12 +110,14 @@ describe('dashboard visual rescue target structure', () => {
   });
 
   it('rebuilds the reviews page as a decision queue workspace', () => {
+    taskStoreState.selectedTaskId = 'TSK-002';
+    taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-002');
     renderWithRouter(<ReviewsPage />);
 
     expect(screen.getByRole('button', { name: /筛选与分类/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /打开裁决详情/i })).toBeInTheDocument();
     expect(screen.getByText('裁决说明')).toBeInTheDocument();
-    expect(screen.getByText('当前为 mock 可交互模式，所有裁决都会立即反馈到演示态势。')).toBeInTheDocument();
+    expect(screen.getByText('当前正在操作真实裁决接口。')).toBeInTheDocument();
   });
 
   it('opens a secondary task detail sheet on nested task routes', () => {
@@ -122,6 +133,8 @@ describe('dashboard visual rescue target structure', () => {
   });
 
   it('opens a secondary review detail sheet on nested review routes', () => {
+    taskStoreState.selectedTaskId = 'TSK-002';
+    taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-002');
     renderWithRouter(
       <Routes>
         <Route path="/reviews/:reviewId" element={<ReviewsPage />} />

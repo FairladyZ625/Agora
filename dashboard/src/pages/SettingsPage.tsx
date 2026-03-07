@@ -41,7 +41,11 @@ export function SettingsPage() {
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : settingsPageCopy.healthFailureFallback);
-      showMessage('网关未连通', '当前后端暂不可达，前端继续运行在可交互的 mock 阶段。', 'warning');
+      showMessage(
+        '网关未连通',
+        error instanceof Error ? error.message : settingsPageCopy.healthFailureFallback,
+        'warning',
+      );
     }
   };
 

@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { tasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
-import { formatRelativeTimestamp, getDisplayTasks, getMockTaskStatus, MOCK_TASK_STATUS } from '@/lib/mockDashboard';
+import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
@@ -29,6 +29,7 @@ export function TasksPage() {
   const tasks = useTaskStore((state) => state.tasks);
   const selectedTaskId = useTaskStore((state) => state.selectedTaskId);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const selectTask = useTaskStore((state) => state.selectTask);
   const navigate = useNavigate();
@@ -45,9 +46,9 @@ export function TasksPage() {
     void fetchTasks();
   }, [fetchTasks]);
 
-  const taskList = getDisplayTasks(tasks);
-  const availableTeams = useMemo(() => [...new Set(taskList.map((task) => task.team))], [taskList]);
-  const availableWorkflows = useMemo(() => [...new Set(taskList.map((task) => task.workflow))], [taskList]);
+  const taskList = tasks;
+  const availableTeams = useMemo(() => [...new Set(taskList.map((task) => task.teamLabel))], [taskList]);
+  const availableWorkflows = useMemo(() => [...new Set(taskList.map((task) => task.workflowLabel))], [taskList]);
 
   const filteredTasks = useMemo(() => {
     const lowered = deferredQuery.trim().toLowerCase();
@@ -59,8 +60,8 @@ export function TasksPage() {
         task.creator.toLowerCase().includes(lowered);
       const matchesState = stateFilter.length === 0 || stateFilter.includes(task.state);
       const matchesPriority = priorityFilter.length === 0 || priorityFilter.includes(task.priority);
-      const matchesTeam = teamFilter.length === 0 || teamFilter.includes(task.team);
-      const matchesWorkflow = workflowFilter.length === 0 || workflowFilter.includes(task.workflow);
+      const matchesTeam = teamFilter.length === 0 || teamFilter.includes(task.teamLabel);
+      const matchesWorkflow = workflowFilter.length === 0 || workflowFilter.includes(task.workflowLabel);
       return matchesQuery && matchesState && matchesPriority && matchesTeam && matchesWorkflow;
     });
   }, [deferredQuery, priorityFilter, stateFilter, taskList, teamFilter, workflowFilter]);
@@ -82,15 +83,16 @@ export function TasksPage() {
 
   const activeTask =
     filteredTasks.find((task) => task.id === (taskId ?? selectedTaskId)) ??
+    ((taskId || selectedTaskId) && selectedTaskStatus?.task.id === (taskId ?? selectedTaskId)
+      ? selectedTaskStatus.task
+      : null) ??
     filteredTasks[0] ??
     null;
 
   const activeStatus =
     activeTask && selectedTaskStatus?.task.id === activeTask.id
       ? selectedTaskStatus
-      : activeTask
-        ? MOCK_TASK_STATUS[activeTask.id] ?? getMockTaskStatus(activeTask.id)
-        : null;
+      : null;
 
   const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
 
@@ -120,7 +122,7 @@ export function TasksPage() {
       options: availableTeams.map((item) => ({
         value: item,
         label: item,
-        count: taskList.filter((task) => task.team === item).length,
+        count: taskList.filter((task) => task.teamLabel === item).length,
       })),
       selected: teamFilter,
       onToggle: (value: string) => setTeamFilter((current) => toggleValue(current, value)),
@@ -130,7 +132,7 @@ export function TasksPage() {
       options: availableWorkflows.map((item) => ({
         value: item,
         label: item,
-        count: taskList.filter((task) => task.workflow === item).length,
+        count: taskList.filter((task) => task.workflowLabel === item).length,
       })),
       selected: workflowFilter,
       onToggle: (value: string) => setWorkflowFilter((current) => toggleValue(current, value)),
@@ -185,6 +187,10 @@ export function TasksPage() {
             </div>
           </div>
         </div>
+
+        {error ? (
+          <div className="inline-alert inline-alert--danger">{error}</div>
+        ) : null}
 
         <div className="workbench-toolbar">
           <div className="workbench-toolbar__actions">
@@ -258,8 +264,8 @@ export function TasksPage() {
                       <div className="dense-row__meta">
                         <StateBadge state={task.state} />
                         <PriorityBadge priority={task.priority} />
-                        <span>{task.team}</span>
-                        <span>{task.workflow}</span>
+                        <span>{task.teamLabel}</span>
+                        <span>{task.workflowLabel}</span>
                       </div>
                     </div>
                     <span className="dense-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
@@ -306,12 +312,12 @@ export function TasksPage() {
                   <div className="detail-card">
                     <Link2 size={16} className="detail-card__icon" />
                     <span className="detail-card__label">{tasksPageCopy.workflowLabel}</span>
-                    <strong className="detail-card__value">{activeTask.workflow}</strong>
+                    <strong className="detail-card__value">{activeTask.workflowLabel}</strong>
                   </div>
                   <div className="detail-card">
                     <PanelRightOpen size={16} className="detail-card__icon" />
                     <span className="detail-card__label">{tasksPageCopy.teamLabel}</span>
-                    <strong className="detail-card__value">{activeTask.team}</strong>
+                    <strong className="detail-card__value">{activeTask.teamLabel}</strong>
                   </div>
                   <div className="detail-card">
                     <Clock3 size={16} className="detail-card__icon" />

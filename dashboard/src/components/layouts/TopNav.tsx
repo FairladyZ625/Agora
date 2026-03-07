@@ -44,7 +44,7 @@ export function TopNav({
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const loading = useTaskStore((state) => state.loading);
   const tasks = useTaskStore((state) => state.tasks);
-  const dataSource = useTaskStore((state) => state.dataSource);
+  const error = useTaskStore((state) => state.error);
   const { showMessage } = useFeedbackStore();
   const location = useLocation();
 
@@ -63,11 +63,12 @@ export function TopNav({
 
   const refreshWorkspace = async () => {
     const source = await fetchTasks();
+    const latestError = useTaskStore.getState().error;
     showMessage(
-      source === 'live' ? '已同步真实任务' : '已切回演示态势',
+      source === 'live' ? '已同步真实任务' : '同步失败',
       source === 'live'
         ? 'Agora 已从真实接口刷新当前工作区。'
-        : '后端暂不可达，当前按钮和页面继续使用可交互的 mock 工作流。',
+        : latestError ?? '任务接口暂不可达。',
       source === 'live' ? 'success' : 'warning',
     );
   };
@@ -97,9 +98,7 @@ export function TopNav({
         <div className="flex items-center gap-4">
           <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
             <span className="status-dot status-dot--info" />
-            {dataSource === 'live'
-              ? activeCount > 0 ? `${activeCount} 正在编排` : '队列平稳'
-              : '演示态势已接管'}
+            {error ? '接口异常' : activeCount > 0 ? `${activeCount} 正在编排` : '队列平稳'}
           </div>
 
           <div className="topbar-actions-group">

@@ -12,7 +12,7 @@ import { Link } from 'react-router';
 import { dashboardHomeCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { StateBadge } from '@/components/ui/StateBadge';
-import { formatRelativeTimestamp, getDisplayTasks } from '@/lib/mockDashboard';
+import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 
 export function DashboardHome() {
   const tasks = useTaskStore((state) => state.tasks);
@@ -24,7 +24,7 @@ export function DashboardHome() {
     void fetchTasks();
   }, [fetchTasks]);
 
-  const displayTasks = getDisplayTasks(tasks);
+  const displayTasks = tasks;
   const reviewItems = displayTasks.filter((task) => task.state === 'gate_waiting');
   const metrics = [
     {
@@ -185,7 +185,7 @@ export function DashboardHome() {
                   <div className="type-text-xs mt-3 flex flex-wrap items-center gap-2">
                     <span>{task.creator}</span>
                     <span className="meta-separator">/</span>
-                    <span>{task.team}</span>
+                    <span>{task.teamLabel}</span>
                     <span className="meta-separator">/</span>
                     <span>{formatRelativeTimestamp(task.updated_at)}</span>
                   </div>
@@ -226,6 +226,12 @@ export function DashboardHome() {
                   </p>
                 </Link>
               ))}
+              {reviewItems.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-heading-sm">{dashboardHomeCopy.reviewTitle}</p>
+                  <p className="type-body-sm mt-2">{dashboardHomeCopy.emptyTaskDescription}</p>
+                </div>
+              ) : null}
             </div>
           </section>
 

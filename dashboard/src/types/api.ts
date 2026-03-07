@@ -1,35 +1,52 @@
-/* ═══════════════════════════════════════════
-   Dashboard View Models
-   Derived from backend DTOs for stable UI rendering
-   ═══════════════════════════════════════════ */
-
-export type TaskState =
-  | 'pending'
-  | 'in_progress'
-  | 'gate_waiting'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
+export type ApiTaskState =
+  | 'draft'
+  | 'created'
+  | 'active'
+  | 'done'
+  | 'blocked'
   | 'paused'
-  | 'blocked';
+  | 'cancelled'
+  | 'orphaned';
 
-export type TaskPriority = 'low' | 'normal' | 'high' | 'critical';
+export interface ApiTeamMemberDto {
+  role: string;
+  agentId: string;
+  model_preference: string;
+}
 
-export interface Task {
+export interface ApiTeamDto {
+  members: ApiTeamMemberDto[];
+}
+
+export interface ApiWorkflowGateDto {
+  type?: string;
+  [key: string]: unknown;
+}
+
+export interface ApiWorkflowStageDto {
+  id: string;
+  name?: string;
+  mode?: string;
+  gate?: ApiWorkflowGateDto | null;
+}
+
+export interface ApiWorkflowDto {
+  type?: string;
+  stages?: ApiWorkflowStageDto[];
+}
+
+export interface ApiTaskDto {
   id: string;
   version: number;
   title: string;
   description: string | null;
   type: string;
-  priority: TaskPriority | string;
+  priority: string;
   creator: string;
-  state: TaskState;
+  state: ApiTaskState | string;
   current_stage: string | null;
-  teamLabel: string;
-  workflowLabel: string;
-  memberCount: number;
-  isReviewStage: boolean;
-  sourceState: string;
+  team: ApiTeamDto | null;
+  workflow: ApiWorkflowDto | null;
   scheduler: unknown;
   scheduler_snapshot: unknown;
   discord: unknown;
@@ -39,7 +56,7 @@ export interface Task {
   updated_at: string;
 }
 
-export interface FlowLogEntry {
+export interface ApiFlowLogDto {
   id: number;
   task_id: string;
   kind: string;
@@ -52,7 +69,7 @@ export interface FlowLogEntry {
   created_at: string;
 }
 
-export interface ProgressLogEntry {
+export interface ApiProgressLogDto {
   id: number;
   task_id: string;
   kind: string;
@@ -64,7 +81,7 @@ export interface ProgressLogEntry {
   created_at: string;
 }
 
-export interface Subtask {
+export interface ApiSubtaskDto {
   id: string;
   task_id: string;
   stage_id: string;
@@ -78,13 +95,13 @@ export interface Subtask {
   done_at: string | null;
 }
 
-export interface TaskStatus {
-  task: Task;
-  flow_log: FlowLogEntry[];
-  progress_log: ProgressLogEntry[];
-  subtasks: Subtask[];
+export interface ApiTaskStatusDto {
+  task: ApiTaskDto;
+  flow_log: ApiFlowLogDto[];
+  progress_log: ApiProgressLogDto[];
+  subtasks: ApiSubtaskDto[];
 }
 
-export interface HealthStatus {
+export interface ApiHealthDto {
   status: string;
 }

@@ -3,7 +3,6 @@ import { ArrowRight, CheckCircle2, Filter, ShieldAlert, XCircle } from 'lucide-r
 import { useNavigate, useParams } from 'react-router';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { reviewsPageCopy } from '@/lib/dashboardCopy';
-import { getMockTaskStatus, MOCK_REVIEW_QUEUE } from '@/lib/mockDashboard';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { ControlGlass } from '@/components/ui/ControlGlass';
@@ -24,7 +23,7 @@ export function ReviewsPage() {
   const resolveReview = useTaskStore((state) => state.resolveReview);
   const selectTask = useTaskStore((state) => state.selectTask);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
-  const dataSource = useTaskStore((state) => state.dataSource);
+  const error = useTaskStore((state) => state.error);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { reviewId } = useParams<{ reviewId: string }>();
@@ -51,11 +50,11 @@ export function ReviewsPage() {
         waitTime: '刚刚',
         summary: task.description ?? reviewsPageCopy.queueFallbackSummary,
         priority: task.priority,
-        impact: `${reviewsPageCopy.queueFallbackImpactPrefix} ${task.team} ${reviewsPageCopy.queueFallbackImpactSuffix}`,
+        impact: `${reviewsPageCopy.queueFallbackImpactPrefix} ${task.teamLabel} ${reviewsPageCopy.queueFallbackImpactSuffix}`,
         state: task.state,
       }));
 
-    return liveQueue.length > 0 ? liveQueue : MOCK_REVIEW_QUEUE;
+    return liveQueue;
   }, [tasks]);
 
   const availableGates = useMemo(() => [...new Set(queue.map((item) => item.gate))], [queue]);
@@ -81,30 +80,46 @@ export function ReviewsPage() {
     void selectTask(currentSelectedId);
   }, [currentSelectedId, selectTask]);
 
-  const selected = filteredQueue.find((item) => item.id === currentSelectedId) ?? filteredQueue[0] ?? null;
+  const selected =
+    filteredQueue.find((item) => item.id === currentSelectedId) ??
+    ((currentSelectedId || reviewId) && selectedTaskStatus?.task.id === currentSelectedId
+      ? {
+          id: selectedTaskStatus.task.id,
+          title: selectedTaskStatus.task.title,
+          creator: selectedTaskStatus.task.creator,
+          gate: selectedTaskStatus.task.current_stage ?? 'archon-review',
+          waitTime: '刚刚',
+          summary: selectedTaskStatus.task.description ?? reviewsPageCopy.queueFallbackSummary,
+          priority: selectedTaskStatus.task.priority,
+          impact: `${reviewsPageCopy.queueFallbackImpactPrefix} ${selectedTaskStatus.task.teamLabel} ${reviewsPageCopy.queueFallbackImpactSuffix}`,
+          state: selectedTaskStatus.task.state,
+        }
+      : null) ??
+    filteredQueue[0] ??
+    null;
   const selectedStatus =
     selected && selectedTaskStatus?.task.id === selected.id
       ? selectedTaskStatus
-      : selected
-        ? getMockTaskStatus(selected.id)
-        : null;
+      : null;
   const activeFilterCount = priorityFilter.length + gateFilter.length + creatorFilter.length;
 
   const handleDecision = async (decision: 'approve' | 'reject') => {
     if (!selected) return;
-    const source = await resolveReview(selected.id, decision, note);
-    showMessage(
-      decision === 'approve' ? '裁决已下达' : '任务已退回',
-      source === 'live'
-        ? decision === 'approve'
-          ? '真实接口已收到批准指令。'
-          : '真实接口已收到驳回指令。'
-        : decision === 'approve'
-          ? 'Mock 工作流已把任务重新送回执行主线。'
-          : 'Mock 工作流已把任务退回待修订状态。',
-      decision === 'approve' ? 'success' : 'warning',
-    );
-    setNote('');
+    try {
+      await resolveReview(selected.id, decision, note);
+      showMessage(
+        decision === 'approve' ? '裁决已下达' : '任务已退回',
+        decision === 'approve' ? '真实接口已收到批准指令。' : '真实接口已收到驳回指令。',
+        decision === 'approve' ? 'success' : 'warning',
+      );
+      setNote('');
+    } catch (reviewError) {
+      showMessage(
+        '裁决失败',
+        reviewError instanceof Error ? reviewError.message : String(reviewError),
+        'warning',
+      );
+    }
   };
 
   const reviewSections = useMemo(() => [
@@ -173,6 +188,10 @@ export function ReviewsPage() {
             </div>
           </div>
         </div>
+
+        {error ? (
+          <div className="inline-alert inline-alert--danger">{error}</div>
+        ) : null}
 
         <div className="workbench-toolbar">
           <div className="workbench-toolbar__actions">
@@ -349,9 +368,7 @@ export function ReviewsPage() {
                 </button>
 
                 <p className="type-text-xs">
-                  {dataSource === 'live'
-                    ? '当前正在操作真实裁决接口。'
-                    : '当前为 mock 可交互模式，所有裁决都会立即反馈到演示态势。'}
+                  当前正在操作真实裁决接口。
                 </p>
               </div>
             ) : (

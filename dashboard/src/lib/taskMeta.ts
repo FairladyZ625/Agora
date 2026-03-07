@@ -16,6 +16,7 @@ const stateMeta: Record<string, BadgeMeta> = {
   failed: { label: '失败', tone: 'danger' },
   cancelled: { label: '已取消', tone: 'danger' },
   paused: { label: '已暂停', tone: 'neutral' },
+  blocked: { label: '已阻塞', tone: 'danger' },
 };
 
 const priorityMeta: Record<string, BadgeMeta> = {

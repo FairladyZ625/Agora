@@ -1,4 +1,4 @@
-import type { Task, TaskStatus, HealthStatus } from '@/types/task';
+import type { ApiHealthDto, ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
 
 class ApiError extends Error {
   status: number;
@@ -55,17 +55,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── Task APIs ────────────────────────────────────
 
-export function listTasks(state?: string): Promise<Task[]> {
+export function listTasks(state?: string): Promise<ApiTaskDto[]> {
   const params = state ? `?state=${encodeURIComponent(state)}` : '';
-  return request<Task[]>(`/tasks${params}`);
+  return request<ApiTaskDto[]>(`/tasks${params}`);
 }
 
-export function getTask(taskId: string): Promise<Task> {
-  return request<Task>(`/tasks/${taskId}`);
+export function getTask(taskId: string): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}`);
 }
 
-export function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  return request<TaskStatus>(`/tasks/${taskId}/status`);
+export function getTaskStatus(taskId: string): Promise<ApiTaskStatusDto> {
+  return request<ApiTaskStatusDto>(`/tasks/${taskId}/status`);
 }
 
 // ── Task Operations ──────────────────────────────
@@ -73,8 +73,8 @@ export function getTaskStatus(taskId: string): Promise<TaskStatus> {
 export function archonApprove(
   taskId: string,
   comment = '',
-): Promise<Task> {
-  return request<Task>(`/tasks/${taskId}/archon-approve`, {
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/archon-approve`, {
     method: 'POST',
     body: JSON.stringify({ comment }),
   });
@@ -83,8 +83,8 @@ export function archonApprove(
 export function archonReject(
   taskId: string,
   reason: string,
-): Promise<Task> {
-  return request<Task>(`/tasks/${taskId}/archon-reject`, {
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(`/tasks/${taskId}/archon-reject`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
@@ -92,8 +92,8 @@ export function archonReject(
 
 // ── Health ────────────────────────────────────────
 
-export function healthCheck(): Promise<HealthStatus> {
-  return request<HealthStatus>('/health');
+export function healthCheck(): Promise<ApiHealthDto> {
+  return request<ApiHealthDto>('/health');
 }
 
 export { ApiError };
