@@ -1,5 +1,16 @@
-import type { ApiHealthDto, ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
+import type {
+  ApiAgentsStatusDto,
+  ApiArchiveJobDto,
+  ApiHealthDto,
+  ApiPromoteTodoResultDto,
+  ApiTaskDto,
+  ApiTaskStatusDto,
+  ApiTemplateDetailDto,
+  ApiTemplateSummaryDto,
+  ApiTodoDto,
+} from '@/types/api';
 import type { CreateTaskInput } from '@/types/task';
+import type { TodoFilter } from '@/types/dashboard';
 
 class ApiError extends Error {
   status: number;
@@ -42,6 +53,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const res = await fetch(`${apiBase}${path}`, {
+    method: init?.method ?? 'GET',
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
   });
@@ -188,6 +200,90 @@ export function archonReject(
 
 export function healthCheck(): Promise<ApiHealthDto> {
   return request<ApiHealthDto>('/health');
+}
+
+// ── Agents / Archive / Todos / Templates ────────
+
+export function getAgentsStatus(): Promise<ApiAgentsStatusDto> {
+  return request<ApiAgentsStatusDto>('/agents/status');
+}
+
+export function listArchiveJobs(filters?: { status?: string; taskId?: string }): Promise<ApiArchiveJobDto[]> {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set('status', filters.status);
+  if (filters?.taskId) params.set('task_id', filters.taskId);
+  const query = params.toString();
+  return request<ApiArchiveJobDto[]>(`/archive/jobs${query ? `?${query}` : ''}`);
+}
+
+export function getArchiveJob(jobId: number): Promise<ApiArchiveJobDto> {
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}`);
+}
+
+export function retryArchiveJob(jobId: number, reason = ''): Promise<ApiArchiveJobDto> {
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/retry`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function listTodos(status?: Exclude<TodoFilter, 'all'>): Promise<ApiTodoDto[]> {
+  const params = status ? `?status=${encodeURIComponent(status)}` : '';
+  return request<ApiTodoDto[]>(`/todos${params}`);
+}
+
+export function createTodo(input: {
+  text: string;
+  due?: string | null;
+  tags?: string[];
+}): Promise<ApiTodoDto> {
+  return request<ApiTodoDto>('/todos', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTodo(
+  todoId: number,
+  input: {
+    text?: string;
+    due?: string | null;
+    tags?: string[];
+    status?: 'pending' | 'done';
+  },
+): Promise<ApiTodoDto> {
+  return request<ApiTodoDto>(`/todos/${todoId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteTodo(todoId: number): Promise<{ deleted: true }> {
+  return request<{ deleted: true }>(`/todos/${todoId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function promoteTodo(
+  todoId: number,
+  input: {
+    type?: string;
+    creator?: string;
+    priority?: string;
+  },
+): Promise<ApiPromoteTodoResultDto> {
+  return request<ApiPromoteTodoResultDto>(`/todos/${todoId}/promote`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function listTemplates(): Promise<ApiTemplateSummaryDto[]> {
+  return request<ApiTemplateSummaryDto[]>('/templates');
+}
+
+export function getTemplate(templateId: string): Promise<ApiTemplateDetailDto> {
+  return request<ApiTemplateDetailDto>(`/templates/${templateId}`);
 }
 
 export { ApiError };

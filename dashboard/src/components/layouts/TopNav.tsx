@@ -83,6 +83,10 @@ export function TopNav({
   const meta = (() => {
     if (location.pathname.startsWith('/tasks/new')) return pageMetaCopy['/tasks/new'];
     if (location.pathname.startsWith('/tasks')) return pageMetaCopy['/tasks'];
+    if (location.pathname.startsWith('/agents')) return pageMetaCopy['/agents'];
+    if (location.pathname.startsWith('/todos')) return pageMetaCopy['/todos'];
+    if (location.pathname.startsWith('/archive')) return pageMetaCopy['/archive'];
+    if (location.pathname.startsWith('/templates')) return pageMetaCopy['/templates'];
     if (location.pathname.startsWith('/reviews')) return pageMetaCopy['/reviews'];
     if (location.pathname.startsWith('/settings')) return pageMetaCopy['/settings'];
     if (location.pathname.startsWith('/board')) return pageMetaCopy['/board'];

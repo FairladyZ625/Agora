@@ -14,6 +14,10 @@ export function useShellCopy() {
       { to: '/', key: 'overview', label: t('shell.nav.overview.label'), hint: t('shell.nav.overview.hint') },
       { to: '/board', key: 'board', label: t('shell.nav.board.label'), hint: t('shell.nav.board.hint') },
       { to: '/tasks', key: 'tasks', label: t('shell.nav.tasks.label'), hint: t('shell.nav.tasks.hint') },
+      { to: '/agents', key: 'agents', label: t('shell.nav.agents.label'), hint: t('shell.nav.agents.hint') },
+      { to: '/todos', key: 'todos', label: t('shell.nav.todos.label'), hint: t('shell.nav.todos.hint') },
+      { to: '/archive', key: 'archive', label: t('shell.nav.archive.label'), hint: t('shell.nav.archive.hint') },
+      { to: '/templates', key: 'templates', label: t('shell.nav.templates.label'), hint: t('shell.nav.templates.hint') },
       { to: '/tasks/new', key: 'create', label: t('shell.nav.create.label'), hint: t('shell.nav.create.hint') },
       { to: '/reviews', key: 'reviews', label: t('shell.nav.reviews.label'), hint: t('shell.nav.reviews.hint') },
       { to: '/settings', key: 'settings', label: t('shell.nav.settings.label'), hint: t('shell.nav.settings.hint') },
@@ -28,6 +32,10 @@ export function usePageMetaCopy() {
     '/': { title: t('pageMeta.home.title') },
     '/board': { title: t('pageMeta.board.title') },
     '/tasks': { title: t('pageMeta.tasks.title') },
+    '/agents': { title: t('pageMeta.agents.title') },
+    '/todos': { title: t('pageMeta.todos.title') },
+    '/archive': { title: t('pageMeta.archive.title') },
+    '/templates': { title: t('pageMeta.templates.title') },
     '/tasks/new': { title: t('pageMeta.createTask.title') },
     '/reviews': { title: t('pageMeta.reviews.title') },
     '/settings': { title: t('pageMeta.settings.title') },
@@ -268,6 +276,97 @@ export function useReviewsPageCopy() {
       wait: t('reviews.tableHeaders.wait'),
     },
     liveApiNotice: t('reviews.liveApiNotice'),
+  };
+}
+
+export function useAgentsPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('agents.kicker'),
+    title: t('agents.title'),
+    summary: t('agents.summary'),
+    metrics: {
+      activeTasks: t('agents.metrics.activeTasks'),
+      activeAgents: t('agents.metrics.activeAgents'),
+      busyCraftsmen: t('agents.metrics.busyCraftsmen'),
+    },
+    agentListTitle: t('agents.agentListTitle'),
+    craftsmenTitle: t('agents.craftsmenTitle'),
+    emptyAgents: t('agents.emptyAgents'),
+    emptyCraftsmen: t('agents.emptyCraftsmen'),
+    roleLabel: t('agents.roleLabel'),
+    loadLabel: t('agents.loadLabel'),
+    taskCountLabel: t('agents.taskCountLabel'),
+    subtaskCountLabel: t('agents.subtaskCountLabel'),
+    currentTaskLabel: t('agents.currentTaskLabel'),
+  };
+}
+
+export function useTodosPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('todos.kicker'),
+    title: t('todos.title'),
+    summary: t('todos.summary'),
+    inputLabel: t('todos.inputLabel'),
+    inputPlaceholder: t('todos.inputPlaceholder'),
+    dueLabel: t('todos.dueLabel'),
+    tagsLabel: t('todos.tagsLabel'),
+    tagsPlaceholder: t('todos.tagsPlaceholder'),
+    createAction: t('todos.createAction'),
+    filters: {
+      all: t('todos.filters.all'),
+      pending: t('todos.filters.pending'),
+      done: t('todos.filters.done'),
+    },
+    emptyTitle: t('todos.emptyTitle'),
+    promoteAction: t('todos.promoteAction'),
+    deleteAction: t('todos.deleteAction'),
+    doneAction: t('todos.doneAction'),
+    reopenAction: t('todos.reopenAction'),
+    promotedPrefix: t('todos.promotedPrefix'),
+  };
+}
+
+export function useArchivePageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('archive.kicker'),
+    title: t('archive.title'),
+    summary: t('archive.summary'),
+    filters: {
+      all: t('archive.filters.all'),
+      pending: t('archive.filters.pending'),
+      failed: t('archive.filters.failed'),
+      completed: t('archive.filters.completed'),
+    },
+    taskIdLabel: t('archive.taskIdLabel'),
+    detailTitle: t('archive.detailTitle'),
+    emptyTitle: t('archive.emptyTitle'),
+    payloadTitle: t('archive.payloadTitle'),
+    retryAction: t('archive.retryAction'),
+    requestedAtLabel: t('archive.requestedAtLabel'),
+    completedAtLabel: t('archive.completedAtLabel'),
+    targetPathLabel: t('archive.targetPathLabel'),
+  };
+}
+
+export function useTemplatesPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('templates.kicker'),
+    title: t('templates.title'),
+    summary: t('templates.summary'),
+    listTitle: t('templates.listTitle'),
+    detailTitle: t('templates.detailTitle'),
+    governanceLabel: t('templates.governanceLabel'),
+    teamLabel: t('templates.teamLabel'),
+    stagesTitle: t('templates.stagesTitle'),
+    emptyTitle: t('templates.emptyTitle'),
   };
 }
 

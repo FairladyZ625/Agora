@@ -105,3 +105,97 @@ export interface ApiTaskStatusDto {
 export interface ApiHealthDto {
   status: string;
 }
+
+export interface ApiAgentSummaryDto {
+  active_tasks: number;
+  active_agents: number;
+  busy_craftsmen: number;
+}
+
+export interface ApiAgentDto {
+  id: string;
+  role: string | null;
+  status: string;
+  active_task_ids: string[];
+  active_subtask_ids: string[];
+  load: number;
+  last_active_at: string | null;
+}
+
+export interface ApiCraftsmanDto {
+  id: string;
+  status: string;
+  task_id: string;
+  subtask_id: string;
+  title: string;
+  running_since: string | null;
+}
+
+export interface ApiAgentsStatusDto {
+  summary: ApiAgentSummaryDto;
+  agents: ApiAgentDto[];
+  craftsmen: ApiCraftsmanDto[];
+}
+
+export interface ApiArchiveJobDto {
+  id: number;
+  task_id: string;
+  task_title: string;
+  task_type: string;
+  status: string;
+  target_path: string | null;
+  writer_agent: string | null;
+  commit_hash: string | null;
+  requested_at: string;
+  completed_at: string | null;
+  payload: Record<string, unknown> | null;
+}
+
+export interface ApiTodoDto {
+  id: number;
+  text: string;
+  status: 'pending' | 'done' | string;
+  due: string | null;
+  created_at: string;
+  completed_at: string | null;
+  tags: string[];
+  promoted_to: string | null;
+}
+
+export interface ApiPromoteTodoResultDto {
+  todo: ApiTodoDto;
+  task: {
+    id: string;
+    title?: string | null;
+    [key: string]: unknown;
+  };
+}
+
+export interface ApiTemplateSummaryDto {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  governance: unknown;
+  stage_count: number;
+}
+
+export interface ApiTemplateStageDto {
+  id: string;
+  name?: string;
+  mode?: string;
+  gate?: {
+    type?: string;
+    [key: string]: unknown;
+  } | null;
+}
+
+export interface ApiTemplateDetailDto {
+  type: string;
+  name?: string;
+  description?: string;
+  governance?: unknown;
+  defaultTeam?: Record<string, { suggested?: string[]; [key: string]: unknown }>;
+  stages?: ApiTemplateStageDto[];
+  [key: string]: unknown;
+}
