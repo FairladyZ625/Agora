@@ -1,0 +1,16 @@
+{
+  "name": "@agora-ts/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@agora-ts/contracts": "0.0.0",
+    "fastify": "^5.6.1"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "agora-ts",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc -b tsconfig.workspace.json",
+    "test": "vitest run",
+    "dev:server": "npm run dev -w @agora-ts/server",
+    "dev:cli": "npm run dev -w @agora-ts/cli"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.8"
+  }
+}

@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest';
+import { taskPrioritySchema, taskStateSchema } from './task.js';
+import { agentsStatusSchema, todoItemSchema } from './dashboard.js';
+
+describe('agora-ts contracts bootstrap', () => {
+  it('parses canonical task states and rejects invalid values', () => {
+    expect(taskStateSchema.parse('active')).toBe('active');
+    expect(taskStateSchema.parse('done')).toBe('done');
+    expect(() => taskStateSchema.parse('unknown')).toThrow();
+  });
+
+  it('parses task priorities', () => {
+    expect(taskPrioritySchema.parse('normal')).toBe('normal');
+    expect(() => taskPrioritySchema.parse('urgent')).toThrow();
+  });
+
+  it('parses dashboard expansion DTOs', () => {
+    expect(
+      agentsStatusSchema.parse({
+        summary: {
+          active_tasks: 1,
+          active_agents: 2,
+          busy_craftsmen: 0,
+        },
+        agents: [],
+        craftsmen: [],
+      }).summary.active_tasks,
+    ).toBe(1);
+
+    expect(
+      todoItemSchema.parse({
+        id: 1,
+        text: '补 TS workspace',
+        status: 'pending',
+        due: null,
+        created_at: '2026-03-07T00:00:00Z',
+        completed_at: null,
+        tags: [],
+        promoted_to: null,
+      }).status,
+    ).toBe('pending');
+  });
+});
