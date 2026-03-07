@@ -1,0 +1,135 @@
+import { z } from 'zod';
+import { taskPrioritySchema, taskStateSchema } from './task.js';
+
+export const teamMemberSchema = z.object({
+  role: z.string(),
+  agentId: z.string(),
+  model_preference: z.string(),
+});
+
+export const teamSchema = z.object({
+  members: z.array(teamMemberSchema),
+});
+export type TeamDto = z.infer<typeof teamSchema>;
+
+export const workflowGateSchema = z.object({
+  type: z.string().optional(),
+}).passthrough();
+
+export const workflowStageSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  mode: z.string().optional(),
+  gate: workflowGateSchema.nullish(),
+});
+
+export const workflowSchema = z.object({
+  type: z.string().optional(),
+  stages: z.array(workflowStageSchema).optional(),
+});
+export type WorkflowDto = z.infer<typeof workflowSchema>;
+
+export const taskSchema = z.object({
+  id: z.string(),
+  version: z.number().int().positive(),
+  title: z.string(),
+  description: z.string().nullable(),
+  type: z.string(),
+  priority: taskPrioritySchema.or(z.string()),
+  creator: z.string(),
+  state: taskStateSchema.or(z.string()),
+  current_stage: z.string().nullable(),
+  team: teamSchema.nullable(),
+  workflow: workflowSchema.nullable(),
+  scheduler: z.unknown(),
+  scheduler_snapshot: z.unknown(),
+  discord: z.unknown(),
+  metrics: z.unknown(),
+  error_detail: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const flowLogSchema = z.object({
+  id: z.number().int().nonnegative(),
+  task_id: z.string(),
+  kind: z.string(),
+  event: z.string(),
+  stage_id: z.string().nullable(),
+  from_state: z.string().nullable(),
+  to_state: z.string().nullable(),
+  detail: z.string().nullable(),
+  actor: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export const progressLogSchema = z.object({
+  id: z.number().int().nonnegative(),
+  task_id: z.string(),
+  kind: z.string(),
+  stage_id: z.string().nullable(),
+  subtask_id: z.string().nullable(),
+  content: z.string(),
+  artifacts: z.string().nullable(),
+  actor: z.string(),
+  created_at: z.string(),
+});
+
+export const subtaskSchema = z.object({
+  id: z.string(),
+  task_id: z.string(),
+  stage_id: z.string(),
+  title: z.string(),
+  assignee: z.string(),
+  status: z.string(),
+  output: z.string().nullable(),
+  craftsman_type: z.string().nullable(),
+  dispatch_status: z.string().nullable(),
+  dispatched_at: z.string().nullable(),
+  done_at: z.string().nullable(),
+});
+
+export const taskStatusSchema = z.object({
+  task: taskSchema,
+  flow_log: z.array(flowLogSchema),
+  progress_log: z.array(progressLogSchema),
+  subtasks: z.array(subtaskSchema),
+});
+
+export const createTaskRequestSchema = z.object({
+  title: z.string().min(1),
+  type: z.string().min(1),
+  creator: z.string().min(1),
+  description: z.string(),
+  priority: taskPrioritySchema.or(z.string()),
+});
+
+export const advanceTaskRequestSchema = z.object({
+  caller_id: z.string().min(1),
+});
+
+export const approveTaskRequestSchema = z.object({
+  approver_id: z.string().min(1),
+  comment: z.string().default(''),
+});
+
+export const rejectTaskRequestSchema = z.object({
+  rejector_id: z.string().min(1),
+  reason: z.string().default(''),
+});
+
+export const confirmTaskRequestSchema = z.object({
+  voter_id: z.string().min(1),
+  vote: z.enum(['approve', 'reject']),
+  comment: z.string().default(''),
+});
+
+export const subtaskDoneRequestSchema = z.object({
+  subtask_id: z.string().min(1),
+  caller_id: z.string().min(1),
+  output: z.string().default(''),
+});
+
+export const taskNoteRequestSchema = z.object({
+  reason: z.string().default(''),
+});

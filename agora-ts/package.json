@@ -9,14 +9,18 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "tsc -b tsconfig.workspace.json",
+    "lint": "eslint .",
     "test": "vitest run",
     "dev:server": "npm run dev -w @agora-ts/server",
     "dev:cli": "npm run dev -w @agora-ts/cli"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0",
     "vitest": "^4.0.8"
   }
 }
