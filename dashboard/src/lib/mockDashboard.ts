@@ -1,4 +1,5 @@
 import type { Task, TaskPriority, TaskState, TaskStatus } from '@/types/task';
+import { translate } from '@/lib/i18n';
 
 function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
@@ -383,14 +384,14 @@ export function formatRelativeTimestamp(value: string): string {
 
   const diffMs = Date.now() - timestamp;
   const diffMinutes = Math.floor(diffMs / 60_000);
-  if (diffMinutes < 1) return '刚刚';
-  if (diffMinutes < 60) return `${diffMinutes} 分钟前`;
+  if (diffMinutes < 1) return translate('time.justNow');
+  if (diffMinutes < 60) return translate('time.minutesAgo', { count: diffMinutes });
 
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} 小时前`;
+  if (diffHours < 24) return translate('time.hoursAgo', { count: diffHours });
 
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays} 天前`;
+  if (diffDays < 7) return translate('time.daysAgo', { count: diffDays });
 
   const date = new Date(timestamp);
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;

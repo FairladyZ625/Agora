@@ -1,18 +1,19 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Link2, Palette, RefreshCcw, Shield } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import * as api from '@/lib/api';
-import { settingsPageCopy } from '@/lib/dashboardCopy';
+import { useSettingsPageCopy } from '@/lib/dashboardCopy';
+import { useLocale } from '@/lib/i18n';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 
-const themeOptions: { value: ThemeMode; label: string; description: string }[] = [
-  { value: 'light', label: settingsPageCopy.appearanceLabels.light, description: settingsPageCopy.appearanceDescriptions.light },
-  { value: 'dark', label: settingsPageCopy.appearanceLabels.dark, description: settingsPageCopy.appearanceDescriptions.dark },
-  { value: 'system', label: settingsPageCopy.appearanceLabels.system, description: settingsPageCopy.appearanceDescriptions.system },
-];
-
 export function SettingsPage() {
+  const { t } = useTranslation();
+  const settingsPageCopy = useSettingsPageCopy();
+  const { locale, setLocale } = useLocale();
+  const cleanupTasks = useTaskStore((state) => state.cleanupTasks);
   const {
     apiBase,
     apiToken,
@@ -28,8 +29,18 @@ export function SettingsPage() {
   const [localToken, setLocalToken] = useState(apiToken);
   const [showToken, setShowToken] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [cleanupLoading, setCleanupLoading] = useState(false);
   const [message, setMessage] = useState('');
   const { showMessage } = useFeedbackStore();
+  const themeOptions: { value: ThemeMode; label: string; description: string }[] = [
+    { value: 'light', label: settingsPageCopy.appearanceLabels.light, description: settingsPageCopy.appearanceDescriptions.light },
+    { value: 'dark', label: settingsPageCopy.appearanceLabels.dark, description: settingsPageCopy.appearanceDescriptions.dark },
+    { value: 'system', label: settingsPageCopy.appearanceLabels.system, description: settingsPageCopy.appearanceDescriptions.system },
+  ];
+  const localeOptions = [
+    { value: 'zh-CN' as const, label: t('common.localeName.zh'), description: t('common.languageOptionDescription.zh') },
+    { value: 'en-US' as const, label: t('common.localeName.en'), description: t('common.languageOptionDescription.en') },
+  ];
 
   const testConnection = async () => {
     setStatus('loading');
@@ -37,15 +48,35 @@ export function SettingsPage() {
       await api.healthCheck();
       setStatus('success');
       setMessage(settingsPageCopy.healthSuccess);
-      showMessage('连接成功', settingsPageCopy.healthSuccess, 'success');
+      showMessage(t('feedback.connectionSuccessTitle'), settingsPageCopy.healthSuccess, 'success');
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : settingsPageCopy.healthFailureFallback);
       showMessage(
-        '网关未连通',
+        t('feedback.gatewayFailureTitle'),
         error instanceof Error ? error.message : settingsPageCopy.healthFailureFallback,
         'warning',
       );
+    }
+  };
+
+  const handleCleanup = async () => {
+    setCleanupLoading(true);
+    try {
+      const cleaned = await cleanupTasks();
+      showMessage(
+        t('feedback.cleanupSuccessTitle'),
+        settingsPageCopy.cleanupSuccess(cleaned),
+        'success',
+      );
+    } catch (cleanupError) {
+      showMessage(
+        t('feedback.cleanupFailureTitle'),
+        cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        'warning',
+      );
+    } finally {
+      setCleanupLoading(false);
     }
   };
 
@@ -100,18 +131,25 @@ export function SettingsPage() {
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setApiConfig(localBase, localToken);
-              showMessage('配置已保存', '新的 API 基址和令牌已经写入本地工作台。', 'success');
-            }}
-            className="button-primary"
-          >
+            <button
+              type="button"
+              onClick={() => {
+                setApiConfig(localBase, localToken);
+                showMessage(
+                  t('feedback.configSavedTitle'),
+                  t('feedback.configSavedDetail'),
+                  'success',
+                );
+              }}
+              className="button-primary"
+            >
             {settingsPageCopy.saveAction}
           </button>
           <button type="button" onClick={testConnection} className="button-secondary">
             {settingsPageCopy.testAction}
+          </button>
+          <button type="button" onClick={() => void handleCleanup()} className="button-secondary">
+            {cleanupLoading ? t('common.cleanupLoading') : settingsPageCopy.cleanupAction}
           </button>
           {status !== 'idle' && (
             <span className={status === 'success' ? 'status-pill status-pill--success' : status === 'error' ? 'status-pill status-pill--danger' : 'status-pill status-pill--info'}>
@@ -178,10 +216,48 @@ export function SettingsPage() {
               type="button"
               onClick={() => {
                 setMode(option.value);
-                showMessage('外观已切换', `当前主题已切换到${option.label}。`, 'info');
+                showMessage(
+                  t('feedback.themeChangedTitle'),
+                  t('feedback.themeChangedDetail', { label: option.label }),
+                  'info',
+                );
               }}
               className="surface-panel surface-panel--muted text-left"
               style={mode === option.value ? { borderColor: 'var(--color-primary)' } : undefined}
+            >
+              <p className="type-heading-xs">{option.label}</p>
+              <p className="type-body-sm mt-2">{option.description}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="surface-panel surface-panel--workspace">
+        <div className="section-title-row">
+          <div>
+            <p className="page-kicker">{settingsPageCopy.languageKicker}</p>
+            <h3 className="section-title">{settingsPageCopy.languageTitle}</h3>
+          </div>
+          <Shield size={16} className="icon-accent-primary" />
+        </div>
+
+        <p className="type-body-sm mt-4">{t('common.languageSummary')}</p>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {localeOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-label={option.label}
+              onClick={() => {
+                void setLocale(option.value);
+                showMessage(
+                  t('feedback.localeChangedTitle'),
+                  t('feedback.localeChangedDetail', { label: option.label }),
+                  'info',
+                );
+              }}
+              className="surface-panel surface-panel--muted text-left"
+              style={locale === option.value ? { borderColor: 'var(--color-primary)' } : undefined}
             >
               <p className="type-heading-xs">{option.label}</p>
               <p className="type-body-sm mt-2">{option.description}</p>

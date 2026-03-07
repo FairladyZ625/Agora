@@ -29,6 +29,18 @@
         }
       })();
     </script>
+    <script>
+      (function () {
+        try {
+          var storedLocale = localStorage.getItem('agora-locale');
+          var browserLocale = navigator.language || 'zh-CN';
+          var resolvedLocale = storedLocale || browserLocale;
+          document.documentElement.lang = /^en/i.test(resolvedLocale) ? 'en-US' : 'zh-CN';
+        } catch (e) {
+          document.documentElement.lang = 'zh-CN';
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

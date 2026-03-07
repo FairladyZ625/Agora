@@ -1,23 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Filter, ShieldAlert, XCircle } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
-import { reviewsPageCopy } from '@/lib/dashboardCopy';
+import { useReviewsPageCopy } from '@/lib/dashboardCopy';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { toggleValue } from '@/lib/utils';
+import { getPriorityMeta } from '@/lib/taskMeta';
 
 type QueueScope = 'all' | 'critical' | 'high';
 
-const queueScopes: { value: QueueScope; label: string }[] = [
-  { value: 'critical', label: '关键' },
-  { value: 'high', label: '高优先级' },
-];
-
 export function ReviewsPage() {
+  const { t } = useTranslation();
+  const reviewsPageCopy = useReviewsPageCopy();
   const tasks = useTaskStore((state) => state.tasks);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const resolveReview = useTaskStore((state) => state.resolveReview);
@@ -34,6 +33,10 @@ export function ReviewsPage() {
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [gateFilter, setGateFilter] = useState<string[]>([]);
   const [creatorFilter, setCreatorFilter] = useState<string[]>([]);
+  const queueScopes: { value: QueueScope; label: string }[] = [
+    { value: 'critical', label: reviewsPageCopy.queueScopes.critical },
+    { value: 'high', label: reviewsPageCopy.queueScopes.high },
+  ];
 
   useEffect(() => {
     void fetchTasks();
@@ -47,15 +50,17 @@ export function ReviewsPage() {
         title: task.title,
         creator: task.creator,
         gate: task.current_stage ?? 'archon-review',
-        waitTime: '刚刚',
+        waitTime: t('common.justNow'),
         summary: task.description ?? reviewsPageCopy.queueFallbackSummary,
         priority: task.priority,
-        impact: `${reviewsPageCopy.queueFallbackImpactPrefix} ${task.teamLabel} ${reviewsPageCopy.queueFallbackImpactSuffix}`,
+        impact: [reviewsPageCopy.queueFallbackImpactPrefix, task.teamLabel, reviewsPageCopy.queueFallbackImpactSuffix]
+          .filter(Boolean)
+          .join(' '),
         state: task.state,
       }));
 
     return liveQueue;
-  }, [tasks]);
+  }, [reviewsPageCopy, t, tasks]);
 
   const availableGates = useMemo(() => [...new Set(queue.map((item) => item.gate))], [queue]);
   const availableCreators = useMemo(() => [...new Set(queue.map((item) => item.creator))], [queue]);
@@ -88,10 +93,12 @@ export function ReviewsPage() {
           title: selectedTaskStatus.task.title,
           creator: selectedTaskStatus.task.creator,
           gate: selectedTaskStatus.task.current_stage ?? 'archon-review',
-          waitTime: '刚刚',
+          waitTime: t('common.justNow'),
           summary: selectedTaskStatus.task.description ?? reviewsPageCopy.queueFallbackSummary,
           priority: selectedTaskStatus.task.priority,
-          impact: `${reviewsPageCopy.queueFallbackImpactPrefix} ${selectedTaskStatus.task.teamLabel} ${reviewsPageCopy.queueFallbackImpactSuffix}`,
+          impact: [reviewsPageCopy.queueFallbackImpactPrefix, selectedTaskStatus.task.teamLabel, reviewsPageCopy.queueFallbackImpactSuffix]
+            .filter(Boolean)
+            .join(' '),
           state: selectedTaskStatus.task.state,
         }
       : null) ??
@@ -108,14 +115,14 @@ export function ReviewsPage() {
     try {
       await resolveReview(selected.id, decision, note);
       showMessage(
-        decision === 'approve' ? '裁决已下达' : '任务已退回',
-        decision === 'approve' ? '真实接口已收到批准指令。' : '真实接口已收到驳回指令。',
+        decision === 'approve' ? t('feedback.reviewApproveTitle') : t('feedback.reviewRejectTitle'),
+        decision === 'approve' ? t('feedback.reviewApproveDetail') : t('feedback.reviewRejectDetail'),
         decision === 'approve' ? 'success' : 'warning',
       );
       setNote('');
     } catch (reviewError) {
       showMessage(
-        '裁决失败',
+        t('feedback.reviewFailureTitle'),
         reviewError instanceof Error ? reviewError.message : String(reviewError),
         'warning',
       );
@@ -126,9 +133,9 @@ export function ReviewsPage() {
     {
       label: reviewsPageCopy.filterSectionLabels.priority,
       options: [
-        { value: 'critical', label: '关键', count: queue.filter((item) => item.priority === 'critical').length },
-        { value: 'high', label: '高', count: queue.filter((item) => item.priority === 'high').length },
-        { value: 'normal', label: '标准', count: queue.filter((item) => item.priority === 'normal').length },
+        { value: 'critical', label: getPriorityMeta('critical').label, count: queue.filter((item) => item.priority === 'critical').length },
+        { value: 'high', label: getPriorityMeta('high').label, count: queue.filter((item) => item.priority === 'high').length },
+        { value: 'normal', label: getPriorityMeta('normal').label, count: queue.filter((item) => item.priority === 'normal').length },
       ],
       selected: priorityFilter,
       onToggle: (value: string) => setPriorityFilter((current) => toggleValue(current, value)),
@@ -153,7 +160,7 @@ export function ReviewsPage() {
       selected: creatorFilter,
       onToggle: (value: string) => setCreatorFilter((current) => toggleValue(current, value)),
     },
-  ], [queue, priorityFilter, gateFilter, creatorFilter, availableGates, availableCreators]);
+  ], [queue, priorityFilter, gateFilter, creatorFilter, availableGates, availableCreators, reviewsPageCopy]);
 
   const clearFilters = () => {
     setPriorityFilter([]);
@@ -179,7 +186,7 @@ export function ReviewsPage() {
               </div>
               <div className="inline-stat">
                 <span className="inline-stat__label">{reviewsPageCopy.metricLabels.highestRisk}</span>
-                <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'critical') ? reviewsPageCopy.metricValues.highestRisk : '正常'}</span>
+                <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'critical') ? reviewsPageCopy.metricValues.highestRisk : reviewsPageCopy.metricValues.normal}</span>
               </div>
               <div className="inline-stat">
                 <span className="inline-stat__label">{reviewsPageCopy.metricLabels.defaultAction}</span>
@@ -261,10 +268,10 @@ export function ReviewsPage() {
             <div className="workbench-scroll workbench-scroll--list">
               <div className="review-table review-table--dense">
                 <div className="review-table__head" role="presentation">
-                  <span>任务</span>
-                  <span>Gate</span>
-                  <span>优先级</span>
-                  <span className="text-right">等待</span>
+                  <span>{reviewsPageCopy.tableHeaders.task}</span>
+                  <span>{reviewsPageCopy.tableHeaders.gate}</span>
+                  <span>{reviewsPageCopy.tableHeaders.priority}</span>
+                  <span className="text-right">{reviewsPageCopy.tableHeaders.wait}</span>
                 </div>
 
                 {filteredQueue.length > 0 ? (
@@ -368,7 +375,7 @@ export function ReviewsPage() {
                 </button>
 
                 <p className="type-text-xs">
-                  当前正在操作真实裁决接口。
+                  {reviewsPageCopy.liveApiNotice}
                 </p>
               </div>
             ) : (
@@ -407,7 +414,7 @@ export function ReviewsPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="type-label-sm">{entry.event}</span>
-                      <span className="type-text-xs">{entry.stage_id ?? 'unknown-stage'}</span>
+                      <span className="type-text-xs">{entry.stage_id ?? t('common.unknownStage')}</span>
                     </div>
                     <p className="type-body-sm mt-2">
                       {entry.detail ?? reviewsPageCopy.queueFallbackSummary}
@@ -427,7 +434,7 @@ export function ReviewsPage() {
                     <p className="type-label-sm">{entry.actor}</p>
                     <p className="type-body-sm mt-2">{entry.content}</p>
                   </div>
-                  <span className="type-text-xs">{entry.stage_id ?? 'stage'}</span>
+                  <span className="type-text-xs">{entry.stage_id ?? t('common.genericStage')}</span>
                 </div>
               ))}
             </div>

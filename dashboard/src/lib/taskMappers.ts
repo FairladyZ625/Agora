@@ -7,6 +7,7 @@ import type {
   ApiWorkflowStageDto,
 } from '@/types/api';
 import type { Task, TaskState, TaskStatus } from '@/types/task';
+import { translate } from '@/lib/i18n';
 
 const REVIEW_GATE_TYPES = new Set(['approval', 'archon_review']);
 const HIDDEN_TASK_STATES = new Set(['draft', 'created', 'orphaned']);
@@ -45,7 +46,7 @@ function mapTaskState(task: ApiTaskDto): TaskState {
 
 function formatTeamLabel(task: ApiTaskDto): string {
   const members = task.team?.members ?? [];
-  if (members.length === 0) return '未配置团队';
+  if (members.length === 0) return translate('taskMeta.unassignedTeam');
   if (members.length <= 3) {
     return members.map((member) => member.agentId).join(' / ');
   }
@@ -59,6 +60,7 @@ export function isTaskVisibleInWorkbench(task: ApiTaskDto): boolean {
 }
 
 export function mapTaskDto(task: ApiTaskDto): Task {
+  const currentStage = getCurrentStage(task);
   return {
     id: task.id,
     version: task.version,
@@ -74,6 +76,9 @@ export function mapTaskDto(task: ApiTaskDto): Task {
     memberCount: task.team?.members?.length ?? 0,
     isReviewStage: isReviewStage(task),
     sourceState: task.state,
+    stageName: currentStage?.name ?? task.current_stage,
+    gateType: currentStage?.gate?.type ?? null,
+    teamMembers: task.team?.members ?? [],
     scheduler: task.scheduler,
     scheduler_snapshot: task.scheduler_snapshot,
     discord: task.discord,

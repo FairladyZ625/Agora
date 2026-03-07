@@ -37,4 +37,10 @@ describe('dashboard governance guardrails', () => {
     expect(governanceScriptSource).toMatch(/arbitrary/i);
     expect(governanceScriptSource).toMatch(/padding|margin|gap|width|height|border-radius|font-size/);
   });
+
+  it('guards against scattered product copy outside locale resources', () => {
+    expect(governanceScriptSource).toMatch(/hardcoded|copy|locale/i);
+    expect(governanceScriptSource).toMatch(/locales/);
+    expect(governanceScriptSource).toMatch(/mockDashboard/);
+  });
 });

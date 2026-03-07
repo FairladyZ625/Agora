@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { Task, TaskStatus } from '@/types/task';
+import type { CreateTaskInput, Task, TaskAction, TaskActionPayload, TaskStatus } from '@/types/task';
 import * as api from '@/lib/api';
+import { translate } from '@/lib/i18n';
 import { isTaskVisibleInWorkbench, mapTaskDto, mapTaskStatusDto } from '@/lib/taskMappers';
 
 interface TaskFilters {
@@ -19,9 +20,17 @@ interface TaskStore {
 
   fetchTasks: () => Promise<'live' | 'error'>;
   selectTask: (id: string | null) => Promise<void>;
+  createTask: (input: CreateTaskInput) => Promise<Task>;
+  runTaskAction: (action: TaskAction, payload: TaskActionPayload) => Promise<'live'>;
+  cleanupTasks: (taskId?: string) => Promise<number>;
   resolveReview: (id: string, decision: 'approve' | 'reject', note: string) => Promise<'live'>;
   setFilters: (filters: Partial<TaskFilters>) => void;
   clearError: () => void;
+}
+
+async function refreshTaskContext(get: () => TaskStore, taskId: string) {
+  await get().fetchTasks();
+  await get().selectTask(taskId);
 }
 
 export const useTaskStore = create<TaskStore>()((set, get) => ({
@@ -78,17 +87,76 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     }
   },
 
+  createTask: async (input) => {
+    set({ error: null });
+    const created = mapTaskDto(await api.createTask(input));
+    await get().fetchTasks();
+    await get().selectTask(created.id);
+    return created;
+  },
+
+  runTaskAction: async (action, payload) => {
+    set({ error: null });
+    const actorId = payload.actorId ?? 'archon';
+    const note = payload.note ?? '';
+
+    switch (action) {
+      case 'advance':
+        await api.advanceTask(payload.taskId, actorId);
+        break;
+      case 'approve':
+        await api.approveTask(payload.taskId, actorId, note);
+        break;
+      case 'reject':
+        await api.rejectTask(payload.taskId, actorId, note || translate('common.rejectionFallbackNote'));
+        break;
+      case 'confirm':
+        await api.confirmTask(payload.taskId, actorId, payload.vote ?? 'approve', note);
+        break;
+      case 'subtask_done':
+        if (!payload.subtaskId) {
+          throw new Error('subtaskId is required for subtask completion');
+        }
+        await api.subtaskDone(payload.taskId, payload.subtaskId, actorId, note);
+        break;
+      case 'force_advance':
+        await api.forceAdvanceTask(payload.taskId, note);
+        break;
+      case 'pause':
+        await api.pauseTask(payload.taskId, note);
+        break;
+      case 'resume':
+        await api.resumeTask(payload.taskId);
+        break;
+      case 'cancel':
+        await api.cancelTask(payload.taskId, note);
+        break;
+      case 'unblock':
+        await api.unblockTask(payload.taskId, note);
+        break;
+      default:
+        throw new Error(`Unsupported task action: ${String(action)}`);
+    }
+
+    await refreshTaskContext(get, payload.taskId);
+    return 'live';
+  },
+
+  cleanupTasks: async (taskId) => {
+    set({ error: null });
+    const result = await api.cleanupTasks(taskId);
+    await get().fetchTasks();
+    return result.cleaned;
+  },
+
   resolveReview: async (id, decision, note) => {
     set({ error: null });
     if (decision === 'approve') {
       await api.archonApprove(id, note);
     } else {
-      await api.archonReject(id, note || '需要补充修改后重新提交。');
+      await api.archonReject(id, note || translate('common.rejectionFallbackNote'));
     }
-    await get().fetchTasks();
-    if (get().selectedTaskId === id) {
-      await get().selectTask(id);
-    }
+    await refreshTaskContext(get, id);
     return 'live';
   },
 

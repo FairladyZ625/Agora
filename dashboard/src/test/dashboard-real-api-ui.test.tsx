@@ -22,6 +22,9 @@ const taskStoreState = {
   fetchTasks,
   selectTask,
   resolveReview,
+  createTask: vi.fn(async () => ({ id: 'OC-009' })),
+  runTaskAction: vi.fn(async () => 'live'),
+  cleanupTasks: vi.fn(async () => 0),
   setFilters: vi.fn(),
   clearError: vi.fn(),
 };

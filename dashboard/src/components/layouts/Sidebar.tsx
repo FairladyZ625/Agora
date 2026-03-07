@@ -1,15 +1,18 @@
 import { NavLink } from 'react-router';
 import {
   LayoutDashboard,
+  Columns3,
   ListTodo,
   ShieldCheck,
   Settings,
+  SquarePen,
   PanelLeftOpen,
   X,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
-import { shellCopy } from '@/lib/dashboardCopy';
+import { useTranslation } from 'react-i18next';
+import { useShellCopy } from '@/lib/dashboardCopy';
 import { BrandLogo } from '../ui/BrandLogo';
 import { cn } from '@/lib/cn';
 
@@ -21,12 +24,14 @@ interface SidebarProps {
   isMobile: boolean;
 }
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: '概览', hint: '品牌主舞台' },
-  { to: '/tasks', icon: ListTodo, label: '任务', hint: '执行工作区' },
-  { to: '/reviews', icon: ShieldCheck, label: '审批', hint: '裁决队列' },
-  { to: '/settings', icon: Settings, label: '设置', hint: '连接与偏好' },
-];
+const navIcons = {
+  overview: LayoutDashboard,
+  board: Columns3,
+  tasks: ListTodo,
+  create: SquarePen,
+  reviews: ShieldCheck,
+  settings: Settings,
+} as const;
 
 export function Sidebar({
   collapsed,
@@ -35,13 +40,16 @@ export function Sidebar({
   onCloseMobile,
   isMobile,
 }: SidebarProps) {
+  const { t } = useTranslation();
+  const shellCopy = useShellCopy();
+
   return (
     <>
       {mobileOpen && (
         <button
           type="button"
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
-          aria-label="关闭导航"
+          aria-label={t('common.closeNavigation')}
           onClick={onCloseMobile}
         />
       )}
@@ -81,7 +89,7 @@ export function Sidebar({
                 type="button"
                 onClick={onCloseMobile}
                 className="icon-button absolute right-3 top-1/2 -translate-y-1/2"
-                aria-label="关闭侧边栏"
+                aria-label={t('common.closeSidebar')}
               >
                 <X size={16} />
               </button>
@@ -95,7 +103,10 @@ export function Sidebar({
               </p>
             )}
             <nav className="space-y-1.5">
-              {navItems.map(({ to, icon: Icon, label, hint }) => (
+              {shellCopy.navItems.map(({ to, key, label, hint }) => {
+                const Icon = navIcons[key as keyof typeof navIcons];
+
+                return (
                 <NavLink
                   key={to}
                   to={to}
@@ -113,7 +124,8 @@ export function Sidebar({
                     </div>
                   )}
                 </NavLink>
-              ))}
+                );
+              })}
             </nav>
           </div>
 
@@ -137,7 +149,7 @@ export function Sidebar({
               onClick={onToggle}
               className="sidebar-toggle-button mt-3"
               style={{ borderColor: 'var(--color-border)' }}
-              aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
+              aria-label={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')}
             >
               {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
             </button>

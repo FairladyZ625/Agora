@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { TopNav } from './TopNav';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { ExperienceNotice } from '@/components/ui/ExperienceNotice';
+import { useShellCopy } from '@/lib/dashboardCopy';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -12,6 +13,7 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isMobile = useMediaQuery('(max-width: 767px)');
+  const shellCopy = useShellCopy();
 
   return (
     <div className="app-shell app-shell-tone">
@@ -40,9 +42,9 @@ export function AppShell({ children }: AppShellProps) {
           <div className="app-frame app-shell__footer-inner flex items-center justify-between px-4 py-3 type-footer-meta md:px-6">
             <span className="flex items-center gap-2">
               <span className="status-dot status-dot--info" />
-              Agora orchestration layer
+              {shellCopy.footerTagline}
             </span>
-            <span className="type-footer-code">SYSTEM CORE v0.1.0-alpha</span>
+            <span className="type-footer-code">{shellCopy.footerVersion}</span>
           </div>
         </footer>
       </div>

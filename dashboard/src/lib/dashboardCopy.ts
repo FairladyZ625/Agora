@@ -1,223 +1,312 @@
-export const shellCopy = {
-  brandRail: '品牌航道',
-  brandName: 'Agora',
-  brandSummary: '多 Agent 辩论，人类裁决，机器执行。',
-  workspaceLabel: '工作区',
-  footerTagline: 'Agora orchestration layer',
-  footerVersion: 'SYSTEM CORE v0.1.0-alpha',
-  railStatement: '辩论，裁决，执行。',
-  railSummary: '品牌页负责表达 Agora，工具页负责把决策时间压缩到最短。',
-} as const;
+import { useTranslation } from 'react-i18next';
 
-export const pageMetaCopy = {
-  '/': {
-    kicker: 'Agora 指挥广场',
-    title: '辩论，裁决，执行',
-    caption: '把多 Agent 的集体讨论收敛成可治理、可追踪、可执行的交付系统。',
-  },
-  '/tasks': {
-    kicker: '任务编排台',
-    title: '执行全景与阶段细节',
-    caption: '从任务列表进入阶段、子任务与流转细节，不丢上下文。',
-  },
-  '/reviews': {
-    kicker: '裁决中心',
-    title: '人在回路的最终判断',
-    caption: '在关键门控点做出批准、驳回与风险判断，避免编排失控。',
-  },
-  '/settings': {
-    kicker: '系统治理',
-    title: '连接、同步与外观策略',
-    caption: '统一管理网关连接、轮询节拍与主题偏好。',
-  },
-} as const;
+export function useShellCopy() {
+  const { t } = useTranslation();
 
-export const dashboardHomeCopy = {
-  kicker: 'Agora / 多 Agent 指挥广场',
-  title: 'Agora',
-  summary:
-    'Agora 不是普通控制台，而是把 Agent 辩论、人类裁决与机器执行收束在同一操作平面上的编排广场。你在这里看到的不只是状态，而是从判断到执行的整条链路。',
-  slogan: 'Agents debate. Humans decide. Machines execute.',
-  primaryAction: '查看任务流',
-  secondaryAction: '进入裁决中心',
-  syncErrorMessage: '任务服务暂不可达，当前展示最近一次已知态势。',
-  pulseKicker: '系统脉冲',
-  pulseTitle: '治理与执行同时在线',
-  pulseStatusLoading: '同步中',
-  pulseStatusReady: '在线',
-  pulseOrbitLabels: {
-    left: '辩论',
-    right: '裁决',
-    bottom: '派发',
-  },
-  pulseItems: [
-    { label: '辩论入口', value: '多 Agent 汇流' },
-    { label: '裁决出口', value: 'Archon Gate' },
-    { label: '执行方式', value: 'Structured Dispatch' },
-  ],
-  sideNotes: [
-    {
-      kicker: '品牌核心',
-      title: '广场，而不是后台',
-      body: '品牌表达要来自结构、叙事和材质，而不是一次性特效堆叠。',
+  return {
+    brandName: t('shell.brandName'),
+    workspaceLabel: t('shell.workspaceLabel'),
+    footerTagline: t('shell.footerTagline'),
+    footerVersion: t('shell.footerVersion'),
+    railStatement: t('shell.railStatement'),
+    railSummary: t('shell.railSummary'),
+    navItems: [
+      { to: '/', key: 'overview', label: t('shell.nav.overview.label'), hint: t('shell.nav.overview.hint') },
+      { to: '/board', key: 'board', label: t('shell.nav.board.label'), hint: t('shell.nav.board.hint') },
+      { to: '/tasks', key: 'tasks', label: t('shell.nav.tasks.label'), hint: t('shell.nav.tasks.hint') },
+      { to: '/tasks/new', key: 'create', label: t('shell.nav.create.label'), hint: t('shell.nav.create.hint') },
+      { to: '/reviews', key: 'reviews', label: t('shell.nav.reviews.label'), hint: t('shell.nav.reviews.hint') },
+      { to: '/settings', key: 'settings', label: t('shell.nav.settings.label'), hint: t('shell.nav.settings.hint') },
+    ],
+  };
+}
+
+export function usePageMetaCopy() {
+  const { t } = useTranslation();
+
+  return {
+    '/': { title: t('pageMeta.home.title') },
+    '/board': { title: t('pageMeta.board.title') },
+    '/tasks': { title: t('pageMeta.tasks.title') },
+    '/tasks/new': { title: t('pageMeta.createTask.title') },
+    '/reviews': { title: t('pageMeta.reviews.title') },
+    '/settings': { title: t('pageMeta.settings.title') },
+  } as const;
+}
+
+export function useDashboardHomeCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('home.kicker'),
+    title: t('home.title'),
+    summary: t('home.summary'),
+    slogan: t('home.slogan'),
+    primaryAction: t('home.primaryAction'),
+    secondaryAction: t('home.secondaryAction'),
+    syncErrorMessage: t('home.syncErrorMessage'),
+    pulseKicker: t('home.pulseKicker'),
+    pulseTitle: t('home.pulseTitle'),
+    pulseStatusLoading: t('home.pulseStatusLoading'),
+    pulseStatusReady: t('home.pulseStatusReady'),
+    pulseOrbitLabels: {
+      left: t('home.pulseOrbitLabels.left'),
+      right: t('home.pulseOrbitLabels.right'),
+      bottom: t('home.pulseOrbitLabels.bottom'),
     },
-    {
-      kicker: '操作承诺',
-      title: '高密度，但不凌乱',
-      body: '内页维持工作台效率，重要动作和状态始终停留在第一视野内。',
+    pulseItems: [
+      { label: t('home.pulseItems.debateEntry.label'), value: t('home.pulseItems.debateEntry.value') },
+      { label: t('home.pulseItems.decisionExit.label'), value: t('home.pulseItems.decisionExit.value') },
+      { label: t('home.pulseItems.dispatchMode.label'), value: t('home.pulseItems.dispatchMode.value') },
+    ],
+    sideNotes: [
+      {
+        kicker: t('home.sideNotes.brand.kicker'),
+        title: t('home.sideNotes.brand.title'),
+        body: t('home.sideNotes.brand.body'),
+      },
+      {
+        kicker: t('home.sideNotes.promise.kicker'),
+        title: t('home.sideNotes.promise.title'),
+        body: t('home.sideNotes.promise.body'),
+      },
+    ],
+    metricLabels: {
+      active: t('home.metrics.activeLabel'),
+      waiting: t('home.metrics.waitingLabel'),
+      craftsmen: t('home.metrics.craftsmenLabel'),
+      cadence: t('home.metrics.cadenceLabel'),
     },
-  ],
-  metricNotes: {
-    active: '当前仍在推进的多 Agent 任务',
-    waiting: '需要 human-in-the-loop 的关键门控',
-    craftsmen: '当前接入并响应的执行工匠',
-    cadence: '最近一次完成节点与现在的间隔',
-  },
-  feedKicker: '执行流',
-  feedTitle: '最近任务流转',
-  feedAction: '全部任务',
-  emptyTaskDescription: '等待新的执行上下文。',
-  fallbackDecisionStage: 'review',
-  reviewKicker: '裁决轨道',
-  reviewTitle: '待裁决任务',
-  reviewCountUnit: '条',
-  reviewDescriptionPrefix: '进入 Archon 裁决门，当前阶段为',
-  principleKicker: '设计原则',
-  principleTitle: '品牌语义落点',
-  principleBullets: [
-    '首页先解释广场、辩论、裁决、执行的关系，再呈现实时状态。',
-    '内页优先保证扫描效率和动作闭环，不让品牌表达压过任务本身。',
-    '所有 panel、badge、按钮和 section header 必须共用同一套视觉语言。',
-  ],
-} as const;
+    metricNotes: {
+      active: t('home.metrics.activeNote'),
+      waiting: t('home.metrics.waitingNote'),
+      craftsmen: t('home.metrics.craftsmenNote'),
+      cadence: t('home.metrics.cadenceNote'),
+    },
+    feedKicker: t('home.feedKicker'),
+    feedTitle: t('home.feedTitle'),
+    feedAction: t('home.feedAction'),
+    emptyTaskDescription: t('home.emptyTaskDescription'),
+    fallbackDecisionStage: t('home.fallbackDecisionStage'),
+    reviewKicker: t('home.reviewKicker'),
+    reviewTitle: t('home.reviewTitle'),
+    reviewCountUnit: t('home.reviewCountUnit'),
+    reviewDescriptionPrefix: t('home.reviewDescriptionPrefix'),
+    principleKicker: t('home.principleKicker'),
+    principleTitle: t('home.principleTitle'),
+    principleBullets: t('home.principleBullets', { returnObjects: true }) as string[],
+  };
+}
 
-export const tasksPageCopy = {
-  kicker: '任务编排台',
-  title: '任务工作区',
-  summary: '从列表扫视当前执行态势，在右侧保持任务详情、状态迁移和子任务拆分的上下文连续。',
-  workbenchTitle: '高密度任务台',
-  workbenchSummary: '首屏聚焦队列扫描和当前任务，深层信息进入二级详情层。页面本身不依赖长滚动，重负载场景靠筛选、分类和内部滚动消化。',
-  filterAction: '筛选与分类',
-  clearFiltersAction: '清除条件',
-  applyFiltersAction: '完成筛选',
-  detailAction: '打开任务详情',
-  detailDialogLabel: '任务详情面板',
-  detailDialogTitle: '执行全过程',
-  quickViewTitle: '当前任务',
-  filterSectionLabels: {
-    state: '任务状态',
-    priority: '优先级',
-    team: '负责团队',
-    workflow: '工作流',
-  },
-  filterEmpty: '暂无可选条件',
-  activeFilterPrefix: '已启用',
-  searchPlaceholder: '按任务标题、ID、创建者搜索',
-  filterLabel: '状态筛选',
-  listKicker: '执行总览',
-  listTitle: '任务清单',
-  listCountUnit: '条',
-  detailKicker: '任务详情',
-  detailTitle: '任务详情',
-  stageLabel: '当前阶段',
-  stageFallback: 'backlog',
-  workflowLabel: '执行工作流',
-  teamLabel: '负责团队',
-  updatedLabel: '最近更新',
-  briefKicker: '任务摘要',
-  briefFallback: '暂无描述。',
-  timelineTitle: '执行时间线',
-  timelineEmptyDetail: '无补充说明。',
-  progressTitle: '执行记录',
-  subtasksTitle: '子任务拆分',
-  subtaskFallbackType: 'generalist',
-  emptyTitle: '没有匹配的任务',
-  emptySummary: '尝试调整搜索关键字或切回全部状态。',
-} as const;
+export function useBoardPageCopy() {
+  const { t } = useTranslation();
 
-export const reviewsPageCopy = {
-  kicker: '裁决中心',
-  title: '审批与裁决',
-  summary: '当任务进入 gate waiting，界面要让人类判断成本和下一动作一眼可见，而不是继续堆卡片。',
-  workbenchTitle: '高密度裁决台',
-  workbenchSummary: '裁决页只保留队列、当前裁决对象和必要动作。复杂上下文进入二级裁决详情层，首屏不靠整页下拉堆内容。',
-  commandLabel: '队列视角',
-  filterAction: '筛选与分类',
-  clearFiltersAction: '清除条件',
-  applyFiltersAction: '完成筛选',
-  detailAction: '打开裁决详情',
-  detailDialogLabel: '裁决详情面板',
-  detailDialogTitle: '裁决上下文',
-  filterSectionLabels: {
-    priority: '优先级',
-    gate: 'Gate',
-    creator: '创建者',
-  },
-  activeFilterPrefix: '已启用',
-  metricLabels: {
-    queue: '待裁决条目',
-    highestRisk: '最高风险',
-    defaultAction: '默认动作',
-  },
-  metricValues: {
-    highestRisk: '关键',
-    defaultAction: '人工裁决',
-  },
-  metricNotes: {
-    queue: '当前进入人工裁决门的任务数',
-    highestRisk: '优先清理阻塞主线派发的高影响任务',
-    defaultAction: '关键任务必须保留 human-in-the-loop',
-  },
-  queueKicker: '待裁决门控',
-  queueTitle: '待裁决任务',
-  queueCountUnit: '条',
-  queueFallbackSummary: '等待 Archon 最终判断是否进入下一执行阶段。',
-  queueFallbackImpactPrefix: '影响',
-  queueFallbackImpactSuffix: '的下一轮派发',
-  workspaceKicker: '裁决工作区',
-  workspaceTitle: '当前裁决对象',
-  gateLabel: '当前 Gate',
-  impactLabel: '业务影响',
-  contextTitle: '上下文轨迹',
-  progressTitle: '执行补充',
-  noteLabel: '裁决说明',
-  notePlaceholder: '记录你的裁决依据、风险判断或回滚要求。',
-  rejectAction: '驳回',
-  approveAction: '批准执行',
-  emptyTitle: '当前没有待裁决任务',
-  emptySummary: '系统将在有新 gate waiting 任务时显示在这里。',
-} as const;
+  return {
+    kicker: t('board.kicker'),
+    title: t('board.title'),
+    summary: t('board.summary'),
+    createAction: t('board.createAction'),
+    emptyTitle: t('board.emptyTitle'),
+    emptySummary: t('board.emptySummary'),
+    columns: {
+      pending: t('board.columns.pending'),
+      inProgress: t('board.columns.inProgress'),
+      gateWaiting: t('board.columns.gateWaiting'),
+      completed: t('board.columns.completed'),
+    },
+  };
+}
 
-export const settingsPageCopy = {
-  kicker: '系统治理',
-  title: '连接、节拍与外观',
-  summary: '设置页应该像操作面板，而不是大而空的表单页。分组清楚、字段紧凑、反馈即时。',
-  gatewayKicker: '网关连接',
-  gatewayTitle: '连接与身份',
-  endpointLabel: 'API 基址',
-  tokenLabel: '访问令牌',
-  tokenPlaceholder: '留空表示匿名只读',
-  tokenHideLabel: '隐藏令牌',
-  tokenShowLabel: '显示令牌',
-  refreshKicker: '同步策略',
-  refreshTitle: '同步策略',
-  refreshLabel: '轮询间隔',
-  pauseLabel: '页面隐藏时暂停轮询',
-  appearanceKicker: '外观系统',
-  appearanceTitle: '外观偏好',
-  appearanceDescriptions: {
-    light: '清晰、通透的浅色工作台',
-    dark: '浅蓝液态玻璃质感的低照度工作区',
-    system: '自动跟随系统主题',
-  },
-  appearanceLabels: {
-    light: '浅色',
-    dark: '深色',
-    system: '跟随系统',
-  },
-  saveAction: '保存配置',
-  testAction: '检测连通性',
-  healthSuccess: 'Agora Core 可达，网关连通正常。',
-  healthFailureFallback: '连接失败',
-  healthLoading: '检测中',
-} as const;
+export function useCreateTaskPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('createTask.kicker'),
+    title: t('createTask.title'),
+    summary: t('createTask.summary'),
+    titleLabel: t('createTask.titleLabel'),
+    titlePlaceholder: t('createTask.titlePlaceholder'),
+    descriptionLabel: t('createTask.descriptionLabel'),
+    descriptionPlaceholder: t('createTask.descriptionPlaceholder'),
+    typeLabel: t('createTask.typeLabel'),
+    priorityLabel: t('createTask.priorityLabel'),
+    submitAction: t('createTask.submitAction'),
+    submittingAction: t('createTask.submittingAction'),
+    backAction: t('createTask.backAction'),
+    taskTypes: [
+      { value: 'coding', label: t('createTask.taskType.coding') },
+      { value: 'quick', label: t('createTask.taskType.quick') },
+      { value: 'document', label: t('createTask.taskType.document') },
+      { value: 'research', label: t('createTask.taskType.research') },
+    ] as const,
+  };
+}
+
+export function useTasksPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('tasks.kicker'),
+    title: t('tasks.title'),
+    summary: t('tasks.summary'),
+    workbenchTitle: t('tasks.workbenchTitle'),
+    workbenchSummary: t('tasks.workbenchSummary'),
+    filterAction: t('tasks.filterAction'),
+    clearFiltersAction: t('tasks.clearFiltersAction'),
+    applyFiltersAction: t('tasks.applyFiltersAction'),
+    detailAction: t('tasks.detailAction'),
+    detailDialogLabel: t('tasks.detailDialogLabel'),
+    detailDialogTitle: t('tasks.detailDialogTitle'),
+    quickViewTitle: t('tasks.quickViewTitle'),
+    filterSectionLabels: {
+      state: t('tasks.filterSectionLabels.state'),
+      priority: t('tasks.filterSectionLabels.priority'),
+      team: t('tasks.filterSectionLabels.team'),
+      workflow: t('tasks.filterSectionLabels.workflow'),
+    },
+    filterEmpty: t('tasks.filterEmpty'),
+    activeFilterPrefix: t('tasks.activeFilterPrefix'),
+    searchPlaceholder: t('tasks.searchPlaceholder'),
+    listKicker: t('tasks.listKicker'),
+    listTitle: t('tasks.listTitle'),
+    listCountUnit: t('tasks.listCountUnit'),
+    detailKicker: t('tasks.detailKicker'),
+    stageLabel: t('tasks.stageLabel'),
+    stageFallback: t('tasks.stageFallback'),
+    workflowLabel: t('tasks.workflowLabel'),
+    teamLabel: t('tasks.teamLabel'),
+    updatedLabel: t('tasks.updatedLabel'),
+    briefFallback: t('tasks.briefFallback'),
+    timelineTitle: t('tasks.timelineTitle'),
+    timelineEmptyDetail: t('tasks.timelineEmptyDetail'),
+    progressTitle: t('tasks.progressTitle'),
+    subtasksTitle: t('tasks.subtasksTitle'),
+    subtaskFallbackType: t('tasks.subtaskFallbackType'),
+    actionsTitle: t('tasks.actionsTitle'),
+    actorLabel: t('tasks.actorLabel'),
+    noteLabel: t('tasks.noteLabel'),
+    notePlaceholder: t('tasks.notePlaceholder'),
+    advanceAction: t('tasks.advanceAction'),
+    approveAction: t('tasks.approveAction'),
+    rejectAction: t('tasks.rejectAction'),
+    confirmApproveAction: t('tasks.confirmApproveAction'),
+    confirmRejectAction: t('tasks.confirmRejectAction'),
+    pauseAction: t('tasks.pauseAction'),
+    resumeAction: t('tasks.resumeAction'),
+    cancelAction: t('tasks.cancelAction'),
+    unblockAction: t('tasks.unblockAction'),
+    forceAdvanceAction: t('tasks.forceAdvanceAction'),
+    emptyTitle: t('tasks.emptyTitle'),
+    emptySummary: t('tasks.emptySummary'),
+    stats: {
+      currentMatches: t('tasks.stats.currentMatches'),
+      awaitingReview: t('tasks.stats.awaitingReview'),
+      currentFocus: t('tasks.stats.currentFocus'),
+    },
+  };
+}
+
+export function useReviewsPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('reviews.kicker'),
+    title: t('reviews.title'),
+    summary: t('reviews.summary'),
+    workbenchTitle: t('reviews.workbenchTitle'),
+    workbenchSummary: t('reviews.workbenchSummary'),
+    filterAction: t('reviews.filterAction'),
+    clearFiltersAction: t('reviews.clearFiltersAction'),
+    applyFiltersAction: t('reviews.applyFiltersAction'),
+    detailAction: t('reviews.detailAction'),
+    detailDialogLabel: t('reviews.detailDialogLabel'),
+    detailDialogTitle: t('reviews.detailDialogTitle'),
+    filterSectionLabels: {
+      priority: t('reviews.filterSectionLabels.priority'),
+      gate: t('reviews.filterSectionLabels.gate'),
+      creator: t('reviews.filterSectionLabels.creator'),
+    },
+    activeFilterPrefix: t('reviews.activeFilterPrefix'),
+    metricLabels: {
+      queue: t('reviews.metricLabels.queue'),
+      highestRisk: t('reviews.metricLabels.highestRisk'),
+      defaultAction: t('reviews.metricLabels.defaultAction'),
+    },
+    metricValues: {
+      highestRisk: t('reviews.metricValues.highestRisk'),
+      normal: t('reviews.metricValues.normal'),
+      defaultAction: t('reviews.metricValues.defaultAction'),
+    },
+    queueKicker: t('reviews.queueKicker'),
+    queueTitle: t('reviews.queueTitle'),
+    queueCountUnit: t('reviews.queueCountUnit'),
+    queueFallbackSummary: t('reviews.queueFallbackSummary'),
+    queueFallbackImpactPrefix: t('reviews.queueFallbackImpactPrefix'),
+    queueFallbackImpactSuffix: t('reviews.queueFallbackImpactSuffix'),
+    workspaceKicker: t('reviews.workspaceKicker'),
+    workspaceTitle: t('reviews.workspaceTitle'),
+    gateLabel: t('reviews.gateLabel'),
+    impactLabel: t('reviews.impactLabel'),
+    contextTitle: t('reviews.contextTitle'),
+    progressTitle: t('reviews.progressTitle'),
+    noteLabel: t('reviews.noteLabel'),
+    notePlaceholder: t('reviews.notePlaceholder'),
+    rejectAction: t('reviews.rejectAction'),
+    approveAction: t('reviews.approveAction'),
+    emptyTitle: t('reviews.emptyTitle'),
+    emptySummary: t('reviews.emptySummary'),
+    queueScopes: {
+      critical: t('reviews.queueScopes.critical'),
+      high: t('reviews.queueScopes.high'),
+    },
+    tableHeaders: {
+      task: t('reviews.tableHeaders.task'),
+      gate: t('reviews.tableHeaders.gate'),
+      priority: t('reviews.tableHeaders.priority'),
+      wait: t('reviews.tableHeaders.wait'),
+    },
+    liveApiNotice: t('reviews.liveApiNotice'),
+  };
+}
+
+export function useSettingsPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('settings.kicker'),
+    title: t('settings.title'),
+    summary: t('settings.summary'),
+    gatewayKicker: t('settings.gatewayKicker'),
+    gatewayTitle: t('settings.gatewayTitle'),
+    endpointLabel: t('settings.endpointLabel'),
+    tokenLabel: t('settings.tokenLabel'),
+    tokenPlaceholder: t('settings.tokenPlaceholder'),
+    tokenHideLabel: t('settings.tokenHideLabel'),
+    tokenShowLabel: t('settings.tokenShowLabel'),
+    refreshKicker: t('settings.refreshKicker'),
+    refreshTitle: t('settings.refreshTitle'),
+    refreshLabel: t('settings.refreshLabel'),
+    pauseLabel: t('settings.pauseLabel'),
+    appearanceKicker: t('settings.appearanceKicker'),
+    appearanceTitle: t('settings.appearanceTitle'),
+    appearanceDescriptions: {
+      light: t('settings.appearanceDescriptions.light'),
+      dark: t('settings.appearanceDescriptions.dark'),
+      system: t('settings.appearanceDescriptions.system'),
+    },
+    appearanceLabels: {
+      light: t('settings.appearanceLabels.light'),
+      dark: t('settings.appearanceLabels.dark'),
+      system: t('settings.appearanceLabels.system'),
+    },
+    languageKicker: t('settings.languageKicker'),
+    languageTitle: t('settings.languageTitle'),
+    saveAction: t('settings.saveAction'),
+    testAction: t('settings.testAction'),
+    cleanupAction: t('settings.cleanupAction'),
+    cleanupSuccess: (count: number) => t('settings.cleanupSuccess', { count }),
+    healthSuccess: t('settings.healthSuccess'),
+    healthFailureFallback: t('settings.healthFailureFallback'),
+    healthLoading: t('settings.healthLoading'),
+  };
+}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface FilterOption {
   value: string;
@@ -32,8 +33,11 @@ export function WorkbenchFilterPopover({
   onClear,
   onClose,
   footer,
-  clearLabel = '清除条件',
+  clearLabel,
 }: WorkbenchFilterPopoverProps) {
+  const { t } = useTranslation();
+  const resolvedClearLabel = clearLabel ?? t('tasks.clearFiltersAction');
+
   return (
     <div
       className={align === 'end' ? 'filter-popover filter-popover--align-end' : 'filter-popover'}
@@ -46,7 +50,7 @@ export function WorkbenchFilterPopover({
           <h4 className="filter-popover__title">{title}</h4>
         </div>
         <button type="button" className="button-ghost" onClick={onClose}>
-          关闭
+          {t('common.close')}
         </button>
       </div>
 
@@ -84,7 +88,7 @@ export function WorkbenchFilterPopover({
 
       <div className="filter-popover__footer">
         <button type="button" className="button-ghost" onClick={onClear}>
-          {clearLabel}
+          {resolvedClearLabel}
         </button>
         {footer}
       </div>

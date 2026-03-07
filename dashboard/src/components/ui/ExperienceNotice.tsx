@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { CheckCircle2, Info, TriangleAlert, X } from 'lucide-react';
 import { useFeedbackStore } from '@/stores/feedbackStore';
+import { useTranslation } from 'react-i18next';
 
 const toneMap = {
   info: {
@@ -19,6 +20,7 @@ const toneMap = {
 
 export function ExperienceNotice() {
   const { message, clearMessage } = useFeedbackStore();
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!message) return;
@@ -44,7 +46,7 @@ export function ExperienceNotice() {
         type="button"
         className="icon-button experience-notice__close"
         onClick={clearMessage}
-        aria-label="关闭提示"
+        aria-label={t('common.closeNotice')}
       >
         <X size={14} />
       </button>

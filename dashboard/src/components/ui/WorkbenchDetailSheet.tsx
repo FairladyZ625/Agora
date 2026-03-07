@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface WorkbenchDetailSheetProps {
   label: string;
@@ -13,12 +14,14 @@ export function WorkbenchDetailSheet({
   onClose,
   children,
 }: WorkbenchDetailSheetProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="workbench-sheet" role="dialog" aria-label={label} aria-modal="true">
       <button
         type="button"
         className="workbench-sheet__backdrop"
-        aria-label="关闭详情面板"
+        aria-label={t('common.closeDetails')}
         onClick={onClose}
       />
       <section className="workbench-sheet__panel">
@@ -28,7 +31,7 @@ export function WorkbenchDetailSheet({
             <h3 className="section-title">{title}</h3>
           </div>
           <button type="button" className="button-ghost" onClick={onClose}>
-            关闭
+            {t('common.close')}
           </button>
         </div>
         <div className="workbench-sheet__body">{children}</div>

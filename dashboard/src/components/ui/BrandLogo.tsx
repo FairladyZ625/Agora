@@ -1,4 +1,5 @@
 import { cn } from '@/lib/cn';
+import { useTranslation } from 'react-i18next';
 
 interface BrandLogoProps {
   collapsed?: boolean;
@@ -6,10 +7,12 @@ interface BrandLogoProps {
 }
 
 export function BrandLogo({ collapsed = false, className }: BrandLogoProps) {
+  const { t } = useTranslation();
+
   return (
     <div
       className={cn("brand-mark", className)}
-      aria-label={collapsed ? 'Agora' : 'Agora 指挥广场'}
+      aria-label={collapsed ? t('shell.brandName') : t('common.brandLogoLabel')}
       role="img"
     >
       <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-7 w-7">

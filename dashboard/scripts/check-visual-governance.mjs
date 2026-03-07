@@ -11,6 +11,13 @@ const freeSizePropPattern =
   /padding="[^"]+"|cornerRadius=\{[^}]+\}|style=\{\{[^}]*\b(?:width|height|minWidth|maxWidth|padding|gap|borderRadius):/;
 const governedCssProperties = ['padding', 'margin', 'gap', 'width', 'height', 'border-radius', 'font-size'];
 const allowedExtensions = new Set(['.ts', '.tsx', '.css']);
+const localeDir = path.join(srcDir, 'locales');
+const allowedHardcodedCopyFiles = new Set([
+  allowedCssFile,
+  path.join(srcDir, 'lib', 'mockDashboard.ts'),
+]);
+const hardcodedCopyPattern =
+  /(?:aria-label|placeholder|label|title|summary|caption|kicker|body|description|message)\s*[:=]\s*["'`][^"'`\n]*[\u4e00-\u9fff][^"'`\n]*["'`]/;
 const failures = [];
 
 function walk(dir) {
@@ -30,18 +37,29 @@ function walk(dir) {
 function inspectFile(filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const lines = content.split('\n');
+  const relativePath = path.relative(projectRoot.pathname, filePath);
 
   if (filePath !== allowedCssFile) {
     lines.forEach((line, index) => {
       if (colorPattern.test(line)) {
-        failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} raw color literal is not allowed outside src/index.css theme tokens`);
+        failures.push(`${relativePath}:${index + 1} raw color literal is not allowed outside src/index.css theme tokens`);
       }
       if (arbitraryTailwindPattern.test(line)) {
-        failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} Tailwind arbitrary value is not allowed; use semantic classes or top-level tokens`);
+        failures.push(`${relativePath}:${index + 1} Tailwind arbitrary value is not allowed; use semantic classes or top-level tokens`);
       }
     });
     if (path.basename(filePath) !== 'ControlGlass.tsx' && freeSizePropPattern.test(content)) {
-      failures.push(`${path.relative(projectRoot.pathname, filePath)} free-form size props are not allowed; use controlled component variants or top-level layout tokens`);
+      failures.push(`${relativePath} free-form size props are not allowed; use controlled component variants or top-level layout tokens`);
+    }
+    const isLocaleResource = filePath.startsWith(localeDir);
+    const isTestFile = filePath.includes(`${path.sep}test${path.sep}`) || filePath.includes('.test.');
+    const isAllowedCopyFile = allowedHardcodedCopyFiles.has(filePath);
+    if (!isLocaleResource && !isTestFile && !isAllowedCopyFile) {
+      lines.forEach((line, index) => {
+        if (hardcodedCopyPattern.test(line)) {
+          failures.push(`${relativePath}:${index + 1} hardcoded product copy is not allowed outside src/locales; move UI copy into locale resources`);
+        }
+      });
     }
     return;
   }
@@ -64,7 +82,7 @@ function inspectFile(filePath) {
 
     if (!colorPattern.test(line)) return;
     if (inThemeTokenBlock && trimmed.startsWith('--')) return;
-    failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} raw color literal must be defined through top-level theme variables`);
+    failures.push(`${relativePath}:${index + 1} raw color literal must be defined through top-level theme variables`);
   });
 }
 

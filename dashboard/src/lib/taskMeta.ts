@@ -1,4 +1,5 @@
 import type { TaskPriority, TaskState } from '@/types/task';
+import { translate } from '@/lib/i18n';
 
 type Tone = 'neutral' | 'info' | 'warning' | 'success' | 'danger';
 
@@ -7,29 +8,54 @@ export interface BadgeMeta {
   tone: Tone;
 }
 
-const stateMeta: Record<string, BadgeMeta> = {
-  draft: { label: '草稿', tone: 'neutral' },
-  pending: { label: '等待中', tone: 'neutral' },
-  in_progress: { label: '进行中', tone: 'info' },
-  gate_waiting: { label: '待审批', tone: 'warning' },
-  completed: { label: '已完成', tone: 'success' },
-  failed: { label: '失败', tone: 'danger' },
-  cancelled: { label: '已取消', tone: 'danger' },
-  paused: { label: '已暂停', tone: 'neutral' },
-  blocked: { label: '已阻塞', tone: 'danger' },
+const stateTones: Record<string, Tone> = {
+  draft: 'neutral',
+  pending: 'neutral',
+  in_progress: 'info',
+  gate_waiting: 'warning',
+  completed: 'success',
+  failed: 'danger',
+  cancelled: 'danger',
+  paused: 'neutral',
+  blocked: 'danger',
 };
 
-const priorityMeta: Record<string, BadgeMeta> = {
-  low: { label: '低', tone: 'neutral' },
-  normal: { label: '标准', tone: 'info' },
-  high: { label: '高', tone: 'warning' },
-  critical: { label: '关键', tone: 'danger' },
+const priorityTones: Record<string, Tone> = {
+  low: 'neutral',
+  normal: 'info',
+  high: 'warning',
+  critical: 'danger',
 };
 
 export function getStateMeta(state: TaskState | string): BadgeMeta {
-  return stateMeta[state] ?? { label: state, tone: 'neutral' };
+  const keyMap: Record<string, string> = {
+    draft: 'taskMeta.states.draft',
+    pending: 'taskMeta.states.pending',
+    in_progress: 'taskMeta.states.inProgress',
+    gate_waiting: 'taskMeta.states.gateWaiting',
+    completed: 'taskMeta.states.completed',
+    failed: 'taskMeta.states.failed',
+    cancelled: 'taskMeta.states.cancelled',
+    paused: 'taskMeta.states.paused',
+    blocked: 'taskMeta.states.blocked',
+  };
+
+  return {
+    label: keyMap[state] ? translate(keyMap[state]) : state,
+    tone: stateTones[state] ?? 'neutral',
+  };
 }
 
 export function getPriorityMeta(priority: TaskPriority | string): BadgeMeta {
-  return priorityMeta[priority] ?? { label: priority, tone: 'neutral' };
+  const keyMap: Record<string, string> = {
+    low: 'taskMeta.priorities.low',
+    normal: 'taskMeta.priorities.normal',
+    high: 'taskMeta.priorities.high',
+    critical: 'taskMeta.priorities.critical',
+  };
+
+  return {
+    label: keyMap[priority] ? translate(keyMap[priority]) : priority,
+    tone: priorityTones[priority] ?? 'neutral',
+  };
 }

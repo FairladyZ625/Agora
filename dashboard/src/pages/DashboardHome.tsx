@@ -9,12 +9,13 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { Link } from 'react-router';
-import { dashboardHomeCopy } from '@/lib/dashboardCopy';
+import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { StateBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 
 export function DashboardHome() {
+  const dashboardHomeCopy = useDashboardHomeCopy();
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
   const error = useTaskStore((state) => state.error);
@@ -28,25 +29,25 @@ export function DashboardHome() {
   const reviewItems = displayTasks.filter((task) => task.state === 'gate_waiting');
   const metrics = [
     {
-      label: '运行中的编排',
+      label: dashboardHomeCopy.metricLabels.active,
       value: displayTasks.filter((task) => task.state === 'in_progress').length,
       note: dashboardHomeCopy.metricNotes.active,
       icon: Orbit,
     },
     {
-      label: '待裁决事项',
+      label: dashboardHomeCopy.metricLabels.waiting,
       value: reviewItems.length,
       note: dashboardHomeCopy.metricNotes.waiting,
       icon: Scale,
     },
     {
-      label: '活跃 craftsman',
+      label: dashboardHomeCopy.metricLabels.craftsmen,
       value: 6,
       note: dashboardHomeCopy.metricNotes.craftsmen,
       icon: UsersRound,
     },
     {
-      label: '最近执行节拍',
+      label: dashboardHomeCopy.metricLabels.cadence,
       value: '12m',
       note: dashboardHomeCopy.metricNotes.cadence,
       icon: Clock3,

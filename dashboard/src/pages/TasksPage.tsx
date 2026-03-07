@@ -1,37 +1,34 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Clock3, Filter, Link2, PanelRightOpen, Search, Workflow } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
-import { tasksPageCopy } from '@/lib/dashboardCopy';
+import { useTranslation } from 'react-i18next';
+import { useTasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
+import { useFeedbackStore } from '@/stores/feedbackStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { toggleValue } from '@/lib/utils';
+import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
+import type { TaskAction } from '@/types/task';
 
-const taskStates = [
-  { value: 'in_progress', label: '进行中' },
-  { value: 'gate_waiting', label: '待审批' },
-  { value: 'completed', label: '已完成' },
-  { value: 'pending', label: '等待中' },
-] as const;
-
-const priorities = [
-  { value: 'critical', label: '关键' },
-  { value: 'high', label: '高' },
-  { value: 'normal', label: '标准' },
-  { value: 'low', label: '低' },
-] as const;
+const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending'] as const;
+const TASK_PRIORITY_VALUES = ['critical', 'high', 'normal', 'low'] as const;
 
 
 export function TasksPage() {
+  const { t } = useTranslation();
+  const tasksPageCopy = useTasksPageCopy();
   const tasks = useTaskStore((state) => state.tasks);
   const selectedTaskId = useTaskStore((state) => state.selectedTaskId);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
   const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const selectTask = useTaskStore((state) => state.selectTask);
+  const runTaskAction = useTaskStore((state) => state.runTaskAction);
+  const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
   const [query, setQuery] = useState('');
@@ -40,6 +37,8 @@ export function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [workflowFilter, setWorkflowFilter] = useState<string[]>([]);
+  const [actionActor, setActionActor] = useState('');
+  const [actionNote, setActionNote] = useState('');
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
@@ -95,24 +94,35 @@ export function TasksPage() {
       : null;
 
   const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
+  const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
+  const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
+  const preferredActorId =
+    !activeTask
+      ? ''
+      : (activeGateType === 'approval'
+          ? activeMembers.find((member) => member.role === 'reviewer')?.agentId
+          : activeMembers.find((member) => member.role === 'architect')?.agentId) ??
+        activeMembers[0]?.agentId ??
+        activeTask.creator;
+  const resolvedActionActor = actionActor || preferredActorId;
 
   const taskSections = useMemo(() => [
     {
       label: tasksPageCopy.filterSectionLabels.state,
-      options: taskStates.map((item) => ({
-        value: item.value,
-        label: item.label,
-        count: taskList.filter((task) => task.state === item.value).length,
+      options: TASK_STATE_VALUES.map((value) => ({
+        value,
+        label: getStateMeta(value).label,
+        count: taskList.filter((task) => task.state === value).length,
       })),
       selected: stateFilter,
       onToggle: (value: string) => setStateFilter((current) => toggleValue(current, value)),
     },
     {
       label: tasksPageCopy.filterSectionLabels.priority,
-      options: priorities.map((item) => ({
-        value: item.value,
-        label: item.label,
-        count: taskList.filter((task) => task.priority === item.value).length,
+      options: TASK_PRIORITY_VALUES.map((value) => ({
+        value,
+        label: getPriorityMeta(value).label,
+        count: taskList.filter((task) => task.priority === value).length,
       })),
       selected: priorityFilter,
       onToggle: (value: string) => setPriorityFilter((current) => toggleValue(current, value)),
@@ -137,13 +147,43 @@ export function TasksPage() {
       selected: workflowFilter,
       onToggle: (value: string) => setWorkflowFilter((current) => toggleValue(current, value)),
     },
-  ], [taskList, stateFilter, priorityFilter, teamFilter, workflowFilter, availableTeams, availableWorkflows]);
+  ], [taskList, stateFilter, priorityFilter, teamFilter, workflowFilter, availableTeams, availableWorkflows, tasksPageCopy]);
 
   const clearFilters = () => {
     setStateFilter([]);
     setPriorityFilter([]);
     setTeamFilter([]);
     setWorkflowFilter([]);
+  };
+
+  const runAction = async (
+    action: TaskAction,
+    overrides: { actorId?: string; note?: string; subtaskId?: string; vote?: 'approve' | 'reject' } = {},
+  ) => {
+    if (!activeTask) return;
+    const actorId = overrides.actorId ?? resolvedActionActor;
+    const note = overrides.note ?? actionNote;
+    try {
+      await runTaskAction(action, {
+        taskId: activeTask.id,
+        actorId,
+        note,
+        subtaskId: overrides.subtaskId,
+        vote: overrides.vote,
+      });
+      showMessage(
+        t('feedback.taskActionSuccessTitle'),
+        t('feedback.taskActionSuccessDetail', { id: activeTask.id }),
+        'success',
+      );
+      setActionNote('');
+    } catch (actionError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        actionError instanceof Error ? actionError.message : String(actionError),
+        'warning',
+      );
+    }
   };
 
   return (
@@ -158,15 +198,15 @@ export function TasksPage() {
             </div>
             <div className="workbench-hero__stats">
               <div className="inline-stat">
-                <span className="inline-stat__label">当前命中</span>
+                <span className="inline-stat__label">{tasksPageCopy.stats.currentMatches}</span>
                 <span className="inline-stat__value">{filteredTasks.length}</span>
               </div>
               <div className="inline-stat">
-                <span className="inline-stat__label">待审批</span>
+                <span className="inline-stat__label">{tasksPageCopy.stats.awaitingReview}</span>
                 <span className="inline-stat__value">{filteredTasks.filter((task) => task.state === 'gate_waiting').length}</span>
               </div>
               <div className="inline-stat">
-                <span className="inline-stat__label">当前焦点</span>
+                <span className="inline-stat__label">{tasksPageCopy.stats.currentFocus}</span>
                 <span className="inline-stat__value">{activeTask?.current_stage ?? tasksPageCopy.stageFallback}</span>
               </div>
             </div>
@@ -253,7 +293,10 @@ export function TasksPage() {
                   <button
                     key={task.id}
                     type="button"
-                    onClick={() => void selectTask(task.id)}
+                    onClick={() => {
+                      setActionActor('');
+                      void selectTask(task.id);
+                    }}
                     className={task.id === activeTask?.id ? 'dense-row dense-row--active' : 'dense-row'}
                   >
                     <div className="dense-row__main">
@@ -324,6 +367,114 @@ export function TasksPage() {
                     <span className="detail-card__label">{tasksPageCopy.updatedLabel}</span>
                     <strong className="detail-card__value">{formatRelativeTimestamp(activeTask.updated_at)}</strong>
                   </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="section-title">{tasksPageCopy.actionsTitle}</h4>
+                  <div>
+                    <span className="field-label">{tasksPageCopy.actorLabel}</span>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {activeMembers.map((member) => (
+                        <button
+                          key={`${member.role}-${member.agentId}`}
+                          type="button"
+                          onClick={() => setActionActor(member.agentId)}
+                          className={resolvedActionActor === member.agentId ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                        >
+                          {member.agentId}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="field-label" htmlFor="task-action-note">
+                      {tasksPageCopy.noteLabel}
+                    </label>
+                    <textarea
+                      id="task-action-note"
+                      value={actionNote}
+                      onChange={(event) => setActionNote(event.target.value)}
+                      className="textarea-shell"
+                      placeholder={tasksPageCopy.notePlaceholder}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    {activeGateType === 'approval' ? (
+                      <>
+                        <button type="button" className="button-primary" onClick={() => void runAction('approve')}>
+                          {tasksPageCopy.approveAction}
+                        </button>
+                        <button type="button" className="button-danger" onClick={() => void runAction('reject')}>
+                          {tasksPageCopy.rejectAction}
+                        </button>
+                      </>
+                    ) : null}
+
+                    {activeGateType === 'quorum' ? (
+                      <>
+                        <button type="button" className="button-primary" onClick={() => void runAction('confirm', { vote: 'approve' })}>
+                          {tasksPageCopy.confirmApproveAction}
+                        </button>
+                        <button type="button" className="button-danger" onClick={() => void runAction('confirm', { vote: 'reject' })}>
+                          {tasksPageCopy.confirmRejectAction}
+                        </button>
+                      </>
+                    ) : null}
+
+                    {activeTask.sourceState === 'active' ? (
+                      <>
+                        <button type="button" className="button-secondary" onClick={() => void runAction('advance')}>
+                          {tasksPageCopy.advanceAction}
+                        </button>
+                        <button type="button" className="button-secondary" onClick={() => void runAction('pause')}>
+                          {tasksPageCopy.pauseAction}
+                        </button>
+                        <button type="button" className="button-danger" onClick={() => void runAction('cancel')}>
+                          {tasksPageCopy.cancelAction}
+                        </button>
+                        <button type="button" className="button-secondary" onClick={() => void runAction('force_advance')}>
+                          {tasksPageCopy.forceAdvanceAction}
+                        </button>
+                      </>
+                    ) : null}
+
+                    {activeTask.sourceState === 'paused' ? (
+                      <button type="button" className="button-primary" onClick={() => void runAction('resume')}>
+                        {tasksPageCopy.resumeAction}
+                      </button>
+                    ) : null}
+
+                    {activeTask.sourceState === 'blocked' ? (
+                      <button type="button" className="button-primary" onClick={() => void runAction('unblock')}>
+                        {tasksPageCopy.unblockAction}
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {(activeStatus?.subtasks ?? []).some((subtask) => subtask.status !== 'done') ? (
+                    <div className="flex flex-wrap gap-2">
+                      {(activeStatus?.subtasks ?? [])
+                        .filter((subtask) => subtask.status !== 'done')
+                        .map((subtask) => (
+                          <button
+                            key={subtask.id}
+                            type="button"
+                            className="button-secondary"
+                            onClick={() =>
+                              void runAction('subtask_done', {
+                                subtaskId: subtask.id,
+                                actorId: subtask.assignee,
+                                note: actionNote || t('common.done'),
+                              })
+                            }
+                          >
+                            {t('common.markSubtaskDone', { id: subtask.id })}
+                          </button>
+                        ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div>
