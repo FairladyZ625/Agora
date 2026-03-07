@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ShieldAlert, XCircle } from 'lucide-react';
+import { CheckCircle2, Command, ShieldAlert, SlidersHorizontal, XCircle } from 'lucide-react';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { reviewsPageCopy } from '@/lib/dashboardCopy';
 import { MOCK_REVIEW_QUEUE } from '@/lib/mockDashboard';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTaskStore } from '@/stores/taskStore';
 
+type QueueScope = 'all' | 'critical' | 'high';
+
+const queueScopes: { value: QueueScope; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'critical', label: '关键' },
+  { value: 'high', label: '高优先级' },
+];
+
 export function ReviewsPage() {
   const { tasks, fetchTasks, resolveReview, dataSource } = useTaskStore();
   const { showMessage } = useFeedbackStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [scope, setScope] = useState<QueueScope>('all');
   const [note, setNote] = useState('');
 
   useEffect(() => {
@@ -34,7 +43,17 @@ export function ReviewsPage() {
     return liveQueue.length > 0 ? liveQueue : MOCK_REVIEW_QUEUE;
   }, [tasks]);
 
-  const selected = queue.find((item) => item.id === selectedId) ?? queue[0] ?? null;
+  const filteredQueue = useMemo(() => {
+    if (scope === 'critical') {
+      return queue.filter((item) => item.priority === 'critical');
+    }
+    if (scope === 'high') {
+      return queue.filter((item) => item.priority === 'critical' || item.priority === 'high');
+    }
+    return queue;
+  }, [queue, scope]);
+
+  const selected = filteredQueue.find((item) => item.id === selectedId) ?? filteredQueue[0] ?? null;
 
   const handleDecision = async (decision: 'approve' | 'reject') => {
     if (!selected) return;
@@ -61,10 +80,45 @@ export function ReviewsPage() {
         <p className="page-summary">{reviewsPageCopy.summary}</p>
       </section>
 
+      <section className="surface-panel surface-panel--toolbar">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <p className="page-kicker">Decision Workbench</p>
+            <h3 className="section-title">队列先看全局，裁决再进检视器</h3>
+            <p className="section-copy">
+              这版预览把审批页改成操作台节奏：左侧快速扫描队列，右侧持续聚焦当前裁决对象，减少卡片跳读成本。
+            </p>
+          </div>
+          <div className="flex flex-col items-start gap-2 text-[12px] text-[var(--color-text-secondary)] lg:items-end">
+            <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <Command size={12} />
+              预留 Command K 批量动作入口
+            </div>
+            <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5" style={{ borderColor: 'var(--color-border)' }}>
+              <SlidersHorizontal size={12} />
+              按优先级快速收束队列
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {queueScopes.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setScope(item.value)}
+              className={scope === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
       <div className="grid gap-4 md:grid-cols-3">
         <div className="metric-card metric-card--warning">
           <p className="metric-label">{reviewsPageCopy.metricLabels.queue}</p>
-          <p className="metric-value">{queue.length}</p>
+          <p className="metric-value">{filteredQueue.length}</p>
           <p className="metric-note">{reviewsPageCopy.metricNotes.queue}</p>
         </div>
         <div className="metric-card metric-card--danger">
@@ -79,7 +133,7 @@ export function ReviewsPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(360px,0.92fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
         <section className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
@@ -87,43 +141,70 @@ export function ReviewsPage() {
               <h3 className="section-title">{reviewsPageCopy.queueTitle}</h3>
             </div>
             <span className="status-pill status-pill--warning">
-              {queue.length}
+              {filteredQueue.length}
               {reviewsPageCopy.queueCountUnit}
             </span>
           </div>
 
-          <div className="mt-5 space-y-3">
-            {queue.map((item) => (
+          <div className="mt-4 hidden grid-cols-[minmax(0,1fr)_130px_120px_64px_auto] items-center gap-3 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-tertiary)] md:grid">
+            <span>任务</span>
+            <span>Gate</span>
+            <span>优先级</span>
+            <span>等待</span>
+            <span className="text-right">动作</span>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {filteredQueue.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setSelectedId(item.id)}
-                className={item.id === selected?.id ? 'task-row task-row--active' : 'task-row'}
+                className={
+                  item.id === selected?.id
+                    ? 'w-full rounded-2xl border px-3 py-3 text-left transition-all task-row--active'
+                    : 'w-full rounded-2xl border px-3 py-3 text-left transition-all'
+                }
+                style={{ borderColor: 'var(--color-border)', background: 'var(--row-bg)' }}
               >
-                <div className="flex items-start justify-between gap-3 text-left">
-                  <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-3 md:grid md:grid-cols-[minmax(0,1fr)_130px_120px_64px_auto] md:items-center">
+                  <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[12px] text-[var(--color-text-tertiary)]">{item.id}</span>
-                      <h4 className="truncate text-[15px] font-medium text-[var(--color-text-primary)]">
+                      <span className="font-mono text-[11px] text-[var(--color-text-tertiary)]">{item.id}</span>
+                      <h4 className="truncate text-[14px] font-medium text-[var(--color-text-primary)]">
                         {item.title}
                       </h4>
                     </div>
-                    <p className="mt-3 text-[13px] leading-6 text-[var(--color-text-secondary)]">
+                    <p className="mt-2 line-clamp-2 text-[12px] leading-5 text-[var(--color-text-secondary)]">
                       {item.summary}
                     </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 md:hidden">
+                      <span className="text-[11px] text-[var(--color-text-tertiary)]">{item.gate}</span>
                       <PriorityBadge priority={item.priority} />
-                      <StateBadge state={item.state} />
+                      <span className="text-[11px] text-[var(--color-text-tertiary)]">{item.waitTime}</span>
                     </div>
                   </div>
-                  <span className="text-[12px] text-[var(--color-text-tertiary)]">{item.waitTime}</span>
+                  <span className="hidden text-[12px] text-[var(--color-text-secondary)] md:block">{item.gate}</span>
+                  <div className="hidden md:block">
+                    <PriorityBadge priority={item.priority} />
+                  </div>
+                  <span className="hidden text-[12px] text-[var(--color-text-tertiary)] md:block">{item.waitTime}</span>
+                  <span className="hidden text-right text-[12px] font-medium text-[var(--color-primary)] md:block">
+                    审阅
+                  </span>
                 </div>
               </button>
             ))}
+            {filteredQueue.length === 0 && (
+              <div className="empty-state">
+                <p className="text-[15px] font-medium text-[var(--color-text-primary)]">当前筛选下没有待裁决项</p>
+                <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">切回“全部”或“高优先级”查看完整队列。</p>
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="surface-panel surface-panel--workspace">
+        <section className="surface-panel surface-panel--workspace xl:sticky xl:top-28 xl:self-start">
           {selected ? (
             <div className="space-y-6">
               <div className="section-title-row">
