@@ -7,6 +7,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { BrandLogo } from '../ui/BrandLogo';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -22,107 +24,101 @@ const navItems = [
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
-    <aside
-      className="flex flex-col shrink-0 transition-all duration-200 ease-out"
+    <motion.aside
+      initial={false}
+      animate={{ width: collapsed ? 64 : 240 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      className="flex flex-col shrink-0 glass-panel m-3 mr-0 overflow-hidden relative z-20"
       style={{
-        width: collapsed ? 56 : 220,
-        background: 'var(--color-sidebar-bg)',
-        borderRight: '1px solid var(--color-border)',
+        borderRight: '1px solid var(--color-glass-border)',
+        boxShadow: 'var(--shadow-lg)',
       }}
     >
-      {/* Logo */}
+      {/* Subtle ambient gradient overlay for sidebar specifically */}
+      <div className="absolute inset-0 pointer-events-none opacity-20"
+           style={{ background: 'linear-gradient(to bottom, var(--color-primary-bg), transparent)' }} />
+
+      {/* Header / Logo */}
       <div
-        className="flex items-center gap-2.5 h-[52px] shrink-0"
+        className="flex items-center gap-3 h-[60px] shrink-0 relative z-10"
         style={{
-          padding: collapsed ? '0 14px' : '0 16px',
+          padding: collapsed ? '0 16px' : '0 20px',
           borderBottom: '1px solid var(--color-border)',
         }}
       >
-        <div
-          className="flex items-center justify-center w-8 h-8 rounded-lg text-sm font-bold shrink-0"
-          style={{
-            background: 'linear-gradient(135deg, #0891b2, #06b6d4)',
-            color: '#fff',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          A
-        </div>
+        <BrandLogo collapsed={collapsed} />
         {!collapsed && (
-          <div className="flex flex-col">
+          <motion.div 
+            initial={{ opacity: 0, x: -10 }} 
+            animate={{ opacity: 1, x: 0 }}
+            className="flex flex-col overflow-hidden"
+          >
             <span
-              className="font-semibold text-sm leading-tight tracking-tight"
+              className="font-bold text-base leading-tight tracking-tight text-glow"
               style={{ color: 'var(--color-text-primary)' }}
             >
               Agora
             </span>
             <span
-              className="text-[10px] leading-tight"
-              style={{ color: 'var(--color-text-tertiary)' }}
+              className="text-[10px] leading-tight font-medium uppercase tracking-widest"
+              style={{ color: 'var(--color-primary)' }}
             >
-              Control Panel
+               Control
             </span>
-          </div>
+          </motion.div>
         )}
       </div>
 
       {/* Navigation */}
       <nav
-        className="flex-1 py-3 space-y-0.5"
-        style={{ padding: collapsed ? '12px 8px' : '12px 10px' }}
+        className="flex-1 py-4 space-y-1 relative z-10"
+        style={{ padding: collapsed ? '16px 8px' : '16px 12px' }}
       >
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: collapsed ? '8px 0' : '7px 10px',
-              borderRadius: '8px',
-              fontSize: '13px',
-              fontWeight: isActive ? 500 : 400,
-              color: isActive
-                ? 'var(--color-sidebar-active-text)'
-                : 'var(--color-text-secondary)',
-              background: isActive
-                ? 'var(--color-sidebar-active-bg)'
-                : 'transparent',
-              borderLeft: isActive && !collapsed
-                ? '2px solid var(--color-sidebar-active-border)'
-                : '2px solid transparent',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              textDecoration: 'none',
-              transition: 'all 0.12s ease-out',
-              cursor: 'pointer',
-            })}
-            onMouseEnter={(e) => {
-              const target = e.currentTarget;
-              if (!target.classList.contains('active')) {
-                target.style.background = 'var(--color-sidebar-hover)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              const target = e.currentTarget;
-              // Reset — NavLink re-renders will fix active state
-              const isActive = target.getAttribute('aria-current') === 'page';
-              target.style.background = isActive
-                ? 'var(--color-sidebar-active-bg)'
-                : 'transparent';
-            }}
+            className={({ isActive }) => `
+              relative flex items-center gap-3 rounded-[10px] font-medium transition-all duration-300
+              ${collapsed ? 'justify-center py-2.5' : 'justify-start px-3 py-2.5'}
+              ${isActive ? 'active-nav-item' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-text-primary)]'}
+            `}
           >
-            <Icon size={18} className="shrink-0" />
-            {!collapsed && <span>{label}</span>}
+            {({ isActive }) => (
+              <>
+                {/* Active Indicator Glow */}
+                {isActive && (
+                  <motion.div
+                    layoutId="sidebar-active-pill"
+                    className="absolute inset-0 rounded-[10px] bg-[var(--color-sidebar-active-bg)] border border-[var(--color-glass-border-strong)]"
+                    style={{ boxShadow: 'var(--shadow-glow)' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
+                
+                {isActive && !collapsed && (
+                  <motion.div
+                    layoutId="sidebar-active-bar"
+                    className="absolute left-0 top-1/4 bottom-1/4 w-[3px] bg-[var(--color-primary)] rounded-r-md shadow-[0_0_8px_var(--color-primary)]"
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
+
+                <Icon size={18} className="shrink-0 relative z-10" style={{ color: isActive ? 'var(--color-primary)' : 'inherit' }} />
+                {!collapsed && <span className="relative z-10 text-[13.5px] tracking-wide" style={{ color: isActive ? 'var(--color-text-primary)' : 'inherit' }}>{label}</span>}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
 
       {/* Collapse toggle */}
-      <button
+      <motion.button
+        whileHover={{ scale: 1.02, backgroundColor: 'var(--color-sidebar-hover)' }}
+        whileTap={{ scale: 0.98 }}
         onClick={onToggle}
-        className="flex items-center justify-center h-10 shrink-0 transition-colors duration-100"
+        className="flex items-center justify-center h-12 shrink-0 relative z-10"
         style={{
           borderTop: '1px solid var(--color-border)',
           color: 'var(--color-text-tertiary)',
@@ -133,16 +129,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           borderTopWidth: '1px',
           borderTopColor: 'var(--color-border)',
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'var(--color-sidebar-hover)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'transparent';
-        }}
         aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
       >
-        {collapsed ? <ChevronsRight size={15} /> : <ChevronsLeft size={15} />}
-      </button>
-    </aside>
+        {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+      </motion.button>
+    </motion.aside>
   );
 }

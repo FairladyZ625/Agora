@@ -1,4 +1,5 @@
 import { Search, Filter } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const MOCK_TASKS = [
   { id: 'TSK-001', title: '实现 Agent 权限分级验证', state: 'in_progress', creator: 'archon', priority: 'high', updated: '2 分钟前' },
@@ -11,12 +12,12 @@ const MOCK_TASKS = [
   { id: 'TSK-008', title: 'FastAPI 路由重构与中间件', state: 'in_progress', creator: 'archon', priority: 'high', updated: '2 天前' },
 ];
 
-const stateConfig: Record<string, { bg: string; text: string; label: string }> = {
-  in_progress: { bg: 'var(--color-info-bg)', text: 'var(--color-info-text)', label: '进行中' },
-  gate_waiting: { bg: 'var(--color-warning-bg)', text: 'var(--color-warning-text)', label: '待审批' },
-  completed: { bg: 'var(--color-success-bg)', text: 'var(--color-success-text)', label: '已完成' },
-  failed: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', label: '失败' },
-  pending: { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', label: '等待中' },
+const stateConfig: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  in_progress: { bg: 'var(--color-info-bg)', text: 'var(--color-info-text)', border: 'var(--color-info-border)', label: '进行中' },
+  gate_waiting: { bg: 'var(--color-warning-bg)', text: 'var(--color-warning-text)', border: 'var(--color-warning-border)', label: '待审批' },
+  completed: { bg: 'var(--color-success-bg)', text: 'var(--color-success-text)', border: 'var(--color-success-border)', label: '已完成' },
+  failed: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', border: 'var(--color-danger-border)', label: '失败' },
+  pending: { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', border: 'var(--color-border)', label: '等待中' },
 };
 
 const priorityConfig: Record<string, { color: string }> = {
@@ -26,34 +27,48 @@ const priorityConfig: Record<string, { color: string }> = {
   low: { color: 'var(--color-text-tertiary)' },
 };
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+};
+
 export function TasksPage() {
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-6"
+    >
+      <motion.div variants={itemVariants} className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
+          <h2 className="text-2xl font-semibold tracking-tight text-glow" style={{ color: 'var(--color-text-primary)' }}>
             任务列表
           </h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-            管理和筛选所有任务
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            Agora Global Action Log
           </p>
         </div>
-      </div>
+      </motion.div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
+      <motion.div variants={itemVariants} className="flex items-center gap-3">
         <div
-          className="flex items-center gap-2 flex-1 h-9 px-3 rounded-lg"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-          }}
+          className="glass-panel flex items-center gap-2 flex-1 h-10 px-4 shadow-sm"
         >
-          <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+          <Search size={16} style={{ color: 'var(--color-text-tertiary)' }} />
           <input
             type="text"
             placeholder="搜索任务 ID 或标题..."
-            className="flex-1 text-[13px] bg-transparent"
+            className="flex-1 text-[14px] bg-transparent"
             style={{
               color: 'var(--color-text-primary)',
               outline: 'none',
@@ -61,28 +76,25 @@ export function TasksPage() {
             }}
           />
         </div>
-        <button
-          className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12px] font-medium"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            color: 'var(--color-text-secondary)',
-            cursor: 'pointer',
-          }}
+        <motion.button
+          whileHover={{ scale: 1.02, backgroundColor: 'var(--color-surface-hover)' }}
+          whileTap={{ scale: 0.98 }}
+          className="glass-panel flex items-center gap-2 h-10 px-4 text-[13px] font-medium transition-colors shadow-sm cursor-pointer"
+          style={{ color: 'var(--color-text-secondary)' }}
         >
-          <Filter size={13} /> 筛选
-        </button>
-      </div>
+          <Filter size={15} /> 筛选
+        </motion.button>
+      </motion.div>
 
       {/* Table */}
-      <div className="card-flat overflow-hidden">
-        <table className="w-full">
+      <motion.div variants={itemVariants} className="glass-panel overflow-hidden shadow-sm">
+        <table className="w-full border-collapse">
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+            <tr style={{ borderBottom: '1px solid var(--color-glass-border)' }}>
               {['ID', '标题', '状态', '优先级', '创建者', '更新'].map((h) => (
                 <th
                   key={h}
-                  className="text-left text-[11px] font-semibold uppercase tracking-wider px-4 py-2.5"
+                  className="text-left text-[12px] font-semibold uppercase tracking-wider px-5 py-3"
                   style={{ color: 'var(--color-text-tertiary)' }}
                 >
                   {h}
@@ -95,51 +107,43 @@ export function TasksPage() {
               const sc = stateConfig[task.state] ?? stateConfig.pending;
               const pc = priorityConfig[task.priority] ?? priorityConfig.normal;
               return (
-                <tr
+                <motion.tr
                   key={task.id}
-                  className="transition-colors duration-100"
-                  style={{
-                    borderBottom: '1px solid var(--color-border-subtle)',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-surface-hover)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
+                  whileHover={{ backgroundColor: 'var(--color-surface-hover)' }}
+                  className="transition-colors duration-150 cursor-pointer"
+                  style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
                 >
-                  <td className="px-4 py-2.5">
-                    <span className="text-[12px] font-mono" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <td className="px-5 py-3">
+                    <span className="text-[13px] font-mono font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
                       {task.id}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-[13px]" style={{ color: 'var(--color-text-primary)' }}>
+                  <td className="px-5 py-3">
+                    <span className="text-[14px] font-medium" style={{ color: 'var(--color-text-primary)' }}>
                       {task.title}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="badge" style={{ background: sc.bg, color: sc.text }}>
+                  <td className="px-5 py-3">
+                    <span className="badge-glass shadow-sm" style={{ background: sc.bg, color: sc.text, borderColor: sc.border }}>
                       {sc.label}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-[12px] font-medium" style={{ color: pc.color }}>
+                  <td className="px-5 py-3">
+                    <span className="text-[13px] font-medium tracking-wide" style={{ color: pc.color }}>
                       {task.priority}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-5 py-3">
+                    <span className="text-[13px]" style={{ color: 'var(--color-text-secondary)' }}>
                       {task.creator}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                  <td className="px-5 py-3">
+                    <span className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
                       {task.updated}
                     </span>
                   </td>
-                </tr>
+                </motion.tr>
               );
             })}
           </tbody>
@@ -147,30 +151,31 @@ export function TasksPage() {
 
         {/* Pagination */}
         <div
-          className="flex items-center justify-between px-4 py-2.5"
-          style={{ borderTop: '1px solid var(--color-border)' }}
+          className="flex items-center justify-between px-5 py-3"
+          style={{ borderTop: '1px solid var(--color-glass-border)' }}
         >
-          <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+          <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
             共 {MOCK_TASKS.length} 个任务
           </span>
-          <div className="flex items-center gap-1">
-            {[1].map((p) => (
-              <button
+          <div className="flex items-center gap-1.5">
+            {[1, 2, 3].map((p) => (
+              <motion.button
                 key={p}
-                className="flex items-center justify-center w-7 h-7 rounded text-[12px] font-medium"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                className="flex items-center justify-center w-8 h-8 rounded-lg text-[13px] font-medium cursor-pointer"
                 style={{
-                  background: 'var(--color-primary-bg)',
-                  color: 'var(--color-primary)',
+                  background: p === 1 ? 'var(--color-primary-bg)' : 'transparent',
+                  color: p === 1 ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                   border: 'none',
-                  cursor: 'pointer',
                 }}
               >
                 {p}
-              </button>
+              </motion.button>
             ))}
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

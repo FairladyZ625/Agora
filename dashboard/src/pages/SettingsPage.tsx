@@ -3,6 +3,20 @@ import { Eye, EyeOff, Link2, Zap, Palette } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import * as api from '@/lib/api';
+import { motion } from 'framer-motion';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+};
 
 export function SettingsPage() {
   const { apiBase, apiToken, refreshInterval, pauseOnHidden, setApiConfig, setRefreshInterval, setPauseOnHidden } =
@@ -25,7 +39,7 @@ export function SettingsPage() {
     try {
       await api.healthCheck();
       setTestResult('success');
-      setTestMessage('连接成功');
+      setTestMessage('C2 核心网关连接成功');
     } catch (err) {
       setTestResult('error');
       setTestMessage(err instanceof Error ? err.message : '连接失败');
@@ -33,9 +47,9 @@ export function SettingsPage() {
   };
 
   const themes: { value: ThemeMode; label: string; desc: string }[] = [
-    { value: 'light', label: '浅色', desc: '始终使用浅色主题' },
-    { value: 'dark', label: '深色', desc: '始终使用深色主题' },
-    { value: 'system', label: '跟随系统', desc: '根据操作系统偏好自动切换' },
+    { value: 'light', label: '浅色', desc: '纯净的浅色 UI' },
+    { value: 'dark', label: '深色', desc: '深空般的酷炫配色' },
+    { value: 'system', label: '系统', desc: '跟随 OS 自动切换' },
   ];
 
   const intervals = [
@@ -43,250 +57,262 @@ export function SettingsPage() {
     { value: 5, label: '5 秒' },
     { value: 10, label: '10 秒' },
     { value: 30, label: '30 秒' },
-    { value: 60, label: '1 分钟' },
   ];
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
-          设置
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-6 max-w-3xl mx-auto"
+    >
+      <motion.div variants={itemVariants}>
+        <h2 className="text-2xl font-semibold tracking-tight text-glow" style={{ color: 'var(--color-text-primary)' }}>
+          系统配置
         </h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-          配置 API 连接、刷新频率和外观
+        <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+          System Preferences & Configuration
         </p>
-      </div>
+      </motion.div>
 
       {/* ── API Connection ── */}
-      <section className="card-flat overflow-hidden">
+      <motion.section variants={itemVariants} className="glass-panel overflow-hidden">
         <div
-          className="flex items-center gap-2.5 px-5 py-3"
-          style={{ borderBottom: '1px solid var(--color-border)' }}
+          className="flex items-center gap-3 px-6 py-4"
+          style={{ borderBottom: '1px solid var(--color-glass-border)' }}
         >
-          <Link2 size={16} style={{ color: 'var(--color-primary)' }} />
-          <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            API 连接
+          <Link2 size={18} style={{ color: 'var(--color-primary)' }} />
+          <span className="text-[14px] font-semibold tracking-wide" style={{ color: 'var(--color-text-primary)' }}>
+            核心网关通信
           </span>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-6 space-y-5">
           {/* Base URL */}
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-              Base URL
+          <div className="space-y-2">
+            <label className="text-[13px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              API Base Endpoint
             </label>
             <input
               type="text"
               value={localBase}
               onChange={(e) => setLocalBase(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg text-[13px] transition-colors duration-100"
+              className="w-full h-10 px-4 rounded-xl text-[14px] transition-colors duration-150 shadow-inner"
               style={{
                 background: 'var(--color-bg-muted)',
                 border: '1px solid var(--color-border)',
                 color: 'var(--color-text-primary)',
                 outline: 'none',
-                fontFamily: 'var(--font-mono, monospace)',
+                fontFamily: 'var(--font-mono)',
               }}
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = 'var(--color-primary)';
-                e.currentTarget.style.boxShadow = '0 0 0 3px var(--color-primary-ring)';
+                e.currentTarget.style.boxShadow = '0 0 0 3px var(--color-primary-ring), inset 0 2px 4px rgba(0,0,0,0.05)';
               }}
               onBlur={(e) => {
                 e.currentTarget.style.borderColor = 'var(--color-border)';
-                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.05)';
               }}
             />
           </div>
 
           {/* Token */}
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-              API Token
+          <div className="space-y-2">
+            <label className="text-[13px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              Access Token (Bearer)
             </label>
             <div className="relative">
               <input
                 type={showToken ? 'text' : 'password'}
                 value={localToken}
                 onChange={(e) => setLocalToken(e.target.value)}
-                placeholder="可选 — 留空表示不鉴权"
-                className="w-full h-9 px-3 pr-10 rounded-lg text-[13px] transition-colors duration-100"
+                placeholder="留空即为不验权"
+                className="w-full h-10 px-4 pr-12 rounded-xl text-[14px] transition-colors duration-150 shadow-inner"
                 style={{
                   background: 'var(--color-bg-muted)',
                   border: '1px solid var(--color-border)',
                   color: 'var(--color-text-primary)',
                   outline: 'none',
-                  fontFamily: 'var(--font-mono, monospace)',
+                  fontFamily: 'var(--font-mono)',
                 }}
                 onFocus={(e) => {
                   e.currentTarget.style.borderColor = 'var(--color-primary)';
-                  e.currentTarget.style.boxShadow = '0 0 0 3px var(--color-primary-ring)';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px var(--color-primary-ring), inset 0 2px 4px rgba(0,0,0,0.05)';
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.borderColor = 'var(--color-border)';
-                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0,0,0,0.05)';
                 }}
               />
               <button
                 onClick={() => setShowToken(!showToken)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors"
                 style={{
                   color: 'var(--color-text-tertiary)',
                   background: 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                 }}
-                aria-label={showToken ? '隐藏 Token' : '显示 Token'}
+                onMouseEnter={(e) => e.currentTarget.style.color = 'var(--color-text-primary)'}
+                onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
               >
-                {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
           </div>
 
           {/* Buttons */}
-          <div className="flex items-center gap-2 pt-1">
-            <button
+          <div className="flex items-center gap-3 pt-2">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={handleSaveApi}
-              className="h-8 px-4 rounded-lg text-[12px] font-medium transition-all duration-100"
+              className="h-10 px-6 rounded-xl text-[13px] font-bold shadow-md transition-all"
               style={{
                 background: 'var(--color-primary)',
                 color: '#fff',
                 border: 'none',
                 cursor: 'pointer',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-primary-hover)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-primary)'; }}
             >
-              保存
-            </button>
-            <button
+              应用配置
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={handleTestConnection}
               disabled={testResult === 'loading'}
-              className="h-8 px-4 rounded-lg text-[12px] font-medium transition-all duration-100"
+              className="h-10 px-6 rounded-xl text-[13px] font-bold shadow-sm transition-all"
               style={{
-                background: 'var(--color-bg-muted)',
-                color: 'var(--color-text-secondary)',
+                background: 'var(--color-surface)',
+                color: 'var(--color-text-primary)',
                 border: '1px solid var(--color-border)',
                 cursor: testResult === 'loading' ? 'wait' : 'pointer',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-emphasis)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-bg-muted)'; }}
             >
-              {testResult === 'loading' ? '测试中...' : '测试连接'}
-            </button>
+              {testResult === 'loading' ? '探测中...' : '检测连通性'}
+            </motion.button>
             {testResult === 'success' && (
-              <span className="text-[12px]" style={{ color: 'var(--color-success)' }}>{testMessage}</span>
+              <motion.span initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="text-[13px] font-medium badge-glass" style={{ color: 'var(--color-success)', borderColor: 'var(--color-success-border)' }}>
+                {testMessage}
+              </motion.span>
             )}
             {testResult === 'error' && (
-              <span className="text-[12px]" style={{ color: 'var(--color-danger)' }}>{testMessage}</span>
+              <motion.span initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="text-[13px] font-medium badge-glass" style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger-border)' }}>
+                {testMessage}
+              </motion.span>
             )}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* ── Refresh ── */}
-      <section className="card-flat overflow-hidden">
+      <motion.section variants={itemVariants} className="glass-panel overflow-hidden">
         <div
-          className="flex items-center gap-2.5 px-5 py-3"
-          style={{ borderBottom: '1px solid var(--color-border)' }}
+          className="flex items-center gap-3 px-6 py-4"
+          style={{ borderBottom: '1px solid var(--color-glass-border)' }}
         >
-          <Zap size={16} style={{ color: 'var(--color-warning)' }} />
-          <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            刷新
+          <Zap size={18} style={{ color: 'var(--color-warning)' }} />
+          <span className="text-[14px] font-semibold tracking-wide" style={{ color: 'var(--color-text-primary)' }}>
+            遥测与同步
           </span>
         </div>
-        <div className="p-5 space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-              自动刷新间隔
+        <div className="p-6 space-y-6">
+          <div className="space-y-3">
+            <label className="text-[13px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+              心跳轮询间隔
             </label>
-            <div className="flex gap-1.5 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
               {intervals.map(({ value, label }) => (
-                <button
+                <motion.button
                   key={value}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => setRefreshInterval(value)}
-                  className="h-8 px-3 rounded-lg text-[12px] font-medium transition-all duration-100"
+                  className="h-9 px-4 rounded-xl text-[13px] font-bold shadow-sm"
                   style={{
-                    background: refreshInterval === value ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)',
-                    color: refreshInterval === value ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                    border: refreshInterval === value
-                      ? '1px solid var(--color-primary)'
-                      : '1px solid var(--color-border)',
+                    background: refreshInterval === value ? 'var(--color-primary)' : 'var(--color-surface)',
+                    color: refreshInterval === value ? '#fff' : 'var(--color-text-secondary)',
+                    border: refreshInterval === value ? 'none' : '1px solid var(--color-border)',
                     cursor: 'pointer',
                   }}
                 >
                   {label}
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between p-4 rounded-xl" style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg-muted)' }}>
+            <div>
+              <div className="text-[13px] font-bold" style={{ color: 'var(--color-text-primary)' }}>后台挂起优化</div>
+              <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>当页面处于非激活状卡时，挂起一切轮询以节省性能</div>
+            </div>
             <button
               onClick={() => setPauseOnHidden(!pauseOnHidden)}
-              className="w-9 h-5 rounded-full transition-colors duration-200 relative shrink-0"
+              className="w-12 h-6 rounded-full transition-colors duration-200 relative shrink-0 shadow-inner"
               style={{
-                background: pauseOnHidden ? 'var(--color-primary)' : 'var(--color-bg-emphasis)',
+                background: pauseOnHidden ? 'var(--color-success)' : 'var(--color-text-tertiary)',
                 border: 'none',
                 cursor: 'pointer',
               }}
               aria-label="页面隐藏时暂停刷新"
             >
               <span
-                className="block w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-transform duration-200"
-                style={{
-                  transform: pauseOnHidden ? 'translateX(18px)' : 'translateX(3px)',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
-                }}
+                className="block w-5 h-5 rounded-full bg-white absolute top-[2px] transition-transform duration-200 shadow-sm"
+                style={{ transform: pauseOnHidden ? 'translateX(26px)' : 'translateX(2px)' }}
               />
             </button>
-            <span className="text-[12px]" style={{ color: 'var(--color-text-secondary)' }}>
-              页面隐藏时暂停自动刷新
-            </span>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {/* ── Theme ── */}
-      <section className="card-flat overflow-hidden">
+      <motion.section variants={itemVariants} className="glass-panel overflow-hidden">
         <div
-          className="flex items-center gap-2.5 px-5 py-3"
-          style={{ borderBottom: '1px solid var(--color-border)' }}
+          className="flex items-center gap-3 px-6 py-4"
+          style={{ borderBottom: '1px solid var(--color-glass-border)' }}
         >
-          <Palette size={16} style={{ color: 'var(--color-info)' }} />
-          <span className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-            外观
+          <Palette size={18} style={{ color: 'var(--color-info)' }} />
+          <span className="text-[14px] font-semibold tracking-wide" style={{ color: 'var(--color-text-primary)' }}>
+            外观与环境光
           </span>
         </div>
-        <div className="p-5">
-          <div className="grid grid-cols-3 gap-2">
+        <div className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {themes.map(({ value, label, desc }) => (
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 key={value}
                 onClick={() => setMode(value)}
-                className="flex flex-col items-start p-3 rounded-lg text-left transition-all duration-100"
+                className="flex flex-col items-start p-4 rounded-xl text-left shadow-sm relative overflow-hidden"
                 style={{
-                  background: mode === value ? 'var(--color-primary-bg)' : 'var(--color-bg-muted)',
+                  background: mode === value ? 'var(--color-surface-hover)' : 'var(--color-surface)',
                   border: mode === value
-                    ? '1.5px solid var(--color-primary)'
-                    : '1.5px solid var(--color-border)',
+                    ? '2px solid var(--color-primary)'
+                    : '1px solid var(--color-border)',
                   cursor: 'pointer',
                 }}
               >
+                {mode === value && (
+                   <div className="absolute inset-0 bg-[var(--color-primary-bg)] opacity-30 pointer-events-none" />
+                )}
                 <span
-                  className="text-[13px] font-medium"
+                  className="text-[14px] font-bold relative z-10"
                   style={{
                     color: mode === value ? 'var(--color-primary)' : 'var(--color-text-primary)',
                   }}
                 >
                   {label}
                 </span>
-                <span className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                <span className="text-[12px] mt-1 relative z-10" style={{ color: 'var(--color-text-tertiary)' }}>
                   {desc}
                 </span>
-              </button>
+              </motion.button>
             ))}
           </div>
         </div>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }

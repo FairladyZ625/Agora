@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useTaskStore } from '@/stores/taskStore';
 import { Link } from 'react-router';
+import { motion } from 'framer-motion';
 
 // ── Mock data for visual richness when API has no tasks ──
 const MOCK_TASKS = [
@@ -20,6 +21,19 @@ const MOCK_TASKS = [
   { id: 'TSK-006', title: 'CI/CD Pipeline 双 Job 配置', state: 'completed', creator: 'archon', priority: 'normal', updated_at: '昨天' },
 ];
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+};
+
 export function DashboardHome() {
   const { tasks, loading, error, fetchTasks } = useTaskStore();
 
@@ -27,7 +41,6 @@ export function DashboardHome() {
     fetchTasks();
   }, [fetchTasks]);
 
-  // Use real tasks if available, otherwise show mock for visual demo
   const displayTasks = tasks.length > 0 ? tasks.map(t => ({
     id: t.id,
     title: t.title,
@@ -82,245 +95,247 @@ export function DashboardHome() {
   ];
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      className="space-y-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+    >
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <motion.div variants={itemVariants} className="flex items-center justify-between">
         <div>
           <h2
-            className="text-lg font-semibold tracking-tight"
+            className="text-2xl font-semibold tracking-tight text-glow"
             style={{ color: 'var(--color-text-primary)' }}
           >
             概览
           </h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-            任务运行状态一览
+          <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            Agora Mission Control Status
           </p>
         </div>
         <Link
           to="/tasks"
-          className="flex items-center gap-1 text-xs font-medium transition-colors duration-100"
+          className="flex items-center gap-1.5 text-sm font-medium transition-all duration-200 hover:scale-105"
           style={{
             color: 'var(--color-primary)',
             textDecoration: 'none',
+            textShadow: '0 0 12px var(--color-primary-glow)',
           }}
         >
-          查看全部 <ArrowUpRight size={13} />
+          查看全部 <ArrowUpRight size={16} />
         </Link>
-      </div>
+      </motion.div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div
+            <motion.div
+              variants={itemVariants}
+              whileHover={{ scale: 1.02, y: -4 }}
+              whileTap={{ scale: 0.98 }}
               key={stat.label}
-              className="stat-card card-flat flex items-start justify-between p-4"
-              style={
-                { '--accent': stat.accent } as React.CSSProperties
-              }
+              className="stat-card glass-card flex items-start justify-between p-5 cursor-default"
+              style={{ '--accent': stat.accent } as React.CSSProperties}
             >
               <div>
-                <div
-                  className="text-2xl font-bold tracking-tight"
-                  style={{ color: stat.text }}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: 'spring', delay: 0.2 }}
+                  className="text-3xl font-bold tracking-tight"
+                  style={{ color: stat.text, textShadow: `0 0 16px ${stat.bg}` }}
                 >
                   {loading ? '—' : stat.value}
-                </div>
+                </motion.div>
                 <div
-                  className="text-xs mt-1 font-medium"
+                  className="text-[13px] mt-1.5 font-medium tracking-wide uppercase"
                   style={{ color: 'var(--color-text-tertiary)' }}
                 >
                   {stat.label}
                 </div>
               </div>
               <div
-                className="flex items-center justify-center w-9 h-9 rounded-lg"
-                style={{ background: stat.bg }}
+                className="flex items-center justify-center w-11 h-11 rounded-xl shadow-inner"
+                style={{ background: stat.bg, boxShadow: `0 4px 12px -4px ${stat.text}` }}
               >
-                <Icon size={18} style={{ color: stat.text }} />
+                <Icon size={20} style={{ color: stat.text }} />
               </div>
-            </div>
+            </motion.div>
           );
         })}
       </div>
 
       {/* Main content grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent tasks — takes 2 cols */}
-        <div className="lg:col-span-2 card-flat overflow-hidden">
+        <motion.div variants={itemVariants} className="lg:col-span-2 glass-panel overflow-hidden flex flex-col">
           <div
-            className="flex items-center justify-between px-4 py-3"
-            style={{ borderBottom: '1px solid var(--color-border)' }}
+            className="flex items-center justify-between px-6 py-4"
+            style={{ borderBottom: '1px solid var(--color-glass-border)' }}
           >
             <span
-              className="text-[13px] font-semibold"
+              className="text-[14px] font-semibold tracking-wide"
               style={{ color: 'var(--color-text-primary)' }}
             >
-              最近任务
+              最近任务流转
             </span>
-            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              {displayTasks.length} 个任务
+            <span className="text-[12px] font-mono tracking-widest uppercase" style={{ color: 'var(--color-text-tertiary)' }}>
+              {displayTasks.length} ITEMS
             </span>
           </div>
 
           {error && (
             <div
-              className="px-4 py-3 text-xs flex items-center gap-2"
-              style={{
-                background: 'var(--color-danger-bg)',
-                color: 'var(--color-danger-text)',
-              }}
+              className="px-6 py-3 text-xs flex items-center gap-2"
+              style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger-text)' }}
             >
-              <Circle size={6} fill="currentColor" /> {error}
+              <Circle size={8} fill="currentColor" /> {error}
             </div>
           )}
 
-          <div>
-            {displayTasks.slice(0, 6).map((task) => (
-              <div
+          <div className="flex-1 flex flex-col p-2 space-y-1">
+            {displayTasks.slice(0, 6).map((task, idx) => (
+              <motion.div
                 key={task.id}
-                className="flex items-center justify-between px-4 py-2.5 transition-colors duration-100"
-                style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--color-surface-hover)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 + idx * 0.05 }}
+                whileHover={{ scale: 1.01, backgroundColor: 'var(--color-surface-hover)' }}
+                className="flex items-center justify-between px-4 py-3 rounded-xl cursor-default transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-4 min-w-0">
                   <span
-                    className="text-[11px] font-mono shrink-0 w-[60px]"
+                    className="text-[12px] font-mono shrink-0 w-[70px] font-medium"
                     style={{ color: 'var(--color-text-tertiary)' }}
                   >
                     {task.id.length > 8 ? task.id.slice(0, 8) : task.id}
                   </span>
                   <span
-                    className="text-[13px] truncate"
+                    className="text-[14px] truncate font-medium"
                     style={{ color: 'var(--color-text-primary)' }}
                   >
                     {task.title}
                   </span>
                 </div>
-                <div className="flex items-center gap-2.5 shrink-0 ml-4">
+                <div className="flex items-center gap-3 shrink-0 ml-4">
                   <span
-                    className="text-[11px] hidden sm:inline-block"
+                    className="text-[12px] hidden sm:inline-block"
                     style={{ color: 'var(--color-text-tertiary)' }}
                   >
                     {task.updated_at}
                   </span>
                   <StateBadge state={task.state} />
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
         {/* Quick actions panel */}
-        <div className="card-flat overflow-hidden">
+        <motion.div variants={itemVariants} className="glass-panel overflow-hidden">
           <div
-            className="px-4 py-3"
-            style={{ borderBottom: '1px solid var(--color-border)' }}
+            className="px-6 py-4"
+            style={{ borderBottom: '1px solid var(--color-glass-border)' }}
           >
             <span
-              className="text-[13px] font-semibold"
+              className="text-[14px] font-semibold tracking-wide"
               style={{ color: 'var(--color-text-primary)' }}
             >
-              快速操作
+              系统指挥中心
             </span>
           </div>
 
-          <div className="p-4 space-y-3">
+          <div className="p-5 space-y-4">
             {/* Pending review hint */}
             {stats.gateWaiting > 0 && (
-              <Link
-                to="/reviews"
-                className="flex items-center gap-3 p-3 rounded-lg transition-colors duration-100"
-                style={{
-                  background: 'var(--color-warning-bg)',
-                  border: '1px solid var(--color-warning-border)',
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <ShieldCheck size={18} style={{ color: 'var(--color-warning)' }} />
-                <div>
-                  <div className="text-[13px] font-medium" style={{ color: 'var(--color-warning-text)' }}>
-                    {stats.gateWaiting} 个任务待审批
+              <Link to="/reviews" style={{ textDecoration: 'none' }}>
+                <motion.div
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex items-center gap-4 p-4 rounded-xl cursor-pointer"
+                  style={{
+                    background: 'var(--color-warning-bg)',
+                    border: '1px solid var(--color-warning-border)',
+                    boxShadow: '0 4px 16px -4px var(--color-warning-bg)',
+                  }}
+                >
+                  <ShieldCheck size={22} style={{ color: 'var(--color-warning)' }} className="animate-pulse" />
+                  <div>
+                    <div className="text-[14px] font-bold tracking-tight" style={{ color: 'var(--color-warning-text)' }}>
+                      {stats.gateWaiting} 个任务待 Archon 审批
+                    </div>
+                    <div className="text-[12px] mt-0.5 font-medium" style={{ color: 'var(--color-warning)' }}>
+                      点击前往处理
+                    </div>
                   </div>
-                  <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-warning)' }}>
-                    点击前往审批
-                  </div>
-                </div>
+                </motion.div>
               </Link>
             )}
 
             {/* System health */}
-            <div
-              className="p-3 rounded-lg"
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              className="p-4 rounded-xl"
               style={{
                 background: 'var(--color-success-bg)',
                 border: '1px solid var(--color-success-border)',
               }}
             >
-              <div className="flex items-center gap-2">
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: 'var(--color-success)',
-                    display: 'inline-block',
-                  }}
-                />
-                <span className="text-[13px] font-medium" style={{ color: 'var(--color-success-text)' }}>
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] shadow-[0_0_8px_var(--color-success)] animate-pulse" />
+                <span className="text-[14px] font-bold tracking-tight" style={{ color: 'var(--color-success-text)' }}>
                   系统正常运行
                 </span>
               </div>
-              <div className="text-[11px] mt-1 ml-4" style={{ color: 'var(--color-success)' }}>
+              <div className="text-[12px] mt-1.5 ml-5 font-medium" style={{ color: 'var(--color-success)' }}>
                 API 服务在线 · 数据库就绪
               </div>
-            </div>
+            </motion.div>
 
             {/* Info cards */}
             <div
-              className="p-3 rounded-lg"
+              className="p-4 rounded-xl"
               style={{
-                background: 'var(--color-bg-muted)',
-                border: '1px solid var(--color-border)',
+                background: 'var(--color-surface-hover)',
+                border: '1px solid var(--color-glass-border)',
               }}
             >
-              <div className="text-[12px] font-medium mb-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-                自动刷新
+              <div className="text-[13px] font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                自动状态轮询
               </div>
-              <div className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-                每 5 秒自动轮询任务状态
+              <div className="text-[12px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                客户端保持与核心网关活性连接
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function StateBadge({ state }: { state: string }) {
-  const config: Record<string, { bg: string; text: string; label: string }> = {
-    in_progress: { bg: 'var(--color-info-bg)', text: 'var(--color-info-text)', label: '进行中' },
-    gate_waiting: { bg: 'var(--color-warning-bg)', text: 'var(--color-warning-text)', label: '待审批' },
-    completed: { bg: 'var(--color-success-bg)', text: 'var(--color-success-text)', label: '已完成' },
-    failed: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', label: '失败' },
-    cancelled: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', label: '已取消' },
-    pending: { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', label: '等待中' },
+  const config: Record<string, { bg: string; text: string; label: string; border: string }> = {
+    in_progress: { bg: 'var(--color-info-bg)', text: 'var(--color-info-text)', border: 'var(--color-info-border)', label: '进行中' },
+    gate_waiting: { bg: 'var(--color-warning-bg)', text: 'var(--color-warning-text)', border: 'var(--color-warning-border)', label: '待审批' },
+    completed: { bg: 'var(--color-success-bg)', text: 'var(--color-success-text)', border: 'var(--color-success-border)', label: '已完成' },
+    failed: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', border: 'var(--color-danger-border)', label: '失败' },
+    cancelled: { bg: 'var(--color-danger-bg)', text: 'var(--color-danger-text)', border: 'var(--color-danger-border)', label: '已取消' },
+    pending: { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', border: 'var(--color-border)', label: '等待中' },
   };
-  const c = config[state] ?? { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', label: state };
+  const c = config[state] ?? { bg: 'var(--stat-zinc)', text: 'var(--stat-zinc-text)', border: 'var(--color-border)', label: state };
 
   return (
     <span
-      className="badge"
-      style={{ background: c.bg, color: c.text }}
+      className="badge-glass shadow-sm"
+      style={{ background: c.bg, color: c.text, borderColor: c.border }}
     >
+      {state === 'in_progress' && (
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-info)] animate-pulse shadow-[0_0_4px_var(--color-info)]" />
+      )}
       {c.label}
     </span>
   );

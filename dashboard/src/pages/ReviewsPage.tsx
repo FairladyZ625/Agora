@@ -1,4 +1,5 @@
 import { ShieldCheck, Clock, CheckCircle2, XCircle, MessageSquare } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const MOCK_REVIEWS = [
   {
@@ -19,62 +20,86 @@ const MOCK_REVIEWS = [
   },
 ];
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, scale: 0.95, y: 10 },
+  show: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+};
+
 export function ReviewsPage() {
   return (
-    <div className="space-y-5 max-w-3xl">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--color-text-primary)' }}>
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-6 max-w-3xl mx-auto"
+    >
+      <motion.div variants={itemVariants}>
+        <h2 className="text-2xl font-semibold tracking-tight text-glow" style={{ color: 'var(--color-text-primary)' }}>
           审批中心
         </h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-          处理待审批的任务
+        <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+          Archon Decision Gate
         </p>
-      </div>
+      </motion.div>
 
       {/* Review count summary */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 rounded-lg"
+      <motion.div
+        variants={itemVariants}
+        className="glass-panel flex items-center gap-4 px-6 py-4 shadow-md"
         style={{
           background: 'var(--color-warning-bg)',
-          border: '1px solid var(--color-warning-border)',
+          borderColor: 'var(--color-warning-border)',
         }}
       >
-        <ShieldCheck size={18} style={{ color: 'var(--color-warning)' }} />
-        <span className="text-[13px] font-medium" style={{ color: 'var(--color-warning-text)' }}>
-          {MOCK_REVIEWS.length} 个任务等待 Archon 审批
+        <ShieldCheck size={22} style={{ color: 'var(--color-warning)' }} className="animate-pulse" />
+        <span className="text-[14px] font-bold tracking-wide" style={{ color: 'var(--color-warning-text)' }}>
+          {MOCK_REVIEWS.length} 个任务正在等待裁决
         </span>
-      </div>
+      </motion.div>
 
       {/* Review cards */}
-      <div className="space-y-3">
+      <div className="space-y-5">
         {MOCK_REVIEWS.map((review) => (
-          <div key={review.id} className="card-flat overflow-hidden">
+          <motion.div 
+            variants={itemVariants} 
+            key={review.id} 
+            className="glass-card overflow-hidden"
+          >
             {/* Header */}
             <div
-              className="flex items-start justify-between px-5 py-3.5"
-              style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+              className="flex items-start justify-between px-6 py-4"
+              style={{ borderBottom: '1px solid var(--color-glass-border)' }}
             >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2.5">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-3">
                   <span
-                    className="text-[11px] font-mono"
+                    className="text-[12px] font-mono font-medium"
                     style={{ color: 'var(--color-text-tertiary)' }}
                   >
                     {review.id}
                   </span>
                   <span
-                    className="text-[14px] font-medium"
+                    className="text-[15px] font-semibold"
                     style={{ color: 'var(--color-text-primary)' }}
                   >
                     {review.title}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
+                <div className="flex items-center gap-4 text-[12px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>
                   <span>创建者: {review.creator}</span>
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} /> 等待 {review.waitTime}
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={12} /> 已等待 {review.waitTime}
                   </span>
-                  <span className="badge" style={{ background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)' }}>
+                  <span className="badge-glass shadow-sm" style={{ background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', borderColor: 'var(--color-warning-border)' }}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)] animate-pulse shadow-[0_0_4px_var(--color-warning)]" />
                     {review.gate}
                   </span>
                 </div>
@@ -82,20 +107,20 @@ export function ReviewsPage() {
             </div>
 
             {/* Description */}
-            <div className="px-5 py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-              <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+            <div className="px-6 py-4" style={{ background: 'var(--color-surface-hover)' }}>
+              <p className="text-[14px] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
                 {review.description}
               </p>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center justify-between px-5 py-3">
-              <div className="flex items-center gap-2 flex-1">
-                <MessageSquare size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderTop: '1px solid var(--color-glass-border)' }}>
+              <div className="flex items-center gap-3 flex-1 px-3 py-2 rounded-lg" style={{ background: 'var(--color-bg-muted)', border: '1px solid var(--color-border)' }}>
+                <MessageSquare size={16} style={{ color: 'var(--color-text-tertiary)' }} />
                 <input
                   type="text"
-                  placeholder="添加备注（审批可选，驳回必填）"
-                  className="flex-1 text-[12px] bg-transparent"
+                  placeholder="添加裁决缘由（驳回时必填）..."
+                  className="flex-1 text-[13px] bg-transparent font-medium"
                   style={{
                     color: 'var(--color-text-primary)',
                     border: 'none',
@@ -103,9 +128,11 @@ export function ReviewsPage() {
                   }}
                 />
               </div>
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-[12px] font-medium transition-all duration-100"
+              <div className="flex items-center gap-3 ml-6 shrink-0">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold shadow-sm"
                   style={{
                     background: 'var(--color-danger-bg)',
                     color: 'var(--color-danger)',
@@ -113,10 +140,12 @@ export function ReviewsPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  <XCircle size={14} /> 驳回
-                </button>
-                <button
-                  className="flex items-center gap-1.5 h-8 px-4 rounded-lg text-[12px] font-medium transition-all duration-100"
+                  <XCircle size={16} /> 驳回
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05, boxShadow: '0 0 16px rgba(16, 185, 129, 0.4)' }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center gap-2 h-10 px-5 rounded-xl text-[13px] font-bold shadow-sm"
                   style={{
                     background: 'var(--color-success)',
                     color: '#fff',
@@ -124,13 +153,13 @@ export function ReviewsPage() {
                     cursor: 'pointer',
                   }}
                 >
-                  <CheckCircle2 size={14} /> 批准
-                </button>
+                  <CheckCircle2 size={16} /> 批准执行
+                </motion.button>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
