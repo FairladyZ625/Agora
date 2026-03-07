@@ -39,10 +39,10 @@ function inspectFile(filePath) {
       if (arbitraryTailwindPattern.test(line)) {
         failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} Tailwind arbitrary value is not allowed; use semantic classes or top-level tokens`);
       }
-      if (path.basename(filePath) !== 'ControlGlass.tsx' && freeSizePropPattern.test(line)) {
-        failures.push(`${path.relative(projectRoot.pathname, filePath)}:${index + 1} free-form size props are not allowed; use controlled component variants or top-level layout tokens`);
-      }
     });
+    if (path.basename(filePath) !== 'ControlGlass.tsx' && freeSizePropPattern.test(content)) {
+      failures.push(`${path.relative(projectRoot.pathname, filePath)} free-form size props are not allowed; use controlled component variants or top-level layout tokens`);
+    }
     return;
   }
 

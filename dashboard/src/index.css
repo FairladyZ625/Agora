@@ -47,6 +47,8 @@
   --workbench-sheet-width: 640px;
   --mobile-shell-padding: 8px;
   --mobile-page-padding: 16px;
+  --sidebar-width-collapsed: 72px;
+  --sidebar-width-expanded: 192px;
   --content-max-width: 1320px;
   --color-bg-base: #f4f6f7;
   --color-bg-elevated: #ffffff;
@@ -1628,6 +1630,14 @@ a {
   border-radius: 32px;
   background: var(--sidebar-shell-bg);
   box-shadow: var(--sidebar-shell-shadow);
+}
+
+.app-sidebar--collapsed {
+  width: var(--sidebar-width-collapsed);
+}
+
+.app-sidebar--expanded {
+  width: var(--sidebar-width-expanded);
 }
 
 .nav-section-label {

@@ -49,13 +49,13 @@ export function Sidebar({
       <aside
         className={cn(
           'app-sidebar fixed inset-y-3 left-3 z-40 flex transition-[transform,width,opacity] duration-300 md:static md:inset-auto md:translate-x-0',
+          collapsed ? 'app-sidebar--collapsed' : 'app-sidebar--expanded',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
         style={{
           background: 'var(--color-panel)',
           borderColor: 'var(--color-border)',
           boxShadow: 'var(--shadow-lg)',
-          width: collapsed ? 72 : 192,
         }}
       >
         <div className="flex h-full w-full flex-col">
