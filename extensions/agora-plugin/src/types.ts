@@ -47,6 +47,22 @@ export interface MessageHookContext {
   agentId?: string;
 }
 
+export interface AgentHookEvent {
+  prompt?: string;
+  messages?: unknown[];
+  success?: boolean;
+  error?: string;
+  durationMs?: number;
+}
+
+export interface AgentHookContext {
+  channelId?: string;
+  sessionId?: string;
+  sessionKey?: string;
+  agentId?: string;
+  trigger?: string;
+}
+
 export interface OpenClawPluginApi {
   pluginConfig?: Record<string, unknown>;
   logger: PluginLogger;
@@ -67,12 +83,18 @@ export interface OpenClawPluginApi {
     start: () => void | Promise<void>;
     stop?: () => void | Promise<void>;
   }): void;
-  on?<K extends 'session_start' | 'session_end' | 'message_received' | 'message_sent'>(
+  on?<K extends 'session_start' | 'session_end' | 'message_received' | 'message_sent' | 'before_agent_start' | 'agent_end'>(
     hook: K,
     handler: (
-      event: K extends 'session_start' | 'session_end' ? SessionHookEvent : MessageHookEvent,
+      event: K extends 'session_start' | 'session_end'
+        ? SessionHookEvent
+        : K extends 'before_agent_start' | 'agent_end'
+          ? AgentHookEvent
+          : MessageHookEvent,
       ctx: K extends 'session_start' | 'session_end'
         ? { sessionKey?: string; agentId?: string; sessionId: string }
+        : K extends 'before_agent_start' | 'agent_end'
+          ? AgentHookContext
         : MessageHookContext,
     ) => void | Promise<void>,
   ): void;

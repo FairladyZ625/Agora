@@ -31,6 +31,30 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
     });
   });
 
+  api.on?.("before_agent_start", (event, ctx) => {
+    const sessionKey = ctx.sessionKey;
+    const agentId = ctx.agentId ?? parseAgentId(sessionKey);
+    if (!sessionKey || !agentId) {
+      return;
+    }
+    push({
+      source: "openclaw",
+      agent_id: agentId,
+      session_key: sessionKey,
+      channel: ctx.channelId ?? inferChannel(sessionKey),
+      conversation_id: inferConversationId(sessionKey),
+      thread_id: null,
+      status: "active",
+      last_event: "before_agent_start",
+      last_event_at: new Date().toISOString(),
+      metadata: {
+        trigger: ctx.trigger,
+        prompt: event.prompt,
+        sessionId: ctx.sessionId,
+      },
+    });
+  });
+
   api.on?.("session_end", (event, ctx) => {
     const sessionKey = event.sessionKey ?? ctx.sessionKey;
     const agentId = ctx.agentId ?? parseAgentId(sessionKey);
@@ -48,6 +72,32 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       last_event: "session_end",
       last_event_at: new Date().toISOString(),
       metadata: { sessionId: event.sessionId, messageCount: event.messageCount },
+    });
+  });
+
+  api.on?.("agent_end", (event, ctx) => {
+    const sessionKey = ctx.sessionKey;
+    const agentId = ctx.agentId ?? parseAgentId(sessionKey);
+    if (!sessionKey || !agentId) {
+      return;
+    }
+    push({
+      source: "openclaw",
+      agent_id: agentId,
+      session_key: sessionKey,
+      channel: ctx.channelId ?? inferChannel(sessionKey),
+      conversation_id: inferConversationId(sessionKey),
+      thread_id: null,
+      status: event.success ? "idle" : "idle",
+      last_event: "agent_end",
+      last_event_at: new Date().toISOString(),
+      metadata: {
+        success: event.success ?? false,
+        error: event.error,
+        durationMs: event.durationMs,
+        trigger: ctx.trigger,
+        sessionId: ctx.sessionId,
+      },
     });
   });
 

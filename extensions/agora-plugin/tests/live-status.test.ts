@@ -73,6 +73,120 @@ describe("registerLiveStatusBridge", () => {
     );
   });
 
+  it("projects before_agent_start and agent_end hooks into live snapshots", async () => {
+    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const { api, hooks } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const beforeAgentStart = hooks.get("before_agent_start");
+    const agentEnd = hooks.get("agent_end");
+    expect(beforeAgentStart).toBeTypeOf("function");
+    expect(agentEnd).toBeTypeOf("function");
+
+    await beforeAgentStart?.(
+      { prompt: "run a smoke task", messages: [] },
+      {
+        agentId: "ops",
+        sessionKey: "agent:ops:discord:channel:alerts",
+        sessionId: "sess-3",
+        channelId: "discord",
+        trigger: "user",
+      },
+    );
+    await agentEnd?.(
+      {
+        messages: [],
+        success: false,
+        error: "unknown model",
+        durationMs: 23,
+      },
+      {
+        agentId: "ops",
+        sessionKey: "agent:ops:discord:channel:alerts",
+        sessionId: "sess-3",
+        channelId: "discord",
+        trigger: "user",
+      },
+    );
+
+    expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_id: "ops",
+        session_key: "agent:ops:discord:channel:alerts",
+        status: "active",
+        last_event: "before_agent_start",
+        metadata: expect.objectContaining({
+          trigger: "user",
+          sessionId: "sess-3",
+        }),
+      }),
+    );
+    expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_id: "ops",
+        session_key: "agent:ops:discord:channel:alerts",
+        status: "idle",
+        last_event: "agent_end",
+        metadata: expect.objectContaining({
+          success: false,
+          error: "unknown model",
+          durationMs: 23,
+        }),
+      }),
+    );
+  });
+
+  it("derives agent, channel, and conversation from sessionKey for agent lifecycle hooks", async () => {
+    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const { api, hooks } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const beforeAgentStart = hooks.get("before_agent_start");
+    const agentEnd = hooks.get("agent_end");
+
+    await beforeAgentStart?.(
+      { prompt: "run fallback lifecycle" },
+      {
+        sessionKey: "agent:ops:discord:channel:alerts",
+        sessionId: "sess-4",
+      },
+    );
+    await agentEnd?.(
+      {
+        messages: [],
+        success: true,
+        durationMs: 10,
+      },
+      {
+        sessionKey: "agent:ops:discord:channel:alerts",
+        sessionId: "sess-4",
+      },
+    );
+
+    expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_id: "ops",
+        channel: "discord",
+        conversation_id: "alerts",
+        last_event: "before_agent_start",
+      }),
+    );
+    expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_id: "ops",
+        channel: "discord",
+        conversation_id: "alerts",
+        status: "idle",
+        metadata: expect.objectContaining({
+          success: true,
+          durationMs: 10,
+        }),
+      }),
+    );
+  });
+
   it("projects message hooks and runtime agent events into live status snapshots", async () => {
     const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
     const { api, hooks, getService, emitAgentEvent } = createApi();
@@ -255,6 +369,34 @@ describe("registerLiveStatusBridge", () => {
 
     expect(bridge.upsertLiveSession).toHaveBeenCalledTimes(1);
     expect(api.logger.error).toHaveBeenCalledWith("bridge down");
+  });
+
+  it("skips incomplete agent lifecycle hook context", async () => {
+    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const { api, hooks } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const beforeAgentStart = hooks.get("before_agent_start");
+    const agentEnd = hooks.get("agent_end");
+
+    await beforeAgentStart?.(
+      { prompt: "missing session" },
+      {
+        agentId: "ops",
+      },
+    );
+    await agentEnd?.(
+      {
+        messages: [],
+        success: false,
+      },
+      {
+        sessionId: "sess-5",
+      },
+    );
+
+    expect(bridge.upsertLiveSession).not.toHaveBeenCalled();
   });
 
   it("does nothing when runtime events are unavailable or service start is repeated", async () => {
