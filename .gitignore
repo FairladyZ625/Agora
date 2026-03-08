@@ -13,6 +13,9 @@ dist/
 .env.*.local
 *.egg-info/
 
+# TypeScript build cache
+*.tsbuildinfo
+
 # Process notes must live under docs/plans/<task-folder>/, never at repo root
 /task_plan.md
 /findings.md
