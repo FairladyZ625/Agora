@@ -17,6 +17,10 @@ describe('agora-ts testing scenarios', () => {
       'cleanup-orphaned',
       'inbox-promote',
       'authoring-smoke',
+      'craftsman-happy-path',
+      'craftsman-callback-failure',
+      'craftsman-retry',
+      'craftsman-timeout-escalation',
     ]);
   });
 
@@ -99,5 +103,52 @@ describe('agora-ts testing scenarios', () => {
       duplicated: true,
       workflowValidated: true,
     });
+  });
+
+  it('runs a craftsman happy-path scenario', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-CRAFT-1',
+      executionIdGenerator: () => 'exec-craft-1',
+    });
+
+    const result = runScenario(runtime, 'craftsman-happy-path');
+
+    expect(result.taskId).toBe('OC-CRAFT-1');
+    expect(result.executions).toEqual(['exec-craft-1']);
+    expect(result.completedSubtasks).toEqual(['craft-1']);
+    expect(result.events).toContain('subtask_done');
+  });
+
+  it('runs craftsman failure and retry scenarios', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: (() => {
+        let count = 0;
+        return () => `OC-CRAFT-${++count}`;
+      })(),
+      executionIdGenerator: (() => {
+        let count = 0;
+        return () => `exec-craft-${++count}`;
+      })(),
+    });
+
+    const failed = runScenario(runtime, 'craftsman-callback-failure');
+    const retried = runScenario(runtime, 'craftsman-retry');
+
+    expect(failed.events).toContain('subtask_failed');
+    expect(retried.executions).toEqual(['exec-craft-2', 'exec-craft-3']);
+    expect(retried.completedSubtasks).toEqual(['craft-retry']);
+    expect(retried.events).toEqual(expect.arrayContaining(['subtask_failed', 'subtask_done']));
+  });
+
+  it('runs a craftsman timeout failure scenario', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-CRAFT-TIMEOUT',
+      executionIdGenerator: () => 'exec-timeout-1',
+    });
+
+    const result = runScenario(runtime, 'craftsman-timeout-escalation');
+
+    expect(result.executions).toEqual(['exec-timeout-1']);
+    expect(result.events).toContain('subtask_failed');
   });
 });

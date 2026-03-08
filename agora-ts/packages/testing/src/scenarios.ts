@@ -9,6 +9,10 @@ export const scenarioNames = [
   'cleanup-orphaned',
   'inbox-promote',
   'authoring-smoke',
+  'craftsman-happy-path',
+  'craftsman-callback-failure',
+  'craftsman-retry',
+  'craftsman-timeout-escalation',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -23,6 +27,7 @@ export interface ScenarioResult {
   quorum?: { approved: number; total: number };
   cleaned?: number;
   promotedTargets?: { todo: string; task: string };
+  executions?: string[];
   templateChecks?: {
     validated: boolean;
     saved: boolean;
@@ -45,6 +50,14 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runInboxPromoteScenario(runtime);
     case 'authoring-smoke':
       return runAuthoringSmokeScenario(runtime);
+    case 'craftsman-happy-path':
+      return runCraftsmanHappyPathScenario(runtime);
+    case 'craftsman-callback-failure':
+      return runCraftsmanCallbackFailureScenario(runtime);
+    case 'craftsman-retry':
+      return runCraftsmanRetryScenario(runtime);
+    case 'craftsman-timeout-escalation':
+      return runCraftsmanTimeoutScenario(runtime);
   }
 }
 
@@ -293,6 +306,177 @@ function runAuthoringSmokeScenario(runtime: TestRuntime): ScenarioResult {
       workflowValidated: workflowValidation.valid,
     },
   };
+}
+
+function runCraftsmanHappyPathScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman happy path',
+    type: 'coding',
+    creator: 'archon',
+    description: 'dispatch and callback success',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'craft-1',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Run codex',
+    assignee: 'sonnet',
+    craftsman_type: 'codex',
+  });
+
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-1',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: dispatch.execution.execution_id,
+    status: 'succeeded',
+    session_id: dispatch.execution.session_id,
+    payload: { summary: 'craftsman done' },
+    error: null,
+    finished_at: '2026-03-08T15:01:00.000Z',
+  });
+
+  return buildScenarioResult(runtime, 'craftsman-happy-path', task.id, {
+    executions: [dispatch.execution.execution_id],
+  });
+}
+
+function runCraftsmanCallbackFailureScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman callback failure',
+    type: 'coding',
+    creator: 'archon',
+    description: 'dispatch then fail callback',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'craft-fail',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Run codex',
+    assignee: 'sonnet',
+    craftsman_type: 'codex',
+  });
+
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-fail',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: dispatch.execution.execution_id,
+    status: 'failed',
+    session_id: dispatch.execution.session_id,
+    payload: { stderr: 'compile failed' },
+    error: 'compile failed',
+    finished_at: '2026-03-08T15:02:00.000Z',
+  });
+
+  return buildScenarioResult(runtime, 'craftsman-callback-failure', task.id, {
+    executions: [dispatch.execution.execution_id],
+  });
+}
+
+function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman retry',
+    type: 'coding',
+    creator: 'archon',
+    description: 'fail once then redispatch',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'craft-retry',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Run codex',
+    assignee: 'sonnet',
+    craftsman_type: 'codex',
+  });
+
+  const first = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-retry',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: first.execution.execution_id,
+    status: 'failed',
+    session_id: first.execution.session_id,
+    payload: { stderr: 'first failure' },
+    error: 'first failure',
+    finished_at: '2026-03-08T15:03:00.000Z',
+  });
+  const second = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-retry',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: second.execution.execution_id,
+    status: 'succeeded',
+    session_id: second.execution.session_id,
+    payload: { summary: 'retry success' },
+    error: null,
+    finished_at: '2026-03-08T15:04:00.000Z',
+  });
+
+  return buildScenarioResult(runtime, 'craftsman-retry', task.id, {
+    executions: [first.execution.execution_id, second.execution.execution_id],
+  });
+}
+
+function runCraftsmanTimeoutScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman timeout',
+    type: 'coding',
+    creator: 'archon',
+    description: 'timeout failure path',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'craft-timeout',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Run codex',
+    assignee: 'sonnet',
+    craftsman_type: 'codex',
+  });
+
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-timeout',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: dispatch.execution.execution_id,
+    status: 'failed',
+    session_id: dispatch.execution.session_id,
+    payload: { stderr: 'timeout after 30m' },
+    error: 'timeout after 30m',
+    finished_at: '2026-03-08T15:05:00.000Z',
+  });
+
+  return buildScenarioResult(runtime, 'craftsman-timeout-escalation', task.id, {
+    executions: [dispatch.execution.execution_id],
+  });
 }
 
 function buildScenarioResult(

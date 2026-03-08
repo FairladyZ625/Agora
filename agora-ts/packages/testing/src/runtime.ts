@@ -2,11 +2,13 @@ import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
-import { DashboardQueryService, InboxService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService, type CraftsmanAdapter } from '@agora-ts/core';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
   templatesDir?: string;
+  executionIdGenerator?: () => string;
+  craftsmanAdapters?: Record<string, CraftsmanAdapter>;
 }
 
 export interface TestRuntime {
@@ -17,6 +19,7 @@ export interface TestRuntime {
   dashboardQueryService: DashboardQueryService;
   inboxService: InboxService;
   templateAuthoringService: TemplateAuthoringService;
+  craftsmanDispatcher: CraftsmanDispatcher;
   cleanup: () => void;
 }
 
@@ -35,7 +38,25 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   if (options.taskIdGenerator !== undefined) {
     taskServiceOptions.taskIdGenerator = options.taskIdGenerator;
   }
-  const taskService = new TaskService(db, taskServiceOptions);
+  const dispatcherOptions: {
+    adapters: Record<string, CraftsmanAdapter>;
+    executionIdGenerator?: () => string;
+  } = {
+    adapters: options.craftsmanAdapters ?? {
+      shell: new ShellCraftsmanAdapter(),
+      codex: new StubCraftsmanAdapter('codex'),
+      claude: new StubCraftsmanAdapter('claude'),
+      gemini: new StubCraftsmanAdapter('gemini'),
+    },
+  };
+  if (options.executionIdGenerator !== undefined) {
+    dispatcherOptions.executionIdGenerator = options.executionIdGenerator;
+  }
+  const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
+  const taskService = new TaskService(db, {
+    ...taskServiceOptions,
+    craftsmanDispatcher,
+  });
   const dashboardQueryService = new DashboardQueryService(db, {
     templatesDir,
   });
@@ -50,6 +71,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     dashboardQueryService,
     inboxService,
     templateAuthoringService,
+    craftsmanDispatcher,
     cleanup() {
       db.close();
       rmSync(dir, { recursive: true, force: true });
