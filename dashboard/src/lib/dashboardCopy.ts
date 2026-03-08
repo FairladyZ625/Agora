@@ -296,6 +296,7 @@ export function useAgentsPageCopy() {
     },
     providerSummaryTitle: t('agents.providerSummaryTitle'),
     providerDetailTitle: t('agents.providerDetailTitle'),
+    providerTimelineTitle: t('agents.providerTimelineTitle'),
     filtersTitle: t('agents.filtersTitle'),
     filterLabels: {
       all: t('agents.filterLabels.all'),
@@ -323,6 +324,7 @@ export function useAgentsPageCopy() {
     subtaskCountLabel: t('agents.subtaskCountLabel'),
     currentTaskLabel: t('agents.currentTaskLabel'),
     emptyProviderDetail: t('agents.emptyProviderDetail'),
+    emptyProviderHistory: t('agents.emptyProviderHistory'),
   };
 }
 

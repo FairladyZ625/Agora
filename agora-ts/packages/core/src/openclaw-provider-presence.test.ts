@@ -53,5 +53,29 @@ describe('openclaw provider presence', () => {
         last_seen_at: '2026-03-08T07:27:01.292Z',
       },
     ]);
+
+    expect(source.listHistory()).toEqual([
+      {
+        occurred_at: '2026-03-08T07:27:01.292Z',
+        agent_id: 'sonnet',
+        account_id: 'sonnet',
+        presence: 'online',
+        reason: 'provider_start',
+      },
+      {
+        occurred_at: '2026-03-08T07:22:00.162Z',
+        agent_id: 'main',
+        account_id: 'main',
+        presence: 'disconnected',
+        reason: 'health_monitor_restart',
+      },
+      {
+        occurred_at: '2026-03-08T07:17:03.306Z',
+        agent_id: 'main',
+        account_id: 'main',
+        presence: 'online',
+        reason: 'provider_start',
+      },
+    ]);
   });
 });

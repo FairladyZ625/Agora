@@ -301,6 +301,22 @@ describe('dashboard query service', () => {
           reason: 'health_monitor_restart',
         },
       ],
+      listHistory: () => [
+        {
+          occurred_at: '2026-03-08T07:30:25.241Z',
+          agent_id: 'main',
+          account_id: 'main',
+          presence: 'online',
+          reason: 'provider_start',
+        },
+        {
+          occurred_at: '2026-03-08T07:27:00.166Z',
+          agent_id: 'sonnet',
+          account_id: 'sonnet',
+          presence: 'disconnected',
+          reason: 'health_monitor_restart',
+        },
+      ],
     };
     const queries = new DashboardQueryService(db, {
       templatesDir,
@@ -327,6 +343,18 @@ describe('dashboard query service', () => {
           expect.objectContaining({
             id: 'sonnet',
             presence: 'disconnected',
+          }),
+        ]),
+        history: expect.arrayContaining([
+          expect.objectContaining({
+            agent_id: 'sonnet',
+            presence: 'disconnected',
+            reason: 'health_monitor_restart',
+          }),
+          expect.objectContaining({
+            agent_id: 'main',
+            presence: 'online',
+            reason: 'provider_start',
           }),
         ]),
       }),

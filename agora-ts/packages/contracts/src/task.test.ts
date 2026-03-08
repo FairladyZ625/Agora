@@ -64,6 +64,13 @@ describe('agora-ts contracts bootstrap', () => {
             last_seen_at: '2026-03-08T00:00:00.000Z',
             account_id: 'main',
           }],
+          history: [{
+            occurred_at: '2026-03-08T00:00:00.000Z',
+            agent_id: 'main',
+            account_id: 'main',
+            presence: 'online',
+            reason: 'provider_start',
+          }],
         }],
       }).summary.active_tasks,
     ).toBe(1);

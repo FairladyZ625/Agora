@@ -19,6 +19,7 @@ export function buildProviderSummaries(agents: AgentStatusItem[]): AgentProvider
       lastSeenAt: null,
       presenceReason: null,
       affectedAgents: [],
+      history: [],
     };
     current.totalAgents += 1;
     if (agent.status === 'busy') {

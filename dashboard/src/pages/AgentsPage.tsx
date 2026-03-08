@@ -174,6 +174,35 @@ export function AgentsPage() {
                     ))
                   )}
                 </div>
+                <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="section-title-row">
+                    <h4 className="section-title">{copy.providerTimelineTitle}</h4>
+                    <span className="status-pill status-pill--neutral">{selectedProvider.history.length}</span>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {selectedProvider.history.length === 0 ? (
+                      <div className="empty-state">
+                        <p className="type-body-sm">{copy.emptyProviderHistory}</p>
+                      </div>
+                    ) : (
+                      selectedProvider.history.map((event) => (
+                        <div key={`${selectedProvider.provider}-${event.occurredAt}-${event.agentId}`} className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong className="type-heading-sm">{event.agentId}</strong>
+                              <span className="status-pill status-pill--info">{event.presence}</span>
+                            </div>
+                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                              <span>{copy.presenceReasonLabel}: {event.reason ?? 'n/a'}</span>
+                              <span>{copy.lastSeenLabel}: {event.occurredAt}</span>
+                              <span>{copy.accountLabel}: {event.accountId ?? 'n/a'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </>
             ) : (
               <div className="empty-state">

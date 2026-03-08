@@ -13,8 +13,17 @@ export interface AgentPresenceSnapshot {
   reason: string | null;
 }
 
+export interface AgentPresenceHistoryEvent {
+  occurred_at: string;
+  agent_id: string;
+  account_id: string | null;
+  presence: AgentPresenceState;
+  reason: string | null;
+}
+
 export interface AgentPresenceSource {
   listPresence(): AgentPresenceSnapshot[];
+  listHistory?(): AgentPresenceHistoryEvent[];
 }
 
 export interface OpenClawLogPresenceSourceOptions {
@@ -31,6 +40,8 @@ type PresenceAccumulator = {
   last_seen_at: string | null;
   reason: string | null;
 };
+
+type HistoryEvent = AgentPresenceHistoryEvent;
 
 export class OpenClawLogPresenceSource implements AgentPresenceSource {
   private readonly logPath: string;
@@ -66,6 +77,18 @@ export class OpenClawLogPresenceSource implements AgentPresenceSource {
 
     return Array.from(snapshots.values()).sort((a, b) => a.agent_id.localeCompare(b.agent_id));
   }
+
+  listHistory(): AgentPresenceHistoryEvent[] {
+    if (!existsSync(this.logPath)) {
+      return [];
+    }
+
+    return readFileSync(this.logPath, 'utf8')
+      .split('\n')
+      .map((line) => parseHistoryLine(line))
+      .filter((item): item is HistoryEvent => Boolean(item))
+      .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+  }
 }
 
 function parsePresenceLine(line: string): PresenceAccumulator | null {
@@ -91,6 +114,39 @@ function parsePresenceLine(line: string): PresenceAccumulator | null {
       provider: 'discord',
       account_id: agentId,
       last_seen_at: normalizeTimestamp(timestamp),
+      reason: 'provider_start',
+    };
+  }
+
+  return null;
+}
+
+function parseHistoryLine(line: string): HistoryEvent | null {
+  const timestamp = normalizeTimestamp(line.slice(0, line.indexOf(' ')));
+  if (!timestamp) {
+    return null;
+  }
+
+  const disconnected = line.match(/\[health-monitor\] \[discord:([^\]]+)\] health-monitor: restarting/);
+  if (disconnected?.[1]) {
+    const agentId = normalizeAgentId(disconnected[1]);
+    return {
+      occurred_at: timestamp,
+      agent_id: agentId,
+      account_id: agentId,
+      presence: 'disconnected',
+      reason: 'health_monitor_restart',
+    };
+  }
+
+  const starting = line.match(/\[discord\] \[([^\]]+)\] starting provider/);
+  if (starting?.[1]) {
+    const agentId = normalizeAgentId(starting[1]);
+    return {
+      occurred_at: timestamp,
+      agent_id: agentId,
+      account_id: agentId,
+      presence: 'online',
       reason: 'provider_start',
     };
   }

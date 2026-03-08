@@ -11,6 +11,7 @@ import type {
   ArchiveJob,
   AgentStatusItem,
   AgentProviderAffectedAgent,
+  AgentProviderHistoryEvent,
   AgentProviderSummary,
   CraftsmanStatusItem,
   PromoteTodoResult,
@@ -86,6 +87,18 @@ function mapProviderAffectedAgentDto(
   };
 }
 
+function mapProviderHistoryEventDto(
+  item: ApiAgentsStatusDto['provider_summaries'][number]['history'][number],
+): AgentProviderHistoryEvent {
+  return {
+    occurredAt: item.occurred_at,
+    agentId: item.agent_id,
+    accountId: item.account_id ?? null,
+    presence: item.presence,
+    reason: item.reason ?? null,
+  };
+}
+
 function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][number]): AgentProviderSummary {
   return {
     provider: item.provider,
@@ -99,6 +112,7 @@ function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][nu
     lastSeenAt: item.last_seen_at,
     presenceReason: item.presence_reason ?? null,
     affectedAgents: item.affected_agents.map(mapProviderAffectedAgentDto),
+    history: item.history.map(mapProviderHistoryEventDto),
   };
 }
 

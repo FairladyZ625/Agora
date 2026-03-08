@@ -12,7 +12,7 @@ import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskReposi
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type { AgentRegistry } from './openclaw-agent-registry.js';
-import type { AgentPresenceSource } from './openclaw-provider-presence.js';
+import type { AgentPresenceHistoryEvent, AgentPresenceSource } from './openclaw-provider-presence.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
@@ -221,6 +221,9 @@ export class DashboardQueryService {
         }
         return a.id.localeCompare(b.id);
       });
+    const providerHistory = typeof this.presenceSource?.listHistory === 'function'
+      ? this.presenceSource.listHistory()
+      : [];
 
     return {
       summary: {
@@ -234,7 +237,7 @@ export class DashboardQueryService {
       },
       agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
-      provider_summaries: buildProviderSummaries(allAgents),
+      provider_summaries: buildProviderSummaries(allAgents, providerHistory),
     };
   }
 
@@ -344,7 +347,10 @@ function inferProvider(source?: string | null) {
   return source;
 }
 
-function buildProviderSummaries(agents: AgentsStatusDto['agents']): AgentsStatusDto['provider_summaries'] {
+function buildProviderSummaries(
+  agents: AgentsStatusDto['agents'],
+  history: AgentPresenceHistoryEvent[],
+): AgentsStatusDto['provider_summaries'] {
   const byProvider = new Map<string, AgentsStatusDto['provider_summaries'][number]>();
 
   for (const agent of agents) {
@@ -361,6 +367,7 @@ function buildProviderSummaries(agents: AgentsStatusDto['agents']): AgentsStatus
       last_seen_at: null,
       presence_reason: null,
       affected_agents: [],
+      history: [],
     };
 
     current.total_agents += 1;
@@ -398,12 +405,17 @@ function buildProviderSummaries(agents: AgentsStatusDto['agents']): AgentsStatus
   return Array.from(byProvider.values())
     .map((summary) => {
       const affectedAgents = summary.affected_agents.sort(compareAffectedAgents);
+      const providerHistory = history
+        .filter((item) => inferProviderFromHistory(item) === summary.provider)
+        .sort(compareHistoryEvents)
+        .slice(0, 8);
       const overallPresence = deriveOverallPresence(summary);
       return {
         ...summary,
         overall_presence: overallPresence,
         presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
         affected_agents: affectedAgents,
+        history: providerHistory,
       };
     })
     .sort(compareProviderSummaries);
@@ -477,4 +489,13 @@ function presenceSeverity(presence: 'online' | 'offline' | 'disconnected' | 'sta
     default:
       return 3;
   }
+}
+
+function inferProviderFromHistory(event: AgentPresenceHistoryEvent) {
+  void event;
+  return 'discord';
+}
+
+function compareHistoryEvents(left: AgentPresenceHistoryEvent, right: AgentPresenceHistoryEvent) {
+  return new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime();
 }

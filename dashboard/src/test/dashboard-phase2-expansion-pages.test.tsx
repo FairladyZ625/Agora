@@ -28,6 +28,15 @@ const agentStoreState = {
           accountId: 'review',
         },
       ],
+      history: [
+        {
+          occurredAt: '2026-03-08T09:30:00.000Z',
+          agentId: 'review',
+          accountId: 'review',
+          presence: 'stale',
+          reason: 'stale_gateway_log',
+        },
+      ],
     },
   ],
   agents: [
@@ -302,6 +311,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.getAllByText(/在线 Agent/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Provider 摘要/i)).toBeInTheDocument();
     expect(screen.getByText(/Provider 健康详情/i)).toBeInTheDocument();
+    expect(screen.getByText(/Provider 历史趋势/i)).toBeInTheDocument();
   });
 
   it('filters the agent list by presence view', () => {
@@ -348,6 +358,7 @@ describe('dashboard expansion routes', () => {
 
     expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Provider 历史趋势/i).length).toBeGreaterThan(0);
   });
 
   it('renders the todo workspace on the dedicated route', () => {

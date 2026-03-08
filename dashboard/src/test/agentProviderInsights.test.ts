@@ -95,6 +95,7 @@ describe('agent provider insights', () => {
         overallPresence: 'disconnected',
         lastSeenAt: '2026-03-08T10:00:00.000Z',
         presenceReason: 'health_monitor_restart',
+        history: [],
         affectedAgents: [
           expect.objectContaining({ id: 'writer', presence: 'disconnected' }),
           expect.objectContaining({ id: 'review', presence: 'stale' }),
@@ -112,6 +113,7 @@ describe('agent provider insights', () => {
         overallPresence: 'offline',
         lastSeenAt: null,
         presenceReason: null,
+        history: [],
         affectedAgents: [
           expect.objectContaining({ id: 'ops', presence: 'offline' }),
         ],

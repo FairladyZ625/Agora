@@ -17,6 +17,14 @@ export interface AgentProviderAffectedAgent {
   accountId: string | null;
 }
 
+export interface AgentProviderHistoryEvent {
+  occurredAt: string;
+  agentId: string;
+  accountId: string | null;
+  presence: 'online' | 'offline' | 'disconnected' | 'stale';
+  reason: string | null;
+}
+
 export interface AgentProviderSummary {
   provider: string;
   totalAgents: number;
@@ -29,6 +37,7 @@ export interface AgentProviderSummary {
   lastSeenAt: string | null;
   presenceReason: string | null;
   affectedAgents: AgentProviderAffectedAgent[];
+  history: AgentProviderHistoryEvent[];
 }
 
 export interface AgentStatusItem {

@@ -48,6 +48,14 @@ export const agentProviderAffectedAgentSchema = z.object({
   account_id: z.string().nullable(),
 });
 
+export const agentProviderHistoryEventSchema = z.object({
+  occurred_at: z.string(),
+  agent_id: z.string(),
+  account_id: z.string().nullable(),
+  presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
+  reason: z.string().nullable(),
+});
+
 export const agentProviderSummarySchema = z.object({
   provider: z.string(),
   total_agents: z.number().int().nonnegative(),
@@ -60,6 +68,7 @@ export const agentProviderSummarySchema = z.object({
   last_seen_at: z.string().nullable(),
   presence_reason: z.string().nullable(),
   affected_agents: z.array(agentProviderAffectedAgentSchema),
+  history: z.array(agentProviderHistoryEventSchema),
 });
 
 export const agentsStatusSchema = z.object({

@@ -67,6 +67,15 @@ describe('dashboard expansion mappers', () => {
               account_id: 'sonnet',
             },
           ],
+          history: [
+            {
+              occurred_at: '2026-03-07T10:01:00.000Z',
+              agent_id: 'sonnet',
+              account_id: 'sonnet',
+              presence: 'online',
+              reason: 'provider_start',
+            },
+          ],
         },
       ],
       craftsmen: [
@@ -92,6 +101,7 @@ describe('dashboard expansion mappers', () => {
     expect(status.providerSummaries[0]?.provider).toBe('discord');
     expect(status.providerSummaries[0]?.overallPresence).toBe('stale');
     expect(status.providerSummaries[0]?.affectedAgents[0]?.id).toBe('sonnet');
+    expect(status.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
     expect(status.agents[0]?.presenceReason).toBe('live_session');

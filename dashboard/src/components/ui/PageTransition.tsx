@@ -15,7 +15,7 @@ export function PageTransition({ children }: PageTransitionProps) {
       initial={shouldReduce ? false : { opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1] }}
-      style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
+      className="flex min-w-0 flex-1 flex-col"
     >
       {children}
     </motion.div>

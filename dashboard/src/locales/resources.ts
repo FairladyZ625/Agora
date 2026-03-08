@@ -206,6 +206,7 @@ export const resources = {
         },
         providerSummaryTitle: 'Provider 摘要',
         providerDetailTitle: 'Provider 健康详情',
+        providerTimelineTitle: 'Provider 历史趋势',
         filtersTitle: 'Agent 过滤',
         filterLabels: {
           all: 'all',
@@ -233,6 +234,7 @@ export const resources = {
         subtaskCountLabel: '子任务数',
         currentTaskLabel: '当前任务',
         emptyProviderDetail: '当前 provider 没有可展示的健康事件。',
+        emptyProviderHistory: '当前 provider 没有可展示的历史事件。',
       },
       todos: {
         kicker: '个人收件箱',
@@ -700,6 +702,7 @@ export const resources = {
         },
         providerSummaryTitle: 'Provider summary',
         providerDetailTitle: 'Provider health detail',
+        providerTimelineTitle: 'Provider history',
         filtersTitle: 'Agent filters',
         filterLabels: {
           all: 'all',
@@ -727,6 +730,7 @@ export const resources = {
         subtaskCountLabel: 'Subtasks',
         currentTaskLabel: 'Current task',
         emptyProviderDetail: 'No provider health events are available yet.',
+        emptyProviderHistory: 'No provider history events are available yet.',
       },
       todos: {
         kicker: 'Personal inbox',

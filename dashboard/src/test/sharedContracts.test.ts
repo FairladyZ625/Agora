@@ -62,6 +62,15 @@ describe('shared contracts', () => {
               account_id: 'main',
             },
           ],
+          history: [
+            {
+              occurred_at: '2026-03-08T07:30:25.241Z',
+              agent_id: 'main',
+              account_id: 'main',
+              presence: 'online',
+              reason: 'provider_start',
+            },
+          ],
         },
       ],
     });

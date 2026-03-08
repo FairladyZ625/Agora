@@ -100,6 +100,13 @@ describe('dashboard expansion stores', () => {
           last_seen_at: '2026-03-08T10:00:00.000Z',
           account_id: 'sonnet',
         }],
+        history: [{
+          occurred_at: '2026-03-08T10:00:00.000Z',
+          agent_id: 'sonnet',
+          account_id: 'sonnet',
+          presence: 'online',
+          reason: 'provider_start',
+        }],
       }],
     });
 
@@ -112,6 +119,7 @@ describe('dashboard expansion stores', () => {
     expect(state.summary?.onlineAgents).toBe(1);
     expect(state.summary?.staleAgents).toBe(1);
     expect(state.providerSummaries[0]?.overallPresence).toBe('stale');
+    expect(state.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
   });
