@@ -372,6 +372,12 @@ function buildTmuxRuntime(
           active: paneStatus?.active ?? paneDoctor?.active ?? false,
           ready: paneDoctor?.ready ?? paneStatus !== undefined,
           tail_preview: safeTail(tmuxRuntimeService, agent),
+          continuity_backend: paneStatus?.continuityBackend ?? paneDoctor?.continuityBackend ?? 'unknown',
+          resume_capability: paneStatus?.resumeCapability ?? paneDoctor?.resumeCapability ?? 'none',
+          session_reference: paneStatus?.sessionReference ?? paneDoctor?.sessionReference ?? null,
+          identity_source: paneStatus?.identitySource ?? paneDoctor?.identitySource ?? 'registry_default',
+          last_recovery_mode: paneStatus?.lastRecoveryMode ?? paneDoctor?.lastRecoveryMode ?? null,
+          transport_session_id: paneStatus?.transportSessionId ?? paneDoctor?.transportSessionId ?? null,
         };
       }),
   };

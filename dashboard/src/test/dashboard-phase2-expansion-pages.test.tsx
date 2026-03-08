@@ -67,6 +67,12 @@ const agentStoreState = {
         active: true,
         ready: true,
         tailPreview: 'tail:codex',
+        continuityBackend: 'codex_session_file',
+        resumeCapability: 'native_resume',
+        sessionReference: 'codex-session-123',
+        identitySource: 'session_file',
+        lastRecoveryMode: 'resume_exact',
+        transportSessionId: 'tmux:agora-craftsmen:codex',
       },
     ],
   },
@@ -377,6 +383,8 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
     expect(screen.getByText('agora-craftsmen')).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
+    expect(screen.getByText(/身份来源: session_file/i)).toBeInTheDocument();
+    expect(screen.getByText(/会话引用: codex-session-123/i)).toBeInTheDocument();
     expect(screen.getByText(/exec-dashboard-1/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'failures' })).toBeInTheDocument();
   });

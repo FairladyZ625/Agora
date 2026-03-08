@@ -241,11 +241,33 @@ describe('agora-ts cli', () => {
     const tmuxRuntimeService = {
       up: () => ({
         session: 'agora-craftsmen',
-        panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+        panes: [{
+          id: '%0',
+          title: 'codex',
+          currentCommand: 'bash',
+          active: true,
+          continuityBackend: 'codex_session_file' as const,
+          resumeCapability: 'native_resume' as const,
+          sessionReference: 'codex-session-123',
+          identitySource: 'session_file' as const,
+          lastRecoveryMode: 'resume_exact' as const,
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        }],
       }),
       status: () => ({
         session: 'agora-craftsmen',
-        panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+        panes: [{
+          id: '%0',
+          title: 'codex',
+          currentCommand: 'bash',
+          active: true,
+          continuityBackend: 'codex_session_file' as const,
+          resumeCapability: 'native_resume' as const,
+          sessionReference: 'codex-session-123',
+          identitySource: 'session_file' as const,
+          lastRecoveryMode: 'resume_exact' as const,
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        }],
       }),
       send: () => {},
       task: () => ({
@@ -256,7 +278,19 @@ describe('agora-ts cli', () => {
       tail: () => 'tail output',
       doctor: () => ({
         session: 'agora-craftsmen',
-        panes: [{ agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true }],
+        panes: [{
+          agent: 'codex',
+          pane: '%0',
+          command: 'bash',
+          active: true,
+          ready: true,
+          continuityBackend: 'codex_session_file' as const,
+          resumeCapability: 'native_resume' as const,
+          sessionReference: 'codex-session-123',
+          identitySource: 'session_file' as const,
+          lastRecoveryMode: 'resume_exact' as const,
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        }],
       }),
       down: () => {},
     };

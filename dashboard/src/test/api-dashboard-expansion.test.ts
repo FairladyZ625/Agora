@@ -120,6 +120,12 @@ describe('dashboard expansion api client', () => {
                 active: true,
                 ready: true,
                 tail_preview: 'tail:codex',
+                continuity_backend: 'codex_session_file',
+                resume_capability: 'native_resume',
+                session_reference: 'codex-session-123',
+                identity_source: 'session_file',
+                last_recovery_mode: 'resume_exact',
+                transport_session_id: 'tmux:agora-craftsmen:codex',
               }],
             },
           };

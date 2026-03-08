@@ -417,6 +417,11 @@ export function AgentsPage() {
                   <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
                     <span>{copy.commandLabel}: {pane.currentCommand ?? 'n/a'}</span>
                     <span>{copy.statusLabel}: {pane.active ? 'active' : 'idle'}</span>
+                    <span>{copy.continuityBackendLabel}: {pane.continuityBackend}</span>
+                    <span>{copy.resumeCapabilityLabel}: {pane.resumeCapability}</span>
+                    <span>{copy.identitySourceLabel}: {pane.identitySource}</span>
+                    <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
+                    <span>{copy.recoveryModeLabel}: {pane.lastRecoveryMode ?? 'n/a'}</span>
                   </div>
                   <p className="type-text-xs mt-3">{copy.tailPreviewLabel}: {pane.tailPreview ?? 'n/a'}</p>
                 </div>

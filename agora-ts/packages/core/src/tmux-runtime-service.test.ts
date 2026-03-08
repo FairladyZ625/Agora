@@ -26,12 +26,45 @@ describe('tmux runtime service', () => {
 
     expect(service.up().panes).toHaveLength(3);
     expect(service.status().panes[0]?.title).toBe('codex');
+    expect(service.status().panes[0]).toMatchObject({
+      continuityBackend: 'codex_session_file',
+      resumeCapability: 'native_resume',
+      identitySource: 'registry_default',
+      sessionReference: null,
+    });
     expect(service.doctor()).toEqual({
       session: 'agora-craftsmen',
       panes: [
-        { agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true },
-        { agent: 'claude', pane: '%1', command: 'bash', active: false, ready: true },
-        { agent: 'gemini', pane: '%2', command: 'bash', active: false, ready: true },
+        expect.objectContaining({
+          agent: 'codex',
+          pane: '%0',
+          command: 'bash',
+          active: true,
+          ready: true,
+          continuityBackend: 'codex_session_file',
+          resumeCapability: 'native_resume',
+          identitySource: 'registry_default',
+        }),
+        expect.objectContaining({
+          agent: 'claude',
+          pane: '%1',
+          command: 'bash',
+          active: false,
+          ready: true,
+          continuityBackend: 'claude_session_id',
+          resumeCapability: 'native_resume',
+          identitySource: 'registry_default',
+        }),
+        expect.objectContaining({
+          agent: 'gemini',
+          pane: '%2',
+          command: 'bash',
+          active: false,
+          ready: true,
+          continuityBackend: 'gemini_session_id',
+          resumeCapability: 'native_resume',
+          identitySource: 'registry_default',
+        }),
       ],
     });
 
@@ -49,6 +82,9 @@ describe('tmux runtime service', () => {
   it('dispatches a task prompt into the matching tmux pane through the adapter map', () => {
     const exec = vi.fn((args: string[]) => {
       if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|bash|1', '%1|claude|bash|0', '%2|gemini|bash|0'].join('\n');
+      }
       if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
         return ['%0|codex', '%1|claude', '%2|gemini'].join('\n');
       }
@@ -75,5 +111,9 @@ describe('tmux runtime service', () => {
 
     expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%0', '-l', '--', "cd /tmp/codex && codex exec 'Implement via tmux'"]);
     expect(result.session_id).toBe('tmux:agora-craftsmen:codex');
+    expect(service.status().panes.find((pane) => pane.title === 'codex')).toMatchObject({
+      transportSessionId: 'tmux:agora-craftsmen:codex',
+      lastRecoveryMode: 'fresh_start',
+    });
   });
 });

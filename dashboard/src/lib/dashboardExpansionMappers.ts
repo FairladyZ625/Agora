@@ -97,6 +97,12 @@ function mapTmuxRuntime(dto: ApiAgentsStatusDto['tmux_runtime']): TmuxRuntimeSta
       active: pane.active,
       ready: pane.ready,
       tailPreview: pane.tail_preview,
+      continuityBackend: pane.continuity_backend,
+      resumeCapability: pane.resume_capability,
+      sessionReference: pane.session_reference,
+      identitySource: pane.identity_source,
+      lastRecoveryMode: pane.last_recovery_mode,
+      transportSessionId: pane.transport_session_id,
     })),
   };
 }

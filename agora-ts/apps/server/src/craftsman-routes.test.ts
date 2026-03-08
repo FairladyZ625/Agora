@@ -136,11 +136,33 @@ describe('craftsman routes', () => {
       tmuxRuntimeService: {
         up: () => ({
           session: 'agora-craftsmen',
-          panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+          panes: [{
+            id: '%0',
+            title: 'codex',
+            currentCommand: 'bash',
+            active: true,
+            continuityBackend: 'codex_session_file',
+            resumeCapability: 'native_resume',
+            sessionReference: 'codex-session-123',
+            identitySource: 'session_file',
+            lastRecoveryMode: 'resume_exact',
+            transportSessionId: 'tmux:agora-craftsmen:codex',
+          }],
         }),
         status: () => ({
           session: 'agora-craftsmen',
-          panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+          panes: [{
+            id: '%0',
+            title: 'codex',
+            currentCommand: 'bash',
+            active: true,
+            continuityBackend: 'codex_session_file',
+            resumeCapability: 'native_resume',
+            sessionReference: 'codex-session-123',
+            identitySource: 'session_file',
+            lastRecoveryMode: 'resume_exact',
+            transportSessionId: 'tmux:agora-craftsmen:codex',
+          }],
         }),
         send: () => {},
         task: () => ({
@@ -151,7 +173,19 @@ describe('craftsman routes', () => {
         tail: () => 'tmux tail output',
         doctor: () => ({
           session: 'agora-craftsmen',
-          panes: [{ agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true }],
+          panes: [{
+            agent: 'codex',
+            pane: '%0',
+            command: 'bash',
+            active: true,
+            ready: true,
+            continuityBackend: 'codex_session_file',
+            resumeCapability: 'native_resume',
+            sessionReference: 'codex-session-123',
+            identitySource: 'session_file',
+            lastRecoveryMode: 'resume_exact',
+            transportSessionId: 'tmux:agora-craftsmen:codex',
+          }],
         }),
         down: () => {},
       },
@@ -190,12 +224,35 @@ describe('craftsman routes', () => {
     expect(statusResponse.statusCode).toBe(200);
     expect(statusResponse.json()).toEqual({
       session: 'agora-craftsmen',
-      panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+      panes: [{
+        id: '%0',
+        title: 'codex',
+        currentCommand: 'bash',
+        active: true,
+        continuityBackend: 'codex_session_file',
+        resumeCapability: 'native_resume',
+        sessionReference: 'codex-session-123',
+        identitySource: 'session_file',
+        lastRecoveryMode: 'resume_exact',
+        transportSessionId: 'tmux:agora-craftsmen:codex',
+      }],
     });
     expect(doctorResponse.statusCode).toBe(200);
     expect(doctorResponse.json()).toEqual({
       session: 'agora-craftsmen',
-      panes: [{ agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true }],
+      panes: [{
+        agent: 'codex',
+        pane: '%0',
+        command: 'bash',
+        active: true,
+        ready: true,
+        continuityBackend: 'codex_session_file',
+        resumeCapability: 'native_resume',
+        sessionReference: 'codex-session-123',
+        identitySource: 'session_file',
+        lastRecoveryMode: 'resume_exact',
+        transportSessionId: 'tmux:agora-craftsmen:codex',
+      }],
     });
     expect(sendResponse.statusCode).toBe(200);
     expect(sendResponse.json()).toEqual({ ok: true });

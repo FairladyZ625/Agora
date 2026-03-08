@@ -30,9 +30,14 @@ export class TmuxCraftsmanAdapter implements CraftsmanAdapter {
       args: spec.args,
     });
     this.registry.sendKeys(paneTarget, shellCommand);
+    const transportSessionId = `tmux:${this.registry.getSessionName()}:${this.name}`;
+    this.registry.updatePaneState(this.name, {
+      transportSessionId,
+      lastRecoveryMode: 'fresh_start',
+    });
     return {
       status: 'running',
-      session_id: `tmux:${this.registry.getSessionName()}:${this.name}`,
+      session_id: transportSessionId,
       started_at: new Date().toISOString(),
       payload: {
         command: spec.command,

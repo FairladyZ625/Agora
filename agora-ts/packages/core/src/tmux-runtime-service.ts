@@ -1,7 +1,15 @@
 import type { CraftsmanDispatchRequest, CraftsmanDispatchResult } from './craftsman-adapter.js';
 import type { ProcessCraftsmanAdapter } from './adapters/process-craftsman-adapter.js';
 import { TmuxCraftsmanAdapter } from './adapters/tmux-craftsman-adapter.js';
-import { TmuxPaneRegistry, type TmuxPaneInfo, type TmuxPaneRegistryOptions } from './adapters/tmux-pane-registry.js';
+import {
+  TmuxPaneRegistry,
+  type TmuxPaneInfo,
+  type TmuxPaneRegistryOptions,
+  type TmuxContinuityBackend,
+  type TmuxIdentitySource,
+  type TmuxRecoveryMode,
+  type TmuxResumeCapability,
+} from './adapters/tmux-pane-registry.js';
 
 export interface TmuxDoctorPane {
   agent: string;
@@ -9,6 +17,12 @@ export interface TmuxDoctorPane {
   command: string | null;
   active: boolean;
   ready: boolean;
+  continuityBackend: TmuxContinuityBackend;
+  resumeCapability: TmuxResumeCapability;
+  sessionReference: string | null;
+  identitySource: TmuxIdentitySource;
+  lastRecoveryMode: TmuxRecoveryMode | null;
+  transportSessionId: string | null;
 }
 
 export interface TmuxRuntimeServiceOptions extends TmuxPaneRegistryOptions {
@@ -77,5 +91,11 @@ function toDoctorPane(agent: string, pane: TmuxPaneInfo | null): TmuxDoctorPane 
     command: pane?.currentCommand ?? null,
     active: pane?.active ?? false,
     ready: pane !== null,
+    continuityBackend: pane?.continuityBackend ?? 'unknown',
+    resumeCapability: pane?.resumeCapability ?? 'none',
+    sessionReference: pane?.sessionReference ?? null,
+    identitySource: pane?.identitySource ?? 'registry_default',
+    lastRecoveryMode: pane?.lastRecoveryMode ?? null,
+    transportSessionId: pane?.transportSessionId ?? null,
   };
 }

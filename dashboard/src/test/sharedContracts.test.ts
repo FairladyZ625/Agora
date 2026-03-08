@@ -97,4 +97,43 @@ describe('shared contracts', () => {
     expect(parsed.summary.active_tasks).toBe(1);
     expect(parsed.provider_summaries[0]?.provider).toBe('discord');
   });
+
+  it('allows dashboard to parse tmux runtime continuity provenance fields', () => {
+    const parsed = agentsStatusSchema.parse({
+      summary: {
+        active_tasks: 0,
+        active_agents: 0,
+        total_agents: 0,
+        online_agents: 0,
+        stale_agents: 0,
+        disconnected_agents: 0,
+        busy_craftsmen: 0,
+      },
+      agents: [],
+      craftsmen: [],
+      provider_summaries: [],
+      tmux_runtime: {
+        session: 'agora-craftsmen',
+        panes: [
+          {
+            agent: 'gemini',
+            pane_id: '%2',
+            current_command: 'gemini',
+            active: true,
+            ready: true,
+            tail_preview: 'tail',
+            continuity_backend: 'gemini_session_id',
+            resume_capability: 'native_resume',
+            session_reference: '3d479f8c-ec0a-4b7f-9f92-123456789abc',
+            identity_source: 'chat_file',
+            last_recovery_mode: 'resume_exact',
+            transport_session_id: 'tmux:agora-craftsmen:gemini',
+          },
+        ],
+      },
+    });
+
+    expect(parsed.tmux_runtime?.panes[0]?.identity_source).toBe('chat_file');
+    expect(parsed.tmux_runtime?.panes[0]?.session_reference).toBe('3d479f8c-ec0a-4b7f-9f92-123456789abc');
+  });
 });

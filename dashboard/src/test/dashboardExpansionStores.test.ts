@@ -172,6 +172,12 @@ describe('dashboard expansion stores', () => {
             active: true,
             ready: true,
             tail_preview: 'tail:codex',
+            continuity_backend: 'codex_session_file',
+            resume_capability: 'native_resume',
+            session_reference: 'codex-session-123',
+            identity_source: 'session_file',
+            last_recovery_mode: 'resume_exact',
+            transport_session_id: 'tmux:agora-craftsmen:codex',
           },
         ],
       },
@@ -189,6 +195,7 @@ describe('dashboard expansion stores', () => {
     expect(state.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(state.providerSummaries[0]?.signalStatus).toBe('degraded');
     expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
+    expect(state.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
     expect(state.craftsmen[0]?.recentExecutions[0]?.runtimeMode).toBe('tmux');
