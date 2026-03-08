@@ -30,7 +30,7 @@
   --font-size-hero-title-mobile: 40px;
   --font-size-hero-title-desktop: 56px;
   --tracking-tight: -0.04em;
-  --page-max-width: 1320px;
+  --page-max-width: 100%;
   --page-inline-padding: 24px;
   --shell-gap: 16px;
   --shell-padding: 12px;
@@ -48,7 +48,7 @@
   --mobile-page-padding: 16px;
   --sidebar-width-collapsed: 72px;
   --sidebar-width-expanded: 192px;
-  --content-max-width: 1320px;
+  --content-max-width: 100%;
   --color-bg-base: #f4f6f7;
   --color-bg-elevated: #ffffff;
   --color-bg-subtle: #eef4f6;

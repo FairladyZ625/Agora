@@ -255,7 +255,6 @@ export function TasksPage() {
                   title={tasksPageCopy.filterAction}
                   emptyLabel={tasksPageCopy.filterEmpty}
                   sections={taskSections}
-                  align="end"
                   onClear={clearFilters}
                   onClose={() => setFilterOpen(false)}
                   footer={
