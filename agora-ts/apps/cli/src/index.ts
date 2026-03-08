@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, TaskService } from '@agora-ts/core';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import type { CraftsmanCallbackRequestDto, CraftsmanExecutionStatusDto, TaskPriority } from '@agora-ts/contracts';
 
 type Writable = {
@@ -10,9 +10,12 @@ type Writable = {
 
 export interface CliDependencies {
   taskService?: TaskService;
+  tmuxRuntimeService?: TmuxRuntimeServiceLike;
   stdout?: Writable;
   stderr?: Writable;
 }
+
+type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'task' | 'tail' | 'doctor' | 'down'>;
 
 function resolveTaskService() {
   const config = loadAgoraConfig(process.env.AGORA_CONFIG_PATH ?? '');
@@ -34,9 +37,19 @@ function resolveTaskService() {
   });
 }
 
-function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' {
+function resolveTmuxRuntimeService() {
+  return new TmuxRuntimeService({
+    adapters: {
+      codex: new CodexCraftsmanAdapter(),
+      claude: new ClaudeCraftsmanAdapter(),
+      gemini: new GeminiCraftsmanAdapter(),
+    },
+  });
+}
+
+function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' | 'tmux' {
   const mode = process.env.AGORA_CRAFTSMAN_ADAPTER_MODE;
-  if (mode === 'real' || mode === 'watched') {
+  if (mode === 'real' || mode === 'watched' || mode === 'tmux') {
     return mode;
   }
   return 'stub';
@@ -57,6 +70,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
   const taskService = deps.taskService ?? resolveTaskService();
+  const tmuxRuntimeService = deps.tmuxRuntimeService ?? resolveTmuxRuntimeService();
   const program = new Command();
 
   program
@@ -361,6 +375,93 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `craftsman callback 已处理: ${result.execution.execution_id}`);
       writeLine(stdout, `status: ${result.execution.status}`);
       writeLine(stdout, `${result.subtask.output ?? ''}`);
+    });
+
+  const tmux = craftsman
+    .command('tmux')
+    .description('tmux runtime commands for craftsmen panes');
+
+  tmux
+    .command('up')
+    .description('初始化 tmux craftsmen session')
+    .action(() => {
+      const result = tmuxRuntimeService.up();
+      writeLine(stdout, `tmux session 已就绪: ${result.session}`);
+      for (const pane of result.panes) {
+        writeLine(stdout, `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}`);
+      }
+    });
+
+  tmux
+    .command('status')
+    .description('查看 tmux pane 状态')
+    .action(() => {
+      const result = tmuxRuntimeService.status();
+      for (const pane of result.panes) {
+        writeLine(stdout, `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}`);
+      }
+    });
+
+  tmux
+    .command('send')
+    .description('向指定 tmux pane 发送原始命令')
+    .argument('<agent>', 'agent pane name')
+    .argument('<command>', 'raw shell command')
+    .action((agent: string, command: string) => {
+      tmuxRuntimeService.send(agent, command);
+      writeLine(stdout, `tmux command 已发送: ${agent}`);
+    });
+
+  tmux
+    .command('task')
+    .description('通过 tmux pane 派发一条简短 CLI 任务')
+    .argument('<agent>', 'agent pane name')
+    .argument('<prompt>', 'prompt')
+    .option('--workdir <workdir>', '工作目录')
+    .action((agent: string, prompt: string, options: { workdir?: string }) => {
+      const result = tmuxRuntimeService.task(agent, {
+        execution_id: `tmux-${Date.now()}`,
+        task_id: 'TMUX',
+        stage_id: 'dispatch',
+        subtask_id: `${agent}-tmux-task`,
+        adapter: agent,
+        mode: 'task',
+        workdir: options.workdir ?? process.cwd(),
+        prompt,
+        brief_path: null,
+      });
+      writeLine(stdout, `tmux task 已派发: ${result.session_id ?? '-'}`);
+    });
+
+  tmux
+    .command('tail')
+    .description('查看 tmux pane 最近输出')
+    .argument('<agent>', 'agent pane name')
+    .option('--lines <lines>', '输出行数', '40')
+    .action((agent: string, options: { lines: string }) => {
+      writeLine(stdout, tmuxRuntimeService.tail(agent, Number(options.lines)));
+    });
+
+  tmux
+    .command('doctor')
+    .description('查看 tmux pane readiness')
+    .action(() => {
+      const result = tmuxRuntimeService.doctor();
+      for (const pane of result.panes) {
+        writeLine(
+          stdout,
+          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}`,
+        );
+      }
+    });
+
+  tmux
+    .command('down')
+    .description('关闭 tmux craftsmen session')
+    .action(() => {
+      const result = tmuxRuntimeService.status();
+      tmuxRuntimeService.down();
+      writeLine(stdout, `tmux session 已关闭: ${result.session}`);
     });
 
   return program;

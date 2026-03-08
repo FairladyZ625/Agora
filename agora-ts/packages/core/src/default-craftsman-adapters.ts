@@ -1,9 +1,9 @@
 import type { CraftsmanAdapter } from './craftsman-adapter.js';
 import { ShellCraftsmanAdapter, StubCraftsmanAdapter } from './craftsman-adapter.js';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter, WatchedProcessCraftsmanAdapter } from './adapters/index.js';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter, TmuxCraftsmanAdapter, WatchedProcessCraftsmanAdapter } from './adapters/index.js';
 
 export interface CreateDefaultCraftsmanAdaptersOptions {
-  mode?: 'stub' | 'real' | 'watched';
+  mode?: 'stub' | 'real' | 'watched' | 'tmux';
   callbackUrl?: string;
   apiToken?: string | null;
 }
@@ -38,6 +38,14 @@ export function createDefaultCraftsmanAdapters(
       codex: new CodexCraftsmanAdapter(),
       claude: new ClaudeCraftsmanAdapter(),
       gemini: new GeminiCraftsmanAdapter(),
+    };
+  }
+  if (mode === 'tmux') {
+    return {
+      shell: new ShellCraftsmanAdapter(),
+      codex: new TmuxCraftsmanAdapter(new CodexCraftsmanAdapter()),
+      claude: new TmuxCraftsmanAdapter(new ClaudeCraftsmanAdapter()),
+      gemini: new TmuxCraftsmanAdapter(new GeminiCraftsmanAdapter()),
     };
   }
 

@@ -83,9 +83,9 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   };
 }
 
-function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' {
+function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' | 'tmux' {
   const mode = process.env.AGORA_CRAFTSMAN_ADAPTER_MODE;
-  if (mode === 'real' || mode === 'watched') {
+  if (mode === 'real' || mode === 'watched' || mode === 'tmux') {
     return mode;
   }
   return 'stub';
