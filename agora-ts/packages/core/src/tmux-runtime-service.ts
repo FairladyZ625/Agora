@@ -22,6 +22,8 @@ export interface TmuxDoctorPane {
   resumeCapability: TmuxResumeCapability;
   sessionReference: string | null;
   identitySource: TmuxIdentitySource;
+  identityPath?: string | null;
+  sessionObservedAt?: string | null;
   lastRecoveryMode: TmuxRecoveryMode | null;
   transportSessionId: string | null;
 }
@@ -220,6 +222,8 @@ function toDoctorPane(agent: string, pane: TmuxPaneInfo | null): TmuxDoctorPane 
     resumeCapability: pane?.resumeCapability ?? 'none',
     sessionReference: pane?.sessionReference ?? null,
     identitySource: pane?.identitySource ?? 'registry_default',
+    identityPath: pane?.identityPath ?? null,
+    sessionObservedAt: pane?.sessionObservedAt ?? null,
     lastRecoveryMode: pane?.lastRecoveryMode ?? null,
     transportSessionId: pane?.transportSessionId ?? null,
   };

@@ -113,6 +113,8 @@ export interface TmuxRuntimePane {
   resumeCapability: 'native_resume' | 'resume_last' | 'none';
   sessionReference: string | null;
   identitySource: 'registry_default' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
+  identityPath: string | null;
+  sessionObservedAt: string | null;
   lastRecoveryMode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
   transportSessionId: string | null;
 }

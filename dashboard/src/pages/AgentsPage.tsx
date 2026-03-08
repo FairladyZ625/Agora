@@ -420,6 +420,8 @@ export function AgentsPage() {
                     <span>{copy.continuityBackendLabel}: {pane.continuityBackend}</span>
                     <span>{copy.resumeCapabilityLabel}: {pane.resumeCapability}</span>
                     <span>{copy.identitySourceLabel}: {pane.identitySource}</span>
+                    <span>{copy.identityPathLabel}: {pane.identityPath ?? 'n/a'}</span>
+                    <span>{copy.observedAtLabel}: {pane.sessionObservedAt ?? 'n/a'}</span>
                     <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
                     <span>{copy.recoveryModeLabel}: {pane.lastRecoveryMode ?? 'n/a'}</span>
                   </div>

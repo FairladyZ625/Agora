@@ -420,7 +420,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       for (const pane of result.panes) {
         writeLine(
           stdout,
-          `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}`,
+          `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}\t${pane.identityPath ?? '-'}\t${pane.sessionObservedAt ?? '-'}`,
         );
       }
     });
@@ -498,7 +498,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       for (const pane of result.panes) {
         writeLine(
           stdout,
-          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}`,
+          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}\t${pane.identityPath ?? '-'}\t${pane.sessionObservedAt ?? '-'}`,
         );
       }
     });

@@ -176,6 +176,8 @@ describe('dashboard expansion stores', () => {
             resume_capability: 'native_resume',
             session_reference: 'codex-session-123',
             identity_source: 'session_file',
+            identity_path: '/tmp/codex/session.json',
+            session_observed_at: '2026-03-08T23:01:00.000Z',
             last_recovery_mode: 'resume_exact',
             transport_session_id: 'tmux:agora-craftsmen:codex',
           },
@@ -196,6 +198,7 @@ describe('dashboard expansion stores', () => {
     expect(state.providerSummaries[0]?.signalStatus).toBe('degraded');
     expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
     expect(state.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
+    expect(state.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
     expect(state.craftsmen[0]?.recentExecutions[0]?.runtimeMode).toBe('tmux');

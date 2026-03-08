@@ -106,13 +106,15 @@ describe('dashboard expansion mappers', () => {
             active: true,
             ready: true,
             tail_preview: 'tail:codex',
-            continuity_backend: 'codex_session_file',
-            resume_capability: 'native_resume',
-            session_reference: 'codex-session-123',
-            identity_source: 'session_file',
-            last_recovery_mode: 'resume_exact',
-            transport_session_id: 'tmux:agora-craftsmen:codex',
-          },
+          continuity_backend: 'codex_session_file',
+          resume_capability: 'native_resume',
+          session_reference: 'codex-session-123',
+          identity_source: 'session_file',
+          identity_path: '/tmp/codex/session.json',
+          session_observed_at: '2026-03-08T23:01:00.000Z',
+          last_recovery_mode: 'resume_exact',
+          transport_session_id: 'tmux:agora-craftsmen:codex',
+        },
         ],
       },
       craftsmen: [
@@ -154,6 +156,8 @@ describe('dashboard expansion mappers', () => {
     expect(status.tmuxRuntime?.panes[0]?.tailPreview).toBe('tail:codex');
     expect(status.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
     expect(status.tmuxRuntime?.panes[0]?.sessionReference).toBe('codex-session-123');
+    expect(status.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
+    expect(status.tmuxRuntime?.panes[0]?.sessionObservedAt).toBe('2026-03-08T23:01:00.000Z');
     expect(status.providerSummaries[0]?.signals[0]?.kind).toBe('transport_error');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');

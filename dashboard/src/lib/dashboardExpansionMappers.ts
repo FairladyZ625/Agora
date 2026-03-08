@@ -101,6 +101,8 @@ function mapTmuxRuntime(dto: ApiAgentsStatusDto['tmux_runtime']): TmuxRuntimeSta
       resumeCapability: pane.resume_capability,
       sessionReference: pane.session_reference,
       identitySource: pane.identity_source,
+      identityPath: pane.identity_path ?? null,
+      sessionObservedAt: pane.session_observed_at ?? null,
       lastRecoveryMode: pane.last_recovery_mode,
       transportSessionId: pane.transport_session_id,
     })),

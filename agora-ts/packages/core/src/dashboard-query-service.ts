@@ -376,6 +376,8 @@ function buildTmuxRuntime(
           resume_capability: paneStatus?.resumeCapability ?? paneDoctor?.resumeCapability ?? 'none',
           session_reference: paneStatus?.sessionReference ?? paneDoctor?.sessionReference ?? null,
           identity_source: paneStatus?.identitySource ?? paneDoctor?.identitySource ?? 'registry_default',
+          identity_path: paneStatus?.identityPath ?? paneDoctor?.identityPath ?? null,
+          session_observed_at: paneStatus?.sessionObservedAt ?? paneDoctor?.sessionObservedAt ?? null,
           last_recovery_mode: paneStatus?.lastRecoveryMode ?? paneDoctor?.lastRecoveryMode ?? null,
           transport_session_id: paneStatus?.transportSessionId ?? paneDoctor?.transportSessionId ?? null,
         };

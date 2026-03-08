@@ -333,6 +333,8 @@ export function useAgentsPageCopy() {
     resumeCapabilityLabel: t('agents.resumeCapabilityLabel'),
     sessionReferenceLabel: t('agents.sessionReferenceLabel'),
     identitySourceLabel: t('agents.identitySourceLabel'),
+    identityPathLabel: t('agents.identityPathLabel'),
+    observedAtLabel: t('agents.observedAtLabel'),
     recoveryModeLabel: t('agents.recoveryModeLabel'),
     emptyProviderDetail: t('agents.emptyProviderDetail'),
     emptyProviderHistory: t('agents.emptyProviderHistory'),

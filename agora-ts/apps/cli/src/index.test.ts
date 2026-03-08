@@ -250,6 +250,9 @@ describe('agora-ts cli', () => {
           resumeCapability: 'native_resume' as const,
           sessionReference: 'codex-session-123',
           identitySource: 'session_file' as const,
+          identityPath: '/tmp/codex/session.json',
+          sessionObservedAt: '2026-03-08T23:01:00.000Z',
+          workspaceRoot: '/tmp/codex',
           lastRecoveryMode: 'resume_exact' as const,
           transportSessionId: 'tmux:agora-craftsmen:codex',
         }],
@@ -265,6 +268,9 @@ describe('agora-ts cli', () => {
           resumeCapability: 'native_resume' as const,
           sessionReference: 'codex-session-123',
           identitySource: 'session_file' as const,
+          identityPath: '/tmp/codex/session.json',
+          sessionObservedAt: '2026-03-08T23:01:00.000Z',
+          workspaceRoot: '/tmp/codex',
           lastRecoveryMode: 'resume_exact' as const,
           transportSessionId: 'tmux:agora-craftsmen:codex',
         }],
@@ -309,6 +315,9 @@ describe('agora-ts cli', () => {
           resumeCapability: 'native_resume' as const,
           sessionReference: 'codex-session-123',
           identitySource: 'session_file' as const,
+          identityPath: '/tmp/codex/session.json',
+          sessionObservedAt: '2026-03-08T23:01:00.000Z',
+          workspaceRoot: '/tmp/codex',
           lastRecoveryMode: 'resume_exact' as const,
           transportSessionId: 'tmux:agora-craftsmen:codex',
         }],
@@ -334,7 +343,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('tmux session 已就绪: agora-craftsmen');
-    expect(stdout.value).toContain('%0\tcodex\tbash\tactive\tcodex_session_file\tsession_file\tcodex-session-123');
+    expect(stdout.value).toContain('%0\tcodex\tbash\tactive\tcodex_session_file\tsession_file\tcodex-session-123\t/tmp/codex/session.json\t2026-03-08T23:01:00.000Z');
     expect(stdout.value).toContain('tmux command 已发送: codex');
     expect(stdout.value).toContain('tmux runtime 已启动: codex');
     expect(stdout.value).toContain('command: codex -a never');
@@ -345,7 +354,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('session: codex-session-456');
     expect(stdout.value).toContain('tmux task 已派发: tmux:agora-craftsmen:codex');
     expect(stdout.value).toContain('tail output');
-    expect(stdout.value).toContain('codex\t%0\tbash\tready\tcodex_session_file\tsession_file\tcodex-session-123');
+    expect(stdout.value).toContain('codex\t%0\tbash\tready\tcodex_session_file\tsession_file\tcodex-session-123\t/tmp/codex/session.json\t2026-03-08T23:01:00.000Z');
     expect(stdout.value).toContain('tmux session 已关闭: agora-craftsmen');
   });
 });
