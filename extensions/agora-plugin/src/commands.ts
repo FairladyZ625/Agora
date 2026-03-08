@@ -149,7 +149,7 @@ async function handleArchonReject(bridge: AgoraBridge, args: string[], senderId:
 
 async function handleConfirm(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
   const taskId = args[0];
-  const vote = args[1] || "approve";
+  const vote = args[1] === "reject" ? "reject" : "approve";
   if (!taskId) {
     return { text: "Usage: /task confirm <task_id> [approve|reject] [comment]" };
   }

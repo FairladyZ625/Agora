@@ -3,20 +3,31 @@
 
 ## 项目概述
 
-Agora 是一个多 Agent 民主编排框架，基于 SQLite + Python 实现。
+Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 `agora/` Python 版本保留为迁移参考与 legacy 对照。
 
 ## 目录结构
 
 ```
-agora/
-├── core/           # 编排层核心（enums, db, task_mgr, state_machine, gate_keeper, permission, progress_sync）
-├── adapters/       # 适配层（base + openclaw）
-├── craftsmen/      # 工匠层（CLI 调度）
-├── server/         # HTTP Server (FastAPI)
-├── templates/      # 任务模板 + 治理预设 JSON
-├── scripts/        # CLI 工具（agora_cli.py）
-├── tests/          # 测试
-└── config/         # 配置示例
+agora-ts/           # TypeScript 主实现（默认开发目标）
+├── apps/
+│   ├── server/     # Fastify HTTP Server
+│   └── cli/        # Commander CLI
+├── packages/
+│   ├── contracts/  # 共享 DTO / schema
+│   ├── core/       # 状态机、TaskService、Gate/Permission、Dashboard query
+│   ├── db/         # SQLite migration + repositories
+│   ├── config/     # 配置 schema / loader
+│   └── testing/    # 测试 runtime / helpers
+
+agora/              # Python legacy 参考实现（非默认开发目标）
+├── core/
+├── adapters/
+├── craftsmen/
+├── server/
+├── templates/
+├── scripts/
+├── tests/
+└── config/
 
 dashboard/          # 前端 Dashboard（React + TypeScript + Vite）
 ├── src/
@@ -79,14 +90,22 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 
 ## 技术栈
 
-### 后端
+### 后端（默认）
+
+- TypeScript 5.x + Node.js 22+
+- SQLite（WAL 模式）
+- Commander（CLI 框架）
+- Fastify（HTTP Server，端口 8420）
+- Vitest（测试框架）
+- Zod（contracts / config schema）
+
+### 后端（legacy 参考）
 
 - Python 3.11+
 - SQLite（WAL 模式 + 乐观锁）
 - typer（CLI 框架）
-- FastAPI + uvicorn（HTTP Server，端口 8420）
-- pytest（测试框架）
-- enum.Enum + str mixin
+- FastAPI + uvicorn
+- pytest
 
 ### 前端（Dashboard）
 
@@ -114,6 +133,13 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ```bash
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```
+
+默认启动目标已切换为：
+
+- 后端：`agora-ts/apps/server`
+- 前端：`dashboard`
+
+仅在需要对照 legacy 行为时才启动 Python 版本。
 
 ---
 
@@ -145,23 +171,25 @@ Skill(skill="planning-with-files")
 
 **所有代码实现必须遵循 TDD 流程**:
 
-1. 写测试文件（`agora/tests/test_core/test_xxx.py`）
-2. 运行测试确认失败（`pytest agora/tests/test_core/test_xxx.py -v`）
-3. 写实现代码（`agora/core/xxx.py`）
+1. 写测试文件（优先 `agora-ts/**/src/*.test.ts`）
+2. 运行测试确认失败（`npm test -- <test-file>`）
+3. 写实现代码（优先 `agora-ts/apps/*` 或 `agora-ts/packages/*`）
 4. 运行测试确认通过
 5. 提交代码
 
 **测试命令**:
 
 ```bash
-# 运行所有测试
-python -m pytest agora/tests/ -v
+# 运行 agora-ts 全量测试
+cd agora-ts && npm test
 
-# 运行特定模块测试
-python -m pytest agora/tests/test_core/test_gate_keeper.py -v
+# 运行指定测试文件
+cd agora-ts && npm test -- packages/core/src/task-service.test.ts
 
-# 测试覆盖率
-python -m pytest agora/tests/ --cov=agora --cov-report=html
+# 类型与构建检查
+cd agora-ts && npm run lint
+cd agora-ts && npm run typecheck
+cd agora-ts && npm run build
 ```
 
 ### 3. 使用 feature-dev Skill
@@ -213,6 +241,8 @@ Skill(skill="feature-dev")
 
 ### Python 代码规范
 
+仅适用于 legacy `agora/` 对照实现；非新增默认目标。
+
 - 枚举使用 `class XxxState(str, Enum)` 模式（EscalationLevel 除外，使用 `int, Enum`）
 - 所有枚举值必须与 `docs/00-RAW-PRDS/ENUMS.md` 完全一致
 - JSON 字段用 TEXT 存储在 SQLite 中
@@ -222,6 +252,13 @@ Skill(skill="feature-dev")
 - Docstring 使用简洁的单行或多行格式
 
 ### 测试规范
+
+TypeScript 默认规范：
+
+- 测试文件命名：`src/*.test.ts`
+- 使用 Vitest
+- 临时 SQLite runtime 优先复用 `@agora-ts/testing`
+- 新增 DTO / config / contract 时优先补 schema-level tests
 
 - 测试文件命名：`test_<module>.py`
 - 使用 pytest fixtures 管理测试数据

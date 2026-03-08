@@ -30,7 +30,7 @@ describe('agora-ts sqlite bootstrap', () => {
 
     runMigrations(db);
 
-    expect(listAppliedMigrations(db)).toEqual(['001_initial.sql']);
+    expect(listAppliedMigrations(db)).toEqual(['001_initial.sql', '002_inbox.sql']);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
       .get() as { name: string } | undefined;

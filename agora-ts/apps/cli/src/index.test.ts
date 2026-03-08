@@ -147,4 +147,35 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('当前票数: approved=2 total=2');
     expect(stdout.value).toContain('已解除阻塞');
   });
+
+  it('cleans up orphaned tasks through the cli command', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-303',
+    });
+    const tasks = new TaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    tasks.insertTask({
+      id: 'OC-303',
+      title: 'cleanup orphaned',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    tasks.updateTask('OC-303', 1, { state: 'orphaned' });
+
+    await program.parseAsync(['cleanup', '--task-id', 'OC-303'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('已清理 orphaned 任务: 1');
+    expect(taskService.getTask('OC-303')).toBeNull();
+  });
 });

@@ -126,4 +126,51 @@ describe('agora-ts state machine', () => {
       sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
     ).toBe(true);
   });
+
+  it('checks auto_timeout gates against stage_history entered_at timestamps', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const sm = new StateMachine();
+    const task = buildTask({
+      id: 'OC-002',
+      workflow: {
+        stages: [{ id: 'wait', gate: { type: 'auto_timeout', timeout_minutes: 30 } }],
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-002',
+      title: 'auto timeout',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: task.workflow,
+    });
+
+    db.prepare('INSERT INTO stage_history (task_id, stage_id, entered_at) VALUES (?, ?, ?)')
+      .run('OC-002', 'wait', '2026-03-08T10:00:00.000Z');
+
+    expect(
+      sm.checkGate(
+        db,
+        task,
+        { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_minutes: 30 } },
+        'system',
+        '2026-03-08T10:20:00.000Z',
+      ),
+    ).toBe(false);
+
+    expect(
+      sm.checkGate(
+        db,
+        task,
+        { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_minutes: 30 } },
+        'system',
+        '2026-03-08T10:40:00.000Z',
+      ),
+    ).toBe(true);
+  });
 });

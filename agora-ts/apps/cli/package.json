@@ -9,10 +9,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
+    "@agora-ts/config": "0.0.0",
     "@agora-ts/core": "0.0.0",
     "@agora-ts/db": "0.0.0",
     "commander": "^14.0.2"

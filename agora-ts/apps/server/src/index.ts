@@ -1,8 +1,16 @@
 import { buildApp } from './app.js';
+import { createServerRuntime } from './runtime.js';
 
 async function start() {
-  const app = buildApp();
-  const port = Number(process.env.PORT ?? '8420');
+const runtime = createServerRuntime();
+const app = buildApp({
+  taskService: runtime.taskService,
+  dashboardQueryService: runtime.dashboardQueryService,
+  inboxService: runtime.inboxService,
+  templateAuthoringService: runtime.templateAuthoringService,
+  ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
+});
+  const port = Number(process.env.PORT ?? process.env.AGORA_BACKEND_PORT ?? '8420');
   const host = process.env.HOST ?? '127.0.0.1';
 
   try {

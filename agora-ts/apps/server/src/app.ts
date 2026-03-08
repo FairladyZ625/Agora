@@ -1,21 +1,41 @@
-import Fastify from 'fastify';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
+import Fastify, { type FastifyReply } from 'fastify';
 import {
   approveTaskRequestSchema,
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
   archonRejectTaskRequestSchema,
   confirmTaskRequestSchema,
+  createInboxRequestSchema,
   createTaskRequestSchema,
+  duplicateTemplateRequestSchema,
   type HealthResponse,
+  promoteInboxRequestSchema,
   rejectTaskRequestSchema,
+  saveTemplateRequestSchema,
   subtaskDoneRequestSchema,
   taskNoteRequestSchema,
+  templateValidationRequestSchema,
+  updateInboxRequestSchema,
+  updateTemplateWorkflowRequestSchema,
+  validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
-import { NotFoundError, PermissionDeniedError, type DashboardQueryService, type TaskService } from '@agora-ts/core';
+import {
+  NotFoundError,
+  PermissionDeniedError,
+  type DashboardQueryService,
+  type InboxService,
+  type TaskService,
+  type TemplateAuthoringService,
+} from '@agora-ts/core';
 
 export interface BuildAppOptions {
   taskService?: TaskService;
   dashboardQueryService?: DashboardQueryService;
+  inboxService?: InboxService;
+  templateAuthoringService?: TemplateAuthoringService;
+  dashboardDir?: string;
 }
 
 function translateError(error: unknown) {
@@ -37,10 +57,38 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
   const taskService = options.taskService;
   const dashboardQueryService = options.dashboardQueryService;
+  const inboxService = options.inboxService;
+  const templateAuthoringService = options.templateAuthoringService;
+  const dashboardDir = options.dashboardDir;
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     return { status: 'ok' };
   });
+
+  if (dashboardDir && existsSync(dashboardDir)) {
+    app.get('/dashboard', async (request, reply) => {
+      return sendDashboardShell(reply, dashboardDir);
+    });
+    app.get('/dashboard/', async (request, reply) => {
+      return sendDashboardShell(reply, dashboardDir);
+    });
+    app.get('/dashboard/*', async (request, reply) => {
+      const wildcard = (request.params as { '*': string })['*'];
+      if (wildcard && wildcard.length > 0) {
+        const requested = resolve(dashboardDir, wildcard);
+        if (
+          requested.startsWith(resolve(dashboardDir))
+          && existsSync(requested)
+          && statSync(requested).isFile()
+        ) {
+          return reply
+            .type(contentTypeForPath(requested))
+            .send(readFileSync(requested));
+        }
+      }
+      return sendDashboardShell(reply, dashboardDir);
+    });
+  }
 
   app.post('/api/tasks', async (request, reply) => {
     if (!taskService) {
@@ -295,6 +343,81 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/tasks/cleanup', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    const payload = (request.body as { task_id?: string } | undefined) ?? {};
+    return reply.send({ cleaned: taskService.cleanupOrphaned(payload.task_id) });
+  });
+
+  app.get('/api/inbox', async (request, reply) => {
+    if (!inboxService) {
+      return reply.status(503).send({ message: 'Inbox service is not configured' });
+    }
+    const query = request.query as { status?: string };
+    return reply.send(inboxService.listInboxItems(query.status));
+  });
+
+  app.post('/api/inbox', async (request, reply) => {
+    if (!inboxService) {
+      return reply.status(503).send({ message: 'Inbox service is not configured' });
+    }
+    try {
+      const payload = createInboxRequestSchema.parse(request.body);
+      return reply.send(inboxService.createInboxItem({
+        text: payload.text,
+        ...(payload.source !== undefined ? { source: payload.source } : {}),
+        ...(payload.notes !== undefined ? { notes: payload.notes } : {}),
+        ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.patch('/api/inbox/:inboxId', async (request, reply) => {
+    if (!inboxService) {
+      return reply.status(503).send({ message: 'Inbox service is not configured' });
+    }
+    try {
+      const params = request.params as { inboxId: string };
+      const payload = updateInboxRequestSchema.parse(request.body);
+      return reply.send(inboxService.updateInboxItem(Number(params.inboxId), payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/inbox/:inboxId', async (request, reply) => {
+    if (!inboxService) {
+      return reply.status(503).send({ message: 'Inbox service is not configured' });
+    }
+    try {
+      const params = request.params as { inboxId: string };
+      return reply.send(inboxService.deleteInboxItem(Number(params.inboxId)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/inbox/:inboxId/promote', async (request, reply) => {
+    if (!inboxService) {
+      return reply.status(503).send({ message: 'Inbox service is not configured' });
+    }
+    try {
+      const params = request.params as { inboxId: string };
+      const payload = promoteInboxRequestSchema.parse(request.body);
+      return reply.send(inboxService.promoteInboxItem(Number(params.inboxId), payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/agents/status', async (request, reply) => {
     if (!dashboardQueryService) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
@@ -426,5 +549,100 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/templates/validate', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const payload = templateValidationRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.validateTemplate(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/templates', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const payload = saveTemplateRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.saveTemplate(payload.id, payload.template));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.put('/api/templates/:templateId', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const params = request.params as { templateId: string };
+      const payload = templateValidationRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.saveTemplate(params.templateId, payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/templates/:templateId/duplicate', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const params = request.params as { templateId: string };
+      const payload = duplicateTemplateRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.duplicateTemplate(params.templateId, payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.put('/api/templates/:templateId/workflow', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const params = request.params as { templateId: string };
+      const payload = updateTemplateWorkflowRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.updateTemplateWorkflow(params.templateId, payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/workflows/validate', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const payload = validateWorkflowRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.validateWorkflow(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   return app;
+}
+
+function sendDashboardShell(reply: FastifyReply, dashboardDir: string) {
+  const indexPath = resolve(dashboardDir, 'index.html');
+  return reply.type('text/html; charset=utf-8').send(readFileSync(indexPath));
+}
+
+function contentTypeForPath(path: string) {
+  if (path.endsWith('.js')) return 'application/javascript; charset=utf-8';
+  if (path.endsWith('.css')) return 'text/css; charset=utf-8';
+  if (path.endsWith('.svg')) return 'image/svg+xml';
+  if (path.endsWith('.json')) return 'application/json; charset=utf-8';
+  if (path.endsWith('.html')) return 'text/html; charset=utf-8';
+  return 'application/octet-stream';
 }

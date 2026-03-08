@@ -51,7 +51,7 @@ export function listAppliedMigrations(db: AgoraDatabase): string[] {
 
 export function runMigrations(db: AgoraDatabase): void {
   const applied = new Set(listAppliedMigrations(db));
-  const migrationFiles = ['001_initial.sql'];
+  const migrationFiles = ['001_initial.sql', '002_inbox.sql'];
   const migrationsDir = resolveMigrationsDir();
 
   for (const fileName of migrationFiles) {

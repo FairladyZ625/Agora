@@ -10,6 +10,9 @@
     "clean": "rm -rf dist",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@agora-ts/contracts": "file:../../agora-ts/packages/contracts"
+  },
   "openclaw": {
     "extensions": [
       "./dist/index.js"

@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { loadAgoraConfig } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { TaskService } from '@agora-ts/core';
 
@@ -13,10 +14,13 @@ export interface CliDependencies {
 }
 
 function resolveTaskService() {
-  const dbPath = process.env.AGORA_DB_PATH ?? 'tasks.db';
+  const config = loadAgoraConfig(process.env.AGORA_CONFIG_PATH ?? '');
+  const dbPath = process.env.AGORA_DB_PATH ?? config.db_path;
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
-  return new TaskService(db);
+  return new TaskService(db, {
+    archonUsers: config.permissions.archonUsers,
+  });
 }
 
 function writeLine(stream: Writable, message: string) {
@@ -250,6 +254,15 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action((taskId: string, options: { reason: string }) => {
       taskService.unblockTask(taskId, { reason: options.reason });
       writeLine(stdout, `任务 ${taskId} 已解除阻塞`);
+    });
+
+  program
+    .command('cleanup')
+    .description('清理 orphaned 任务')
+    .option('--task-id <taskId>', '指定任务 ID')
+    .action((options: { taskId?: string }) => {
+      const cleaned = taskService.cleanupOrphaned(options.taskId);
+      writeLine(stdout, `已清理 orphaned 任务: ${cleaned}`);
     });
 
   return program;

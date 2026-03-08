@@ -7,7 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "tsc -b tsconfig.workspace.json",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "typecheck": "tsc -b tsconfig.workspace.json",
     "lint": "eslint .",
     "test": "vitest run",

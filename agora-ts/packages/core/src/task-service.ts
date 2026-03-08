@@ -492,6 +492,27 @@ export class TaskService {
     return { todo: updatedTodo, task };
   }
 
+  cleanupOrphaned(taskId?: string): number {
+    const rows = taskId
+      ? (this.db.prepare("SELECT id FROM tasks WHERE id = ? AND state = 'orphaned'").all(taskId) as Array<{ id: string }>)
+      : (this.db.prepare("SELECT id FROM tasks WHERE state = 'orphaned'").all() as Array<{ id: string }>);
+
+    let count = 0;
+    for (const row of rows) {
+      const orphanedTaskId = row.id;
+      this.db.prepare('DELETE FROM subtasks WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM flow_log WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM progress_log WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM stage_history WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM archon_reviews WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM approvals WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM quorum_votes WHERE task_id = ?').run(orphanedTaskId);
+      this.db.prepare('DELETE FROM tasks WHERE id = ?').run(orphanedTaskId);
+      count += 1;
+    }
+    return count;
+  }
+
   private buildWorkflow(template: TaskTemplate): WorkflowDto {
     return {
       type: template.defaultWorkflow ?? 'linear',

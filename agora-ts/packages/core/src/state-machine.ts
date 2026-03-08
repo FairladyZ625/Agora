@@ -70,7 +70,7 @@ export class StateMachine {
     };
   }
 
-  checkGate(db: AgoraDatabase, task: TaskShape, stage: WorkflowStage, callerId?: string): boolean {
+  checkGate(db: AgoraDatabase, task: TaskShape, stage: WorkflowStage, callerId?: string, now = new Date().toISOString()): boolean {
     const gateType = stage.gate?.type ?? GateType.COMMAND;
 
     if (gateType === GateType.COMMAND) {
@@ -108,6 +108,25 @@ export class StateMachine {
         LIMIT 1
       `).get(task.id, stage.id);
       return Boolean(row);
+    }
+
+    if (gateType === GateType.AUTO_TIMEOUT) {
+      const row = db.prepare(`
+        SELECT entered_at
+        FROM stage_history
+        WHERE task_id = ? AND stage_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(task.id, stage.id) as { entered_at: string } | undefined;
+      if (!row?.entered_at) {
+        return false;
+      }
+      const timeoutMinutes = Number(stage.gate?.timeout_minutes ?? stage.gate?.timeoutMinutes ?? 0);
+      if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) {
+        return false;
+      }
+      const elapsedMs = Date.parse(now) - Date.parse(row.entered_at);
+      return elapsedMs >= timeoutMinutes * 60_000;
     }
 
     return false;

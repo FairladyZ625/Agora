@@ -263,4 +263,37 @@ describe('task routes', () => {
     expect(cancel.statusCode).toBe(200);
     expect(cancel.json()).toMatchObject({ state: 'cancelled' });
   });
+
+  it('serves cleanup route for orphaned tasks', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-204',
+    });
+    const tasks = new TaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-204',
+      title: 'cleanup task',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    tasks.updateTask('OC-204', 1, { state: 'orphaned' });
+
+    const app = buildApp({ taskService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/cleanup',
+      payload: { task_id: 'OC-204' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ cleaned: 1 });
+    expect(taskService.getTask('OC-204')).toBeNull();
+  });
 });
