@@ -33,6 +33,7 @@ describe('shared contracts', () => {
         active_tasks: 1,
         active_agents: 2,
         total_agents: 3,
+        online_agents: 2,
         busy_craftsmen: 1,
       },
       agents: [],

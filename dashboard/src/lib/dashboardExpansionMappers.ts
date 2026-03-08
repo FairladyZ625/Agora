@@ -43,15 +43,18 @@ function mapAgentDto(agent: ApiAgentsStatusDto['agents'][number]): AgentStatusIt
     id: agent.id,
     role: agent.role,
     status: agent.status,
+    presence: agent.presence,
     source: agent.source ?? null,
     primaryModel: agent.primary_model ?? null,
     workspaceDir: agent.workspace_dir ?? null,
+    accountId: agent.account_id ?? null,
     activeTaskIds: agent.active_task_ids,
     activeSubtaskIds: agent.active_subtask_ids,
     taskCount: agent.active_task_ids.length,
     subtaskCount: agent.active_subtask_ids.length,
     load: agent.load,
     lastActiveAt: agent.last_active_at,
+    lastSeenAt: agent.last_seen_at,
   };
 }
 
@@ -72,6 +75,7 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
       activeTasks: dto.summary.active_tasks,
       activeAgents: dto.summary.active_agents,
       totalAgents: dto.summary.total_agents,
+      onlineAgents: dto.summary.online_agents,
       busyCraftsmen: dto.summary.busy_craftsmen,
     },
     agents: dto.agents.map(mapAgentDto),

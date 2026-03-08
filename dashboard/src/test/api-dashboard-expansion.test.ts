@@ -34,8 +34,22 @@ describe('dashboard expansion api client', () => {
         const method = init?.method ?? 'GET';
         if (url.includes('/agents/status')) {
           return {
-            summary: { active_tasks: 1, active_agents: 1, total_agents: 2, busy_craftsmen: 0 },
-            agents: [],
+            summary: { active_tasks: 1, active_agents: 1, total_agents: 2, online_agents: 2, busy_craftsmen: 0 },
+            agents: [{
+              id: 'main',
+              role: null,
+              status: 'busy',
+              presence: 'online',
+              active_task_ids: ['OC-001'],
+              active_subtask_ids: [],
+              load: 1,
+              last_active_at: '2026-03-08T00:00:00.000Z',
+              last_seen_at: '2026-03-08T00:00:00.000Z',
+              account_id: 'main',
+              source: 'openclaw+discord',
+              primary_model: 'openai-codex/gpt-5.3-codex',
+              workspace_dir: '/tmp/main',
+            }],
             craftsmen: [],
           };
         }

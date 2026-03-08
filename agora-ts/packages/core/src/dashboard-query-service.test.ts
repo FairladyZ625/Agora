@@ -6,6 +6,7 @@ import { createAgoraDatabase, runMigrations, ArchiveJobRepository, SubtaskReposi
 import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
 import type { AgentRegistry } from './openclaw-agent-registry.js';
+import type { AgentPresenceSource } from './openclaw-provider-presence.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -65,6 +66,7 @@ describe('dashboard query service', () => {
     expect(agentsStatus.summary).toMatchObject({
       active_tasks: 1,
       active_agents: expect.any(Number),
+      online_agents: expect.any(Number),
       busy_craftsmen: 1,
     });
     expect(agentsStatus.agents.map((item) => item.id)).toContain('sonnet');
@@ -195,21 +197,104 @@ describe('dashboard query service', () => {
       active_tasks: 0,
       active_agents: 1,
       total_agents: 2,
+      online_agents: 1,
       busy_craftsmen: 0,
     });
     expect(agentsStatus.agents).toEqual([
       expect.objectContaining({
         id: 'main',
         status: 'busy',
+        presence: 'online',
         source: 'openclaw+discord',
         primary_model: 'openai-codex/gpt-5.4',
       }),
       expect.objectContaining({
         id: 'review',
         status: 'idle',
+        presence: 'offline',
         source: 'discord',
         primary_model: null,
         load: 0,
+      }),
+    ]);
+  });
+
+  it('overlays provider presence and last seen timestamps from gateway events', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agentRegistry: AgentRegistry = {
+      listAgents: () => [
+        {
+          id: 'main',
+          source: 'openclaw+discord',
+          primary_model: 'openai-codex/gpt-5.3-codex',
+          workspace_dir: '/tmp/main',
+        },
+        {
+          id: 'sonnet',
+          source: 'discord',
+          primary_model: 'gac/claude-sonnet-4-6',
+          workspace_dir: null,
+        },
+        {
+          id: 'review',
+          source: 'discord',
+          primary_model: null,
+          workspace_dir: null,
+        },
+      ],
+    };
+    const presenceSource: AgentPresenceSource = {
+      listPresence: () => [
+        {
+          agent_id: 'main',
+          presence: 'online',
+          provider: 'discord',
+          account_id: 'main',
+          last_seen_at: '2026-03-08T07:30:25.241Z',
+        },
+        {
+          agent_id: 'sonnet',
+          presence: 'disconnected',
+          provider: 'discord',
+          account_id: 'sonnet',
+          last_seen_at: '2026-03-08T07:27:00.166Z',
+        },
+      ],
+    };
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      agentRegistry,
+      presenceSource,
+    });
+
+    const agentsStatus = queries.getAgentsStatus();
+
+    expect(agentsStatus.summary).toMatchObject({
+      total_agents: 3,
+      online_agents: 1,
+    });
+    expect(agentsStatus.agents).toEqual([
+      expect.objectContaining({
+        id: 'main',
+        status: 'idle',
+        presence: 'online',
+        account_id: 'main',
+        last_seen_at: '2026-03-08T07:30:25.241Z',
+      }),
+      expect.objectContaining({
+        id: 'sonnet',
+        status: 'idle',
+        presence: 'disconnected',
+        account_id: 'sonnet',
+        last_seen_at: '2026-03-08T07:27:00.166Z',
+      }),
+      expect.objectContaining({
+        id: 'review',
+        status: 'idle',
+        presence: 'offline',
+        account_id: null,
+        last_seen_at: null,
       }),
     ]);
   });

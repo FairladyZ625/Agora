@@ -12,11 +12,13 @@ import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskReposi
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type { AgentRegistry } from './openclaw-agent-registry.js';
+import type { AgentPresenceSource } from './openclaw-provider-presence.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentRegistry;
+  presenceSource?: AgentPresenceSource;
 }
 
 export class DashboardQueryService {
@@ -27,6 +29,7 @@ export class DashboardQueryService {
   private readonly templatesDir: string;
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentRegistry | undefined;
+  private readonly presenceSource: AgentPresenceSource | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -39,6 +42,7 @@ export class DashboardQueryService {
     this.templatesDir = options.templatesDir;
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
+    this.presenceSource = options.presenceSource;
   }
 
   getAgentsStatus(): AgentsStatusDto {
@@ -66,10 +70,13 @@ export class DashboardQueryService {
           id: member.agentId,
           role: member.role,
           status: 'busy',
+          presence: 'offline',
           active_task_ids: [],
           active_subtask_ids: [],
           load: 0,
           last_active_at: activityMap.get(member.agentId) ?? null,
+          last_seen_at: null,
+          account_id: null,
         };
         if (!current.active_task_ids.includes(task.id)) {
           current.active_task_ids.push(task.id);
@@ -82,10 +89,13 @@ export class DashboardQueryService {
           id: subtask.assignee,
           role: null,
           status: 'busy',
+          presence: 'offline',
           active_task_ids: [],
           active_subtask_ids: [],
           load: 0,
           last_active_at: activityMap.get(subtask.assignee) ?? null,
+          last_seen_at: null,
+          account_id: null,
         };
         if (!current.active_task_ids.includes(task.id)) {
           current.active_task_ids.push(task.id);
@@ -117,13 +127,18 @@ export class DashboardQueryService {
         id: session.agent_id,
         role: null,
         status: 'busy',
+        presence: 'online',
         active_task_ids: [],
         active_subtask_ids: [],
         load: 0,
         last_active_at: session.last_event_at,
+        last_seen_at: session.last_event_at,
+        account_id: null,
       };
       current.status = session.status === 'idle' ? 'idle' : 'busy';
+      current.presence = 'online';
       current.last_active_at = session.last_event_at;
+      current.last_seen_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
       current.source ??= 'live';
       current.primary_model ??= null;
@@ -136,10 +151,13 @@ export class DashboardQueryService {
         id: item.id,
         role: null,
         status: 'idle',
+        presence: 'offline',
         active_task_ids: [],
         active_subtask_ids: [],
         load: 0,
         last_active_at: null,
+        last_seen_at: null,
+        account_id: null,
       };
       current.source = item.source;
       current.primary_model = item.primary_model;
@@ -147,10 +165,32 @@ export class DashboardQueryService {
       agents.set(item.id, current);
     }
 
+    for (const item of this.presenceSource?.listPresence() ?? []) {
+      const current = agents.get(item.agent_id) ?? {
+        id: item.agent_id,
+        role: null,
+        status: 'idle',
+        presence: item.presence,
+        active_task_ids: [],
+        active_subtask_ids: [],
+        load: 0,
+        last_active_at: null,
+        last_seen_at: item.last_seen_at,
+        account_id: item.account_id,
+      };
+      current.presence = item.presence;
+      current.last_seen_at = item.last_seen_at;
+      current.account_id = item.account_id;
+      agents.set(item.agent_id, current);
+    }
+
     const allAgents = Array.from(agents.values())
       .map((item) => ({
         ...item,
         status: item.load > 0 || item.status === 'busy' ? 'busy' : 'idle',
+        presence: item.load > 0 ? 'online' : item.presence,
+        last_seen_at: item.last_seen_at ?? item.last_active_at,
+        account_id: item.account_id ?? null,
         source: item.source ?? null,
         primary_model: item.primary_model ?? null,
         workspace_dir: item.workspace_dir ?? null,
@@ -158,6 +198,9 @@ export class DashboardQueryService {
       .sort((a, b) => {
         if (a.status !== b.status) {
           return a.status === 'busy' ? -1 : 1;
+        }
+        if (a.presence !== b.presence) {
+          return presenceRank(a.presence) - presenceRank(b.presence);
         }
         return a.id.localeCompare(b.id);
       });
@@ -167,6 +210,7 @@ export class DashboardQueryService {
         active_tasks: activeTasks.length,
         active_agents: allAgents.filter((item) => item.status === 'busy').length,
         total_agents: allAgents.length,
+        online_agents: allAgents.filter((item) => item.presence === 'online').length,
         busy_craftsmen: Array.from(craftsmen.values()).filter((item) => item.status === 'busy').length,
       },
       agents: allAgents,
@@ -248,5 +292,16 @@ export class DashboardQueryService {
       throw new NotFoundError(`Template ${templateId} not found`);
     }
     return JSON.parse(readFileSync(path, 'utf8')) as TemplateDetailDto;
+  }
+}
+
+function presenceRank(presence: 'online' | 'offline' | 'disconnected') {
+  switch (presence) {
+    case 'online':
+      return 0;
+    case 'disconnected':
+      return 1;
+    default:
+      return 2;
   }
 }

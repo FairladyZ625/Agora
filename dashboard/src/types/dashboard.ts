@@ -2,6 +2,7 @@ export interface AgentStatusSummary {
   activeTasks: number;
   activeAgents: number;
   totalAgents: number;
+  onlineAgents: number;
   busyCraftsmen: number;
 }
 
@@ -9,15 +10,18 @@ export interface AgentStatusItem {
   id: string;
   role: string | null;
   status: string;
+  presence: 'online' | 'offline' | 'disconnected';
   source: string | null;
   primaryModel: string | null;
   workspaceDir: string | null;
+  accountId: string | null;
   activeTaskIds: string[];
   activeSubtaskIds: string[];
   taskCount: number;
   subtaskCount: number;
   load: number;
   lastActiveAt: string | null;
+  lastSeenAt: string | null;
 }
 
 export interface CraftsmanStatusItem {

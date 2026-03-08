@@ -21,6 +21,7 @@ describe('dashboard expansion mappers', () => {
         active_tasks: 2,
         active_agents: 1,
         total_agents: 2,
+        online_agents: 2,
         busy_craftsmen: 1,
       },
       agents: [
@@ -28,6 +29,7 @@ describe('dashboard expansion mappers', () => {
           id: 'sonnet',
           role: 'developer',
           status: 'busy',
+          presence: 'online',
           source: 'openclaw',
           primary_model: 'gac/claude-sonnet-4-6',
           workspace_dir: '/tmp/sonnet',
@@ -35,6 +37,8 @@ describe('dashboard expansion mappers', () => {
           active_subtask_ids: ['dev-api'],
           load: 1,
           last_active_at: '2026-03-07T10:00:00.000Z',
+          last_seen_at: '2026-03-07T10:01:00.000Z',
+          account_id: 'sonnet',
         },
       ],
       craftsmen: [
@@ -54,7 +58,11 @@ describe('dashboard expansion mappers', () => {
     expect(status.summary.activeTasks).toBe(2);
     expect(status.summary.activeAgents).toBe(1);
     expect(status.summary.totalAgents).toBe(2);
+    expect(status.summary.onlineAgents).toBe(2);
     expect(status.agents[0]?.taskCount).toBe(1);
+    expect(status.agents[0]?.presence).toBe('online');
+    expect(status.agents[0]?.lastSeenAt).toBe('2026-03-07T10:01:00.000Z');
+    expect(status.agents[0]?.accountId).toBe('sonnet');
     expect(status.agents[0]?.source).toBe('openclaw');
     expect(status.agents[0]?.primaryModel).toBe('gac/claude-sonnet-4-6');
     expect(status.craftsmen[0]?.taskId).toBe('OC-101');

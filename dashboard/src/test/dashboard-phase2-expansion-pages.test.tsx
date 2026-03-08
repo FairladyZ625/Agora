@@ -4,21 +4,24 @@ import { describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
 const agentStoreState = {
-  summary: { activeTasks: 1, activeAgents: 1, totalAgents: 2, busyCraftsmen: 1 },
+  summary: { activeTasks: 1, activeAgents: 1, totalAgents: 2, onlineAgents: 2, busyCraftsmen: 1 },
   agents: [
     {
       id: 'sonnet',
       role: 'developer',
       status: 'busy',
+      presence: 'online',
       source: 'openclaw',
       primaryModel: 'gac/claude-sonnet-4-6',
       workspaceDir: '/tmp/sonnet',
+      accountId: 'sonnet',
       taskCount: 1,
       subtaskCount: 1,
       load: 1,
       activeTaskIds: ['OC-101'],
       activeSubtaskIds: ['dev-api'],
       lastActiveAt: null,
+      lastSeenAt: '2026-03-08T10:00:00.000Z',
     },
   ],
   craftsmen: [],
@@ -214,6 +217,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByRole('heading', { name: 'Agent 状态' })).toBeInTheDocument();
     expect(screen.getByText('sonnet')).toBeInTheDocument();
     expect(screen.getByText(/Agent 总数/i)).toBeInTheDocument();
+    expect(screen.getByText('online')).toBeInTheDocument();
   });
 
   it('renders the todo workspace on the dedicated route', () => {

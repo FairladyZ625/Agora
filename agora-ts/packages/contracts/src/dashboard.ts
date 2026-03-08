@@ -6,6 +6,7 @@ export const agentSummarySchema = z.object({
   active_tasks: z.number().int().nonnegative(),
   active_agents: z.number().int().nonnegative(),
   total_agents: z.number().int().nonnegative(),
+  online_agents: z.number().int().nonnegative(),
   busy_craftsmen: z.number().int().nonnegative(),
 });
 
@@ -13,10 +14,13 @@ export const agentStatusItemSchema = z.object({
   id: z.string(),
   role: z.string().nullable(),
   status: z.string(),
+  presence: z.enum(['online', 'offline', 'disconnected']),
   active_task_ids: z.array(z.string()),
   active_subtask_ids: z.array(z.string()),
   load: z.number().int().nonnegative(),
   last_active_at: z.string().nullable(),
+  last_seen_at: z.string().nullable(),
+  account_id: z.string().nullable().optional(),
   source: z.string().nullable().optional(),
   primary_model: z.string().nullable().optional(),
   workspace_dir: z.string().nullable().optional(),
