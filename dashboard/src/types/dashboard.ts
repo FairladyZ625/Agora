@@ -1,6 +1,7 @@
 export interface AgentStatusSummary {
   activeTasks: number;
   activeAgents: number;
+  totalAgents: number;
   busyCraftsmen: number;
 }
 
@@ -8,6 +9,9 @@ export interface AgentStatusItem {
   id: string;
   role: string | null;
   status: string;
+  source: string | null;
+  primaryModel: string | null;
+  workspaceDir: string | null;
   activeTaskIds: string[];
   activeSubtaskIds: string[];
   taskCount: number;

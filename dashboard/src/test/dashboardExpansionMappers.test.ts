@@ -19,7 +19,8 @@ describe('dashboard expansion mappers', () => {
     const dto: ApiAgentsStatusDto = {
       summary: {
         active_tasks: 2,
-        active_agents: 3,
+        active_agents: 1,
+        total_agents: 2,
         busy_craftsmen: 1,
       },
       agents: [
@@ -27,6 +28,9 @@ describe('dashboard expansion mappers', () => {
           id: 'sonnet',
           role: 'developer',
           status: 'busy',
+          source: 'openclaw',
+          primary_model: 'gac/claude-sonnet-4-6',
+          workspace_dir: '/tmp/sonnet',
           active_task_ids: ['OC-101'],
           active_subtask_ids: ['dev-api'],
           load: 1,
@@ -48,8 +52,11 @@ describe('dashboard expansion mappers', () => {
     const status = mapAgentsStatusDto(dto);
 
     expect(status.summary.activeTasks).toBe(2);
-    expect(status.summary.activeAgents).toBe(3);
+    expect(status.summary.activeAgents).toBe(1);
+    expect(status.summary.totalAgents).toBe(2);
     expect(status.agents[0]?.taskCount).toBe(1);
+    expect(status.agents[0]?.source).toBe('openclaw');
+    expect(status.agents[0]?.primaryModel).toBe('gac/claude-sonnet-4-6');
     expect(status.craftsmen[0]?.taskId).toBe('OC-101');
   });
 

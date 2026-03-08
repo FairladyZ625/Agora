@@ -21,9 +21,21 @@ describe('agora-ts contracts bootstrap', () => {
         summary: {
           active_tasks: 1,
           active_agents: 2,
+          total_agents: 3,
           busy_craftsmen: 0,
         },
-        agents: [],
+        agents: [{
+          id: 'main',
+          role: null,
+          status: 'busy',
+          active_task_ids: [],
+          active_subtask_ids: [],
+          load: 1,
+          last_active_at: null,
+          source: 'openclaw+discord',
+          primary_model: 'openai-codex/gpt-5.4',
+          workspace_dir: '/tmp/main',
+        }],
         craftsmen: [],
       }).summary.active_tasks,
     ).toBe(1);

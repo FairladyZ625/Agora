@@ -11,10 +11,12 @@ import type {
 import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
+import type { AgentRegistry } from './openclaw-agent-registry.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
   liveSessions?: LiveSessionStore;
+  agentRegistry?: AgentRegistry;
 }
 
 export class DashboardQueryService {
@@ -24,6 +26,7 @@ export class DashboardQueryService {
   private readonly todos: TodoRepositoryType;
   private readonly templatesDir: string;
   private readonly liveSessions: LiveSessionStore | undefined;
+  private readonly agentRegistry: AgentRegistry | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -35,6 +38,7 @@ export class DashboardQueryService {
     this.todos = new TodoRepository(db);
     this.templatesDir = options.templatesDir;
     this.liveSessions = options.liveSessions;
+    this.agentRegistry = options.agentRegistry;
   }
 
   getAgentsStatus(): AgentsStatusDto {
@@ -121,16 +125,51 @@ export class DashboardQueryService {
       current.status = session.status === 'idle' ? 'idle' : 'busy';
       current.last_active_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
+      current.source ??= 'live';
+      current.primary_model ??= null;
+      current.workspace_dir ??= null;
       agents.set(session.agent_id, current);
     }
+
+    for (const item of this.agentRegistry?.listAgents() ?? []) {
+      const current = agents.get(item.id) ?? {
+        id: item.id,
+        role: null,
+        status: 'idle',
+        active_task_ids: [],
+        active_subtask_ids: [],
+        load: 0,
+        last_active_at: null,
+      };
+      current.source = item.source;
+      current.primary_model = item.primary_model;
+      current.workspace_dir = item.workspace_dir;
+      agents.set(item.id, current);
+    }
+
+    const allAgents = Array.from(agents.values())
+      .map((item) => ({
+        ...item,
+        status: item.load > 0 || item.status === 'busy' ? 'busy' : 'idle',
+        source: item.source ?? null,
+        primary_model: item.primary_model ?? null,
+        workspace_dir: item.workspace_dir ?? null,
+      }))
+      .sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === 'busy' ? -1 : 1;
+        }
+        return a.id.localeCompare(b.id);
+      });
 
     return {
       summary: {
         active_tasks: activeTasks.length,
-        active_agents: agents.size,
+        active_agents: allAgents.filter((item) => item.status === 'busy').length,
+        total_agents: allAgents.length,
         busy_craftsmen: Array.from(craftsmen.values()).filter((item) => item.status === 'busy').length,
       },
-      agents: Array.from(agents.values()).sort((a, b) => a.id.localeCompare(b.id)),
+      agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
     };
   }

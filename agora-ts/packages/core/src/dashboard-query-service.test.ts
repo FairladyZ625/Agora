@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
+import type { AgentRegistry } from './openclaw-agent-registry.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -149,6 +150,66 @@ describe('dashboard query service', () => {
         id: 'ops',
         status: 'busy',
         last_active_at: '2026-03-08T06:10:00.000Z',
+      }),
+    ]);
+  });
+
+  it('returns the full agent inventory and marks non-running agents as idle', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessions = new LiveSessionStore();
+    const agentRegistry: AgentRegistry = {
+      listAgents: () => [
+        {
+          id: 'main',
+          source: 'openclaw+discord',
+          primary_model: 'openai-codex/gpt-5.4',
+          workspace_dir: '/tmp/main',
+        },
+        {
+          id: 'review',
+          source: 'discord',
+          primary_model: null,
+          workspace_dir: null,
+        },
+      ],
+    };
+    const queries = new DashboardQueryService(db, { templatesDir, liveSessions, agentRegistry });
+
+    liveSessions.upsert({
+      source: 'openclaw',
+      agent_id: 'main',
+      session_key: 'agent:main:main',
+      channel: 'main',
+      conversation_id: 'main',
+      thread_id: null,
+      status: 'active',
+      last_event: 'before_agent_start',
+      last_event_at: '2026-03-08T06:47:13.657Z',
+      metadata: {},
+    });
+
+    const agentsStatus = queries.getAgentsStatus();
+
+    expect(agentsStatus.summary).toMatchObject({
+      active_tasks: 0,
+      active_agents: 1,
+      total_agents: 2,
+      busy_craftsmen: 0,
+    });
+    expect(agentsStatus.agents).toEqual([
+      expect.objectContaining({
+        id: 'main',
+        status: 'busy',
+        source: 'openclaw+discord',
+        primary_model: 'openai-codex/gpt-5.4',
+      }),
+      expect.objectContaining({
+        id: 'review',
+        status: 'idle',
+        source: 'discord',
+        primary_model: null,
+        load: 0,
       }),
     ]);
   });

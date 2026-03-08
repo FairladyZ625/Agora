@@ -5,6 +5,7 @@ export * from './gate-service.js';
 export * from './inbox-service.js';
 export * from './live-session-store.js';
 export * from './mode-controller.js';
+export * from './openclaw-agent-registry.js';
 export * from './permission-service.js';
 export * from './progress-service.js';
 export * from './state-machine.js';

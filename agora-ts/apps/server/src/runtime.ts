@@ -1,5 +1,5 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { DashboardQueryService, InboxService, LiveSessionStore, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { loadAgoraConfig, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
@@ -29,12 +29,21 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   runMigrations(db);
   const templatesDir = new URL('../../../../agora/templates', import.meta.url).pathname;
   const liveSessionStore = new LiveSessionStore();
+  const agentRegistry = new OpenClawAgentRegistry(
+    process.env.AGORA_OPENCLAW_CONFIG_PATH
+      ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+      : {},
+  );
   const taskService = new TaskService(db, {
     templatesDir,
     archonUsers: config.permissions.archonUsers,
     allowAgents: config.permissions.allowAgents,
   });
-  const dashboardQueryService = new DashboardQueryService(db, { templatesDir, liveSessions: liveSessionStore });
+  const dashboardQueryService = new DashboardQueryService(db, {
+    templatesDir,
+    liveSessions: liveSessionStore,
+    agentRegistry,
+  });
   const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
   const inboxService = new InboxService(db, taskService);
 

@@ -27,7 +27,7 @@ export function AgentsPage() {
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-4">
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.activeTasks}</p>
           <p className="metric-value">{summary?.activeTasks ?? 0}</p>
@@ -35,6 +35,10 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.activeAgents}</p>
           <p className="metric-value">{summary?.activeAgents ?? 0}</p>
+        </div>
+        <div className="surface-panel surface-panel--workspace">
+          <p className="metric-label">{copy.metrics.totalAgents}</p>
+          <p className="metric-value">{summary?.totalAgents ?? 0}</p>
         </div>
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.busyCraftsmen}</p>
@@ -63,6 +67,8 @@ export function AgentsPage() {
                     </div>
                     <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
                       <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
+                      <span>{copy.sourceLabel}: {agent.source ?? 'unknown'}</span>
+                      <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
                       <span>{copy.loadLabel}: {agent.load}</span>
                       <span>{copy.taskCountLabel}: {agent.taskCount}</span>
                       <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>

@@ -288,6 +288,7 @@ export function useAgentsPageCopy() {
     metrics: {
       activeTasks: t('agents.metrics.activeTasks'),
       activeAgents: t('agents.metrics.activeAgents'),
+      totalAgents: t('agents.metrics.totalAgents'),
       busyCraftsmen: t('agents.metrics.busyCraftsmen'),
     },
     agentListTitle: t('agents.agentListTitle'),
@@ -295,6 +296,8 @@ export function useAgentsPageCopy() {
     emptyAgents: t('agents.emptyAgents'),
     emptyCraftsmen: t('agents.emptyCraftsmen'),
     roleLabel: t('agents.roleLabel'),
+    sourceLabel: t('agents.sourceLabel'),
+    modelLabel: t('agents.modelLabel'),
     loadLabel: t('agents.loadLabel'),
     taskCountLabel: t('agents.taskCountLabel'),
     subtaskCountLabel: t('agents.subtaskCountLabel'),

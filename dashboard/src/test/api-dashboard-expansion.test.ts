@@ -34,7 +34,7 @@ describe('dashboard expansion api client', () => {
         const method = init?.method ?? 'GET';
         if (url.includes('/agents/status')) {
           return {
-            summary: { active_tasks: 1, active_agents: 2, busy_craftsmen: 0 },
+            summary: { active_tasks: 1, active_agents: 1, total_agents: 2, busy_craftsmen: 0 },
             agents: [],
             craftsmen: [],
           };
