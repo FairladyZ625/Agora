@@ -3,6 +3,8 @@ export interface AgentStatusSummary {
   activeAgents: number;
   totalAgents: number;
   onlineAgents: number;
+  staleAgents: number;
+  disconnectedAgents: number;
   busyCraftsmen: number;
 }
 
@@ -10,10 +12,12 @@ export interface AgentStatusItem {
   id: string;
   role: string | null;
   status: string;
-  presence: 'online' | 'offline' | 'disconnected';
+  presence: 'online' | 'offline' | 'disconnected' | 'stale';
+  presenceReason: string | null;
   source: string | null;
   primaryModel: string | null;
   workspaceDir: string | null;
+  provider: string | null;
   accountId: string | null;
   activeTaskIds: string[];
   activeSubtaskIds: string[];

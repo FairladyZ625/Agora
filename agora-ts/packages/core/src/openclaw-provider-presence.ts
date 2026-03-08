@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
-export type AgentPresenceState = 'online' | 'offline' | 'disconnected';
+export type AgentPresenceState = 'online' | 'offline' | 'disconnected' | 'stale';
 
 export interface AgentPresenceSnapshot {
   agent_id: string;
@@ -10,6 +10,7 @@ export interface AgentPresenceSnapshot {
   provider: string | null;
   account_id: string | null;
   last_seen_at: string | null;
+  reason: string | null;
 }
 
 export interface AgentPresenceSource {
@@ -18,6 +19,8 @@ export interface AgentPresenceSource {
 
 export interface OpenClawLogPresenceSourceOptions {
   logPath?: string;
+  staleAfterMs?: number;
+  now?: () => Date;
 }
 
 type PresenceAccumulator = {
@@ -26,13 +29,18 @@ type PresenceAccumulator = {
   provider: string | null;
   account_id: string | null;
   last_seen_at: string | null;
+  reason: string | null;
 };
 
 export class OpenClawLogPresenceSource implements AgentPresenceSource {
   private readonly logPath: string;
+  private readonly staleAfterMs: number;
+  private readonly now: () => Date;
 
   constructor(options: OpenClawLogPresenceSourceOptions = {}) {
     this.logPath = resolveTilde(options.logPath ?? '~/.openclaw/logs/gateway.log');
+    this.staleAfterMs = options.staleAfterMs ?? 10 * 60 * 1000;
+    this.now = options.now ?? (() => new Date());
   }
 
   listPresence(): AgentPresenceSnapshot[] {
@@ -53,7 +61,7 @@ export class OpenClawLogPresenceSource implements AgentPresenceSource {
       if (snapshots.has(parsed.agent_id)) {
         continue;
       }
-      snapshots.set(parsed.agent_id, parsed);
+      snapshots.set(parsed.agent_id, applyFreshness(parsed, this.now, this.staleAfterMs));
     }
 
     return Array.from(snapshots.values()).sort((a, b) => a.agent_id.localeCompare(b.agent_id));
@@ -70,6 +78,7 @@ function parsePresenceLine(line: string): PresenceAccumulator | null {
       provider: 'discord',
       account_id: normalizeAgentId(disconnected[1]),
       last_seen_at: normalizeTimestamp(timestamp),
+      reason: 'health_monitor_restart',
     };
   }
 
@@ -82,10 +91,30 @@ function parsePresenceLine(line: string): PresenceAccumulator | null {
       provider: 'discord',
       account_id: agentId,
       last_seen_at: normalizeTimestamp(timestamp),
+      reason: 'provider_start',
     };
   }
 
   return null;
+}
+
+function applyFreshness(
+  snapshot: PresenceAccumulator,
+  now: () => Date,
+  staleAfterMs: number,
+): PresenceAccumulator {
+  if (snapshot.presence !== 'online' || !snapshot.last_seen_at) {
+    return snapshot;
+  }
+  const ageMs = now().getTime() - new Date(snapshot.last_seen_at).getTime();
+  if (!Number.isFinite(ageMs) || ageMs <= staleAfterMs) {
+    return snapshot;
+  }
+  return {
+    ...snapshot,
+    presence: 'stale',
+    reason: 'stale_gateway_log',
+  };
 }
 
 function normalizeAgentId(value: string) {

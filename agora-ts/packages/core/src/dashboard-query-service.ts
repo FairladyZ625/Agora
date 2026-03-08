@@ -71,11 +71,13 @@ export class DashboardQueryService {
           role: member.role,
           status: 'busy',
           presence: 'offline',
+          presence_reason: 'task_overlay',
           active_task_ids: [],
           active_subtask_ids: [],
           load: 0,
           last_active_at: activityMap.get(member.agentId) ?? null,
           last_seen_at: null,
+          provider: null,
           account_id: null,
         };
         if (!current.active_task_ids.includes(task.id)) {
@@ -90,11 +92,13 @@ export class DashboardQueryService {
           role: null,
           status: 'busy',
           presence: 'offline',
+          presence_reason: 'subtask_overlay',
           active_task_ids: [],
           active_subtask_ids: [],
           load: 0,
           last_active_at: activityMap.get(subtask.assignee) ?? null,
           last_seen_at: null,
+          provider: null,
           account_id: null,
         };
         if (!current.active_task_ids.includes(task.id)) {
@@ -128,18 +132,22 @@ export class DashboardQueryService {
         role: null,
         status: 'busy',
         presence: 'online',
+        presence_reason: 'live_session',
         active_task_ids: [],
         active_subtask_ids: [],
         load: 0,
         last_active_at: session.last_event_at,
         last_seen_at: session.last_event_at,
+        provider: session.channel,
         account_id: null,
       };
       current.status = session.status === 'idle' ? 'idle' : 'busy';
       current.presence = 'online';
+      current.presence_reason = 'live_session';
       current.last_active_at = session.last_event_at;
       current.last_seen_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
+      current.provider = current.provider ?? session.channel;
       current.source ??= 'live';
       current.primary_model ??= null;
       current.workspace_dir ??= null;
@@ -152,16 +160,19 @@ export class DashboardQueryService {
         role: null,
         status: 'idle',
         presence: 'offline',
+        presence_reason: 'inventory_only',
         active_task_ids: [],
         active_subtask_ids: [],
         load: 0,
         last_active_at: null,
         last_seen_at: null,
+        provider: inferProvider(item.source),
         account_id: null,
       };
       current.source = item.source;
       current.primary_model = item.primary_model;
       current.workspace_dir = item.workspace_dir;
+      current.provider = current.provider ?? inferProvider(item.source);
       agents.set(item.id, current);
     }
 
@@ -171,15 +182,19 @@ export class DashboardQueryService {
         role: null,
         status: 'idle',
         presence: item.presence,
+        presence_reason: item.reason,
         active_task_ids: [],
         active_subtask_ids: [],
         load: 0,
         last_active_at: null,
         last_seen_at: item.last_seen_at,
+        provider: item.provider,
         account_id: item.account_id,
       };
       current.presence = item.presence;
+      current.presence_reason = item.reason;
       current.last_seen_at = item.last_seen_at;
+      current.provider = item.provider;
       current.account_id = item.account_id;
       agents.set(item.agent_id, current);
     }
@@ -189,7 +204,9 @@ export class DashboardQueryService {
         ...item,
         status: item.load > 0 || item.status === 'busy' ? 'busy' : 'idle',
         presence: item.load > 0 ? 'online' : item.presence,
+        presence_reason: item.load > 0 ? 'live_session' : item.presence_reason ?? 'inventory_only',
         last_seen_at: item.last_seen_at ?? item.last_active_at,
+        provider: inferProvider(item.source) ?? item.provider ?? null,
         account_id: item.account_id ?? null,
         source: item.source ?? null,
         primary_model: item.primary_model ?? null,
@@ -211,6 +228,8 @@ export class DashboardQueryService {
         active_agents: allAgents.filter((item) => item.status === 'busy').length,
         total_agents: allAgents.length,
         online_agents: allAgents.filter((item) => item.presence === 'online').length,
+        stale_agents: allAgents.filter((item) => item.presence === 'stale').length,
+        disconnected_agents: allAgents.filter((item) => item.presence === 'disconnected').length,
         busy_craftsmen: Array.from(craftsmen.values()).filter((item) => item.status === 'busy').length,
       },
       agents: allAgents,
@@ -295,13 +314,31 @@ export class DashboardQueryService {
   }
 }
 
-function presenceRank(presence: 'online' | 'offline' | 'disconnected') {
+function presenceRank(presence: 'online' | 'offline' | 'disconnected' | 'stale') {
   switch (presence) {
     case 'online':
       return 0;
-    case 'disconnected':
+    case 'stale':
       return 1;
-    default:
+    case 'disconnected':
       return 2;
+    default:
+      return 3;
   }
+}
+
+function inferProvider(source?: string | null) {
+  if (!source) {
+    return null;
+  }
+  if (source.includes('discord')) {
+    return 'discord';
+  }
+  if (source.includes('whatsapp')) {
+    return 'whatsapp';
+  }
+  if (source.includes('openclaw')) {
+    return 'openclaw';
+  }
+  return source;
 }

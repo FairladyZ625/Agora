@@ -67,6 +67,8 @@ describe('dashboard query service', () => {
       active_tasks: 1,
       active_agents: expect.any(Number),
       online_agents: expect.any(Number),
+      stale_agents: expect.any(Number),
+      disconnected_agents: expect.any(Number),
       busy_craftsmen: 1,
     });
     expect(agentsStatus.agents.map((item) => item.id)).toContain('sonnet');
@@ -204,6 +206,8 @@ describe('dashboard query service', () => {
       active_agents: 1,
       total_agents: 2,
       online_agents: 1,
+      stale_agents: 0,
+      disconnected_agents: 0,
       busy_craftsmen: 0,
     });
     expect(agentsStatus.agents).toEqual([
@@ -211,6 +215,8 @@ describe('dashboard query service', () => {
         id: 'main',
         status: 'busy',
         presence: 'online',
+        presence_reason: 'live_session',
+        provider: 'discord',
         source: 'openclaw+discord',
         primary_model: 'openai-codex/gpt-5.4',
       }),
@@ -218,6 +224,8 @@ describe('dashboard query service', () => {
         id: 'review',
         status: 'idle',
         presence: 'offline',
+        presence_reason: 'inventory_only',
+        provider: 'discord',
         source: 'discord',
         primary_model: null,
         load: 0,
@@ -258,6 +266,7 @@ describe('dashboard query service', () => {
           provider: 'discord',
           account_id: 'main',
           last_seen_at: '2026-03-08T07:30:25.241Z',
+          reason: 'provider_start',
         },
         {
           agent_id: 'sonnet',
@@ -265,6 +274,7 @@ describe('dashboard query service', () => {
           provider: 'discord',
           account_id: 'sonnet',
           last_seen_at: '2026-03-08T07:27:00.166Z',
+          reason: 'health_monitor_restart',
         },
       ],
     };
@@ -279,12 +289,16 @@ describe('dashboard query service', () => {
     expect(agentsStatus.summary).toMatchObject({
       total_agents: 3,
       online_agents: 1,
+      stale_agents: 0,
+      disconnected_agents: 1,
     });
     expect(agentsStatus.agents).toEqual([
       expect.objectContaining({
         id: 'main',
         status: 'idle',
         presence: 'online',
+        presence_reason: 'provider_start',
+        provider: 'discord',
         account_id: 'main',
         last_seen_at: '2026-03-08T07:30:25.241Z',
       }),
@@ -292,6 +306,8 @@ describe('dashboard query service', () => {
         id: 'sonnet',
         status: 'idle',
         presence: 'disconnected',
+        presence_reason: 'health_monitor_restart',
+        provider: 'discord',
         account_id: 'sonnet',
         last_seen_at: '2026-03-08T07:27:00.166Z',
       }),
@@ -299,6 +315,8 @@ describe('dashboard query service', () => {
         id: 'review',
         status: 'idle',
         presence: 'offline',
+        presence_reason: 'inventory_only',
+        provider: 'discord',
         account_id: null,
         last_seen_at: null,
       }),

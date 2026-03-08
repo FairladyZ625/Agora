@@ -22,6 +22,8 @@ describe('dashboard expansion mappers', () => {
         active_agents: 1,
         total_agents: 2,
         online_agents: 2,
+        stale_agents: 1,
+        disconnected_agents: 0,
         busy_craftsmen: 1,
       },
       agents: [
@@ -30,6 +32,7 @@ describe('dashboard expansion mappers', () => {
           role: 'developer',
           status: 'busy',
           presence: 'online',
+          presence_reason: 'live_session',
           source: 'openclaw',
           primary_model: 'gac/claude-sonnet-4-6',
           workspace_dir: '/tmp/sonnet',
@@ -38,6 +41,7 @@ describe('dashboard expansion mappers', () => {
           load: 1,
           last_active_at: '2026-03-07T10:00:00.000Z',
           last_seen_at: '2026-03-07T10:01:00.000Z',
+          provider: 'discord',
           account_id: 'sonnet',
         },
       ],
@@ -59,8 +63,12 @@ describe('dashboard expansion mappers', () => {
     expect(status.summary.activeAgents).toBe(1);
     expect(status.summary.totalAgents).toBe(2);
     expect(status.summary.onlineAgents).toBe(2);
+    expect(status.summary.staleAgents).toBe(1);
+    expect(status.summary.disconnectedAgents).toBe(0);
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
+    expect(status.agents[0]?.presenceReason).toBe('live_session');
+    expect(status.agents[0]?.provider).toBe('discord');
     expect(status.agents[0]?.lastSeenAt).toBe('2026-03-07T10:01:00.000Z');
     expect(status.agents[0]?.accountId).toBe('sonnet');
     expect(status.agents[0]?.source).toBe('openclaw');

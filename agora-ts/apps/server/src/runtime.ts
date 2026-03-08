@@ -38,8 +38,13 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   );
   const presenceSource = new OpenClawLogPresenceSource(
     process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH
-      ? { logPath: process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH }
-      : {},
+      ? {
+          logPath: process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH,
+          staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
+        }
+      : {
+          staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
+        },
   );
   const taskService = new TaskService(db, {
     templatesDir,

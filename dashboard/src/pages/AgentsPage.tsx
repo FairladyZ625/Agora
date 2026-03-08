@@ -27,7 +27,7 @@ export function AgentsPage() {
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-6">
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.activeTasks}</p>
           <p className="metric-value">{summary?.activeTasks ?? 0}</p>
@@ -43,6 +43,14 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.onlineAgents}</p>
           <p className="metric-value">{summary?.onlineAgents ?? 0}</p>
+        </div>
+        <div className="surface-panel surface-panel--workspace">
+          <p className="metric-label">{copy.metrics.staleAgents}</p>
+          <p className="metric-value">{summary?.staleAgents ?? 0}</p>
+        </div>
+        <div className="surface-panel surface-panel--workspace">
+          <p className="metric-label">{copy.metrics.disconnectedAgents}</p>
+          <p className="metric-value">{summary?.disconnectedAgents ?? 0}</p>
         </div>
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.busyCraftsmen}</p>
@@ -73,6 +81,8 @@ export function AgentsPage() {
                     <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
                       <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
                       <span>{copy.presenceLabel}: {agent.presence}</span>
+                      <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
+                      <span>{copy.providerLabel}: {agent.provider ?? 'n/a'}</span>
                       <span>{copy.sourceLabel}: {agent.source ?? 'unknown'}</span>
                       <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
                       <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>

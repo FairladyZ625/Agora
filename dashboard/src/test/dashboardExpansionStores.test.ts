@@ -56,16 +56,18 @@ describe('dashboard expansion stores', () => {
 
   it('loads agent status into a dedicated dashboard store', async () => {
     vi.mocked(api.getAgentsStatus).mockResolvedValue({
-      summary: { active_tasks: 1, active_agents: 1, total_agents: 2, online_agents: 2, busy_craftsmen: 1 },
+      summary: { active_tasks: 1, active_agents: 1, total_agents: 2, online_agents: 1, stale_agents: 1, disconnected_agents: 0, busy_craftsmen: 1 },
       agents: [
         {
           id: 'sonnet',
           role: 'developer',
           status: 'busy',
           presence: 'online',
+          presence_reason: 'live_session',
           source: 'openclaw',
           primary_model: 'gac/claude-sonnet-4-6',
           workspace_dir: '/tmp/sonnet',
+          provider: 'discord',
           account_id: 'sonnet',
           active_task_ids: ['OC-101'],
           active_subtask_ids: ['dev-api'],
@@ -83,7 +85,8 @@ describe('dashboard expansion stores', () => {
     expect(result).toBe('live');
     expect(state.summary?.activeTasks).toBe(1);
     expect(state.summary?.totalAgents).toBe(2);
-    expect(state.summary?.onlineAgents).toBe(2);
+    expect(state.summary?.onlineAgents).toBe(1);
+    expect(state.summary?.staleAgents).toBe(1);
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
   });
