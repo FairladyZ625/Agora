@@ -73,6 +73,34 @@ export class SubtaskRepository {
     return rows.map((row) => this.parseRow(row));
   }
 
+  updateSubtask(taskId: string, subtaskId: string, updates: {
+    status?: string;
+    output?: string | null;
+    dispatch_status?: string | null;
+    done_at?: string | null;
+  }): StoredSubtask {
+    const assignments: string[] = [];
+    const values: Array<string | null> = [];
+
+    const push = (column: string, value: string | null) => {
+      assignments.push(`${column} = ?`);
+      values.push(value);
+    };
+
+    if (updates.status !== undefined) push('status', updates.status);
+    if (updates.output !== undefined) push('output', updates.output);
+    if (updates.dispatch_status !== undefined) push('dispatch_status', updates.dispatch_status);
+    if (updates.done_at !== undefined) push('done_at', updates.done_at);
+
+    this.db.prepare(`
+      UPDATE subtasks
+      SET ${assignments.join(', ')}
+      WHERE task_id = ? AND id = ?
+    `).run(...values, taskId, subtaskId);
+
+    return this.getSubtask(taskId, subtaskId)!;
+  }
+
   private getSubtask(taskId: string, subtaskId: string): StoredSubtask | null {
     const row = this.db.prepare(`
       SELECT *

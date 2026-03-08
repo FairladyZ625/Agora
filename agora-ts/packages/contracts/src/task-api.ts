@@ -119,11 +119,25 @@ export const approveTaskRequestSchema = z.object({
   approver_id: z.string().min(1),
   comment: z.string().default(''),
 });
+export type ApproveTaskRequestDto = z.infer<typeof approveTaskRequestSchema>;
 
 export const rejectTaskRequestSchema = z.object({
   rejector_id: z.string().min(1),
   reason: z.string().default(''),
 });
+export type RejectTaskRequestDto = z.infer<typeof rejectTaskRequestSchema>;
+
+export const archonApproveTaskRequestSchema = z.object({
+  reviewer_id: z.string().min(1),
+  comment: z.string().default(''),
+});
+export type ArchonApproveTaskRequestDto = z.infer<typeof archonApproveTaskRequestSchema>;
+
+export const archonRejectTaskRequestSchema = z.object({
+  reviewer_id: z.string().min(1),
+  reason: z.string().default(''),
+});
+export type ArchonRejectTaskRequestDto = z.infer<typeof archonRejectTaskRequestSchema>;
 
 export const confirmTaskRequestSchema = z.object({
   voter_id: z.string().min(1),
@@ -136,7 +150,9 @@ export const subtaskDoneRequestSchema = z.object({
   caller_id: z.string().min(1),
   output: z.string().default(''),
 });
+export type SubtaskDoneRequestDto = z.infer<typeof subtaskDoneRequestSchema>;
 
 export const taskNoteRequestSchema = z.object({
   reason: z.string().default(''),
 });
+export type TaskNoteRequestDto = z.infer<typeof taskNoteRequestSchema>;

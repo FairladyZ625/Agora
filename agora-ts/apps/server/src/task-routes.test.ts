@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, SubtaskRepository } from '@agora-ts/db';
 import { TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
@@ -100,6 +100,85 @@ describe('task routes', () => {
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
       message: "Gate check failed for stage 'discuss' (gate type: archon_review)",
+    });
+  });
+
+  it('serves task action routes for archon approve, subtask done, force advance, and approve', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-202',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    taskService.createTask({
+      title: '补 task action routes',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    const app = buildApp({ taskService });
+
+    const archonApprove = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/archon-approve',
+      payload: {
+        reviewer_id: 'lizeyu',
+        comment: 'outline ok',
+      },
+    });
+    const forceAdvance = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/force-advance',
+      payload: {
+        reason: 'move to write',
+      },
+    });
+
+    subtasks.insertSubtask({
+      id: 'write-202',
+      task_id: 'OC-202',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+
+    const subtaskDone = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/subtask-done',
+      payload: {
+        subtask_id: 'write-202',
+        caller_id: 'glm5',
+        output: 'done',
+      },
+    });
+    const advance = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/advance',
+      payload: {
+        caller_id: 'archon',
+      },
+    });
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/approve',
+      payload: {
+        approver_id: 'gpt52',
+        comment: 'looks good',
+      },
+    });
+
+    expect(archonApprove.statusCode).toBe(200);
+    expect(forceAdvance.statusCode).toBe(200);
+    expect(subtaskDone.statusCode).toBe(200);
+    expect(advance.statusCode).toBe(200);
+    expect(approve.statusCode).toBe(200);
+    expect(approve.json()).toMatchObject({
+      id: 'OC-202',
+      current_stage: 'review',
     });
   });
 });

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, SubtaskRepository } from '@agora-ts/db';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -85,5 +85,81 @@ describe('task service', () => {
       event: 'stage_advanced',
       stage_id: 'develop',
     });
+  });
+
+  it('records archon approval, subtask completion, approval, and force advance actions', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-102',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: '迁移剩余 task actions',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    const outlineApproved = service.archonApproveTask('OC-102', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    expect(outlineApproved.id).toBe('OC-102');
+
+    const forced = service.forceAdvanceTask('OC-102', { reason: 'skip outline wait' });
+    expect(forced.current_stage).toBe('write');
+
+    subtasks.insertSubtask({
+      id: 'write-doc',
+      task_id: 'OC-102',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+
+    const subtaskDone = service.completeSubtask('OC-102', {
+      subtaskId: 'write-doc',
+      callerId: 'glm5',
+      output: '初稿完成',
+    });
+    expect(subtaskDone.id).toBe('OC-102');
+
+    const reviewStage = service.advanceTask('OC-102', { callerId: 'archon' });
+    expect(reviewStage.current_stage).toBe('review');
+
+    const rejected = service.rejectTask('OC-102', {
+      rejectorId: 'gpt52',
+      reason: 'needs more structure',
+    });
+    expect(rejected.id).toBe('OC-102');
+
+    const approved = service.approveTask('OC-102', {
+      approverId: 'gpt52',
+      comment: 'fixed',
+    });
+    const status = service.getTaskStatus('OC-102');
+
+    expect(approved.id).toBe('OC-102');
+    expect(status.subtasks).toMatchObject([
+      {
+        id: 'write-doc',
+        status: 'done',
+        output: '初稿完成',
+      },
+    ]);
+    expect(status.flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining([
+        'archon_approved',
+        'force_advance',
+        'subtask_done',
+        'gate_failed',
+        'rejected',
+        'gate_passed',
+      ]),
+    );
   });
 });

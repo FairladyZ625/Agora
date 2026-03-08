@@ -11,7 +11,9 @@ import {
   type StoredTask,
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
+import { GateService } from './gate-service.js';
 import { TaskState } from './enums.js';
+import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 
 type TaskTemplate = {
@@ -30,10 +32,37 @@ type TaskTemplate = {
 export interface TaskServiceOptions {
   templatesDir?: string;
   taskIdGenerator?: () => string;
+  archonUsers?: string[];
 }
 
 export interface AdvanceTaskOptions {
   callerId: string;
+}
+
+export interface ApproveTaskOptions {
+  approverId: string;
+  comment: string;
+}
+
+export interface RejectTaskOptions {
+  rejectorId: string;
+  reason: string;
+}
+
+export interface ArchonDecisionOptions {
+  reviewerId: string;
+  comment?: string;
+  reason?: string;
+}
+
+export interface CompleteSubtaskOptions {
+  subtaskId: string;
+  callerId: string;
+  output: string;
+}
+
+export interface ForceAdvanceOptions {
+  reason: string;
 }
 
 function defaultTemplatesDir() {
@@ -50,6 +79,8 @@ export class TaskService {
   private readonly progressLogRepository: ProgressLogRepository;
   private readonly subtaskRepository: SubtaskRepository;
   private readonly stateMachine: StateMachine;
+  private readonly permissions: PermissionService;
+  private readonly gateService: GateService;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
 
@@ -62,6 +93,10 @@ export class TaskService {
     this.progressLogRepository = new ProgressLogRepository(db);
     this.subtaskRepository = new SubtaskRepository(db);
     this.stateMachine = new StateMachine();
+    this.permissions = options.archonUsers
+      ? new PermissionService({ archonUsers: options.archonUsers })
+      : new PermissionService();
+    this.gateService = new GateService(db, this.permissions);
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
   }
@@ -155,6 +190,7 @@ export class TaskService {
     }
 
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+    this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
     if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
       throw new PermissionDeniedError(
         `Gate check failed for stage '${task.current_stage}' (gate type: ${currentStage.gate?.type ?? 'command'})`,
@@ -211,6 +247,156 @@ export class TaskService {
     return updated;
   }
 
+  approveTask(taskId: string, options: ApproveTaskOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const stage = this.getCurrentStageOrThrow(task);
+    this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
+    const approverRole = this.getApproverRole(stage);
+    this.gateService.recordApproval(taskId, stage.id, approverRole, options.approverId, options.comment);
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'gate_passed',
+      stage_id: stage.id,
+      detail: { gate_type: 'approval', passed: true, comment: options.comment },
+      actor: options.approverId,
+    });
+    return task;
+  }
+
+  rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const stage = this.getCurrentStageOrThrow(task);
+    this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'gate_failed',
+      stage_id: stage.id,
+      detail: { gate_type: 'approval', passed: false, reason: options.reason },
+      actor: options.rejectorId,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'rejected',
+      stage_id: stage.id,
+      detail: { reason: options.reason },
+      actor: options.rejectorId,
+    });
+    return task;
+  }
+
+  archonApproveTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const stage = this.getCurrentStageOrThrow(task);
+    this.gateService.routeGateCommand(task, stage, 'archon-approve', options.reviewerId);
+    this.gateService.recordArchonReview(taskId, stage.id, 'approved', options.reviewerId, options.comment ?? '');
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'archon',
+      event: 'archon_approved',
+      stage_id: stage.id,
+      detail: { decision: 'approved', comment: options.comment ?? '' },
+      actor: options.reviewerId,
+    });
+    return task;
+  }
+
+  archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const stage = this.getCurrentStageOrThrow(task);
+    this.gateService.routeGateCommand(task, stage, 'archon-reject', options.reviewerId);
+    this.gateService.recordArchonReview(taskId, stage.id, 'rejected', options.reviewerId, options.reason ?? '');
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'archon',
+      event: 'archon_rejected',
+      stage_id: stage.id,
+      detail: { decision: 'rejected', reason: options.reason ?? '' },
+      actor: options.reviewerId,
+    });
+    return task;
+  }
+
+  completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const subtask = this.subtaskRepository.listByTask(taskId).find((item) => item.id === options.subtaskId);
+    if (!subtask) {
+      throw new NotFoundError(`Subtask ${options.subtaskId} not found in task ${taskId}`);
+    }
+    if (!this.permissions.verifySubtaskDone(options.callerId, subtask.assignee)) {
+      throw new PermissionDeniedError(`${options.callerId} 无权完成子任务 ${options.subtaskId}（assignee=${subtask.assignee}）`);
+    }
+    this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
+      status: 'done',
+      output: options.output,
+      done_at: new Date().toISOString(),
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'subtask_done',
+      stage_id: subtask.stage_id,
+      detail: { subtask_id: options.subtaskId },
+      actor: options.callerId,
+    });
+    return task;
+  }
+
+  forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
+    }
+    if (!task.current_stage) {
+      throw new Error(`Task ${taskId} has no current_stage set`);
+    }
+    const advance = this.stateMachine.advance(task.workflow, task.current_stage);
+    this.exitStage(taskId, advance.currentStage.id, 'force_advance');
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'force_advance',
+      stage_id: task.current_stage,
+      detail: { reason: options.reason },
+      actor: 'archon',
+    });
+
+    if (advance.completesTask) {
+      const done = this.taskRepository.updateTask(taskId, task.version, {
+        state: TaskState.DONE,
+      });
+      this.flowLogRepository.insertFlowLog({
+        task_id: taskId,
+        kind: 'flow',
+        event: 'state_changed',
+        stage_id: advance.currentStage.id,
+        from_state: TaskState.ACTIVE,
+        to_state: TaskState.DONE,
+        actor: 'archon',
+      });
+      return done;
+    }
+
+    const nextStage = advance.nextStage;
+    const updated = this.taskRepository.updateTask(taskId, task.version, {
+      current_stage: nextStage?.id ?? null,
+    });
+    if (nextStage) {
+      this.enterStage(taskId, nextStage.id);
+      this.flowLogRepository.insertFlowLog({
+        task_id: taskId,
+        kind: 'flow',
+        event: 'stage_advanced',
+        stage_id: nextStage.id,
+        detail: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
+        actor: 'archon',
+      });
+    }
+    return updated;
+  }
+
   private buildWorkflow(template: TaskTemplate): WorkflowDto {
     return {
       type: template.defaultWorkflow ?? 'linear',
@@ -241,6 +427,18 @@ export class TaskService {
       throw new NotFoundError(`Task ${taskId} not found`);
     }
     return task;
+  }
+
+  private getCurrentStageOrThrow(task: StoredTask) {
+    if (!task.current_stage) {
+      throw new Error(`Task ${task.id} has no current_stage set`);
+    }
+    return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+  }
+
+  private getApproverRole(stage: NonNullable<StoredTask['workflow']['stages']>[number]) {
+    const raw = stage.gate?.approver_role ?? stage.gate?.approver;
+    return typeof raw === 'string' && raw.length > 0 ? raw : 'reviewer';
   }
 
   private enterStage(taskId: string, stageId: string) {

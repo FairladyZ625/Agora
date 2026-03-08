@@ -1,7 +1,13 @@
 import Fastify from 'fastify';
 import {
+  approveTaskRequestSchema,
   advanceTaskRequestSchema,
+  archonApproveTaskRequestSchema,
+  archonRejectTaskRequestSchema,
   createTaskRequestSchema,
+  rejectTaskRequestSchema,
+  subtaskDoneRequestSchema,
+  taskNoteRequestSchema,
   type HealthResponse,
 } from '@agora-ts/contracts';
 import { NotFoundError, PermissionDeniedError, type TaskService } from '@agora-ts/core';
@@ -89,6 +95,120 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.advanceTask(params.taskId, {
           callerId: payload.caller_id,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/approve', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = approveTaskRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.approveTask(params.taskId, {
+          approverId: payload.approver_id,
+          comment: payload.comment,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/reject', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = rejectTaskRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.rejectTask(params.taskId, {
+          rejectorId: payload.rejector_id,
+          reason: payload.reason,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/archon-approve', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = archonApproveTaskRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.archonApproveTask(params.taskId, {
+          reviewerId: payload.reviewer_id,
+          comment: payload.comment,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/archon-reject', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = archonRejectTaskRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.archonRejectTask(params.taskId, {
+          reviewerId: payload.reviewer_id,
+          reason: payload.reason,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/subtask-done', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = subtaskDoneRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.completeSubtask(params.taskId, {
+          subtaskId: payload.subtask_id,
+          callerId: payload.caller_id,
+          output: payload.output,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/force-advance', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = taskNoteRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.forceAdvanceTask(params.taskId, {
+          reason: payload.reason,
         }),
       );
     } catch (error) {
