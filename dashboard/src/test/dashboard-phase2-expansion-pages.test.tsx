@@ -114,6 +114,7 @@ const agentStoreState = {
   loading: false,
   error: null,
   presenceFilter: 'all' as const,
+  craftsmenFilter: 'all' as const,
   providerFilter: null as string | null,
   fetchStatus: vi.fn(async () => 'live'),
   setPresenceFilter: vi.fn((filter) => {
@@ -121,6 +122,9 @@ const agentStoreState = {
   }),
   setProviderFilter: vi.fn((provider) => {
     agentStoreState.providerFilter = provider;
+  }),
+  setCraftsmenFilter: vi.fn((filter) => {
+    agentStoreState.craftsmenFilter = filter;
   }),
   clearError: vi.fn(),
 };
@@ -152,6 +156,11 @@ agentStoreState.setPresenceFilter.mockImplementation((filter) => {
 
 agentStoreState.setProviderFilter.mockImplementation((provider) => {
   agentStoreState.providerFilter = provider;
+  notifyAgentStore();
+});
+
+agentStoreState.setCraftsmenFilter.mockImplementation((filter) => {
+  agentStoreState.craftsmenFilter = filter;
   notifyAgentStore();
 });
 
@@ -342,6 +351,7 @@ vi.mock('@/stores/feedbackStore', () => ({
 describe('dashboard expansion routes', () => {
   beforeEach(() => {
     agentStoreState.presenceFilter = 'all';
+    agentStoreState.craftsmenFilter = 'all';
     agentStoreState.providerFilter = null;
     agentStoreState.agents.splice(1);
     agentStoreSnapshot = makeAgentStoreSnapshot();
@@ -367,6 +377,40 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByText('agora-craftsmen')).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
     expect(screen.getByText(/exec-dashboard-1/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'failures' })).toBeInTheDocument();
+  });
+
+  it('filters craftsmen cards by failure-focused view', () => {
+    agentStoreState.craftsmen.push({
+      id: 'gemini',
+      status: 'failed',
+      taskId: 'OC-102',
+      subtaskId: 'qa-review',
+      title: 'QA Review',
+      runningSince: '2026-03-08T10:10:00.000Z',
+      recentExecutions: [
+        {
+          executionId: 'exec-failed-1',
+          status: 'failed',
+          sessionId: 'watcher:123',
+          transport: 'process-callback-runner',
+          runtimeMode: 'watched',
+          startedAt: '2026-03-08T10:10:00.000Z',
+        },
+      ],
+    });
+    notifyAgentStore();
+
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'failures' }));
+
+    expect(screen.getByText(/exec-failed-1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/exec-dashboard-1/i)).not.toBeInTheDocument();
   });
 
   it('filters the agent list by presence view', () => {

@@ -5,6 +5,8 @@ import { mapAgentsStatusDto } from '@/lib/dashboardExpansionMappers';
 import type { AgentStatusItem, AgentStatusSummary, AgentProviderSummary, CraftsmanStatusItem, TmuxRuntimeStatus } from '@/types/dashboard';
 import type { AgentPresenceFilter } from '@/lib/agentProviderInsights';
 
+export type CraftsmenFilter = 'all' | 'failures' | 'running';
+
 interface AgentStore {
   summary: AgentStatusSummary | null;
   agents: AgentStatusItem[];
@@ -12,11 +14,13 @@ interface AgentStore {
   providerSummaries: AgentProviderSummary[];
   tmuxRuntime: TmuxRuntimeStatus | null;
   presenceFilter: AgentPresenceFilter;
+  craftsmenFilter: CraftsmenFilter;
   providerFilter: string | null;
   loading: boolean;
   error: string | null;
   fetchStatus: () => Promise<'live' | 'error'>;
   setPresenceFilter: (filter: AgentPresenceFilter) => void;
+  setCraftsmenFilter: (filter: CraftsmenFilter) => void;
   setProviderFilter: (provider: string | null) => void;
   clearError: () => void;
 }
@@ -30,6 +34,7 @@ export const useAgentStore = create<AgentStore>()(
       providerSummaries: [],
       tmuxRuntime: null,
       presenceFilter: 'all',
+      craftsmenFilter: 'all',
       providerFilter: null,
       loading: false,
       error: null,
@@ -62,6 +67,7 @@ export const useAgentStore = create<AgentStore>()(
       },
 
       setPresenceFilter: (presenceFilter) => set({ presenceFilter }),
+      setCraftsmenFilter: (craftsmenFilter) => set({ craftsmenFilter }),
       setProviderFilter: (providerFilter) => set({ providerFilter }),
       clearError: () => set({ error: null }),
     }),
@@ -69,6 +75,7 @@ export const useAgentStore = create<AgentStore>()(
       name: 'agora-agent-filters',
       partialize: (state) => ({
         presenceFilter: state.presenceFilter,
+        craftsmenFilter: state.craftsmenFilter,
         providerFilter: state.providerFilter,
       }),
     },

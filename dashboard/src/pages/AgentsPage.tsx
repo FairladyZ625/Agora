@@ -11,10 +11,12 @@ export function AgentsPage() {
   const providerSummaries = useAgentStore((state) => state.providerSummaries);
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
+  const craftsmenFilter = useAgentStore((state) => state.craftsmenFilter);
   const providerFilter = useAgentStore((state) => state.providerFilter);
   const error = useAgentStore((state) => state.error);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const setPresenceFilter = useAgentStore((state) => state.setPresenceFilter);
+  const setCraftsmenFilter = useAgentStore((state) => state.setCraftsmenFilter);
   const setProviderFilter = useAgentStore((state) => state.setProviderFilter);
 
   useEffect(() => {
@@ -26,6 +28,15 @@ export function AgentsPage() {
     () => providerSummaries.find((item) => item.provider === providerFilter) ?? providerSummaries[0] ?? null,
     [providerFilter, providerSummaries],
   );
+  const visibleCraftsmen = useMemo(() => {
+    if (craftsmenFilter === 'all') {
+      return craftsmen;
+    }
+    if (craftsmenFilter === 'running') {
+      return craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running'));
+    }
+    return craftsmen.filter((item) => item.recentExecutions.some((execution) => execution.status === 'failed'));
+  }, [craftsmen, craftsmenFilter]);
 
   return (
     <div className="space-y-6">
@@ -287,15 +298,30 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <h3 className="section-title">{copy.craftsmenTitle}</h3>
-            <span className="status-pill status-pill--neutral">{craftsmen.length}</span>
+            <span className="status-pill status-pill--neutral">{visibleCraftsmen.length}</span>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(['all', 'failures', 'running'] as const).map((filter) => {
+              const selected = craftsmenFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                  onClick={() => setCraftsmenFilter(filter)}
+                >
+                  {filter}
+                </button>
+              );
+            })}
           </div>
           <div className="mt-5 space-y-3">
-            {craftsmen.length === 0 ? (
+            {visibleCraftsmen.length === 0 ? (
               <div className="empty-state">
                 <p className="type-body-sm">{copy.emptyCraftsmen}</p>
               </div>
             ) : (
-              craftsmen.map((item) => (
+              visibleCraftsmen.map((item) => (
                 <div key={item.id} className="decision-card">
                   <div className="flex items-start justify-between gap-3">
                     <div>

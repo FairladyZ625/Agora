@@ -49,6 +49,7 @@ describe('dashboard expansion stores', () => {
       providerSummaries: [],
       tmuxRuntime: null,
       presenceFilter: 'all',
+      craftsmenFilter: 'all',
       providerFilter: null,
       loading: false,
       error: null,
@@ -195,6 +196,7 @@ describe('dashboard expansion stores', () => {
 
   it('persists agent filters across refreshes', () => {
     useAgentStore.getState().setPresenceFilter('stale');
+    useAgentStore.getState().setCraftsmenFilter('failures');
     useAgentStore.getState().setProviderFilter('discord');
 
     const raw = localStorage.getItem('agora-agent-filters');
@@ -202,6 +204,7 @@ describe('dashboard expansion stores', () => {
     expect(JSON.parse(raw ?? '{}')).toMatchObject({
       state: {
         presenceFilter: 'stale',
+        craftsmenFilter: 'failures',
         providerFilter: 'discord',
       },
     });
