@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import type {
@@ -12,6 +12,7 @@ import type {
 export interface OpenClawLogPresenceSourceOptions {
   logPath?: string;
   staleAfterMs?: number;
+  maxBytes?: number;
   now?: () => Date;
 }
 
@@ -29,21 +30,21 @@ type HistoryEvent = AgentPresenceHistoryEvent;
 export class OpenClawLogPresenceSource implements PresenceSource {
   private readonly logPath: string;
   private readonly staleAfterMs: number;
+  private readonly maxBytes: number;
   private readonly now: () => Date;
+  private cachedSize: number | null = null;
+  private cachedMtimeMs: number | null = null;
+  private cachedLines: string[] | null = null;
 
   constructor(options: OpenClawLogPresenceSourceOptions = {}) {
     this.logPath = resolveTilde(options.logPath ?? '~/.openclaw/logs/gateway.log');
     this.staleAfterMs = options.staleAfterMs ?? 10 * 60 * 1000;
+    this.maxBytes = options.maxBytes ?? 4 * 1024 * 1024;
     this.now = options.now ?? (() => new Date());
   }
 
   listPresence(): AgentPresenceSnapshot[] {
-    if (!existsSync(this.logPath)) {
-      return [];
-    }
-
-    const lines = readFileSync(this.logPath, 'utf8')
-      .split('\n')
+    const lines = this.readRelevantLines()
       .filter((line) => line.includes('[discord]') || line.includes('[health-monitor] [discord:'));
     const snapshots = new Map<string, PresenceAccumulator>();
 
@@ -62,27 +63,64 @@ export class OpenClawLogPresenceSource implements PresenceSource {
   }
 
   listHistory(): AgentPresenceHistoryEvent[] {
-    if (!existsSync(this.logPath)) {
-      return [];
-    }
-
-    return readFileSync(this.logPath, 'utf8')
-      .split('\n')
+    return this.readRelevantLines()
       .map((line) => parseHistoryLine(line))
       .filter((item): item is HistoryEvent => Boolean(item))
       .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
   }
 
   listSignals(): AgentProviderSignalEvent[] {
+    return this.readRelevantLines()
+      .map((line) => parseSignalLine(line))
+      .filter((item): item is AgentProviderSignalEvent => Boolean(item))
+      .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+  }
+
+  private readRelevantLines() {
     if (!existsSync(this.logPath)) {
       return [];
     }
 
-    return readFileSync(this.logPath, 'utf8')
-      .split('\n')
-      .map((line) => parseSignalLine(line))
-      .filter((item): item is AgentProviderSignalEvent => Boolean(item))
-      .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+    const stats = statSync(this.logPath);
+    if (
+      this.cachedLines &&
+      this.cachedSize === stats.size &&
+      this.cachedMtimeMs === stats.mtimeMs
+    ) {
+      return this.cachedLines;
+    }
+
+    const text = readTailUtf8(this.logPath, this.maxBytes);
+    const lines = text.split('\n').filter((line) => line.length > 0);
+    this.cachedLines = lines;
+    this.cachedSize = stats.size;
+    this.cachedMtimeMs = stats.mtimeMs;
+    return lines;
+  }
+}
+
+function readTailUtf8(path: string, maxBytes: number) {
+  const stats = statSync(path);
+  if (stats.size <= maxBytes) {
+    return readFileSync(path, 'utf8');
+  }
+
+  const fd = openSync(path, 'r');
+  try {
+    const size = Math.min(maxBytes, stats.size);
+    const buffer = Buffer.alloc(size);
+    const offset = stats.size - size;
+    readSync(fd, buffer, 0, size, offset);
+    let text = buffer.toString('utf8');
+    if (offset > 0) {
+      const newlineIndex = text.indexOf('\n');
+      if (newlineIndex >= 0) {
+        text = text.slice(newlineIndex + 1);
+      }
+    }
+    return text;
+  } finally {
+    closeSync(fd);
   }
 }
 

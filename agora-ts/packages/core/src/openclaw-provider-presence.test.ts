@@ -158,4 +158,29 @@ describe('openclaw provider presence', () => {
       },
     ]);
   });
+
+  it('reads only the recent log tail when a max byte window is configured', () => {
+    const filler = Array.from({ length: 400 }, (_, index) => `2026-03-08T07:18:${String(index % 60).padStart(2, '0')}.000Z filler line ${index}`).join('\n');
+    const source = new OpenClawLogPresenceSource({
+      staleAfterMs: 5 * 60 * 1000,
+      now: () => new Date('2026-03-08T07:30:00.000Z'),
+      maxBytes: 512,
+      logPath: makeLogPath(`
+2026-03-08T07:17:03.306Z [discord] [main] starting provider (@Codex Main)
+${filler}
+2026-03-08T07:27:01.292Z [discord] [sonnet] starting provider (@Sonnet)
+      `.trim()),
+    });
+
+    expect(source.listPresence()).toEqual([
+      {
+        agent_id: 'sonnet',
+        presence: 'online',
+        reason: 'provider_start',
+        provider: 'discord',
+        account_id: 'sonnet',
+        last_seen_at: '2026-03-08T07:27:01.292Z',
+      },
+    ]);
+  });
 });
