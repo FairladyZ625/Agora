@@ -30,6 +30,7 @@ export const agentsStatusSchema = z.object({
   agents: z.array(agentStatusItemSchema),
   craftsmen: z.array(craftsmanStatusItemSchema),
 });
+export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
 
 export const archiveJobSchema = z.object({
   id: z.number().int().nonnegative(),
@@ -44,6 +45,7 @@ export const archiveJobSchema = z.object({
   completed_at: z.string().nullable(),
   payload: z.record(z.string(), z.unknown()).nullable(),
 });
+export type ArchiveJobDto = z.infer<typeof archiveJobSchema>;
 
 export const todoItemSchema = z.object({
   id: z.number().int().nonnegative(),
@@ -55,6 +57,7 @@ export const todoItemSchema = z.object({
   tags: z.array(z.string()),
   promoted_to: z.string().nullable(),
 });
+export type TodoItemDto = z.infer<typeof todoItemSchema>;
 
 export const templateSummarySchema = z.object({
   id: z.string(),
@@ -64,3 +67,15 @@ export const templateSummarySchema = z.object({
   governance: z.unknown(),
   stage_count: z.number().int().nonnegative(),
 });
+export type TemplateSummaryDto = z.infer<typeof templateSummarySchema>;
+
+export const templateDetailSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  description: z.string().optional(),
+  defaultWorkflow: z.string().optional(),
+  governance: z.unknown().optional(),
+  defaultTeam: z.record(z.string(), z.unknown()).optional(),
+  stages: z.array(z.record(z.string(), z.unknown())).optional(),
+});
+export type TemplateDetailDto = z.infer<typeof templateDetailSchema>;

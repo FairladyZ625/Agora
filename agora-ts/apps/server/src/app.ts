@@ -6,15 +6,16 @@ import {
   archonRejectTaskRequestSchema,
   confirmTaskRequestSchema,
   createTaskRequestSchema,
+  type HealthResponse,
   rejectTaskRequestSchema,
   subtaskDoneRequestSchema,
   taskNoteRequestSchema,
-  type HealthResponse,
 } from '@agora-ts/contracts';
-import { NotFoundError, PermissionDeniedError, type TaskService } from '@agora-ts/core';
+import { NotFoundError, PermissionDeniedError, type DashboardQueryService, type TaskService } from '@agora-ts/core';
 
 export interface BuildAppOptions {
   taskService?: TaskService;
+  dashboardQueryService?: DashboardQueryService;
 }
 
 function translateError(error: unknown) {
@@ -35,6 +36,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: false,
   });
   const taskService = options.taskService;
+  const dashboardQueryService = options.dashboardQueryService;
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     return { status: 'ok' };
@@ -287,6 +289,137 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { taskId: string };
       const payload = taskNoteRequestSchema.parse(request.body);
       return reply.send(taskService.unblockTask(params.taskId, { reason: payload.reason }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/agents/status', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    return reply.send(dashboardQueryService.getAgentsStatus());
+  });
+
+  app.get('/api/archive/jobs', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    const query = request.query as { status?: string; task_id?: string };
+    const filters: { status?: string; taskId?: string } = {};
+    if (query.status !== undefined) {
+      filters.status = query.status;
+    }
+    if (query.task_id !== undefined) {
+      filters.taskId = query.task_id;
+    }
+    return reply.send(
+      dashboardQueryService.listArchiveJobs(filters),
+    );
+  });
+
+  app.get('/api/archive/jobs/:jobId', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { jobId: string };
+      return reply.send(dashboardQueryService.getArchiveJob(Number(params.jobId)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/archive/jobs/:jobId/retry', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { jobId: string };
+      return reply.send(dashboardQueryService.retryArchiveJob(Number(params.jobId)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/todos', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    const query = request.query as { status?: string };
+    const filters: { status?: string } = {};
+    if (query.status !== undefined) {
+      filters.status = query.status;
+    }
+    return reply.send(dashboardQueryService.listTodos(filters));
+  });
+
+  app.post('/api/todos', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    const payload = request.body as { text: string; due?: string | null; tags?: string[] };
+    return reply.send(dashboardQueryService.createTodo(payload));
+  });
+
+  app.patch('/api/todos/:todoId', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { todoId: string };
+      const payload = request.body as { text?: string; due?: string | null; tags?: string[]; status?: string };
+      return reply.send(dashboardQueryService.updateTodo(Number(params.todoId), payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/todos/:todoId', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { todoId: string };
+      return reply.send(dashboardQueryService.deleteTodo(Number(params.todoId)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/todos/:todoId/promote', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { todoId: string };
+      const payload = request.body as { type: string; creator: string; priority: string };
+      return reply.send(taskService.promoteTodo(Number(params.todoId), payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/templates', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    return reply.send(dashboardQueryService.listTemplates());
+  });
+
+  app.get('/api/templates/:templateId', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { templateId: string };
+      return reply.send(dashboardQueryService.getTemplate(params.templateId));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -7,6 +7,7 @@ import {
   ProgressLogRepository,
   SubtaskRepository,
   TaskRepository,
+  TodoRepository,
   type AgoraDatabase,
   type StoredTask,
 } from '@agora-ts/db';
@@ -88,6 +89,7 @@ export class TaskService {
   private readonly flowLogRepository: FlowLogRepository;
   private readonly progressLogRepository: ProgressLogRepository;
   private readonly subtaskRepository: SubtaskRepository;
+  private readonly todoRepository: TodoRepository;
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
@@ -102,6 +104,7 @@ export class TaskService {
     this.flowLogRepository = new FlowLogRepository(db);
     this.progressLogRepository = new ProgressLogRepository(db);
     this.subtaskRepository = new SubtaskRepository(db);
+    this.todoRepository = new TodoRepository(db);
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
       ? new PermissionService({ archonUsers: options.archonUsers })
@@ -466,6 +469,27 @@ export class TaskService {
       actor: 'system',
     });
     return updated;
+  }
+
+  promoteTodo(todoId: number, options: { type: string; creator: string; priority: string }) {
+    const todo = this.todoRepository.getTodo(todoId);
+    if (!todo) {
+      throw new NotFoundError(`Todo ${todoId} not found`);
+    }
+    if (todo.promoted_to) {
+      throw new Error(`Todo ${todoId} already promoted to ${todo.promoted_to}`);
+    }
+    const task = this.createTask({
+      title: todo.text,
+      type: options.type,
+      creator: options.creator,
+      description: '',
+      priority: options.priority,
+    });
+    const updatedTodo = this.todoRepository.updateTodo(todoId, {
+      promoted_to: task.id,
+    });
+    return { todo: updatedTodo, task };
   }
 
   private buildWorkflow(template: TaskTemplate): WorkflowDto {

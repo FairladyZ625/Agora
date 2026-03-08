@@ -1,3 +1,4 @@
+export * from './dashboard-query-service.js';
 export * from './errors.js';
 export * from './enums.js';
 export * from './gate-service.js';
