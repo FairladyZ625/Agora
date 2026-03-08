@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { loadAgoraConfig } from '@agora-ts/config';
+import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, TaskService } from '@agora-ts/core';
 import type { CraftsmanCallbackRequestDto, CraftsmanExecutionStatusDto, TaskPriority } from '@agora-ts/contracts';
@@ -16,12 +16,15 @@ export interface CliDependencies {
 
 function resolveTaskService() {
   const config = loadAgoraConfig(process.env.AGORA_CONFIG_PATH ?? '');
+  const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const dbPath = process.env.AGORA_DB_PATH ?? config.db_path;
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
     adapters: createDefaultCraftsmanAdapters({
-      mode: process.env.AGORA_CRAFTSMAN_ADAPTER_MODE === 'real' ? 'real' : 'stub',
+      mode: resolveCraftsmanAdapterMode(),
+      callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
+      apiToken: config.api_auth.enabled ? config.api_auth.token : null,
     }),
   });
   return new TaskService(db, {
@@ -29,6 +32,14 @@ function resolveTaskService() {
     allowAgents: config.permissions.allowAgents,
     craftsmanDispatcher,
   });
+}
+
+function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' {
+  const mode = process.env.AGORA_CRAFTSMAN_ADAPTER_MODE;
+  if (mode === 'real' || mode === 'watched') {
+    return mode;
+  }
+  return 'stub';
 }
 
 function writeLine(stream: Writable, message: string) {

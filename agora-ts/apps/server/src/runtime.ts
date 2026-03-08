@@ -1,6 +1,6 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, TaskService, TemplateAuthoringService } from '@agora-ts/core';
-import { loadAgoraConfig, type AgoraConfig } from '@agora-ts/config';
+import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions {
@@ -25,6 +25,7 @@ function resolveDashboardDir() {
 
 export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
+  const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const db = createAgoraDatabase({ dbPath: config.db_path });
   runMigrations(db);
   const templatesDir = new URL('../../../../agora/templates', import.meta.url).pathname;
@@ -46,9 +47,12 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
           staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
         },
   );
+  const adapterMode = resolveCraftsmanAdapterMode();
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
     adapters: createDefaultCraftsmanAdapters({
-      mode: process.env.AGORA_CRAFTSMAN_ADAPTER_MODE === 'real' ? 'real' : 'stub',
+      mode: adapterMode,
+      callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
+      apiToken: config.api_auth.enabled ? config.api_auth.token : null,
     }),
   });
   const taskService = new TaskService(db, {
@@ -77,4 +81,12 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     apiAuth: config.api_auth,
     dashboardDir: resolveDashboardDir(),
   };
+}
+
+function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' {
+  const mode = process.env.AGORA_CRAFTSMAN_ADAPTER_MODE;
+  if (mode === 'real' || mode === 'watched') {
+    return mode;
+  }
+  return 'stub';
 }

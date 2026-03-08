@@ -24,7 +24,7 @@ export abstract class ProcessCraftsmanAdapter implements CraftsmanAdapter {
     if (!request.prompt || request.prompt.trim().length === 0) {
       throw new Error(`${this.name} adapter requires a prompt`);
     }
-    const spec = this.buildCommand(request);
+    const spec = this.createCommandSpec(request);
     const child = this.spawnProcess(spec.command, spec.args, {
       cwd: request.workdir ?? process.cwd(),
       detached: true,
@@ -47,6 +47,10 @@ export abstract class ProcessCraftsmanAdapter implements CraftsmanAdapter {
         args: spec.args,
       },
     };
+  }
+
+  createCommandSpec(request: CraftsmanDispatchRequest) {
+    return this.buildCommand(request);
   }
 
   protected abstract buildCommand(request: CraftsmanDispatchRequest): {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from './adapters/index.js';
 import { createDefaultCraftsmanAdapters } from './default-craftsman-adapters.js';
 import { ShellCraftsmanAdapter, StubCraftsmanAdapter } from './craftsman-adapter.js';
+import { WatchedProcessCraftsmanAdapter } from './adapters/watched-process-craftsman-adapter.js';
 
 describe('default craftsman adapters', () => {
   it('returns stub adapters by default', () => {
@@ -19,5 +20,16 @@ describe('default craftsman adapters', () => {
     expect(adapters.codex).toBeInstanceOf(CodexCraftsmanAdapter);
     expect(adapters.claude).toBeInstanceOf(ClaudeCraftsmanAdapter);
     expect(adapters.gemini).toBeInstanceOf(GeminiCraftsmanAdapter);
+  });
+
+  it('returns watched adapters when adapter mode is watched', () => {
+    const adapters = createDefaultCraftsmanAdapters({
+      mode: 'watched',
+      callbackUrl: 'http://127.0.0.1:18420/api/craftsmen/callback',
+    });
+
+    expect(adapters.codex).toBeInstanceOf(WatchedProcessCraftsmanAdapter);
+    expect(adapters.claude).toBeInstanceOf(WatchedProcessCraftsmanAdapter);
+    expect(adapters.gemini).toBeInstanceOf(WatchedProcessCraftsmanAdapter);
   });
 });
