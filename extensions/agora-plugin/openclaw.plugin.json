@@ -19,7 +19,7 @@
   "uiHints": {
     "serverUrl": {
       "label": "Agora Server URL",
-      "help": "HTTP endpoint of the Agora Python server"
+      "help": "HTTP endpoint of the Agora TypeScript server"
     },
     "apiToken": {
       "label": "Agora API Token",

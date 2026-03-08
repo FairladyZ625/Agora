@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "dev:server": "npm run dev -w @agora-ts/server",
+    "dev:server": "npm run build && npm run dev -w @agora-ts/server",
     "dev:cli": "npm run dev -w @agora-ts/cli",
     "scenario": "tsx packages/testing/src/cli.ts",
     "scenario:list": "tsx packages/testing/src/cli.ts list",

@@ -13,9 +13,48 @@ export interface PluginLogger {
   error(message: string): void;
 }
 
+export interface AgentEventPayload {
+  runId: string;
+  seq: number;
+  stream: string;
+  ts: number;
+  sessionKey?: string;
+  data: Record<string, unknown>;
+}
+
+export interface SessionHookEvent {
+  sessionId: string;
+  sessionKey?: string;
+  messageCount?: number;
+  timestamp?: number;
+}
+
+export interface MessageHookEvent {
+  from?: string;
+  to?: string;
+  content: string;
+  success?: boolean;
+  error?: string;
+  timestamp?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MessageHookContext {
+  channelId?: string;
+  accountId?: string;
+  conversationId?: string;
+  sessionKey?: string;
+  agentId?: string;
+}
+
 export interface OpenClawPluginApi {
   pluginConfig?: Record<string, unknown>;
   logger: PluginLogger;
+  runtime?: {
+    events?: {
+      onAgentEvent: (listener: (event: AgentEventPayload) => void) => () => void;
+    };
+  };
   registerCommand(def: {
     name: string;
     description: string;
@@ -23,4 +62,18 @@ export interface OpenClawPluginApi {
     requireAuth?: boolean;
     handler: (ctx: CommandContext) => Promise<CommandResult>;
   }): void;
+  registerService?(service: {
+    id: string;
+    start: () => void | Promise<void>;
+    stop?: () => void | Promise<void>;
+  }): void;
+  on?<K extends 'session_start' | 'session_end' | 'message_received' | 'message_sent'>(
+    hook: K,
+    handler: (
+      event: K extends 'session_start' | 'session_end' ? SessionHookEvent : MessageHookEvent,
+      ctx: K extends 'session_start' | 'session_end'
+        ? { sessionKey?: string; agentId?: string; sessionId: string }
+        : MessageHookContext,
+    ) => void | Promise<void>,
+  ): void;
 }

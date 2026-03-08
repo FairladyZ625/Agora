@@ -57,4 +57,42 @@ describe("AgoraBridge", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBeUndefined();
   });
+
+  it("posts live session snapshots to the ts live status endpoint", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.upsertLiveSession({
+      source: "openclaw",
+      agent_id: "ops",
+      session_key: "agent:ops:discord:channel:alerts",
+      channel: "discord",
+      conversation_id: "alerts",
+      thread_id: "42",
+      status: "active",
+      last_event: "session_start",
+      last_event_at: "2026-03-08T07:00:00.000Z",
+      metadata: { trigger: "user" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8420/api/live/openclaw/sessions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          source: "openclaw",
+          agent_id: "ops",
+          session_key: "agent:ops:discord:channel:alerts",
+          channel: "discord",
+          conversation_id: "alerts",
+          thread_id: "42",
+          status: "active",
+          last_event: "session_start",
+          last_event_at: "2026-03-08T07:00:00.000Z",
+          metadata: { trigger: "user" },
+        }),
+      }),
+    );
+  });
 });

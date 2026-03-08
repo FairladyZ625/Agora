@@ -1,5 +1,6 @@
 import { AgoraBridge } from "./bridge";
 import { registerTaskCommands } from "./commands";
+import { registerLiveStatusBridge } from "./live-status";
 import type { OpenClawPluginApi } from "./types";
 
 export default function register(api: OpenClawPluginApi): void {
@@ -14,6 +15,7 @@ export default function register(api: OpenClawPluginApi): void {
 
   const bridge = new AgoraBridge(serverUrl, apiToken);
   registerTaskCommands(api, bridge);
+  registerLiveStatusBridge(api, bridge);
 
   api.logger.info(`Agora plugin loaded (${serverUrl})`);
 }

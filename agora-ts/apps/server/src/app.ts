@@ -13,6 +13,7 @@ import {
   createTaskRequestSchema,
   duplicateTemplateRequestSchema,
   type HealthResponse,
+  liveSessionSchema,
   promoteTodoRequestSchema,
   promoteInboxRequestSchema,
   rejectTaskRequestSchema,
@@ -30,6 +31,7 @@ import {
   PermissionDeniedError,
   type DashboardQueryService,
   type InboxService,
+  type LiveSessionStore,
   type TaskService,
   type TemplateAuthoringService,
 } from '@agora-ts/core';
@@ -39,6 +41,11 @@ export interface BuildAppOptions {
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
+  liveSessionStore?: LiveSessionStore;
+  apiAuth?: {
+    enabled: boolean;
+    token: string;
+  };
   dashboardDir?: string;
 }
 
@@ -63,6 +70,17 @@ function parseNumericId(raw: string, fieldName: string) {
   return parsed;
 }
 
+function parseBearerToken(authorization?: string) {
+  if (!authorization) {
+    return null;
+  }
+  const [scheme, token] = authorization.split(' ');
+  if (scheme?.toLowerCase() !== 'bearer' || !token) {
+    return null;
+  }
+  return token;
+}
+
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: false,
@@ -71,10 +89,51 @@ export function buildApp(options: BuildAppOptions = {}) {
   const dashboardQueryService = options.dashboardQueryService;
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
+  const liveSessionStore = options.liveSessionStore;
+  const apiAuth = options.apiAuth;
   const dashboardDir = options.dashboardDir;
+
+  app.addHook('onRequest', async (request, reply) => {
+    if (!request.url.startsWith('/api/') || request.url === '/api/health') {
+      return;
+    }
+    if (!apiAuth?.enabled) {
+      return;
+    }
+    if (!apiAuth.token) {
+      return reply.status(500).send({ message: 'api auth enabled but token not configured' });
+    }
+    const token = parseBearerToken(request.headers.authorization);
+    if (!token) {
+      return reply.status(401).send({ message: 'missing bearer token' });
+    }
+    if (token !== apiAuth.token) {
+      return reply.status(403).send({ message: 'invalid api token' });
+    }
+  });
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     return { status: 'ok' };
+  });
+
+  app.get('/api/live/openclaw/sessions', async (request, reply) => {
+    if (!liveSessionStore) {
+      return reply.status(503).send({ message: 'Live session store is not configured' });
+    }
+    return reply.send(liveSessionStore.listAll());
+  });
+
+  app.post('/api/live/openclaw/sessions', async (request, reply) => {
+    if (!liveSessionStore) {
+      return reply.status(503).send({ message: 'Live session store is not configured' });
+    }
+    try {
+      const payload = liveSessionSchema.parse(request.body);
+      return reply.send(liveSessionStore.upsert(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   if (dashboardDir && existsSync(dashboardDir)) {

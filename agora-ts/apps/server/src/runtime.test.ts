@@ -44,6 +44,7 @@ describe('server runtime', () => {
     expect(runtime.config.db_path).toBe(dbPath);
     expect(runtime.taskService).toBeDefined();
     expect(runtime.dashboardQueryService).toBeDefined();
+    expect(runtime.liveSessionStore).toBeDefined();
     runtime.db.close();
   });
 });

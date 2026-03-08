@@ -10,7 +10,7 @@ import {
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
-import { DashboardQueryService, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, LiveSessionStore, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -194,5 +194,54 @@ describe('dashboard routes', () => {
     expect(badPatchTodo.statusCode).toBe(400);
     expect(badPromoteTodo.statusCode).toBe(400);
     expect(badArchiveJob.statusCode).toBe(400);
+  });
+
+  it('ingests live openclaw sessions and exposes them through dashboard status routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessions = new LiveSessionStore();
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir, liveSessions });
+    const app = buildApp({ dashboardQueryService: dashboardQueries, liveSessionStore: liveSessions });
+
+    const ingest = await app.inject({
+      method: 'POST',
+      url: '/api/live/openclaw/sessions',
+      payload: {
+        source: 'openclaw',
+        agent_id: 'ops',
+        session_key: 'agent:ops:discord:channel:alerts',
+        channel: 'discord',
+        conversation_id: 'alerts',
+        thread_id: '42',
+        status: 'active',
+        last_event: 'session_start',
+        last_event_at: '2026-03-08T07:00:00.000Z',
+        metadata: { trigger: 'user' },
+      },
+    });
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/live/openclaw/sessions',
+    });
+    const agents = await app.inject({
+      method: 'GET',
+      url: '/api/agents/status',
+    });
+
+    expect(ingest.statusCode).toBe(200);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toMatchObject([
+      expect.objectContaining({
+        session_key: 'agent:ops:discord:channel:alerts',
+        status: 'active',
+      }),
+    ]);
+    expect(agents.statusCode).toBe(200);
+    expect(agents.json().agents).toMatchObject([
+      expect.objectContaining({
+        id: 'ops',
+        status: 'busy',
+      }),
+    ]);
   });
 });

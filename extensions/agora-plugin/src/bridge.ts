@@ -5,6 +5,7 @@ import type {
   ArchonRejectTaskRequestDto,
   ConfirmTaskRequestDto,
   CreateTaskRequestDto,
+  LiveSessionDto,
   RejectTaskRequestDto,
   SubtaskDoneRequestDto,
   TaskDto,
@@ -148,6 +149,13 @@ export class AgoraBridge {
     return this.request("/api/tasks/cleanup", {
       method: "POST",
       body: taskId ? { task_id: taskId } : {},
+    });
+  }
+
+  async upsertLiveSession(payload: LiveSessionDto): Promise<{ ok: true } | LiveSessionDto> {
+    return this.request("/api/live/openclaw/sessions", {
+      method: "POST",
+      body: payload,
     });
   }
 

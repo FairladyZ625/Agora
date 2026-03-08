@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { DashboardQueryService } from './dashboard-query-service.js';
+import { LiveSessionStore } from './live-session-store.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -119,5 +120,36 @@ describe('dashboard query service', () => {
       commit_hash: null,
       completed_at: null,
     });
+  });
+
+  it('merges real openclaw live sessions into agent status even without active tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessions = new LiveSessionStore();
+    const queries = new DashboardQueryService(db, { templatesDir, liveSessions });
+
+    liveSessions.upsert({
+      source: 'openclaw',
+      agent_id: 'ops',
+      session_key: 'agent:ops:discord:channel:alerts',
+      channel: 'discord',
+      conversation_id: 'alerts',
+      thread_id: '42',
+      status: 'active',
+      last_event: 'message_received',
+      last_event_at: '2026-03-08T06:10:00.000Z',
+      metadata: { trigger: 'user' },
+    });
+
+    const agentsStatus = queries.getAgentsStatus();
+
+    expect(agentsStatus.summary.active_agents).toBe(1);
+    expect(agentsStatus.agents).toMatchObject([
+      expect.objectContaining({
+        id: 'ops',
+        status: 'busy',
+        last_active_at: '2026-03-08T06:10:00.000Z',
+      }),
+    ]);
   });
 });

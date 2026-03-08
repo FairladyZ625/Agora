@@ -85,4 +85,33 @@ describe('agora-ts server bootstrap', () => {
     expect(missingTask.statusCode).toBe(404);
     expect(malformedCreate.statusCode).toBe(400);
   });
+
+  it('enforces bearer auth on api routes when enabled but leaves health open', async () => {
+    const app = buildApp({
+      apiAuth: {
+        enabled: true,
+        token: 'secret-token',
+      },
+    });
+
+    const health = await app.inject({
+      method: 'GET',
+      url: '/api/health',
+    });
+    const missingAuth = await app.inject({
+      method: 'GET',
+      url: '/api/templates',
+    });
+    const invalidAuth = await app.inject({
+      method: 'GET',
+      url: '/api/templates',
+      headers: {
+        authorization: 'Bearer wrong-token',
+      },
+    });
+
+    expect(health.statusCode).toBe(200);
+    expect(missingAuth.statusCode).toBe(401);
+    expect(invalidAuth.statusCode).toBe(403);
+  });
 });

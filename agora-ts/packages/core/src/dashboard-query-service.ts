@@ -10,9 +10,11 @@ import type {
 } from '@agora-ts/contracts';
 import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
+import type { LiveSessionStore } from './live-session-store.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
+  liveSessions?: LiveSessionStore;
 }
 
 export class DashboardQueryService {
@@ -21,6 +23,7 @@ export class DashboardQueryService {
   private readonly archives: ArchiveJobRepository;
   private readonly todos: TodoRepositoryType;
   private readonly templatesDir: string;
+  private readonly liveSessions: LiveSessionStore | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -31,6 +34,7 @@ export class DashboardQueryService {
     this.archives = new ArchiveJobRepository(db);
     this.todos = new TodoRepository(db);
     this.templatesDir = options.templatesDir;
+    this.liveSessions = options.liveSessions;
   }
 
   getAgentsStatus(): AgentsStatusDto {
@@ -102,6 +106,22 @@ export class DashboardQueryService {
 
     for (const item of agents.values()) {
       item.load = Math.max(item.active_task_ids.length, item.active_subtask_ids.length);
+    }
+
+    for (const session of this.liveSessions?.listActive() ?? []) {
+      const current = agents.get(session.agent_id) ?? {
+        id: session.agent_id,
+        role: null,
+        status: 'busy',
+        active_task_ids: [],
+        active_subtask_ids: [],
+        load: 0,
+        last_active_at: session.last_event_at,
+      };
+      current.status = session.status === 'idle' ? 'idle' : 'busy';
+      current.last_active_at = session.last_event_at;
+      current.load = Math.max(current.load, 1);
+      agents.set(session.agent_id, current);
     }
 
     return {

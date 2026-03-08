@@ -8,6 +8,8 @@ const app = buildApp({
   dashboardQueryService: runtime.dashboardQueryService,
   inboxService: runtime.inboxService,
   templateAuthoringService: runtime.templateAuthoringService,
+  liveSessionStore: runtime.liveSessionStore,
+  apiAuth: runtime.apiAuth,
   ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
 });
   const port = Number(process.env.PORT ?? process.env.AGORA_BACKEND_PORT ?? '8420');
