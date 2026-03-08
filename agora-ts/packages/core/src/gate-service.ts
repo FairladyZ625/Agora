@@ -37,6 +37,16 @@ export class GateService {
       if (!this.permissions.canAdvance(callerId, task.team)) {
         throw new PermissionDeniedError(`caller ${callerId} has canAdvance=false for /task advance`);
       }
+      return;
+    }
+
+    if (command === 'confirm') {
+      if (gateType !== 'quorum') {
+        throw new PermissionDeniedError(`当前 Gate 类型为 ${gateType}，不是 quorum。`);
+      }
+      if (!this.permissions.isMember(callerId, task.team) && !this.permissions.isArchon(callerId)) {
+        throw new PermissionDeniedError(`${callerId} 不是任务 ${task.id} 的团队成员`);
+      }
     }
   }
 
@@ -52,6 +62,29 @@ export class GateService {
       INSERT INTO approvals (task_id, stage_id, approver_role, approver_id, comment)
       VALUES (?, ?, ?, ?, ?)
     `).run(taskId, stageId, approverRole, approverId, comment);
+  }
+
+  recordQuorumVote(taskId: string, stageId: string, voterId: string, vote: string, comment: string) {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO quorum_votes (task_id, stage_id, voter_id, vote, comment)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(taskId, stageId, voterId, vote, comment);
+
+    const approvedRow = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM quorum_votes
+      WHERE task_id = ? AND stage_id = ? AND vote = 'approve'
+    `).get(taskId, stageId) as { count: number };
+    const totalRow = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM quorum_votes
+      WHERE task_id = ? AND stage_id = ?
+    `).get(taskId, stageId) as { count: number };
+
+    return {
+      approved: approvedRow.count,
+      total: totalRow.count,
+    };
   }
 
   private verifyRole(team: TeamDto, callerId: string, role: string) {

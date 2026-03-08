@@ -4,6 +4,7 @@ import {
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
   archonRejectTaskRequestSchema,
+  confirmTaskRequestSchema,
   createTaskRequestSchema,
   rejectTaskRequestSchema,
   subtaskDoneRequestSchema,
@@ -211,6 +212,81 @@ export function buildApp(options: BuildAppOptions = {}) {
           reason: payload.reason,
         }),
       );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/confirm', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = confirmTaskRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.confirmTask(params.taskId, {
+          voterId: payload.voter_id,
+          vote: payload.vote,
+          comment: payload.comment,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/pause', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = taskNoteRequestSchema.parse(request.body);
+      return reply.send(taskService.pauseTask(params.taskId, { reason: payload.reason }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/resume', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      return reply.send(taskService.resumeTask(params.taskId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/cancel', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = taskNoteRequestSchema.parse(request.body);
+      return reply.send(taskService.cancelTask(params.taskId, { reason: payload.reason }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/unblock', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = taskNoteRequestSchema.parse(request.body);
+      return reply.send(taskService.unblockTask(params.taskId, { reason: payload.reason }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

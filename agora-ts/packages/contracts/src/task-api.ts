@@ -144,6 +144,7 @@ export const confirmTaskRequestSchema = z.object({
   vote: z.enum(['approve', 'reject']),
   comment: z.string().default(''),
 });
+export type ConfirmTaskRequestDto = z.infer<typeof confirmTaskRequestSchema>;
 
 export const subtaskDoneRequestSchema = z.object({
   subtask_id: z.string().min(1),

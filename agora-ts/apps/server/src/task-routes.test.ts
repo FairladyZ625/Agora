@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, SubtaskRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
@@ -180,5 +180,87 @@ describe('task routes', () => {
       id: 'OC-202',
       current_stage: 'review',
     });
+  });
+
+  it('serves confirm and state transition routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-203',
+    });
+    const tasks = new TaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-203',
+      title: '确认与状态切换',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'reasoning' },
+          { role: 'reviewer', agentId: 'gpt52', model_preference: 'review' },
+        ],
+      },
+      workflow: {
+        type: 'vote',
+        stages: [{ id: 'vote', gate: { type: 'quorum', required: 2 } }],
+      },
+    });
+    tasks.updateTask('OC-203', 1, { state: 'created' });
+    tasks.updateTask('OC-203', 2, { state: 'active', current_stage: 'vote' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-203', 'vote');
+
+    const app = buildApp({ taskService });
+
+    const confirmOne = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-203/confirm',
+      payload: {
+        voter_id: 'opus',
+        vote: 'approve',
+        comment: 'one',
+      },
+    });
+    const confirmTwo = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-203/confirm',
+      payload: {
+        voter_id: 'gpt52',
+        vote: 'approve',
+        comment: 'two',
+      },
+    });
+    const pause = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-203/pause',
+      payload: {
+        reason: 'hold',
+      },
+    });
+    const resume = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-203/resume',
+    });
+    const cancel = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-203/cancel',
+      payload: {
+        reason: 'closed',
+      },
+    });
+
+    expect(confirmOne.statusCode).toBe(200);
+    expect(confirmOne.json().quorum).toMatchObject({ approved: 1, total: 1 });
+    expect(confirmTwo.statusCode).toBe(200);
+    expect(confirmTwo.json().quorum).toMatchObject({ approved: 2, total: 2 });
+    expect(pause.statusCode).toBe(200);
+    expect(pause.json()).toMatchObject({ state: 'paused' });
+    expect(resume.statusCode).toBe(200);
+    expect(resume.json()).toMatchObject({ state: 'active' });
+    expect(cancel.statusCode).toBe(200);
+    expect(cancel.json()).toMatchObject({ state: 'cancelled' });
   });
 });

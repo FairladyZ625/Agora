@@ -65,6 +65,16 @@ export interface ForceAdvanceOptions {
   reason: string;
 }
 
+export interface ConfirmTaskOptions {
+  voterId: string;
+  vote: 'approve' | 'reject';
+  comment: string;
+}
+
+export interface UpdateTaskStateOptions {
+  reason: string;
+}
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../../agora/templates', import.meta.url));
 }
@@ -394,6 +404,67 @@ export class TaskService {
         actor: 'archon',
       });
     }
+    return updated;
+  }
+
+  confirmTask(taskId: string, options: ConfirmTaskOptions): StoredTask & { quorum: { approved: number; total: number } } {
+    const task = this.getTaskOrThrow(taskId);
+    const stage = this.getCurrentStageOrThrow(task);
+    this.gateService.routeGateCommand(task, stage, 'confirm', options.voterId);
+    const quorum = this.gateService.recordQuorumVote(taskId, stage.id, options.voterId, options.vote, options.comment);
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'quorum_vote',
+      stage_id: stage.id,
+      detail: {
+        vote: options.vote,
+        approved: quorum.approved,
+        total: quorum.total,
+      },
+      actor: options.voterId,
+    });
+    return {
+      ...task,
+      quorum,
+    };
+  }
+
+  pauseTask(taskId: string, options: UpdateTaskStateOptions): StoredTask {
+    return this.updateTaskState(taskId, TaskState.PAUSED, options);
+  }
+
+  resumeTask(taskId: string): StoredTask {
+    return this.updateTaskState(taskId, TaskState.ACTIVE, { reason: 'resumed' });
+  }
+
+  cancelTask(taskId: string, options: UpdateTaskStateOptions): StoredTask {
+    return this.updateTaskState(taskId, TaskState.CANCELLED, options);
+  }
+
+  unblockTask(taskId: string, options: UpdateTaskStateOptions): StoredTask {
+    return this.updateTaskState(taskId, TaskState.ACTIVE, options);
+  }
+
+  updateTaskState(taskId: string, newState: string, options: UpdateTaskStateOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    if (!this.stateMachine.validateTransition(task.state as TaskState, newState as TaskState)) {
+      throw new Error(`Invalid transition: ${task.state} -> ${newState}`);
+    }
+    const updated = this.taskRepository.updateTask(taskId, task.version, {
+      state: newState,
+      error_detail: newState === TaskState.ACTIVE || newState === TaskState.CANCELLED ? null : task.error_detail,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'state_changed',
+      stage_id: task.current_stage,
+      from_state: task.state,
+      to_state: newState,
+      detail: options.reason ? { reason: options.reason } : undefined,
+      actor: 'system',
+    });
     return updated;
   }
 

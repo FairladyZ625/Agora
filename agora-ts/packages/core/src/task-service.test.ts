@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, SubtaskRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -160,6 +160,68 @@ describe('task service', () => {
         'rejected',
         'gate_passed',
       ]),
+    );
+  });
+
+  it('records quorum confirmations and supports pause/resume/cancel/unblock state transitions', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-103',
+    });
+    const tasks = new TaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-103',
+      title: '自定义 quorum 任务',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'gpt52', model_preference: 'review' },
+        ],
+      },
+      workflow: {
+        type: 'quorum-only',
+        stages: [{ id: 'vote', gate: { type: 'quorum', required: 2 } }],
+      },
+    });
+    tasks.updateTask('OC-103', 1, { state: 'created' });
+    tasks.updateTask('OC-103', 2, { state: 'active', current_stage: 'vote' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-103', 'vote');
+
+    const firstVote = service.confirmTask('OC-103', {
+      voterId: 'opus',
+      vote: 'approve',
+      comment: 'first yes',
+    });
+    const secondVote = service.confirmTask('OC-103', {
+      voterId: 'gpt52',
+      vote: 'approve',
+      comment: 'second yes',
+    });
+
+    expect(firstVote.quorum).toMatchObject({ approved: 1, total: 1 });
+    expect(secondVote.quorum).toMatchObject({ approved: 2, total: 2 });
+
+    const paused = service.pauseTask('OC-103', { reason: 'waiting' });
+    const resumed = service.resumeTask('OC-103');
+    const blocked = service.updateTaskState('OC-103', 'blocked', { reason: 'dependency' });
+    const unblocked = service.unblockTask('OC-103', { reason: 'dependency cleared' });
+    const cancelled = service.cancelTask('OC-103', { reason: 'closed' });
+    const status = service.getTaskStatus('OC-103');
+
+    expect(paused.state).toBe('paused');
+    expect(resumed.state).toBe('active');
+    expect(blocked.state).toBe('blocked');
+    expect(unblocked.state).toBe('active');
+    expect(cancelled.state).toBe('cancelled');
+    expect(status.flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining(['quorum_vote', 'state_changed']),
     );
   });
 });
