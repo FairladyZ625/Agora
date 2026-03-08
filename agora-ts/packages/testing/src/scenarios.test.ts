@@ -15,6 +15,8 @@ describe('agora-ts testing scenarios', () => {
       'reject-rework',
       'quorum-approve',
       'cleanup-orphaned',
+      'inbox-promote',
+      'authoring-smoke',
     ]);
   });
 
@@ -64,5 +66,38 @@ describe('agora-ts testing scenarios', () => {
     expect(result.name).toBe('cleanup-orphaned');
     expect(result.cleaned).toBe(1);
     expect(result.taskId).toBe('OC-CLEAN');
+  });
+
+  it('runs an inbox promote scenario across todo and task targets', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-INBOX',
+    });
+
+    const result = runScenario(runtime, 'inbox-promote');
+
+    expect(result.name).toBe('inbox-promote');
+    expect(result.taskId).toBe('OC-INBOX');
+    expect(result.finalState).toBe('active');
+    expect(result.events).toEqual(expect.arrayContaining(['state_changed']));
+    expect(result.promotedTargets).toEqual({
+      todo: '1',
+      task: 'OC-INBOX',
+    });
+  });
+
+  it('runs an authoring smoke scenario covering validate/save/duplicate/workflow update', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'authoring-smoke');
+
+    expect(result.name).toBe('authoring-smoke');
+    expect(result.taskId).toBe('flow_editor_manual_copy');
+    expect(result.finalState).toBe('valid');
+    expect(result.templateChecks).toEqual({
+      validated: true,
+      saved: true,
+      duplicated: true,
+      workflowValidated: true,
+    });
   });
 });

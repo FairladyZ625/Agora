@@ -24,6 +24,8 @@ describe('agora-ts scenario cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('happy-path');
     expect(stdout.value).toContain('cleanup-orphaned');
+    expect(stdout.value).toContain('inbox-promote');
+    expect(stdout.value).toContain('authoring-smoke');
   });
 
   it('runs a single scenario and prints json output', async () => {
@@ -48,6 +50,10 @@ describe('agora-ts scenario cli', () => {
 
     expect(exitCode).toBe(0);
     expect(stderr.value).toBe('');
-    expect(JSON.parse(stdout.value)).toHaveLength(4);
+    const results = JSON.parse(stdout.value);
+    expect(results).toHaveLength(6);
+    expect(results.map((item: { name: string }) => item.name)).toEqual(
+      expect.arrayContaining(['inbox-promote', 'authoring-smoke']),
+    );
   });
 });

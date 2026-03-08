@@ -21,6 +21,7 @@ describe('agora-ts testing helpers', () => {
     expect(agents.summary.active_tasks).toBe(1);
     expect(runtime.inboxService).toBeDefined();
     expect(runtime.templateAuthoringService).toBeDefined();
+    expect(runtime.templatesDir.startsWith(runtime.dir)).toBe(true);
 
     runtime.cleanup();
   });

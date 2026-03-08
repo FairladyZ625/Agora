@@ -40,5 +40,27 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+          if (id.includes('react') || id.includes('scheduler')) {
+            return 'react-vendor';
+          }
+          if (id.includes('i18next') || id.includes('react-i18next')) {
+            return 'i18n-vendor';
+          }
+          if (id.includes('motion') || id.includes('framer-motion')) {
+            return 'motion-vendor';
+          }
+          if (id.includes('lucide-react') || id.includes('react-router')) {
+            return 'ui-vendor';
+          }
+          return undefined;
+        },
+      },
+    },
   },
 });

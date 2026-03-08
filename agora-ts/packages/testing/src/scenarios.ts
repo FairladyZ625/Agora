@@ -7,6 +7,8 @@ export const scenarioNames = [
   'reject-rework',
   'quorum-approve',
   'cleanup-orphaned',
+  'inbox-promote',
+  'authoring-smoke',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -20,6 +22,13 @@ export interface ScenarioResult {
   completedSubtasks: string[];
   quorum?: { approved: number; total: number };
   cleaned?: number;
+  promotedTargets?: { todo: string; task: string };
+  templateChecks?: {
+    validated: boolean;
+    saved: boolean;
+    duplicated: boolean;
+    workflowValidated: boolean;
+  };
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -32,6 +41,10 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runQuorumApproveScenario(runtime);
     case 'cleanup-orphaned':
       return runCleanupOrphanedScenario(runtime);
+    case 'inbox-promote':
+      return runInboxPromoteScenario(runtime);
+    case 'authoring-smoke':
+      return runAuthoringSmokeScenario(runtime);
   }
 }
 
@@ -197,6 +210,88 @@ function runCleanupOrphanedScenario(runtime: TestRuntime): ScenarioResult {
     events: [],
     completedSubtasks: [],
     cleaned,
+  };
+}
+
+function runInboxPromoteScenario(runtime: TestRuntime): ScenarioResult {
+  const todoSource = runtime.inboxService.createInboxItem({
+    text: 'Inbox to todo regression',
+    source: 'scenario',
+    tags: ['scenario', 'todo'],
+  });
+  const taskSource = runtime.inboxService.createInboxItem({
+    text: 'Inbox to task regression',
+    source: 'scenario',
+    notes: 'Promote into formal task',
+    tags: ['scenario', 'task'],
+  });
+
+  const todoPromotion = runtime.inboxService.promoteInboxItem(todoSource.id, {
+    target: 'todo',
+    type: 'quick',
+    creator: 'archon',
+    priority: 'normal',
+  });
+  const taskPromotion = runtime.inboxService.promoteInboxItem(taskSource.id, {
+    target: 'task',
+    type: 'coding',
+    creator: 'archon',
+    priority: 'high',
+  });
+  if (!('todo' in todoPromotion) || !('task' in taskPromotion)) {
+    throw new Error('Inbox promote scenario returned unexpected promotion targets');
+  }
+
+  return buildScenarioResult(runtime, 'inbox-promote', taskPromotion.task.id, {
+    promotedTargets: {
+      todo: String(todoPromotion.todo.id),
+      task: taskPromotion.task.id,
+    },
+  });
+}
+
+function runAuthoringSmokeScenario(runtime: TestRuntime): ScenarioResult {
+  const validation = runtime.templateAuthoringService.validateTemplate({
+    name: 'Flow Editor Manual',
+    type: 'flow_editor_manual',
+    defaultWorkflow: 'draft-review',
+    stages: [{ id: 'draft', gate: { type: 'command' } }],
+  });
+  const saved = runtime.templateAuthoringService.saveTemplate('flow_editor_manual', {
+    name: 'Flow Editor Manual',
+    type: 'flow_editor_manual',
+    defaultWorkflow: 'draft-review',
+    stages: [{ id: 'draft', gate: { type: 'command' } }],
+  });
+  const updated = runtime.templateAuthoringService.updateTemplateWorkflow('flow_editor_manual', {
+    defaultWorkflow: 'draft-review-publish',
+    stages: [
+      { id: 'draft', gate: { type: 'command' } },
+      { id: 'publish', gate: { type: 'archon_review' } },
+    ],
+  });
+  const duplicated = runtime.templateAuthoringService.duplicateTemplate('flow_editor_manual', {
+    new_id: 'flow_editor_manual_copy',
+    name: 'Flow Editor Manual Copy',
+  });
+  const workflowValidation = runtime.templateAuthoringService.validateWorkflow({
+    defaultWorkflow: 'draft-review-publish',
+    stages: updated.template.stages ?? [],
+  });
+
+  return {
+    name: 'authoring-smoke',
+    taskId: duplicated.id,
+    finalState: validation.valid && workflowValidation.valid ? 'valid' : 'invalid',
+    currentStage: updated.template.stages?.[0]?.id ?? null,
+    events: [],
+    completedSubtasks: [],
+    templateChecks: {
+      validated: validation.valid,
+      saved: saved.saved,
+      duplicated: duplicated.id === 'flow_editor_manual_copy',
+      workflowValidated: workflowValidation.valid,
+    },
   };
 }
 

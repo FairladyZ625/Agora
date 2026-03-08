@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
@@ -12,6 +12,7 @@ export interface CreateTestRuntimeOptions {
 export interface TestRuntime {
   dir: string;
   db: AgoraDatabase;
+  templatesDir: string;
   taskService: TaskService;
   dashboardQueryService: DashboardQueryService;
   inboxService: InboxService;
@@ -24,7 +25,10 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const dbPath = join(dir, 'tasks.db');
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
-  const templatesDir = options.templatesDir ?? resolve(process.cwd(), '../agora/templates');
+  const sourceTemplatesDir = options.templatesDir ?? resolve(process.cwd(), '../agora/templates');
+  const templatesDir = join(dir, 'templates');
+  mkdirSync(templatesDir, { recursive: true });
+  cpSync(sourceTemplatesDir, templatesDir, { recursive: true });
   const taskServiceOptions: { templatesDir: string; taskIdGenerator?: () => string } = {
     templatesDir,
   };
@@ -41,6 +45,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   return {
     dir,
     db,
+    templatesDir,
     taskService,
     dashboardQueryService,
     inboxService,
