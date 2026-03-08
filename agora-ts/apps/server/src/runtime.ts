@@ -1,5 +1,5 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { loadAgoraConfig, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
@@ -47,12 +47,9 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
         },
   );
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
-    adapters: {
-      shell: new ShellCraftsmanAdapter(),
-      codex: new StubCraftsmanAdapter('codex'),
-      claude: new StubCraftsmanAdapter('claude'),
-      gemini: new StubCraftsmanAdapter('gemini'),
-    },
+    adapters: createDefaultCraftsmanAdapters({
+      mode: process.env.AGORA_CRAFTSMAN_ADAPTER_MODE === 'real' ? 'real' : 'stub',
+    }),
   });
   const taskService = new TaskService(db, {
     templatesDir,

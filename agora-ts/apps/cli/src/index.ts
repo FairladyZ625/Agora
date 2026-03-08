@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { loadAgoraConfig } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { CraftsmanDispatcher, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
+import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, TaskService } from '@agora-ts/core';
 import type { CraftsmanCallbackRequestDto, CraftsmanExecutionStatusDto, TaskPriority } from '@agora-ts/contracts';
 
 type Writable = {
@@ -20,12 +20,9 @@ function resolveTaskService() {
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
-    adapters: {
-      shell: new ShellCraftsmanAdapter(),
-      codex: new StubCraftsmanAdapter('codex'),
-      claude: new StubCraftsmanAdapter('claude'),
-      gemini: new StubCraftsmanAdapter('gemini'),
-    },
+    adapters: createDefaultCraftsmanAdapters({
+      mode: process.env.AGORA_CRAFTSMAN_ADAPTER_MODE === 'real' ? 'real' : 'stub',
+    }),
   });
   return new TaskService(db, {
     archonUsers: config.permissions.archonUsers,
