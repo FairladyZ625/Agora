@@ -6,6 +6,7 @@ export const teamMemberSchema = z.object({
   agentId: z.string(),
   model_preference: z.string(),
 });
+export type TeamMemberDto = z.infer<typeof teamMemberSchema>;
 
 export const teamSchema = z.object({
   members: z.array(teamMemberSchema),
@@ -15,6 +16,7 @@ export type TeamDto = z.infer<typeof teamSchema>;
 export const workflowGateSchema = z.object({
   type: z.string().optional(),
 }).passthrough();
+export type WorkflowGateDto = z.infer<typeof workflowGateSchema>;
 
 export const workflowStageSchema = z.object({
   id: z.string(),
@@ -22,6 +24,7 @@ export const workflowStageSchema = z.object({
   mode: z.string().optional(),
   gate: workflowGateSchema.nullish(),
 });
+export type WorkflowStageDto = z.infer<typeof workflowStageSchema>;
 
 export const workflowSchema = z.object({
   type: z.string().optional(),

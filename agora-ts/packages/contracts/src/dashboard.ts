@@ -69,13 +69,28 @@ export const templateSummarySchema = z.object({
 });
 export type TemplateSummaryDto = z.infer<typeof templateSummarySchema>;
 
+export const templateTeamMemberSchema = z.object({
+  suggested: z.array(z.string()).optional(),
+}).passthrough();
+export type TemplateTeamMemberDto = z.infer<typeof templateTeamMemberSchema>;
+
+export const templateStageSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  mode: z.string().optional(),
+  gate: z.object({
+    type: z.string().optional(),
+  }).passthrough().nullish(),
+}).passthrough();
+export type TemplateStageDto = z.infer<typeof templateStageSchema>;
+
 export const templateDetailSchema = z.object({
   name: z.string(),
   type: z.string(),
   description: z.string().optional(),
   defaultWorkflow: z.string().optional(),
   governance: z.unknown().optional(),
-  defaultTeam: z.record(z.string(), z.unknown()).optional(),
-  stages: z.array(z.record(z.string(), z.unknown())).optional(),
+  defaultTeam: z.record(z.string(), templateTeamMemberSchema).optional(),
+  stages: z.array(templateStageSchema).optional(),
 });
 export type TemplateDetailDto = z.infer<typeof templateDetailSchema>;
