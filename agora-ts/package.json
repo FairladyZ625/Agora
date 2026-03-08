@@ -15,7 +15,10 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "dev:server": "npm run dev -w @agora-ts/server",
-    "dev:cli": "npm run dev -w @agora-ts/cli"
+    "dev:cli": "npm run dev -w @agora-ts/cli",
+    "scenario": "tsx packages/testing/src/cli.ts",
+    "scenario:list": "tsx packages/testing/src/cli.ts list",
+    "scenario:all": "tsx packages/testing/src/cli.ts all --json"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

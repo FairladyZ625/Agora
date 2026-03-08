@@ -127,6 +127,49 @@ describe('agora-ts state machine', () => {
     ).toBe(true);
   });
 
+  it('checks quorum gates against recorded approve votes', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const sm = new StateMachine();
+    const task = buildTask({
+      id: 'OC-004',
+      current_stage: 'vote',
+      workflow: {
+        stages: [{ id: 'vote', gate: { type: 'quorum', required: 2 } }],
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-004',
+      title: 'quorum gate test',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: task.workflow,
+    });
+
+    db.prepare(`
+      INSERT INTO quorum_votes (task_id, stage_id, voter_id, vote, comment)
+      VALUES ('OC-004', 'vote', 'opus', 'approve', 'yes')
+    `).run();
+
+    expect(
+      sm.checkGate(db, task, { id: 'vote', gate: { type: GateType.QUORUM, required: 2 } }, 'archon'),
+    ).toBe(false);
+
+    db.prepare(`
+      INSERT INTO quorum_votes (task_id, stage_id, voter_id, vote, comment)
+      VALUES ('OC-004', 'vote', 'gpt52', 'approve', 'yes')
+    `).run();
+
+    expect(
+      sm.checkGate(db, task, { id: 'vote', gate: { type: GateType.QUORUM, required: 2 } }, 'archon'),
+    ).toBe(true);
+  });
+
   it('checks auto_timeout gates against stage_history entered_at timestamps', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

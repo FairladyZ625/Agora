@@ -12,6 +12,9 @@ npm run test:coverage
 npm run build
 npm run check
 npm run check:strict
+npm run scenario:list
+npm run scenario -- happy-path --json
+npm run scenario:all
 ```
 
 ## Packages

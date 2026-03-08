@@ -110,6 +110,19 @@ export class StateMachine {
       return Boolean(row);
     }
 
+    if (gateType === GateType.QUORUM) {
+      const required = Number(stage.gate?.required ?? 1);
+      if (!Number.isFinite(required) || required <= 0) {
+        return false;
+      }
+      const row = db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM quorum_votes
+        WHERE task_id = ? AND stage_id = ? AND vote = 'approve'
+      `).get(task.id, stage.id) as { count: number };
+      return row.count >= required;
+    }
+
     if (gateType === GateType.AUTO_TIMEOUT) {
       const row = db.prepare(`
         SELECT entered_at

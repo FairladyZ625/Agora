@@ -131,6 +131,15 @@ node ./scripts/check-shared-contracts.mjs
 ./scripts/check-ts-all.sh
 ```
 
+### Agent Scenario Harness
+
+```bash
+cd agora-ts
+npm run scenario:list
+npm run scenario -- happy-path --json
+npm run scenario:all
+```
+
 ### Create a Task
 
 ```

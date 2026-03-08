@@ -183,6 +183,20 @@ Skill(skill="planning-with-files")
 4. 运行测试确认通过
 5. 提交代码
 
+**新增强制约束（Agent 自用测试工具维护）**:
+
+- `agora-ts` 新增任务主链路、task action、authoring API、workflow 语义时，除了补单测/集成测试，还必须同步评估并更新 Agent 自用测试工具层。
+- 这里的“测试工具层”包括：
+  - `@agora-ts/testing` 中的 runtime / scenario primitives
+  - 未来的 harness CLI / scenario scripts
+  - root 级或子项目级 smoke / regression scripts
+- 原则：如果一个新功能会被 Agent 反复通过 bash/CLI 调用验证，就不应只靠手工拼命令或临时脚本；应沉淀成可复用命令。
+- 目标：让 Agent 后续能直接通过固定命令完成创建任务、推进、审批、驳回、quorum、cleanup 等典型流程回归。
+- 每次相关能力扩展后，必须在本次 `task_plan.md` / `progress.md` 中记录：
+  - 哪些现有测试工具已覆盖
+  - 哪些 harness 命令或 scenario 需要补
+  - 本轮是否已完成同步更新
+
 **测试命令**:
 
 ```bash
@@ -202,6 +216,11 @@ cd agora-ts && npm run check
 
 # agora-ts 严格质量门（默认提交口径）
 cd agora-ts && npm run check:strict
+
+# Agent 自用场景测试工具
+cd agora-ts && npm run scenario:list
+cd agora-ts && npm run scenario -- happy-path --json
+cd agora-ts && npm run scenario:all
 
 # 全仓统一质量门
 node ./scripts/check-shared-contracts.mjs
@@ -278,6 +297,11 @@ TypeScript 默认规范：
 - 后端提交前至少跑 `cd agora-ts && npm run check:strict`
 - shared contracts 变更必须补 drift guard 或 contracts-level tests
 - 涉及 plugin / dashboard 时，必须补跑对应子项目质量门
+- 新增会被 Agent 高频调用的任务链路时，必须同步维护 Agent 自用 scenario / harness 脚本，不能让测试入口长期停留在手工命令拼装状态
+- 优先复用：
+  - `cd agora-ts && npm run scenario:list`
+  - `cd agora-ts && npm run scenario -- <scenario> --json`
+  - `cd agora-ts && npm run scenario:all`
 
 Python legacy 参考规范：
 
