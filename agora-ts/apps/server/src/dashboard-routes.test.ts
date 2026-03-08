@@ -199,7 +199,10 @@ describe('dashboard routes', () => {
   it('ingests live openclaw sessions and exposes them through dashboard status routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const liveSessions = new LiveSessionStore();
+    const liveSessions = new LiveSessionStore({
+      staleAfterMs: 60_000,
+      now: () => new Date('2026-03-08T07:00:30.000Z'),
+    });
     const dashboardQueries = new DashboardQueryService(db, { templatesDir, liveSessions });
     const app = buildApp({ dashboardQueryService: dashboardQueries, liveSessionStore: liveSessions });
 
@@ -241,6 +244,53 @@ describe('dashboard routes', () => {
       expect.objectContaining({
         id: 'ops',
         status: 'busy',
+      }),
+    ]);
+  });
+
+  it('supports manual cleanup of stale live sessions', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessions = new LiveSessionStore({
+      staleAfterMs: 60_000,
+      now: () => new Date('2026-03-08T07:02:00.000Z'),
+    });
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir, liveSessions });
+    const app = buildApp({ dashboardQueryService: dashboardQueries, liveSessionStore: liveSessions });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/live/openclaw/sessions',
+      payload: {
+        source: 'openclaw',
+        agent_id: 'ops',
+        session_key: 'agent:ops:discord:channel:alerts',
+        channel: 'discord',
+        conversation_id: 'alerts',
+        thread_id: null,
+        status: 'active',
+        last_event: 'session_start',
+        last_event_at: '2026-03-08T07:00:00.000Z',
+        metadata: {},
+      },
+    });
+
+    const cleanup = await app.inject({
+      method: 'POST',
+      url: '/api/live/openclaw/sessions/cleanup',
+    });
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/live/openclaw/sessions',
+    });
+
+    expect(cleanup.statusCode).toBe(200);
+    expect(cleanup.json()).toEqual({ cleaned: 1 });
+    expect(listed.json()).toMatchObject([
+      expect.objectContaining({
+        session_key: 'agent:ops:discord:channel:alerts',
+        status: 'closed',
+        last_event: 'stale_timeout',
       }),
     ]);
   });

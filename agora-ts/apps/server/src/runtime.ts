@@ -28,7 +28,9 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const db = createAgoraDatabase({ dbPath: config.db_path });
   runMigrations(db);
   const templatesDir = new URL('../../../../agora/templates', import.meta.url).pathname;
-  const liveSessionStore = new LiveSessionStore();
+  const liveSessionStore = new LiveSessionStore({
+    staleAfterMs: Number(process.env.AGORA_LIVE_SESSION_TTL_MS ?? 15 * 60 * 1000),
+  });
   const agentRegistry = new OpenClawAgentRegistry(
     process.env.AGORA_OPENCLAW_CONFIG_PATH
       ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }

@@ -18,3 +18,7 @@ export const liveSessionSchema = z.object({
 });
 export type LiveSessionDto = z.infer<typeof liveSessionSchema>;
 
+export const liveSessionCleanupResponseSchema = z.object({
+  cleaned: z.number().int().nonnegative(),
+});
+export type LiveSessionCleanupResponseDto = z.infer<typeof liveSessionCleanupResponseSchema>;

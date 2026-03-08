@@ -14,6 +14,7 @@ import {
   duplicateTemplateRequestSchema,
   type HealthResponse,
   liveSessionSchema,
+  liveSessionCleanupResponseSchema,
   promoteTodoRequestSchema,
   promoteInboxRequestSchema,
   rejectTaskRequestSchema,
@@ -121,6 +122,20 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Live session store is not configured' });
     }
     return reply.send(liveSessionStore.listAll());
+  });
+
+  app.post('/api/live/openclaw/sessions/cleanup', async (request, reply) => {
+    if (!liveSessionStore) {
+      return reply.status(503).send({ message: 'Live session store is not configured' });
+    }
+    try {
+      return reply.send(liveSessionCleanupResponseSchema.parse({
+        cleaned: liveSessionStore.cleanupStale(),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   app.post('/api/live/openclaw/sessions', async (request, reply) => {

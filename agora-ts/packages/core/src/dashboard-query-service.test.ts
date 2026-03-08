@@ -128,7 +128,10 @@ describe('dashboard query service', () => {
   it('merges real openclaw live sessions into agent status even without active tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const liveSessions = new LiveSessionStore();
+    const liveSessions = new LiveSessionStore({
+      staleAfterMs: 60_000,
+      now: () => new Date('2026-03-08T06:10:30.000Z'),
+    });
     const queries = new DashboardQueryService(db, { templatesDir, liveSessions });
 
     liveSessions.upsert({
@@ -159,7 +162,10 @@ describe('dashboard query service', () => {
   it('returns the full agent inventory and marks non-running agents as idle', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const liveSessions = new LiveSessionStore();
+    const liveSessions = new LiveSessionStore({
+      staleAfterMs: 60_000,
+      now: () => new Date('2026-03-08T06:47:30.000Z'),
+    });
     const agentRegistry: AgentRegistry = {
       listAgents: () => [
         {
