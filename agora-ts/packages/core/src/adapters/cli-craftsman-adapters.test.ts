@@ -90,6 +90,62 @@ describe('real craftsman adapters', () => {
     );
   });
 
+  it('builds interactive start and resume commands with per-cli recovery semantics', () => {
+    const codex = new CodexCraftsmanAdapter();
+    const claude = new ClaudeCraftsmanAdapter();
+    const gemini = new GeminiCraftsmanAdapter();
+
+    expect(codex.createInteractiveStartSpec()).toEqual({
+      command: 'codex',
+      args: ['-a', 'never'],
+    });
+    expect(codex.createInteractiveResumeSpec('codex-session-123')).toEqual({
+      recoveryMode: 'resume_exact',
+      spec: {
+        command: 'codex',
+        args: ['resume', '-a', 'never', 'codex-session-123'],
+      },
+    });
+    expect(codex.createInteractiveResumeSpec(null)).toEqual({
+      recoveryMode: 'resume_last',
+      spec: {
+        command: 'codex',
+        args: ['resume', '-a', 'never', '--last'],
+      },
+    });
+
+    expect(claude.createInteractiveStartSpec()).toEqual({
+      command: 'claude',
+      args: ['--dangerously-skip-permissions', '--model', 'claude-sonnet-4-6'],
+    });
+    expect(claude.createInteractiveResumeSpec('claude-session-123')).toEqual({
+      recoveryMode: 'resume_exact',
+      spec: {
+        command: 'claude',
+        args: ['--resume', 'claude-session-123', '--dangerously-skip-permissions', '--model', 'claude-sonnet-4-6'],
+      },
+    });
+
+    expect(gemini.createInteractiveStartSpec()).toEqual({
+      command: 'gemini',
+      args: ['--approval-mode', 'yolo'],
+    });
+    expect(gemini.createInteractiveResumeSpec('gemini-session-123')).toEqual({
+      recoveryMode: 'resume_exact',
+      spec: {
+        command: 'gemini',
+        args: ['--resume', 'gemini-session-123', '--approval-mode', 'yolo'],
+      },
+    });
+    expect(gemini.createInteractiveResumeSpec(null)).toEqual({
+      recoveryMode: 'resume_latest',
+      spec: {
+        command: 'gemini',
+        args: ['--resume', 'latest', '--approval-mode', 'yolo'],
+      },
+    });
+  });
+
   it('fails fast when prompt is missing or spawn has no pid', () => {
     const noPidSpawn = vi.fn(() => createSpawnResult(0));
     const codex = new CodexCraftsmanAdapter({ spawn: noPidSpawn });

@@ -1,7 +1,19 @@
 import { spawn, type SpawnOptions, type ChildProcess } from 'node:child_process';
 import type { CraftsmanDispatchRequest, CraftsmanDispatchResult, CraftsmanAdapter } from '../craftsman-adapter.js';
+import type { TmuxRecoveryMode } from './tmux-pane-registry.js';
 
 type SpawnLike = (command: string, args: string[], options: SpawnOptions) => Pick<ChildProcess, 'pid' | 'unref'>;
+
+export interface ProcessCraftsmanCommandSpec {
+  command: string;
+  args: string[];
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface InteractiveResumeCommand {
+  recoveryMode: TmuxRecoveryMode;
+  spec: ProcessCraftsmanCommandSpec;
+}
 
 export interface ProcessCraftsmanAdapterOptions {
   spawn?: SpawnLike;
@@ -53,9 +65,9 @@ export abstract class ProcessCraftsmanAdapter implements CraftsmanAdapter {
     return this.buildCommand(request);
   }
 
-  protected abstract buildCommand(request: CraftsmanDispatchRequest): {
-    command: string;
-    args: string[];
-    env?: NodeJS.ProcessEnv;
-  };
+  abstract createInteractiveStartSpec(): ProcessCraftsmanCommandSpec;
+
+  abstract createInteractiveResumeSpec(sessionReference: string | null): InteractiveResumeCommand;
+
+  protected abstract buildCommand(request: CraftsmanDispatchRequest): ProcessCraftsmanCommandSpec;
 }

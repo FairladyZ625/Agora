@@ -270,6 +270,16 @@ describe('agora-ts cli', () => {
         }],
       }),
       send: () => {},
+      start: () => ({
+        pane: '%0',
+        command: 'codex -a never',
+        recoveryMode: 'fresh_start' as const,
+      }),
+      resume: () => ({
+        pane: '%0',
+        command: 'codex resume -a never codex-session-123',
+        recoveryMode: 'resume_exact' as const,
+      }),
       task: () => ({
         status: 'running' as const,
         session_id: 'tmux:agora-craftsmen:codex',
@@ -303,6 +313,8 @@ describe('agora-ts cli', () => {
     await program.parseAsync(['craftsman', 'tmux', 'up'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'status'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'send', 'codex', 'echo hello'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'tmux', 'start', 'codex'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'tmux', 'resume', 'codex', 'codex-session-123'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'task', 'codex', 'Implement this'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'tail', 'codex', '--lines', '20'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'doctor'], { from: 'user' });
@@ -310,11 +322,15 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('tmux session 已就绪: agora-craftsmen');
-    expect(stdout.value).toContain('%0\tcodex\tbash\tactive');
+    expect(stdout.value).toContain('%0\tcodex\tbash\tactive\tcodex_session_file\tsession_file\tcodex-session-123');
     expect(stdout.value).toContain('tmux command 已发送: codex');
+    expect(stdout.value).toContain('tmux runtime 已启动: codex');
+    expect(stdout.value).toContain('command: codex -a never');
+    expect(stdout.value).toContain('tmux runtime 已恢复: codex');
+    expect(stdout.value).toContain('command: codex resume -a never codex-session-123');
     expect(stdout.value).toContain('tmux task 已派发: tmux:agora-craftsmen:codex');
     expect(stdout.value).toContain('tail output');
-    expect(stdout.value).toContain('codex\t%0\tbash\tready');
+    expect(stdout.value).toContain('codex\t%0\tbash\tready\tcodex_session_file\tsession_file\tcodex-session-123');
     expect(stdout.value).toContain('tmux session 已关闭: agora-craftsmen');
   });
 });

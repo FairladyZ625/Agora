@@ -15,7 +15,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'task' | 'tail' | 'doctor' | 'down'>;
+type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down'>;
 
 function resolveTaskService() {
   const config = loadAgoraConfig(process.env.AGORA_CONFIG_PATH ?? '');
@@ -409,7 +409,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action(() => {
       const result = tmuxRuntimeService.status();
       for (const pane of result.panes) {
-        writeLine(stdout, `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}`);
+        writeLine(
+          stdout,
+          `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}`,
+        );
       }
     });
 
@@ -421,6 +424,31 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action((agent: string, command: string) => {
       tmuxRuntimeService.send(agent, command);
       writeLine(stdout, `tmux command 已发送: ${agent}`);
+    });
+
+  tmux
+    .command('start')
+    .description('启动指定 agent 的 interactive runtime')
+    .argument('<agent>', 'agent pane name')
+    .action((agent: string) => {
+      const result = tmuxRuntimeService.start(agent);
+      writeLine(stdout, `tmux runtime 已启动: ${agent}`);
+      writeLine(stdout, `pane: ${result.pane ?? '-'}`);
+      writeLine(stdout, `mode: ${result.recoveryMode}`);
+      writeLine(stdout, `command: ${result.command}`);
+    });
+
+  tmux
+    .command('resume')
+    .description('恢复指定 agent 的 interactive runtime')
+    .argument('<agent>', 'agent pane name')
+    .argument('[sessionReference]', 'resume session reference')
+    .action((agent: string, sessionReference?: string) => {
+      const result = tmuxRuntimeService.resume(agent, sessionReference ?? null);
+      writeLine(stdout, `tmux runtime 已恢复: ${agent}`);
+      writeLine(stdout, `pane: ${result.pane ?? '-'}`);
+      writeLine(stdout, `mode: ${result.recoveryMode}`);
+      writeLine(stdout, `command: ${result.command}`);
     });
 
   tmux
@@ -461,7 +489,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       for (const pane of result.panes) {
         writeLine(
           stdout,
-          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}`,
+          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}`,
         );
       }
     });

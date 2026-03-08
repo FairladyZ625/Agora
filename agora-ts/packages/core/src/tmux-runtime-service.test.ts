@@ -1,5 +1,10 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { ClaudeCraftsmanAdapter } from './adapters/claude-adapter.js';
 import { CodexCraftsmanAdapter } from './adapters/codex-adapter.js';
+import { GeminiCraftsmanAdapter } from './adapters/gemini-adapter.js';
 import { TmuxRuntimeService } from './tmux-runtime-service.js';
 
 describe('tmux runtime service', () => {
@@ -19,6 +24,7 @@ describe('tmux runtime service', () => {
     });
     const service = new TmuxRuntimeService({
       exec,
+      registryDir: createRegistryDir(),
       adapters: {
         codex: new CodexCraftsmanAdapter(),
       },
@@ -92,6 +98,7 @@ describe('tmux runtime service', () => {
     });
     const service = new TmuxRuntimeService({
       exec,
+      registryDir: createRegistryDir(),
       adapters: {
         codex: new CodexCraftsmanAdapter(),
       },
@@ -116,4 +123,52 @@ describe('tmux runtime service', () => {
       lastRecoveryMode: 'fresh_start',
     });
   });
+
+  it('routes resume commands with cli-specific recovery strategy', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|bash|1', '%1|claude|bash|0', '%2|gemini|bash|0'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|claude', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const service = new TmuxRuntimeService({
+      exec,
+      registryDir: createRegistryDir(),
+      adapters: {
+        codex: new CodexCraftsmanAdapter(),
+        claude: new ClaudeCraftsmanAdapter(),
+        gemini: new GeminiCraftsmanAdapter(),
+      },
+    });
+
+    service.up();
+    service.resume('codex', 'codex-session-123');
+    service.resume('claude', 'claude-session-123');
+    service.resume('gemini', null);
+
+    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%0', '-l', '--', 'codex resume -a never codex-session-123']);
+    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%1', '-l', '--', 'claude --resume claude-session-123 --dangerously-skip-permissions --model claude-sonnet-4-6']);
+    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%2', '-l', '--', 'gemini --resume latest --approval-mode yolo']);
+
+    expect(service.status().panes.find((pane) => pane.title === 'codex')).toMatchObject({
+      lastRecoveryMode: 'resume_exact',
+      sessionReference: 'codex-session-123',
+    });
+    expect(service.status().panes.find((pane) => pane.title === 'claude')).toMatchObject({
+      lastRecoveryMode: 'resume_exact',
+      sessionReference: 'claude-session-123',
+    });
+    expect(service.status().panes.find((pane) => pane.title === 'gemini')).toMatchObject({
+      lastRecoveryMode: 'resume_latest',
+      sessionReference: null,
+    });
+  });
 });
+
+function createRegistryDir() {
+  return mkdtempSync(join(tmpdir(), 'agora-ts-tmux-runtime-'));
+}
