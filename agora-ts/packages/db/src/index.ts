@@ -1,4 +1,5 @@
 export * from './database.js';
+export * from './repositories/craftsman-execution.repository.js';
 export * from './repositories/flow-log.repository.js';
 export * from './repositories/inbox.repository.js';
 export * from './repositories/progress-log.repository.js';
