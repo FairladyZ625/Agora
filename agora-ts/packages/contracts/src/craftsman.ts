@@ -61,3 +61,24 @@ export const craftsmanCallbackRequestSchema = z.object({
   finished_at: z.string().nullable().optional(),
 });
 export type CraftsmanCallbackRequestDto = z.infer<typeof craftsmanCallbackRequestSchema>;
+
+export const craftsmanRuntimeIdentitySourceSchema = z.enum([
+  'registry_default',
+  'hook_event',
+  'session_file',
+  'chat_file',
+  'latest_fallback',
+  'manual',
+  'transport_session',
+]);
+export type CraftsmanRuntimeIdentitySourceDto = z.infer<typeof craftsmanRuntimeIdentitySourceSchema>;
+
+export const craftsmanRuntimeIdentityRequestSchema = z.object({
+  agent: z.string().min(1),
+  session_reference: z.string().min(1).nullable().optional(),
+  identity_source: craftsmanRuntimeIdentitySourceSchema,
+  identity_path: z.string().min(1).nullable().optional(),
+  session_observed_at: z.string().min(1).nullable().optional(),
+  workspace_root: z.string().min(1).nullable().optional(),
+});
+export type CraftsmanRuntimeIdentityRequestDto = z.infer<typeof craftsmanRuntimeIdentityRequestSchema>;

@@ -210,6 +210,45 @@ describe('tmux runtime service', () => {
       lastRecoveryMode: 'resume_exact',
     });
   });
+
+  it('records runtime identity updates for later status and doctor reads', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|bash|1', '%1|claude|bash|0', '%2|gemini|bash|0'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|claude', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const service = new TmuxRuntimeService({
+      exec,
+      registryDir: createRegistryDir(),
+      adapters: {
+        codex: new CodexCraftsmanAdapter(),
+        claude: new ClaudeCraftsmanAdapter(),
+        gemini: new GeminiCraftsmanAdapter(),
+      },
+    });
+
+    const updated = service.recordIdentity('codex', {
+      sessionReference: 'codex-session-456',
+      identitySource: 'hook_event',
+      workspaceRoot: '/tmp/codex',
+    });
+
+    expect(updated).toMatchObject({
+      sessionReference: 'codex-session-456',
+      identitySource: 'hook_event',
+      workspaceRoot: '/tmp/codex',
+    });
+    expect(service.status().panes.find((pane) => pane.title === 'codex')).toMatchObject({
+      sessionReference: 'codex-session-456',
+      identitySource: 'hook_event',
+      workspaceRoot: '/tmp/codex',
+    });
+  });
 });
 
 function createRegistryDir() {

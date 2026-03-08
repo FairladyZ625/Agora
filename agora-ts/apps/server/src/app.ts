@@ -4,6 +4,7 @@ import Fastify, { type FastifyReply } from 'fastify';
 import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
+  craftsmanRuntimeIdentityRequestSchema,
   approveTaskRequestSchema,
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
@@ -47,7 +48,7 @@ export interface BuildAppOptions {
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
-  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down'>;
+  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
   apiAuth?: {
     enabled: boolean;
     token: string;
@@ -503,6 +504,28 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       return reply.send(taskService.listCraftsmanExecutions(params.taskId, params.subtaskId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/runtime/identity', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const payload = craftsmanRuntimeIdentityRequestSchema.parse(request.body);
+      return reply.send({
+        ok: true,
+        identity: tmuxRuntimeService.recordIdentity(payload.agent, {
+          sessionReference: payload.session_reference ?? null,
+          identitySource: payload.identity_source,
+          identityPath: payload.identity_path ?? null,
+          sessionObservedAt: payload.session_observed_at ?? null,
+          workspaceRoot: payload.workspace_root ?? null,
+        }),
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

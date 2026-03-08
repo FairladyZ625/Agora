@@ -270,6 +270,17 @@ describe('agora-ts cli', () => {
         }],
       }),
       send: () => {},
+      recordIdentity: () => ({
+        continuityBackend: 'codex_session_file' as const,
+        resumeCapability: 'native_resume' as const,
+        sessionReference: 'codex-session-456',
+        identitySource: 'hook_event' as const,
+        identityPath: null,
+        sessionObservedAt: '2026-03-08T23:02:00.000Z',
+        workspaceRoot: '/tmp/codex',
+        lastRecoveryMode: 'resume_exact' as const,
+        transportSessionId: 'tmux:agora-craftsmen:codex',
+      }),
       start: () => ({
         pane: '%0',
         command: 'codex -a never',
@@ -315,6 +326,7 @@ describe('agora-ts cli', () => {
     await program.parseAsync(['craftsman', 'tmux', 'send', 'codex', 'echo hello'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'start', 'codex'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'resume', 'codex', 'codex-session-123'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'runtime', 'identity', 'codex', '--identity-source', 'hook_event', '--session-reference', 'codex-session-456', '--workspace-root', '/tmp/codex'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'task', 'codex', 'Implement this'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'tail', 'codex', '--lines', '20'], { from: 'user' });
     await program.parseAsync(['craftsman', 'tmux', 'doctor'], { from: 'user' });
@@ -328,6 +340,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('command: codex -a never');
     expect(stdout.value).toContain('tmux runtime 已恢复: codex');
     expect(stdout.value).toContain('command: codex resume -a never codex-session-123');
+    expect(stdout.value).toContain('runtime identity 已回填: codex');
+    expect(stdout.value).toContain('source: hook_event');
+    expect(stdout.value).toContain('session: codex-session-456');
     expect(stdout.value).toContain('tmux task 已派发: tmux:agora-craftsmen:codex');
     expect(stdout.value).toContain('tail output');
     expect(stdout.value).toContain('codex\t%0\tbash\tready\tcodex_session_file\tsession_file\tcodex-session-123');

@@ -2,7 +2,12 @@ import { Command } from 'commander';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, resolveCraftsmanRuntimeMode, TaskService, TmuxRuntimeService } from '@agora-ts/core';
-import type { CraftsmanCallbackRequestDto, CraftsmanExecutionStatusDto, TaskPriority } from '@agora-ts/contracts';
+import type {
+  CraftsmanCallbackRequestDto,
+  CraftsmanExecutionStatusDto,
+  CraftsmanRuntimeIdentitySourceDto,
+  TaskPriority,
+} from '@agora-ts/contracts';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -15,7 +20,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down'>;
+type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
 
 function resolveTaskService() {
   const config = loadAgoraConfig(process.env.AGORA_CONFIG_PATH ?? '');
@@ -392,6 +397,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .command('tmux')
     .description('tmux runtime commands for craftsmen panes');
 
+  const runtime = craftsman
+    .command('runtime')
+    .description('generic runtime identity and observability commands');
+
   tmux
     .command('up')
     .description('初始化 tmux craftsmen session')
@@ -501,6 +510,34 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const result = tmuxRuntimeService.status();
       tmuxRuntimeService.down();
       writeLine(stdout, `tmux session 已关闭: ${result.session}`);
+    });
+
+  runtime
+    .command('identity')
+    .description('回填运行时 identity 元数据')
+    .argument('<agent>', 'agent pane name')
+    .requiredOption('--identity-source <identitySource>', 'identity source')
+    .option('--session-reference <sessionReference>', 'session reference')
+    .option('--identity-path <identityPath>', 'identity file path')
+    .option('--session-observed-at <sessionObservedAt>', 'identity observed timestamp')
+    .option('--workspace-root <workspaceRoot>', 'workspace root')
+    .action((agent: string, options: {
+      identitySource: CraftsmanRuntimeIdentitySourceDto;
+      sessionReference?: string;
+      identityPath?: string;
+      sessionObservedAt?: string;
+      workspaceRoot?: string;
+    }) => {
+      const result = tmuxRuntimeService.recordIdentity(agent, {
+        sessionReference: options.sessionReference ?? null,
+        identitySource: options.identitySource,
+        identityPath: options.identityPath ?? null,
+        sessionObservedAt: options.sessionObservedAt ?? null,
+        workspaceRoot: options.workspaceRoot ?? null,
+      });
+      writeLine(stdout, `runtime identity 已回填: ${agent}`);
+      writeLine(stdout, `source: ${result.identitySource}`);
+      writeLine(stdout, `session: ${result.sessionReference ?? '-'}`);
     });
 
   return program;

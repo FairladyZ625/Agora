@@ -26,6 +26,14 @@ export interface TmuxDoctorPane {
   transportSessionId: string | null;
 }
 
+export interface TmuxRuntimeIdentityUpdate {
+  sessionReference?: string | null;
+  identitySource: TmuxIdentitySource;
+  identityPath?: string | null;
+  sessionObservedAt?: string | null;
+  workspaceRoot?: string | null;
+}
+
 export interface TmuxStartResult {
   pane: string | null;
   command: string;
@@ -70,6 +78,17 @@ export class TmuxRuntimeService {
   send(agent: string, command: string) {
     const target = this.registry.getPaneTarget(agent);
     this.registry.sendKeys(target, command);
+  }
+
+  recordIdentity(agent: string, identity: TmuxRuntimeIdentityUpdate) {
+    this.registry.ensureSession();
+    return this.registry.updatePaneState(agent, {
+      sessionReference: identity.sessionReference ?? null,
+      identitySource: identity.identitySource,
+      identityPath: identity.identityPath ?? null,
+      sessionObservedAt: identity.sessionObservedAt ?? null,
+      workspaceRoot: identity.workspaceRoot ?? null,
+    });
   }
 
   start(agent: string, workspaceRoot?: string | null): TmuxStartResult {

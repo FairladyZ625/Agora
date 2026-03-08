@@ -165,6 +165,17 @@ describe('craftsman routes', () => {
           }],
         }),
         send: () => {},
+        recordIdentity: () => ({
+          continuityBackend: 'codex_session_file',
+          resumeCapability: 'native_resume',
+          sessionReference: 'codex-session-456',
+          identitySource: 'hook_event' as const,
+          identityPath: null,
+          sessionObservedAt: '2026-03-08T23:02:00.000Z',
+          workspaceRoot: '/tmp/codex',
+          lastRecoveryMode: 'resume_exact' as const,
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        }),
         task: () => ({
           status: 'running',
           session_id: 'tmux:agora-craftsmen:codex',
@@ -220,6 +231,16 @@ describe('craftsman routes', () => {
       method: 'GET',
       url: '/api/craftsmen/tmux/tail/codex?lines=20',
     });
+    const identityResponse = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/runtime/identity',
+      payload: {
+        agent: 'codex',
+        session_reference: 'codex-session-456',
+        identity_source: 'hook_event',
+        workspace_root: '/tmp/codex',
+      },
+    });
 
     expect(statusResponse.statusCode).toBe(200);
     expect(statusResponse.json()).toEqual({
@@ -263,5 +284,20 @@ describe('craftsman routes', () => {
     });
     expect(tailResponse.statusCode).toBe(200);
     expect(tailResponse.json()).toEqual({ output: 'tmux tail output' });
+    expect(identityResponse.statusCode).toBe(200);
+    expect(identityResponse.json()).toEqual({
+      ok: true,
+      identity: {
+        continuityBackend: 'codex_session_file',
+        resumeCapability: 'native_resume',
+        sessionReference: 'codex-session-456',
+        identitySource: 'hook_event',
+        identityPath: null,
+        sessionObservedAt: '2026-03-08T23:02:00.000Z',
+        workspaceRoot: '/tmp/codex',
+        lastRecoveryMode: 'resume_exact',
+        transportSessionId: 'tmux:agora-craftsmen:codex',
+      },
+    });
   });
 });
