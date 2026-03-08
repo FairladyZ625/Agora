@@ -1,3 +1,5 @@
+export * from './craftsman-adapter.js';
+export * from './craftsman-dispatcher.js';
 export * from './dashboard-query-service.js';
 export * from './errors.js';
 export * from './enums.js';
@@ -9,6 +11,7 @@ export * from './openclaw-agent-registry.js';
 export * from './openclaw-provider-presence.js';
 export * from './permission-service.js';
 export * from './progress-service.js';
+export * from './runtime-ports.js';
 export * from './state-machine.js';
 export * from './task-service.js';
 export * from './template-authoring-service.js';

@@ -76,7 +76,12 @@ export class SubtaskRepository {
   updateSubtask(taskId: string, subtaskId: string, updates: {
     status?: string;
     output?: string | null;
+    craftsman_type?: string | null;
+    craftsman_session?: string | null;
+    craftsman_workdir?: string | null;
+    craftsman_prompt?: string | null;
     dispatch_status?: string | null;
+    dispatched_at?: string | null;
     done_at?: string | null;
   }): StoredSubtask {
     const assignments: string[] = [];
@@ -89,7 +94,12 @@ export class SubtaskRepository {
 
     if (updates.status !== undefined) push('status', updates.status);
     if (updates.output !== undefined) push('output', updates.output);
+    if (updates.craftsman_type !== undefined) push('craftsman_type', updates.craftsman_type);
+    if (updates.craftsman_session !== undefined) push('craftsman_session', updates.craftsman_session);
+    if (updates.craftsman_workdir !== undefined) push('craftsman_workdir', updates.craftsman_workdir);
+    if (updates.craftsman_prompt !== undefined) push('craftsman_prompt', updates.craftsman_prompt);
     if (updates.dispatch_status !== undefined) push('dispatch_status', updates.dispatch_status);
+    if (updates.dispatched_at !== undefined) push('dispatched_at', updates.dispatched_at);
     if (updates.done_at !== undefined) push('done_at', updates.done_at);
 
     this.db.prepare(`

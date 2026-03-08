@@ -5,8 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
-import type { AgentRegistry } from './openclaw-agent-registry.js';
-import type { AgentPresenceSource } from './openclaw-provider-presence.js';
+import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -182,7 +181,7 @@ describe('dashboard query service', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T06:47:30.000Z'),
     });
-    const agentRegistry: AgentRegistry = {
+    const agentRegistry: AgentInventorySource = {
       listAgents: () => [
         {
           id: 'main',
@@ -260,7 +259,7 @@ describe('dashboard query service', () => {
   it('overlays provider presence and last seen timestamps from gateway events', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const agentRegistry: AgentRegistry = {
+    const agentRegistry: AgentInventorySource = {
       listAgents: () => [
         {
           id: 'main',
@@ -282,7 +281,7 @@ describe('dashboard query service', () => {
         },
       ],
     };
-    const presenceSource: AgentPresenceSource = {
+    const presenceSource: PresenceSource = {
       listPresence: () => [
         {
           agent_id: 'main',

@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, TaskRepository, SubtaskRepository, FlowLogRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, TaskRepository, SubtaskRepository, FlowLogRepository, CraftsmanExecutionRepository } from '@agora-ts/db';
+import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { ModeController } from './mode-controller.js';
 
 const tempPaths: string[] = [];
@@ -58,5 +59,65 @@ describe('mode controller', () => {
     expect(flowLogs.listByTask('OC-950').map((item) => item.event)).toEqual(
       expect.arrayContaining(['state_change', 'subtask_created']),
     );
+  });
+
+  it('auto-dispatches craftsmen execute subtasks when a dispatcher is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      adapters: {
+        codex: {
+          name: 'codex',
+          dispatchTask: () => ({
+            status: 'running',
+            session_id: 'mode-codex-1',
+            started_at: '2026-03-08T12:10:00.000Z',
+          }),
+        },
+      },
+    });
+    const modes = new ModeController(db, { dispatcher });
+
+    tasks.insertTask({
+      id: 'OC-951',
+      title: 'mode control dispatch',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+
+    modes.enterExecuteMode('OC-951', 'develop', [
+      {
+        id: 'sub-codex',
+        title: 'API',
+        assignee: 'sonnet',
+        craftsman: {
+          adapter: 'codex',
+          mode: 'task',
+          workdir: '/tmp/mode-codex',
+          prompt: 'Implement the API',
+        },
+      },
+    ]);
+
+    expect(executions.listBySubtask('OC-951', 'sub-codex')).toEqual([
+      expect.objectContaining({
+        adapter: 'codex',
+        status: 'running',
+      }),
+    ]);
+    expect(subtasks.listByTask('OC-951')).toEqual([
+      expect.objectContaining({
+        id: 'sub-codex',
+        dispatch_status: 'running',
+        craftsman_session: 'mode-codex-1',
+      }),
+    ]);
   });
 });

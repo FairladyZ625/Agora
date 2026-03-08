@@ -1,17 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-
-export interface RegisteredAgent {
-  id: string;
-  source: string;
-  primary_model: string | null;
-  workspace_dir: string | null;
-}
-
-export interface AgentRegistry {
-  listAgents(): RegisteredAgent[];
-}
+import type { AgentInventorySource, RegisteredAgent } from './runtime-ports.js';
 
 export interface OpenClawAgentRegistryOptions {
   configPath?: string;
@@ -24,7 +14,7 @@ type RegistryAccumulator = {
   workspace_dir: string | null;
 };
 
-export class OpenClawAgentRegistry implements AgentRegistry {
+export class OpenClawAgentRegistry implements AgentInventorySource {
   private readonly configPath: string;
 
   constructor(options: OpenClawAgentRegistryOptions = {}) {

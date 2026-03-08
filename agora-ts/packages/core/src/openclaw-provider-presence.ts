@@ -1,48 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-
-export type AgentPresenceState = 'online' | 'offline' | 'disconnected' | 'stale';
-
-export interface AgentPresenceSnapshot {
-  agent_id: string;
-  presence: AgentPresenceState;
-  provider: string | null;
-  account_id: string | null;
-  last_seen_at: string | null;
-  reason: string | null;
-}
-
-export interface AgentPresenceHistoryEvent {
-  occurred_at: string;
-  agent_id: string;
-  account_id: string | null;
-  presence: AgentPresenceState;
-  reason: string | null;
-}
-
-export interface AgentProviderSignalEvent {
-  occurred_at: string;
-  provider: string;
-  agent_id: string | null;
-  account_id: string | null;
-  kind:
-    | 'provider_start'
-    | 'provider_ready'
-    | 'gateway_proxy_enabled'
-    | 'health_restart'
-    | 'auto_restart_attempt'
-    | 'transport_error'
-    | 'inbound_ready';
-  severity: 'info' | 'warning' | 'error';
-  detail: string | null;
-}
-
-export interface AgentPresenceSource {
-  listPresence(): AgentPresenceSnapshot[];
-  listHistory?(): AgentPresenceHistoryEvent[];
-  listSignals?(): AgentProviderSignalEvent[];
-}
+import type {
+  AgentPresenceHistoryEvent,
+  AgentPresenceSnapshot,
+  AgentPresenceState,
+  AgentProviderSignalEvent,
+  PresenceSource,
+} from './runtime-ports.js';
 
 export interface OpenClawLogPresenceSourceOptions {
   logPath?: string;
@@ -61,7 +26,7 @@ type PresenceAccumulator = {
 
 type HistoryEvent = AgentPresenceHistoryEvent;
 
-export class OpenClawLogPresenceSource implements AgentPresenceSource {
+export class OpenClawLogPresenceSource implements PresenceSource {
   private readonly logPath: string;
   private readonly staleAfterMs: number;
   private readonly now: () => Date;

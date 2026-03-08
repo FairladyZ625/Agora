@@ -1,4 +1,6 @@
 import { SubtaskRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { CraftsmanModeDto } from '@agora-ts/contracts';
+import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { ProgressService } from './progress-service.js';
 
 export interface DiscussModeResult {
@@ -11,6 +13,13 @@ export interface ExecuteModeSubtaskDefinition {
   id: string;
   title: string;
   assignee: string;
+  craftsman?: {
+    adapter: string;
+    mode?: CraftsmanModeDto;
+    workdir?: string | null;
+    prompt?: string | null;
+    brief_path?: string | null;
+  };
 }
 
 export interface ExecuteModeResult {
@@ -19,13 +28,19 @@ export interface ExecuteModeResult {
   subtasks: ExecuteModeSubtaskDefinition[];
 }
 
+export interface ModeControllerOptions {
+  dispatcher?: CraftsmanDispatcher;
+}
+
 export class ModeController {
   private readonly subtasks: SubtaskRepository;
   private readonly progress: ProgressService;
+  private readonly dispatcher: CraftsmanDispatcher | undefined;
 
-  constructor(db: AgoraDatabase) {
+  constructor(db: AgoraDatabase, options: ModeControllerOptions = {}) {
     this.subtasks = new SubtaskRepository(db);
     this.progress = new ProgressService(db);
+    this.dispatcher = options.dispatcher;
   }
 
   enterDiscussMode(taskId: string, stageId: string, participants: string[]): DiscussModeResult {
@@ -48,8 +63,26 @@ export class ModeController {
         stage_id: stageId,
         title: subtask.title,
         assignee: subtask.assignee,
+        craftsman_type: subtask.craftsman?.adapter ?? null,
       });
       this.progress.recordSubtaskEvent(taskId, stageId, subtask.id, 'created');
+      if (this.dispatcher && subtask.craftsman) {
+        const dispatched = this.dispatcher.dispatchSubtask({
+          task_id: taskId,
+          stage_id: stageId,
+          subtask_id: subtask.id,
+          adapter: subtask.craftsman.adapter,
+          mode: subtask.craftsman.mode ?? 'task',
+          workdir: subtask.craftsman.workdir ?? null,
+          prompt: subtask.craftsman.prompt ?? null,
+          brief_path: subtask.craftsman.brief_path ?? null,
+        });
+        this.progress.recordSubtaskEvent(taskId, stageId, subtask.id, 'dispatched', 'system', {
+          execution_id: dispatched.execution.execution_id,
+          adapter: dispatched.execution.adapter,
+          status: dispatched.execution.status,
+        });
+      }
     }
     return {
       mode: 'execute',

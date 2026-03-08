@@ -11,14 +11,18 @@ import type {
 import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
-import type { AgentRegistry } from './openclaw-agent-registry.js';
-import type { AgentPresenceHistoryEvent, AgentPresenceSource, AgentProviderSignalEvent } from './openclaw-provider-presence.js';
+import type {
+  AgentInventorySource,
+  AgentPresenceHistoryEvent,
+  AgentProviderSignalEvent,
+  PresenceSource,
+} from './runtime-ports.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
   liveSessions?: LiveSessionStore;
-  agentRegistry?: AgentRegistry;
-  presenceSource?: AgentPresenceSource;
+  agentRegistry?: AgentInventorySource;
+  presenceSource?: PresenceSource;
 }
 
 export class DashboardQueryService {
@@ -28,8 +32,8 @@ export class DashboardQueryService {
   private readonly todos: TodoRepositoryType;
   private readonly templatesDir: string;
   private readonly liveSessions: LiveSessionStore | undefined;
-  private readonly agentRegistry: AgentRegistry | undefined;
-  private readonly presenceSource: AgentPresenceSource | undefined;
+  private readonly agentRegistry: AgentInventorySource | undefined;
+  private readonly presenceSource: PresenceSource | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
