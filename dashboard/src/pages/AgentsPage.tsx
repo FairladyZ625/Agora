@@ -3,6 +3,44 @@ import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useAgentStore } from '@/stores/agentStore';
 
+function getCraftsmanPriority(item: { status: string; recentExecutions: Array<{ status: string; startedAt: string | null }> }) {
+  if (item.recentExecutions.some((execution) => execution.status === 'failed')) {
+    return 0;
+  }
+  if (item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running')) {
+    return 1;
+  }
+  return 2;
+}
+
+function getCraftsmanSortTime(item: { runningSince: string | null; recentExecutions: Array<{ startedAt: string | null }> }) {
+  const timestamps = [
+    item.runningSince ? Date.parse(item.runningSince) : Number.NaN,
+    ...item.recentExecutions.map((execution) => (execution.startedAt ? Date.parse(execution.startedAt) : Number.NaN)),
+  ].filter((value) => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
+function getExecutionPriority(execution: { status: string }) {
+  if (execution.status === 'failed') {
+    return 0;
+  }
+  if (execution.status === 'running') {
+    return 1;
+  }
+  return 2;
+}
+
+function sortExecutions<T extends { status: string; startedAt: string | null }>(executions: T[]) {
+  return [...executions].sort((left, right) => {
+    const priorityDiff = getExecutionPriority(left) - getExecutionPriority(right);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+    return (right.startedAt ? Date.parse(right.startedAt) : 0) - (left.startedAt ? Date.parse(left.startedAt) : 0);
+  });
+}
+
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
   const summary = useAgentStore((state) => state.summary);
@@ -29,13 +67,18 @@ export function AgentsPage() {
     [providerFilter, providerSummaries],
   );
   const visibleCraftsmen = useMemo(() => {
-    if (craftsmenFilter === 'all') {
-      return craftsmen;
-    }
-    if (craftsmenFilter === 'running') {
-      return craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running'));
-    }
-    return craftsmen.filter((item) => item.recentExecutions.some((execution) => execution.status === 'failed'));
+    const filtered = craftsmenFilter === 'all'
+      ? craftsmen
+      : craftsmenFilter === 'running'
+        ? craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running'))
+        : craftsmen.filter((item) => item.recentExecutions.some((execution) => execution.status === 'failed'));
+    return [...filtered].sort((left, right) => {
+      const priorityDiff = getCraftsmanPriority(left) - getCraftsmanPriority(right);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return getCraftsmanSortTime(right) - getCraftsmanSortTime(left);
+    });
   }, [craftsmen, craftsmenFilter]);
 
   return (
@@ -336,7 +379,7 @@ export function AgentsPage() {
                   </div>
                   {item.recentExecutions.length > 0 ? (
                     <div className="mt-4 space-y-2">
-                      {item.recentExecutions.map((execution) => (
+                      {sortExecutions(item.recentExecutions).map((execution) => (
                         <div key={execution.executionId} className="type-text-xs">
                           {execution.executionId} · {execution.status} · {execution.runtimeMode ?? 'n/a'} · {execution.transport ?? 'n/a'}
                         </div>

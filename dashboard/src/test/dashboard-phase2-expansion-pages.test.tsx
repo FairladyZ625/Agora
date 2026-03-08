@@ -354,6 +354,7 @@ describe('dashboard expansion routes', () => {
     agentStoreState.craftsmenFilter = 'all';
     agentStoreState.providerFilter = null;
     agentStoreState.agents.splice(1);
+    agentStoreState.craftsmen.splice(1);
     agentStoreSnapshot = makeAgentStoreSnapshot();
   });
 
@@ -411,6 +412,73 @@ describe('dashboard expansion routes', () => {
 
     expect(screen.getByText(/exec-failed-1/i)).toBeInTheDocument();
     expect(screen.queryByText(/exec-dashboard-1/i)).not.toBeInTheDocument();
+  });
+
+  it('orders craftsmen cards with failures first in the default view', () => {
+    agentStoreState.craftsmen.push({
+      id: 'gemini',
+      status: 'failed',
+      taskId: 'OC-102',
+      subtaskId: 'qa-review',
+      title: 'QA Review',
+      runningSince: '2026-03-08T10:10:00.000Z',
+      recentExecutions: [
+        {
+          executionId: 'exec-failed-1',
+          status: 'failed',
+          sessionId: 'watcher:123',
+          transport: 'process-callback-runner',
+          runtimeMode: 'watched',
+          startedAt: '2026-03-08T10:10:00.000Z',
+        },
+      ],
+    });
+    notifyAgentStore();
+
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const executionRows = screen.getAllByText(/exec-(dashboard|failed)-1/i);
+    expect(executionRows[0]).toHaveTextContent('exec-failed-1');
+    expect(executionRows[1]).toHaveTextContent('exec-dashboard-1');
+  });
+
+  it('orders recent executions inside a craftsmen card with failures first', () => {
+    agentStoreState.craftsmen[0] = {
+      ...agentStoreState.craftsmen[0],
+      recentExecutions: [
+        {
+          executionId: 'exec-running-2',
+          status: 'running',
+          sessionId: 'tmux:agora-craftsmen:codex',
+          transport: 'tmux-pane',
+          runtimeMode: 'tmux',
+          startedAt: '2026-03-08T10:05:00.000Z',
+        },
+        {
+          executionId: 'exec-failed-2',
+          status: 'failed',
+          sessionId: 'watcher:456',
+          transport: 'process-callback-runner',
+          runtimeMode: 'watched',
+          startedAt: '2026-03-08T10:07:00.000Z',
+        },
+      ],
+    };
+    notifyAgentStore();
+
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const executionRows = screen.getAllByText(/exec-(running|failed)-2/i);
+    expect(executionRows[0]).toHaveTextContent('exec-failed-2');
+    expect(executionRows[1]).toHaveTextContent('exec-running-2');
   });
 
   it('filters the agent list by presence view', () => {
