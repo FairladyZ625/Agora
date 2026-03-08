@@ -163,4 +163,35 @@ describe('authoring routes', () => {
     expect(validateWorkflow.json()).toMatchObject({ valid: true });
     expect(deleteInbox.statusCode).toBe(200);
   });
+
+  it('returns 400 for invalid inbox ids', async () => {
+    const templatesDir = makeTemplatesDir();
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-801',
+    });
+    const inboxService = new InboxService(db, taskService);
+    const app = buildApp({ taskService, inboxService });
+
+    const patchInbox = await app.inject({
+      method: 'PATCH',
+      url: '/api/inbox/not-a-number',
+      payload: { notes: 'invalid id' },
+    });
+    const deleteInbox = await app.inject({
+      method: 'DELETE',
+      url: '/api/inbox/not-a-number',
+    });
+    const promoteInbox = await app.inject({
+      method: 'POST',
+      url: '/api/inbox/not-a-number/promote',
+      payload: { target: 'todo' },
+    });
+
+    expect(patchInbox.statusCode).toBe(400);
+    expect(deleteInbox.statusCode).toBe(400);
+    expect(promoteInbox.statusCode).toBe(400);
+  });
 });

@@ -43,17 +43,19 @@ describe('progress service', () => {
     progress.recordStateChange('OC-900', 'draft', 'created');
     progress.recordStageAdvance('OC-900', 'discuss', 'develop', 'opus');
     progress.recordGateResult('OC-900', 'develop', 'all_subtasks_done', true, 'system');
+    progress.recordArchonDecision('OC-900', 'review', 'approved', 'archon', 'ship it');
     progress.recordAgentReport('OC-900', 'develop', 'sonnet', 'working', 'sub-1', ['patch.diff']);
+    progress.recordTodosSnapshot('OC-900', 'develop', 'sonnet', '- finish tests');
     progress.recordSubtaskEvent('OC-900', 'develop', 'sub-1', 'done', 'system', { output: 'merged' });
 
     const stream = progress.getActivityStream('OC-900');
 
-    expect(stream).toHaveLength(5);
+    expect(stream).toHaveLength(7);
     expect(stream.map((item) => item.layer)).toEqual(
       expect.arrayContaining(['flow', 'progress']),
     );
     expect(stream.map((item) => item.event ?? item.kind)).toEqual(
-      expect.arrayContaining(['state_change', 'stage_advance', 'gate_passed', 'subtask_done', 'progress']),
+      expect.arrayContaining(['state_change', 'stage_advance', 'gate_passed', 'archon_approved', 'subtask_done', 'progress', 'todos']),
     );
   });
 });

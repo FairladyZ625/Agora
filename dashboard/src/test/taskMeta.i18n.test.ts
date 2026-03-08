@@ -21,13 +21,13 @@ describe('task meta localization', () => {
 
   it('returns localized priority labels without changing tone', async () => {
     await setLocale('zh-CN');
-    const zh = getPriorityMeta('critical');
+    const zh = getPriorityMeta('high');
 
     await setLocale('en-US');
-    const en = getPriorityMeta('critical');
+    const en = getPriorityMeta('high');
 
-    expect(zh.label).toBe('关键');
-    expect(en.label).toBe('Critical');
+    expect(zh.label).toBe('高');
+    expect(en.label).toBe('High');
     expect(zh.tone).toBe(en.tone);
   });
 });

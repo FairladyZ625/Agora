@@ -3,8 +3,10 @@ import { resolve, basename } from 'node:path';
 import type {
   AgentsStatusDto,
   ArchiveJobDto,
+  CreateTodoRequestDto,
   TemplateDetailDto,
   TemplateSummaryDto,
+  UpdateTodoRequestDto,
 } from '@agora-ts/contracts';
 import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
@@ -133,21 +135,18 @@ export class DashboardQueryService {
     return this.todos.listTodos(filters.status);
   }
 
-  createTodo(input: { text: string; due?: string | null; tags?: string[] }) {
+  createTodo(input: CreateTodoRequestDto) {
     return this.todos.insertTodo(input);
   }
 
-  updateTodo(todoId: number, updates: {
-    text?: string;
-    due?: string | null;
-    tags?: string[];
-    status?: string;
-  }) {
+  updateTodo(todoId: number, updates: UpdateTodoRequestDto) {
     const existing = this.todos.getTodo(todoId);
     if (!existing) {
       throw new NotFoundError(`Todo ${todoId} not found`);
     }
-    const nextUpdates: Record<string, unknown> = { ...updates };
+    const nextUpdates: Record<string, unknown> = Object.fromEntries(
+      Object.entries(updates).filter(([, value]) => value !== undefined),
+    );
     if (updates.status === 'done') {
       nextUpdates.completed_at = new Date().toISOString();
     }

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
-import { DashboardQueryService, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, InboxService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
@@ -14,6 +14,8 @@ export interface TestRuntime {
   db: AgoraDatabase;
   taskService: TaskService;
   dashboardQueryService: DashboardQueryService;
+  inboxService: InboxService;
+  templateAuthoringService: TemplateAuthoringService;
   cleanup: () => void;
 }
 
@@ -33,12 +35,16 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const dashboardQueryService = new DashboardQueryService(db, {
     templatesDir,
   });
+  const inboxService = new InboxService(db, taskService);
+  const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
 
   return {
     dir,
     db,
     taskService,
     dashboardQueryService,
+    inboxService,
+    templateAuthoringService,
     cleanup() {
       db.close();
       rmSync(dir, { recursive: true, force: true });

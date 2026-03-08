@@ -31,6 +31,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const taskService = new TaskService(db, {
     templatesDir,
     archonUsers: config.permissions.archonUsers,
+    allowAgents: config.permissions.allowAgents,
   });
   const dashboardQueryService = new DashboardQueryService(db, { templatesDir });
   const templateAuthoringService = new TemplateAuthoringService({ templatesDir });

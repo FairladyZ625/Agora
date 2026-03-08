@@ -24,7 +24,6 @@ const priorityTones: Record<string, Tone> = {
   low: 'neutral',
   normal: 'info',
   high: 'warning',
-  critical: 'danger',
 };
 
 export function getStateMeta(state: TaskState | string): BadgeMeta {
@@ -51,7 +50,6 @@ export function getPriorityMeta(priority: TaskPriority | string): BadgeMeta {
     low: 'taskMeta.priorities.low',
     normal: 'taskMeta.priorities.normal',
     high: 'taskMeta.priorities.high',
-    critical: 'taskMeta.priorities.critical',
   };
 
   return {

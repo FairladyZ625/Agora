@@ -13,7 +13,7 @@ export type TaskState =
   | 'paused'
   | 'blocked';
 
-export type TaskPriority = 'low' | 'normal' | 'high' | 'critical';
+export type TaskPriority = 'low' | 'normal' | 'high';
 
 export interface Task {
   id: string;

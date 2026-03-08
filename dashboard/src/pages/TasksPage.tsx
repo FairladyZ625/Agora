@@ -15,7 +15,7 @@ import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
 import type { TaskAction } from '@/types/task';
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
-const TASK_PRIORITY_VALUES = ['critical', 'high', 'normal', 'low'] as const;
+const TASK_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
 
 
 export function TasksPage() {

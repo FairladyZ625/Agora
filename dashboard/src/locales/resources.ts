@@ -368,7 +368,6 @@ export const resources = {
         emptyTitle: '当前没有待裁决任务',
         emptySummary: '系统将在有新 gate waiting 任务时显示在这里。',
         queueScopes: {
-          critical: '关键',
           high: '高优先级',
         },
         tableHeaders: {
@@ -459,7 +458,6 @@ export const resources = {
           low: '低',
           normal: '标准',
           high: '高',
-          critical: '关键',
         },
         unassignedTeam: '未配置团队',
       },
@@ -840,7 +838,6 @@ export const resources = {
         emptyTitle: 'No tasks are awaiting review right now',
         emptySummary: 'The system will show new gate-waiting tasks here as they arrive.',
         queueScopes: {
-          critical: 'Critical',
           high: 'High priority',
         },
         tableHeaders: {
@@ -931,7 +928,6 @@ export const resources = {
           low: 'Low',
           normal: 'Normal',
           high: 'High',
-          critical: 'Critical',
         },
         unassignedTeam: 'No team configured',
       },

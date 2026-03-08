@@ -12,7 +12,7 @@ import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta } from '@/lib/taskMeta';
 
-type QueueScope = 'all' | 'critical' | 'high';
+type QueueScope = 'all' | 'high';
 
 export function ReviewsPage() {
   const { t } = useTranslation();
@@ -34,7 +34,6 @@ export function ReviewsPage() {
   const [gateFilter, setGateFilter] = useState<string[]>([]);
   const [creatorFilter, setCreatorFilter] = useState<string[]>([]);
   const queueScopes: { value: QueueScope; label: string }[] = [
-    { value: 'critical', label: reviewsPageCopy.queueScopes.critical },
     { value: 'high', label: reviewsPageCopy.queueScopes.high },
   ];
 
@@ -69,8 +68,7 @@ export function ReviewsPage() {
     return queue.filter((item) => {
       const matchesScope =
         scope === 'all' ||
-        (scope === 'critical' && item.priority === 'critical') ||
-        (scope === 'high' && (item.priority === 'critical' || item.priority === 'high'));
+        (scope === 'high' && item.priority === 'high');
       const matchesPriority = priorityFilter.length === 0 || priorityFilter.includes(item.priority);
       const matchesGate = gateFilter.length === 0 || gateFilter.includes(item.gate);
       const matchesCreator = creatorFilter.length === 0 || creatorFilter.includes(item.creator);
@@ -133,9 +131,9 @@ export function ReviewsPage() {
     {
       label: reviewsPageCopy.filterSectionLabels.priority,
       options: [
-        { value: 'critical', label: getPriorityMeta('critical').label, count: queue.filter((item) => item.priority === 'critical').length },
         { value: 'high', label: getPriorityMeta('high').label, count: queue.filter((item) => item.priority === 'high').length },
         { value: 'normal', label: getPriorityMeta('normal').label, count: queue.filter((item) => item.priority === 'normal').length },
+        { value: 'low', label: getPriorityMeta('low').label, count: queue.filter((item) => item.priority === 'low').length },
       ],
       selected: priorityFilter,
       onToggle: (value: string) => setPriorityFilter((current) => toggleValue(current, value)),
@@ -186,7 +184,7 @@ export function ReviewsPage() {
               </div>
               <div className="inline-stat">
                 <span className="inline-stat__label">{reviewsPageCopy.metricLabels.highestRisk}</span>
-                <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'critical') ? reviewsPageCopy.metricValues.highestRisk : reviewsPageCopy.metricValues.normal}</span>
+                <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'high') ? reviewsPageCopy.metricValues.highestRisk : reviewsPageCopy.metricValues.normal}</span>
               </div>
               <div className="inline-stat">
                 <span className="inline-stat__label">{reviewsPageCopy.metricLabels.defaultAction}</span>

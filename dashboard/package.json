@@ -15,6 +15,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@agora-ts/contracts": "file:../agora-ts/packages/contracts",
     "@tailwindcss/vite": "^4.2.1",
     "i18next": "^25.8.14",
     "liquid-glass-react": "^1.1.1",

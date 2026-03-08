@@ -69,7 +69,7 @@ describe('task service', () => {
       priority: 'normal',
     });
 
-    expect(() => service.advanceTask('OC-101', { callerId: 'opus' })).toThrow(
+    expect(() => service.advanceTask('OC-101', { callerId: 'archon' })).toThrow(
       "Gate check failed for stage 'discuss'",
     );
 
@@ -77,7 +77,7 @@ describe('task service', () => {
       'INSERT INTO archon_reviews (task_id, stage_id, decision, reviewer_id) VALUES (?, ?, ?, ?)',
     ).run('OC-101', 'discuss', 'approved', 'lizeyu');
 
-    const advanced = service.advanceTask('OC-101', { callerId: 'opus' });
+    const advanced = service.advanceTask('OC-101', { callerId: 'archon' });
     const status = service.getTaskStatus('OC-101');
 
     expect(advanced.current_stage).toBe('develop');
@@ -85,6 +85,45 @@ describe('task service', () => {
       event: 'stage_advanced',
       stage_id: 'develop',
     });
+  });
+
+  it('uses allowAgents canAdvance config instead of team membership for command advances', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-104',
+      archonUsers: ['archon'],
+      allowAgents: {
+        opus: { canCall: ['sonnet'], canAdvance: false },
+        '*': { canCall: [], canAdvance: false },
+      },
+    });
+    const tasks = new TaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-104',
+      title: 'command advance permissions',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [{ role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' }],
+      },
+      workflow: {
+        type: 'command-only',
+        stages: [{ id: 'execute', gate: { type: 'command' } }],
+      },
+    });
+    tasks.updateTask('OC-104', 1, { state: 'created' });
+    tasks.updateTask('OC-104', 2, { state: 'active', current_stage: 'execute' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-104', 'execute');
+
+    expect(() => service.advanceTask('OC-104', { callerId: 'opus' })).toThrow(
+      'caller opus has canAdvance=false for /task advance',
+    );
+    expect(service.advanceTask('OC-104', { callerId: 'archon' }).state).toBe('done');
   });
 
   it('records archon approval, subtask completion, approval, and force advance actions', () => {

@@ -52,6 +52,17 @@ export class ProgressService {
     });
   }
 
+  recordArchonDecision(taskId: string, stageId: string, decision: 'approved' | 'rejected', actor = 'archon', comment = '') {
+    return this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      event: `archon_${decision}`,
+      kind: 'archon',
+      stage_id: stageId,
+      actor,
+      detail: { decision, comment },
+    });
+  }
+
   recordAgentReport(
     taskId: string,
     stageId: string,
@@ -67,6 +78,16 @@ export class ProgressService {
       ...(subtaskId !== undefined ? { subtask_id: subtaskId } : {}),
       content,
       ...(artifacts !== undefined ? { artifacts } : {}),
+      actor,
+    });
+  }
+
+  recordTodosSnapshot(taskId: string, stageId: string, actor: string, content: string) {
+    return this.progressLogRepository.insertProgressLog({
+      task_id: taskId,
+      kind: 'todos',
+      stage_id: stageId,
+      content,
       actor,
     });
   }

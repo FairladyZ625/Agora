@@ -11,6 +11,7 @@ describe('agora-ts contracts bootstrap', () => {
 
   it('parses task priorities', () => {
     expect(taskPrioritySchema.parse('normal')).toBe('normal');
+    expect(() => taskPrioritySchema.parse('critical')).toThrow();
     expect(() => taskPrioritySchema.parse('urgent')).toThrow();
   });
 

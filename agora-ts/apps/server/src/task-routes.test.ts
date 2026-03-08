@@ -93,7 +93,7 @@ describe('task routes', () => {
       method: 'POST',
       url: '/api/tasks/OC-201/advance',
       payload: {
-        caller_id: 'opus',
+        caller_id: 'archon',
       },
     });
 
@@ -295,5 +295,106 @@ describe('task routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ cleaned: 1 });
     expect(taskService.getTask('OC-204')).toBeNull();
+  });
+
+  it('serves reject, archon-reject, and unblock routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-205',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const tasks = new TaskRepository(db);
+
+    taskService.createTask({
+      title: 'review rejection route',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    taskService.archonApproveTask('OC-205', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    taskService.forceAdvanceTask('OC-205', { reason: 'move to write' });
+    subtasks.insertSubtask({
+      id: 'write-205',
+      task_id: 'OC-205',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+    taskService.completeSubtask('OC-205', {
+      subtaskId: 'write-205',
+      callerId: 'glm5',
+      output: 'done',
+    });
+    taskService.advanceTask('OC-205', { callerId: 'archon' });
+
+    tasks.insertTask({
+      id: 'OC-206',
+      title: 'archon reject route',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [{ role: 'architect', agentId: 'opus', model_preference: 'reasoning' }] },
+      workflow: {
+        type: 'archon-review',
+        stages: [{ id: 'review', gate: { type: 'archon_review' } }],
+      },
+    });
+    tasks.updateTask('OC-206', 1, { state: 'created' });
+    tasks.updateTask('OC-206', 2, { state: 'active', current_stage: 'review' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-206', 'review');
+
+    tasks.insertTask({
+      id: 'OC-207',
+      title: 'unblock route',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    tasks.updateTask('OC-207', 1, { state: 'created' });
+    tasks.updateTask('OC-207', 2, { state: 'active' });
+    taskService.updateTaskState('OC-207', 'blocked', { reason: 'dependency' });
+
+    const app = buildApp({ taskService });
+
+    const reject = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-205/reject',
+      payload: {
+        rejector_id: 'gpt52',
+        reason: 'needs more detail',
+      },
+    });
+    const archonReject = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-206/archon-reject',
+      payload: {
+        reviewer_id: 'lizeyu',
+        reason: 'reject this stage',
+      },
+    });
+    const unblock = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-207/unblock',
+      payload: {
+        reason: 'dependency resolved',
+      },
+    });
+
+    expect(reject.statusCode).toBe(200);
+    expect(reject.json()).toMatchObject({ id: 'OC-205', current_stage: 'review' });
+    expect(archonReject.statusCode).toBe(200);
+    expect(archonReject.json()).toMatchObject({ id: 'OC-206', current_stage: 'review' });
+    expect(unblock.statusCode).toBe(200);
+    expect(unblock.json()).toMatchObject({ id: 'OC-207', state: 'active' });
   });
 });

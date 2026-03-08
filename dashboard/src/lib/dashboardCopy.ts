@@ -266,7 +266,6 @@ export function useReviewsPageCopy() {
     emptyTitle: t('reviews.emptyTitle'),
     emptySummary: t('reviews.emptySummary'),
     queueScopes: {
-      critical: t('reviews.queueScopes.critical'),
       high: t('reviews.queueScopes.high'),
     },
     tableHeaders: {

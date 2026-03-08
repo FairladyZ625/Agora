@@ -1,12 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+function buildTaskResponse() {
+  return {
+    id: 'OC-001',
+    version: 1,
+    title: 'task',
+    description: '',
+    type: 'coding',
+    priority: 'high',
+    creator: 'archon',
+    state: 'active',
+    current_stage: 'develop',
+    team: { members: [] },
+    workflow: { stages: [] },
+    scheduler: null,
+    scheduler_snapshot: null,
+    discord: null,
+    metrics: null,
+    error_detail: null,
+    created_at: '2026-03-08T00:00:00.000Z',
+    updated_at: '2026-03-08T00:00:00.000Z',
+  };
+}
+
 describe('dashboard task action api client', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    globalThis.fetch = vi.fn(async () => ({
+    globalThis.fetch = vi.fn(async (input) => ({
       ok: true,
-      json: async () => ({ ok: true }),
+      json: async () => {
+        const url = String(input);
+        if (url.endsWith('/cleanup')) {
+          return { cleaned: 1 };
+        }
+        return buildTaskResponse();
+      },
     })) as unknown as typeof fetch;
   });
 
@@ -106,5 +135,37 @@ describe('dashboard task action api client', () => {
       '/api/tasks/cleanup',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ task_id: 'OC-001' }) }),
     );
+  });
+
+  it('sends reviewer_id for archon review actions', async () => {
+    const api = await import('@/lib/api');
+
+    await api.archonApprove('OC-001', 'looks good');
+    await api.archonReject('OC-001', 'needs revision');
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tasks/OC-001/archon-approve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reviewer_id: 'archon', comment: 'looks good' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tasks/OC-001/archon-reject',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reviewer_id: 'archon', reason: 'needs revision' }),
+      }),
+    );
+  });
+
+  it('rejects malformed task responses during runtime parsing', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ id: 'OC-001' }),
+    })) as unknown as typeof fetch;
+    const api = await import('@/lib/api');
+
+    await expect(api.getTask('OC-001')).rejects.toThrow();
   });
 });

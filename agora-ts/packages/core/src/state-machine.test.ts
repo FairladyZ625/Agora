@@ -170,7 +170,7 @@ describe('agora-ts state machine', () => {
     ).toBe(true);
   });
 
-  it('checks auto_timeout gates against stage_history entered_at timestamps', () => {
+  it('checks auto_timeout gates against timeout_sec for legacy workflow compatibility', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const tasks = new TaskRepository(db);
@@ -178,7 +178,7 @@ describe('agora-ts state machine', () => {
     const task = buildTask({
       id: 'OC-002',
       workflow: {
-        stages: [{ id: 'wait', gate: { type: 'auto_timeout', timeout_minutes: 30 } }],
+        stages: [{ id: 'wait', gate: { type: 'auto_timeout', timeout_sec: 1800 } }],
       },
     });
 
@@ -200,7 +200,7 @@ describe('agora-ts state machine', () => {
       sm.checkGate(
         db,
         task,
-        { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_minutes: 30 } },
+        { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_sec: 1800 } },
         'system',
         '2026-03-08T10:20:00.000Z',
       ),
@@ -210,7 +210,7 @@ describe('agora-ts state machine', () => {
       sm.checkGate(
         db,
         task,
-        { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_minutes: 30 } },
+        { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_sec: 1800 } },
         'system',
         '2026-03-08T10:40:00.000Z',
       ),

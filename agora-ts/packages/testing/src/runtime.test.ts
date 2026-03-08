@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestRuntime } from './index.js';
 
 describe('agora-ts testing helpers', () => {
-  it('creates an isolated runtime with db, task service, and dashboard queries', () => {
+  it('creates an isolated runtime with authoring-capable services', () => {
     const runtime = createTestRuntime({
       taskIdGenerator: () => 'OC-700',
     });
@@ -19,6 +19,8 @@ describe('agora-ts testing helpers', () => {
     expect(task.id).toBe('OC-700');
     expect(runtime.db).toBeDefined();
     expect(agents.summary.active_tasks).toBe(1);
+    expect(runtime.inboxService).toBeDefined();
+    expect(runtime.templateAuthoringService).toBeDefined();
 
     runtime.cleanup();
   });

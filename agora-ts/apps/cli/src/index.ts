@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { loadAgoraConfig } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { TaskService } from '@agora-ts/core';
+import type { TaskPriority } from '@agora-ts/contracts';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -20,6 +21,7 @@ function resolveTaskService() {
   runMigrations(db);
   return new TaskService(db, {
     archonUsers: config.permissions.archonUsers,
+    allowAgents: config.permissions.allowAgents,
   });
 }
 
@@ -57,7 +59,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('-t, --type <type>', '任务类型', 'coding')
     .option('-p, --priority <priority>', '优先级', 'normal')
     .option('-c, --creator <creator>', '创建者', 'archon')
-    .action((title: string, options: { type: string; priority: string; creator: string }) => {
+    .action((title: string, options: { type: string; priority: TaskPriority; creator: string }) => {
       const task = taskService.createTask({
         title,
         type: options.type,

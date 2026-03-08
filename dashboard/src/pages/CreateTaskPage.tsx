@@ -15,9 +15,9 @@ export function CreateTaskPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<(typeof createTaskCopy.taskTypes)[number]['value']>('coding');
-  const [priority, setPriority] = useState<'low' | 'normal' | 'high' | 'critical'>('normal');
+  const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal');
   const [submitting, setSubmitting] = useState(false);
-  const priorities = ['low', 'normal', 'high', 'critical'] as const;
+  const priorities = ['low', 'normal', 'high'] as const;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

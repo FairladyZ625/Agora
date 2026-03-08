@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { promoteTodoResultSchema, taskStateSchema } from '@agora-ts/contracts';
 
-const projectRoot = resolve(process.cwd(), '..');
+const projectRoot = resolve(import.meta.dirname, '../../..');
 
 describe('shared contracts drift guard', () => {
   it('keeps dashboard api dto types sourced from agora-ts contracts', () => {
@@ -53,9 +53,13 @@ describe('shared contracts drift guard', () => {
   });
 
   it('keeps the OpenClaw plugin wired to shared contracts', () => {
+    const dashboardApi = readFileSync(resolve(projectRoot, 'dashboard/src/lib/api.ts'), 'utf8');
+    const dashboardPackage = readFileSync(resolve(projectRoot, 'dashboard/package.json'), 'utf8');
     const pluginPackage = readFileSync(resolve(projectRoot, 'extensions/agora-plugin/package.json'), 'utf8');
     const pluginBridge = readFileSync(resolve(projectRoot, 'extensions/agora-plugin/src/bridge.ts'), 'utf8');
 
+    expect(dashboardApi).toContain('reviewer_id: reviewerId');
+    expect(dashboardPackage).toContain('"@agora-ts/contracts"');
     expect(pluginPackage).toContain('"@agora-ts/contracts"');
     expect(pluginBridge).toContain('from "@agora-ts/contracts"');
   });

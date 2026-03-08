@@ -11,6 +11,18 @@ import type {
 } from '@/types/api';
 import type { CreateTaskInput } from '@/types/task';
 import type { TodoFilter } from '@/types/dashboard';
+import {
+  agentsStatusSchema,
+  archiveJobSchema,
+  healthResponseSchema,
+  promoteTodoResultSchema,
+  taskSchema,
+  taskStatusSchema,
+  templateDetailSchema,
+  templateSummarySchema,
+  todoItemSchema,
+} from '@agora-ts/contracts';
+import { z, type ZodType } from 'zod';
 
 class ApiError extends Error {
   status: number;
@@ -46,7 +58,7 @@ function getConfig() {
   return { apiBase: '/api', apiToken: '' };
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, schema: ZodType<T>, init?: RequestInit): Promise<T> {
   const { apiBase, apiToken } = getConfig();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -66,26 +78,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, res.statusText, body);
   }
 
-  return res.json() as Promise<T>;
+  const json = await res.json();
+  return schema.parse(json);
 }
 
 // ── Task APIs ────────────────────────────────────
 
 export function listTasks(state?: string): Promise<ApiTaskDto[]> {
   const params = state ? `?state=${encodeURIComponent(state)}` : '';
-  return request<ApiTaskDto[]>(`/tasks${params}`);
+  return request<ApiTaskDto[]>(`/tasks${params}`, z.array(taskSchema));
 }
 
 export function getTask(taskId: string): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}`);
+  return request<ApiTaskDto>(`/tasks/${taskId}`, taskSchema);
 }
 
 export function getTaskStatus(taskId: string): Promise<ApiTaskStatusDto> {
-  return request<ApiTaskStatusDto>(`/tasks/${taskId}/status`);
+  return request<ApiTaskStatusDto>(`/tasks/${taskId}/status`, taskStatusSchema);
 }
 
 export function createTask(input: CreateTaskInput): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>('/tasks', {
+  return request<ApiTaskDto>('/tasks', taskSchema, {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -94,21 +107,21 @@ export function createTask(input: CreateTaskInput): Promise<ApiTaskDto> {
 // ── Task Operations ──────────────────────────────
 
 export function advanceTask(taskId: string, callerId: string): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/advance`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/advance`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ caller_id: callerId }),
   });
 }
 
 export function approveTask(taskId: string, approverId: string, comment = ''): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/approve`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/approve`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ approver_id: approverId, comment }),
   });
 }
 
 export function rejectTask(taskId: string, rejectorId: string, reason: string): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/reject`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/reject`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ rejector_id: rejectorId, reason }),
   });
@@ -120,7 +133,7 @@ export function confirmTask(
   vote: 'approve' | 'reject',
   comment = '',
 ): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/confirm`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/confirm`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ voter_id: voterId, vote, comment }),
   });
@@ -132,48 +145,48 @@ export function subtaskDone(
   callerId: string,
   output = '',
 ): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/subtask-done`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/subtask-done`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ subtask_id: subtaskId, caller_id: callerId, output }),
   });
 }
 
 export function forceAdvanceTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/force-advance`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/force-advance`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
 }
 
 export function pauseTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/pause`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/pause`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
 }
 
 export function resumeTask(taskId: string): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/resume`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/resume`, taskSchema, {
     method: 'POST',
   });
 }
 
 export function cancelTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/cancel`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/cancel`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
 }
 
 export function unblockTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/unblock`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/unblock`, taskSchema, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
 }
 
 export function cleanupTasks(taskId?: string): Promise<{ cleaned: number }> {
-  return request<{ cleaned: number }>('/tasks/cleanup', {
+  return request<{ cleaned: number }>('/tasks/cleanup', z.object({ cleaned: z.number().int().nonnegative() }), {
     method: 'POST',
     body: JSON.stringify(taskId ? { task_id: taskId } : {}),
   });
@@ -182,33 +195,35 @@ export function cleanupTasks(taskId?: string): Promise<{ cleaned: number }> {
 export function archonApprove(
   taskId: string,
   comment = '',
+  reviewerId = 'archon',
 ): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/archon-approve`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/archon-approve`, taskSchema, {
     method: 'POST',
-    body: JSON.stringify({ comment }),
+    body: JSON.stringify({ reviewer_id: reviewerId, comment }),
   });
 }
 
 export function archonReject(
   taskId: string,
   reason: string,
+  reviewerId = 'archon',
 ): Promise<ApiTaskDto> {
-  return request<ApiTaskDto>(`/tasks/${taskId}/archon-reject`, {
+  return request<ApiTaskDto>(`/tasks/${taskId}/archon-reject`, taskSchema, {
     method: 'POST',
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reviewer_id: reviewerId, reason }),
   });
 }
 
 // ── Health ────────────────────────────────────────
 
 export function healthCheck(): Promise<ApiHealthDto> {
-  return request<ApiHealthDto>('/health');
+  return request<ApiHealthDto>('/health', healthResponseSchema);
 }
 
 // ── Agents / Archive / Todos / Templates ────────
 
 export function getAgentsStatus(): Promise<ApiAgentsStatusDto> {
-  return request<ApiAgentsStatusDto>('/agents/status');
+  return request<ApiAgentsStatusDto>('/agents/status', agentsStatusSchema);
 }
 
 export function listArchiveJobs(filters?: { status?: string; taskId?: string }): Promise<ApiArchiveJobDto[]> {
@@ -216,15 +231,15 @@ export function listArchiveJobs(filters?: { status?: string; taskId?: string }):
   if (filters?.status) params.set('status', filters.status);
   if (filters?.taskId) params.set('task_id', filters.taskId);
   const query = params.toString();
-  return request<ApiArchiveJobDto[]>(`/archive/jobs${query ? `?${query}` : ''}`);
+  return request<ApiArchiveJobDto[]>(`/archive/jobs${query ? `?${query}` : ''}`, z.array(archiveJobSchema));
 }
 
 export function getArchiveJob(jobId: number): Promise<ApiArchiveJobDto> {
-  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}`);
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}`, archiveJobSchema);
 }
 
 export function retryArchiveJob(jobId: number, reason = ''): Promise<ApiArchiveJobDto> {
-  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/retry`, {
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/retry`, archiveJobSchema, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
@@ -232,7 +247,7 @@ export function retryArchiveJob(jobId: number, reason = ''): Promise<ApiArchiveJ
 
 export function listTodos(status?: Exclude<TodoFilter, 'all'>): Promise<ApiTodoDto[]> {
   const params = status ? `?status=${encodeURIComponent(status)}` : '';
-  return request<ApiTodoDto[]>(`/todos${params}`);
+  return request<ApiTodoDto[]>(`/todos${params}`, z.array(todoItemSchema));
 }
 
 export function createTodo(input: {
@@ -240,7 +255,7 @@ export function createTodo(input: {
   due?: string | null;
   tags?: string[];
 }): Promise<ApiTodoDto> {
-  return request<ApiTodoDto>('/todos', {
+  return request<ApiTodoDto>('/todos', todoItemSchema, {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -255,14 +270,14 @@ export function updateTodo(
     status?: 'pending' | 'done';
   },
 ): Promise<ApiTodoDto> {
-  return request<ApiTodoDto>(`/todos/${todoId}`, {
+  return request<ApiTodoDto>(`/todos/${todoId}`, todoItemSchema, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
 }
 
 export function deleteTodo(todoId: number): Promise<{ deleted: true }> {
-  return request<{ deleted: true }>(`/todos/${todoId}`, {
+  return request<{ deleted: true }>(`/todos/${todoId}`, z.object({ deleted: z.literal(true) }), {
     method: 'DELETE',
   });
 }
@@ -275,18 +290,18 @@ export function promoteTodo(
     priority?: string;
   },
 ): Promise<ApiPromoteTodoResultDto> {
-  return request<ApiPromoteTodoResultDto>(`/todos/${todoId}/promote`, {
+  return request<ApiPromoteTodoResultDto>(`/todos/${todoId}/promote`, promoteTodoResultSchema, {
     method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
 export function listTemplates(): Promise<ApiTemplateSummaryDto[]> {
-  return request<ApiTemplateSummaryDto[]>('/templates');
+  return request<ApiTemplateSummaryDto[]>('/templates', z.array(templateSummarySchema));
 }
 
 export function getTemplate(templateId: string): Promise<ApiTemplateDetailDto> {
-  return request<ApiTemplateDetailDto>(`/templates/${templateId}`);
+  return request<ApiTemplateDetailDto>(`/templates/${templateId}`, templateDetailSchema);
 }
 
 export { ApiError };

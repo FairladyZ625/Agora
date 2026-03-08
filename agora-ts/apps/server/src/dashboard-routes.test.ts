@@ -159,4 +159,40 @@ describe('dashboard routes', () => {
     expect(retryArchive.json()).toMatchObject({ status: 'pending' });
     expect(deleteTodo.statusCode).toBe(200);
   });
+
+  it('returns 400 for malformed todo payloads and invalid numeric ids', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-502',
+    });
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const app = buildApp({ taskService, dashboardQueryService: dashboardQueries });
+
+    const badCreateTodo = await app.inject({
+      method: 'POST',
+      url: '/api/todos',
+      payload: {},
+    });
+    const badPatchTodo = await app.inject({
+      method: 'PATCH',
+      url: '/api/todos/not-a-number',
+      payload: { status: 'done' },
+    });
+    const badPromoteTodo = await app.inject({
+      method: 'POST',
+      url: '/api/todos/not-a-number/promote',
+      payload: { type: 'quick', creator: 'archon', priority: 'high' },
+    });
+    const badArchiveJob = await app.inject({
+      method: 'GET',
+      url: '/api/archive/jobs/not-a-number',
+    });
+
+    expect(badCreateTodo.statusCode).toBe(400);
+    expect(badPatchTodo.statusCode).toBe(400);
+    expect(badPromoteTodo.statusCode).toBe(400);
+    expect(badArchiveJob.statusCode).toBe(400);
+  });
 });

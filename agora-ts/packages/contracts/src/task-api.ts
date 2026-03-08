@@ -38,7 +38,7 @@ export const taskSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   type: z.string(),
-  priority: taskPrioritySchema.or(z.string()),
+  priority: taskPrioritySchema,
   creator: z.string(),
   state: taskStateSchema.or(z.string()),
   current_stage: z.string().nullable(),
@@ -109,7 +109,7 @@ export const createTaskRequestSchema = z.object({
   type: z.string().min(1),
   creator: z.string().min(1),
   description: z.string(),
-  priority: taskPrioritySchema.or(z.string()),
+  priority: taskPrioritySchema,
 });
 export type CreateTaskRequestDto = z.infer<typeof createTaskRequestSchema>;
 
@@ -160,3 +160,8 @@ export const taskNoteRequestSchema = z.object({
   reason: z.string().default(''),
 });
 export type TaskNoteRequestDto = z.infer<typeof taskNoteRequestSchema>;
+
+export const cleanupTasksRequestSchema = z.object({
+  task_id: z.string().optional(),
+});
+export type CleanupTasksRequestDto = z.infer<typeof cleanupTasksRequestSchema>;

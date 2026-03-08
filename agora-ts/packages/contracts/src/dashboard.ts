@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { taskSchema } from './task-api.js';
+import { taskPrioritySchema } from './task.js';
 
 export const agentSummarySchema = z.object({
   active_tasks: z.number().int().nonnegative(),
@@ -65,6 +66,28 @@ export const promoteTodoResultSchema = z.object({
   task: taskSchema,
 });
 export type PromoteTodoResultDto = z.infer<typeof promoteTodoResultSchema>;
+
+export const createTodoRequestSchema = z.object({
+  text: z.string().min(1),
+  due: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+});
+export type CreateTodoRequestDto = z.infer<typeof createTodoRequestSchema>;
+
+export const updateTodoRequestSchema = z.object({
+  text: z.string().min(1).optional(),
+  due: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(['pending', 'done']).optional(),
+});
+export type UpdateTodoRequestDto = z.infer<typeof updateTodoRequestSchema>;
+
+export const promoteTodoRequestSchema = z.object({
+  type: z.string().min(1).default('quick'),
+  creator: z.string().min(1).default('archon'),
+  priority: taskPrioritySchema.default('normal'),
+});
+export type PromoteTodoRequestDto = z.infer<typeof promoteTodoRequestSchema>;
 
 export const templateSummarySchema = z.object({
   id: z.string(),

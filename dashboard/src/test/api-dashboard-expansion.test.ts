@@ -1,12 +1,150 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+function buildTaskResponse() {
+  return {
+    id: 'OC-001',
+    version: 1,
+    title: 'task',
+    description: '',
+    type: 'quick',
+    priority: 'high',
+    creator: 'archon',
+    state: 'active',
+    current_stage: 'execute',
+    team: { members: [] },
+    workflow: { stages: [] },
+    scheduler: null,
+    scheduler_snapshot: null,
+    discord: null,
+    metrics: null,
+    error_detail: null,
+    created_at: '2026-03-08T00:00:00.000Z',
+    updated_at: '2026-03-08T00:00:00.000Z',
+  };
+}
+
 describe('dashboard expansion api client', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
-    globalThis.fetch = vi.fn(async () => ({
+    globalThis.fetch = vi.fn(async (input, init) => ({
       ok: true,
-      json: async () => ({ ok: true }),
+      json: async () => {
+        const url = String(input);
+        const method = init?.method ?? 'GET';
+        if (url.includes('/agents/status')) {
+          return {
+            summary: { active_tasks: 1, active_agents: 2, busy_craftsmen: 0 },
+            agents: [],
+            craftsmen: [],
+          };
+        }
+        if (url.includes('/archive/jobs')) {
+          return url.endsWith('/retry') || /\/archive\/jobs\/\d+$/.test(url)
+            ? {
+                id: 7,
+                task_id: 'OC-001',
+                task_title: 'archive',
+                task_type: 'document',
+                status: 'pending',
+                target_path: null,
+                writer_agent: null,
+                commit_hash: null,
+                requested_at: '2026-03-08T00:00:00.000Z',
+                completed_at: null,
+                payload: null,
+              }
+            : [{
+                id: 7,
+                task_id: 'OC-001',
+                task_title: 'archive',
+                task_type: 'document',
+                status: 'failed',
+                target_path: null,
+                writer_agent: null,
+                commit_hash: null,
+                requested_at: '2026-03-08T00:00:00.000Z',
+                completed_at: null,
+                payload: null,
+              }];
+        }
+        if (url.includes('/todos')) {
+          if (url.endsWith('/promote')) {
+            return {
+              todo: {
+                id: 3,
+                text: '补前端页面 v2',
+                status: 'done',
+                due: null,
+                created_at: '2026-03-08T00:00:00.000Z',
+                completed_at: '2026-03-08T01:00:00.000Z',
+                tags: [],
+                promoted_to: 'OC-001',
+              },
+              task: buildTaskResponse(),
+            };
+          }
+          if (method === 'GET' && (url.endsWith('/todos') || url.includes('/todos?'))) {
+            return [{
+              id: 3,
+              text: '补前端页面',
+              status: 'pending',
+              due: '2026-03-09',
+              created_at: '2026-03-08T00:00:00.000Z',
+              completed_at: null,
+              tags: ['dashboard'],
+              promoted_to: null,
+            }];
+          }
+          if (method !== 'GET' && url.endsWith('/todos')) {
+            return {
+              id: 3,
+              text: '补前端页面',
+              status: 'pending',
+              due: '2026-03-09',
+              created_at: '2026-03-08T00:00:00.000Z',
+              completed_at: null,
+              tags: ['dashboard'],
+              promoted_to: null,
+            };
+          }
+          if (method === 'DELETE' && /\/todos\/\d+$/.test(url)) {
+            return { deleted: true };
+          }
+          if (/\/todos\/\d+$/.test(url)) {
+            return {
+              id: 3,
+              text: '补前端页面 v2',
+              status: 'done',
+              due: '2026-03-09',
+              created_at: '2026-03-08T00:00:00.000Z',
+              completed_at: '2026-03-08T01:00:00.000Z',
+              tags: ['dashboard'],
+              promoted_to: null,
+            };
+          }
+        }
+        if (url.endsWith('/templates')) {
+          return [{
+            id: 'coding',
+            name: 'Coding',
+            type: 'coding',
+            description: 'template',
+            governance: null,
+            stage_count: 3,
+          }];
+        }
+        if (url.includes('/templates/')) {
+          return {
+            name: 'Coding',
+            type: 'coding',
+            description: 'template',
+            defaultWorkflow: 'linear',
+            stages: [{ id: 'draft' }],
+          };
+        }
+        return {};
+      },
     })) as unknown as typeof fetch;
   });
 
@@ -103,5 +241,15 @@ describe('dashboard expansion api client', () => {
       '/api/templates/coding',
       expect.objectContaining({ method: 'GET' }),
     );
+  });
+
+  it('rejects malformed dashboard expansion responses during runtime parsing', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ summary: {} }),
+    })) as unknown as typeof fetch;
+    const api = await import('@/lib/api');
+
+    await expect(api.getAgentsStatus()).rejects.toThrow();
   });
 });

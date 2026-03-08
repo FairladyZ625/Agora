@@ -17,7 +17,7 @@ type SqlValue = string | number | bigint | Uint8Array | null;
 export class TodoRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
-  insertTodo(input: { text: string; due?: string | null; tags?: string[] }): StoredTodo {
+  insertTodo(input: { text: string; due?: string | null | undefined; tags?: string[] | undefined }): StoredTodo {
     const info = this.db.prepare(`
       INSERT INTO todos (text, status, due, tags)
       VALUES (?, 'pending', ?, ?)

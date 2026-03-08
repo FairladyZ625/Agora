@@ -43,6 +43,9 @@ jobs:
       - name: Run strict TS quality gates
         run: npm run check:strict
 
+      - name: Run scenario harness
+        run: npm run scenario:all
+
   dashboard-check:
     runs-on: ubuntu-latest
     defaults:

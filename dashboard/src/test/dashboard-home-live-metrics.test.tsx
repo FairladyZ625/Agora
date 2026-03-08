@@ -42,7 +42,7 @@ const liveTasks: Task[] = [
     title: '等待裁决',
     description: '进入 gate 等待批准。',
     type: 'review',
-    priority: 'critical',
+    priority: 'high',
     creator: 'archon',
     state: 'gate_waiting',
     current_stage: 'review',

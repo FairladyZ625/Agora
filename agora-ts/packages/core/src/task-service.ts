@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CreateTaskRequestDto, TaskStatusDto, WorkflowDto } from '@agora-ts/contracts';
+import type { CreateTaskRequestDto, PromoteTodoRequestDto, TaskStatusDto, WorkflowDto } from '@agora-ts/contracts';
 import {
   FlowLogRepository,
   ProgressLogRepository,
@@ -34,6 +34,7 @@ export interface TaskServiceOptions {
   templatesDir?: string;
   taskIdGenerator?: () => string;
   archonUsers?: string[];
+  allowAgents?: Record<string, { canCall: string[]; canAdvance: boolean }>;
 }
 
 export interface AdvanceTaskOptions {
@@ -107,8 +108,8 @@ export class TaskService {
     this.todoRepository = new TodoRepository(db);
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
-      ? new PermissionService({ archonUsers: options.archonUsers })
-      : new PermissionService();
+      ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
+      : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
@@ -186,7 +187,7 @@ export class TaskService {
   getTaskStatus(taskId: string): TaskStatusDto {
     const task = this.getTaskOrThrow(taskId);
     return {
-      task,
+      task: task as TaskStatusDto['task'],
       flow_log: this.flowLogRepository.listByTask(taskId),
       progress_log: this.progressLogRepository.listByTask(taskId),
       subtasks: this.subtaskRepository.listByTask(taskId),
@@ -471,7 +472,7 @@ export class TaskService {
     return updated;
   }
 
-  promoteTodo(todoId: number, options: { type: string; creator: string; priority: string }) {
+  promoteTodo(todoId: number, options: PromoteTodoRequestDto) {
     const todo = this.todoRepository.getTodo(todoId);
     if (!todo) {
       throw new NotFoundError(`Todo ${todoId} not found`);
@@ -500,14 +501,21 @@ export class TaskService {
     let count = 0;
     for (const row of rows) {
       const orphanedTaskId = row.id;
-      this.db.prepare('DELETE FROM subtasks WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM flow_log WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM progress_log WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM stage_history WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM archon_reviews WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM approvals WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM quorum_votes WHERE task_id = ?').run(orphanedTaskId);
-      this.db.prepare('DELETE FROM tasks WHERE id = ?').run(orphanedTaskId);
+      this.db.exec('BEGIN');
+      try {
+        this.db.prepare('DELETE FROM subtasks WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM flow_log WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM progress_log WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM stage_history WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM archon_reviews WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM approvals WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM quorum_votes WHERE task_id = ?').run(orphanedTaskId);
+        this.db.prepare('DELETE FROM tasks WHERE id = ?').run(orphanedTaskId);
+        this.db.exec('COMMIT');
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
       count += 1;
     }
     return count;

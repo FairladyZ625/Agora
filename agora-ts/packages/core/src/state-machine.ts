@@ -134,11 +134,15 @@ export class StateMachine {
       if (!row?.entered_at) {
         return false;
       }
+      const elapsedMs = Date.parse(now) - Date.parse(row.entered_at);
+      const timeoutSeconds = Number(stage.gate?.timeout_sec ?? 0);
+      if (Number.isFinite(timeoutSeconds) && timeoutSeconds > 0) {
+        return elapsedMs >= timeoutSeconds * 1000;
+      }
       const timeoutMinutes = Number(stage.gate?.timeout_minutes ?? stage.gate?.timeoutMinutes ?? 0);
       if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) {
         return false;
       }
-      const elapsedMs = Date.parse(now) - Date.parse(row.entered_at);
       return elapsedMs >= timeoutMinutes * 60_000;
     }
 

@@ -6,17 +6,21 @@ import {
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
   archonRejectTaskRequestSchema,
+  cleanupTasksRequestSchema,
   confirmTaskRequestSchema,
+  createTodoRequestSchema,
   createInboxRequestSchema,
   createTaskRequestSchema,
   duplicateTemplateRequestSchema,
   type HealthResponse,
+  promoteTodoRequestSchema,
   promoteInboxRequestSchema,
   rejectTaskRequestSchema,
   saveTemplateRequestSchema,
   subtaskDoneRequestSchema,
   taskNoteRequestSchema,
   templateValidationRequestSchema,
+  updateTodoRequestSchema,
   updateInboxRequestSchema,
   updateTemplateWorkflowRequestSchema,
   validateWorkflowRequestSchema,
@@ -49,6 +53,14 @@ function translateError(error: unknown) {
     return { statusCode: 400, body: { message: error.message } };
   }
   return { statusCode: 500, body: { message: 'Unknown error' } };
+}
+
+function parseNumericId(raw: string, fieldName: string) {
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${fieldName} must be a non-negative integer`);
+  }
+  return parsed;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -347,8 +359,13 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
-    const payload = (request.body as { task_id?: string } | undefined) ?? {};
-    return reply.send({ cleaned: taskService.cleanupOrphaned(payload.task_id) });
+    try {
+      const payload = cleanupTasksRequestSchema.parse(request.body ?? {});
+      return reply.send({ cleaned: taskService.cleanupOrphaned(payload.task_id) });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   app.get('/api/inbox', async (request, reply) => {
@@ -384,7 +401,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { inboxId: string };
       const payload = updateInboxRequestSchema.parse(request.body);
-      return reply.send(inboxService.updateInboxItem(Number(params.inboxId), payload));
+      return reply.send(inboxService.updateInboxItem(parseNumericId(params.inboxId, 'inboxId'), payload));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -397,7 +414,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { inboxId: string };
-      return reply.send(inboxService.deleteInboxItem(Number(params.inboxId)));
+      return reply.send(inboxService.deleteInboxItem(parseNumericId(params.inboxId, 'inboxId')));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -411,7 +428,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { inboxId: string };
       const payload = promoteInboxRequestSchema.parse(request.body);
-      return reply.send(inboxService.promoteInboxItem(Number(params.inboxId), payload));
+      return reply.send(inboxService.promoteInboxItem(parseNumericId(params.inboxId, 'inboxId'), payload));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -448,7 +465,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { jobId: string };
-      return reply.send(dashboardQueryService.getArchiveJob(Number(params.jobId)));
+      return reply.send(dashboardQueryService.getArchiveJob(parseNumericId(params.jobId, 'jobId')));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -461,7 +478,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { jobId: string };
-      return reply.send(dashboardQueryService.retryArchiveJob(Number(params.jobId)));
+      return reply.send(dashboardQueryService.retryArchiveJob(parseNumericId(params.jobId, 'jobId')));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -484,8 +501,13 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!dashboardQueryService) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
-    const payload = request.body as { text: string; due?: string | null; tags?: string[] };
-    return reply.send(dashboardQueryService.createTodo(payload));
+    try {
+      const payload = createTodoRequestSchema.parse(request.body);
+      return reply.send(dashboardQueryService.createTodo(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   app.patch('/api/todos/:todoId', async (request, reply) => {
@@ -494,8 +516,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { todoId: string };
-      const payload = request.body as { text?: string; due?: string | null; tags?: string[]; status?: string };
-      return reply.send(dashboardQueryService.updateTodo(Number(params.todoId), payload));
+      const payload = updateTodoRequestSchema.parse(request.body);
+      return reply.send(dashboardQueryService.updateTodo(parseNumericId(params.todoId, 'todoId'), payload));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -508,7 +530,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { todoId: string };
-      return reply.send(dashboardQueryService.deleteTodo(Number(params.todoId)));
+      return reply.send(dashboardQueryService.deleteTodo(parseNumericId(params.todoId, 'todoId')));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -521,8 +543,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { todoId: string };
-      const payload = request.body as { type: string; creator: string; priority: string };
-      return reply.send(taskService.promoteTodo(Number(params.todoId), payload));
+      const payload = promoteTodoRequestSchema.parse(request.body);
+      return reply.send(taskService.promoteTodo(parseNumericId(params.todoId, 'todoId'), payload));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

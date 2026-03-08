@@ -1,4 +1,4 @@
-import type { PromoteInboxRequestDto, UpdateInboxRequestDto } from '@agora-ts/contracts';
+import type { PromoteInboxRequestDto, TaskPriority, UpdateInboxRequestDto } from '@agora-ts/contracts';
 import { InboxRepository, TodoRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type { TaskService } from './task-service.js';
@@ -74,7 +74,7 @@ export class InboxService {
       type: options.type,
       creator: options.creator,
       description: item.notes ?? '',
-      priority: options.priority,
+      priority: options.priority as TaskPriority,
     });
     const inbox = this.inboxRepository.updateInboxItem(inboxId, {
       status: 'promoted',
