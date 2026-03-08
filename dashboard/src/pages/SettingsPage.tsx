@@ -81,7 +81,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="page-enter space-y-6">
+    <div className="space-y-6">
       <section className="surface-panel surface-panel--intro space-y-2">
         <p className="page-kicker">{settingsPageCopy.kicker}</p>
         <h2 className="page-title">{settingsPageCopy.title}</h2>

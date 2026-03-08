@@ -1,0 +1,123 @@
+@media (min-width: 960px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  }
+
+  .hero-display {
+    font-size: var(--font-size-hero-title-desktop);
+  }
+
+  .home-content-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(var(--workbench-pane-min), 0.9fr);
+  }
+
+  .settings-form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell__hero,
+  .workbench-header__top,
+  .workbench-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .workbench-grid,
+  .workbench-hero__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .review-canvas__masthead,
+  .review-canvas__commandbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .review-canvas__signals,
+  .review-canvas__body {
+    grid-template-columns: 1fr;
+  }
+
+  .review-pane--queue {
+    border-right: 0;
+    border-bottom: 1px solid var(--review-divider);
+  }
+}
+
+@media (max-width: 767px) {
+  .app-shell {
+    padding: var(--mobile-shell-padding);
+  }
+
+  .app-frame,
+  .app-topbar,
+  .app-shell__footer {
+    width: 100%;
+  }
+
+  .app-shell__footer,
+  .app-topbar {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .experience-notice {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    width: auto;
+  }
+
+  .preview-badge {
+    height: 28px;
+    font-size: 10px;
+  }
+
+  .workspace-page {
+    gap: 16px;
+  }
+
+  .workbench-shell {
+    padding: var(--mobile-page-padding);
+  }
+
+  .workbench-hero__stats {
+    min-width: 0;
+  }
+
+  .workbench-sheet__panel {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    margin: 8px;
+  }
+
+  .review-canvas__signals {
+    min-width: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .review-table__head {
+    display: none;
+  }
+
+  .review-table__row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 16px 0;
+  }
+
+  .review-table__cell--right {
+    text-align: left;
+  }
+
+  .dense-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dense-row__time {
+    text-align: left;
+  }
+}
+

@@ -27,7 +27,7 @@ export function AgentsPage() {
   );
 
   return (
-    <div className="page-enter space-y-6">
+    <div className="space-y-6">
       <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">
           <div>

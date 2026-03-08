@@ -1,6 +1,7 @@
 import '@/lib/i18n';
 import { Routes, Route, Navigate } from 'react-router';
 import { AppShell } from '@/components/layouts/AppShell';
+import { PageTransition } from '@/components/ui/PageTransition';
 import { DashboardHome } from '@/pages/DashboardHome';
 import { BoardPage } from '@/pages/BoardPage';
 import { TasksPage } from '@/pages/TasksPage';
@@ -15,7 +16,8 @@ import { SettingsPage } from '@/pages/SettingsPage';
 export default function App() {
   return (
     <AppShell>
-      <Routes>
+      <PageTransition>
+        <Routes>
         <Route path="/" element={<DashboardHome />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/agents" element={<AgentsPage />} />
@@ -30,6 +32,7 @@ export default function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </PageTransition>
     </AppShell>
   );
 }

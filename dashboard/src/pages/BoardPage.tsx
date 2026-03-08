@@ -37,7 +37,7 @@ export function BoardPage() {
   );
 
   return (
-    <div className="page-enter space-y-6">
+    <div className="space-y-6">
       <section className="surface-panel surface-panel--workspace space-y-4">
         <div className="section-title-row">
           <div>

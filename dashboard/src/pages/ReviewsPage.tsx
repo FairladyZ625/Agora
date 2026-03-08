@@ -9,6 +9,7 @@ import { useTaskStore } from '@/stores/taskStore';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta } from '@/lib/taskMeta';
 
@@ -273,24 +274,25 @@ export function ReviewsPage() {
                 </div>
 
                 {filteredQueue.length > 0 ? (
-                  filteredQueue.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setSelectedId(item.id)}
-                      className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
-                    >
-                      <div className="review-table__task">
-                        <span className="type-mono-xs">{item.id}</span>
-                        <strong className="review-table__title">{item.title}</strong>
-                        <p className="review-table__summary">{item.summary}</p>
-                      </div>
-                      <span className="review-table__cell">{item.gate}</span>
-                      <div className="review-table__cell">
-                        <PriorityBadge priority={item.priority} />
-                      </div>
-                      <span className="review-table__cell review-table__cell--right">{item.waitTime}</span>
-                    </button>
+                  filteredQueue.map((item, index) => (
+                    <StaggeredItem key={item.id} index={index}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(item.id)}
+                        className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
+                      >
+                        <div className="review-table__task">
+                          <span className="type-mono-xs">{item.id}</span>
+                          <strong className="review-table__title">{item.title}</strong>
+                          <p className="review-table__summary">{item.summary}</p>
+                        </div>
+                        <span className="review-table__cell">{item.gate}</span>
+                        <div className="review-table__cell">
+                          <PriorityBadge priority={item.priority} />
+                        </div>
+                        <span className="review-table__cell review-table__cell--right">{item.waitTime}</span>
+                      </button>
+                    </StaggeredItem>
                   ))
                 ) : (
                   <div className="empty-state">

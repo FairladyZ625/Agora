@@ -13,6 +13,7 @@ import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
 import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
 import { useTaskStore } from '@/stores/taskStore';
 import { StateBadge } from '@/components/ui/StateBadge';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 
 export function DashboardHome() {
@@ -61,7 +62,7 @@ export function DashboardHome() {
 
   return (
     <div className="space-y-6">
-      <section className="page-enter surface-panel surface-panel--hero">
+      <section className="surface-panel surface-panel--hero">
         <div className="hero-grid">
           <div className="hero-copy-block">
             <p className="page-kicker">{dashboardHomeCopy.kicker}</p>
@@ -150,10 +151,14 @@ export function DashboardHome() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map(({ label, value, note, icon: Icon }, index) => (
+        {loading
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} variant="card" />
+            ))
+          : metrics.map(({ label, value, note, icon: Icon }, index) => (
           <div
             key={label}
-            className={`page-enter metric-card ${index === 0 ? 'metric-card--primary' : index === 1 ? 'metric-card--warning' : index === 2 ? 'metric-card--success' : 'metric-card--neutral'}`}
+            className={`metric-card ${index === 0 ? 'metric-card--primary' : index === 1 ? 'metric-card--warning' : index === 2 ? 'metric-card--success' : 'metric-card--neutral'}`}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -170,7 +175,7 @@ export function DashboardHome() {
       </div>
 
       <div className="home-content-grid">
-        <section className="page-enter surface-panel surface-panel--workspace">
+        <section className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <div>
               <p className="page-kicker">{dashboardHomeCopy.feedKicker}</p>
@@ -182,7 +187,9 @@ export function DashboardHome() {
           </div>
 
           <div className="mt-5 space-y-3">
-            {displayTasks.slice(0, 5).map((task) => (
+            {loading
+              ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} variant="row" />)
+              : displayTasks.slice(0, 5).map((task) => (
               <div key={task.id} className="data-row">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -209,7 +216,7 @@ export function DashboardHome() {
         </section>
 
         <div className="space-y-6">
-          <section className="page-enter surface-panel surface-panel--workspace">
+          <section className="surface-panel surface-panel--workspace">
             <div className="section-title-row">
               <div>
                 <p className="page-kicker">{dashboardHomeCopy.reviewKicker}</p>
@@ -247,7 +254,7 @@ export function DashboardHome() {
             </div>
           </section>
 
-          <section className="page-enter surface-panel surface-panel--muted surface-panel--workspace">
+          <section className="surface-panel surface-panel--muted surface-panel--workspace">
             <div className="section-title-row">
               <div>
                 <p className="page-kicker">{dashboardHomeCopy.principleKicker}</p>

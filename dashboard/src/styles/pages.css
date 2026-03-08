@@ -1,0 +1,130 @@
+.home-content-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.home-principles {
+  font-size: var(--font-size-body-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  border: 1px solid var(--preview-badge-border);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: var(--preview-badge-bg);
+  color: var(--preview-badge-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.preview-badge--liquid {
+  background: var(--preview-badge-liquid-bg);
+}
+
+.app-frame--page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 0 !important;
+}
+
+.workspace-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+}
+
+.workspace-page--locked {
+  height: 100%;
+  overflow: hidden;
+}
+
+
+.hero-sigil {
+  position: relative;
+  margin-top: 20px;
+  height: 164px;
+  border-radius: var(--radius-xl);
+  background: var(--hero-sigil-bg);
+  overflow: hidden;
+}
+
+.hero-sigil__ring {
+  position: absolute;
+  inset: 50%;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--hero-sigil-ring);
+  border-radius: 999px;
+  opacity: 0.78;
+}
+
+.hero-sigil__ring--outer {
+  width: 152px;
+  height: 152px;
+}
+
+.hero-sigil__ring--middle {
+  width: 112px;
+  height: 112px;
+}
+
+.hero-sigil__ring--inner {
+  width: 72px;
+  height: 72px;
+}
+
+.hero-sigil__core {
+  position: absolute;
+  inset: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--hero-sigil-core-bg);
+  color: var(--button-primary-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: var(--shadow-hero-core);
+}
+
+.hero-sigil__label {
+  position: absolute;
+  font-size: var(--font-size-kicker);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hero-sigil-label-color);
+}
+
+.hero-sigil__label--left {
+  left: 24px;
+  top: 48%;
+}
+
+.hero-sigil__label--right {
+  right: 20px;
+  top: 28%;
+}
+
+.hero-sigil__label--bottom {
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+}
+

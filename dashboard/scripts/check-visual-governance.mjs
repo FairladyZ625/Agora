@@ -4,6 +4,10 @@ import path from 'node:path';
 const projectRoot = new URL('..', import.meta.url);
 const srcDir = path.join(projectRoot.pathname, 'src');
 const allowedCssFile = path.join(srcDir, 'index.css');
+const allowedCssFiles = new Set([
+  allowedCssFile,
+  path.join(srcDir, 'styles', 'tokens.css'),
+]);
 const colorPattern = /#(?:[0-9a-fA-F]{3,8})\b|rgba?\(|hsla?\(/;
 const arbitraryTailwindPattern =
   /\b(?:text|tracking|grid-cols|bg|border|rounded|h|w|min-w|max-w|px|py|pt|pb|pl|pr|mt|mb|ml|mr)-\[[^\]]+\]/;
@@ -14,6 +18,7 @@ const allowedExtensions = new Set(['.ts', '.tsx', '.css']);
 const localeDir = path.join(srcDir, 'locales');
 const allowedHardcodedCopyFiles = new Set([
   allowedCssFile,
+  ...allowedCssFiles,
   path.join(srcDir, 'lib', 'mockDashboard.ts'),
 ]);
 const hardcodedCopyPattern =
@@ -39,7 +44,7 @@ function inspectFile(filePath) {
   const lines = content.split('\n');
   const relativePath = path.relative(projectRoot.pathname, filePath);
 
-  if (filePath !== allowedCssFile) {
+  if (!allowedCssFiles.has(filePath)) {
     lines.forEach((line, index) => {
       if (colorPattern.test(line)) {
         failures.push(`${relativePath}:${index + 1} raw color literal is not allowed outside src/index.css theme tokens`);

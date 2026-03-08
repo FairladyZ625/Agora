@@ -10,6 +10,7 @@ import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
 import type { TaskAction } from '@/types/task';
@@ -289,30 +290,31 @@ export function TasksPage() {
 
             <div className="workbench-scroll workbench-scroll--list">
               <div className="dense-list">
-                {filteredTasks.map((task) => (
-                  <button
-                    key={task.id}
-                    type="button"
-                    onClick={() => {
-                      setActionActor('');
-                      void selectTask(task.id);
-                    }}
-                    className={task.id === activeTask?.id ? 'dense-row dense-row--active' : 'dense-row'}
-                  >
-                    <div className="dense-row__main">
-                      <div className="dense-row__titleblock">
-                        <span className="type-mono-xs">{task.id}</span>
-                        <strong className="dense-row__title">{task.title}</strong>
+                {filteredTasks.map((task, index) => (
+                  <StaggeredItem key={task.id} index={index}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionActor('');
+                        void selectTask(task.id);
+                      }}
+                      className={task.id === activeTask?.id ? 'dense-row dense-row--active' : 'dense-row'}
+                    >
+                      <div className="dense-row__main">
+                        <div className="dense-row__titleblock">
+                          <span className="type-mono-xs">{task.id}</span>
+                          <strong className="dense-row__title">{task.title}</strong>
+                        </div>
+                        <div className="dense-row__meta">
+                          <StateBadge state={task.state} />
+                          <PriorityBadge priority={task.priority} />
+                          <span>{task.teamLabel}</span>
+                          <span>{task.workflowLabel}</span>
+                        </div>
                       </div>
-                      <div className="dense-row__meta">
-                        <StateBadge state={task.state} />
-                        <PriorityBadge priority={task.priority} />
-                        <span>{task.teamLabel}</span>
-                        <span>{task.workflowLabel}</span>
-                      </div>
-                    </div>
-                    <span className="dense-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
-                  </button>
+                      <span className="dense-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
+                    </button>
+                  </StaggeredItem>
                 ))}
 
                 {filteredTasks.length === 0 ? (

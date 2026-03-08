@@ -1,0 +1,188 @@
+.app-topbar {
+  margin: var(--shell-padding) auto 0;
+  width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--topbar-shell-shadow);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+.app-sidebar {
+  overflow: hidden;
+  border: 1px solid var(--sidebar-shell-border);
+  border-radius: var(--radius-3xl);
+  background: var(--sidebar-shell-bg);
+  box-shadow: var(--sidebar-shell-shadow);
+}
+
+.app-sidebar--collapsed {
+  width: var(--sidebar-width-collapsed);
+}
+
+.app-sidebar--expanded {
+  width: var(--sidebar-width-expanded);
+}
+
+.nav-section-label {
+  margin: 0 10px 12px;
+  font-size: var(--font-size-kicker);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-text-tertiary);
+}
+
+.nav-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  color: var(--color-text-secondary);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.nav-link:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
+}
+
+.nav-link--active {
+  color: var(--color-text-primary);
+  background: var(--nav-link-active-bg);
+  border-color: var(--nav-link-active-border);
+  box-shadow: var(--nav-link-active-shadow);
+}
+
+.nav-meta {
+  margin-top: 4px;
+  font-size: var(--font-size-caption);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+
+.sidebar-brand-title {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+}
+
+.sidebar-nav-title {
+  font-size: var(--font-size-body);
+  font-weight: 500;
+}
+
+.sidebar-rail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.sidebar-rail-copy {
+  font-size: var(--font-size-caption);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+
+.sidebar-toggle-button {
+  display: flex;
+  height: 40px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-body-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.sidebar-toggle-button:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--brand-mark-bg);
+  box-shadow: var(--shadow-brand);
+}
+
+.brand-mark__frame {
+  fill: var(--brand-mark-frame-fill);
+  stroke: var(--brand-mark-frame-stroke);
+}
+
+.brand-mark__line,
+.brand-mark__spine {
+  stroke: var(--color-primary);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.brand-mark__line--muted {
+  opacity: 0.65;
+}
+
+.brand-mark__node {
+  fill: var(--color-primary);
+}
+
+.input-shell,
+.textarea-shell {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--field-inset-shadow);
+}
+
+.input-shell {
+  height: 44px;
+  padding: 0 14px;
+}
+
+.textarea-shell {
+  min-height: 132px;
+  resize: vertical;
+  padding: 12px 14px;
+  line-height: 1.7;
+}
+
+.field-label {
+  display: inline-block;
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+

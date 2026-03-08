@@ -1,0 +1,120 @@
+
+.type-mono-xs,
+.type-mono-sm {
+  font-family: var(--font-mono);
+  color: var(--color-text-tertiary);
+}
+
+.type-mono-xs {
+  font-size: var(--font-size-kicker);
+}
+
+.type-mono-sm {
+  font-size: var(--font-size-caption);
+}
+
+.type-text-xs {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+}
+
+.type-body-sm {
+  font-size: var(--font-size-body-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.type-label-sm {
+  font-size: var(--font-size-body-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.type-heading-xs {
+  font-size: var(--font-size-heading-xs);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.type-heading-sm {
+  font-size: var(--font-size-heading-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.type-heading-md,
+.type-heading-lg,
+.type-heading-nav {
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text-primary);
+}
+
+.type-heading-md {
+  font-size: var(--font-size-heading-md);
+}
+
+.type-heading-lg {
+  font-size: var(--font-size-heading-lg);
+}
+
+.type-heading-nav {
+  font-size: var(--font-size-heading-nav);
+}
+
+.type-footer-meta {
+  font-size: var(--font-size-kicker);
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+}
+
+.type-footer-code {
+  font-family: var(--font-mono);
+  letter-spacing: 0.18em;
+}
+
+.icon-muted {
+  color: var(--color-text-tertiary);
+}
+
+.icon-accent-primary {
+  color: var(--color-primary);
+}
+
+.icon-accent-warning {
+  color: var(--color-warning);
+}
+
+.icon-accent-info {
+  color: var(--color-info);
+}
+
+.meta-separator {
+  color: var(--color-border-strong);
+}
+
+.input-text {
+  width: 100%;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body-lg);
+  outline: none;
+}
+
+.input-text::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.inline-alert {
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  font-size: var(--font-size-body-sm);
+}
+
+.inline-alert--danger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
