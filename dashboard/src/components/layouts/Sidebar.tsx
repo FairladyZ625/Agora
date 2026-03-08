@@ -9,7 +9,6 @@ import {
   Settings,
   SquarePen,
   Workflow,
-  PanelLeftOpen,
   X,
   ChevronsLeft,
   ChevronsRight,

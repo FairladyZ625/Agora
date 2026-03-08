@@ -317,6 +317,26 @@ describe('dashboard query service', () => {
           reason: 'health_monitor_restart',
         },
       ],
+      listSignals: () => [
+        {
+          occurred_at: '2026-03-08T07:31:00.000Z',
+          provider: 'discord',
+          agent_id: null,
+          account_id: 'main',
+          kind: 'provider_ready',
+          severity: 'info',
+          detail: 'Main ready',
+        },
+        {
+          occurred_at: '2026-03-08T07:27:00.166Z',
+          provider: 'discord',
+          agent_id: 'sonnet',
+          account_id: 'sonnet',
+          kind: 'health_restart',
+          severity: 'error',
+          detail: 'stuck',
+        },
+      ],
     };
     const queries = new DashboardQueryService(db, {
       templatesDir,
@@ -339,6 +359,12 @@ describe('dashboard query service', () => {
         disconnected_agents: 1,
         overall_presence: 'disconnected',
         presence_reason: 'health_monitor_restart',
+        signal_status: 'healthy',
+        signal_counts: expect.objectContaining({
+          ready_events: 1,
+          restart_events: 1,
+          transport_errors: 0,
+        }),
         affected_agents: expect.arrayContaining([
           expect.objectContaining({
             id: 'sonnet',
@@ -355,6 +381,16 @@ describe('dashboard query service', () => {
             agent_id: 'main',
             presence: 'online',
             reason: 'provider_start',
+          }),
+        ]),
+        signals: expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'health_restart',
+            severity: 'error',
+          }),
+          expect.objectContaining({
+            kind: 'provider_ready',
+            severity: 'info',
           }),
         ]),
       }),

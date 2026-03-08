@@ -149,6 +149,10 @@ export function AgentsPage() {
                   <span>{copy.metrics.activeAgents}: {selectedProvider.busyAgents}</span>
                   <span>{copy.metrics.staleAgents}: {selectedProvider.staleAgents}</span>
                   <span>{copy.metrics.disconnectedAgents}: {selectedProvider.disconnectedAgents}</span>
+                  <span>signal: {selectedProvider.signalStatus}</span>
+                  <span>ready: {selectedProvider.signalCounts.readyEvents}</span>
+                  <span>restart: {selectedProvider.signalCounts.restartEvents}</span>
+                  <span>transport: {selectedProvider.signalCounts.transportErrors}</span>
                 </div>
                 <div className="space-y-3">
                   {selectedProvider.affectedAgents.length === 0 ? (
@@ -173,6 +177,35 @@ export function AgentsPage() {
                       </div>
                     ))
                   )}
+                </div>
+                <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="section-title-row">
+                    <h4 className="section-title">{copy.providerSignalsTitle}</h4>
+                    <span className="status-pill status-pill--neutral">{selectedProvider.signals.length}</span>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {selectedProvider.signals.length === 0 ? (
+                      <div className="empty-state">
+                        <p className="type-body-sm">{copy.emptyProviderSignals}</p>
+                      </div>
+                    ) : (
+                      selectedProvider.signals.map((signal) => (
+                        <div key={`${selectedProvider.provider}-${signal.occurredAt}-${signal.kind}`} className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong className="type-heading-sm">{signal.kind}</strong>
+                              <span className="status-pill status-pill--info">{signal.severity}</span>
+                            </div>
+                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                              <span>{copy.lastSeenLabel}: {signal.occurredAt}</span>
+                              <span>{copy.accountLabel}: {signal.accountId ?? 'n/a'}</span>
+                              <span>{copy.presenceReasonLabel}: {signal.detail ?? 'n/a'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
                 <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
                   <div className="section-title-row">

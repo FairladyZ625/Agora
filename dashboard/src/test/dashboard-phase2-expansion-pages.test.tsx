@@ -37,6 +37,24 @@ const agentStoreState = {
           reason: 'stale_gateway_log',
         },
       ],
+      signalStatus: 'degraded',
+      lastSignalAt: '2026-03-08T09:35:00.000Z',
+      signalCounts: {
+        readyEvents: 1,
+        restartEvents: 1,
+        transportErrors: 1,
+      },
+      signals: [
+        {
+          occurredAt: '2026-03-08T09:35:00.000Z',
+          provider: 'discord',
+          agentId: 'review',
+          accountId: 'review',
+          kind: 'transport_error',
+          severity: 'error',
+          detail: 'code 1005',
+        },
+      ],
     },
   ],
   agents: [
@@ -312,6 +330,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByText(/Provider 摘要/i)).toBeInTheDocument();
     expect(screen.getByText(/Provider 健康详情/i)).toBeInTheDocument();
     expect(screen.getByText(/Provider 历史趋势/i)).toBeInTheDocument();
+    expect(screen.getByText(/Provider 运行信号/i)).toBeInTheDocument();
   });
 
   it('filters the agent list by presence view', () => {
@@ -359,6 +378,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Provider 历史趋势/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/transport_error/i).length).toBeGreaterThan(0);
   });
 
   it('renders the todo workspace on the dedicated route', () => {

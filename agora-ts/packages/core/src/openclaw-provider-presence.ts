@@ -21,9 +21,27 @@ export interface AgentPresenceHistoryEvent {
   reason: string | null;
 }
 
+export interface AgentProviderSignalEvent {
+  occurred_at: string;
+  provider: string;
+  agent_id: string | null;
+  account_id: string | null;
+  kind:
+    | 'provider_start'
+    | 'provider_ready'
+    | 'gateway_proxy_enabled'
+    | 'health_restart'
+    | 'auto_restart_attempt'
+    | 'transport_error'
+    | 'inbound_ready';
+  severity: 'info' | 'warning' | 'error';
+  detail: string | null;
+}
+
 export interface AgentPresenceSource {
   listPresence(): AgentPresenceSnapshot[];
   listHistory?(): AgentPresenceHistoryEvent[];
+  listSignals?(): AgentProviderSignalEvent[];
 }
 
 export interface OpenClawLogPresenceSourceOptions {
@@ -89,6 +107,18 @@ export class OpenClawLogPresenceSource implements AgentPresenceSource {
       .filter((item): item is HistoryEvent => Boolean(item))
       .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
   }
+
+  listSignals(): AgentProviderSignalEvent[] {
+    if (!existsSync(this.logPath)) {
+      return [];
+    }
+
+    return readFileSync(this.logPath, 'utf8')
+      .split('\n')
+      .map((line) => parseSignalLine(line))
+      .filter((item): item is AgentProviderSignalEvent => Boolean(item))
+      .sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+  }
 }
 
 function parsePresenceLine(line: string): PresenceAccumulator | null {
@@ -148,6 +178,110 @@ function parseHistoryLine(line: string): HistoryEvent | null {
       account_id: agentId,
       presence: 'online',
       reason: 'provider_start',
+    };
+  }
+
+  return null;
+}
+
+function parseSignalLine(line: string): AgentProviderSignalEvent | null {
+  const timestamp = normalizeTimestamp(line.slice(0, line.indexOf(' ')));
+  if (!timestamp) {
+    return null;
+  }
+
+  const healthRestart = line.match(/\[health-monitor\] \[([a-z]+):([^\]]+)\] health-monitor: restarting \(reason: ([^)]+)\)/);
+  if (healthRestart?.[1] && healthRestart[2]) {
+    const provider = healthRestart[1];
+    const agentId = normalizeAgentId(healthRestart[2]);
+    return {
+      occurred_at: timestamp,
+      provider,
+      agent_id: agentId,
+      account_id: agentId,
+      kind: 'health_restart',
+      severity: 'error',
+      detail: healthRestart[3] ?? null,
+    };
+  }
+
+  const autoRestart = line.match(/\[([a-z]+)\] \[([^\]]+)\] auto-restart attempt (\d+\/\d+) in ([0-9]+s)/);
+  if (autoRestart?.[1] && autoRestart[2]) {
+    const provider = autoRestart[1];
+    const agentId = normalizeAgentId(autoRestart[2]);
+    return {
+      occurred_at: timestamp,
+      provider,
+      agent_id: agentId,
+      account_id: provider === 'whatsapp' ? null : agentId,
+      kind: 'auto_restart_attempt',
+      severity: 'warning',
+      detail: `${autoRestart[3]} in ${autoRestart[4]}`,
+    };
+  }
+
+  const starting = line.match(/\[([a-z]+)\] \[([^\]]+)\] starting provider(?: \(([^)]+)\))?/);
+  if (starting?.[1] && starting[2]) {
+    const provider = starting[1];
+    const agentId = normalizeAgentId(starting[2]);
+    return {
+      occurred_at: timestamp,
+      provider,
+      agent_id: agentId,
+      account_id: provider === 'whatsapp' ? null : agentId,
+      kind: 'provider_start',
+      severity: 'info',
+      detail: starting[3] ?? null,
+    };
+  }
+
+  const loggedIn = line.match(/\[discord\] logged in to discord as ([0-9]+) \(([^)]+)\)/);
+  if (loggedIn?.[1]) {
+    return {
+      occurred_at: timestamp,
+      provider: 'discord',
+      agent_id: null,
+      account_id: loggedIn[1],
+      kind: 'provider_ready',
+      severity: 'info',
+      detail: loggedIn[2] ?? null,
+    };
+  }
+
+  if (line.includes('[discord] gateway proxy enabled')) {
+    return {
+      occurred_at: timestamp,
+      provider: 'discord',
+      agent_id: null,
+      account_id: null,
+      kind: 'gateway_proxy_enabled',
+      severity: 'info',
+      detail: null,
+    };
+  }
+
+  const wsClosed = line.match(/\[discord\] gateway: WebSocket connection closed with code ([0-9]+)/);
+  if (wsClosed?.[1]) {
+    return {
+      occurred_at: timestamp,
+      provider: 'discord',
+      agent_id: null,
+      account_id: null,
+      kind: 'transport_error',
+      severity: 'error',
+      detail: `code ${wsClosed[1]}`,
+    };
+  }
+
+  if (line.includes('[whatsapp] Listening for personal WhatsApp inbound messages.')) {
+    return {
+      occurred_at: timestamp,
+      provider: 'whatsapp',
+      agent_id: 'main',
+      account_id: null,
+      kind: 'inbound_ready',
+      severity: 'info',
+      detail: 'Listening for personal WhatsApp inbound messages.',
     };
   }
 

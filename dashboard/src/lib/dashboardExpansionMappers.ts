@@ -12,6 +12,7 @@ import type {
   AgentStatusItem,
   AgentProviderAffectedAgent,
   AgentProviderHistoryEvent,
+  AgentProviderSignalEvent,
   AgentProviderSummary,
   CraftsmanStatusItem,
   PromoteTodoResult,
@@ -99,6 +100,20 @@ function mapProviderHistoryEventDto(
   };
 }
 
+function mapProviderSignalEventDto(
+  item: ApiAgentsStatusDto['provider_summaries'][number]['signals'][number],
+): AgentProviderSignalEvent {
+  return {
+    occurredAt: item.occurred_at,
+    provider: item.provider,
+    agentId: item.agent_id ?? null,
+    accountId: item.account_id ?? null,
+    kind: item.kind,
+    severity: item.severity,
+    detail: item.detail ?? null,
+  };
+}
+
 function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][number]): AgentProviderSummary {
   return {
     provider: item.provider,
@@ -113,6 +128,14 @@ function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][nu
     presenceReason: item.presence_reason ?? null,
     affectedAgents: item.affected_agents.map(mapProviderAffectedAgentDto),
     history: item.history.map(mapProviderHistoryEventDto),
+    signalStatus: item.signal_status,
+    lastSignalAt: item.last_signal_at,
+    signalCounts: {
+      readyEvents: item.signal_counts.ready_events,
+      restartEvents: item.signal_counts.restart_events,
+      transportErrors: item.signal_counts.transport_errors,
+    },
+    signals: item.signals.map(mapProviderSignalEventDto),
   };
 }
 

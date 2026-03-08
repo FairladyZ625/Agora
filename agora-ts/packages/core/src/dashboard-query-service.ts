@@ -12,7 +12,7 @@ import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskReposi
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type { AgentRegistry } from './openclaw-agent-registry.js';
-import type { AgentPresenceHistoryEvent, AgentPresenceSource } from './openclaw-provider-presence.js';
+import type { AgentPresenceHistoryEvent, AgentPresenceSource, AgentProviderSignalEvent } from './openclaw-provider-presence.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
@@ -224,6 +224,9 @@ export class DashboardQueryService {
     const providerHistory = typeof this.presenceSource?.listHistory === 'function'
       ? this.presenceSource.listHistory()
       : [];
+    const providerSignals = typeof this.presenceSource?.listSignals === 'function'
+      ? this.presenceSource.listSignals()
+      : [];
 
     return {
       summary: {
@@ -237,7 +240,7 @@ export class DashboardQueryService {
       },
       agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
-      provider_summaries: buildProviderSummaries(allAgents, providerHistory),
+      provider_summaries: buildProviderSummaries(allAgents, providerHistory, providerSignals),
     };
   }
 
@@ -350,6 +353,7 @@ function inferProvider(source?: string | null) {
 function buildProviderSummaries(
   agents: AgentsStatusDto['agents'],
   history: AgentPresenceHistoryEvent[],
+  signals: AgentProviderSignalEvent[],
 ): AgentsStatusDto['provider_summaries'] {
   const byProvider = new Map<string, AgentsStatusDto['provider_summaries'][number]>();
 
@@ -368,6 +372,14 @@ function buildProviderSummaries(
       presence_reason: null,
       affected_agents: [],
       history: [],
+      signal_status: 'unknown' as const,
+      last_signal_at: null,
+      signal_counts: {
+        ready_events: 0,
+        restart_events: 0,
+        transport_errors: 0,
+      },
+      signals: [],
     };
 
     current.total_agents += 1;
@@ -409,6 +421,10 @@ function buildProviderSummaries(
         .filter((item) => inferProviderFromHistory(item) === summary.provider)
         .sort(compareHistoryEvents)
         .slice(0, 8);
+      const providerSignals = signals
+        .filter((item) => item.provider === summary.provider)
+        .sort(compareSignalEvents)
+        .slice(0, 12);
       const overallPresence = deriveOverallPresence(summary);
       return {
         ...summary,
@@ -416,6 +432,10 @@ function buildProviderSummaries(
         presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
         affected_agents: affectedAgents,
         history: providerHistory,
+        signal_status: deriveSignalStatus(providerSignals),
+        last_signal_at: providerSignals[0]?.occurred_at ?? null,
+        signal_counts: buildSignalCounts(providerSignals),
+        signals: providerSignals,
       };
     })
     .sort(compareProviderSummaries);
@@ -456,6 +476,10 @@ function compareProviderSummaries(
   left: AgentsStatusDto['provider_summaries'][number],
   right: AgentsStatusDto['provider_summaries'][number],
 ) {
+  const signalDelta = signalSeverity(left.signal_status) - signalSeverity(right.signal_status);
+  if (signalDelta !== 0) {
+    return signalDelta;
+  }
   const presenceDelta = presenceSeverity(left.overall_presence) - presenceSeverity(right.overall_presence);
   if (presenceDelta !== 0) {
     return presenceDelta;
@@ -492,10 +516,67 @@ function presenceSeverity(presence: 'online' | 'offline' | 'disconnected' | 'sta
 }
 
 function inferProviderFromHistory(event: AgentPresenceHistoryEvent) {
-  void event;
-  return 'discord';
+  return event.account_id === null && event.agent_id === 'main' ? 'whatsapp' : 'discord';
 }
 
 function compareHistoryEvents(left: AgentPresenceHistoryEvent, right: AgentPresenceHistoryEvent) {
   return new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime();
+}
+
+function compareSignalEvents(left: AgentProviderSignalEvent, right: AgentProviderSignalEvent) {
+  return new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime();
+}
+
+function deriveSignalStatus(
+  signals: AgentProviderSignalEvent[],
+): AgentsStatusDto['provider_summaries'][number]['signal_status'] {
+  const latest = signals[0];
+  if (!latest) {
+    return 'unknown';
+  }
+  if (latest.kind === 'transport_error' || latest.kind === 'health_restart' || latest.kind === 'auto_restart_attempt') {
+    return 'degraded';
+  }
+  if (latest.kind === 'provider_start' || latest.kind === 'gateway_proxy_enabled') {
+    return 'recovering';
+  }
+  if (latest.kind === 'provider_ready' || latest.kind === 'inbound_ready') {
+    return 'healthy';
+  }
+  return 'unknown';
+}
+
+function buildSignalCounts(signals: AgentProviderSignalEvent[]) {
+  return signals.reduce(
+    (acc, signal) => {
+      if (signal.kind === 'provider_ready' || signal.kind === 'inbound_ready') {
+        acc.ready_events += 1;
+      }
+      if (signal.kind === 'health_restart' || signal.kind === 'auto_restart_attempt') {
+        acc.restart_events += 1;
+      }
+      if (signal.kind === 'transport_error') {
+        acc.transport_errors += 1;
+      }
+      return acc;
+    },
+    {
+      ready_events: 0,
+      restart_events: 0,
+      transport_errors: 0,
+    },
+  );
+}
+
+function signalSeverity(status: AgentsStatusDto['provider_summaries'][number]['signal_status']) {
+  switch (status) {
+    case 'degraded':
+      return 0;
+    case 'recovering':
+      return 1;
+    case 'healthy':
+      return 2;
+    default:
+      return 3;
+  }
 }

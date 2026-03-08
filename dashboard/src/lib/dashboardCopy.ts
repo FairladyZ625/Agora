@@ -297,6 +297,7 @@ export function useAgentsPageCopy() {
     providerSummaryTitle: t('agents.providerSummaryTitle'),
     providerDetailTitle: t('agents.providerDetailTitle'),
     providerTimelineTitle: t('agents.providerTimelineTitle'),
+    providerSignalsTitle: t('agents.providerSignalsTitle'),
     filtersTitle: t('agents.filtersTitle'),
     filterLabels: {
       all: t('agents.filterLabels.all'),
@@ -325,6 +326,7 @@ export function useAgentsPageCopy() {
     currentTaskLabel: t('agents.currentTaskLabel'),
     emptyProviderDetail: t('agents.emptyProviderDetail'),
     emptyProviderHistory: t('agents.emptyProviderHistory'),
+    emptyProviderSignals: t('agents.emptyProviderSignals'),
   };
 }
 

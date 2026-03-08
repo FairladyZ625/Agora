@@ -25,6 +25,23 @@ export interface AgentProviderHistoryEvent {
   reason: string | null;
 }
 
+export interface AgentProviderSignalEvent {
+  occurredAt: string;
+  provider: string;
+  agentId: string | null;
+  accountId: string | null;
+  kind:
+    | 'provider_start'
+    | 'provider_ready'
+    | 'gateway_proxy_enabled'
+    | 'health_restart'
+    | 'auto_restart_attempt'
+    | 'transport_error'
+    | 'inbound_ready';
+  severity: 'info' | 'warning' | 'error';
+  detail: string | null;
+}
+
 export interface AgentProviderSummary {
   provider: string;
   totalAgents: number;
@@ -38,6 +55,14 @@ export interface AgentProviderSummary {
   presenceReason: string | null;
   affectedAgents: AgentProviderAffectedAgent[];
   history: AgentProviderHistoryEvent[];
+  signalStatus: 'healthy' | 'recovering' | 'degraded' | 'unknown';
+  lastSignalAt: string | null;
+  signalCounts: {
+    readyEvents: number;
+    restartEvents: number;
+    transportErrors: number;
+  };
+  signals: AgentProviderSignalEvent[];
 }
 
 export interface AgentStatusItem {

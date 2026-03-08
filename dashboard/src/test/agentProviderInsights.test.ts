@@ -96,6 +96,14 @@ describe('agent provider insights', () => {
         lastSeenAt: '2026-03-08T10:00:00.000Z',
         presenceReason: 'health_monitor_restart',
         history: [],
+        signalStatus: 'unknown',
+        lastSignalAt: null,
+        signalCounts: {
+          readyEvents: 0,
+          restartEvents: 0,
+          transportErrors: 0,
+        },
+        signals: [],
         affectedAgents: [
           expect.objectContaining({ id: 'writer', presence: 'disconnected' }),
           expect.objectContaining({ id: 'review', presence: 'stale' }),
@@ -114,6 +122,14 @@ describe('agent provider insights', () => {
         lastSeenAt: null,
         presenceReason: null,
         history: [],
+        signalStatus: 'unknown',
+        lastSignalAt: null,
+        signalCounts: {
+          readyEvents: 0,
+          restartEvents: 0,
+          transportErrors: 0,
+        },
+        signals: [],
         affectedAgents: [
           expect.objectContaining({ id: 'ops', presence: 'offline' }),
         ],

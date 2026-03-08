@@ -56,6 +56,30 @@ export const agentProviderHistoryEventSchema = z.object({
   reason: z.string().nullable(),
 });
 
+export const agentProviderSignalEventSchema = z.object({
+  occurred_at: z.string(),
+  provider: z.string(),
+  agent_id: z.string().nullable(),
+  account_id: z.string().nullable(),
+  kind: z.enum([
+    'provider_start',
+    'provider_ready',
+    'gateway_proxy_enabled',
+    'health_restart',
+    'auto_restart_attempt',
+    'transport_error',
+    'inbound_ready',
+  ]),
+  severity: z.enum(['info', 'warning', 'error']),
+  detail: z.string().nullable(),
+});
+
+export const agentProviderSignalCountsSchema = z.object({
+  ready_events: z.number().int().nonnegative(),
+  restart_events: z.number().int().nonnegative(),
+  transport_errors: z.number().int().nonnegative(),
+});
+
 export const agentProviderSummarySchema = z.object({
   provider: z.string(),
   total_agents: z.number().int().nonnegative(),
@@ -69,6 +93,10 @@ export const agentProviderSummarySchema = z.object({
   presence_reason: z.string().nullable(),
   affected_agents: z.array(agentProviderAffectedAgentSchema),
   history: z.array(agentProviderHistoryEventSchema),
+  signal_status: z.enum(['healthy', 'recovering', 'degraded', 'unknown']),
+  last_signal_at: z.string().nullable(),
+  signal_counts: agentProviderSignalCountsSchema,
+  signals: z.array(agentProviderSignalEventSchema),
 });
 
 export const agentsStatusSchema = z.object({

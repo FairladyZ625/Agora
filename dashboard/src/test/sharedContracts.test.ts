@@ -71,6 +71,24 @@ describe('shared contracts', () => {
               reason: 'provider_start',
             },
           ],
+          signal_status: 'healthy',
+          last_signal_at: '2026-03-08T07:30:25.241Z',
+          signal_counts: {
+            ready_events: 1,
+            restart_events: 0,
+            transport_errors: 0,
+          },
+          signals: [
+            {
+              occurred_at: '2026-03-08T07:30:25.241Z',
+              provider: 'discord',
+              agent_id: 'main',
+              account_id: 'main',
+              kind: 'provider_ready',
+              severity: 'info',
+              detail: 'Main ready',
+            },
+          ],
         },
       ],
     });

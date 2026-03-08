@@ -76,6 +76,24 @@ describe('dashboard expansion mappers', () => {
               reason: 'provider_start',
             },
           ],
+          signal_status: 'degraded',
+          last_signal_at: '2026-03-07T10:05:00.000Z',
+          signal_counts: {
+            ready_events: 1,
+            restart_events: 1,
+            transport_errors: 1,
+          },
+          signals: [
+            {
+              occurred_at: '2026-03-07T10:05:00.000Z',
+              provider: 'discord',
+              agent_id: 'sonnet',
+              account_id: 'sonnet',
+              kind: 'transport_error',
+              severity: 'error',
+              detail: 'code 1005',
+            },
+          ],
         },
       ],
       craftsmen: [
@@ -102,6 +120,8 @@ describe('dashboard expansion mappers', () => {
     expect(status.providerSummaries[0]?.overallPresence).toBe('stale');
     expect(status.providerSummaries[0]?.affectedAgents[0]?.id).toBe('sonnet');
     expect(status.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
+    expect(status.providerSummaries[0]?.signalStatus).toBe('degraded');
+    expect(status.providerSummaries[0]?.signals[0]?.kind).toBe('transport_error');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
     expect(status.agents[0]?.presenceReason).toBe('live_session');
