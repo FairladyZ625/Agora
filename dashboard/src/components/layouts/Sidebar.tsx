@@ -140,21 +140,10 @@ export function Sidebar({
             className="border-t px-3 py-3"
             style={{ borderColor: 'var(--color-border)' }}
           >
-            {!collapsed && (
-              <div className="rounded-2xl border px-3 py-3" style={{ borderColor: 'var(--color-border)' }}>
-                <div className="sidebar-rail-title">
-                  <PanelLeftOpen size={14} />
-                  {shellCopy.railStatement}
-                </div>
-                <p className="sidebar-rail-copy mt-2">
-                  {shellCopy.railSummary}
-                </p>
-              </div>
-            )}
             <button
               type="button"
               onClick={onToggle}
-              className="sidebar-toggle-button mt-3"
+              className="sidebar-toggle-button"
               style={{ borderColor: 'var(--color-border)' }}
               aria-label={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')}
             >
