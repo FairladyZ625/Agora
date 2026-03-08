@@ -1,0 +1,15 @@
+{
+  "name": "@agora-ts/testing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agora-ts/core": "0.0.0",
+    "@agora-ts/db": "0.0.0"
+  }
+}
