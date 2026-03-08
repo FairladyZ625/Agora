@@ -49,6 +49,7 @@ export const taskSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
 });
+export type TaskDto = z.infer<typeof taskSchema>;
 
 export const flowLogSchema = z.object({
   id: z.number().int().nonnegative(),
@@ -62,6 +63,7 @@ export const flowLogSchema = z.object({
   actor: z.string().nullable(),
   created_at: z.string(),
 });
+export type FlowLogDto = z.infer<typeof flowLogSchema>;
 
 export const progressLogSchema = z.object({
   id: z.number().int().nonnegative(),
@@ -74,6 +76,7 @@ export const progressLogSchema = z.object({
   actor: z.string(),
   created_at: z.string(),
 });
+export type ProgressLogDto = z.infer<typeof progressLogSchema>;
 
 export const subtaskSchema = z.object({
   id: z.string(),
@@ -88,6 +91,7 @@ export const subtaskSchema = z.object({
   dispatched_at: z.string().nullable(),
   done_at: z.string().nullable(),
 });
+export type SubtaskDto = z.infer<typeof subtaskSchema>;
 
 export const taskStatusSchema = z.object({
   task: taskSchema,
@@ -95,6 +99,7 @@ export const taskStatusSchema = z.object({
   progress_log: z.array(progressLogSchema),
   subtasks: z.array(subtaskSchema),
 });
+export type TaskStatusDto = z.infer<typeof taskStatusSchema>;
 
 export const createTaskRequestSchema = z.object({
   title: z.string().min(1),
@@ -103,10 +108,12 @@ export const createTaskRequestSchema = z.object({
   description: z.string(),
   priority: taskPrioritySchema.or(z.string()),
 });
+export type CreateTaskRequestDto = z.infer<typeof createTaskRequestSchema>;
 
 export const advanceTaskRequestSchema = z.object({
   caller_id: z.string().min(1),
 });
+export type AdvanceTaskRequestDto = z.infer<typeof advanceTaskRequestSchema>;
 
 export const approveTaskRequestSchema = z.object({
   approver_id: z.string().min(1),

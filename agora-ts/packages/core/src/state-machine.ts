@@ -3,15 +3,15 @@ import { GateType, TaskState } from './enums.js';
 
 type WorkflowStage = {
   id: string;
-  next?: string[];
+  next?: string[] | undefined;
   gate?: {
-    type?: string;
+    type?: string | undefined;
     [key: string]: unknown;
-  } | null;
+  } | null | undefined;
 };
 
 type WorkflowDefinition = {
-  stages?: WorkflowStage[];
+  stages?: WorkflowStage[] | undefined;
 };
 
 type TaskShape = {
@@ -54,6 +54,20 @@ export class StateMachine {
       return stages.find((item) => item.id === current.next?.[0]) ?? null;
     }
     return stages[currentIndex + 1] ?? null;
+  }
+
+  advance(workflow: WorkflowDefinition, currentStageId: string): {
+    currentStage: WorkflowStage;
+    nextStage: WorkflowStage | null;
+    completesTask: boolean;
+  } {
+    const currentStage = this.getCurrentStage(workflow, currentStageId);
+    const nextStage = this.getNextStage(workflow, currentStageId);
+    return {
+      currentStage,
+      nextStage,
+      completesTask: nextStage === null,
+    };
   }
 
   checkGate(db: AgoraDatabase, task: TaskShape, stage: WorkflowStage, callerId?: string): boolean {

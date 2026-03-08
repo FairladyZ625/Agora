@@ -1,3 +1,4 @@
+import type { SQLInputValue } from 'node:sqlite';
 import type { TeamDto, WorkflowDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
@@ -34,6 +35,21 @@ export interface InsertTaskInput {
   workflow: WorkflowDto;
 }
 
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string | null;
+  priority?: string;
+  state?: string;
+  current_stage?: string | null;
+  team?: TeamDto;
+  workflow?: WorkflowDto;
+  scheduler?: unknown;
+  scheduler_snapshot?: unknown;
+  discord?: unknown;
+  metrics?: unknown;
+  error_detail?: string | null;
+}
+
 export class TaskRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
@@ -61,6 +77,48 @@ export class TaskRepository {
   getTask(taskId: string): StoredTask | null {
     const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
     return row ? this.parseTaskRow(row) : null;
+  }
+
+  updateTask(taskId: string, version: number, updates: UpdateTaskInput): StoredTask {
+    const assignments: string[] = [];
+    const values: SQLInputValue[] = [];
+
+    const push = (column: string, value: SQLInputValue) => {
+      assignments.push(`${column} = ?`);
+      values.push(value);
+    };
+
+    if (updates.title !== undefined) push('title', updates.title);
+    if (updates.description !== undefined) push('description', updates.description);
+    if (updates.priority !== undefined) push('priority', updates.priority);
+    if (updates.state !== undefined) push('state', updates.state);
+    if (updates.current_stage !== undefined) push('current_stage', updates.current_stage);
+    if (updates.team !== undefined) push('team', stringifyJsonValue(updates.team));
+    if (updates.workflow !== undefined) push('workflow', stringifyJsonValue(updates.workflow));
+    if (updates.scheduler !== undefined) push('scheduler', stringifyJsonValue(updates.scheduler));
+    if (updates.scheduler_snapshot !== undefined) {
+      push('scheduler_snapshot', stringifyJsonValue(updates.scheduler_snapshot));
+    }
+    if (updates.discord !== undefined) push('discord', stringifyJsonValue(updates.discord));
+    if (updates.metrics !== undefined) push('metrics', stringifyJsonValue(updates.metrics));
+    if (updates.error_detail !== undefined) push('error_detail', updates.error_detail);
+
+    assignments.push('version = version + 1');
+    assignments.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(taskId, version);
+
+    const result = this.db.prepare(`
+      UPDATE tasks
+      SET ${assignments.join(', ')}
+      WHERE id = ? AND version = ?
+    `).run(...values);
+
+    if (result.changes === 0) {
+      throw new Error(`Task ${taskId} update failed due to missing row or version mismatch`);
+    }
+
+    return this.getTask(taskId)!;
   }
 
   listTasks(state?: string): StoredTask[] {

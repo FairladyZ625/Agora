@@ -67,6 +67,21 @@ describe('agora-ts state machine', () => {
     ).toBe('c');
   });
 
+  it('computes advance results for in-progress and terminal stages', () => {
+    const sm = new StateMachine();
+
+    expect(sm.advance(buildTask().workflow, 'discuss')).toMatchObject({
+      currentStage: { id: 'discuss' },
+      nextStage: { id: 'develop' },
+      completesTask: false,
+    });
+    expect(sm.advance(buildTask().workflow, 'review')).toMatchObject({
+      currentStage: { id: 'review' },
+      nextStage: null,
+      completesTask: true,
+    });
+  });
+
   it('checks archon review and all_subtasks_done gates against the sqlite state', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
