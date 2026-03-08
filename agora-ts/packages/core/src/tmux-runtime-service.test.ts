@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ClaudeCraftsmanAdapter } from './adapters/claude-adapter.js';
 import { CodexCraftsmanAdapter } from './adapters/codex-adapter.js';
 import { GeminiCraftsmanAdapter } from './adapters/gemini-adapter.js';
+import type { GeminiSessionIdentity } from './adapters/gemini-session-discovery.js';
 import { TmuxRuntimeService } from './tmux-runtime-service.js';
 
 describe('tmux runtime service', () => {
@@ -165,6 +166,48 @@ describe('tmux runtime service', () => {
     expect(service.status().panes.find((pane) => pane.title === 'gemini')).toMatchObject({
       lastRecoveryMode: 'resume_latest',
       sessionReference: null,
+    });
+  });
+
+  it('refreshes gemini exact identity before resume when chat-file discovery finds a UUID', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|bash|1', '%1|claude|bash|0', '%2|gemini|bash|0'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|claude', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const resolveIdentity = vi.fn(
+      (): GeminiSessionIdentity => ({
+        sessionReference: 'gemini-session-exact-123',
+        identitySource: 'chat_file',
+        identityPath: '/tmp/gemini/chats/session-a.json',
+        sessionObservedAt: '2026-03-08T12:00:00Z',
+      }),
+    );
+    const service = new TmuxRuntimeService({
+      exec,
+      registryDir: createRegistryDir(),
+      geminiSessionDiscovery: { resolveIdentity },
+      adapters: {
+        codex: new CodexCraftsmanAdapter(),
+        claude: new ClaudeCraftsmanAdapter(),
+        gemini: new GeminiCraftsmanAdapter(),
+      },
+    });
+
+    service.up();
+    service.resume('gemini', null, '/tmp/agora-workspace');
+
+    expect(resolveIdentity).toHaveBeenCalledWith({ workspaceRoot: '/tmp/agora-workspace' });
+    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%2', '-l', '--', 'gemini --resume gemini-session-exact-123 --approval-mode yolo']);
+    expect(service.status().panes.find((pane) => pane.title === 'gemini')).toMatchObject({
+      sessionReference: 'gemini-session-exact-123',
+      identitySource: 'chat_file',
+      lastRecoveryMode: 'resume_exact',
     });
   });
 });

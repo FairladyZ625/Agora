@@ -1,4 +1,5 @@
 import type { CraftsmanDispatchRequest, CraftsmanDispatchResult } from './craftsman-adapter.js';
+import type { GeminiSessionDiscovery, GeminiSessionIdentity } from './adapters/gemini-session-discovery.js';
 import type { ProcessCraftsmanAdapter } from './adapters/process-craftsman-adapter.js';
 import { TmuxCraftsmanAdapter } from './adapters/tmux-craftsman-adapter.js';
 import {
@@ -39,15 +40,18 @@ export interface TmuxResumeResult {
 
 export interface TmuxRuntimeServiceOptions extends TmuxPaneRegistryOptions {
   adapters: Record<string, ProcessCraftsmanAdapter>;
+  geminiSessionDiscovery?: Pick<GeminiSessionDiscovery, 'resolveIdentity'>;
 }
 
 export class TmuxRuntimeService {
   private readonly registry: TmuxPaneRegistry;
   private readonly adapters: Record<string, ProcessCraftsmanAdapter>;
+  private readonly geminiSessionDiscovery: Pick<GeminiSessionDiscovery, 'resolveIdentity'> | undefined;
 
   constructor(options: TmuxRuntimeServiceOptions) {
     this.registry = new TmuxPaneRegistry(options);
     this.adapters = options.adapters;
+    this.geminiSessionDiscovery = options.geminiSessionDiscovery;
   }
 
   up() {
@@ -59,6 +63,7 @@ export class TmuxRuntimeService {
   }
 
   status() {
+    this.refreshKnownGeminiIdentity();
     return this.up();
   }
 
@@ -67,9 +72,10 @@ export class TmuxRuntimeService {
     this.registry.sendKeys(target, command);
   }
 
-  start(agent: string): TmuxStartResult {
+  start(agent: string, workspaceRoot?: string | null): TmuxStartResult {
     const adapter = this.requireAdapter(agent);
     const target = this.registry.getPaneTarget(agent);
+    this.persistWorkspaceRoot(agent, workspaceRoot ?? null);
     const spec = adapter.createInteractiveStartSpec();
     const command = renderShellCommand(spec.command, spec.args);
     this.registry.sendKeys(target, command);
@@ -83,16 +89,22 @@ export class TmuxRuntimeService {
     };
   }
 
-  resume(agent: string, sessionReference?: string | null): TmuxResumeResult {
+  resume(agent: string, sessionReference?: string | null, workspaceRoot?: string | null): TmuxResumeResult {
     const adapter = this.requireAdapter(agent);
     const target = this.registry.getPaneTarget(agent);
     const currentState = this.registry.getPaneState(agent);
-    const nextReference = sessionReference ?? currentState.sessionReference ?? null;
+    const nextWorkspaceRoot = workspaceRoot ?? currentState.workspaceRoot ?? null;
+    this.persistWorkspaceRoot(agent, nextWorkspaceRoot);
+    const discovered = agent === 'gemini' && !sessionReference ? this.resolveGeminiIdentity(nextWorkspaceRoot) : null;
+    const nextReference = sessionReference ?? discovered?.sessionReference ?? currentState.sessionReference ?? null;
     const resume = adapter.createInteractiveResumeSpec(nextReference);
     const command = renderShellCommand(resume.spec.command, resume.spec.args);
     this.registry.sendKeys(target, command);
     this.registry.updatePaneState(agent, {
       sessionReference: nextReference,
+      identitySource: discovered?.identitySource ?? currentState.identitySource,
+      identityPath: discovered?.identityPath ?? currentState.identityPath ?? null,
+      sessionObservedAt: discovered?.sessionObservedAt ?? currentState.sessionObservedAt ?? null,
       lastRecoveryMode: resume.recoveryMode,
     });
     return {
@@ -103,6 +115,7 @@ export class TmuxRuntimeService {
   }
 
   task(agent: string, request: CraftsmanDispatchRequest): CraftsmanDispatchResult {
+    this.persistWorkspaceRoot(agent, request.workdir ?? null);
     const inner = this.requireAdapter(agent);
     const adapter = new TmuxCraftsmanAdapter(inner, { registry: this.registry });
     return adapter.dispatchTask(request);
@@ -133,6 +146,36 @@ export class TmuxRuntimeService {
       throw new Error(`tmux adapter not configured for agent: ${agent}`);
     }
     return inner;
+  }
+
+  private refreshKnownGeminiIdentity() {
+    const currentState = this.registry.getPaneState('gemini');
+    const discovered = this.resolveGeminiIdentity(currentState.workspaceRoot ?? null);
+    if (!discovered) {
+      return;
+    }
+    this.registry.updatePaneState('gemini', {
+      sessionReference: discovered.sessionReference,
+      identitySource: discovered.identitySource,
+      identityPath: discovered.identityPath,
+      sessionObservedAt: discovered.sessionObservedAt,
+    });
+  }
+
+  private resolveGeminiIdentity(workspaceRoot: string | null): GeminiSessionIdentity | null {
+    if (!workspaceRoot || !this.geminiSessionDiscovery) {
+      return null;
+    }
+    return this.geminiSessionDiscovery.resolveIdentity({ workspaceRoot });
+  }
+
+  private persistWorkspaceRoot(agent: string, workspaceRoot: string | null) {
+    if (!workspaceRoot) {
+      return;
+    }
+    this.registry.updatePaneState(agent, {
+      workspaceRoot,
+    });
   }
 }
 

@@ -112,7 +112,7 @@ export interface TmuxRuntimePane {
   continuityBackend: 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
   resumeCapability: 'native_resume' | 'resume_last' | 'none';
   sessionReference: string | null;
-  identitySource: 'registry_default' | 'hook_event' | 'session_file' | 'chat_file' | 'manual' | 'transport_session';
+  identitySource: 'registry_default' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
   lastRecoveryMode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
   transportSessionId: string | null;
 }

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 export type TmuxContinuityBackend = 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
 export type TmuxResumeCapability = 'native_resume' | 'resume_last' | 'none';
-export type TmuxIdentitySource = 'registry_default' | 'hook_event' | 'session_file' | 'chat_file' | 'manual' | 'transport_session';
+export type TmuxIdentitySource = 'registry_default' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
 export type TmuxRecoveryMode = 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last';
 
 export interface TmuxPaneState {
@@ -12,6 +12,9 @@ export interface TmuxPaneState {
   resumeCapability: TmuxResumeCapability;
   sessionReference: string | null;
   identitySource: TmuxIdentitySource;
+  identityPath?: string | null;
+  sessionObservedAt?: string | null;
+  workspaceRoot?: string | null;
   lastRecoveryMode: TmuxRecoveryMode | null;
   transportSessionId: string | null;
 }
@@ -189,6 +192,9 @@ export class TmuxPaneRegistry {
       resumeCapability: (raw.resume_capability as TmuxResumeCapability | null) ?? 'none',
       sessionReference: raw.session_reference ?? null,
       identitySource: (raw.identity_source as TmuxIdentitySource | null) ?? 'registry_default',
+      identityPath: raw.identity_path ?? null,
+      sessionObservedAt: raw.session_observed_at ?? null,
+      workspaceRoot: raw.workspace_root ?? null,
       lastRecoveryMode: (raw.last_recovery_mode as TmuxRecoveryMode | null) ?? null,
       transportSessionId: raw.transport_session_id ?? null,
     };
@@ -203,6 +209,9 @@ export class TmuxPaneRegistry {
           resume_capability: state.resumeCapability,
           session_reference: state.sessionReference,
           identity_source: state.identitySource,
+          identity_path: state.identityPath,
+          session_observed_at: state.sessionObservedAt,
+          workspace_root: state.workspaceRoot,
           last_recovery_mode: state.lastRecoveryMode,
           transport_session_id: state.transportSessionId,
         },
@@ -226,6 +235,9 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'native_resume',
         sessionReference: null,
         identitySource: 'registry_default',
+        identityPath: null,
+        sessionObservedAt: null,
+        workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
       };
@@ -235,6 +247,9 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'native_resume',
         sessionReference: null,
         identitySource: 'registry_default',
+        identityPath: null,
+        sessionObservedAt: null,
+        workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
       };
@@ -244,6 +259,9 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'native_resume',
         sessionReference: null,
         identitySource: 'registry_default',
+        identityPath: null,
+        sessionObservedAt: null,
+        workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
       };
@@ -253,6 +271,9 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'none',
         sessionReference: null,
         identitySource: 'registry_default',
+        identityPath: null,
+        sessionObservedAt: null,
+        workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
       };

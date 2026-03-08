@@ -431,7 +431,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('启动指定 agent 的 interactive runtime')
     .argument('<agent>', 'agent pane name')
     .action((agent: string) => {
-      const result = tmuxRuntimeService.start(agent);
+      const result = tmuxRuntimeService.start(agent, process.cwd());
       writeLine(stdout, `tmux runtime 已启动: ${agent}`);
       writeLine(stdout, `pane: ${result.pane ?? '-'}`);
       writeLine(stdout, `mode: ${result.recoveryMode}`);
@@ -444,7 +444,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .argument('<agent>', 'agent pane name')
     .argument('[sessionReference]', 'resume session reference')
     .action((agent: string, sessionReference?: string) => {
-      const result = tmuxRuntimeService.resume(agent, sessionReference ?? null);
+      const result = tmuxRuntimeService.resume(agent, sessionReference ?? null, process.cwd());
       writeLine(stdout, `tmux runtime 已恢复: ${agent}`);
       writeLine(stdout, `pane: ${result.pane ?? '-'}`);
       writeLine(stdout, `mode: ${result.recoveryMode}`);
