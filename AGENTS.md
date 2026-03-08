@@ -95,7 +95,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - TypeScript 5.x + Node.js 22+
 - SQLite（WAL 模式）
 - Commander（CLI 框架）
-- Fastify（HTTP Server，端口 8420）
+- Fastify（HTTP Server，默认端口由根目录 `.env` 管理）
 - Vitest（测试框架）
 - Zod（contracts / config schema）
 
@@ -126,11 +126,12 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 页面和布局组件禁止直接消费后端 DTO
   - 运行时禁止 silent mock fallback；请求失败必须显示真实错误
   - 新增接口接入前必须先写 mapper/store 测试，再写页面接线
-  - Vite `/api` 代理与本地联调默认端口固定为 `8420`
+  - Vite `/api` 代理与本地联调默认从根目录 `.env` 的 `VITE_API_BASE_URL` 读取
 
 ### 开发环境一键启动
 
 ```bash
+cp .env.example .env
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```
 
@@ -144,6 +145,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 
 - 后端：`agora-ts/apps/server`
 - 前端：`dashboard`
+- 本地开发端口与 server URL：项目根目录 `.env`
 
 仅在需要对照 legacy 行为时才启动 Python 版本。
 

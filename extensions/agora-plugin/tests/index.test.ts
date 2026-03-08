@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import register from "../src/index";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("plugin register", () => {
   it("wires the bridge with configured server and api token", async () => {
@@ -46,6 +50,25 @@ describe("plugin register", () => {
     });
 
     expect(registerCommand).toHaveBeenCalledOnce();
-    expect(logger.info).toHaveBeenCalledWith("Agora plugin loaded (http://127.0.0.1:8420)");
+    expect(logger.info).toHaveBeenCalledWith("Agora plugin loaded (http://127.0.0.1:18420)");
+  });
+
+  it("honors AGORA_SERVER_URL when plugin config omits serverUrl", async () => {
+    vi.stubEnv("AGORA_SERVER_URL", "http://127.0.0.1:29420");
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const registerCommand = vi.fn();
+    const registerService = vi.fn();
+    const on = vi.fn();
+
+    register({
+      logger,
+      registerCommand,
+      registerService,
+      on,
+      runtime: { events: { onAgentEvent: vi.fn(() => () => {}) } },
+      pluginConfig: {},
+    });
+
+    expect(logger.info).toHaveBeenCalledWith("Agora plugin loaded (http://127.0.0.1:29420)");
   });
 });

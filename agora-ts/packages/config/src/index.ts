@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 export * from './dev-start.js';
+export * from './env.js';
 
 export const agentPermissionSchema = z.object({
   canCall: z.array(z.string()).default([]),

@@ -8,7 +8,7 @@ export default function register(api: OpenClawPluginApi): void {
   const tokenConfigured = api.pluginConfig?.apiToken;
   const serverUrl = typeof configured === "string" && configured.trim()
     ? configured
-    : "http://127.0.0.1:8420";
+    : (process.env.AGORA_SERVER_URL?.trim() || "http://127.0.0.1:18420");
   const apiToken = typeof tokenConfigured === "string" && tokenConfigured.trim()
     ? tokenConfigured.trim()
     : undefined;

@@ -2,6 +2,12 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
+import { loadEnv } from 'vite';
+import { resolveAgoraRuntimeEnvironment } from '../agora-ts/packages/config/src/env';
+
+const repoRoot = path.resolve(__dirname, '..');
+const loadedEnv = loadEnv('', repoRoot, '');
+const runtimeEnv = resolveAgoraRuntimeEnvironment(__dirname, loadedEnv);
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -35,7 +41,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8420',
+      '/api': runtimeEnv.apiBaseUrl,
     },
   },
   build: {

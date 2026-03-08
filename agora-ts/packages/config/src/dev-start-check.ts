@@ -1,9 +1,10 @@
 import { validateDevPorts } from './dev-start.js';
+import { DEFAULT_AGORA_BACKEND_PORT, DEFAULT_AGORA_FRONTEND_PORT, DEFAULT_AGORA_HOST } from './env.js';
 
 async function main() {
-  const backendPort = Number(process.argv[2] ?? '8420');
-  const frontendPort = Number(process.argv[3] ?? '5173');
-  const host = process.argv[4] ?? '127.0.0.1';
+  const backendPort = Number(process.argv[2] ?? DEFAULT_AGORA_BACKEND_PORT);
+  const frontendPort = Number(process.argv[3] ?? DEFAULT_AGORA_FRONTEND_PORT);
+  const host = process.argv[4] ?? DEFAULT_AGORA_HOST;
 
   if (!Number.isInteger(backendPort) || !Number.isInteger(frontendPort)) {
     console.error('Expected integer backend and frontend ports');

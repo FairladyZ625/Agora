@@ -8,7 +8,7 @@
     "properties": {
       "serverUrl": {
         "type": "string",
-        "default": "http://127.0.0.1:8420"
+        "default": "http://127.0.0.1:18420"
       },
       "apiToken": {
         "type": "string",

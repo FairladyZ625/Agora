@@ -119,9 +119,23 @@ Citizens 讨论  →  Archon 裁决  →  Craftsmen 执行
 ### Install
 
 ```bash
+cp .env.example .env
 cd agora-ts
 npm install
 npm run check:strict
+```
+
+本地开发统一从项目根目录 `.env` 读取：
+
+- `AGORA_BACKEND_PORT`
+- `AGORA_FRONTEND_PORT`
+- `AGORA_SERVER_URL`
+- `VITE_API_BASE_URL`
+
+如果 OpenClaw 也要跟着切换到同一后端地址，执行：
+
+```bash
+./scripts/sync-openclaw-server-url.sh
 ```
 
 ### Full Workspace Check

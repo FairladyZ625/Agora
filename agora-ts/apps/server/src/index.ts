@@ -1,19 +1,21 @@
 import { buildApp } from './app.js';
 import { createServerRuntime } from './runtime.js';
+import { resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 
 async function start() {
-const runtime = createServerRuntime();
-const app = buildApp({
-  taskService: runtime.taskService,
-  dashboardQueryService: runtime.dashboardQueryService,
-  inboxService: runtime.inboxService,
-  templateAuthoringService: runtime.templateAuthoringService,
-  liveSessionStore: runtime.liveSessionStore,
-  apiAuth: runtime.apiAuth,
-  ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
-});
-  const port = Number(process.env.PORT ?? process.env.AGORA_BACKEND_PORT ?? '8420');
-  const host = process.env.HOST ?? '127.0.0.1';
+  const runtime = createServerRuntime();
+  const environment = resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  const app = buildApp({
+    taskService: runtime.taskService,
+    dashboardQueryService: runtime.dashboardQueryService,
+    inboxService: runtime.inboxService,
+    templateAuthoringService: runtime.templateAuthoringService,
+    liveSessionStore: runtime.liveSessionStore,
+    apiAuth: runtime.apiAuth,
+    ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
+  });
+  const port = Number(process.env.PORT ?? environment.backendPort);
+  const host = process.env.HOST ?? process.env.AGORA_SERVER_HOST ?? environment.host;
 
   try {
     await app.listen({ port, host });
