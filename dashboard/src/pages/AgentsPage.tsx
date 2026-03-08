@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
+import { buildProviderSummaries, filterAgentsByView, type AgentPresenceFilter } from '@/lib/agentProviderInsights';
 import { useAgentStore } from '@/stores/agentStore';
 
 export function AgentsPage() {
@@ -9,10 +10,15 @@ export function AgentsPage() {
   const craftsmen = useAgentStore((state) => state.craftsmen);
   const error = useAgentStore((state) => state.error);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
+  const [presenceFilter, setPresenceFilter] = useState<AgentPresenceFilter>('all');
+  const [providerFilter, setProviderFilter] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
+
+  const providerSummaries = buildProviderSummaries(agents);
+  const visibleAgents = filterAgentsByView(agents, presenceFilter, providerFilter);
 
   return (
     <div className="page-enter space-y-6">
@@ -61,16 +67,73 @@ export function AgentsPage() {
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
-            <h3 className="section-title">{copy.agentListTitle}</h3>
-            <span className="status-pill status-pill--neutral">{agents.length}</span>
+            <h3 className="section-title">{copy.providerSummaryTitle}</h3>
+            <span className="status-pill status-pill--neutral">{providerSummaries.length}</span>
           </div>
           <div className="mt-5 space-y-3">
-            {agents.length === 0 ? (
+            {providerSummaries.map((item) => {
+              const isActive = providerFilter === item.provider;
+              return (
+                <button
+                  key={item.provider}
+                  type="button"
+                  className="data-row w-full text-left"
+                  onClick={() => setProviderFilter(isActive ? null : item.provider)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="type-heading-sm">{item.provider}</strong>
+                      <span className="status-pill status-pill--neutral">{item.totalAgents}</span>
+                    </div>
+                    <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                      <span>{copy.metrics.activeAgents}: {item.busyAgents}</span>
+                      <span>{copy.metrics.onlineAgents}: {item.onlineAgents}</span>
+                      <span>{copy.metrics.staleAgents}: {item.staleAgents}</span>
+                      <span>{copy.metrics.disconnectedAgents}: {item.disconnectedAgents}</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="surface-panel surface-panel--workspace">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.filtersTitle}</h3>
+            <span className="status-pill status-pill--neutral">{visibleAgents.length}</span>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {(['all', 'busy', 'online', 'stale', 'disconnected', 'offline'] as const).map((filter) => {
+              const selected = presenceFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                  onClick={() => setPresenceFilter(filter)}
+                >
+                  {copy.filterLabels[filter]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <div className="surface-panel surface-panel--workspace">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.agentListTitle}</h3>
+            <span className="status-pill status-pill--neutral">{visibleAgents.length}</span>
+          </div>
+          <div className="mt-5 space-y-3">
+            {visibleAgents.length === 0 ? (
               <div className="empty-state">
                 <p className="type-body-sm">{copy.emptyAgents}</p>
               </div>
             ) : (
-              agents.map((agent) => (
+              visibleAgents.map((agent) => (
                 <div key={agent.id} className="data-row">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

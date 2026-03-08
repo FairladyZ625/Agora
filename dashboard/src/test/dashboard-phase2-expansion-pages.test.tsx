@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
@@ -219,8 +219,42 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByRole('heading', { name: 'Agent 状态' })).toBeInTheDocument();
     expect(screen.getByText('sonnet')).toBeInTheDocument();
     expect(screen.getByText(/Agent 总数/i)).toBeInTheDocument();
-    expect(screen.getByText('online')).toBeInTheDocument();
-    expect(screen.getByText(/在线 Agent/i)).toBeInTheDocument();
+    expect(screen.getAllByText('online').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/在线 Agent/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Provider 摘要/i)).toBeInTheDocument();
+  });
+
+  it('filters the agent list by presence view', () => {
+    agentStoreState.agents.push({
+      id: 'review',
+      role: 'reviewer',
+      status: 'idle',
+      presence: 'stale',
+      presenceReason: 'stale_gateway_log',
+      source: 'discord',
+      primaryModel: 'n/a',
+      workspaceDir: 'n/a',
+      provider: 'discord',
+      accountId: 'review',
+      taskCount: 0,
+      subtaskCount: 0,
+      load: 0,
+      activeTaskIds: [],
+      activeSubtaskIds: [],
+      lastActiveAt: null,
+      lastSeenAt: '2026-03-08T09:30:00.000Z',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'stale' }));
+
+    expect(screen.getByText('review')).toBeInTheDocument();
+    expect(screen.queryByText('sonnet')).not.toBeInTheDocument();
   });
 
   it('renders the todo workspace on the dedicated route', () => {
