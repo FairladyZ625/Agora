@@ -234,6 +234,7 @@ export class DashboardQueryService {
       },
       agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
+      provider_summaries: buildProviderSummaries(allAgents),
     };
   }
 
@@ -329,7 +330,7 @@ function presenceRank(presence: 'online' | 'offline' | 'disconnected' | 'stale')
 
 function inferProvider(source?: string | null) {
   if (!source) {
-    return null;
+    return 'openclaw';
   }
   if (source.includes('discord')) {
     return 'discord';
@@ -341,4 +342,139 @@ function inferProvider(source?: string | null) {
     return 'openclaw';
   }
   return source;
+}
+
+function buildProviderSummaries(agents: AgentsStatusDto['agents']): AgentsStatusDto['provider_summaries'] {
+  const byProvider = new Map<string, AgentsStatusDto['provider_summaries'][number]>();
+
+  for (const agent of agents) {
+    const provider = agent.provider ?? 'unknown';
+    const current = byProvider.get(provider) ?? {
+      provider,
+      total_agents: 0,
+      busy_agents: 0,
+      online_agents: 0,
+      stale_agents: 0,
+      disconnected_agents: 0,
+      offline_agents: 0,
+      overall_presence: 'offline' as const,
+      last_seen_at: null,
+      presence_reason: null,
+      affected_agents: [],
+    };
+
+    current.total_agents += 1;
+    if (agent.status === 'busy') {
+      current.busy_agents += 1;
+    }
+
+    switch (agent.presence) {
+      case 'online':
+        current.online_agents += 1;
+        break;
+      case 'stale':
+        current.stale_agents += 1;
+        break;
+      case 'disconnected':
+        current.disconnected_agents += 1;
+        break;
+      default:
+        current.offline_agents += 1;
+        break;
+    }
+
+    current.last_seen_at = newestTimestamp(current.last_seen_at, agent.last_seen_at);
+    current.affected_agents.push({
+      id: agent.id,
+      status: agent.status,
+      presence: agent.presence,
+      presence_reason: agent.presence_reason ?? null,
+      last_seen_at: agent.last_seen_at,
+      account_id: agent.account_id ?? null,
+    });
+    byProvider.set(provider, current);
+  }
+
+  return Array.from(byProvider.values())
+    .map((summary) => {
+      const affectedAgents = summary.affected_agents.sort(compareAffectedAgents);
+      const overallPresence = deriveOverallPresence(summary);
+      return {
+        ...summary,
+        overall_presence: overallPresence,
+        presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
+        affected_agents: affectedAgents,
+      };
+    })
+    .sort(compareProviderSummaries);
+}
+
+function deriveOverallPresence(
+  summary: AgentsStatusDto['provider_summaries'][number],
+): AgentsStatusDto['provider_summaries'][number]['overall_presence'] {
+  if (summary.disconnected_agents > 0) {
+    return 'disconnected';
+  }
+  if (summary.stale_agents > 0) {
+    return 'stale';
+  }
+  if (summary.online_agents > 0 || summary.busy_agents > 0) {
+    return 'online';
+  }
+  return 'offline';
+}
+
+function compareAffectedAgents(
+  left: AgentsStatusDto['provider_summaries'][number]['affected_agents'][number],
+  right: AgentsStatusDto['provider_summaries'][number]['affected_agents'][number],
+) {
+  const presenceDelta = presenceSeverity(left.presence) - presenceSeverity(right.presence);
+  if (presenceDelta !== 0) {
+    return presenceDelta;
+  }
+  const leftSeen = left.last_seen_at ? new Date(left.last_seen_at).getTime() : 0;
+  const rightSeen = right.last_seen_at ? new Date(right.last_seen_at).getTime() : 0;
+  if (leftSeen !== rightSeen) {
+    return rightSeen - leftSeen;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+function compareProviderSummaries(
+  left: AgentsStatusDto['provider_summaries'][number],
+  right: AgentsStatusDto['provider_summaries'][number],
+) {
+  const presenceDelta = presenceSeverity(left.overall_presence) - presenceSeverity(right.overall_presence);
+  if (presenceDelta !== 0) {
+    return presenceDelta;
+  }
+  const leftSeen = left.last_seen_at ? new Date(left.last_seen_at).getTime() : 0;
+  const rightSeen = right.last_seen_at ? new Date(right.last_seen_at).getTime() : 0;
+  if (leftSeen !== rightSeen) {
+    return rightSeen - leftSeen;
+  }
+  return left.provider.localeCompare(right.provider);
+}
+
+function newestTimestamp(left: string | null, right: string | null) {
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+  return new Date(left).getTime() >= new Date(right).getTime() ? left : right;
+}
+
+function presenceSeverity(presence: 'online' | 'offline' | 'disconnected' | 'stale') {
+  switch (presence) {
+    case 'disconnected':
+      return 0;
+    case 'stale':
+      return 1;
+    case 'online':
+      return 2;
+    default:
+      return 3;
+  }
 }

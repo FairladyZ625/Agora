@@ -45,6 +45,30 @@ describe('dashboard expansion mappers', () => {
           account_id: 'sonnet',
         },
       ],
+      provider_summaries: [
+        {
+          provider: 'discord',
+          total_agents: 2,
+          busy_agents: 1,
+          online_agents: 1,
+          stale_agents: 1,
+          disconnected_agents: 0,
+          offline_agents: 0,
+          overall_presence: 'stale',
+          last_seen_at: '2026-03-07T10:01:00.000Z',
+          presence_reason: 'stale_gateway_log',
+          affected_agents: [
+            {
+              id: 'sonnet',
+              status: 'busy',
+              presence: 'online',
+              presence_reason: 'live_session',
+              last_seen_at: '2026-03-07T10:01:00.000Z',
+              account_id: 'sonnet',
+            },
+          ],
+        },
+      ],
       craftsmen: [
         {
           id: 'codex',
@@ -65,6 +89,9 @@ describe('dashboard expansion mappers', () => {
     expect(status.summary.onlineAgents).toBe(2);
     expect(status.summary.staleAgents).toBe(1);
     expect(status.summary.disconnectedAgents).toBe(0);
+    expect(status.providerSummaries[0]?.provider).toBe('discord');
+    expect(status.providerSummaries[0]?.overallPresence).toBe('stale');
+    expect(status.providerSummaries[0]?.affectedAgents[0]?.id).toBe('sonnet');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
     expect(status.agents[0]?.presenceReason).toBe('live_session');

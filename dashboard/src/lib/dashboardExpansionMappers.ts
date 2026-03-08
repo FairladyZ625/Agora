@@ -10,6 +10,8 @@ import type {
   AgentsStatus,
   ArchiveJob,
   AgentStatusItem,
+  AgentProviderAffectedAgent,
+  AgentProviderSummary,
   CraftsmanStatusItem,
   PromoteTodoResult,
   TemplateDetail,
@@ -71,6 +73,35 @@ function mapCraftsmanDto(item: ApiAgentsStatusDto['craftsmen'][number]): Craftsm
   };
 }
 
+function mapProviderAffectedAgentDto(
+  item: ApiAgentsStatusDto['provider_summaries'][number]['affected_agents'][number],
+): AgentProviderAffectedAgent {
+  return {
+    id: item.id,
+    status: item.status,
+    presence: item.presence,
+    presenceReason: item.presence_reason ?? null,
+    lastSeenAt: item.last_seen_at,
+    accountId: item.account_id ?? null,
+  };
+}
+
+function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][number]): AgentProviderSummary {
+  return {
+    provider: item.provider,
+    totalAgents: item.total_agents,
+    busyAgents: item.busy_agents,
+    onlineAgents: item.online_agents,
+    staleAgents: item.stale_agents,
+    disconnectedAgents: item.disconnected_agents,
+    offlineAgents: item.offline_agents,
+    overallPresence: item.overall_presence,
+    lastSeenAt: item.last_seen_at,
+    presenceReason: item.presence_reason ?? null,
+    affectedAgents: item.affected_agents.map(mapProviderAffectedAgentDto),
+  };
+}
+
 export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
   return {
     summary: {
@@ -84,6 +115,7 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
     },
     agents: dto.agents.map(mapAgentDto),
     craftsmen: dto.craftsmen.map(mapCraftsmanDto),
+    providerSummaries: dto.provider_summaries.map(mapProviderSummaryDto),
   };
 }
 

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
-import { buildProviderSummaries, filterAgentsByView, type AgentPresenceFilter } from '@/lib/agentProviderInsights';
+import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useAgentStore } from '@/stores/agentStore';
 
 export function AgentsPage() {
@@ -8,17 +8,23 @@ export function AgentsPage() {
   const summary = useAgentStore((state) => state.summary);
   const agents = useAgentStore((state) => state.agents);
   const craftsmen = useAgentStore((state) => state.craftsmen);
+  const providerSummaries = useAgentStore((state) => state.providerSummaries);
+  const presenceFilter = useAgentStore((state) => state.presenceFilter);
+  const providerFilter = useAgentStore((state) => state.providerFilter);
   const error = useAgentStore((state) => state.error);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
-  const [presenceFilter, setPresenceFilter] = useState<AgentPresenceFilter>('all');
-  const [providerFilter, setProviderFilter] = useState<string | null>(null);
+  const setPresenceFilter = useAgentStore((state) => state.setPresenceFilter);
+  const setProviderFilter = useAgentStore((state) => state.setProviderFilter);
 
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
 
-  const providerSummaries = buildProviderSummaries(agents);
   const visibleAgents = filterAgentsByView(agents, presenceFilter, providerFilter);
+  const selectedProvider = useMemo(
+    () => providerSummaries.find((item) => item.provider === providerFilter) ?? providerSummaries[0] ?? null,
+    [providerFilter, providerSummaries],
+  );
 
   return (
     <div className="page-enter space-y-6">
@@ -86,6 +92,9 @@ export function AgentsPage() {
                       <span className="status-pill status-pill--neutral">{item.totalAgents}</span>
                     </div>
                     <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                      <span>{copy.presenceLabel}: {item.overallPresence}</span>
+                      <span>{copy.presenceReasonLabel}: {item.presenceReason ?? 'n/a'}</span>
+                      <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
                       <span>{copy.metrics.activeAgents}: {item.busyAgents}</span>
                       <span>{copy.metrics.onlineAgents}: {item.onlineAgents}</span>
                       <span>{copy.metrics.staleAgents}: {item.staleAgents}</span>
@@ -122,6 +131,58 @@ export function AgentsPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
+        <div className="surface-panel surface-panel--workspace">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.providerDetailTitle}</h3>
+            <span className="status-pill status-pill--neutral">{selectedProvider?.provider ?? 'n/a'}</span>
+          </div>
+          <div className="mt-5 space-y-4">
+            {selectedProvider ? (
+              <>
+                <div className="type-text-xs flex flex-wrap items-center gap-3">
+                  <span>{copy.presenceLabel}: {selectedProvider.overallPresence}</span>
+                  <span>{copy.presenceReasonLabel}: {selectedProvider.presenceReason ?? 'n/a'}</span>
+                  <span>{copy.lastSeenLabel}: {selectedProvider.lastSeenAt ?? 'n/a'}</span>
+                </div>
+                <div className="type-text-xs flex flex-wrap items-center gap-3">
+                  <span>{copy.metrics.totalAgents}: {selectedProvider.totalAgents}</span>
+                  <span>{copy.metrics.activeAgents}: {selectedProvider.busyAgents}</span>
+                  <span>{copy.metrics.staleAgents}: {selectedProvider.staleAgents}</span>
+                  <span>{copy.metrics.disconnectedAgents}: {selectedProvider.disconnectedAgents}</span>
+                </div>
+                <div className="space-y-3">
+                  {selectedProvider.affectedAgents.length === 0 ? (
+                    <div className="empty-state">
+                      <p className="type-body-sm">{copy.emptyProviderDetail}</p>
+                    </div>
+                  ) : (
+                    selectedProvider.affectedAgents.map((item) => (
+                      <div key={`${selectedProvider.provider}-${item.id}`} className="decision-card">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="type-heading-sm">{item.id}</p>
+                            <p className="type-body-sm mt-2">{item.presenceReason ?? 'n/a'}</p>
+                          </div>
+                          <span className="status-pill status-pill--info">{item.presence}</span>
+                        </div>
+                        <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                          <span>{copy.statusLabel}: {item.status}</span>
+                          <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
+                          <span>{copy.accountLabel}: {item.accountId ?? 'n/a'}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">
+                <p className="type-body-sm">{copy.emptyProviderDetail}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <h3 className="section-title">{copy.agentListTitle}</h3>

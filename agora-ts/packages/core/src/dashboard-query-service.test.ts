@@ -72,6 +72,20 @@ describe('dashboard query service', () => {
       busy_craftsmen: 1,
     });
     expect(agentsStatus.agents.map((item) => item.id)).toContain('sonnet');
+    expect(agentsStatus.provider_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        provider: 'openclaw',
+        total_agents: expect.any(Number),
+        busy_agents: expect.any(Number),
+        overall_presence: 'online',
+        affected_agents: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'sonnet',
+            presence: 'online',
+          }),
+        ]),
+      }),
+    ]));
     expect(agentsStatus.craftsmen).toMatchObject([
       expect.objectContaining({
         id: 'codex',
@@ -231,6 +245,16 @@ describe('dashboard query service', () => {
         load: 0,
       }),
     ]);
+    expect(agentsStatus.provider_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        provider: 'discord',
+        total_agents: 2,
+        busy_agents: 1,
+        online_agents: 1,
+        offline_agents: 1,
+        overall_presence: 'online',
+      }),
+    ]));
   });
 
   it('overlays provider presence and last seen timestamps from gateway events', () => {
@@ -292,6 +316,21 @@ describe('dashboard query service', () => {
       stale_agents: 0,
       disconnected_agents: 1,
     });
+    expect(agentsStatus.provider_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        provider: 'discord',
+        total_agents: 3,
+        disconnected_agents: 1,
+        overall_presence: 'disconnected',
+        presence_reason: 'health_monitor_restart',
+        affected_agents: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'sonnet',
+            presence: 'disconnected',
+          }),
+        ]),
+      }),
+    ]));
     expect(agentsStatus.agents).toEqual([
       expect.objectContaining({
         id: 'main',

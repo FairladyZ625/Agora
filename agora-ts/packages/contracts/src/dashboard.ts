@@ -39,10 +39,34 @@ export const craftsmanStatusItemSchema = z.object({
   running_since: z.string().nullable(),
 });
 
+export const agentProviderAffectedAgentSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
+  presence_reason: z.string().nullable(),
+  last_seen_at: z.string().nullable(),
+  account_id: z.string().nullable(),
+});
+
+export const agentProviderSummarySchema = z.object({
+  provider: z.string(),
+  total_agents: z.number().int().nonnegative(),
+  busy_agents: z.number().int().nonnegative(),
+  online_agents: z.number().int().nonnegative(),
+  stale_agents: z.number().int().nonnegative(),
+  disconnected_agents: z.number().int().nonnegative(),
+  offline_agents: z.number().int().nonnegative(),
+  overall_presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
+  last_seen_at: z.string().nullable(),
+  presence_reason: z.string().nullable(),
+  affected_agents: z.array(agentProviderAffectedAgentSchema),
+});
+
 export const agentsStatusSchema = z.object({
   summary: agentSummarySchema,
   agents: z.array(agentStatusItemSchema),
   craftsmen: z.array(craftsmanStatusItemSchema),
+  provider_summaries: z.array(agentProviderSummarySchema),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
 

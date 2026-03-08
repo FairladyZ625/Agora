@@ -22,10 +22,14 @@ vi.mock('@/lib/api', () => ({
 describe('dashboard expansion stores', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     useAgentStore.setState({
       summary: null,
       agents: [],
       craftsmen: [],
+      providerSummaries: [],
+      presenceFilter: 'all',
+      providerFilter: null,
       loading: false,
       error: null,
     });
@@ -77,6 +81,26 @@ describe('dashboard expansion stores', () => {
         },
       ],
       craftsmen: [],
+      provider_summaries: [{
+        provider: 'discord',
+        total_agents: 2,
+        busy_agents: 1,
+        online_agents: 1,
+        stale_agents: 1,
+        disconnected_agents: 0,
+        offline_agents: 0,
+        overall_presence: 'stale',
+        last_seen_at: '2026-03-08T10:00:00.000Z',
+        presence_reason: 'stale_gateway_log',
+        affected_agents: [{
+          id: 'sonnet',
+          status: 'busy',
+          presence: 'online',
+          presence_reason: 'live_session',
+          last_seen_at: '2026-03-08T10:00:00.000Z',
+          account_id: 'sonnet',
+        }],
+      }],
     });
 
     const result = await useAgentStore.getState().fetchStatus();
@@ -87,8 +111,23 @@ describe('dashboard expansion stores', () => {
     expect(state.summary?.totalAgents).toBe(2);
     expect(state.summary?.onlineAgents).toBe(1);
     expect(state.summary?.staleAgents).toBe(1);
+    expect(state.providerSummaries[0]?.overallPresence).toBe('stale');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
+  });
+
+  it('persists agent filters across refreshes', () => {
+    useAgentStore.getState().setPresenceFilter('stale');
+    useAgentStore.getState().setProviderFilter('discord');
+
+    const raw = localStorage.getItem('agora-agent-filters');
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw ?? '{}')).toMatchObject({
+      state: {
+        presenceFilter: 'stale',
+        providerFilter: 'discord',
+      },
+    });
   });
 
   it('loads archive list and detail while preserving split-view state', async () => {

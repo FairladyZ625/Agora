@@ -1,10 +1,35 @@
+import { useSyncExternalStore } from 'react';
 import { MemoryRouter } from 'react-router';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
 const agentStoreState = {
   summary: { activeTasks: 1, activeAgents: 1, totalAgents: 2, onlineAgents: 1, staleAgents: 1, disconnectedAgents: 0, busyCraftsmen: 1 },
+  providerSummaries: [
+    {
+      provider: 'discord',
+      totalAgents: 2,
+      busyAgents: 1,
+      onlineAgents: 1,
+      staleAgents: 1,
+      disconnectedAgents: 0,
+      offlineAgents: 0,
+      overallPresence: 'stale',
+      lastSeenAt: '2026-03-08T10:00:00.000Z',
+      presenceReason: 'stale_gateway_log',
+      affectedAgents: [
+        {
+          id: 'review',
+          status: 'idle',
+          presence: 'stale',
+          presenceReason: 'stale_gateway_log',
+          lastSeenAt: '2026-03-08T09:30:00.000Z',
+          accountId: 'review',
+        },
+      ],
+    },
+  ],
   agents: [
     {
       id: 'sonnet',
@@ -29,9 +54,47 @@ const agentStoreState = {
   craftsmen: [],
   loading: false,
   error: null,
+  presenceFilter: 'all' as const,
+  providerFilter: null as string | null,
   fetchStatus: vi.fn(async () => 'live'),
+  setPresenceFilter: vi.fn((filter) => {
+    agentStoreState.presenceFilter = filter;
+  }),
+  setProviderFilter: vi.fn((provider) => {
+    agentStoreState.providerFilter = provider;
+  }),
   clearError: vi.fn(),
 };
+
+const agentStoreListeners = new Set<() => void>();
+
+function makeAgentStoreSnapshot() {
+  return {
+    ...agentStoreState,
+    providerSummaries: [...agentStoreState.providerSummaries],
+    agents: [...agentStoreState.agents],
+    craftsmen: [...agentStoreState.craftsmen],
+  };
+}
+
+let agentStoreSnapshot = makeAgentStoreSnapshot();
+
+function notifyAgentStore() {
+  agentStoreSnapshot = makeAgentStoreSnapshot();
+  for (const listener of agentStoreListeners) {
+    listener();
+  }
+}
+
+agentStoreState.setPresenceFilter.mockImplementation((filter) => {
+  agentStoreState.presenceFilter = filter;
+  notifyAgentStore();
+});
+
+agentStoreState.setProviderFilter.mockImplementation((provider) => {
+  agentStoreState.providerFilter = provider;
+  notifyAgentStore();
+});
 
 const archiveStoreState = {
   jobs: [
@@ -158,8 +221,17 @@ const taskStoreState = {
 };
 
 vi.mock('@/stores/agentStore', () => ({
-  useAgentStore: (selector?: (state: typeof agentStoreState) => unknown) =>
-    selector ? selector(agentStoreState) : agentStoreState,
+  useAgentStore: (selector?: (state: typeof agentStoreState) => unknown) => {
+    const snapshot = useSyncExternalStore(
+      (listener) => {
+        agentStoreListeners.add(listener);
+        return () => agentStoreListeners.delete(listener);
+      },
+      () => agentStoreSnapshot,
+      () => agentStoreSnapshot,
+    );
+    return selector ? selector(snapshot) : snapshot;
+  },
 }));
 
 vi.mock('@/stores/archiveStore', () => ({
@@ -209,6 +281,13 @@ vi.mock('@/stores/feedbackStore', () => ({
 }));
 
 describe('dashboard expansion routes', () => {
+  beforeEach(() => {
+    agentStoreState.presenceFilter = 'all';
+    agentStoreState.providerFilter = null;
+    agentStoreState.agents.splice(1);
+    agentStoreSnapshot = makeAgentStoreSnapshot();
+  });
+
   it('renders the agent status page on the dedicated route', () => {
     render(
       <MemoryRouter initialEntries={['/agents']}>
@@ -218,10 +297,11 @@ describe('dashboard expansion routes', () => {
 
     expect(screen.getByRole('heading', { name: 'Agent 状态' })).toBeInTheDocument();
     expect(screen.getByText('sonnet')).toBeInTheDocument();
-    expect(screen.getByText(/Agent 总数/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Agent 总数/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText('online').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/在线 Agent/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Provider 摘要/i)).toBeInTheDocument();
+    expect(screen.getByText(/Provider 健康详情/i)).toBeInTheDocument();
   });
 
   it('filters the agent list by presence view', () => {
@@ -253,8 +333,21 @@ describe('dashboard expansion routes', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'stale' }));
 
-    expect(screen.getByText('review')).toBeInTheDocument();
+    expect(screen.getAllByText('review').length).toBeGreaterThan(0);
     expect(screen.queryByText('sonnet')).not.toBeInTheDocument();
+  });
+
+  it('shows provider drill-down details for the selected provider', () => {
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /discord/i }));
+
+    expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
   });
 
   it('renders the todo workspace on the dedicated route', () => {

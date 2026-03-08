@@ -92,6 +92,14 @@ describe('agent provider insights', () => {
         staleAgents: 1,
         disconnectedAgents: 1,
         offlineAgents: 0,
+        overallPresence: 'disconnected',
+        lastSeenAt: '2026-03-08T10:00:00.000Z',
+        presenceReason: 'health_monitor_restart',
+        affectedAgents: [
+          expect.objectContaining({ id: 'writer', presence: 'disconnected' }),
+          expect.objectContaining({ id: 'review', presence: 'stale' }),
+          expect.objectContaining({ id: 'main', presence: 'online' }),
+        ],
       },
       {
         provider: 'openclaw',
@@ -101,6 +109,12 @@ describe('agent provider insights', () => {
         staleAgents: 0,
         disconnectedAgents: 0,
         offlineAgents: 1,
+        overallPresence: 'offline',
+        lastSeenAt: null,
+        presenceReason: null,
+        affectedAgents: [
+          expect.objectContaining({ id: 'ops', presence: 'offline' }),
+        ],
       },
     ]);
   });

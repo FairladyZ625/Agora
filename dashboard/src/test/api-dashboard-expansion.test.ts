@@ -53,6 +53,26 @@ describe('dashboard expansion api client', () => {
               workspace_dir: '/tmp/main',
             }],
             craftsmen: [],
+            provider_summaries: [{
+              provider: 'discord',
+              total_agents: 2,
+              busy_agents: 1,
+              online_agents: 1,
+              stale_agents: 1,
+              disconnected_agents: 0,
+              offline_agents: 0,
+              overall_presence: 'stale',
+              last_seen_at: '2026-03-08T00:00:00.000Z',
+              presence_reason: 'stale_gateway_log',
+              affected_agents: [{
+                id: 'main',
+                status: 'busy',
+                presence: 'online',
+                presence_reason: 'live_session',
+                last_seen_at: '2026-03-08T00:00:00.000Z',
+                account_id: 'main',
+              }],
+            }],
           };
         }
         if (url.includes('/archive/jobs')) {

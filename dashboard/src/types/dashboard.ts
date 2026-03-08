@@ -8,6 +8,29 @@ export interface AgentStatusSummary {
   busyCraftsmen: number;
 }
 
+export interface AgentProviderAffectedAgent {
+  id: string;
+  status: string;
+  presence: 'online' | 'offline' | 'disconnected' | 'stale';
+  presenceReason: string | null;
+  lastSeenAt: string | null;
+  accountId: string | null;
+}
+
+export interface AgentProviderSummary {
+  provider: string;
+  totalAgents: number;
+  busyAgents: number;
+  onlineAgents: number;
+  staleAgents: number;
+  disconnectedAgents: number;
+  offlineAgents: number;
+  overallPresence: 'online' | 'offline' | 'disconnected' | 'stale';
+  lastSeenAt: string | null;
+  presenceReason: string | null;
+  affectedAgents: AgentProviderAffectedAgent[];
+}
+
 export interface AgentStatusItem {
   id: string;
   role: string | null;
@@ -41,6 +64,7 @@ export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
+  providerSummaries: AgentProviderSummary[];
 }
 
 export type TodoFilter = 'all' | 'pending' | 'done';

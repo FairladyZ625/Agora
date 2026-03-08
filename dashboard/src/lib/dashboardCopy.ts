@@ -295,6 +295,7 @@ export function useAgentsPageCopy() {
       busyCraftsmen: t('agents.metrics.busyCraftsmen'),
     },
     providerSummaryTitle: t('agents.providerSummaryTitle'),
+    providerDetailTitle: t('agents.providerDetailTitle'),
     filtersTitle: t('agents.filtersTitle'),
     filterLabels: {
       all: t('agents.filterLabels.all'),
@@ -314,11 +315,14 @@ export function useAgentsPageCopy() {
     presenceLabel: t('agents.presenceLabel'),
     presenceReasonLabel: t('agents.presenceReasonLabel'),
     providerLabel: t('agents.providerLabel'),
+    accountLabel: t('agents.accountLabel'),
+    statusLabel: t('agents.statusLabel'),
     lastSeenLabel: t('agents.lastSeenLabel'),
     loadLabel: t('agents.loadLabel'),
     taskCountLabel: t('agents.taskCountLabel'),
     subtaskCountLabel: t('agents.subtaskCountLabel'),
     currentTaskLabel: t('agents.currentTaskLabel'),
+    emptyProviderDetail: t('agents.emptyProviderDetail'),
   };
 }
 
