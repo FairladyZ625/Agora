@@ -57,6 +57,19 @@ const agentStoreState = {
       ],
     },
   ],
+  tmuxRuntime: {
+    session: 'agora-craftsmen',
+    panes: [
+      {
+        agent: 'codex',
+        paneId: '%0',
+        currentCommand: 'bash',
+        active: true,
+        ready: true,
+        tailPreview: 'tail:codex',
+      },
+    ],
+  },
   agents: [
     {
       id: 'sonnet',
@@ -331,6 +344,9 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByText(/Provider 健康详情/i)).toBeInTheDocument();
     expect(screen.getByText(/Provider 历史趋势/i)).toBeInTheDocument();
     expect(screen.getByText(/Provider 运行信号/i)).toBeInTheDocument();
+    expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
+    expect(screen.getByText('agora-craftsmen')).toBeInTheDocument();
+    expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
   });
 
   it('filters the agent list by presence view', () => {

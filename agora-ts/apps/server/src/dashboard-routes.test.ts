@@ -80,11 +80,13 @@ describe('dashboard routes', () => {
 
     expect(agents.statusCode).toBe(200);
     expect(agents.json().summary.active_tasks).toBe(1);
+    expect(agents.json().tmux_runtime).toBeNull();
     expect(agents.json().provider_summaries).toEqual([
       expect.objectContaining({
         provider: 'openclaw',
         total_agents: expect.any(Number),
         overall_presence: 'online',
+        signal_status: expect.any(String),
       }),
     ]);
     expect(archive.statusCode).toBe(200);

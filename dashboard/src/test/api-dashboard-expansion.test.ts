@@ -96,6 +96,17 @@ describe('dashboard expansion api client', () => {
                 detail: 'Main ready',
               }],
             }],
+            tmux_runtime: {
+              session: 'agora-craftsmen',
+              panes: [{
+                agent: 'codex',
+                pane_id: '%0',
+                current_command: 'bash',
+                active: true,
+                ready: true,
+                tail_preview: 'tail:codex',
+              }],
+            },
           };
         }
         if (url.includes('/archive/jobs')) {

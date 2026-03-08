@@ -19,6 +19,7 @@ import type {
   TemplateDetail,
   TemplateStage,
   TemplateSummary,
+  TmuxRuntimeStatus,
   Todo,
 } from '@/types/dashboard';
 
@@ -72,6 +73,23 @@ function mapCraftsmanDto(item: ApiAgentsStatusDto['craftsmen'][number]): Craftsm
     subtaskId: item.subtask_id,
     title: item.title,
     runningSince: item.running_since,
+  };
+}
+
+function mapTmuxRuntime(dto: ApiAgentsStatusDto['tmux_runtime']): TmuxRuntimeStatus | null {
+  if (!dto) {
+    return null;
+  }
+  return {
+    session: dto.session,
+    panes: dto.panes.map((pane) => ({
+      agent: pane.agent,
+      paneId: pane.pane_id,
+      currentCommand: pane.current_command,
+      active: pane.active,
+      ready: pane.ready,
+      tailPreview: pane.tail_preview,
+    })),
   };
 }
 
@@ -153,6 +171,7 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
     agents: dto.agents.map(mapAgentDto),
     craftsmen: dto.craftsmen.map(mapCraftsmanDto),
     providerSummaries: dto.provider_summaries.map(mapProviderSummaryDto),
+    tmuxRuntime: mapTmuxRuntime(dto.tmux_runtime),
   };
 }
 

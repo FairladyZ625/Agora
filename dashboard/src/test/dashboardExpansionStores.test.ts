@@ -28,6 +28,7 @@ describe('dashboard expansion stores', () => {
       agents: [],
       craftsmen: [],
       providerSummaries: [],
+      tmuxRuntime: null,
       presenceFilter: 'all',
       providerFilter: null,
       loading: false,
@@ -124,6 +125,19 @@ describe('dashboard expansion stores', () => {
           detail: 'code 1005',
         }],
       }],
+      tmux_runtime: {
+        session: 'agora-craftsmen',
+        panes: [
+          {
+            agent: 'codex',
+            pane_id: '%0',
+            current_command: 'bash',
+            active: true,
+            ready: true,
+            tail_preview: 'tail:codex',
+          },
+        ],
+      },
     });
 
     const result = await useAgentStore.getState().fetchStatus();
@@ -137,6 +151,7 @@ describe('dashboard expansion stores', () => {
     expect(state.providerSummaries[0]?.overallPresence).toBe('stale');
     expect(state.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(state.providerSummaries[0]?.signalStatus).toBe('degraded');
+    expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
   });

@@ -39,6 +39,20 @@ export const craftsmanStatusItemSchema = z.object({
   running_since: z.string().nullable(),
 });
 
+export const tmuxRuntimePaneSchema = z.object({
+  agent: z.string(),
+  pane_id: z.string().nullable(),
+  current_command: z.string().nullable(),
+  active: z.boolean(),
+  ready: z.boolean(),
+  tail_preview: z.string().nullable(),
+});
+
+export const tmuxRuntimeSchema = z.object({
+  session: z.string().nullable(),
+  panes: z.array(tmuxRuntimePaneSchema),
+});
+
 export const agentProviderAffectedAgentSchema = z.object({
   id: z.string(),
   status: z.string(),
@@ -104,6 +118,7 @@ export const agentsStatusSchema = z.object({
   agents: z.array(agentStatusItemSchema),
   craftsmen: z.array(craftsmanStatusItemSchema),
   provider_summaries: z.array(agentProviderSummarySchema),
+  tmux_runtime: tmuxRuntimeSchema.nullable(),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
 

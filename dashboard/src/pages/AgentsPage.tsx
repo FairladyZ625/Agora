@@ -9,6 +9,7 @@ export function AgentsPage() {
   const agents = useAgentStore((state) => state.agents);
   const craftsmen = useAgentStore((state) => state.craftsmen);
   const providerSummaries = useAgentStore((state) => state.providerSummaries);
+  const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
   const providerFilter = useAgentStore((state) => state.providerFilter);
   const error = useAgentStore((state) => state.error);
@@ -307,6 +308,39 @@ export function AgentsPage() {
                     <span>{copy.currentTaskLabel}: {item.taskId}</span>
                     <span>{item.subtaskId}</span>
                   </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="surface-panel surface-panel--workspace">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.tmuxRuntimeTitle}</h3>
+            <span className="status-pill status-pill--neutral">{tmuxRuntime?.session ?? 'n/a'}</span>
+          </div>
+          <div className="mt-5 space-y-3">
+            {!tmuxRuntime || tmuxRuntime.panes.length === 0 ? (
+              <div className="empty-state">
+                <p className="type-body-sm">{copy.emptyTmuxRuntime}</p>
+              </div>
+            ) : (
+              tmuxRuntime.panes.map((pane) => (
+                <div key={pane.agent} className="decision-card">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="type-heading-sm">{pane.agent}</p>
+                      <p className="type-body-sm mt-2">{copy.paneLabel}: {pane.paneId ?? 'n/a'}</p>
+                    </div>
+                    <span className={pane.ready ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}>
+                      {copy.readyLabel}: {pane.ready ? 'yes' : 'no'}
+                    </span>
+                  </div>
+                  <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                    <span>{copy.commandLabel}: {pane.currentCommand ?? 'n/a'}</span>
+                    <span>{copy.statusLabel}: {pane.active ? 'active' : 'idle'}</span>
+                  </div>
+                  <p className="type-text-xs mt-3">{copy.tailPreviewLabel}: {pane.tailPreview ?? 'n/a'}</p>
                 </div>
               ))
             )}

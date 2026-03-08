@@ -91,6 +91,7 @@ describe('shared contracts', () => {
           ],
         },
       ],
+      tmux_runtime: null,
     });
 
     expect(parsed.summary.active_tasks).toBe(1);

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as api from '@/lib/api';
 import { mapAgentsStatusDto } from '@/lib/dashboardExpansionMappers';
-import type { AgentStatusItem, AgentStatusSummary, AgentProviderSummary, CraftsmanStatusItem } from '@/types/dashboard';
+import type { AgentStatusItem, AgentStatusSummary, AgentProviderSummary, CraftsmanStatusItem, TmuxRuntimeStatus } from '@/types/dashboard';
 import type { AgentPresenceFilter } from '@/lib/agentProviderInsights';
 
 interface AgentStore {
@@ -10,6 +10,7 @@ interface AgentStore {
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
   providerSummaries: AgentProviderSummary[];
+  tmuxRuntime: TmuxRuntimeStatus | null;
   presenceFilter: AgentPresenceFilter;
   providerFilter: string | null;
   loading: boolean;
@@ -27,6 +28,7 @@ export const useAgentStore = create<AgentStore>()(
       agents: [],
       craftsmen: [],
       providerSummaries: [],
+      tmuxRuntime: null,
       presenceFilter: 'all',
       providerFilter: null,
       loading: false,
@@ -41,6 +43,7 @@ export const useAgentStore = create<AgentStore>()(
             agents: payload.agents,
             craftsmen: payload.craftsmen,
             providerSummaries: payload.providerSummaries,
+            tmuxRuntime: payload.tmuxRuntime,
             loading: false,
           });
           return 'live';
@@ -50,6 +53,7 @@ export const useAgentStore = create<AgentStore>()(
             agents: [],
             craftsmen: [],
             providerSummaries: [],
+            tmuxRuntime: null,
             loading: false,
             error: error instanceof Error ? error.message : String(error),
           });

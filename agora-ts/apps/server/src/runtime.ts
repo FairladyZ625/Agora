@@ -61,14 +61,6 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     allowAgents: config.permissions.allowAgents,
     craftsmanDispatcher,
   });
-  const dashboardQueryService = new DashboardQueryService(db, {
-    templatesDir,
-    liveSessions: liveSessionStore,
-    agentRegistry,
-    presenceSource,
-  });
-  const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
-  const inboxService = new InboxService(db, taskService);
   const tmuxRuntimeService = new TmuxRuntimeService({
     adapters: {
       codex: new CodexCraftsmanAdapter(),
@@ -76,6 +68,15 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
       gemini: new GeminiCraftsmanAdapter(),
     },
   });
+  const dashboardQueryService = new DashboardQueryService(db, {
+    templatesDir,
+    liveSessions: liveSessionStore,
+    agentRegistry,
+    presenceSource,
+    tmuxRuntimeService,
+  });
+  const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
+  const inboxService = new InboxService(db, taskService);
 
   return {
     config: config as AgoraConfig,

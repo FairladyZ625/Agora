@@ -94,11 +94,26 @@ export interface CraftsmanStatusItem {
   runningSince: string | null;
 }
 
+export interface TmuxRuntimePane {
+  agent: string;
+  paneId: string | null;
+  currentCommand: string | null;
+  active: boolean;
+  ready: boolean;
+  tailPreview: string | null;
+}
+
+export interface TmuxRuntimeStatus {
+  session: string | null;
+  panes: TmuxRuntimePane[];
+}
+
 export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
   providerSummaries: AgentProviderSummary[];
+  tmuxRuntime: TmuxRuntimeStatus | null;
 }
 
 export type TodoFilter = 'all' | 'pending' | 'done';

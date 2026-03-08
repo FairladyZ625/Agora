@@ -254,6 +254,7 @@ describe('dashboard query service', () => {
         overall_presence: 'online',
       }),
     ]));
+    expect(agentsStatus.tmux_runtime).toBeNull();
   });
 
   it('overlays provider presence and last seen timestamps from gateway events', () => {
@@ -423,5 +424,63 @@ describe('dashboard query service', () => {
         last_seen_at: null,
       }),
     ]);
+  });
+
+  it('merges tmux runtime panes into the agents read model', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      tmuxRuntimeService: {
+        status: () => ({
+          session: 'agora-craftsmen',
+          panes: [
+            { id: '%0', title: 'codex', currentCommand: 'bash', active: true },
+            { id: '%1', title: 'claude', currentCommand: 'bash', active: false },
+          ],
+        }),
+        doctor: () => ({
+          session: 'agora-craftsmen',
+          panes: [
+            { agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true },
+            { agent: 'claude', pane: '%1', command: 'bash', active: false, ready: true },
+            { agent: 'gemini', pane: null, command: null, active: false, ready: false },
+          ],
+        }),
+        tail: (agent: string) => `tail:${agent}`,
+      },
+    });
+
+    const agentsStatus = queries.getAgentsStatus();
+
+    expect(agentsStatus.tmux_runtime).toEqual({
+      session: 'agora-craftsmen',
+      panes: [
+        {
+          agent: 'claude',
+          pane_id: '%1',
+          current_command: 'bash',
+          active: false,
+          ready: true,
+          tail_preview: 'tail:claude',
+        },
+        {
+          agent: 'codex',
+          pane_id: '%0',
+          current_command: 'bash',
+          active: true,
+          ready: true,
+          tail_preview: 'tail:codex',
+        },
+        {
+          agent: 'gemini',
+          pane_id: null,
+          current_command: null,
+          active: false,
+          ready: false,
+          tail_preview: 'tail:gemini',
+        },
+      ],
+    });
   });
 });

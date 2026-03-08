@@ -17,12 +17,14 @@ import type {
   AgentProviderSignalEvent,
   PresenceSource,
 } from './runtime-ports.js';
+import type { TmuxRuntimeService } from './tmux-runtime-service.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
+  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
 }
 
 export class DashboardQueryService {
@@ -34,6 +36,7 @@ export class DashboardQueryService {
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
+  private readonly tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -47,6 +50,7 @@ export class DashboardQueryService {
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
     this.presenceSource = options.presenceSource;
+    this.tmuxRuntimeService = options.tmuxRuntimeService;
   }
 
   getAgentsStatus(): AgentsStatusDto {
@@ -245,6 +249,7 @@ export class DashboardQueryService {
       agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
       provider_summaries: buildProviderSummaries(allAgents, providerHistory, providerSignals),
+      tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService),
     };
   }
 
@@ -322,6 +327,50 @@ export class DashboardQueryService {
       throw new NotFoundError(`Template ${templateId} not found`);
     }
     return JSON.parse(readFileSync(path, 'utf8')) as TemplateDetailDto;
+  }
+}
+
+function buildTmuxRuntime(
+  tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
+): AgentsStatusDto['tmux_runtime'] {
+  if (!tmuxRuntimeService) {
+    return null;
+  }
+  const status = tmuxRuntimeService.status();
+  const doctor = tmuxRuntimeService.doctor();
+  const byAgent = new Map(doctor.panes.map((item) => [item.agent, item]));
+  const agents = new Set<string>([
+    ...status.panes.map((item) => item.title),
+    ...doctor.panes.map((item) => item.agent),
+  ]);
+
+  return {
+    session: status.session,
+    panes: Array.from(agents)
+      .sort((left, right) => left.localeCompare(right))
+      .map((agent) => {
+        const paneStatus = status.panes.find((item) => item.title === agent);
+        const paneDoctor = byAgent.get(agent) ?? null;
+        return {
+          agent,
+          pane_id: paneStatus?.id ?? paneDoctor?.pane ?? null,
+          current_command: paneStatus?.currentCommand ?? paneDoctor?.command ?? null,
+          active: paneStatus?.active ?? paneDoctor?.active ?? false,
+          ready: paneDoctor?.ready ?? paneStatus !== undefined,
+          tail_preview: safeTail(tmuxRuntimeService, agent),
+        };
+      }),
+  };
+}
+
+function safeTail(
+  tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>,
+  agent: string,
+) {
+  try {
+    return tmuxRuntimeService.tail(agent, 20);
+  } catch {
+    return null;
   }
 }
 

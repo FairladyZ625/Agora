@@ -96,6 +96,19 @@ describe('dashboard expansion mappers', () => {
           ],
         },
       ],
+      tmux_runtime: {
+        session: 'agora-craftsmen',
+        panes: [
+          {
+            agent: 'codex',
+            pane_id: '%0',
+            current_command: 'bash',
+            active: true,
+            ready: true,
+            tail_preview: 'tail:codex',
+          },
+        ],
+      },
       craftsmen: [
         {
           id: 'codex',
@@ -121,6 +134,8 @@ describe('dashboard expansion mappers', () => {
     expect(status.providerSummaries[0]?.affectedAgents[0]?.id).toBe('sonnet');
     expect(status.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(status.providerSummaries[0]?.signalStatus).toBe('degraded');
+    expect(status.tmuxRuntime?.session).toBe('agora-craftsmen');
+    expect(status.tmuxRuntime?.panes[0]?.tailPreview).toBe('tail:codex');
     expect(status.providerSummaries[0]?.signals[0]?.kind).toBe('transport_error');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
