@@ -130,4 +130,81 @@ describe('craftsman routes', () => {
       },
     });
   });
+
+  it('exposes tmux runtime status, doctor, send, task, and tail routes', async () => {
+    const app = buildApp({
+      tmuxRuntimeService: {
+        up: () => ({
+          session: 'agora-craftsmen',
+          panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+        }),
+        status: () => ({
+          session: 'agora-craftsmen',
+          panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+        }),
+        send: () => {},
+        task: () => ({
+          status: 'running',
+          session_id: 'tmux:agora-craftsmen:codex',
+          started_at: '2026-03-08T23:00:00.000Z',
+        }),
+        tail: () => 'tmux tail output',
+        doctor: () => ({
+          session: 'agora-craftsmen',
+          panes: [{ agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true }],
+        }),
+        down: () => {},
+      },
+    });
+
+    const statusResponse = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/tmux/status',
+    });
+    const doctorResponse = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/tmux/doctor',
+    });
+    const sendResponse = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/tmux/send',
+      payload: {
+        agent: 'codex',
+        command: 'echo hello',
+      },
+    });
+    const taskResponse = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/tmux/task',
+      payload: {
+        agent: 'codex',
+        prompt: 'Implement via tmux api',
+        workdir: '/tmp/codex',
+      },
+    });
+    const tailResponse = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/tmux/tail/codex?lines=20',
+    });
+
+    expect(statusResponse.statusCode).toBe(200);
+    expect(statusResponse.json()).toEqual({
+      session: 'agora-craftsmen',
+      panes: [{ id: '%0', title: 'codex', currentCommand: 'bash', active: true }],
+    });
+    expect(doctorResponse.statusCode).toBe(200);
+    expect(doctorResponse.json()).toEqual({
+      session: 'agora-craftsmen',
+      panes: [{ agent: 'codex', pane: '%0', command: 'bash', active: true, ready: true }],
+    });
+    expect(sendResponse.statusCode).toBe(200);
+    expect(sendResponse.json()).toEqual({ ok: true });
+    expect(taskResponse.statusCode).toBe(200);
+    expect(taskResponse.json()).toMatchObject({
+      status: 'running',
+      session_id: 'tmux:agora-craftsmen:codex',
+    });
+    expect(tailResponse.statusCode).toBe(200);
+    expect(tailResponse.json()).toEqual({ output: 'tmux tail output' });
+  });
 });

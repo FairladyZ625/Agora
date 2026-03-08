@@ -1,5 +1,5 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, GeminiCraftsmanAdapter, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
@@ -69,6 +69,13 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   });
   const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
   const inboxService = new InboxService(db, taskService);
+  const tmuxRuntimeService = new TmuxRuntimeService({
+    adapters: {
+      codex: new CodexCraftsmanAdapter(),
+      claude: new ClaudeCraftsmanAdapter(),
+      gemini: new GeminiCraftsmanAdapter(),
+    },
+  });
 
   return {
     config: config as AgoraConfig,
@@ -78,6 +85,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     templateAuthoringService,
     inboxService,
     liveSessionStore,
+    tmuxRuntimeService,
     apiAuth: config.api_auth,
     dashboardDir: resolveDashboardDir(),
   };

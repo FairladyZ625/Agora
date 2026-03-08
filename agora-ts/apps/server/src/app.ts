@@ -36,8 +36,10 @@ import {
   type InboxService,
   type LiveSessionStore,
   type TaskService,
+  type TmuxRuntimeService,
   type TemplateAuthoringService,
 } from '@agora-ts/core';
+import { z } from 'zod';
 
 export interface BuildAppOptions {
   taskService?: TaskService;
@@ -45,6 +47,7 @@ export interface BuildAppOptions {
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
+  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down'>;
   apiAuth?: {
     enabled: boolean;
     token: string;
@@ -93,8 +96,18 @@ export function buildApp(options: BuildAppOptions = {}) {
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
   const liveSessionStore = options.liveSessionStore;
+  const tmuxRuntimeService = options.tmuxRuntimeService;
   const apiAuth = options.apiAuth;
   const dashboardDir = options.dashboardDir;
+  const tmuxSendSchema = z.object({
+    agent: z.string().min(1),
+    command: z.string().min(1),
+  });
+  const tmuxTaskSchema = z.object({
+    agent: z.string().min(1),
+    prompt: z.string().min(1),
+    workdir: z.string().optional(),
+  });
 
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/') || request.url === '/api/health') {
@@ -490,6 +503,75 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       return reply.send(taskService.listCraftsmanExecutions(params.taskId, params.subtaskId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/craftsmen/tmux/status', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    return reply.send(tmuxRuntimeService.status());
+  });
+
+  app.get('/api/craftsmen/tmux/doctor', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    return reply.send(tmuxRuntimeService.doctor());
+  });
+
+  app.post('/api/craftsmen/tmux/send', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const payload = tmuxSendSchema.parse(request.body);
+      tmuxRuntimeService.send(payload.agent, payload.command);
+      return reply.send({ ok: true });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/tmux/task', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const payload = tmuxTaskSchema.parse(request.body);
+      return reply.send(tmuxRuntimeService.task(payload.agent, {
+        execution_id: `tmux-${Date.now()}`,
+        task_id: 'TMUX',
+        stage_id: 'dispatch',
+        subtask_id: `${payload.agent}-tmux-task`,
+        adapter: payload.agent,
+        mode: 'task',
+        workdir: payload.workdir ?? process.cwd(),
+        prompt: payload.prompt,
+        brief_path: null,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const params = request.params as { agent: string };
+      const query = request.query as { lines?: string };
+      const lines = query.lines ? Number(query.lines) : 40;
+      if (!Number.isFinite(lines) || lines <= 0) {
+        throw new Error('lines must be a positive number');
+      }
+      return reply.send({ output: tmuxRuntimeService.tail(params.agent, lines) });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

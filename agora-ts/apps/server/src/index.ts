@@ -11,6 +11,7 @@ async function start() {
     inboxService: runtime.inboxService,
     templateAuthoringService: runtime.templateAuthoringService,
     liveSessionStore: runtime.liveSessionStore,
+    tmuxRuntimeService: runtime.tmuxRuntimeService,
     apiAuth: runtime.apiAuth,
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });
