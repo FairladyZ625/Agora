@@ -87,6 +87,7 @@ describe('craftsman dispatcher', () => {
     expect(executions.getExecution(result.execution.execution_id)).toMatchObject({
       status: 'running',
       session_id: 'codex-session-1',
+      started_at: '2026-03-08T12:00:00.000Z',
     });
     expect(subtasks.listByTask('OC-960')).toEqual([
       expect.objectContaining({
@@ -157,5 +158,73 @@ describe('craftsman dispatcher', () => {
         dispatch_status: 'failed',
       }),
     ]);
+  });
+
+  it('persists adapter payload metadata for execution observability', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      adapters: {
+        codex: {
+          name: 'codex',
+          dispatchTask: () => ({
+            status: 'running',
+            session_id: 'tmux:agora-craftsmen:codex',
+            started_at: '2026-03-08T13:00:00.000Z',
+            payload: {
+              runtime_mode: 'tmux',
+              transport: 'tmux-pane',
+              pane: '%0',
+            },
+          }),
+        },
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-962',
+      title: 'dispatch observability',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex',
+      task_id: 'OC-962',
+      stage_id: 'develop',
+      title: 'run codex',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    const result = dispatcher.dispatchSubtask({
+      task_id: 'OC-962',
+      stage_id: 'develop',
+      subtask_id: 'sub-codex',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex',
+      prompt: 'Implement the feature',
+    });
+
+    expect(result.execution).toMatchObject({
+      callback_payload: {
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+        pane: '%0',
+      },
+      started_at: '2026-03-08T13:00:00.000Z',
+    });
+    expect(executions.getExecution(result.execution.execution_id)?.callback_payload).toEqual({
+      runtime_mode: 'tmux',
+      transport: 'tmux-pane',
+      pane: '%0',
+    });
   });
 });

@@ -408,6 +408,10 @@ export class TaskService {
     return execution;
   }
 
+  listCraftsmanExecutions(taskId: string, subtaskId: string) {
+    return this.craftsmanExecutions.listBySubtask(taskId, subtaskId);
+  }
+
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
     if (task.state !== TaskState.ACTIVE) {

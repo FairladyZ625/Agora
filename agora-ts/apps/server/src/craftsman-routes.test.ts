@@ -73,6 +73,10 @@ describe('craftsman routes', () => {
       method: 'GET',
       url: '/api/craftsmen/executions/exec-route-1',
     });
+    const historyBeforeCallback = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/tasks/OC-980/subtasks/sub-codex/executions',
+    });
     const callbackResponse = await app.inject({
       method: 'POST',
       url: '/api/craftsmen/callback',
@@ -106,6 +110,14 @@ describe('craftsman routes', () => {
       adapter: 'codex',
       status: 'running',
     });
+    expect(historyBeforeCallback.statusCode).toBe(200);
+    expect(historyBeforeCallback.json()).toEqual([
+      expect.objectContaining({
+        execution_id: 'exec-route-1',
+        subtask_id: 'sub-codex',
+        status: 'running',
+      }),
+    ]);
     expect(callbackResponse.statusCode).toBe(200);
     expect(callbackResponse.json()).toMatchObject({
       execution: {

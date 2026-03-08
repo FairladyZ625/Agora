@@ -216,6 +216,7 @@ describe('agora-ts cli', () => {
       '--workdir', '/tmp/codex',
     ], { from: 'user' });
     await program.parseAsync(['craftsman', 'status', 'exec-cli-1'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'history', 'OC-304', 'sub-codex'], { from: 'user' });
     await program.parseAsync([
       'craftsman', 'callback',
       'exec-cli-1',
@@ -229,6 +230,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('craftsman execution 已派发: exec-cli-1');
     expect(stdout.value).toContain('exec-cli-1');
     expect(stdout.value).toContain('running');
+    expect(stdout.value).toContain('adapter: codex');
     expect(stdout.value).toContain('craftsman callback 已处理: exec-cli-1');
     expect(stdout.value).toContain('cli callback done');
   });

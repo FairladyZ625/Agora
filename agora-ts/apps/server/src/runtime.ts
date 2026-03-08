@@ -1,5 +1,5 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
@@ -47,7 +47,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
           staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
         },
   );
-  const adapterMode = resolveCraftsmanAdapterMode();
+  const adapterMode = resolveCraftsmanRuntimeMode('server');
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
     adapters: createDefaultCraftsmanAdapters({
       mode: adapterMode,
@@ -81,12 +81,4 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     apiAuth: config.api_auth,
     dashboardDir: resolveDashboardDir(),
   };
-}
-
-function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' | 'tmux' {
-  const mode = process.env.AGORA_CRAFTSMAN_ADAPTER_MODE;
-  if (mode === 'real' || mode === 'watched' || mode === 'tmux') {
-    return mode;
-  }
-  return 'stub';
 }

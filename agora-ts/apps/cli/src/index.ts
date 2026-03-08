@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, resolveCraftsmanRuntimeMode, TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import type { CraftsmanCallbackRequestDto, CraftsmanExecutionStatusDto, TaskPriority } from '@agora-ts/contracts';
 
 type Writable = {
@@ -25,7 +25,7 @@ function resolveTaskService() {
   runMigrations(db);
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
     adapters: createDefaultCraftsmanAdapters({
-      mode: resolveCraftsmanAdapterMode(),
+      mode: resolveCraftsmanRuntimeMode('cli'),
       callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
       apiToken: config.api_auth.enabled ? config.api_auth.token : null,
     }),
@@ -45,14 +45,6 @@ function resolveTmuxRuntimeService() {
       gemini: new GeminiCraftsmanAdapter(),
     },
   });
-}
-
-function resolveCraftsmanAdapterMode(): 'stub' | 'real' | 'watched' | 'tmux' {
-  const mode = process.env.AGORA_CRAFTSMAN_ADAPTER_MODE;
-  if (mode === 'real' || mode === 'watched' || mode === 'tmux') {
-    return mode;
-  }
-  return 'stub';
 }
 
 function writeLine(stream: Writable, message: string) {
@@ -346,6 +338,25 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `${execution.execution_id}`);
       writeLine(stdout, `adapter: ${execution.adapter}`);
       writeLine(stdout, `status: ${execution.status}`);
+    });
+
+  craftsman
+    .command('history')
+    .description('查看某个 subtask 的 craftsmen execution 历史')
+    .argument('<taskId>', '任务 ID')
+    .argument('<subtaskId>', '子任务 ID')
+    .action((taskId: string, subtaskId: string) => {
+      const executions = taskService.listCraftsmanExecutions(taskId, subtaskId);
+      if (executions.length === 0) {
+        writeLine(stdout, '没有找到 craftsmen execution 历史');
+        return;
+      }
+      for (const execution of executions) {
+        writeLine(
+          stdout,
+          `${execution.execution_id}\t${execution.adapter}\t${execution.status}\t${execution.session_id ?? '-'}\t${execution.started_at ?? '-'}`,
+        );
+      }
     });
 
   craftsman

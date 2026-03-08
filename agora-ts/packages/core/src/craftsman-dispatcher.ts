@@ -80,6 +80,7 @@ export class CraftsmanDispatcher {
         session_id: result.session_id,
         callback_payload: result.payload ?? null,
         error: null,
+        started_at: result.started_at,
         finished_at: result.status === 'failed' ? (result.started_at ?? new Date().toISOString()) : null,
       });
       const subtask = this.subtasks.updateSubtask(input.task_id, input.subtask_id, {

@@ -483,6 +483,19 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.get('/api/craftsmen/tasks/:taskId/subtasks/:subtaskId/executions', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string; subtaskId: string };
+      return reply.send(taskService.listCraftsmanExecutions(params.taskId, params.subtaskId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/inbox', async (request, reply) => {
     if (!inboxService) {
       return reply.status(503).send({ message: 'Inbox service is not configured' });

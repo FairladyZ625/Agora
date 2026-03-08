@@ -50,6 +50,13 @@ describe('watched process craftsman adapter', () => {
     expect(result).toMatchObject({
       status: 'running',
       session_id: 'watcher:5678',
+      payload: {
+        command: 'codex',
+        args: ['exec', 'Implement the feature'],
+        watcher: true,
+        runtime_mode: 'watched',
+        transport: 'process-callback-runner',
+      },
     });
   });
 });

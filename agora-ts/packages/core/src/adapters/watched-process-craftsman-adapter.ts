@@ -64,6 +64,8 @@ export class WatchedProcessCraftsmanAdapter implements CraftsmanAdapter {
         command: spec.command,
         args: spec.args,
         watcher: true,
+        runtime_mode: 'watched',
+        transport: 'process-callback-runner',
       },
     };
   }

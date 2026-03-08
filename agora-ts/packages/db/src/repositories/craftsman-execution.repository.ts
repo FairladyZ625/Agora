@@ -41,6 +41,7 @@ export interface UpdateCraftsmanExecutionInput {
   status?: string;
   callback_payload?: CraftsmanExecutionPayloadDto | null;
   error?: string | null;
+  started_at?: string | null;
   finished_at?: string | null;
 }
 
@@ -124,6 +125,7 @@ export class CraftsmanExecutionRepository {
       );
     }
     if (updates.error !== undefined) push('error', updates.error);
+    if (updates.started_at !== undefined) push('started_at', updates.started_at);
     if (updates.finished_at !== undefined) push('finished_at', updates.finished_at);
 
     assignments.push('updated_at = ?');

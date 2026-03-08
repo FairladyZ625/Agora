@@ -31,6 +31,14 @@ describe('tmux craftsman adapter', () => {
     expect(result).toMatchObject({
       status: 'running',
       session_id: 'tmux:agora-craftsmen:codex',
+      payload: {
+        command: 'codex',
+        args: ['exec', 'Implement the feature'],
+        tmux: true,
+        pane: '%0',
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+      },
     });
   });
 });

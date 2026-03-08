@@ -39,6 +39,8 @@ export class TmuxCraftsmanAdapter implements CraftsmanAdapter {
         args: spec.args,
         tmux: true,
         pane: paneTarget,
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
       },
     };
   }
