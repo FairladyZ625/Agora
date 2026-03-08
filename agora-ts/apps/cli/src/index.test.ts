@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { TaskService } from '@agora-ts/core';
+import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
 import { createCliProgram } from './index.js';
 
 const tempPaths: string[] = [];
@@ -177,5 +177,59 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('已清理 orphaned 任务: 1');
     expect(taskService.getTask('OC-303')).toBeNull();
+  });
+
+  it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-cli-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-08T14:10:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-304',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync(['create', '实现 craftsmen cli', '--type', 'coding'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'sub-codex',
+      task_id: 'OC-304',
+      stage_id: 'discuss',
+      title: 'run codex',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    await program.parseAsync([
+      'craftsman', 'dispatch',
+      'OC-304',
+      'sub-codex',
+      '--adapter', 'codex',
+      '--workdir', '/tmp/codex',
+    ], { from: 'user' });
+    await program.parseAsync(['craftsman', 'status', 'exec-cli-1'], { from: 'user' });
+    await program.parseAsync([
+      'craftsman', 'callback',
+      'exec-cli-1',
+      '--status', 'succeeded',
+      '--session-id', 'codex:exec-cli-1',
+      '--payload', '{"summary":"cli callback done"}',
+      '--finished-at', '2026-03-08T14:12:00.000Z',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('craftsman execution 已派发: exec-cli-1');
+    expect(stdout.value).toContain('exec-cli-1');
+    expect(stdout.value).toContain('running');
+    expect(stdout.value).toContain('craftsman callback 已处理: exec-cli-1');
+    expect(stdout.value).toContain('cli callback done');
   });
 });

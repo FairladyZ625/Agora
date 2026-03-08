@@ -3,12 +3,14 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   CraftsmanCallbackRequestDto,
+  CraftsmanDispatchRequestDto,
   CreateTaskRequestDto,
   PromoteTodoRequestDto,
   TaskStatusDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
 import {
+  CraftsmanExecutionRepository,
   FlowLogRepository,
   ProgressLogRepository,
   SubtaskRepository,
@@ -19,6 +21,7 @@ import {
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
+import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { GateService } from './gate-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
@@ -42,6 +45,7 @@ export interface TaskServiceOptions {
   taskIdGenerator?: () => string;
   archonUsers?: string[];
   allowAgents?: Record<string, { canCall: string[]; canAdvance: boolean }>;
+  craftsmanDispatcher?: CraftsmanDispatcher;
 }
 
 export interface AdvanceTaskOptions {
@@ -102,6 +106,8 @@ export class TaskService {
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
+  private readonly craftsmanExecutions: CraftsmanExecutionRepository;
+  private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
 
@@ -114,12 +120,14 @@ export class TaskService {
     this.progressLogRepository = new ProgressLogRepository(db);
     this.subtaskRepository = new SubtaskRepository(db);
     this.todoRepository = new TodoRepository(db);
+    this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
+    this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
   }
@@ -369,6 +377,35 @@ export class TaskService {
 
   handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {
     return this.craftsmanCallbacks.handleCallback(input);
+  }
+
+  dispatchCraftsman(input: CraftsmanDispatchRequestDto) {
+    if (!this.craftsmanDispatcher) {
+      throw new Error('Craftsman dispatcher is not configured');
+    }
+    const task = this.getTaskOrThrow(input.task_id);
+    const subtask = this.subtaskRepository.listByTask(input.task_id).find((item) => item.id === input.subtask_id);
+    if (!subtask) {
+      throw new NotFoundError(`Subtask ${input.subtask_id} not found in task ${input.task_id}`);
+    }
+    return this.craftsmanDispatcher.dispatchSubtask({
+      task_id: input.task_id,
+      stage_id: subtask.stage_id,
+      subtask_id: input.subtask_id,
+      adapter: input.adapter,
+      mode: input.mode,
+      workdir: input.workdir ?? subtask.craftsman_workdir,
+      prompt: subtask.craftsman_prompt,
+      brief_path: input.brief_path ?? null,
+    });
+  }
+
+  getCraftsmanExecution(executionId: string) {
+    const execution = this.craftsmanExecutions.getExecution(executionId);
+    if (!execution) {
+      throw new NotFoundError(`Craftsman execution ${executionId} not found`);
+    }
+    return execution;
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {

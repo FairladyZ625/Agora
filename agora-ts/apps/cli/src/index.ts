@@ -1,8 +1,8 @@
 import { Command } from 'commander';
 import { loadAgoraConfig } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { TaskService } from '@agora-ts/core';
-import type { TaskPriority } from '@agora-ts/contracts';
+import { CraftsmanDispatcher, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
+import type { CraftsmanCallbackRequestDto, CraftsmanExecutionStatusDto, TaskPriority } from '@agora-ts/contracts';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -19,14 +19,30 @@ function resolveTaskService() {
   const dbPath = process.env.AGORA_DB_PATH ?? config.db_path;
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
+  const craftsmanDispatcher = new CraftsmanDispatcher(db, {
+    adapters: {
+      shell: new ShellCraftsmanAdapter(),
+      codex: new StubCraftsmanAdapter('codex'),
+      claude: new StubCraftsmanAdapter('claude'),
+      gemini: new StubCraftsmanAdapter('gemini'),
+    },
+  });
   return new TaskService(db, {
     archonUsers: config.permissions.archonUsers,
     allowAgents: config.permissions.allowAgents,
+    craftsmanDispatcher,
   });
 }
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
+}
+
+function parseJsonOption(raw?: string): Record<string, unknown> | null {
+  if (!raw) {
+    return null;
+  }
+  return JSON.parse(raw) as Record<string, unknown>;
 }
 
 export function createCliProgram(deps: CliDependencies = {}) {
@@ -265,6 +281,78 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action((options: { taskId?: string }) => {
       const cleaned = taskService.cleanupOrphaned(options.taskId);
       writeLine(stdout, `已清理 orphaned 任务: ${cleaned}`);
+    });
+
+  const craftsman = program
+    .command('craftsman')
+    .description('craftsman execution commands');
+
+  craftsman
+    .command('dispatch')
+    .description('派发 craftsmen 子任务')
+    .argument('<taskId>', '任务 ID')
+    .argument('<subtaskId>', '子任务 ID')
+    .requiredOption('--adapter <adapter>', 'adapter 名称')
+    .option('--mode <mode>', '执行模式', 'task')
+    .option('--workdir <workdir>', '工作目录')
+    .option('--brief-path <briefPath>', 'brief 路径')
+    .action((taskId: string, subtaskId: string, options: {
+      adapter: string;
+      mode: 'task' | 'continuous';
+      workdir?: string;
+      briefPath?: string;
+    }) => {
+      const result = taskService.dispatchCraftsman({
+        task_id: taskId,
+        subtask_id: subtaskId,
+        adapter: options.adapter,
+        mode: options.mode,
+        workdir: options.workdir ?? null,
+        brief_path: options.briefPath ?? null,
+      });
+      writeLine(stdout, `craftsman execution 已派发: ${result.execution.execution_id}`);
+      writeLine(stdout, `adapter: ${result.execution.adapter}`);
+      writeLine(stdout, `status: ${result.execution.status}`);
+    });
+
+  craftsman
+    .command('status')
+    .description('查看 craftsmen execution 状态')
+    .argument('<executionId>', 'execution ID')
+    .action((executionId: string) => {
+      const execution = taskService.getCraftsmanExecution(executionId);
+      writeLine(stdout, `${execution.execution_id}`);
+      writeLine(stdout, `adapter: ${execution.adapter}`);
+      writeLine(stdout, `status: ${execution.status}`);
+    });
+
+  craftsman
+    .command('callback')
+    .description('提交 craftsmen callback')
+    .argument('<executionId>', 'execution ID')
+    .requiredOption('--status <status>', '回调状态')
+    .option('--session-id <sessionId>', 'session ID')
+    .option('--payload <payload>', 'JSON payload')
+    .option('--error <error>', 'error message')
+    .option('--finished-at <finishedAt>', 'finished timestamp')
+    .action((executionId: string, options: {
+      status: CraftsmanExecutionStatusDto;
+      sessionId?: string;
+      payload?: string;
+      error?: string;
+      finishedAt?: string;
+    }) => {
+      const result = taskService.handleCraftsmanCallback({
+        execution_id: executionId,
+        status: options.status as CraftsmanCallbackRequestDto['status'],
+        session_id: options.sessionId ?? null,
+        payload: parseJsonOption(options.payload),
+        error: options.error ?? null,
+        finished_at: options.finishedAt ?? null,
+      });
+      writeLine(stdout, `craftsman callback 已处理: ${result.execution.execution_id}`);
+      writeLine(stdout, `status: ${result.execution.status}`);
+      writeLine(stdout, `${result.subtask.output ?? ''}`);
     });
 
   return program;

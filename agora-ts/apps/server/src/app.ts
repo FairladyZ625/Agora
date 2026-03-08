@@ -2,6 +2,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import Fastify, { type FastifyReply } from 'fastify';
 import {
+  craftsmanCallbackRequestSchema,
+  craftsmanDispatchRequestSchema,
   approveTaskRequestSchema,
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
@@ -436,6 +438,45 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const payload = cleanupTasksRequestSchema.parse(request.body ?? {});
       return reply.send({ cleaned: taskService.cleanupOrphaned(payload.task_id) });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/dispatch', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = craftsmanDispatchRequestSchema.parse(request.body);
+      return reply.send(taskService.dispatchCraftsman(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/callback', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = craftsmanCallbackRequestSchema.parse(request.body);
+      return reply.send(taskService.handleCraftsmanCallback(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/craftsmen/executions/:executionId', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { executionId: string };
+      return reply.send(taskService.getCraftsmanExecution(params.executionId));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
