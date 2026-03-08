@@ -26,7 +26,26 @@ describe('dashboard expansion stores', () => {
     useAgentStore.setState({
       summary: null,
       agents: [],
-      craftsmen: [],
+      craftsmen: [
+        {
+          id: 'codex',
+          status: 'busy',
+          taskId: 'OC-101',
+          subtaskId: 'dev-api',
+          title: '实现 API',
+          runningSince: '2026-03-08T10:00:00.000Z',
+          recentExecutions: [
+            {
+              executionId: 'exec-dashboard-1',
+              status: 'running',
+              sessionId: 'tmux:agora-craftsmen:codex',
+              transport: 'tmux-pane',
+              runtimeMode: 'tmux',
+              startedAt: '2026-03-08T10:00:00.000Z',
+            },
+          ],
+        },
+      ],
       providerSummaries: [],
       tmuxRuntime: null,
       presenceFilter: 'all',
@@ -81,7 +100,24 @@ describe('dashboard expansion stores', () => {
           last_seen_at: '2026-03-08T10:00:00.000Z',
         },
       ],
-      craftsmen: [],
+      craftsmen: [{
+        id: 'codex',
+        status: 'busy',
+        task_id: 'OC-101',
+        subtask_id: 'dev-api',
+        title: '实现 API',
+        running_since: '2026-03-08T10:00:00.000Z',
+        recent_executions: [
+          {
+            execution_id: 'exec-dashboard-1',
+            status: 'running',
+            session_id: 'tmux:agora-craftsmen:codex',
+            transport: 'tmux-pane',
+            runtime_mode: 'tmux',
+            started_at: '2026-03-08T10:00:00.000Z',
+          },
+        ],
+      }],
       provider_summaries: [{
         provider: 'discord',
         total_agents: 2,
@@ -154,6 +190,7 @@ describe('dashboard expansion stores', () => {
     expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
+    expect(state.craftsmen[0]?.recentExecutions[0]?.runtimeMode).toBe('tmux');
   });
 
   it('persists agent filters across refreshes', () => {

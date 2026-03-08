@@ -6,6 +6,7 @@ import {
   createAgoraDatabase,
   runMigrations,
   ArchiveJobRepository,
+  CraftsmanExecutionRepository,
   SubtaskRepository,
   TaskRepository,
   TodoRepository,
@@ -41,6 +42,7 @@ describe('dashboard routes', () => {
     });
     const dashboardQueries = new DashboardQueryService(db, { templatesDir });
     const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
     const archives = new ArchiveJobRepository(db);
     const todos = new TodoRepository(db);
 
@@ -60,6 +62,20 @@ describe('dashboard routes', () => {
       craftsman_type: 'codex',
       dispatch_status: 'success',
       dispatched_at: '2026-03-08T10:00:00Z',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-route-dashboard-1',
+      task_id: 'OC-500',
+      subtask_id: 'api',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:agora-craftsmen:codex',
+      status: 'running',
+      callback_payload: {
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+      },
+      started_at: '2026-03-08T10:00:00.000Z',
     });
     archives.insertArchiveJob({
       task_id: 'OC-500',
@@ -81,6 +97,10 @@ describe('dashboard routes', () => {
     expect(agents.statusCode).toBe(200);
     expect(agents.json().summary.active_tasks).toBe(1);
     expect(agents.json().tmux_runtime).toBeNull();
+    expect(agents.json().craftsmen[0].recent_executions[0]).toMatchObject({
+      execution_id: 'exec-route-dashboard-1',
+      transport: 'tmux-pane',
+    });
     expect(agents.json().provider_summaries).toEqual([
       expect.objectContaining({
         provider: 'openclaw',

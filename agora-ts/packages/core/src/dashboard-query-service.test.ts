@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, ArchiveJobRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
 import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
@@ -35,6 +35,7 @@ describe('dashboard query service', () => {
       taskIdGenerator: () => 'OC-400',
     });
     const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
     const queries = new DashboardQueryService(db, { templatesDir });
 
     taskService.createTask({
@@ -58,6 +59,20 @@ describe('dashboard query service', () => {
       INSERT INTO progress_log (task_id, kind, stage_id, subtask_id, content, actor)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run('OC-400', 'progress', 'discuss', 'dev-api', 'working', 'sonnet');
+    executions.insertExecution({
+      execution_id: 'exec-dashboard-1',
+      task_id: 'OC-400',
+      subtask_id: 'dev-api',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:agora-craftsmen:codex',
+      status: 'running',
+      callback_payload: {
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+      },
+      started_at: '2026-03-08T10:00:00.000Z',
+    });
 
     const agentsStatus = queries.getAgentsStatus();
     const templates = queries.listTemplates();
@@ -90,6 +105,13 @@ describe('dashboard query service', () => {
         id: 'codex',
         task_id: 'OC-400',
         subtask_id: 'dev-api',
+        recent_executions: [
+          expect.objectContaining({
+            execution_id: 'exec-dashboard-1',
+            status: 'running',
+            transport: 'tmux-pane',
+          }),
+        ],
       }),
     ]);
     expect(templates.some((item) => item.id === 'coding')).toBe(true);

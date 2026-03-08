@@ -52,7 +52,22 @@ describe('dashboard expansion api client', () => {
               primary_model: 'openai-codex/gpt-5.3-codex',
               workspace_dir: '/tmp/main',
             }],
-            craftsmen: [],
+            craftsmen: [{
+              id: 'codex',
+              status: 'busy',
+              task_id: 'OC-001',
+              subtask_id: 'dev-api',
+              title: '实现 API',
+              running_since: '2026-03-08T00:00:00.000Z',
+              recent_executions: [{
+                execution_id: 'exec-dashboard-1',
+                status: 'running',
+                session_id: 'tmux:agora-craftsmen:codex',
+                transport: 'tmux-pane',
+                runtime_mode: 'tmux',
+                started_at: '2026-03-08T00:00:00.000Z',
+              }],
+            }],
             provider_summaries: [{
               provider: 'discord',
               total_agents: 2,

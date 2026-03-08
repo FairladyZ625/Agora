@@ -8,7 +8,7 @@ import type {
   TemplateSummaryDto,
   UpdateTodoRequestDto,
 } from '@agora-ts/contracts';
-import { ArchiveJobRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type {
@@ -32,6 +32,7 @@ export class DashboardQueryService {
   private readonly subtasks: SubtaskRepository;
   private readonly archives: ArchiveJobRepository;
   private readonly todos: TodoRepositoryType;
+  private readonly executions: CraftsmanExecutionRepository;
   private readonly templatesDir: string;
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
@@ -46,6 +47,7 @@ export class DashboardQueryService {
     this.subtasks = new SubtaskRepository(db);
     this.archives = new ArchiveJobRepository(db);
     this.todos = new TodoRepository(db);
+    this.executions = new CraftsmanExecutionRepository(db);
     this.templatesDir = options.templatesDir;
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
@@ -118,6 +120,17 @@ export class DashboardQueryService {
         agents.set(subtask.assignee, current);
 
         if (subtask.craftsman_type) {
+          const recentExecutions = this.executions
+            .listBySubtask(task.id, subtask.id)
+            .slice(0, 3)
+            .map((execution) => ({
+              execution_id: execution.execution_id,
+              status: execution.status,
+              session_id: execution.session_id,
+              transport: toNullableString(execution.callback_payload?.transport),
+              runtime_mode: toNullableString(execution.callback_payload?.runtime_mode),
+              started_at: execution.started_at,
+            }));
           craftsmen.set(subtask.craftsman_type, {
             id: subtask.craftsman_type,
             status: subtask.done_at ? 'idle' : 'busy',
@@ -125,6 +138,7 @@ export class DashboardQueryService {
             subtask_id: subtask.id,
             title: subtask.title,
             running_since: subtask.dispatched_at,
+            recent_executions: recentExecutions,
           });
         }
       }
@@ -372,6 +386,10 @@ function safeTail(
   } catch {
     return null;
   }
+}
+
+function toNullableString(value: unknown) {
+  return typeof value === 'string' ? value : null;
 }
 
 function presenceRank(presence: 'online' | 'offline' | 'disconnected' | 'stale') {

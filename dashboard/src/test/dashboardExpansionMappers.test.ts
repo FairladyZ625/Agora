@@ -117,6 +117,16 @@ describe('dashboard expansion mappers', () => {
           subtask_id: 'dev-api',
           title: '实现 API',
           running_since: '2026-03-07T09:30:00.000Z',
+          recent_executions: [
+            {
+              execution_id: 'exec-dashboard-1',
+              status: 'running',
+              session_id: 'tmux:agora-craftsmen:codex',
+              transport: 'tmux-pane',
+              runtime_mode: 'tmux',
+              started_at: '2026-03-07T09:30:00.000Z',
+            },
+          ],
         },
       ],
     };
@@ -146,6 +156,7 @@ describe('dashboard expansion mappers', () => {
     expect(status.agents[0]?.source).toBe('openclaw');
     expect(status.agents[0]?.primaryModel).toBe('gac/claude-sonnet-4-6');
     expect(status.craftsmen[0]?.taskId).toBe('OC-101');
+    expect(status.craftsmen[0]?.recentExecutions[0]?.transport).toBe('tmux-pane');
   });
 
   it('maps todos while preserving tags and promoted task links', () => {

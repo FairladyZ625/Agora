@@ -37,6 +37,14 @@ export const craftsmanStatusItemSchema = z.object({
   subtask_id: z.string(),
   title: z.string(),
   running_since: z.string().nullable(),
+  recent_executions: z.array(z.object({
+    execution_id: z.string(),
+    status: z.string(),
+    session_id: z.string().nullable(),
+    transport: z.string().nullable(),
+    runtime_mode: z.string().nullable(),
+    started_at: z.string().nullable(),
+  })),
 });
 
 export const tmuxRuntimePaneSchema = z.object({

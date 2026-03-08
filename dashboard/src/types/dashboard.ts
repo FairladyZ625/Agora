@@ -92,6 +92,14 @@ export interface CraftsmanStatusItem {
   subtaskId: string;
   title: string;
   runningSince: string | null;
+  recentExecutions: Array<{
+    executionId: string;
+    status: string;
+    sessionId: string | null;
+    transport: string | null;
+    runtimeMode: string | null;
+    startedAt: string | null;
+  }>;
 }
 
 export interface TmuxRuntimePane {

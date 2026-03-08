@@ -73,6 +73,14 @@ function mapCraftsmanDto(item: ApiAgentsStatusDto['craftsmen'][number]): Craftsm
     subtaskId: item.subtask_id,
     title: item.title,
     runningSince: item.running_since,
+    recentExecutions: item.recent_executions.map((execution) => ({
+      executionId: execution.execution_id,
+      status: execution.status,
+      sessionId: execution.session_id,
+      transport: execution.transport,
+      runtimeMode: execution.runtime_mode,
+      startedAt: execution.started_at,
+    })),
   };
 }
 

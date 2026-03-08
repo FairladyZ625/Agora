@@ -308,6 +308,15 @@ export function AgentsPage() {
                     <span>{copy.currentTaskLabel}: {item.taskId}</span>
                     <span>{item.subtaskId}</span>
                   </div>
+                  {item.recentExecutions.length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      {item.recentExecutions.map((execution) => (
+                        <div key={execution.executionId} className="type-text-xs">
+                          {execution.executionId} · {execution.status} · {execution.runtimeMode ?? 'n/a'} · {execution.transport ?? 'n/a'}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))
             )}

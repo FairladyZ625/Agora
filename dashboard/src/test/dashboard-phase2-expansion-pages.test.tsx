@@ -91,7 +91,26 @@ const agentStoreState = {
       lastSeenAt: '2026-03-08T10:00:00.000Z',
     },
   ],
-  craftsmen: [],
+  craftsmen: [
+    {
+      id: 'codex',
+      status: 'busy',
+      taskId: 'OC-101',
+      subtaskId: 'dev-api',
+      title: '实现 API',
+      runningSince: '2026-03-08T10:00:00.000Z',
+      recentExecutions: [
+        {
+          executionId: 'exec-dashboard-1',
+          status: 'running',
+          sessionId: 'tmux:agora-craftsmen:codex',
+          transport: 'tmux-pane',
+          runtimeMode: 'tmux',
+          startedAt: '2026-03-08T10:00:00.000Z',
+        },
+      ],
+    },
+  ],
   loading: false,
   error: null,
   presenceFilter: 'all' as const,
@@ -347,6 +366,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
     expect(screen.getByText('agora-craftsmen')).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
+    expect(screen.getByText(/exec-dashboard-1/i)).toBeInTheDocument();
   });
 
   it('filters the agent list by presence view', () => {
