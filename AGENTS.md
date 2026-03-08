@@ -36,7 +36,7 @@ dashboard/          # 前端 Dashboard（React + TypeScript + Vite）
 │   ├── lib/        # API Client + 工具函数
 │   ├── types/      # TypeScript 类型定义
 │   └── pages/      # 页面组件
-└── dist/           # 生产构建产物（FastAPI 静态挂载 /dashboard/）
+└── dist/           # 生产构建产物（agora-ts server 静态挂载 /dashboard/）
 
 docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ├── 00-RAW-PRDS/       # 历史架构/需求原始文档（过渡保留）
@@ -134,6 +134,12 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```
 
+### 全仓 TypeScript 质量门
+
+```bash
+./scripts/check-ts-all.sh
+```
+
 默认启动目标已切换为：
 
 - 后端：`agora-ts/apps/server`
@@ -190,6 +196,12 @@ cd agora-ts && npm test -- packages/core/src/task-service.test.ts
 cd agora-ts && npm run lint
 cd agora-ts && npm run typecheck
 cd agora-ts && npm run build
+
+# agora-ts 统一质量门
+cd agora-ts && npm run check
+
+# 全仓统一质量门
+./scripts/check-ts-all.sh
 ```
 
 ### 3. 使用 feature-dev Skill
@@ -259,6 +271,10 @@ TypeScript 默认规范：
 - 使用 Vitest
 - 临时 SQLite runtime 优先复用 `@agora-ts/testing`
 - 新增 DTO / config / contract 时优先补 schema-level tests
+- 后端提交前至少跑 `cd agora-ts && npm run check`
+- 涉及 plugin / dashboard 时，必须补跑对应子项目质量门
+
+Python legacy 参考规范：
 
 - 测试文件命名：`test_<module>.py`
 - 使用 pytest fixtures 管理测试数据
@@ -354,7 +370,7 @@ docs/
 
 - **不修改 OpenClaw 源码**
 - 通过 Plugin SDK 实现插件（`extensions/agora-plugin/`）
-- Python ↔ TypeScript 通过 HTTP API 桥接（FastAPI Server）
+- OpenClaw Plugin ↔ `agora-ts` 通过 HTTP API 桥接（TypeScript Fastify Server）
 
 ---
 

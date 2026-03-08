@@ -29,6 +29,9 @@ class ApiError extends Error {
 function getConfig() {
   // Read from localStorage directly — stores may not be hydrated yet
   try {
+    if (typeof localStorage?.getItem !== 'function') {
+      return { apiBase: '/api', apiToken: '' };
+    }
     const raw = localStorage.getItem('agora-settings');
     if (raw) {
       const parsed = JSON.parse(raw);

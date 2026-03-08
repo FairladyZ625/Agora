@@ -121,7 +121,13 @@ Citizens 讨论  →  Archon 裁决  →  Craftsmen 执行
 ```bash
 cd agora-ts
 npm install
-npm run build
+npm run check
+```
+
+### Full Workspace Check
+
+```bash
+./scripts/check-ts-all.sh
 ```
 
 ### Create a Task

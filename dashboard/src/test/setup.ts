@@ -1,6 +1,38 @@
 import '@testing-library/jest-dom/vitest';
-import i18n from '@/lib/i18n';
 import { beforeEach } from 'vitest';
+
+function installLocalStorageMock() {
+  const storage = new Map<string, string>();
+  const mock = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, String(value));
+    },
+    removeItem: (key: string) => {
+      storage.delete(key);
+    },
+    clear: () => {
+      storage.clear();
+    },
+  };
+
+  const candidate = globalThis.window?.localStorage as Partial<typeof mock> | undefined;
+  if (
+    !candidate
+    || typeof candidate.getItem !== 'function'
+    || typeof candidate.setItem !== 'function'
+    || typeof candidate.removeItem !== 'function'
+    || typeof candidate.clear !== 'function'
+  ) {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      writable: true,
+      value: mock,
+    });
+  }
+}
+
+installLocalStorageMock();
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -33,6 +65,7 @@ class ResizeObserverMock {
 globalThis.ResizeObserver = ResizeObserverMock;
 
 beforeEach(async () => {
+  const { default: i18n } = await import('@/lib/i18n');
   localStorage.clear();
   await i18n.changeLanguage('zh-CN');
   document.documentElement.lang = 'zh-CN';

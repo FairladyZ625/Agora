@@ -12,6 +12,18 @@ function isBrowser() {
   return typeof window !== 'undefined';
 }
 
+function getBrowserStorage() {
+  if (!isBrowser()) return null;
+  const storage = window.localStorage;
+  if (
+    typeof storage?.getItem !== 'function'
+    || typeof storage?.setItem !== 'function'
+  ) {
+    return null;
+  }
+  return storage;
+}
+
 export function normalizeLocale(input?: string | null): Locale {
   if (!input) return DEFAULT_LOCALE;
   return input.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN';
@@ -20,7 +32,7 @@ export function normalizeLocale(input?: string | null): Locale {
 export function detectInitialLocale(): Locale {
   if (!isBrowser()) return DEFAULT_LOCALE;
 
-  const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+  const stored = getBrowserStorage()?.getItem(LOCALE_STORAGE_KEY);
   if (stored) return normalizeLocale(stored);
 
   return normalizeLocale(window.navigator.language);
@@ -55,9 +67,7 @@ export async function ensureI18nReady() {
 export async function setLocale(locale: Locale) {
   await ensureI18nReady();
   await i18n.changeLanguage(locale);
-  if (isBrowser()) {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-  }
+  getBrowserStorage()?.setItem(LOCALE_STORAGE_KEY, locale);
   setDocumentLanguage(locale);
 }
 
