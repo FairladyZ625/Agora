@@ -1,7 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CreateTaskRequestDto, PromoteTodoRequestDto, TaskStatusDto, WorkflowDto } from '@agora-ts/contracts';
+import type {
+  CraftsmanCallbackRequestDto,
+  CreateTaskRequestDto,
+  PromoteTodoRequestDto,
+  TaskStatusDto,
+  WorkflowDto,
+} from '@agora-ts/contracts';
 import {
   FlowLogRepository,
   ProgressLogRepository,
@@ -12,6 +18,7 @@ import {
   type StoredTask,
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
+import { CraftsmanCallbackService } from './craftsman-callback-service.js';
 import { GateService } from './gate-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
@@ -94,6 +101,7 @@ export class TaskService {
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
+  private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
 
@@ -111,6 +119,7 @@ export class TaskService {
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
+    this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
   }
@@ -356,6 +365,10 @@ export class TaskService {
       actor: options.callerId,
     });
     return task;
+  }
+
+  handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {
+    return this.craftsmanCallbacks.handleCallback(input);
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
