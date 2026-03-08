@@ -131,6 +131,8 @@ npm run check:strict
 - `AGORA_FRONTEND_PORT`
 - `AGORA_SERVER_URL`
 - `VITE_API_BASE_URL`
+- `AGORA_CRAFTSMAN_SERVER_MODE`
+- `AGORA_CRAFTSMAN_CLI_MODE`
 
 如果 OpenClaw 也要跟着切换到同一后端地址，执行：
 
@@ -152,6 +154,20 @@ cd agora-ts
 npm run scenario:list
 npm run scenario -- happy-path --json
 npm run scenario:all
+```
+
+### Craftsman Runtime Entry Points
+
+默认口径已经收口为：
+- server: `watched`
+- cli: `tmux`
+
+常用入口：
+
+```bash
+./scripts/craftsman-runtime.sh tmux up
+./scripts/craftsman-runtime.sh tmux doctor
+./scripts/craftsman-runtime.sh history <taskId> <subtaskId>
 ```
 
 ### Create a Task

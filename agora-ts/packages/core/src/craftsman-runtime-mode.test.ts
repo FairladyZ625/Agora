@@ -11,6 +11,17 @@ describe('craftsman runtime mode', () => {
     })).toBe('real');
   });
 
+  it('prefers target-specific overrides over the shared fallback', () => {
+    expect(resolveCraftsmanRuntimeMode('server', {
+      AGORA_CRAFTSMAN_ADAPTER_MODE: 'real',
+      AGORA_CRAFTSMAN_SERVER_MODE: 'watched',
+    })).toBe('watched');
+    expect(resolveCraftsmanRuntimeMode('cli', {
+      AGORA_CRAFTSMAN_ADAPTER_MODE: 'real',
+      AGORA_CRAFTSMAN_CLI_MODE: 'tmux',
+    })).toBe('tmux');
+  });
+
   it('falls back to target-specific defaults when unset or invalid', () => {
     expect(resolveCraftsmanRuntimeMode('server', {})).toBe('watched');
     expect(resolveCraftsmanRuntimeMode('cli', {})).toBe('tmux');
