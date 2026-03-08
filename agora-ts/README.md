@@ -8,8 +8,10 @@ TypeScript rewrite workspace for Agora v2.
 npm run lint
 npm run typecheck
 npm test
+npm run test:coverage
 npm run build
 npm run check
+npm run check:strict
 ```
 
 ## Packages

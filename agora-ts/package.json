@@ -9,15 +9,18 @@
   "scripts": {
     "build": "tsc -b tsconfig.workspace.json",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "check:strict": "npm run check && npm run test:coverage",
     "typecheck": "tsc -b tsconfig.workspace.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "dev:server": "npm run dev -w @agora-ts/server",
     "dev:cli": "npm run dev -w @agora-ts/cli"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
+    "@vitest/coverage-v8": "^4.0.8",
     "eslint": "^9.39.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

@@ -16,6 +16,22 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     globals: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      exclude: [
+        'src/test/**',
+        'scripts/**',
+        'src/index.css',
+        'src/main.tsx',
+      ],
+      thresholds: {
+        statements: 70,
+        branches: 55,
+        functions: 65,
+        lines: 70,
+      },
+    },
   },
   server: {
     proxy: {

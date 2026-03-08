@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "build": "tsc -b && vite build",
     "lint": "eslint . && npm run lint:design",
     "lint:design": "node ./scripts/check-visual-governance.mjs",
+    "check": "npm test && npm run lint && npx tsc -b && npm run build",
+    "check:strict": "npm run check && npm run test:coverage",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -32,6 +35,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@vitest/coverage-v8": "^4.0.8",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

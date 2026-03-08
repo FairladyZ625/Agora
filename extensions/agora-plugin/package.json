@@ -8,7 +8,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm test && npm run build",
+    "check:strict": "npm run check && npm run test:coverage"
   },
   "dependencies": {
     "@agora-ts/contracts": "file:../../agora-ts/packages/contracts"
@@ -20,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   }

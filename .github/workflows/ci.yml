@@ -7,6 +7,20 @@ on:
   pull_request:
 
 jobs:
+  shared-contracts-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run shared contracts drift guard
+        run: node scripts/check-shared-contracts.mjs
+
   agora-ts-check:
     runs-on: ubuntu-latest
     defaults:
@@ -26,8 +40,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run TS quality gates
-        run: npm run check
+      - name: Run strict TS quality gates
+        run: npm run check:strict
 
   dashboard-check:
     runs-on: ubuntu-latest
@@ -48,17 +62,8 @@ jobs:
       - name: Install dashboard dependencies
         run: npm ci
 
-      - name: Run dashboard tests
-        run: npm test
-
-      - name: Run dashboard lint
-        run: npm run lint
-
-      - name: Run dashboard typecheck
-        run: npx tsc -b
-
-      - name: Run dashboard build
-        run: npm run build
+      - name: Run strict dashboard quality gates
+        run: npm run check:strict
 
   plugin-tests:
     runs-on: ubuntu-latest
@@ -79,8 +84,5 @@ jobs:
       - name: Install plugin dependencies
         run: npm ci
 
-      - name: Build plugin
-        run: npm run build
-
-      - name: Test plugin
-        run: npm test
+      - name: Run strict plugin quality gates
+        run: npm run check:strict

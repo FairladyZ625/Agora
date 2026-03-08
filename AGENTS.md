@@ -200,7 +200,11 @@ cd agora-ts && npm run build
 # agora-ts 统一质量门
 cd agora-ts && npm run check
 
+# agora-ts 严格质量门（默认提交口径）
+cd agora-ts && npm run check:strict
+
 # 全仓统一质量门
+node ./scripts/check-shared-contracts.mjs
 ./scripts/check-ts-all.sh
 ```
 
@@ -271,7 +275,8 @@ TypeScript 默认规范：
 - 使用 Vitest
 - 临时 SQLite runtime 优先复用 `@agora-ts/testing`
 - 新增 DTO / config / contract 时优先补 schema-level tests
-- 后端提交前至少跑 `cd agora-ts && npm run check`
+- 后端提交前至少跑 `cd agora-ts && npm run check:strict`
+- shared contracts 变更必须补 drift guard 或 contracts-level tests
 - 涉及 plugin / dashboard 时，必须补跑对应子项目质量门
 
 Python legacy 参考规范：

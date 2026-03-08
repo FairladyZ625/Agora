@@ -121,12 +121,13 @@ Citizens 讨论  →  Archon 裁决  →  Craftsmen 执行
 ```bash
 cd agora-ts
 npm install
-npm run check
+npm run check:strict
 ```
 
 ### Full Workspace Check
 
 ```bash
+node ./scripts/check-shared-contracts.mjs
 ./scripts/check-ts-all.sh
 ```
 

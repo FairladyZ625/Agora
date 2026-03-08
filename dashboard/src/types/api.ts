@@ -3,9 +3,11 @@ import type {
   ArchiveJobDto,
   FlowLogDto,
   HealthResponse,
+  PromoteTodoResultDto,
   ProgressLogDto,
   SubtaskDto,
   TaskDto,
+  TaskState,
   TaskStatusDto,
   TeamDto,
   TeamMemberDto,
@@ -17,15 +19,7 @@ import type {
   WorkflowStageDto,
 } from '@agora-ts/contracts';
 
-export type ApiTaskState =
-  | 'draft'
-  | 'created'
-  | 'active'
-  | 'done'
-  | 'blocked'
-  | 'paused'
-  | 'cancelled'
-  | 'orphaned';
+export type ApiTaskState = TaskState;
 
 export type ApiTeamMemberDto = TeamMemberDto;
 export type ApiTeamDto = TeamDto;
@@ -47,8 +41,4 @@ export type ApiTodoDto = TodoItemDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;
 export type ApiTemplateDetailDto = TemplateDetailDto;
 export type ApiTemplateStageDto = NonNullable<ApiTemplateDetailDto['stages']>[number];
-
-export interface ApiPromoteTodoResultDto {
-  todo: ApiTodoDto;
-  task: ApiTaskDto;
-}
+export type ApiPromoteTodoResultDto = PromoteTodoResultDto;

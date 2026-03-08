@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { taskSchema } from './task-api.js';
 
 export const agentSummarySchema = z.object({
   active_tasks: z.number().int().nonnegative(),
@@ -58,6 +59,12 @@ export const todoItemSchema = z.object({
   promoted_to: z.string().nullable(),
 });
 export type TodoItemDto = z.infer<typeof todoItemSchema>;
+
+export const promoteTodoResultSchema = z.object({
+  todo: todoItemSchema,
+  task: taskSchema,
+});
+export type PromoteTodoResultDto = z.infer<typeof promoteTodoResultSchema>;
 
 export const templateSummarySchema = z.object({
   id: z.string(),
