@@ -6,9 +6,9 @@ import App from '@/App';
 
 const agentStoreState = {
   summary: { activeTasks: 1, activeAgents: 1, totalAgents: 2, onlineAgents: 1, staleAgents: 1, disconnectedAgents: 0, busyCraftsmen: 1 },
-  providerSummaries: [
+  channelSummaries: [
     {
-      provider: 'discord',
+      channel: 'discord',
       totalAgents: 2,
       busyAgents: 1,
       onlineAgents: 1,
@@ -47,12 +47,36 @@ const agentStoreState = {
       signals: [
         {
           occurredAt: '2026-03-08T09:35:00.000Z',
-          provider: 'discord',
+          channel: 'discord',
           agentId: 'review',
           accountId: 'review',
           kind: 'transport_error',
           severity: 'error',
           detail: 'code 1005',
+        },
+      ],
+    },
+  ],
+  hostSummaries: [
+    {
+      host: 'openclaw',
+      totalAgents: 1,
+      busyAgents: 1,
+      onlineAgents: 1,
+      staleAgents: 0,
+      disconnectedAgents: 0,
+      offlineAgents: 0,
+      overallPresence: 'online',
+      lastSeenAt: '2026-03-08T10:00:00.000Z',
+      presenceReason: 'live_session',
+      affectedAgents: [
+        {
+          id: 'sonnet',
+          status: 'busy',
+          presence: 'online',
+          presenceReason: 'live_session',
+          lastSeenAt: '2026-03-08T10:00:00.000Z',
+          accountId: 'sonnet',
         },
       ],
     },
@@ -85,10 +109,11 @@ const agentStoreState = {
       status: 'busy',
       presence: 'online',
       presenceReason: 'live_session',
-      source: 'openclaw',
+      channelProviders: ['discord'],
+      hostFramework: 'openclaw' as string | null,
+      inventorySources: ['openclaw'],
       primaryModel: 'gac/claude-sonnet-4-6',
       workspaceDir: '/tmp/sonnet',
-      provider: 'discord',
       accountId: 'sonnet',
       taskCount: 1,
       subtaskCount: 1,
@@ -123,13 +148,17 @@ const agentStoreState = {
   error: null,
   presenceFilter: 'all' as const,
   craftsmenFilter: 'all' as const,
-  providerFilter: null as string | null,
+  channelFilter: null as string | null,
+  hostFilter: null as string | null,
   fetchStatus: vi.fn(async () => 'live'),
   setPresenceFilter: vi.fn((filter) => {
     agentStoreState.presenceFilter = filter;
   }),
-  setProviderFilter: vi.fn((provider) => {
-    agentStoreState.providerFilter = provider;
+  setChannelFilter: vi.fn((channel) => {
+    agentStoreState.channelFilter = channel;
+  }),
+  setHostFilter: vi.fn((host) => {
+    agentStoreState.hostFilter = host;
   }),
   setCraftsmenFilter: vi.fn((filter) => {
     agentStoreState.craftsmenFilter = filter;
@@ -142,7 +171,8 @@ const agentStoreListeners = new Set<() => void>();
 function makeAgentStoreSnapshot() {
   return {
     ...agentStoreState,
-    providerSummaries: [...agentStoreState.providerSummaries],
+    channelSummaries: [...agentStoreState.channelSummaries],
+    hostSummaries: [...agentStoreState.hostSummaries],
     agents: [...agentStoreState.agents],
     craftsmen: [...agentStoreState.craftsmen],
   };
@@ -162,8 +192,13 @@ agentStoreState.setPresenceFilter.mockImplementation((filter) => {
   notifyAgentStore();
 });
 
-agentStoreState.setProviderFilter.mockImplementation((provider) => {
-  agentStoreState.providerFilter = provider;
+agentStoreState.setChannelFilter.mockImplementation((channel) => {
+  agentStoreState.channelFilter = channel;
+  notifyAgentStore();
+});
+
+agentStoreState.setHostFilter.mockImplementation((host) => {
+  agentStoreState.hostFilter = host;
   notifyAgentStore();
 });
 
@@ -360,7 +395,8 @@ describe('dashboard expansion routes', () => {
   beforeEach(() => {
     agentStoreState.presenceFilter = 'all';
     agentStoreState.craftsmenFilter = 'all';
-    agentStoreState.providerFilter = null;
+    agentStoreState.channelFilter = null;
+    agentStoreState.hostFilter = null;
     agentStoreState.agents.splice(1);
     agentStoreState.craftsmen.splice(1);
     agentStoreSnapshot = makeAgentStoreSnapshot();
@@ -378,10 +414,11 @@ describe('dashboard expansion routes', () => {
     expect(screen.getAllByText(/Agent 总数/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText('online').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/在线 Agent/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Provider 摘要/i)).toBeInTheDocument();
-    expect(screen.getByText(/Provider 健康详情/i)).toBeInTheDocument();
-    expect(screen.getByText(/Provider 历史趋势/i)).toBeInTheDocument();
-    expect(screen.getByText(/Provider 运行信号/i)).toBeInTheDocument();
+    expect(screen.getByText(/Channel 摘要/i)).toBeInTheDocument();
+    expect(screen.getByText(/Host \/ Framework 摘要/i)).toBeInTheDocument();
+    expect(screen.getByText(/Channel 健康详情/i)).toBeInTheDocument();
+    expect(screen.getByText(/Channel 历史趋势/i)).toBeInTheDocument();
+    expect(screen.getByText(/Channel 运行信号/i)).toBeInTheDocument();
     expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
     expect(screen.getByText('agora-craftsmen')).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
@@ -500,10 +537,11 @@ describe('dashboard expansion routes', () => {
       status: 'idle',
       presence: 'stale',
       presenceReason: 'stale_gateway_log',
-      source: 'discord',
+      channelProviders: ['discord'],
+      hostFramework: null,
+      inventorySources: ['discord'],
       primaryModel: 'n/a',
       workspaceDir: 'n/a',
-      provider: 'discord',
       accountId: 'review',
       taskCount: 0,
       subtaskCount: 0,
@@ -526,7 +564,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.queryByText('sonnet')).not.toBeInTheDocument();
   });
 
-  it('shows provider drill-down details for the selected provider', () => {
+  it('shows channel drill-down details for the selected channel', () => {
     render(
       <MemoryRouter initialEntries={['/agents']}>
         <App />
@@ -537,7 +575,7 @@ describe('dashboard expansion routes', () => {
 
     expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Provider 历史趋势/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Channel 历史趋势/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/transport_error/i).length).toBeGreaterThan(0);
   });
 

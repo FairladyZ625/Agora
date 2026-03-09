@@ -510,33 +510,108 @@ function presenceRank(presence: 'online' | 'offline' | 'disconnected' | 'stale')
   }
 }
 
-function inferProvider(source?: string | null) {
-  if (!source) {
-    return 'openclaw';
+function normalizeChannelProvider(value?: string | null) {
+  if (!value) {
+    return null;
   }
-  if (source.includes('discord')) {
-    return 'discord';
+  if (value === 'discord' || value === 'whatsapp') {
+    return value;
   }
-  if (source.includes('whatsapp')) {
-    return 'whatsapp';
-  }
-  if (source.includes('openclaw')) {
-    return 'openclaw';
-  }
-  return source;
+  return null;
 }
 
-function buildProviderSummaries(
+function mergeUnique(target: string[], value: string | null) {
+  if (!value || target.includes(value)) {
+    return;
+  }
+  target.push(value);
+}
+
+function mergeUniqueMany(target: string[], values: string[]) {
+  for (const value of values) {
+    mergeUnique(target, value);
+  }
+}
+
+function buildChannelSummaries(
   agents: AgentsStatusDto['agents'],
   history: AgentPresenceHistoryEvent[],
   signals: AgentProviderSignalEvent[],
-): AgentsStatusDto['provider_summaries'] {
-  const byProvider = new Map<string, AgentsStatusDto['provider_summaries'][number]>();
+): AgentsStatusDto['channel_summaries'] {
+  const byChannel = new Map<string, AgentsStatusDto['channel_summaries'][number]>();
 
   for (const agent of agents) {
-    const provider = agent.provider ?? 'unknown';
-    const current = byProvider.get(provider) ?? {
-      provider,
+    for (const channel of agent.channel_providers) {
+      const current = byChannel.get(channel) ?? {
+        channel,
+        total_agents: 0,
+        busy_agents: 0,
+        online_agents: 0,
+        stale_agents: 0,
+        disconnected_agents: 0,
+        offline_agents: 0,
+        overall_presence: 'offline' as const,
+        last_seen_at: null,
+        presence_reason: null,
+        affected_agents: [],
+        history: [],
+        signal_status: 'unknown' as const,
+        last_signal_at: null,
+        signal_counts: {
+          ready_events: 0,
+          restart_events: 0,
+          transport_errors: 0,
+        },
+        signals: [],
+      };
+
+      accumulateSummaryAgent(current, agent);
+      byChannel.set(channel, current);
+    }
+  }
+
+  return Array.from(byChannel.values())
+    .map((summary) => {
+      const affectedAgents = summary.affected_agents.sort(compareAffectedAgents);
+      const channelHistory = history
+        .filter((item) => inferChannelFromHistory(item) === summary.channel)
+        .sort(compareHistoryEvents)
+        .slice(0, 8);
+      const channelSignals = signals
+        .filter((item) => item.provider === summary.channel)
+        .sort(compareSignalEvents)
+        .slice(0, 12);
+      const overallPresence = deriveAxisPresence(summary);
+      return {
+        ...summary,
+        overall_presence: overallPresence,
+        presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
+        affected_agents: affectedAgents,
+        history: channelHistory,
+        signal_status: deriveSignalStatus(channelSignals),
+        last_signal_at: channelSignals[0]?.occurred_at ?? null,
+        signal_counts: buildSignalCounts(channelSignals),
+        signals: channelSignals.map((item) => ({
+          ...item,
+          channel: item.provider,
+        })),
+      };
+    })
+    .sort(compareChannelSummaries);
+}
+
+function buildHostSummaries(
+  agents: AgentsStatusDto['agents'],
+): AgentsStatusDto['host_summaries'] {
+  const byHost = new Map<string, AgentsStatusDto['host_summaries'][number]>();
+
+  for (const agent of agents) {
+    const host = agent.host_framework;
+    if (!host) {
+      continue;
+    }
+    const current = byHost.get(host) ?? {
+      host,
       total_agents: 0,
       busy_agents: 0,
       online_agents: 0,
@@ -547,79 +622,66 @@ function buildProviderSummaries(
       last_seen_at: null,
       presence_reason: null,
       affected_agents: [],
-      history: [],
-      signal_status: 'unknown' as const,
-      last_signal_at: null,
-      signal_counts: {
-        ready_events: 0,
-        restart_events: 0,
-        transport_errors: 0,
-      },
-      signals: [],
     };
 
-    current.total_agents += 1;
-    if (agent.status === 'busy') {
-      current.busy_agents += 1;
-    }
-
-    switch (agent.presence) {
-      case 'online':
-        current.online_agents += 1;
-        break;
-      case 'stale':
-        current.stale_agents += 1;
-        break;
-      case 'disconnected':
-        current.disconnected_agents += 1;
-        break;
-      default:
-        current.offline_agents += 1;
-        break;
-    }
-
-    current.last_seen_at = newestTimestamp(current.last_seen_at, agent.last_seen_at);
-    current.affected_agents.push({
-      id: agent.id,
-      status: agent.status,
-      presence: agent.presence,
-      presence_reason: agent.presence_reason ?? null,
-      last_seen_at: agent.last_seen_at,
-      account_id: agent.account_id ?? null,
-    });
-    byProvider.set(provider, current);
+    accumulateSummaryAgent(current, agent);
+    byHost.set(host, current);
   }
 
-  return Array.from(byProvider.values())
+  return Array.from(byHost.values())
     .map((summary) => {
       const affectedAgents = summary.affected_agents.sort(compareAffectedAgents);
-      const providerHistory = history
-        .filter((item) => inferProviderFromHistory(item) === summary.provider)
-        .sort(compareHistoryEvents)
-        .slice(0, 8);
-      const providerSignals = signals
-        .filter((item) => item.provider === summary.provider)
-        .sort(compareSignalEvents)
-        .slice(0, 12);
-      const overallPresence = deriveOverallPresence(summary);
+      const overallPresence = deriveAxisPresence(summary);
       return {
         ...summary,
         overall_presence: overallPresence,
         presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
         affected_agents: affectedAgents,
-        history: providerHistory,
-        signal_status: deriveSignalStatus(providerSignals),
-        last_signal_at: providerSignals[0]?.occurred_at ?? null,
-        signal_counts: buildSignalCounts(providerSignals),
-        signals: providerSignals,
       };
     })
-    .sort(compareProviderSummaries);
+    .sort(compareHostSummaries);
 }
 
-function deriveOverallPresence(
-  summary: AgentsStatusDto['provider_summaries'][number],
-): AgentsStatusDto['provider_summaries'][number]['overall_presence'] {
+function accumulateSummaryAgent(
+  summary:
+    | AgentsStatusDto['channel_summaries'][number]
+    | AgentsStatusDto['host_summaries'][number],
+  agent: AgentsStatusDto['agents'][number],
+) {
+  summary.total_agents += 1;
+  if (agent.status === 'busy') {
+    summary.busy_agents += 1;
+  }
+
+  switch (agent.presence) {
+    case 'online':
+      summary.online_agents += 1;
+      break;
+    case 'stale':
+      summary.stale_agents += 1;
+      break;
+    case 'disconnected':
+      summary.disconnected_agents += 1;
+      break;
+    default:
+      summary.offline_agents += 1;
+      break;
+  }
+
+  summary.last_seen_at = newestTimestamp(summary.last_seen_at, agent.last_seen_at);
+  summary.affected_agents.push({
+    id: agent.id,
+    status: agent.status,
+    presence: agent.presence,
+    presence_reason: agent.presence_reason ?? null,
+    last_seen_at: agent.last_seen_at,
+    account_id: agent.account_id ?? null,
+  });
+}
+
+function deriveAxisPresence(
+  summary: AgentsStatusDto['channel_summaries'][number] | AgentsStatusDto['host_summaries'][number],
+): AgentsStatusDto['channel_summaries'][number]['overall_presence'] {
   if (summary.disconnected_agents > 0) {
     return 'disconnected';
   }
@@ -633,8 +695,12 @@ function deriveOverallPresence(
 }
 
 function compareAffectedAgents(
-  left: AgentsStatusDto['provider_summaries'][number]['affected_agents'][number],
-  right: AgentsStatusDto['provider_summaries'][number]['affected_agents'][number],
+  left:
+    | AgentsStatusDto['channel_summaries'][number]['affected_agents'][number]
+    | AgentsStatusDto['host_summaries'][number]['affected_agents'][number],
+  right:
+    | AgentsStatusDto['channel_summaries'][number]['affected_agents'][number]
+    | AgentsStatusDto['host_summaries'][number]['affected_agents'][number],
 ) {
   const presenceDelta = presenceSeverity(left.presence) - presenceSeverity(right.presence);
   if (presenceDelta !== 0) {
@@ -648,9 +714,9 @@ function compareAffectedAgents(
   return left.id.localeCompare(right.id);
 }
 
-function compareProviderSummaries(
-  left: AgentsStatusDto['provider_summaries'][number],
-  right: AgentsStatusDto['provider_summaries'][number],
+function compareChannelSummaries(
+  left: AgentsStatusDto['channel_summaries'][number],
+  right: AgentsStatusDto['channel_summaries'][number],
 ) {
   const signalDelta = signalSeverity(left.signal_status) - signalSeverity(right.signal_status);
   if (signalDelta !== 0) {
@@ -665,7 +731,23 @@ function compareProviderSummaries(
   if (leftSeen !== rightSeen) {
     return rightSeen - leftSeen;
   }
-  return left.provider.localeCompare(right.provider);
+  return left.channel.localeCompare(right.channel);
+}
+
+function compareHostSummaries(
+  left: AgentsStatusDto['host_summaries'][number],
+  right: AgentsStatusDto['host_summaries'][number],
+) {
+  const presenceDelta = presenceSeverity(left.overall_presence) - presenceSeverity(right.overall_presence);
+  if (presenceDelta !== 0) {
+    return presenceDelta;
+  }
+  const leftSeen = left.last_seen_at ? new Date(left.last_seen_at).getTime() : 0;
+  const rightSeen = right.last_seen_at ? new Date(right.last_seen_at).getTime() : 0;
+  if (leftSeen !== rightSeen) {
+    return rightSeen - leftSeen;
+  }
+  return left.host.localeCompare(right.host);
 }
 
 function newestTimestamp(left: string | null, right: string | null) {
@@ -691,7 +773,7 @@ function presenceSeverity(presence: 'online' | 'offline' | 'disconnected' | 'sta
   }
 }
 
-function inferProviderFromHistory(event: AgentPresenceHistoryEvent) {
+function inferChannelFromHistory(event: AgentPresenceHistoryEvent) {
   return event.account_id === null && event.agent_id === 'main' ? 'whatsapp' : 'discord';
 }
 
@@ -705,7 +787,7 @@ function compareSignalEvents(left: AgentProviderSignalEvent, right: AgentProvide
 
 function deriveSignalStatus(
   signals: AgentProviderSignalEvent[],
-): AgentsStatusDto['provider_summaries'][number]['signal_status'] {
+): AgentsStatusDto['channel_summaries'][number]['signal_status'] {
   const latest = signals[0];
   if (!latest) {
     return 'unknown';
@@ -744,7 +826,7 @@ function buildSignalCounts(signals: AgentProviderSignalEvent[]) {
   );
 }
 
-function signalSeverity(status: AgentsStatusDto['provider_summaries'][number]['signal_status']) {
+function signalSeverity(status: AgentsStatusDto['channel_summaries'][number]['signal_status']) {
   switch (status) {
     case 'degraded':
       return 0;

@@ -46,11 +46,13 @@ describe('dashboard expansion stores', () => {
           ],
         },
       ],
-      providerSummaries: [],
+      channelSummaries: [],
+      hostSummaries: [],
       tmuxRuntime: null,
       presenceFilter: 'all',
       craftsmenFilter: 'all',
-      providerFilter: null,
+      channelFilter: null,
+      hostFilter: null,
       loading: false,
       error: null,
     });
@@ -89,10 +91,11 @@ describe('dashboard expansion stores', () => {
           status: 'busy',
           presence: 'online',
           presence_reason: 'live_session',
-          source: 'openclaw',
+          channel_providers: ['discord'],
+          host_framework: 'openclaw',
+          inventory_sources: ['openclaw'],
           primary_model: 'gac/claude-sonnet-4-6',
           workspace_dir: '/tmp/sonnet',
-          provider: 'discord',
           account_id: 'sonnet',
           active_task_ids: ['OC-101'],
           active_subtask_ids: ['dev-api'],
@@ -119,8 +122,8 @@ describe('dashboard expansion stores', () => {
           },
         ],
       }],
-      provider_summaries: [{
-        provider: 'discord',
+      channel_summaries: [{
+        channel: 'discord',
         total_agents: 2,
         busy_agents: 1,
         online_agents: 1,
@@ -154,12 +157,32 @@ describe('dashboard expansion stores', () => {
         },
         signals: [{
           occurred_at: '2026-03-08T10:05:00.000Z',
-          provider: 'discord',
+          channel: 'discord',
           agent_id: 'sonnet',
           account_id: 'sonnet',
           kind: 'transport_error',
           severity: 'error',
           detail: 'code 1005',
+        }],
+      }],
+      host_summaries: [{
+        host: 'openclaw',
+        total_agents: 2,
+        busy_agents: 1,
+        online_agents: 1,
+        stale_agents: 1,
+        disconnected_agents: 0,
+        offline_agents: 0,
+        overall_presence: 'stale',
+        last_seen_at: '2026-03-08T10:00:00.000Z',
+        presence_reason: 'stale_gateway_log',
+        affected_agents: [{
+          id: 'sonnet',
+          status: 'busy',
+          presence: 'online',
+          presence_reason: 'live_session',
+          last_seen_at: '2026-03-08T10:00:00.000Z',
+          account_id: 'sonnet',
         }],
       }],
       tmux_runtime: {
@@ -193,9 +216,10 @@ describe('dashboard expansion stores', () => {
     expect(state.summary?.totalAgents).toBe(2);
     expect(state.summary?.onlineAgents).toBe(1);
     expect(state.summary?.staleAgents).toBe(1);
-    expect(state.providerSummaries[0]?.overallPresence).toBe('stale');
-    expect(state.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
-    expect(state.providerSummaries[0]?.signalStatus).toBe('degraded');
+    expect(state.channelSummaries[0]?.overallPresence).toBe('stale');
+    expect(state.channelSummaries[0]?.history[0]?.agentId).toBe('sonnet');
+    expect(state.channelSummaries[0]?.signalStatus).toBe('degraded');
+    expect(state.hostSummaries[0]?.host).toBe('openclaw');
     expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
     expect(state.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
     expect(state.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
@@ -207,7 +231,8 @@ describe('dashboard expansion stores', () => {
   it('persists agent filters across refreshes', () => {
     useAgentStore.getState().setPresenceFilter('stale');
     useAgentStore.getState().setCraftsmenFilter('failures');
-    useAgentStore.getState().setProviderFilter('discord');
+    useAgentStore.getState().setChannelFilter('discord');
+    useAgentStore.getState().setHostFilter('openclaw');
 
     const raw = localStorage.getItem('agora-agent-filters');
     expect(raw).toBeTruthy();
@@ -215,7 +240,8 @@ describe('dashboard expansion stores', () => {
       state: {
         presenceFilter: 'stale',
         craftsmenFilter: 'failures',
-        providerFilter: 'discord',
+        channelFilter: 'discord',
+        hostFilter: 'openclaw',
       },
     });
   });

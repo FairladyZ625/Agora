@@ -33,7 +33,9 @@ describe('dashboard expansion mappers', () => {
           status: 'busy',
           presence: 'online',
           presence_reason: 'live_session',
-          source: 'openclaw',
+          channel_providers: ['discord'],
+          host_framework: 'openclaw',
+          inventory_sources: ['openclaw'],
           primary_model: 'gac/claude-sonnet-4-6',
           workspace_dir: '/tmp/sonnet',
           active_task_ids: ['OC-101'],
@@ -41,13 +43,12 @@ describe('dashboard expansion mappers', () => {
           load: 1,
           last_active_at: '2026-03-07T10:00:00.000Z',
           last_seen_at: '2026-03-07T10:01:00.000Z',
-          provider: 'discord',
           account_id: 'sonnet',
         },
       ],
-      provider_summaries: [
+      channel_summaries: [
         {
-          provider: 'discord',
+          channel: 'discord',
           total_agents: 2,
           busy_agents: 1,
           online_agents: 1,
@@ -86,12 +87,36 @@ describe('dashboard expansion mappers', () => {
           signals: [
             {
               occurred_at: '2026-03-07T10:05:00.000Z',
-              provider: 'discord',
+              channel: 'discord',
               agent_id: 'sonnet',
               account_id: 'sonnet',
               kind: 'transport_error',
               severity: 'error',
               detail: 'code 1005',
+            },
+          ],
+        },
+      ],
+      host_summaries: [
+        {
+          host: 'openclaw',
+          total_agents: 2,
+          busy_agents: 1,
+          online_agents: 1,
+          stale_agents: 1,
+          disconnected_agents: 0,
+          offline_agents: 0,
+          overall_presence: 'stale',
+          last_seen_at: '2026-03-07T10:01:00.000Z',
+          presence_reason: 'stale_gateway_log',
+          affected_agents: [
+            {
+              id: 'sonnet',
+              status: 'busy',
+              presence: 'online',
+              presence_reason: 'live_session',
+              last_seen_at: '2026-03-07T10:01:00.000Z',
+              account_id: 'sonnet',
             },
           ],
         },
@@ -147,25 +172,27 @@ describe('dashboard expansion mappers', () => {
     expect(status.summary.onlineAgents).toBe(2);
     expect(status.summary.staleAgents).toBe(1);
     expect(status.summary.disconnectedAgents).toBe(0);
-    expect(status.providerSummaries[0]?.provider).toBe('discord');
-    expect(status.providerSummaries[0]?.overallPresence).toBe('stale');
-    expect(status.providerSummaries[0]?.affectedAgents[0]?.id).toBe('sonnet');
-    expect(status.providerSummaries[0]?.history[0]?.agentId).toBe('sonnet');
-    expect(status.providerSummaries[0]?.signalStatus).toBe('degraded');
+    expect(status.channelSummaries[0]?.channel).toBe('discord');
+    expect(status.channelSummaries[0]?.overallPresence).toBe('stale');
+    expect(status.channelSummaries[0]?.affectedAgents[0]?.id).toBe('sonnet');
+    expect(status.channelSummaries[0]?.history[0]?.agentId).toBe('sonnet');
+    expect(status.channelSummaries[0]?.signalStatus).toBe('degraded');
+    expect(status.hostSummaries[0]?.host).toBe('openclaw');
     expect(status.tmuxRuntime?.session).toBe('agora-craftsmen');
     expect(status.tmuxRuntime?.panes[0]?.tailPreview).toBe('tail:codex');
     expect(status.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
     expect(status.tmuxRuntime?.panes[0]?.sessionReference).toBe('codex-session-123');
     expect(status.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
     expect(status.tmuxRuntime?.panes[0]?.sessionObservedAt).toBe('2026-03-08T23:01:00.000Z');
-    expect(status.providerSummaries[0]?.signals[0]?.kind).toBe('transport_error');
+    expect(status.channelSummaries[0]?.signals[0]?.kind).toBe('transport_error');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
     expect(status.agents[0]?.presenceReason).toBe('live_session');
-    expect(status.agents[0]?.provider).toBe('discord');
+    expect(status.agents[0]?.channelProviders).toEqual(['discord']);
+    expect(status.agents[0]?.hostFramework).toBe('openclaw');
     expect(status.agents[0]?.lastSeenAt).toBe('2026-03-07T10:01:00.000Z');
     expect(status.agents[0]?.accountId).toBe('sonnet');
-    expect(status.agents[0]?.source).toBe('openclaw');
+    expect(status.agents[0]?.inventorySources).toEqual(['openclaw']);
     expect(status.agents[0]?.primaryModel).toBe('gac/claude-sonnet-4-6');
     expect(status.craftsmen[0]?.taskId).toBe('OC-101');
     expect(status.craftsmen[0]?.recentExecutions[0]?.transport).toBe('tmux-pane');

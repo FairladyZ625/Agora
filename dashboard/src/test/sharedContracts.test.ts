@@ -40,9 +40,9 @@ describe('shared contracts', () => {
       },
       agents: [],
       craftsmen: [],
-      provider_summaries: [
+      channel_summaries: [
         {
-          provider: 'discord',
+          channel: 'discord',
           total_agents: 3,
           busy_agents: 1,
           online_agents: 1,
@@ -81,7 +81,7 @@ describe('shared contracts', () => {
           signals: [
             {
               occurred_at: '2026-03-08T07:30:25.241Z',
-              provider: 'discord',
+              channel: 'discord',
               agent_id: 'main',
               account_id: 'main',
               kind: 'provider_ready',
@@ -91,11 +91,36 @@ describe('shared contracts', () => {
           ],
         },
       ],
+      host_summaries: [
+        {
+          host: 'openclaw',
+          total_agents: 3,
+          busy_agents: 1,
+          online_agents: 1,
+          stale_agents: 1,
+          disconnected_agents: 0,
+          offline_agents: 1,
+          overall_presence: 'stale',
+          last_seen_at: '2026-03-08T07:30:25.241Z',
+          presence_reason: 'stale_gateway_log',
+          affected_agents: [
+            {
+              id: 'main',
+              status: 'busy',
+              presence: 'online',
+              presence_reason: 'live_session',
+              last_seen_at: '2026-03-08T07:30:25.241Z',
+              account_id: 'main',
+            },
+          ],
+        },
+      ],
       tmux_runtime: null,
     });
 
     expect(parsed.summary.active_tasks).toBe(1);
-    expect(parsed.provider_summaries[0]?.provider).toBe('discord');
+    expect(parsed.channel_summaries[0]?.channel).toBe('discord');
+    expect(parsed.host_summaries[0]?.host).toBe('openclaw');
   });
 
   it('allows dashboard to parse tmux runtime continuity provenance fields', () => {
@@ -111,7 +136,8 @@ describe('shared contracts', () => {
       },
       agents: [],
       craftsmen: [],
-      provider_summaries: [],
+      channel_summaries: [],
+      host_summaries: [],
       tmux_runtime: {
         session: 'agora-craftsmen',
         panes: [

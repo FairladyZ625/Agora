@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as api from '@/lib/api';
 import { mapAgentsStatusDto } from '@/lib/dashboardExpansionMappers';
-import type { AgentStatusItem, AgentStatusSummary, AgentProviderSummary, CraftsmanStatusItem, TmuxRuntimeStatus } from '@/types/dashboard';
+import type { AgentChannelSummary, AgentHostSummary, AgentStatusItem, AgentStatusSummary, CraftsmanStatusItem, TmuxRuntimeStatus } from '@/types/dashboard';
 import type { AgentPresenceFilter } from '@/lib/agentProviderInsights';
 
 export type CraftsmenFilter = 'all' | 'failures' | 'running';
@@ -11,17 +11,20 @@ interface AgentStore {
   summary: AgentStatusSummary | null;
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
-  providerSummaries: AgentProviderSummary[];
+  channelSummaries: AgentChannelSummary[];
+  hostSummaries: AgentHostSummary[];
   tmuxRuntime: TmuxRuntimeStatus | null;
   presenceFilter: AgentPresenceFilter;
   craftsmenFilter: CraftsmenFilter;
-  providerFilter: string | null;
+  channelFilter: string | null;
+  hostFilter: string | null;
   loading: boolean;
   error: string | null;
   fetchStatus: () => Promise<'live' | 'error'>;
   setPresenceFilter: (filter: AgentPresenceFilter) => void;
   setCraftsmenFilter: (filter: CraftsmenFilter) => void;
-  setProviderFilter: (provider: string | null) => void;
+  setChannelFilter: (channel: string | null) => void;
+  setHostFilter: (host: string | null) => void;
   clearError: () => void;
 }
 
@@ -31,11 +34,13 @@ export const useAgentStore = create<AgentStore>()(
       summary: null,
       agents: [],
       craftsmen: [],
-      providerSummaries: [],
+      channelSummaries: [],
+      hostSummaries: [],
       tmuxRuntime: null,
       presenceFilter: 'all',
       craftsmenFilter: 'all',
-      providerFilter: null,
+      channelFilter: null,
+      hostFilter: null,
       loading: false,
       error: null,
 
@@ -47,7 +52,8 @@ export const useAgentStore = create<AgentStore>()(
             summary: payload.summary,
             agents: payload.agents,
             craftsmen: payload.craftsmen,
-            providerSummaries: payload.providerSummaries,
+            channelSummaries: payload.channelSummaries,
+            hostSummaries: payload.hostSummaries,
             tmuxRuntime: payload.tmuxRuntime,
             loading: false,
           });
@@ -57,7 +63,8 @@ export const useAgentStore = create<AgentStore>()(
             summary: null,
             agents: [],
             craftsmen: [],
-            providerSummaries: [],
+            channelSummaries: [],
+            hostSummaries: [],
             tmuxRuntime: null,
             loading: false,
             error: error instanceof Error ? error.message : String(error),
@@ -68,7 +75,8 @@ export const useAgentStore = create<AgentStore>()(
 
       setPresenceFilter: (presenceFilter) => set({ presenceFilter }),
       setCraftsmenFilter: (craftsmenFilter) => set({ craftsmenFilter }),
-      setProviderFilter: (providerFilter) => set({ providerFilter }),
+      setChannelFilter: (channelFilter) => set({ channelFilter }),
+      setHostFilter: (hostFilter) => set({ hostFilter }),
       clearError: () => set({ error: null }),
     }),
     {
@@ -76,7 +84,8 @@ export const useAgentStore = create<AgentStore>()(
       partialize: (state) => ({
         presenceFilter: state.presenceFilter,
         craftsmenFilter: state.craftsmenFilter,
-        providerFilter: state.providerFilter,
+        channelFilter: state.channelFilter,
+        hostFilter: state.hostFilter,
       }),
     },
   ),

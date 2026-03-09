@@ -10,10 +10,11 @@ import type {
   AgentsStatus,
   ArchiveJob,
   AgentStatusItem,
-  AgentProviderAffectedAgent,
-  AgentProviderHistoryEvent,
-  AgentProviderSignalEvent,
-  AgentProviderSummary,
+  AgentAxisAffectedAgent,
+  AgentChannelHistoryEvent,
+  AgentChannelSignalEvent,
+  AgentChannelSummary,
+  AgentHostSummary,
   CraftsmanStatusItem,
   PromoteTodoResult,
   TemplateDetail,
@@ -50,10 +51,11 @@ function mapAgentDto(agent: ApiAgentsStatusDto['agents'][number]): AgentStatusIt
     status: agent.status,
     presence: agent.presence,
     presenceReason: agent.presence_reason ?? null,
-    source: agent.source ?? null,
+    channelProviders: agent.channel_providers,
+    hostFramework: agent.host_framework ?? null,
+    inventorySources: agent.inventory_sources,
     primaryModel: agent.primary_model ?? null,
     workspaceDir: agent.workspace_dir ?? null,
-    provider: agent.provider ?? null,
     accountId: agent.account_id ?? null,
     activeTaskIds: agent.active_task_ids,
     activeSubtaskIds: agent.active_subtask_ids,
@@ -110,8 +112,10 @@ function mapTmuxRuntime(dto: ApiAgentsStatusDto['tmux_runtime']): TmuxRuntimeSta
 }
 
 function mapProviderAffectedAgentDto(
-  item: ApiAgentsStatusDto['provider_summaries'][number]['affected_agents'][number],
-): AgentProviderAffectedAgent {
+  item:
+    | ApiAgentsStatusDto['channel_summaries'][number]['affected_agents'][number]
+    | ApiAgentsStatusDto['host_summaries'][number]['affected_agents'][number],
+): AgentAxisAffectedAgent {
   return {
     id: item.id,
     status: item.status,
@@ -123,8 +127,8 @@ function mapProviderAffectedAgentDto(
 }
 
 function mapProviderHistoryEventDto(
-  item: ApiAgentsStatusDto['provider_summaries'][number]['history'][number],
-): AgentProviderHistoryEvent {
+  item: ApiAgentsStatusDto['channel_summaries'][number]['history'][number],
+): AgentChannelHistoryEvent {
   return {
     occurredAt: item.occurred_at,
     agentId: item.agent_id,
@@ -135,11 +139,11 @@ function mapProviderHistoryEventDto(
 }
 
 function mapProviderSignalEventDto(
-  item: ApiAgentsStatusDto['provider_summaries'][number]['signals'][number],
-): AgentProviderSignalEvent {
+  item: ApiAgentsStatusDto['channel_summaries'][number]['signals'][number],
+): AgentChannelSignalEvent {
   return {
     occurredAt: item.occurred_at,
-    provider: item.provider,
+    channel: item.channel,
     agentId: item.agent_id ?? null,
     accountId: item.account_id ?? null,
     kind: item.kind,
@@ -148,9 +152,9 @@ function mapProviderSignalEventDto(
   };
 }
 
-function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][number]): AgentProviderSummary {
+function mapChannelSummaryDto(item: ApiAgentsStatusDto['channel_summaries'][number]): AgentChannelSummary {
   return {
-    provider: item.provider,
+    channel: item.channel,
     totalAgents: item.total_agents,
     busyAgents: item.busy_agents,
     onlineAgents: item.online_agents,
@@ -173,6 +177,22 @@ function mapProviderSummaryDto(item: ApiAgentsStatusDto['provider_summaries'][nu
   };
 }
 
+function mapHostSummaryDto(item: ApiAgentsStatusDto['host_summaries'][number]): AgentHostSummary {
+  return {
+    host: item.host,
+    totalAgents: item.total_agents,
+    busyAgents: item.busy_agents,
+    onlineAgents: item.online_agents,
+    staleAgents: item.stale_agents,
+    disconnectedAgents: item.disconnected_agents,
+    offlineAgents: item.offline_agents,
+    overallPresence: item.overall_presence,
+    lastSeenAt: item.last_seen_at,
+    presenceReason: item.presence_reason ?? null,
+    affectedAgents: item.affected_agents.map(mapProviderAffectedAgentDto),
+  };
+}
+
 export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
   return {
     summary: {
@@ -186,7 +206,8 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
     },
     agents: dto.agents.map(mapAgentDto),
     craftsmen: dto.craftsmen.map(mapCraftsmanDto),
-    providerSummaries: dto.provider_summaries.map(mapProviderSummaryDto),
+    channelSummaries: dto.channel_summaries.map(mapChannelSummaryDto),
+    hostSummaries: dto.host_summaries.map(mapHostSummaryDto),
     tmuxRuntime: mapTmuxRuntime(dto.tmux_runtime),
   };
 }

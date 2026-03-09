@@ -87,20 +87,8 @@ describe('dashboard query service', () => {
       busy_craftsmen: 1,
     });
     expect(agentsStatus.agents.map((item) => item.id)).toContain('sonnet');
-    expect(agentsStatus.provider_summaries).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        provider: 'openclaw',
-        total_agents: expect.any(Number),
-        busy_agents: expect.any(Number),
-        overall_presence: 'online',
-        affected_agents: expect.arrayContaining([
-          expect.objectContaining({
-            id: 'sonnet',
-            presence: 'online',
-          }),
-        ]),
-      }),
-    ]));
+    expect(agentsStatus.channel_summaries).toEqual([]);
+    expect(agentsStatus.host_summaries).toEqual([]);
     expect(agentsStatus.craftsmen).toMatchObject([
       expect.objectContaining({
         id: 'codex',
@@ -435,8 +423,25 @@ describe('dashboard query service', () => {
         id: 'ops',
         status: 'busy',
         last_active_at: '2026-03-08T06:10:00.000Z',
+        channel_providers: ['discord'],
+        host_framework: 'openclaw',
+        inventory_sources: ['openclaw'],
       }),
     ]);
+    expect(agentsStatus.channel_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        channel: 'discord',
+        total_agents: 1,
+        busy_agents: 1,
+      }),
+    ]));
+    expect(agentsStatus.host_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        host: 'openclaw',
+        total_agents: 1,
+        busy_agents: 1,
+      }),
+    ]));
   });
 
   it('returns the full agent inventory and marks non-running agents as idle', () => {
@@ -450,13 +455,17 @@ describe('dashboard query service', () => {
       listAgents: () => [
         {
           id: 'main',
-          source: 'openclaw+discord',
+          host_framework: 'openclaw',
+          channel_providers: ['discord'],
+          inventory_sources: ['discord', 'openclaw'],
           primary_model: 'openai-codex/gpt-5.4',
           workspace_dir: '/tmp/main',
         },
         {
           id: 'review',
-          source: 'discord',
+          host_framework: null,
+          channel_providers: ['discord'],
+          inventory_sources: ['discord'],
           primary_model: null,
           workspace_dir: null,
         },
@@ -494,8 +503,9 @@ describe('dashboard query service', () => {
         status: 'busy',
         presence: 'online',
         presence_reason: 'live_session',
-        provider: 'discord',
-        source: 'openclaw+discord',
+        channel_providers: ['discord'],
+        host_framework: 'openclaw',
+        inventory_sources: ['discord', 'openclaw'],
         primary_model: 'openai-codex/gpt-5.4',
       }),
       expect.objectContaining({
@@ -503,19 +513,29 @@ describe('dashboard query service', () => {
         status: 'idle',
         presence: 'offline',
         presence_reason: 'inventory_only',
-        provider: 'discord',
-        source: 'discord',
+        channel_providers: ['discord'],
+        host_framework: null,
+        inventory_sources: ['discord'],
         primary_model: null,
         load: 0,
       }),
     ]);
-    expect(agentsStatus.provider_summaries).toEqual(expect.arrayContaining([
+    expect(agentsStatus.channel_summaries).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        provider: 'discord',
+        channel: 'discord',
         total_agents: 2,
         busy_agents: 1,
         online_agents: 1,
         offline_agents: 1,
+        overall_presence: 'online',
+      }),
+    ]));
+    expect(agentsStatus.host_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        host: 'openclaw',
+        total_agents: 1,
+        busy_agents: 1,
+        online_agents: 1,
         overall_presence: 'online',
       }),
     ]));
@@ -529,19 +549,25 @@ describe('dashboard query service', () => {
       listAgents: () => [
         {
           id: 'main',
-          source: 'openclaw+discord',
+          host_framework: 'openclaw',
+          channel_providers: ['discord'],
+          inventory_sources: ['discord', 'openclaw'],
           primary_model: 'openai-codex/gpt-5.3-codex',
           workspace_dir: '/tmp/main',
         },
         {
           id: 'sonnet',
-          source: 'discord',
+          host_framework: null,
+          channel_providers: ['discord'],
+          inventory_sources: ['discord'],
           primary_model: 'gac/claude-sonnet-4-6',
           workspace_dir: null,
         },
         {
           id: 'review',
-          source: 'discord',
+          host_framework: null,
+          channel_providers: ['discord'],
+          inventory_sources: ['discord'],
           primary_model: null,
           workspace_dir: null,
         },
@@ -617,9 +643,9 @@ describe('dashboard query service', () => {
       stale_agents: 0,
       disconnected_agents: 1,
     });
-    expect(agentsStatus.provider_summaries).toEqual(expect.arrayContaining([
+    expect(agentsStatus.channel_summaries).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        provider: 'discord',
+        channel: 'discord',
         total_agents: 3,
         disconnected_agents: 1,
         overall_presence: 'disconnected',
@@ -660,13 +686,22 @@ describe('dashboard query service', () => {
         ]),
       }),
     ]));
+    expect(agentsStatus.host_summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        host: 'openclaw',
+        total_agents: 1,
+        online_agents: 1,
+      }),
+    ]));
     expect(agentsStatus.agents).toEqual([
       expect.objectContaining({
         id: 'main',
         status: 'idle',
         presence: 'online',
         presence_reason: 'provider_start',
-        provider: 'discord',
+        channel_providers: ['discord'],
+        host_framework: 'openclaw',
+        inventory_sources: ['discord', 'openclaw'],
         account_id: 'main',
         last_seen_at: '2026-03-08T07:30:25.241Z',
       }),
@@ -675,7 +710,9 @@ describe('dashboard query service', () => {
         status: 'idle',
         presence: 'disconnected',
         presence_reason: 'health_monitor_restart',
-        provider: 'discord',
+        channel_providers: ['discord'],
+        host_framework: null,
+        inventory_sources: ['discord'],
         account_id: 'sonnet',
         last_seen_at: '2026-03-08T07:27:00.166Z',
       }),
@@ -684,7 +721,9 @@ describe('dashboard query service', () => {
         status: 'idle',
         presence: 'offline',
         presence_reason: 'inventory_only',
-        provider: 'discord',
+        channel_providers: ['discord'],
+        host_framework: null,
+        inventory_sources: ['discord'],
         account_id: null,
         last_seen_at: null,
       }),

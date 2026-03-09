@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentStatusItem } from '@/types/dashboard';
-import { buildProviderSummaries, filterAgentsByView } from '@/lib/agentProviderInsights';
+import { filterAgentsByView } from '@/lib/agentProviderInsights';
 
 const agents: AgentStatusItem[] = [
   {
@@ -9,10 +9,11 @@ const agents: AgentStatusItem[] = [
     status: 'busy',
     presence: 'online',
     presenceReason: 'live_session',
-    source: 'openclaw+discord',
+    channelProviders: ['discord'],
+    hostFramework: 'openclaw',
+    inventorySources: ['openclaw', 'discord'],
     primaryModel: 'openai-codex/gpt-5.3-codex',
     workspaceDir: '/tmp/main',
-    provider: 'discord',
     accountId: 'main',
     activeTaskIds: ['OC-1'],
     activeSubtaskIds: [],
@@ -28,10 +29,11 @@ const agents: AgentStatusItem[] = [
     status: 'idle',
     presence: 'stale',
     presenceReason: 'stale_gateway_log',
-    source: 'discord',
+    channelProviders: ['discord'],
+    hostFramework: null,
+    inventorySources: ['discord'],
     primaryModel: null,
     workspaceDir: null,
-    provider: 'discord',
     accountId: 'review',
     activeTaskIds: [],
     activeSubtaskIds: [],
@@ -47,10 +49,11 @@ const agents: AgentStatusItem[] = [
     status: 'idle',
     presence: 'disconnected',
     presenceReason: 'health_monitor_restart',
-    source: 'discord',
+    channelProviders: ['discord'],
+    hostFramework: null,
+    inventorySources: ['discord'],
     primaryModel: null,
     workspaceDir: null,
-    provider: 'discord',
     accountId: 'writer',
     activeTaskIds: [],
     activeSubtaskIds: [],
@@ -66,10 +69,11 @@ const agents: AgentStatusItem[] = [
     status: 'idle',
     presence: 'offline',
     presenceReason: 'inventory_only',
-    source: 'openclaw',
+    channelProviders: [],
+    hostFramework: 'openclaw',
+    inventorySources: ['openclaw'],
     primaryModel: null,
     workspaceDir: null,
-    provider: 'openclaw',
     accountId: null,
     activeTaskIds: [],
     activeSubtaskIds: [],
@@ -82,71 +86,16 @@ const agents: AgentStatusItem[] = [
 ];
 
 describe('agent provider insights', () => {
-  it('builds provider summaries from the agent inventory', () => {
-    expect(buildProviderSummaries(agents)).toEqual([
-      {
-        provider: 'discord',
-        totalAgents: 3,
-        busyAgents: 1,
-        onlineAgents: 1,
-        staleAgents: 1,
-        disconnectedAgents: 1,
-        offlineAgents: 0,
-        overallPresence: 'disconnected',
-        lastSeenAt: '2026-03-08T10:00:00.000Z',
-        presenceReason: 'health_monitor_restart',
-        history: [],
-        signalStatus: 'unknown',
-        lastSignalAt: null,
-        signalCounts: {
-          readyEvents: 0,
-          restartEvents: 0,
-          transportErrors: 0,
-        },
-        signals: [],
-        affectedAgents: [
-          expect.objectContaining({ id: 'writer', presence: 'disconnected' }),
-          expect.objectContaining({ id: 'review', presence: 'stale' }),
-          expect.objectContaining({ id: 'main', presence: 'online' }),
-        ],
-      },
-      {
-        provider: 'openclaw',
-        totalAgents: 1,
-        busyAgents: 0,
-        onlineAgents: 0,
-        staleAgents: 0,
-        disconnectedAgents: 0,
-        offlineAgents: 1,
-        overallPresence: 'offline',
-        lastSeenAt: null,
-        presenceReason: null,
-        history: [],
-        signalStatus: 'unknown',
-        lastSignalAt: null,
-        signalCounts: {
-          readyEvents: 0,
-          restartEvents: 0,
-          transportErrors: 0,
-        },
-        signals: [],
-        affectedAgents: [
-          expect.objectContaining({ id: 'ops', presence: 'offline' }),
-        ],
-      },
-    ]);
-  });
-
-  it('filters agents by presence view and provider', () => {
-    expect(filterAgentsByView(agents, 'all', null).map((item) => item.id)).toEqual([
+  it('filters agents by presence, channel, and host axes', () => {
+    expect(filterAgentsByView(agents, 'all', null, null).map((item) => item.id)).toEqual([
       'main',
       'review',
       'writer',
       'ops',
     ]);
-    expect(filterAgentsByView(agents, 'stale', null).map((item) => item.id)).toEqual(['review']);
-    expect(filterAgentsByView(agents, 'disconnected', 'discord').map((item) => item.id)).toEqual(['writer']);
-    expect(filterAgentsByView(agents, 'busy', 'discord').map((item) => item.id)).toEqual(['main']);
-    expect(filterAgentsByView(agents, 'offline', 'openclaw').map((item) => item.id)).toEqual(['ops']);
+    expect(filterAgentsByView(agents, 'stale', null, null).map((item) => item.id)).toEqual(['review']);
+    expect(filterAgentsByView(agents, 'disconnected', 'discord', null).map((item) => item.id)).toEqual(['writer']);
+    expect(filterAgentsByView(agents, 'busy', 'discord', 'openclaw').map((item) => item.id)).toEqual(['main']);
+    expect(filterAgentsByView(agents, 'offline', null, 'openclaw').map((item) => item.id)).toEqual(['ops']);
   });
 });

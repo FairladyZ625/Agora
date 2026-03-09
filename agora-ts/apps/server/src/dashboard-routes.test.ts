@@ -101,14 +101,8 @@ describe('dashboard routes', () => {
       execution_id: 'exec-route-dashboard-1',
       transport: 'tmux-pane',
     });
-    expect(agents.json().provider_summaries).toEqual([
-      expect.objectContaining({
-        provider: 'openclaw',
-        total_agents: expect.any(Number),
-        overall_presence: 'online',
-        signal_status: expect.any(String),
-      }),
-    ]);
+    expect(agents.json().channel_summaries).toEqual([]);
+    expect(agents.json().host_summaries).toEqual([]);
     expect(archive.statusCode).toBe(200);
     expect(archive.json()).toHaveLength(1);
     expect(todosList.statusCode).toBe(200);
@@ -442,6 +436,22 @@ describe('dashboard routes', () => {
       expect.objectContaining({
         id: 'ops',
         status: 'busy',
+        channel_providers: ['discord'],
+        host_framework: 'openclaw',
+      }),
+    ]);
+    expect(agents.json().channel_summaries).toEqual([
+      expect.objectContaining({
+        channel: 'discord',
+        total_agents: 1,
+        busy_agents: 1,
+      }),
+    ]);
+    expect(agents.json().host_summaries).toEqual([
+      expect.objectContaining({
+        host: 'openclaw',
+        total_agents: 1,
+        busy_agents: 1,
       }),
     ]);
   });

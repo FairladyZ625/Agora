@@ -41,30 +41,37 @@ function sortExecutions<T extends { status: string; startedAt: string | null }>(
   });
 }
 
+function formatList(values: string[], fallback: string) {
+  return values.length > 0 ? values.join(', ') : fallback;
+}
+
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
   const summary = useAgentStore((state) => state.summary);
   const agents = useAgentStore((state) => state.agents);
   const craftsmen = useAgentStore((state) => state.craftsmen);
-  const providerSummaries = useAgentStore((state) => state.providerSummaries);
+  const channelSummaries = useAgentStore((state) => state.channelSummaries);
+  const hostSummaries = useAgentStore((state) => state.hostSummaries);
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
   const craftsmenFilter = useAgentStore((state) => state.craftsmenFilter);
-  const providerFilter = useAgentStore((state) => state.providerFilter);
+  const channelFilter = useAgentStore((state) => state.channelFilter);
+  const hostFilter = useAgentStore((state) => state.hostFilter);
   const error = useAgentStore((state) => state.error);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const setPresenceFilter = useAgentStore((state) => state.setPresenceFilter);
   const setCraftsmenFilter = useAgentStore((state) => state.setCraftsmenFilter);
-  const setProviderFilter = useAgentStore((state) => state.setProviderFilter);
+  const setChannelFilter = useAgentStore((state) => state.setChannelFilter);
+  const setHostFilter = useAgentStore((state) => state.setHostFilter);
 
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
 
-  const visibleAgents = filterAgentsByView(agents, presenceFilter, providerFilter);
-  const selectedProvider = useMemo(
-    () => providerSummaries.find((item) => item.provider === providerFilter) ?? providerSummaries[0] ?? null,
-    [providerFilter, providerSummaries],
+  const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
+  const selectedChannel = useMemo(
+    () => channelSummaries.find((item) => item.channel === channelFilter) ?? channelSummaries[0] ?? null,
+    [channelFilter, channelSummaries],
   );
   const visibleCraftsmen = useMemo(() => {
     const filtered = craftsmenFilter === 'all'
@@ -125,25 +132,25 @@ export function AgentsPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
+      <section className="grid gap-6 xl:grid-cols-3">
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
-            <h3 className="section-title">{copy.providerSummaryTitle}</h3>
-            <span className="status-pill status-pill--neutral">{providerSummaries.length}</span>
+            <h3 className="section-title">{copy.channelSummaryTitle}</h3>
+            <span className="status-pill status-pill--neutral">{channelSummaries.length}</span>
           </div>
           <div className="mt-5 space-y-3">
-            {providerSummaries.map((item) => {
-              const isActive = providerFilter === item.provider;
+            {channelSummaries.map((item) => {
+              const isActive = channelFilter === item.channel;
               return (
                 <button
-                  key={item.provider}
+                  key={item.channel}
                   type="button"
                   className="data-row w-full text-left"
-                  onClick={() => setProviderFilter(isActive ? null : item.provider)}
+                  onClick={() => setChannelFilter(isActive ? null : item.channel)}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <strong className="type-heading-sm">{item.provider}</strong>
+                      <strong className="type-heading-sm">{item.channel}</strong>
                       <span className="status-pill status-pill--neutral">{item.totalAgents}</span>
                     </div>
                     <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
@@ -159,6 +166,48 @@ export function AgentsPage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div className="surface-panel surface-panel--workspace">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.hostSummaryTitle}</h3>
+            <span className="status-pill status-pill--neutral">{hostSummaries.length}</span>
+          </div>
+          <div className="mt-5 space-y-3">
+            {hostSummaries.length === 0 ? (
+              <div className="empty-state">
+                <p className="type-body-sm">{copy.emptyHostSummary}</p>
+              </div>
+            ) : (
+              hostSummaries.map((item) => {
+                const isActive = hostFilter === item.host;
+                return (
+                  <button
+                    key={item.host}
+                    type="button"
+                    className="data-row w-full text-left"
+                    onClick={() => setHostFilter(isActive ? null : item.host)}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong className="type-heading-sm">{item.host}</strong>
+                        <span className="status-pill status-pill--neutral">{item.totalAgents}</span>
+                      </div>
+                      <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                        <span>{copy.presenceLabel}: {item.overallPresence}</span>
+                        <span>{copy.presenceReasonLabel}: {item.presenceReason ?? 'n/a'}</span>
+                        <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
+                        <span>{copy.metrics.activeAgents}: {item.busyAgents}</span>
+                        <span>{copy.metrics.onlineAgents}: {item.onlineAgents}</span>
+                        <span>{copy.metrics.staleAgents}: {item.staleAgents}</span>
+                        <span>{copy.metrics.disconnectedAgents}: {item.disconnectedAgents}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -188,35 +237,35 @@ export function AgentsPage() {
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
-            <h3 className="section-title">{copy.providerDetailTitle}</h3>
-            <span className="status-pill status-pill--neutral">{selectedProvider?.provider ?? 'n/a'}</span>
+            <h3 className="section-title">{copy.channelDetailTitle}</h3>
+            <span className="status-pill status-pill--neutral">{selectedChannel?.channel ?? 'n/a'}</span>
           </div>
           <div className="mt-5 space-y-4">
-            {selectedProvider ? (
+            {selectedChannel ? (
               <>
                 <div className="type-text-xs flex flex-wrap items-center gap-3">
-                  <span>{copy.presenceLabel}: {selectedProvider.overallPresence}</span>
-                  <span>{copy.presenceReasonLabel}: {selectedProvider.presenceReason ?? 'n/a'}</span>
-                  <span>{copy.lastSeenLabel}: {selectedProvider.lastSeenAt ?? 'n/a'}</span>
+                  <span>{copy.presenceLabel}: {selectedChannel.overallPresence}</span>
+                  <span>{copy.presenceReasonLabel}: {selectedChannel.presenceReason ?? 'n/a'}</span>
+                  <span>{copy.lastSeenLabel}: {selectedChannel.lastSeenAt ?? 'n/a'}</span>
                 </div>
                 <div className="type-text-xs flex flex-wrap items-center gap-3">
-                  <span>{copy.metrics.totalAgents}: {selectedProvider.totalAgents}</span>
-                  <span>{copy.metrics.activeAgents}: {selectedProvider.busyAgents}</span>
-                  <span>{copy.metrics.staleAgents}: {selectedProvider.staleAgents}</span>
-                  <span>{copy.metrics.disconnectedAgents}: {selectedProvider.disconnectedAgents}</span>
-                  <span>signal: {selectedProvider.signalStatus}</span>
-                  <span>ready: {selectedProvider.signalCounts.readyEvents}</span>
-                  <span>restart: {selectedProvider.signalCounts.restartEvents}</span>
-                  <span>transport: {selectedProvider.signalCounts.transportErrors}</span>
+                  <span>{copy.metrics.totalAgents}: {selectedChannel.totalAgents}</span>
+                  <span>{copy.metrics.activeAgents}: {selectedChannel.busyAgents}</span>
+                  <span>{copy.metrics.staleAgents}: {selectedChannel.staleAgents}</span>
+                  <span>{copy.metrics.disconnectedAgents}: {selectedChannel.disconnectedAgents}</span>
+                  <span>signal: {selectedChannel.signalStatus}</span>
+                  <span>ready: {selectedChannel.signalCounts.readyEvents}</span>
+                  <span>restart: {selectedChannel.signalCounts.restartEvents}</span>
+                  <span>transport: {selectedChannel.signalCounts.transportErrors}</span>
                 </div>
                 <div className="space-y-3">
-                  {selectedProvider.affectedAgents.length === 0 ? (
+                  {selectedChannel.affectedAgents.length === 0 ? (
                     <div className="empty-state">
-                      <p className="type-body-sm">{copy.emptyProviderDetail}</p>
+                      <p className="type-body-sm">{copy.emptyChannelDetail}</p>
                     </div>
                   ) : (
-                    selectedProvider.affectedAgents.map((item) => (
-                      <div key={`${selectedProvider.provider}-${item.id}`} className="decision-card">
+                    selectedChannel.affectedAgents.map((item) => (
+                      <div key={`${selectedChannel.channel}-${item.id}`} className="decision-card">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="type-heading-sm">{item.id}</p>
@@ -235,23 +284,24 @@ export function AgentsPage() {
                 </div>
                 <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
                   <div className="section-title-row">
-                    <h4 className="section-title">{copy.providerSignalsTitle}</h4>
-                    <span className="status-pill status-pill--neutral">{selectedProvider.signals.length}</span>
+                    <h4 className="section-title">{copy.channelSignalsTitle}</h4>
+                    <span className="status-pill status-pill--neutral">{selectedChannel.signals.length}</span>
                   </div>
                   <div className="mt-4 space-y-3">
-                    {selectedProvider.signals.length === 0 ? (
+                    {selectedChannel.signals.length === 0 ? (
                       <div className="empty-state">
-                        <p className="type-body-sm">{copy.emptyProviderSignals}</p>
+                        <p className="type-body-sm">{copy.emptyChannelSignals}</p>
                       </div>
                     ) : (
-                      selectedProvider.signals.map((signal) => (
-                        <div key={`${selectedProvider.provider}-${signal.occurredAt}-${signal.kind}`} className="data-row">
+                      selectedChannel.signals.map((signal) => (
+                        <div key={`${selectedChannel.channel}-${signal.occurredAt}-${signal.kind}`} className="data-row">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <strong className="type-heading-sm">{signal.kind}</strong>
                               <span className="status-pill status-pill--info">{signal.severity}</span>
                             </div>
                             <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                              <span>{copy.channelLabel}: {signal.channel}</span>
                               <span>{copy.lastSeenLabel}: {signal.occurredAt}</span>
                               <span>{copy.accountLabel}: {signal.accountId ?? 'n/a'}</span>
                               <span>{copy.presenceReasonLabel}: {signal.detail ?? 'n/a'}</span>
@@ -264,17 +314,17 @@ export function AgentsPage() {
                 </div>
                 <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
                   <div className="section-title-row">
-                    <h4 className="section-title">{copy.providerTimelineTitle}</h4>
-                    <span className="status-pill status-pill--neutral">{selectedProvider.history.length}</span>
+                    <h4 className="section-title">{copy.channelTimelineTitle}</h4>
+                    <span className="status-pill status-pill--neutral">{selectedChannel.history.length}</span>
                   </div>
                   <div className="mt-4 space-y-3">
-                    {selectedProvider.history.length === 0 ? (
+                    {selectedChannel.history.length === 0 ? (
                       <div className="empty-state">
-                        <p className="type-body-sm">{copy.emptyProviderHistory}</p>
+                        <p className="type-body-sm">{copy.emptyChannelHistory}</p>
                       </div>
                     ) : (
-                      selectedProvider.history.map((event) => (
-                        <div key={`${selectedProvider.provider}-${event.occurredAt}-${event.agentId}`} className="data-row">
+                      selectedChannel.history.map((event) => (
+                        <div key={`${selectedChannel.channel}-${event.occurredAt}-${event.agentId}`} className="data-row">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <strong className="type-heading-sm">{event.agentId}</strong>
@@ -294,7 +344,7 @@ export function AgentsPage() {
               </>
             ) : (
               <div className="empty-state">
-                <p className="type-body-sm">{copy.emptyProviderDetail}</p>
+                <p className="type-body-sm">{copy.emptyChannelDetail}</p>
               </div>
             )}
           </div>
@@ -323,8 +373,9 @@ export function AgentsPage() {
                       <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
                       <span>{copy.presenceLabel}: {agent.presence}</span>
                       <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
-                      <span>{copy.providerLabel}: {agent.provider ?? 'n/a'}</span>
-                      <span>{copy.sourceLabel}: {agent.source ?? 'unknown'}</span>
+                      <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
+                      <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
+                      <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
                       <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
                       <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
                       <span>{copy.loadLabel}: {agent.load}</span>
@@ -337,7 +388,9 @@ export function AgentsPage() {
             )}
           </div>
         </div>
+      </section>
 
+      <section className="grid gap-6 xl:grid-cols-2">
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
             <h3 className="section-title">{copy.craftsmenTitle}</h3>

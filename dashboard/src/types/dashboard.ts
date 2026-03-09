@@ -8,7 +8,7 @@ export interface AgentStatusSummary {
   busyCraftsmen: number;
 }
 
-export interface AgentProviderAffectedAgent {
+export interface AgentAxisAffectedAgent {
   id: string;
   status: string;
   presence: 'online' | 'offline' | 'disconnected' | 'stale';
@@ -17,7 +17,7 @@ export interface AgentProviderAffectedAgent {
   accountId: string | null;
 }
 
-export interface AgentProviderHistoryEvent {
+export interface AgentChannelHistoryEvent {
   occurredAt: string;
   agentId: string;
   accountId: string | null;
@@ -25,9 +25,9 @@ export interface AgentProviderHistoryEvent {
   reason: string | null;
 }
 
-export interface AgentProviderSignalEvent {
+export interface AgentChannelSignalEvent {
   occurredAt: string;
-  provider: string;
+  channel: string;
   agentId: string | null;
   accountId: string | null;
   kind:
@@ -42,8 +42,8 @@ export interface AgentProviderSignalEvent {
   detail: string | null;
 }
 
-export interface AgentProviderSummary {
-  provider: string;
+export interface AgentChannelSummary {
+  channel: string;
   totalAgents: number;
   busyAgents: number;
   onlineAgents: number;
@@ -53,8 +53,8 @@ export interface AgentProviderSummary {
   overallPresence: 'online' | 'offline' | 'disconnected' | 'stale';
   lastSeenAt: string | null;
   presenceReason: string | null;
-  affectedAgents: AgentProviderAffectedAgent[];
-  history: AgentProviderHistoryEvent[];
+  affectedAgents: AgentAxisAffectedAgent[];
+  history: AgentChannelHistoryEvent[];
   signalStatus: 'healthy' | 'recovering' | 'degraded' | 'unknown';
   lastSignalAt: string | null;
   signalCounts: {
@@ -62,7 +62,21 @@ export interface AgentProviderSummary {
     restartEvents: number;
     transportErrors: number;
   };
-  signals: AgentProviderSignalEvent[];
+  signals: AgentChannelSignalEvent[];
+}
+
+export interface AgentHostSummary {
+  host: string;
+  totalAgents: number;
+  busyAgents: number;
+  onlineAgents: number;
+  staleAgents: number;
+  disconnectedAgents: number;
+  offlineAgents: number;
+  overallPresence: 'online' | 'offline' | 'disconnected' | 'stale';
+  lastSeenAt: string | null;
+  presenceReason: string | null;
+  affectedAgents: AgentAxisAffectedAgent[];
 }
 
 export interface AgentStatusItem {
@@ -71,10 +85,11 @@ export interface AgentStatusItem {
   status: string;
   presence: 'online' | 'offline' | 'disconnected' | 'stale';
   presenceReason: string | null;
-  source: string | null;
+  channelProviders: string[];
+  hostFramework: string | null;
+  inventorySources: string[];
   primaryModel: string | null;
   workspaceDir: string | null;
-  provider: string | null;
   accountId: string | null;
   activeTaskIds: string[];
   activeSubtaskIds: string[];
@@ -128,7 +143,8 @@ export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
-  providerSummaries: AgentProviderSummary[];
+  channelSummaries: AgentChannelSummary[];
+  hostSummaries: AgentHostSummary[];
   tmuxRuntime: TmuxRuntimeStatus | null;
 }
 
