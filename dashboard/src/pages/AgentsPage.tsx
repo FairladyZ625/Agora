@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useAgentStore } from '@/stores/agentStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 function getCraftsmanPriority(item: { status: string; recentExecutions: Array<{ status: string; startedAt: string | null }> }) {
   if (item.recentExecutions.some((execution) => execution.status === 'failed')) {
@@ -51,27 +52,75 @@ export function AgentsPage() {
   const agents = useAgentStore((state) => state.agents);
   const craftsmen = useAgentStore((state) => state.craftsmen);
   const channelSummaries = useAgentStore((state) => state.channelSummaries);
+  const channelDetails = useAgentStore((state) => state.channelDetails);
   const hostSummaries = useAgentStore((state) => state.hostSummaries);
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
+  const tmuxTailByAgent = useAgentStore((state) => state.tmuxTailByAgent);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
   const craftsmenFilter = useAgentStore((state) => state.craftsmenFilter);
   const channelFilter = useAgentStore((state) => state.channelFilter);
   const hostFilter = useAgentStore((state) => state.hostFilter);
   const error = useAgentStore((state) => state.error);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
+  const fetchChannelDetail = useAgentStore((state) => state.fetchChannelDetail);
+  const fetchTmuxTail = useAgentStore((state) => state.fetchTmuxTail);
+  const channelDetailLoading = useAgentStore((state) => state.channelDetailLoading);
+  const channelDetailError = useAgentStore((state) => state.channelDetailError);
+  const tmuxTailLoadingByAgent = useAgentStore((state) => state.tmuxTailLoadingByAgent);
   const setPresenceFilter = useAgentStore((state) => state.setPresenceFilter);
   const setCraftsmenFilter = useAgentStore((state) => state.setCraftsmenFilter);
   const setChannelFilter = useAgentStore((state) => state.setChannelFilter);
   const setHostFilter = useAgentStore((state) => state.setHostFilter);
+  const refreshInterval = useSettingsStore((state) => state.refreshInterval);
+  const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
 
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
 
+  useEffect(() => {
+    if (refreshInterval <= 0) {
+      return undefined;
+    }
+    const onVisibilityChange = () => {
+      if (pauseOnHidden && document.hidden) {
+        return;
+      }
+      void fetchStatus();
+    };
+    const intervalId = window.setInterval(() => {
+      if (pauseOnHidden && document.hidden) {
+        return;
+      }
+      void fetchStatus();
+    }, refreshInterval * 1000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [fetchStatus, pauseOnHidden, refreshInterval]);
+
+  const selectedChannelId = channelFilter ?? channelSummaries[0]?.channel ?? null;
+
+  useEffect(() => {
+    if (!selectedChannelId || channelDetails[selectedChannelId]) {
+      return;
+    }
+    void fetchChannelDetail(selectedChannelId);
+  }, [channelDetails, fetchChannelDetail, selectedChannelId]);
+
   const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
   const selectedChannel = useMemo(
-    () => channelSummaries.find((item) => item.channel === channelFilter) ?? channelSummaries[0] ?? null,
-    [channelFilter, channelSummaries],
+    () => {
+      if (!selectedChannelId) {
+        return null;
+      }
+      return channelDetails[selectedChannelId]
+        ?? channelSummaries.find((item) => item.channel === selectedChannelId)
+        ?? null;
+    },
+    [channelDetails, channelSummaries, selectedChannelId],
   );
   const runtimeSummary = useMemo(() => {
     const panes = tmuxRuntime?.panes ?? [];
@@ -381,6 +430,10 @@ export function AgentsPage() {
                 <p className="type-body-sm">{copy.emptyChannelDetail}</p>
               </div>
             )}
+            {channelDetailLoading ? <p className="type-text-xs">{copy.loadingTailAction}</p> : null}
+            {!channelDetailLoading && channelDetailError ? (
+              <div className="inline-alert inline-alert--danger">{channelDetailError}</div>
+            ) : null}
           </div>
         </div>
 
@@ -528,7 +581,16 @@ export function AgentsPage() {
                     <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
                     <span>{copy.recoveryModeLabel}: {pane.lastRecoveryMode ?? 'n/a'}</span>
                   </div>
-                  <p className="type-text-xs mt-3">{copy.tailPreviewLabel}: {pane.tailPreview ?? 'n/a'}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <p className="type-text-xs">{copy.tailPreviewLabel}: {tmuxTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>
+                    <button
+                      type="button"
+                      className="status-pill status-pill--neutral"
+                      onClick={() => void fetchTmuxTail(pane.agent)}
+                    >
+                      {tmuxTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
+                    </button>
+                  </div>
                 </div>
               ))
             )}

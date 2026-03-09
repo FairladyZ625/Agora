@@ -1,4 +1,5 @@
 import type {
+  ApiAgentChannelSummaryDto,
   ApiAgentsStatusDto,
   ApiArchiveJobDto,
   ApiHealthDto,
@@ -12,6 +13,7 @@ import type {
 import type { CreateTaskInput } from '@/types/task';
 import type { TodoFilter } from '@/types/dashboard';
 import {
+  agentChannelSummarySchema,
   agentsStatusSchema,
   archiveJobSchema,
   archiveJobReceiptScanResponseSchema,
@@ -236,6 +238,17 @@ export function healthCheck(): Promise<ApiHealthDto> {
 
 export function getAgentsStatus(): Promise<ApiAgentsStatusDto> {
   return request<ApiAgentsStatusDto>('/agents/status', agentsStatusSchema);
+}
+
+export function getAgentChannelDetail(channel: string): Promise<ApiAgentChannelSummaryDto> {
+  return request<ApiAgentChannelSummaryDto>(`/agents/channels/${encodeURIComponent(channel)}`, agentChannelSummarySchema);
+}
+
+export function getTmuxTail(agent: string, lines = 20): Promise<{ output: string | null }> {
+  return request<{ output: string | null }>(
+    `/craftsmen/tmux/tail/${encodeURIComponent(agent)}?lines=${encodeURIComponent(String(lines))}`,
+    z.object({ output: z.string().nullable() }),
+  );
 }
 
 export function listArchiveJobs(filters?: { status?: string; taskId?: string }): Promise<ApiArchiveJobDto[]> {

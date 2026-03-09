@@ -31,6 +31,8 @@ export interface DashboardQueryServiceOptions {
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
   tmuxRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
+  agentsStatusCacheTtlMs?: number;
+  now?: () => Date;
 }
 
 export class DashboardQueryService {
@@ -46,6 +48,9 @@ export class DashboardQueryService {
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
   private readonly tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined;
+  private readonly agentsStatusCacheTtlMs: number;
+  private readonly now: () => Date;
+  private agentsStatusCache: { value: AgentsStatusDto; expiresAtMs: number } | null = null;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -63,9 +68,45 @@ export class DashboardQueryService {
     this.agentRegistry = options.agentRegistry;
     this.presenceSource = options.presenceSource;
     this.tmuxRuntimeService = options.tmuxRuntimeService;
+    this.agentsStatusCacheTtlMs = options.agentsStatusCacheTtlMs ?? 3_000;
+    this.now = options.now ?? (() => new Date());
   }
 
   getAgentsStatus(): AgentsStatusDto {
+    const nowMs = this.now().getTime();
+    if (this.agentsStatusCache && this.agentsStatusCache.expiresAtMs > nowMs) {
+      return this.agentsStatusCache.value;
+    }
+    const value = this.buildAgentsStatus({
+      includeChannelDetails: false,
+      includeHostAffectedAgents: false,
+      includeTmuxTailPreview: false,
+    });
+    this.agentsStatusCache = {
+      value,
+      expiresAtMs: nowMs + this.agentsStatusCacheTtlMs,
+    };
+    return value;
+  }
+
+  getAgentChannelDetail(channel: string): AgentsStatusDto['channel_summaries'][number] {
+    const status = this.buildAgentsStatus({
+      includeChannelDetails: true,
+      includeHostAffectedAgents: false,
+      includeTmuxTailPreview: false,
+    });
+    const detail = status.channel_summaries.find((item) => item.channel === channel);
+    if (!detail) {
+      throw new NotFoundError(`Channel ${channel} not found`);
+    }
+    return detail;
+  }
+
+  private buildAgentsStatus(options: {
+    includeChannelDetails: boolean;
+    includeHostAffectedAgents: boolean;
+    includeTmuxTailPreview: boolean;
+  }): AgentsStatusDto {
     const activeTasks = this.tasks.listTasks('active');
     const agents = new Map<string, AgentsStatusDto['agents'][number]>();
     const craftsmen = new Map<string, AgentsStatusDto['craftsmen'][number]>();
@@ -274,10 +315,10 @@ export class DashboardQueryService {
         return a.id.localeCompare(b.id);
       });
     const providerHistory = typeof this.presenceSource?.listHistory === 'function'
-      ? this.presenceSource.listHistory()
+      ? (options.includeChannelDetails ? this.presenceSource.listHistory() : [])
       : [];
     const providerSignals = typeof this.presenceSource?.listSignals === 'function'
-      ? this.presenceSource.listSignals()
+      ? (options.includeChannelDetails ? this.presenceSource.listSignals() : [])
       : [];
 
     return {
@@ -292,9 +333,15 @@ export class DashboardQueryService {
       },
       agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
-      channel_summaries: buildChannelSummaries(allAgents, providerHistory, providerSignals),
-      host_summaries: buildHostSummaries(allAgents),
-      tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService),
+      channel_summaries: buildChannelSummaries(allAgents, providerHistory, providerSignals, {
+        includeDetails: options.includeChannelDetails,
+      }),
+      host_summaries: buildHostSummaries(allAgents, {
+        includeAffectedAgents: options.includeHostAffectedAgents,
+      }),
+      tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService, {
+        includeTailPreview: options.includeTmuxTailPreview,
+      }),
     };
   }
 
@@ -443,6 +490,7 @@ export class DashboardQueryService {
 
 function buildTmuxRuntime(
   tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
+  options: { includeTailPreview: boolean },
 ): AgentsStatusDto['tmux_runtime'] {
   if (!tmuxRuntimeService) {
     return null;
@@ -468,7 +516,7 @@ function buildTmuxRuntime(
           current_command: paneStatus?.currentCommand ?? paneDoctor?.command ?? null,
           active: paneStatus?.active ?? paneDoctor?.active ?? false,
           ready: paneDoctor?.ready ?? paneStatus !== undefined,
-          tail_preview: safeTail(tmuxRuntimeService, agent),
+          tail_preview: options.includeTailPreview ? safeTail(tmuxRuntimeService, agent) : null,
           continuity_backend: paneStatus?.continuityBackend ?? paneDoctor?.continuityBackend ?? 'unknown',
           resume_capability: paneStatus?.resumeCapability ?? paneDoctor?.resumeCapability ?? 'none',
           session_reference: paneStatus?.sessionReference ?? paneDoctor?.sessionReference ?? null,
@@ -537,6 +585,7 @@ function buildChannelSummaries(
   agents: AgentsStatusDto['agents'],
   history: AgentPresenceHistoryEvent[],
   signals: AgentProviderSignalEvent[],
+  options: { includeDetails: boolean },
 ): AgentsStatusDto['channel_summaries'] {
   const byChannel = new Map<string, AgentsStatusDto['channel_summaries'][number]>();
 
@@ -573,24 +622,32 @@ function buildChannelSummaries(
   return Array.from(byChannel.values())
     .map((summary) => {
       const affectedAgents = summary.affected_agents.sort(compareAffectedAgents);
-      const channelHistory = history
-        .filter((item) => inferChannelFromHistory(item) === summary.channel)
-        .sort(compareHistoryEvents)
-        .slice(0, 8);
-      const rawChannelSignals = signals
-        .filter((item) => item.provider === summary.channel)
-        .sort(compareSignalEvents);
       const overallPresence = deriveAxisPresence(summary);
-      const channelSignals = compactChannelSignals(rawChannelSignals, overallPresence);
+      const channelHistory = options.includeDetails
+        ? history
+          .filter((item) => inferChannelFromHistory(item) === summary.channel)
+          .sort(compareHistoryEvents)
+          .slice(0, 8)
+        : [];
+      const rawChannelSignals = options.includeDetails
+        ? signals
+          .filter((item) => item.provider === summary.channel)
+          .sort(compareSignalEvents)
+        : [];
+      const channelSignals = options.includeDetails ? compactChannelSignals(rawChannelSignals, overallPresence) : [];
       return {
         ...summary,
         overall_presence: overallPresence,
         presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
-        affected_agents: affectedAgents,
+        affected_agents: options.includeDetails ? affectedAgents : [],
         history: channelHistory,
-        signal_status: deriveSignalStatus(channelSignals, overallPresence),
-        last_signal_at: channelSignals[0]?.occurred_at ?? null,
-        signal_counts: buildSignalCounts(channelSignals),
+        signal_status: options.includeDetails ? deriveSignalStatus(channelSignals, overallPresence) : 'unknown',
+        last_signal_at: options.includeDetails ? (channelSignals[0]?.occurred_at ?? null) : null,
+        signal_counts: options.includeDetails ? buildSignalCounts(channelSignals) : {
+          ready_events: 0,
+          restart_events: 0,
+          transport_errors: 0,
+        },
         signals: channelSignals.map((item) => ({
           ...item,
           channel: item.provider,
@@ -602,6 +659,7 @@ function buildChannelSummaries(
 
 function buildHostSummaries(
   agents: AgentsStatusDto['agents'],
+  options: { includeAffectedAgents: boolean },
 ): AgentsStatusDto['host_summaries'] {
   const byHost = new Map<string, AgentsStatusDto['host_summaries'][number]>();
 
@@ -636,7 +694,7 @@ function buildHostSummaries(
         ...summary,
         overall_presence: overallPresence,
         presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
-        affected_agents: affectedAgents,
+        affected_agents: options.includeAffectedAgents ? affectedAgents : [],
       };
     })
     .sort(compareHostSummaries);

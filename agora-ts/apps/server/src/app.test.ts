@@ -138,4 +138,78 @@ describe('agora-ts server bootstrap', () => {
     expect(missingAuth.statusCode).toBe(401);
     expect(invalidAuth.statusCode).toBe(403);
   });
+
+  it('limits repeated read requests when rate limiting is enabled', async () => {
+    const app = buildApp({
+      rateLimit: {
+        enabled: true,
+        windowMs: 60_000,
+        maxRequests: 1,
+        writeMaxRequests: 1,
+      },
+    });
+
+    const first = await app.inject({
+      method: 'GET',
+      url: '/api/templates',
+      headers: {
+        'x-caller-id': 'reader-1',
+      },
+    });
+    const second = await app.inject({
+      method: 'GET',
+      url: '/api/templates',
+      headers: {
+        'x-caller-id': 'reader-1',
+      },
+    });
+
+    expect(first.statusCode).toBe(503);
+    expect(second.statusCode).toBe(429);
+    expect(second.headers['retry-after']).toBeDefined();
+  });
+
+  it('limits repeated write requests separately from reads', async () => {
+    const app = buildApp({
+      rateLimit: {
+        enabled: true,
+        windowMs: 60_000,
+        maxRequests: 10,
+        writeMaxRequests: 1,
+      },
+    });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: {
+        'x-caller-id': 'writer-1',
+      },
+      payload: {
+        title: 'missing service',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'high',
+      },
+    });
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: {
+        'x-caller-id': 'writer-1',
+      },
+      payload: {
+        title: 'missing service',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'high',
+      },
+    });
+
+    expect(first.statusCode).toBe(503);
+    expect(second.statusCode).toBe(429);
+    expect(second.headers['retry-after']).toBeDefined();
+  });
 });

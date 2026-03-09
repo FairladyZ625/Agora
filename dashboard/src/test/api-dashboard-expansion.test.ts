@@ -80,37 +80,16 @@ describe('dashboard expansion api client', () => {
               overall_presence: 'stale',
               last_seen_at: '2026-03-08T00:00:00.000Z',
               presence_reason: 'stale_gateway_log',
-              affected_agents: [{
-                id: 'main',
-                status: 'busy',
-                presence: 'online',
-                presence_reason: 'live_session',
-                last_seen_at: '2026-03-08T00:00:00.000Z',
-                account_id: 'main',
-              }],
-              history: [{
-                occurred_at: '2026-03-08T00:00:00.000Z',
-                agent_id: 'main',
-                account_id: 'main',
-                presence: 'online',
-                reason: 'provider_start',
-              }],
-              signal_status: 'healthy',
-              last_signal_at: '2026-03-08T00:00:00.000Z',
+              affected_agents: [],
+              history: [],
+              signal_status: 'unknown',
+              last_signal_at: null,
               signal_counts: {
-                ready_events: 1,
+                ready_events: 0,
                 restart_events: 0,
                 transport_errors: 0,
               },
-              signals: [{
-                occurred_at: '2026-03-08T00:00:00.000Z',
-                channel: 'discord',
-                agent_id: 'main',
-                account_id: 'main',
-                kind: 'provider_ready',
-                severity: 'info',
-                detail: 'Main ready',
-              }],
+              signals: [],
             }],
             host_summaries: [{
               host: 'openclaw',
@@ -123,14 +102,7 @@ describe('dashboard expansion api client', () => {
               overall_presence: 'stale',
               last_seen_at: '2026-03-08T00:00:00.000Z',
               presence_reason: 'stale_gateway_log',
-              affected_agents: [{
-                id: 'main',
-                status: 'busy',
-                presence: 'online',
-                presence_reason: 'live_session',
-                last_seen_at: '2026-03-08T00:00:00.000Z',
-                account_id: 'main',
-              }],
+              affected_agents: [],
             }],
             tmux_runtime: {
               session: 'agora-craftsmen',
@@ -140,7 +112,7 @@ describe('dashboard expansion api client', () => {
                 current_command: 'bash',
                 active: true,
                 ready: true,
-                tail_preview: 'tail:codex',
+                tail_preview: null,
                 continuity_backend: 'codex_session_file',
                 resume_capability: 'native_resume',
                 session_reference: 'codex-session-123',
@@ -150,6 +122,54 @@ describe('dashboard expansion api client', () => {
               }],
             },
           };
+        }
+        if (url.includes('/agents/channels/')) {
+          return {
+            channel: 'discord',
+            total_agents: 2,
+            busy_agents: 1,
+            online_agents: 1,
+            stale_agents: 1,
+            disconnected_agents: 0,
+            offline_agents: 0,
+            overall_presence: 'stale',
+            last_seen_at: '2026-03-08T00:00:00.000Z',
+            presence_reason: 'stale_gateway_log',
+            affected_agents: [{
+              id: 'main',
+              status: 'busy',
+              presence: 'online',
+              presence_reason: 'live_session',
+              last_seen_at: '2026-03-08T00:00:00.000Z',
+              account_id: 'main',
+            }],
+            history: [{
+              occurred_at: '2026-03-08T00:00:00.000Z',
+              agent_id: 'main',
+              account_id: 'main',
+              presence: 'online',
+              reason: 'provider_start',
+            }],
+            signal_status: 'healthy',
+            last_signal_at: '2026-03-08T00:00:00.000Z',
+            signal_counts: {
+              ready_events: 1,
+              restart_events: 0,
+              transport_errors: 0,
+            },
+            signals: [{
+              occurred_at: '2026-03-08T00:00:00.000Z',
+              channel: 'discord',
+              agent_id: 'main',
+              account_id: 'main',
+              kind: 'provider_ready',
+              severity: 'info',
+              detail: 'Main ready',
+            }],
+          };
+        }
+        if (url.includes('/craftsmen/tmux/tail/')) {
+          return { output: 'tail:codex' };
         }
         if (url.includes('/archive/jobs')) {
           if (url.endsWith('/scan-stale')) {
@@ -278,6 +298,8 @@ describe('dashboard expansion api client', () => {
     const api = await import('@/lib/api');
 
     await api.getAgentsStatus();
+    await api.getAgentChannelDetail('discord');
+    await api.getTmuxTail('codex', 20);
     await api.listArchiveJobs();
     await api.listArchiveJobs({ status: 'failed', taskId: 'OC-001' });
     await api.getArchiveJob(7);
@@ -291,6 +313,14 @@ describe('dashboard expansion api client', () => {
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/agents/status',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/agents/channels/discord',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/craftsmen/tmux/tail/codex?lines=20',
       expect.objectContaining({ method: 'GET' }),
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(

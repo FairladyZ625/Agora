@@ -94,6 +94,12 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     liveSessionStore,
     tmuxRuntimeService,
     apiAuth: config.api_auth,
+    rateLimit: {
+      enabled: config.rate_limit.enabled,
+      windowMs: config.rate_limit.window_ms,
+      maxRequests: config.rate_limit.max_requests,
+      writeMaxRequests: config.rate_limit.write_max_requests,
+    },
     observability: config.observability,
     dashboardDir: resolveDashboardDir(),
   };

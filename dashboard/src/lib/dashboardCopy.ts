@@ -338,6 +338,8 @@ export function useAgentsPageCopy() {
     paneLabel: t('agents.paneLabel'),
     commandLabel: t('agents.commandLabel'),
     tailPreviewLabel: t('agents.tailPreviewLabel'),
+    loadTailAction: t('agents.loadTailAction'),
+    loadingTailAction: t('agents.loadingTailAction'),
     continuityBackendLabel: t('agents.continuityBackendLabel'),
     resumeCapabilityLabel: t('agents.resumeCapabilityLabel'),
     sessionReferenceLabel: t('agents.sessionReferenceLabel'),

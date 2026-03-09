@@ -13,6 +13,7 @@ import {
 } from '@agora-ts/db';
 import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
+import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), '../agora/templates');
@@ -111,6 +112,93 @@ describe('dashboard routes', () => {
     expect(templates.json().some((item: { id: string }) => item.id === 'coding')).toBe(true);
     expect(templateDetail.statusCode).toBe(200);
     expect(templateDetail.json()).toMatchObject({ type: 'coding' });
+  });
+
+  it('serves slim agent status and channel detail separately', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agentRegistry: AgentInventorySource = {
+      listAgents: () => [
+        {
+          id: 'main',
+          host_framework: 'openclaw',
+          channel_providers: ['discord'],
+          inventory_sources: ['discord', 'openclaw'],
+          primary_model: 'openai-codex/gpt-5.3-codex',
+          workspace_dir: '/tmp/main',
+        },
+      ],
+    };
+    const presenceSource: PresenceSource = {
+      listPresence: () => [
+        {
+          agent_id: 'main',
+          presence: 'online',
+          provider: 'discord',
+          account_id: 'main',
+          last_seen_at: '2026-03-08T07:30:25.241Z',
+          reason: 'provider_start',
+        },
+      ],
+      listHistory: () => [
+        {
+          occurred_at: '2026-03-08T07:30:25.241Z',
+          agent_id: 'main',
+          account_id: 'main',
+          presence: 'online',
+          reason: 'provider_start',
+        },
+      ],
+      listSignals: () => [
+        {
+          occurred_at: '2026-03-08T07:31:00.000Z',
+          provider: 'discord',
+          agent_id: null,
+          account_id: 'main',
+          kind: 'provider_ready',
+          severity: 'info',
+          detail: 'Main ready',
+        },
+      ],
+    };
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir, agentRegistry, presenceSource });
+    const app = buildApp({ dashboardQueryService: dashboardQueries });
+
+    const summary = await app.inject({ method: 'GET', url: '/api/agents/status' });
+    const detail = await app.inject({ method: 'GET', url: '/api/agents/channels/discord' });
+
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json().channel_summaries).toEqual([
+      expect.objectContaining({
+        channel: 'discord',
+        affected_agents: [],
+        history: [],
+        signals: [],
+        signal_status: 'unknown',
+      }),
+    ]);
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toEqual(expect.objectContaining({
+      channel: 'discord',
+      history: [
+        expect.objectContaining({
+          agent_id: 'main',
+          presence: 'online',
+        }),
+      ],
+      signals: [
+        expect.objectContaining({
+          kind: 'provider_ready',
+          severity: 'info',
+        }),
+      ],
+      affected_agents: [
+        expect.objectContaining({
+          id: 'main',
+          presence: 'online',
+        }),
+      ],
+    }));
   });
 
   it('supports todo CRUD, promote, and archive retry routes', async () => {

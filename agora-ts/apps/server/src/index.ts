@@ -13,6 +13,7 @@ async function start() {
     liveSessionStore: runtime.liveSessionStore,
     tmuxRuntimeService: runtime.tmuxRuntimeService,
     apiAuth: runtime.apiAuth,
+    rateLimit: runtime.rateLimit,
     observability: {
       readyPath: runtime.observability.ready_path,
     },

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { MemoryRouter } from 'react-router';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
 const agentStoreState = {
@@ -57,6 +57,57 @@ const agentStoreState = {
       ],
     },
   ],
+  channelDetails: {
+    discord: {
+      channel: 'discord',
+      totalAgents: 2,
+      busyAgents: 1,
+      onlineAgents: 1,
+      staleAgents: 1,
+      disconnectedAgents: 0,
+      offlineAgents: 0,
+      overallPresence: 'stale',
+      lastSeenAt: '2026-03-08T10:00:00.000Z',
+      presenceReason: 'stale_gateway_log',
+      affectedAgents: [
+        {
+          id: 'review',
+          status: 'idle',
+          presence: 'stale',
+          presenceReason: 'stale_gateway_log',
+          lastSeenAt: '2026-03-08T09:30:00.000Z',
+          accountId: 'review',
+        },
+      ],
+      history: [
+        {
+          occurredAt: '2026-03-08T09:30:00.000Z',
+          agentId: 'review',
+          accountId: 'review',
+          presence: 'stale',
+          reason: 'stale_gateway_log',
+        },
+      ],
+      signalStatus: 'degraded',
+      lastSignalAt: '2026-03-08T09:35:00.000Z',
+      signalCounts: {
+        readyEvents: 1,
+        restartEvents: 1,
+        transportErrors: 1,
+      },
+      signals: [
+        {
+          occurredAt: '2026-03-08T09:35:00.000Z',
+          channel: 'discord',
+          agentId: 'review',
+          accountId: 'review',
+          kind: 'transport_error',
+          severity: 'error',
+          detail: 'code 1005',
+        },
+      ],
+    },
+  },
   hostSummaries: [
     {
       host: 'openclaw',
@@ -102,6 +153,9 @@ const agentStoreState = {
       },
     ],
   },
+  tmuxTailByAgent: {
+    codex: 'tail:codex',
+  },
   agents: [
     {
       id: 'sonnet',
@@ -145,12 +199,17 @@ const agentStoreState = {
     },
   ],
   loading: false,
+  channelDetailLoading: false,
+  tmuxTailLoadingByAgent: {},
   error: null,
+  channelDetailError: null,
   presenceFilter: 'all' as const,
   craftsmenFilter: 'all' as const,
   channelFilter: null as string | null,
   hostFilter: null as string | null,
   fetchStatus: vi.fn(async () => 'live'),
+  fetchChannelDetail: vi.fn(async () => 'live'),
+  fetchTmuxTail: vi.fn(async () => 'live'),
   setPresenceFilter: vi.fn((filter) => {
     agentStoreState.presenceFilter = filter;
   }),
@@ -172,7 +231,10 @@ function makeAgentStoreSnapshot() {
   return {
     ...agentStoreState,
     channelSummaries: [...agentStoreState.channelSummaries],
+    channelDetails: { ...agentStoreState.channelDetails },
     hostSummaries: [...agentStoreState.hostSummaries],
+    tmuxTailByAgent: { ...agentStoreState.tmuxTailByAgent },
+    tmuxTailLoadingByAgent: { ...agentStoreState.tmuxTailLoadingByAgent },
     agents: [...agentStoreState.agents],
     craftsmen: [...agentStoreState.craftsmen],
   };
@@ -374,15 +436,26 @@ vi.mock('@/stores/themeStore', () => ({
 }));
 
 vi.mock('@/stores/settingsStore', () => ({
-  useSettingsStore: () => ({
-    apiBase: '/api',
-    apiToken: '',
-    refreshInterval: 5,
-    pauseOnHidden: true,
-    setApiConfig: vi.fn(),
-    setRefreshInterval: vi.fn(),
-    setPauseOnHidden: vi.fn(),
-  }),
+  useSettingsStore: (selector?: (state: {
+    apiBase: string;
+    apiToken: string;
+    refreshInterval: number;
+    pauseOnHidden: boolean;
+    setApiConfig: ReturnType<typeof vi.fn>;
+    setRefreshInterval: ReturnType<typeof vi.fn>;
+    setPauseOnHidden: ReturnType<typeof vi.fn>;
+  }) => unknown) => {
+    const state = {
+      apiBase: '/api',
+      apiToken: '',
+      refreshInterval: 5,
+      pauseOnHidden: true,
+      setApiConfig: vi.fn(),
+      setRefreshInterval: vi.fn(),
+      setPauseOnHidden: vi.fn(),
+    };
+    return selector ? selector(state) : state;
+  },
 }));
 
 vi.mock('@/stores/feedbackStore', () => ({
@@ -400,6 +473,10 @@ describe('dashboard expansion routes', () => {
     agentStoreState.agents.splice(1);
     agentStoreState.craftsmen.splice(1);
     agentStoreSnapshot = makeAgentStoreSnapshot();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders the agent status page on the dedicated route', () => {
@@ -580,6 +657,41 @@ describe('dashboard expansion routes', () => {
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Channel 历史趋势/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/transport_error/i).length).toBeGreaterThan(0);
+  });
+
+  it('loads tmux tail on demand from the pane card', () => {
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /load tail/i }));
+
+    expect(agentStoreState.fetchTmuxTail).toHaveBeenCalledWith('codex');
+  });
+
+  it('polls summary refresh on the configured interval and pauses while hidden', () => {
+    vi.useFakeTimers();
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const initialCalls = agentStoreState.fetchStatus.mock.calls.length;
+    vi.advanceTimersByTime(5_000);
+    expect(agentStoreState.fetchStatus.mock.calls.length).toBeGreaterThan(initialCalls);
+
+    const hiddenDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    const beforeHiddenTick = agentStoreState.fetchStatus.mock.calls.length;
+    vi.advanceTimersByTime(5_000);
+    expect(agentStoreState.fetchStatus.mock.calls.length).toBe(beforeHiddenTick);
+
+    if (hiddenDescriptor) {
+      Object.defineProperty(document, 'hidden', hiddenDescriptor);
+    }
   });
 
   it('renders the todo workspace on the dedicated route', () => {

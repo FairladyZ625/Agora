@@ -36,6 +36,7 @@ export type ApiAgentsStatusDto = AgentsStatusDto;
 export type ApiAgentSummaryDto = ApiAgentsStatusDto['summary'];
 export type ApiAgentDto = ApiAgentsStatusDto['agents'][number];
 export type ApiCraftsmanDto = ApiAgentsStatusDto['craftsmen'][number];
+export type ApiAgentChannelSummaryDto = ApiAgentsStatusDto['channel_summaries'][number];
 export type ApiArchiveJobDto = ArchiveJobDto;
 export type ApiTodoDto = TodoItemDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;

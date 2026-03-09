@@ -56,6 +56,12 @@ export interface BuildAppOptions {
     enabled: boolean;
     token: string;
   };
+  rateLimit?: {
+    enabled: boolean;
+    windowMs: number;
+    maxRequests: number;
+    writeMaxRequests: number;
+  };
   observability?: {
     readyPath?: string;
   };
@@ -94,6 +100,10 @@ function parseBearerToken(authorization?: string) {
   return token;
 }
 
+function isReadRequest(method: string) {
+  return method === 'GET' || method === 'HEAD';
+}
+
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: false,
@@ -105,8 +115,10 @@ export function buildApp(options: BuildAppOptions = {}) {
   const liveSessionStore = options.liveSessionStore;
   const tmuxRuntimeService = options.tmuxRuntimeService;
   const apiAuth = options.apiAuth;
+  const rateLimit = options.rateLimit;
   const dashboardDir = options.dashboardDir;
   const readyPath = options.observability?.readyPath ?? '/ready';
+  const rateCounters = new Map<string, { count: number; resetAt: number }>();
   const tmuxSendSchema = z.object({
     agent: z.string().min(1),
     command: z.string().min(1),
@@ -120,6 +132,25 @@ export function buildApp(options: BuildAppOptions = {}) {
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/') || request.url === '/api/health' || request.url === readyPath) {
       return;
+    }
+    if (rateLimit?.enabled) {
+      const now = Date.now();
+      const limit = isReadRequest(request.method) ? rateLimit.maxRequests : rateLimit.writeMaxRequests;
+      const scope = isReadRequest(request.method) ? 'read' : 'write';
+      const identity = (request.headers['x-caller-id'] as string | undefined)?.trim() || request.ip;
+      const key = `${scope}:${identity}`;
+      const current = rateCounters.get(key);
+      if (!current || now > current.resetAt) {
+        rateCounters.set(key, {
+          count: 1,
+          resetAt: now + rateLimit.windowMs,
+        });
+      } else if (current.count >= limit) {
+        reply.header('Retry-After', Math.ceil((current.resetAt - now) / 1000));
+        return reply.status(429).send({ message: 'rate limit exceeded' });
+      } else {
+        current.count += 1;
+      }
     }
     if (!apiAuth?.enabled) {
       return;
@@ -694,6 +725,19 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
     return reply.send(dashboardQueryService.getAgentsStatus());
+  });
+
+  app.get('/api/agents/channels/:channel', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { channel: string };
+      return reply.send(dashboardQueryService.getAgentChannelDetail(params.channel));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   app.get('/api/archive/jobs', async (request, reply) => {

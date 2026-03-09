@@ -7,6 +7,8 @@ import * as api from '@/lib/api';
 
 vi.mock('@/lib/api', () => ({
   getAgentsStatus: vi.fn(),
+  getAgentChannelDetail: vi.fn(),
+  getTmuxTail: vi.fn(),
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
   retryArchiveJob: vi.fn(),
@@ -47,14 +49,19 @@ describe('dashboard expansion stores', () => {
         },
       ],
       channelSummaries: [],
+      channelDetails: {},
       hostSummaries: [],
       tmuxRuntime: null,
+      tmuxTailByAgent: {},
       presenceFilter: 'all',
       craftsmenFilter: 'all',
       channelFilter: null,
       hostFilter: null,
       loading: false,
+      channelDetailLoading: false,
+      tmuxTailLoadingByAgent: {},
       error: null,
+      channelDetailError: null,
     });
     useArchiveStore.setState({
       jobs: [],
@@ -133,37 +140,16 @@ describe('dashboard expansion stores', () => {
         overall_presence: 'stale',
         last_seen_at: '2026-03-08T10:00:00.000Z',
         presence_reason: 'stale_gateway_log',
-        affected_agents: [{
-          id: 'sonnet',
-          status: 'busy',
-          presence: 'online',
-          presence_reason: 'live_session',
-          last_seen_at: '2026-03-08T10:00:00.000Z',
-          account_id: 'sonnet',
-        }],
-        history: [{
-          occurred_at: '2026-03-08T10:00:00.000Z',
-          agent_id: 'sonnet',
-          account_id: 'sonnet',
-          presence: 'online',
-          reason: 'provider_start',
-        }],
-        signal_status: 'degraded',
-        last_signal_at: '2026-03-08T10:05:00.000Z',
+        affected_agents: [],
+        history: [],
+        signal_status: 'unknown',
+        last_signal_at: null,
         signal_counts: {
-          ready_events: 1,
-          restart_events: 1,
-          transport_errors: 1,
+          ready_events: 0,
+          restart_events: 0,
+          transport_errors: 0,
         },
-        signals: [{
-          occurred_at: '2026-03-08T10:05:00.000Z',
-          channel: 'discord',
-          agent_id: 'sonnet',
-          account_id: 'sonnet',
-          kind: 'transport_error',
-          severity: 'error',
-          detail: 'code 1005',
-        }],
+        signals: [],
       }],
       host_summaries: [{
         host: 'openclaw',
@@ -176,14 +162,7 @@ describe('dashboard expansion stores', () => {
         overall_presence: 'stale',
         last_seen_at: '2026-03-08T10:00:00.000Z',
         presence_reason: 'stale_gateway_log',
-        affected_agents: [{
-          id: 'sonnet',
-          status: 'busy',
-          presence: 'online',
-          presence_reason: 'live_session',
-          last_seen_at: '2026-03-08T10:00:00.000Z',
-          account_id: 'sonnet',
-        }],
+        affected_agents: [],
       }],
       tmux_runtime: {
         session: 'agora-craftsmen',
@@ -194,7 +173,7 @@ describe('dashboard expansion stores', () => {
             current_command: 'bash',
             active: true,
             ready: true,
-            tail_preview: 'tail:codex',
+            tail_preview: null,
             continuity_backend: 'codex_session_file',
             resume_capability: 'native_resume',
             session_reference: 'codex-session-123',
@@ -217,15 +196,80 @@ describe('dashboard expansion stores', () => {
     expect(state.summary?.onlineAgents).toBe(1);
     expect(state.summary?.staleAgents).toBe(1);
     expect(state.channelSummaries[0]?.overallPresence).toBe('stale');
-    expect(state.channelSummaries[0]?.history[0]?.agentId).toBe('sonnet');
-    expect(state.channelSummaries[0]?.signalStatus).toBe('degraded');
+    expect(state.channelSummaries[0]?.history).toEqual([]);
+    expect(state.channelSummaries[0]?.signalStatus).toBe('unknown');
     expect(state.hostSummaries[0]?.host).toBe('openclaw');
     expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
+    expect(state.tmuxTailByAgent.codex).toBeNull();
     expect(state.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
     expect(state.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
     expect(state.craftsmen[0]?.recentExecutions[0]?.runtimeMode).toBe('tmux');
+  });
+
+  it('loads channel detail into a dedicated slice without refetching the summary', async () => {
+    vi.mocked(api.getAgentChannelDetail).mockResolvedValue({
+      channel: 'discord',
+      total_agents: 2,
+      busy_agents: 1,
+      online_agents: 1,
+      stale_agents: 1,
+      disconnected_agents: 0,
+      offline_agents: 0,
+      overall_presence: 'stale',
+      last_seen_at: '2026-03-08T10:00:00.000Z',
+      presence_reason: 'stale_gateway_log',
+      affected_agents: [{
+        id: 'sonnet',
+        status: 'busy',
+        presence: 'online',
+        presence_reason: 'live_session',
+        last_seen_at: '2026-03-08T10:00:00.000Z',
+        account_id: 'sonnet',
+      }],
+      history: [{
+        occurred_at: '2026-03-08T10:00:00.000Z',
+        agent_id: 'sonnet',
+        account_id: 'sonnet',
+        presence: 'online',
+        reason: 'provider_start',
+      }],
+      signal_status: 'degraded',
+      last_signal_at: '2026-03-08T10:05:00.000Z',
+      signal_counts: {
+        ready_events: 1,
+        restart_events: 1,
+        transport_errors: 1,
+      },
+      signals: [{
+        occurred_at: '2026-03-08T10:05:00.000Z',
+        channel: 'discord',
+        agent_id: 'sonnet',
+        account_id: 'sonnet',
+        kind: 'transport_error',
+        severity: 'error',
+        detail: 'code 1005',
+      }],
+    });
+
+    const result = await useAgentStore.getState().fetchChannelDetail('discord');
+    const state = useAgentStore.getState();
+
+    expect(result).toBe('live');
+    expect(state.channelDetails.discord?.history[0]?.agentId).toBe('sonnet');
+    expect(state.channelDetails.discord?.signals[0]?.kind).toBe('transport_error');
+  });
+
+  it('loads tmux tail on demand per agent', async () => {
+    vi.mocked(api.getTmuxTail).mockResolvedValue({ output: 'tail:codex' });
+
+    const result = await useAgentStore.getState().fetchTmuxTail('codex', 20);
+    const state = useAgentStore.getState();
+
+    expect(result).toBe('live');
+    expect(state.tmuxTailByAgent.codex).toBe('tail:codex');
+    expect(state.tmuxTailLoadingByAgent.codex).toBe(false);
   });
 
   it('persists agent filters across refreshes', () => {

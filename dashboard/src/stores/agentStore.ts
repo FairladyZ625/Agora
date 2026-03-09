@@ -12,15 +12,22 @@ interface AgentStore {
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
   channelSummaries: AgentChannelSummary[];
+  channelDetails: Record<string, AgentChannelSummary>;
   hostSummaries: AgentHostSummary[];
   tmuxRuntime: TmuxRuntimeStatus | null;
+  tmuxTailByAgent: Record<string, string | null>;
   presenceFilter: AgentPresenceFilter;
   craftsmenFilter: CraftsmenFilter;
   channelFilter: string | null;
   hostFilter: string | null;
   loading: boolean;
+  channelDetailLoading: boolean;
+  tmuxTailLoadingByAgent: Record<string, boolean>;
   error: string | null;
+  channelDetailError: string | null;
   fetchStatus: () => Promise<'live' | 'error'>;
+  fetchChannelDetail: (channel: string) => Promise<'live' | 'error'>;
+  fetchTmuxTail: (agent: string, lines?: number) => Promise<'live' | 'error'>;
   setPresenceFilter: (filter: AgentPresenceFilter) => void;
   setCraftsmenFilter: (filter: CraftsmenFilter) => void;
   setChannelFilter: (channel: string | null) => void;
@@ -35,14 +42,19 @@ export const useAgentStore = create<AgentStore>()(
       agents: [],
       craftsmen: [],
       channelSummaries: [],
+      channelDetails: {},
       hostSummaries: [],
       tmuxRuntime: null,
+      tmuxTailByAgent: {},
       presenceFilter: 'all',
       craftsmenFilter: 'all',
       channelFilter: null,
       hostFilter: null,
       loading: false,
+      channelDetailLoading: false,
+      tmuxTailLoadingByAgent: {},
       error: null,
+      channelDetailError: null,
 
       fetchStatus: async () => {
         set({ loading: true, error: null });
@@ -55,6 +67,12 @@ export const useAgentStore = create<AgentStore>()(
             channelSummaries: payload.channelSummaries,
             hostSummaries: payload.hostSummaries,
             tmuxRuntime: payload.tmuxRuntime,
+            tmuxTailByAgent: Object.fromEntries(
+              Object.entries(payload.tmuxRuntime?.panes.reduce<Record<string, string | null>>((acc, pane) => {
+                acc[pane.agent] = pane.tailPreview;
+                return acc;
+              }, {}) ?? {}).map(([agent, tail]) => [agent, tail]),
+            ),
             loading: false,
           });
           return 'live';
@@ -66,9 +84,81 @@ export const useAgentStore = create<AgentStore>()(
             channelSummaries: [],
             hostSummaries: [],
             tmuxRuntime: null,
+            tmuxTailByAgent: {},
             loading: false,
             error: error instanceof Error ? error.message : String(error),
           });
+          return 'error';
+        }
+      },
+
+      fetchChannelDetail: async (channel) => {
+        set({ channelDetailLoading: true, channelDetailError: null });
+        try {
+          const detail = mapAgentsStatusDto({
+            summary: {
+              active_tasks: 0,
+              active_agents: 0,
+              total_agents: 0,
+              online_agents: 0,
+              stale_agents: 0,
+              disconnected_agents: 0,
+              busy_craftsmen: 0,
+            },
+            agents: [],
+            craftsmen: [],
+            channel_summaries: [await api.getAgentChannelDetail(channel)],
+            host_summaries: [],
+            tmux_runtime: null,
+          }).channelSummaries[0];
+          if (!detail) {
+            throw new Error(`Missing channel detail for ${channel}`);
+          }
+          set((state) => ({
+            channelDetails: {
+              ...state.channelDetails,
+              [channel]: detail,
+            },
+            channelDetailLoading: false,
+          }));
+          return 'live';
+        } catch (error) {
+          set({
+            channelDetailLoading: false,
+            channelDetailError: error instanceof Error ? error.message : String(error),
+          });
+          return 'error';
+        }
+      },
+
+      fetchTmuxTail: async (agent, lines = 20) => {
+        set((state) => ({
+          tmuxTailLoadingByAgent: {
+            ...state.tmuxTailLoadingByAgent,
+            [agent]: true,
+          },
+        }));
+        try {
+          const payload = await api.getTmuxTail(agent, lines);
+          set((state) => ({
+            tmuxTailByAgent: {
+              ...state.tmuxTailByAgent,
+              [agent]: payload.output,
+            },
+            tmuxTailLoadingByAgent: {
+              ...state.tmuxTailLoadingByAgent,
+              [agent]: false,
+            },
+          }));
+          return 'live';
+        } catch (error) {
+          set((state) => ({
+            tmuxTailLoadingByAgent: {
+              ...state.tmuxTailLoadingByAgent,
+              [agent]: false,
+            },
+            error: error instanceof Error ? error.message : String(error),
+          }));
           return 'error';
         }
       },
