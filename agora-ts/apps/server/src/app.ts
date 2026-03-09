@@ -78,6 +78,9 @@ export interface BuildAppOptions {
 
 interface MetricsState {
   requestsByMethodAndStatus: Map<string, number>;
+  taskActionsByResult: Map<string, number>;
+  craftsmanDispatchByAdapterAndResult: Map<string, number>;
+  craftsmanCallbacksByStatus: Map<string, number>;
 }
 
 interface RequestTimingState {
@@ -182,6 +185,29 @@ function incrementCounter(counter: Map<string, number>, key: string) {
   counter.set(key, (counter.get(key) ?? 0) + 1);
 }
 
+function emitStructuredLog(enabled: boolean, event: Record<string, unknown>) {
+  if (!enabled) {
+    return;
+  }
+  console.info(JSON.stringify({
+    ts: new Date().toISOString(),
+    level: 'info',
+    ...event,
+  }));
+}
+
+function recordTaskAction(metrics: MetricsState, action: string, result: string) {
+  incrementCounter(metrics.taskActionsByResult, `${action}:${result}`);
+}
+
+function recordCraftsmanDispatch(metrics: MetricsState, adapter: string, result: string) {
+  incrementCounter(metrics.craftsmanDispatchByAdapterAndResult, `${adapter}:${result}`);
+}
+
+function recordCraftsmanCallback(metrics: MetricsState, status: string) {
+  incrementCounter(metrics.craftsmanCallbacksByStatus, status);
+}
+
 function renderMetrics(options: {
   metrics: MetricsState;
   taskService: TaskService | undefined;
@@ -209,6 +235,26 @@ function renderMetrics(options: {
   lines.push('# HELP agora_tasks_active Current active tasks.');
   lines.push('# TYPE agora_tasks_active gauge');
   lines.push(`agora_tasks_active ${tasks.filter((task) => task.state === 'active').length}`);
+
+  lines.push('# HELP agora_task_actions_total Total task actions grouped by action and result.');
+  lines.push('# TYPE agora_task_actions_total counter');
+  for (const [key, value] of options.metrics.taskActionsByResult.entries()) {
+    const [action, result] = key.split(':');
+    lines.push(`agora_task_actions_total{action="${action}",result="${result}"} ${value}`);
+  }
+
+  lines.push('# HELP agora_craftsman_dispatch_total Total craftsman dispatch requests grouped by adapter and result.');
+  lines.push('# TYPE agora_craftsman_dispatch_total counter');
+  for (const [key, value] of options.metrics.craftsmanDispatchByAdapterAndResult.entries()) {
+    const [adapter, result] = key.split(':');
+    lines.push(`agora_craftsman_dispatch_total{adapter="${adapter}",result="${result}"} ${value}`);
+  }
+
+  lines.push('# HELP agora_craftsman_callbacks_total Total craftsman callbacks grouped by callback status.');
+  lines.push('# TYPE agora_craftsman_callbacks_total counter');
+  for (const [status, value] of options.metrics.craftsmanCallbacksByStatus.entries()) {
+    lines.push(`agora_craftsman_callbacks_total{status="${status}"} ${value}`);
+  }
 
   const tmuxPanes = options.tmuxRuntimeService?.status().panes.length ?? 0;
   lines.push('# HELP agora_craftsmen_sessions_active Current active tmux panes observed by the server.');
@@ -238,6 +284,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   const rateCounters = new Map<string, { count: number; resetAt: number }>();
   const metrics: MetricsState = {
     requestsByMethodAndStatus: new Map(),
+    taskActionsByResult: new Map(),
+    craftsmanDispatchByAdapterAndResult: new Map(),
+    craftsmanCallbacksByStatus: new Map(),
   };
   const tmuxSendSchema = z.object({
     agent: z.string().min(1),
@@ -294,16 +343,14 @@ export function buildApp(options: BuildAppOptions = {}) {
     incrementCounter(metrics.requestsByMethodAndStatus, `${request.method}:${reply.statusCode}`);
     if (structuredLogs) {
       const startedAtMs = (request as typeof request & RequestTimingState).startedAtMs ?? Date.now();
-      console.info(JSON.stringify({
-        ts: new Date().toISOString(),
-        level: 'info',
+      emitStructuredLog(true, {
         module: 'http',
         msg: 'request_complete',
         method: request.method,
         path: request.url,
         status_code: reply.statusCode,
         duration_ms: Math.max(0, Date.now() - startedAtMs),
-      }));
+      });
     }
   });
 
@@ -397,9 +444,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = createTaskRequestSchema.parse(request.body);
-      return taskService.createTask(payload);
+      const created = taskService.createTask(payload);
+      recordTaskAction(metrics, 'create', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'create',
+        task_id: created.id,
+        state: created.state,
+        stage: created.current_stage,
+        creator: created.creator,
+      });
+      return created;
     } catch (error) {
       const translated = translateError(error);
+      recordTaskAction(metrics, 'create', 'error');
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -444,13 +503,23 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = advanceTaskRequestSchema.parse(request.body);
-      return reply.send(
-        taskService.advanceTask(params.taskId, {
-          callerId: payload.caller_id,
-        }),
-      );
+      const task = taskService.advanceTask(params.taskId, {
+        callerId: payload.caller_id,
+      });
+      recordTaskAction(metrics, 'advance', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'advance',
+        task_id: task.id,
+        state: task.state,
+        stage: task.current_stage,
+        actor: payload.caller_id,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordTaskAction(metrics, 'advance', 'error');
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -596,9 +665,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = taskNoteRequestSchema.parse(request.body);
-      return reply.send(taskService.pauseTask(params.taskId, { reason: payload.reason }));
+      const task = taskService.pauseTask(params.taskId, { reason: payload.reason });
+      recordTaskAction(metrics, 'pause', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'pause',
+        task_id: task.id,
+        state: task.state,
+        stage: task.current_stage,
+        reason: payload.reason,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordTaskAction(metrics, 'pause', 'error');
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -609,9 +690,20 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { taskId: string };
-      return reply.send(taskService.resumeTask(params.taskId));
+      const task = taskService.resumeTask(params.taskId);
+      recordTaskAction(metrics, 'resume', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'resume',
+        task_id: task.id,
+        state: task.state,
+        stage: task.current_stage,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordTaskAction(metrics, 'resume', 'error');
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -623,9 +715,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = taskNoteRequestSchema.parse(request.body);
-      return reply.send(taskService.cancelTask(params.taskId, { reason: payload.reason }));
+      const task = taskService.cancelTask(params.taskId, { reason: payload.reason });
+      recordTaskAction(metrics, 'cancel', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'cancel',
+        task_id: task.id,
+        state: task.state,
+        stage: task.current_stage,
+        reason: payload.reason,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordTaskAction(metrics, 'cancel', 'error');
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -673,9 +777,27 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = craftsmanDispatchRequestSchema.parse(request.body);
-      return reply.send(taskService.dispatchCraftsman(payload));
+      const dispatched = taskService.dispatchCraftsman(payload);
+      recordCraftsmanDispatch(metrics, payload.adapter, 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'craftsman',
+        msg: 'craftsman_dispatch',
+        task_id: payload.task_id,
+        subtask_id: payload.subtask_id,
+        adapter: payload.adapter,
+        mode: payload.mode,
+        execution_id: dispatched.execution.execution_id,
+        status: dispatched.execution.status,
+      });
+      return reply.send(dispatched);
     } catch (error) {
       const translated = translateError(error);
+      try {
+        const payload = craftsmanDispatchRequestSchema.parse(request.body);
+        recordCraftsmanDispatch(metrics, payload.adapter, 'error');
+      } catch {
+        recordCraftsmanDispatch(metrics, 'unknown', 'error');
+      }
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -686,9 +808,25 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = craftsmanCallbackRequestSchema.parse(request.body);
-      return reply.send(taskService.handleCraftsmanCallback(payload));
+      const result = taskService.handleCraftsmanCallback(payload);
+      recordCraftsmanCallback(metrics, payload.status);
+      emitStructuredLog(structuredLogs, {
+        module: 'craftsman',
+        msg: 'craftsman_callback',
+        execution_id: payload.execution_id,
+        callback_status: payload.status,
+        task_id: result.execution.task_id,
+        subtask_id: result.execution.subtask_id,
+      });
+      return reply.send(result);
     } catch (error) {
       const translated = translateError(error);
+      try {
+        const payload = craftsmanCallbackRequestSchema.parse(request.body);
+        recordCraftsmanCallback(metrics, `${payload.status}_error`);
+      } catch {
+        recordCraftsmanCallback(metrics, 'invalid_error');
+      }
       return reply.status(translated.statusCode).send(translated.body);
     }
   });

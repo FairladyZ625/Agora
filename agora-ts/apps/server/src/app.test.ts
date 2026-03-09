@@ -273,6 +273,13 @@ describe('agora-ts server bootstrap', () => {
       method: 'GET',
       url: '/api/health',
     });
+    await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-777/pause',
+      payload: {
+        reason: 'metrics pause',
+      },
+    });
     const response = await app.inject({
       method: 'GET',
       url: '/metrics',
@@ -281,9 +288,10 @@ describe('agora-ts server bootstrap', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('text/plain');
     expect(response.body).toContain('agora_http_requests_total{method="GET",status="200"} 1');
-    expect(response.body).toContain('agora_tasks_total{state="active"} 1');
-    expect(response.body).toContain('agora_tasks_active 1');
+    expect(response.body).toContain('agora_tasks_total{state="paused"} 1');
+    expect(response.body).toContain('agora_tasks_active 0');
     expect(response.body).toContain('agora_craftsmen_sessions_active 2');
+    expect(response.body).toContain('agora_task_actions_total{action="pause",result="success"} 1');
   });
 
   it('does not emit structured request logs unless enabled', async () => {
@@ -301,7 +309,21 @@ describe('agora-ts server bootstrap', () => {
 
   it('emits structured request logs when enabled', async () => {
     const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-LOG',
+    });
+    taskService.createTask({
+      title: 'structured logs task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
     const app = buildApp({
+      taskService,
       observability: {
         readyPath: '/ready',
         structuredLogs: true,
@@ -309,19 +331,35 @@ describe('agora-ts server bootstrap', () => {
     });
 
     await app.inject({
-      method: 'GET',
-      url: '/api/health',
+      method: 'POST',
+      url: '/api/tasks/OC-LOG/pause',
+      payload: {
+        reason: 'pause for log',
+      },
     });
 
-    expect(logSpy).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
-      level: 'info',
-      module: 'http',
-      msg: 'request_complete',
-      method: 'GET',
-      path: '/api/health',
-      status_code: 200,
-    });
+    expect(logSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const parsedLogs = logSpy.mock.calls.map((call) => JSON.parse(String(call[0])));
+    expect(parsedLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'info',
+          module: 'task',
+          msg: 'task_action',
+          action: 'pause',
+          task_id: 'OC-LOG',
+          state: 'paused',
+        }),
+        expect.objectContaining({
+          level: 'info',
+          module: 'http',
+          msg: 'request_complete',
+          method: 'POST',
+          path: '/api/tasks/OC-LOG/pause',
+          status_code: 200,
+        }),
+      ]),
+    );
     logSpy.mockRestore();
   });
 
