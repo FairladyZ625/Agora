@@ -3,7 +3,7 @@
 
 ## 项目概述
 
-Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 `agora/` Python 版本保留为迁移参考与 legacy 对照。
+Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 Python 版本已迁入 `archive/agora-python-legacy/`，保留为迁移参考与 legacy 对照。
 
 ## 目录结构
 
@@ -19,7 +19,7 @@ agora-ts/           # TypeScript 主实现（默认开发目标）
 │   ├── config/     # 配置 schema / loader
 │   └── testing/    # 测试 runtime / helpers
 
-agora/              # Python legacy 参考实现（非默认开发目标）
+archive/agora-python-legacy/  # Python legacy 参考实现（非默认开发目标，已归档）
 ├── core/
 ├── adapters/
 ├── craftsmen/
@@ -299,7 +299,7 @@ Skill(skill="feature-dev")
 
 ### Python 代码规范
 
-仅适用于 legacy `agora/` 对照实现；非新增默认目标。
+仅适用于 legacy `archive/agora-python-legacy/` 对照实现；非新增默认目标。
 
 - 枚举使用 `class XxxState(str, Enum)` 模式（EscalationLevel 除外，使用 `int, Enum`）
 - 所有枚举值必须与 `docs/00-RAW-PRDS/ENUMS.md` 完全一致

@@ -3,12 +3,12 @@
 
 ## 项目概述
 
-Agora 是一个多 Agent 民主编排框架，基于 SQLite + Python 实现。
+Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`；旧 Python 版本已迁入 `archive/agora-python-legacy/` 作为 legacy 参考实现。
 
 ## 目录结构
 
 ```
-agora/
+archive/agora-python-legacy/
 ├── core/           # 编排层核心（enums, db, task_mgr, state_machine, gate_keeper, permission, progress_sync）
 ├── adapters/       # 适配层（base + openclaw）
 ├── craftsmen/      # 工匠层（CLI 调度）
@@ -99,9 +99,9 @@ Skill(skill="planning-with-files")
 
 **所有代码实现必须遵循 TDD 流程**:
 
-1. 写测试文件（`agora/tests/test_core/test_xxx.py`）
-2. 运行测试确认失败（`pytest agora/tests/test_core/test_xxx.py -v`）
-3. 写实现代码（`agora/core/xxx.py`）
+1. 写测试文件（`archive/agora-python-legacy/tests/test_core/test_xxx.py`）
+2. 运行测试确认失败（`pytest archive/agora-python-legacy/tests/test_core/test_xxx.py -v`）
+3. 写实现代码（`archive/agora-python-legacy/core/xxx.py`）
 4. 运行测试确认通过
 5. 提交代码
 
@@ -109,13 +109,13 @@ Skill(skill="planning-with-files")
 
 ```bash
 # 运行所有测试
-python -m pytest agora/tests/ -v
+python -m pytest archive/agora-python-legacy/tests/ -v
 
 # 运行特定模块测试
-python -m pytest agora/tests/test_core/test_gate_keeper.py -v
+python -m pytest archive/agora-python-legacy/tests/test_core/test_gate_keeper.py -v
 
 # 测试覆盖率
-python -m pytest agora/tests/ --cov=agora --cov-report=html
+python -m pytest archive/agora-python-legacy/tests/ --cov=archive/agora-python-legacy --cov-report=html
 ```
 
 ### 3. 使用 feature-dev Skill
