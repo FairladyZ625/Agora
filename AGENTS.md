@@ -1,6 +1,50 @@
 
 # Agora 项目约定
 
+## 架构最高原则（最高优先级，强制）
+
+- **一切架构设计以“解耦、可插拔、可替换”为最高优先级原则。**
+- **绝对禁止把核心编排语义耦合到任何具体 IM、任何具体 Agent Runtime、任何具体 Craftsman 实现里。**
+- **Agora 的唯一核心主语义是 `Agora Core / Orchestrator`；上层 IM、下层 Runtime/Craftsmen 全部只是 adapter。**
+- 所有新能力必须先问：
+  - 这是不是 `Agora Core` 的职责？
+  - 如果移除 Discord / OpenClaw / Codex，这个语义是否仍成立？
+  - 如果未来替换为 Feishu / CrewAI / NanoClaw / Claude Code，这一层是否可以不改 Core 而仅替换 adapter？
+- 如果答案是否定，则该设计不合格，必须重构。
+
+### Agora 三层架构口径（强制）
+
+- 上层：IM / Channel / Entry adapters
+  - Discord
+  - Feishu
+  - Slack
+  - Dashboard
+  - CLI / REST
+- 中层：`Agora Core / Orchestrator`
+  - Task / Context / Participant / RuntimeBinding / Execution / Event / Notification
+  - State machine / Gate / Scheduler / Recovery / Archive
+- 下层：
+  - Agent Runtime / Host adapters
+    - OpenClaw
+    - CrewAI
+    - NanoClaw
+    - 未来其他 Runtime
+  - Craftsman / Execution Engine adapters
+    - Codex
+    - Claude Code
+    - Gemini
+    - 未来其他执行器
+
+### 开发硬约束
+
+- `packages/core` 只能表达核心语义、抽象端口、状态机与规则，不能写死平台名业务规则。
+- 任何具体平台接入必须作为独立 adapter / integration 包实现。
+- 任何 provider-specific 数据只能作为 adapter 状态或投影，不能成为长期 Core 主模型。
+- `apps/server` 与 `apps/cli` 是 composition root，负责绑定 adapter，不负责承载核心业务语义。
+- 当前与未来所有 adapter 开发，必须遵循：
+  - `docs/11-REFERENCE/agora-core-decoupling-standard.md`
+  - `docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md`
+
 ## 项目概述
 
 Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 Python 版本已迁入 `archive/agora-python-legacy/`，保留为迁移参考与 legacy 对照。
@@ -76,6 +120,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - 规范文件：
   - `docs/11-REFERENCE/docs-library-standard.md`
   - `docs/11-REFERENCE/engineering-standard.md`
+  - `docs/11-REFERENCE/agora-core-decoupling-standard.md`
   - `docs/11-REFERENCE/testing-standard.md`
   - `docs/11-REFERENCE/execution-workflow-standard.md`
   - `docs/11-REFERENCE/walkthrough-standard.md`
@@ -85,6 +130,8 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 写文档前先读该规范；
   - 文档目录、命名、模板结构必须符合规范；
   - 评审文档时按规范中的“文档评审清单”逐项检查。
+  - **涉及架构、adapter、runtime、IM、craftsman 的开发前，必须先读 `agora-core-decoupling-standard.md`。**
+  - **任何新增集成必须先定义 Core port，再实现 adapter；禁止先写 provider-specific 逻辑再倒推抽象。**
   - 开发执行必须遵循 `planning-with-files + ralph-loop` 持续收敛流程。
   - **前端开发必须先读 `dashboard-frontend-standard.md`**，遵循技术栈、设计基调和检查清单。
   - **Dashboard 前端新增约束**：所有尺寸治理必须同步更新 `dashboard/scripts/check-visual-governance.mjs`；新增尺寸 token、布局原语或组件尺寸 API 时，必须同步更新 `dashboard-frontend-standard.md`。
@@ -168,6 +215,7 @@ cp .env.example .env
   - 每一波完成后更新实施总表、planning、walkthrough
   - 跑满对应质量门，再继续下一波
 - 默认优先级顺序：
+  - 架构解耦与可插拔
   - 真实可用性
   - 测试与类型安全
   - 状态机/运行态收敛
@@ -291,11 +339,37 @@ Skill(skill="feature-dev")
 
 - 修改 `docs/00-RAW-PRDS/01-architecture.md` — 架构变更
 - 修改 `docs/00-RAW-PRDS/07-implementation-plan.md` — 实施进度
+- 修改 `docs/11-REFERENCE/agora-core-decoupling-standard.md` — adapter / decoupling 规范
 - 修改相关设计文档
 
 ---
 
 ## 编码规范
+
+### 架构与 Adapter 开发规范（强制）
+
+- 新增任何 IM / Runtime / Craftsman 集成时，必须优先判断其 adapter 分类：
+  - IM adapter
+  - runtime adapter
+  - craftsman adapter
+- 必须先在 Core/contracts 层定义抽象 port、DTO、event、receipt，再写 provider implementation。
+- 禁止在 `packages/core` 中直接依赖 Discord/OpenClaw/Feishu SDK 或写死其业务规则。
+- 禁止新增 provider-specific 主字段作为长期核心模型；短期兼容字段必须有迁移计划。
+- 新 adapter 应优先作为独立包或独立 integration 目录开发，避免把平台细节散落进 Core。
+- 新 adapter 必须提供：
+  - unit tests
+  - composition wiring tests
+  - scenario / harness coverage
+  - 故障、幂等、回执与重试说明
+- 如需接 Discord/飞书等 IM：
+  - 应开发对应 IM adapter 包
+  - Core 只消费统一 provisioning / messaging port
+- 如需接 OpenClaw/CrewAI/NanoClaw 等 runtime：
+  - 应开发对应 runtime adapter 包
+  - Core 只消费统一 inventory / presence / runtime binding / event ingestion port
+- 如需接 Codex/Claude/Gemini 等 craftsman：
+  - 应开发对应 craftsman adapter 包
+  - Core 只消费统一 execution dispatch / callback / waiting-input contract
 
 ### Python 代码规范
 
