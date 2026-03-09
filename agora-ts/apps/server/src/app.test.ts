@@ -108,6 +108,61 @@ describe('agora-ts server bootstrap', () => {
     expect(shellAllowed.body).toContain('dashboard');
   });
 
+  it('supports dashboard session login and cookie-based shell access', async () => {
+    const dashboardDir = makeDashboardDir();
+    const app = buildApp({
+      dashboardDir,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const loginPage = await app.inject({
+      method: 'GET',
+      url: '/dashboard',
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const session = await app.inject({
+      method: 'GET',
+      url: '/api/dashboard/session',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+    });
+    const dashboard = await app.inject({
+      method: 'GET',
+      url: '/dashboard',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+    });
+
+    expect(loginPage.statusCode).toBe(200);
+    expect(loginPage.body).toContain('Agora Dashboard Login');
+    expect(login.statusCode).toBe(200);
+    expect(cookie).toBeDefined();
+    expect(session.statusCode).toBe(200);
+    expect(session.json()).toMatchObject({
+      authenticated: true,
+      username: 'lizeyu',
+      method: 'session',
+    });
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.body).toContain('dashboard');
+  });
+
   it('returns 503 when task service routes are unconfigured', async () => {
     const app = buildApp();
 

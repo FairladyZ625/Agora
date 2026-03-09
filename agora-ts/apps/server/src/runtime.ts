@@ -53,6 +53,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
       method: config.dashboard_auth.method,
       allowedUsers: config.dashboard_auth.allowed_users,
       password: process.env.AGORA_DASHBOARD_BASIC_PASSWORD ?? null,
+      sessionTtlHours: config.dashboard_auth.session_ttl_hours,
     },
     rateLimit: {
       enabled: config.rate_limit.enabled,

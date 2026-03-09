@@ -104,4 +104,18 @@ describe('agora-ts config contracts', () => {
       }),
     ).toThrow();
   });
+
+  it('parses session-based dashboard auth settings', () => {
+    const parsed = parseAgoraConfig({
+      dashboard_auth: {
+        enabled: true,
+        method: 'session',
+        allowed_users: ['lizeyu'],
+        session_ttl_hours: 12,
+      },
+    });
+
+    expect(parsed.dashboard_auth.method).toBe('session');
+    expect(parsed.dashboard_auth.session_ttl_hours).toBe(12);
+  });
 });

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
@@ -58,9 +59,10 @@ export interface BuildAppOptions {
   };
   dashboardAuth?: {
     enabled: boolean;
-    method: 'basic' | 'oauth2';
+    method: 'basic' | 'session' | 'oauth2';
     allowedUsers: string[];
     password?: string | null;
+    sessionTtlHours?: number;
   };
   rateLimit?: {
     enabled: boolean;
@@ -86,6 +88,11 @@ interface MetricsState {
 interface RequestTimingState {
   startedAtMs?: number;
 }
+
+type DashboardSession = {
+  username: string;
+  expiresAt: number;
+};
 
 function translateError(error: unknown) {
   if (error instanceof PermissionDeniedError) {
@@ -138,6 +145,21 @@ function parseBasicCredentials(authorization?: string) {
   };
 }
 
+function parseCookies(header?: string) {
+  const cookies = new Map<string, string>();
+  if (!header) {
+    return cookies;
+  }
+  for (const part of header.split(';')) {
+    const [rawName, ...rawValue] = part.trim().split('=');
+    if (!rawName || rawValue.length === 0) {
+      continue;
+    }
+    cookies.set(rawName, decodeURIComponent(rawValue.join('=')));
+  }
+  return cookies;
+}
+
 function isReadRequest(method: string) {
   return method === 'GET' || method === 'HEAD';
 }
@@ -146,13 +168,90 @@ function isDashboardRoute(url: string) {
   return url === '/dashboard' || url === '/dashboard/' || url.startsWith('/dashboard/');
 }
 
+const DASHBOARD_SESSION_COOKIE = 'agora_dashboard_session';
+
+function createDashboardLoginPage() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Agora Dashboard Login</title>
+  </head>
+  <body>
+    <main>
+      <h1>Agora Dashboard Login</h1>
+      <p>Use the dashboard session login endpoint to establish access.</p>
+    </main>
+  </body>
+</html>`;
+}
+
+function getDashboardSession(
+  request: FastifyRequest,
+  sessions: Map<string, DashboardSession>,
+) {
+  const token = parseCookies(request.headers.cookie).get(DASHBOARD_SESSION_COOKIE);
+  if (!token) {
+    return null;
+  }
+  const session = sessions.get(token);
+  if (!session) {
+    return null;
+  }
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
+  return { token, session };
+}
+
+function issueDashboardSession(
+  username: string,
+  dashboardAuth: NonNullable<BuildAppOptions['dashboardAuth']>,
+  sessions: Map<string, DashboardSession>,
+) {
+  const token = randomBytes(24).toString('hex');
+  const ttlHours = dashboardAuth.sessionTtlHours ?? 24;
+  sessions.set(token, {
+    username,
+    expiresAt: Date.now() + ttlHours * 60 * 60 * 1000,
+  });
+  return { token, ttlHours };
+}
+
+function clearDashboardSession(
+  request: FastifyRequest,
+  sessions: Map<string, DashboardSession>,
+) {
+  const token = parseCookies(request.headers.cookie).get(DASHBOARD_SESSION_COOKIE);
+  if (token) {
+    sessions.delete(token);
+  }
+}
+
 function requireDashboardAccess(
   request: FastifyRequest,
   reply: FastifyReply,
   dashboardAuth: BuildAppOptions['dashboardAuth'],
+  sessions: Map<string, DashboardSession>,
 ) {
   if (!dashboardAuth?.enabled || !isDashboardRoute(request.url)) {
     return true;
+  }
+  if (dashboardAuth.method === 'session') {
+    const activeSession = getDashboardSession(request, sessions);
+    if (activeSession) {
+      return true;
+    }
+    if (request.url === '/dashboard' || request.url === '/dashboard/') {
+      reply
+        .type('text/html; charset=utf-8')
+        .status(200)
+        .send(createDashboardLoginPage());
+      return false;
+    }
+    reply.status(401).send({ message: 'missing dashboard session' });
+    return false;
   }
   if (dashboardAuth.method !== 'basic') {
     reply.status(501).send({ message: 'dashboard auth method not implemented' });
@@ -288,6 +387,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     craftsmanDispatchByAdapterAndResult: new Map(),
     craftsmanCallbacksByStatus: new Map(),
   };
+  const dashboardSessions = new Map<string, DashboardSession>();
+  const dashboardSessionLoginSchema = z.object({
+    username: z.string().min(1),
+    password: z.string().min(1),
+  });
   const tmuxSendSchema = z.object({
     agent: z.string().min(1),
     command: z.string().min(1),
@@ -406,19 +510,19 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   if (dashboardDir && existsSync(dashboardDir)) {
     app.get('/dashboard', async (request, reply) => {
-      if (!requireDashboardAccess(request, reply, dashboardAuth)) {
+      if (!requireDashboardAccess(request, reply, dashboardAuth, dashboardSessions)) {
         return reply;
       }
       return sendDashboardShell(reply, dashboardDir);
     });
     app.get('/dashboard/', async (request, reply) => {
-      if (!requireDashboardAccess(request, reply, dashboardAuth)) {
+      if (!requireDashboardAccess(request, reply, dashboardAuth, dashboardSessions)) {
         return reply;
       }
       return sendDashboardShell(reply, dashboardDir);
     });
     app.get('/dashboard/*', async (request, reply) => {
-      if (!requireDashboardAccess(request, reply, dashboardAuth)) {
+      if (!requireDashboardAccess(request, reply, dashboardAuth, dashboardSessions)) {
         return reply;
       }
       const wildcard = (request.params as { '*': string })['*'];
@@ -437,6 +541,58 @@ export function buildApp(options: BuildAppOptions = {}) {
       return sendDashboardShell(reply, dashboardDir);
     });
   }
+
+  app.post('/api/dashboard/session/login', async (request, reply) => {
+    if (!dashboardAuth?.enabled || dashboardAuth.method !== 'session') {
+      return reply.status(404).send({ message: 'dashboard session auth is not enabled' });
+    }
+    if (!dashboardAuth.password) {
+      return reply.status(500).send({ message: 'dashboard auth enabled but password not configured' });
+    }
+    try {
+      const payload = dashboardSessionLoginSchema.parse(request.body);
+      const allowed = dashboardAuth.allowedUsers.length === 0 || dashboardAuth.allowedUsers.includes(payload.username);
+      if (!allowed || payload.password !== dashboardAuth.password) {
+        return reply.status(403).send({ message: 'invalid dashboard credentials' });
+      }
+      const session = issueDashboardSession(payload.username, dashboardAuth, dashboardSessions);
+      reply.header(
+        'Set-Cookie',
+        `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
+      );
+      return reply.send({ ok: true, username: payload.username, method: 'session' });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/dashboard/session/logout', async (request, reply) => {
+    if (!dashboardAuth?.enabled || dashboardAuth.method !== 'session') {
+      return reply.status(404).send({ message: 'dashboard session auth is not enabled' });
+    }
+    clearDashboardSession(request, dashboardSessions);
+    reply.header(
+      'Set-Cookie',
+      `${DASHBOARD_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+    );
+    return reply.send({ ok: true });
+  });
+
+  app.get('/api/dashboard/session', async (request, reply) => {
+    if (!dashboardAuth?.enabled || dashboardAuth.method !== 'session') {
+      return reply.send({ authenticated: false, method: dashboardAuth?.method ?? null });
+    }
+    const current = getDashboardSession(request, dashboardSessions);
+    if (!current) {
+      return reply.send({ authenticated: false, method: 'session' });
+    }
+    return reply.send({
+      authenticated: true,
+      method: 'session',
+      username: current.session.username,
+    });
+  });
 
   app.post('/api/tasks', async (request, reply) => {
     if (!taskService) {

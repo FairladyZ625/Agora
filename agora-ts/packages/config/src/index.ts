@@ -33,7 +33,7 @@ export type RateLimitConfig = z.infer<typeof rateLimitSchema>;
 
 export const dashboardAuthSchema = z.object({
   enabled: z.boolean().default(false),
-  method: z.enum(['basic', 'oauth2']).default('basic'),
+  method: z.enum(['basic', 'session', 'oauth2']).default('basic'),
   allowed_users: z.array(z.string().min(1)).default([]),
   session_ttl_hours: z.number().int().positive().default(24),
 });
