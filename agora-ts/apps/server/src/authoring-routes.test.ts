@@ -194,4 +194,38 @@ describe('authoring routes', () => {
     expect(deleteInbox.statusCode).toBe(400);
     expect(promoteInbox.statusCode).toBe(400);
   });
+
+  it('reports invalid workflow gate semantics through authoring validation routes', async () => {
+    const templatesDir = makeTemplatesDir();
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-802',
+    });
+    const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
+    const app = buildApp({ taskService, templateAuthoringService });
+
+    const validateTemplate = await app.inject({
+      method: 'POST',
+      url: '/api/templates/validate',
+      payload: {
+        name: '非法审批模板',
+        type: 'broken',
+        stages: [{ id: 'review', gate: { type: 'approval' } }],
+      },
+    });
+    const validateWorkflow = await app.inject({
+      method: 'POST',
+      url: '/api/workflows/validate',
+      payload: {
+        stages: [{ id: 'vote', gate: { type: 'quorum', required: 1 } }],
+      },
+    });
+
+    expect(validateTemplate.statusCode).toBe(400);
+    expect(JSON.stringify(validateTemplate.json())).toMatch(/approver/i);
+    expect(validateWorkflow.statusCode).toBe(400);
+    expect(JSON.stringify(validateWorkflow.json())).toMatch(/required/i);
+  });
 });

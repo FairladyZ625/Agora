@@ -127,4 +127,39 @@ describe('template authoring service', () => {
       stages: [{ id: 'draft', mode: 'sidequest', gate: { type: 'magic_gate' } }],
     }).valid).toBe(false);
   });
+
+  it('rejects invalid gate semantics and duplicate stage ids during authoring validation', () => {
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ templatesDir });
+
+    const invalidApproval = service.validateTemplate({
+      name: '缺 approver 的审批模板',
+      type: 'broken',
+      governance: 'lean',
+      stages: [{ id: 'review', mode: 'discuss', gate: { type: 'approval' } }],
+    });
+    expect(invalidApproval.valid).toBe(false);
+    expect(invalidApproval.errors.join(' ')).toContain('approver');
+
+    const invalidTimeout = service.validateTemplate({
+      name: '缺 timeout 的等待模板',
+      type: 'broken',
+      governance: 'lean',
+      stages: [{ id: 'wait', mode: 'discuss', gate: { type: 'auto_timeout' } }],
+    });
+    expect(invalidTimeout.valid).toBe(false);
+    expect(invalidTimeout.errors.join(' ')).toContain('timeout_sec');
+
+    const duplicateStages = service.validateTemplate({
+      name: '重复阶段模板',
+      type: 'broken',
+      governance: 'lean',
+      stages: [
+        { id: 'same', mode: 'discuss', gate: { type: 'command' } },
+        { id: 'same', mode: 'execute', gate: { type: 'command' } },
+      ],
+    });
+    expect(duplicateStages.valid).toBe(false);
+    expect(duplicateStages.errors.join(' ')).toContain('duplicate');
+  });
 });

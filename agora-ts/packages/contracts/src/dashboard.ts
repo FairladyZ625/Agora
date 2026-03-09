@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateWorkflowStages } from './workflow-rules.js';
 import { taskSchema } from './task-api.js';
 import { taskPrioritySchema } from './task.js';
 
@@ -281,7 +282,7 @@ export const templateDefaultTeamSchema = z.record(z.string().min(1), templateTea
   });
 
 export const templateStageSchema = z.object({
-  id: z.string(),
+  id: z.string().min(1),
   name: z.string().optional(),
   mode: templateStageModeSchema.optional(),
   gate: z.object({
@@ -301,5 +302,7 @@ export const templateDetailSchema = z.object({
   governance: governancePresetSchema.optional(),
   defaultTeam: templateDefaultTeamSchema.optional(),
   stages: z.array(templateStageSchema).optional(),
+}).superRefine((value, ctx) => {
+  validateWorkflowStages(value.stages, ctx);
 });
 export type TemplateDetailDto = z.infer<typeof templateDetailSchema>;

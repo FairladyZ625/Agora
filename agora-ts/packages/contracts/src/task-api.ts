@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { taskPrioritySchema, taskStateSchema } from './task.js';
+import { validateWorkflowStages } from './workflow-rules.js';
 
 const allowedAgentRoles = [
   'architect',
@@ -76,6 +77,8 @@ export type WorkflowStageDto = z.infer<typeof workflowStageSchema>;
 export const workflowSchema = z.object({
   type: z.string().min(1).optional(),
   stages: z.array(workflowStageSchema).optional(),
+}).superRefine((value, ctx) => {
+  validateWorkflowStages(value.stages, ctx);
 });
 export type WorkflowDto = z.infer<typeof workflowSchema>;
 

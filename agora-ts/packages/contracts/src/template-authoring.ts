@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { templateDetailSchema, templateStageSchema } from './dashboard.js';
+import { validateWorkflowStages } from './workflow-rules.js';
 
 export const templateValidationRequestSchema = templateDetailSchema;
 export type TemplateValidationRequestDto = z.infer<typeof templateValidationRequestSchema>;
@@ -26,6 +27,8 @@ export type DuplicateTemplateRequestDto = z.infer<typeof duplicateTemplateReques
 export const updateTemplateWorkflowRequestSchema = z.object({
   defaultWorkflow: z.string().optional(),
   stages: z.array(templateStageSchema).min(1),
+}).superRefine((value, ctx) => {
+  validateWorkflowStages(value.stages, ctx);
 });
 export type UpdateTemplateWorkflowRequestDto = z.infer<typeof updateTemplateWorkflowRequestSchema>;
 

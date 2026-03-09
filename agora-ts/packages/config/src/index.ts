@@ -17,7 +17,7 @@ export type ApiAuthConfig = z.infer<typeof apiAuthSchema>;
 
 export const schedulerConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  scan_interval_sec: z.number().int().positive().default(60),
+  scan_interval_sec: z.number().int().min(5, 'scheduler.scan_interval_sec must be >= 5').default(60),
   orphan_scan_on_boot: z.boolean().default(false),
   startup_recovery_on_boot: z.boolean().default(true),
 });

@@ -88,6 +88,15 @@ describe('agora-ts config contracts', () => {
 
     expect(() =>
       parseAgoraConfig({
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 2,
+        },
+      }),
+    ).toThrow(/scan_interval_sec/i);
+
+    expect(() =>
+      parseAgoraConfig({
         dashboard_auth: {
           enabled: true,
           method: 'oauth3',

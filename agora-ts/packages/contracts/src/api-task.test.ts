@@ -75,4 +75,46 @@ describe('task api contracts', () => {
       }),
     ).toThrow();
   });
+
+  it('rejects invalid workflow gate field combinations', () => {
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [{ id: 'review', gate: { type: 'approval' } }],
+      }),
+    ).toThrow(/approver/i);
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [{ id: 'vote', gate: { type: 'quorum', required: 1 } }],
+      }),
+    ).toThrow(/required/i);
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [{ id: 'wait', gate: { type: 'auto_timeout' } }],
+      }),
+    ).toThrow(/timeout_sec/i);
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [{ id: 'draft', gate: { type: 'command', approver: 'reviewer' } }],
+      }),
+    ).toThrow(/must not declare approver/i);
+  });
+
+  it('rejects duplicate workflow stage ids', () => {
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          { id: 'draft', gate: { type: 'command' } },
+          { id: 'draft', gate: { type: 'archon_review' } },
+        ],
+      }),
+    ).toThrow(/duplicate stage id/i);
+  });
 });
