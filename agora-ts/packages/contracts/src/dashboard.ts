@@ -2,6 +2,24 @@ import { z } from 'zod';
 import { taskSchema } from './task-api.js';
 import { taskPrioritySchema } from './task.js';
 
+const allowedGovernancePresets = ['lean', 'standard', 'strict', 'custom'] as const;
+const allowedTemplateRoles = ['architect', 'developer', 'reviewer', 'writer', 'researcher', 'analyst', 'executor', 'craftsman'] as const;
+const allowedTemplateStageModes = ['discuss', 'execute'] as const;
+const allowedTemplateGateTypes = ['archon_review', 'command', 'all_subtasks_done', 'approval', 'auto_timeout', 'quorum'] as const;
+
+const governancePresetSchema = z.string().refine((value) => allowedGovernancePresets.includes(value as (typeof allowedGovernancePresets)[number]), {
+  message: 'Unsupported governance preset',
+});
+const templateRoleSchema = z.string().refine((value) => allowedTemplateRoles.includes(value as (typeof allowedTemplateRoles)[number]), {
+  message: 'Unsupported template team role',
+});
+const templateStageModeSchema = z.string().refine((value) => allowedTemplateStageModes.includes(value as (typeof allowedTemplateStageModes)[number]), {
+  message: 'Unsupported template stage mode',
+});
+const templateGateTypeSchema = z.string().refine((value) => allowedTemplateGateTypes.includes(value as (typeof allowedTemplateGateTypes)[number]), {
+  message: 'Unsupported template gate type',
+});
+
 export const agentSummarySchema = z.object({
   active_tasks: z.number().int().nonnegative(),
   active_agents: z.number().int().nonnegative(),
@@ -238,24 +256,41 @@ export const templateSummarySchema = z.object({
   name: z.string(),
   type: z.string(),
   description: z.string(),
-  governance: z.unknown(),
+  governance: governancePresetSchema.nullable(),
   stage_count: z.number().int().nonnegative(),
 });
 export type TemplateSummaryDto = z.infer<typeof templateSummarySchema>;
 
 export const templateTeamMemberSchema = z.object({
+  model_preference: z.string().min(1).optional(),
   suggested: z.array(z.string()).optional(),
-}).passthrough();
+}).strict();
 export type TemplateTeamMemberDto = z.infer<typeof templateTeamMemberSchema>;
+
+export const templateDefaultTeamSchema = z.record(z.string().min(1), templateTeamMemberSchema)
+  .superRefine((value, ctx) => {
+    for (const key of Object.keys(value)) {
+      if (!allowedTemplateRoles.includes(key as (typeof allowedTemplateRoles)[number])) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Unsupported template team role: ${key}`,
+          path: [key],
+        });
+      }
+    }
+  });
 
 export const templateStageSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
-  mode: z.string().optional(),
+  mode: templateStageModeSchema.optional(),
   gate: z.object({
-    type: z.string().optional(),
-  }).passthrough().nullish(),
-}).passthrough();
+    type: templateGateTypeSchema.optional(),
+    approver: templateRoleSchema.optional(),
+    required: z.number().int().positive().optional(),
+    timeout_sec: z.number().int().positive().optional(),
+  }).strict().nullish(),
+}).strict();
 export type TemplateStageDto = z.infer<typeof templateStageSchema>;
 
 export const templateDetailSchema = z.object({
@@ -263,8 +298,8 @@ export const templateDetailSchema = z.object({
   type: z.string(),
   description: z.string().optional(),
   defaultWorkflow: z.string().optional(),
-  governance: z.unknown().optional(),
-  defaultTeam: z.record(z.string(), templateTeamMemberSchema).optional(),
+  governance: governancePresetSchema.optional(),
+  defaultTeam: templateDefaultTeamSchema.optional(),
   stages: z.array(templateStageSchema).optional(),
 });
 export type TemplateDetailDto = z.infer<typeof templateDetailSchema>;

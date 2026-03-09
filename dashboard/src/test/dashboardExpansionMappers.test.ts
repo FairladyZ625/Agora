@@ -246,14 +246,14 @@ describe('dashboard expansion mappers', () => {
       name: 'Coding Task',
       type: 'coding',
       description: '实现代码任务',
-      governance: 'archon',
+      governance: 'standard',
       stage_count: 4,
     };
     const detailDto: ApiTemplateDetailDto = {
       type: 'coding',
       name: 'Coding Task',
       description: '实现代码任务',
-      governance: 'archon',
+      governance: 'standard',
       defaultTeam: {
         architect: {
           suggested: ['opus'],

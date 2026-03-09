@@ -98,4 +98,33 @@ describe('template authoring service', () => {
 
     expect(readFileSync(targetPath, 'utf8')).toContain('"new"');
   });
+
+  it('rejects invalid governance, team role, and workflow mode values', () => {
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ templatesDir });
+
+    expect(service.validateTemplate({
+      name: '非法治理模板',
+      type: 'broken',
+      governance: 'archon',
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    }).valid).toBe(false);
+
+    expect(service.validateTemplate({
+      name: '非法角色模板',
+      type: 'broken',
+      governance: 'lean',
+      defaultTeam: {
+        wizard: { suggested: ['merlin'] },
+      },
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    }).valid).toBe(false);
+
+    expect(service.validateTemplate({
+      name: '非法阶段模板',
+      type: 'broken',
+      governance: 'lean',
+      stages: [{ id: 'draft', mode: 'sidequest', gate: { type: 'magic_gate' } }],
+    }).valid).toBe(false);
+  });
 });

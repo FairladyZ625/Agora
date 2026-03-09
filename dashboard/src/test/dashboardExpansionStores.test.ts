@@ -343,7 +343,7 @@ describe('dashboard expansion stores', () => {
         name: 'Coding Task',
         type: 'coding',
         description: '实现代码任务',
-        governance: 'archon',
+        governance: 'standard',
         stage_count: 4,
       },
     ]);
@@ -351,7 +351,7 @@ describe('dashboard expansion stores', () => {
       type: 'coding',
       name: 'Coding Task',
       description: '实现代码任务',
-      governance: 'archon',
+      governance: 'standard',
       defaultTeam: {
         architect: {
           suggested: ['opus'],

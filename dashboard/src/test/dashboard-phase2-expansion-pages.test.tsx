@@ -285,7 +285,7 @@ const templateStoreState = {
       name: 'Coding Task',
       type: 'coding',
       description: '实现代码任务',
-      governance: 'archon',
+      governance: 'standard',
       stageCount: 4,
       stageCountLabel: '4 stages',
     },
@@ -296,7 +296,7 @@ const templateStoreState = {
     name: 'Coding Task',
     type: 'coding',
     description: '实现代码任务',
-    governance: 'archon',
+    governance: 'standard',
     stageCount: 2,
     stages: [
       { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },

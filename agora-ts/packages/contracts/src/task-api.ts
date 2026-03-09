@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { taskPrioritySchema, taskStateSchema } from './task.js';
 
-const agentRoleSchema = z.enum([
+const allowedAgentRoles = [
   'architect',
   'developer',
   'reviewer',
@@ -10,21 +10,33 @@ const agentRoleSchema = z.enum([
   'analyst',
   'executor',
   'craftsman',
-]);
+] as const;
 
-const workflowModeSchema = z.enum([
+const allowedWorkflowModes = [
   'discuss',
   'execute',
-]);
+] as const;
 
-const workflowGateTypeSchema = z.enum([
+const allowedWorkflowGateTypes = [
   'archon_review',
   'command',
   'all_subtasks_done',
   'approval',
   'auto_timeout',
   'quorum',
-]);
+] as const;
+
+const agentRoleSchema = z.string().refine((value) => allowedAgentRoles.includes(value as (typeof allowedAgentRoles)[number]), {
+  message: 'Unsupported team role',
+});
+
+const workflowModeSchema = z.string().refine((value) => allowedWorkflowModes.includes(value as (typeof allowedWorkflowModes)[number]), {
+  message: 'Unsupported workflow mode',
+});
+
+const workflowGateTypeSchema = z.string().refine((value) => allowedWorkflowGateTypes.includes(value as (typeof allowedWorkflowGateTypes)[number]), {
+  message: 'Unsupported workflow gate type',
+});
 
 const jsonPrimitiveSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -46,6 +58,8 @@ export type TeamDto = z.infer<typeof teamSchema>;
 
 export const workflowGateSchema = z.object({
   type: workflowGateTypeSchema.optional(),
+  approver: agentRoleSchema.optional(),
+  approver_role: agentRoleSchema.optional(),
   required: z.number().int().positive().optional(),
   timeout_sec: z.number().int().positive().optional(),
 }).strict();
