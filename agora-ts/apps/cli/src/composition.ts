@@ -1,5 +1,7 @@
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
+import { resolve as resolvePath } from 'node:path';
+import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
@@ -11,7 +13,6 @@ import {
   TaskService,
   TmuxRuntimeService,
 } from '@agora-ts/core';
-import { resolve as resolvePath } from 'node:path';
 
 export interface CreateCliCompositionOptions {
   configPath?: string;
@@ -28,6 +29,7 @@ export interface CliCompositionFactories {
   createCraftsmanDispatcher: (context: CliCompositionContext) => CraftsmanDispatcher;
   createTaskService: (context: CliCompositionContext, deps: { craftsmanDispatcher: CraftsmanDispatcher }) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
+  createDashboardSessionClient: (context: CliCompositionContext) => DashboardSessionClient;
 }
 
 export interface CliComposition {
@@ -35,6 +37,7 @@ export interface CliComposition {
   db: AgoraDatabase;
   taskService: TaskService;
   tmuxRuntimeService: TmuxRuntimeService;
+  dashboardSessionClient: DashboardSessionClient;
 }
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
@@ -67,6 +70,10 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
         gemini: new GeminiCraftsmanAdapter(),
       },
     }),
+    createDashboardSessionClient: (context) => createDashboardSessionClient({
+      apiBaseUrl: context.runtimeEnv.apiBaseUrl,
+      sessionFilePath: resolvePath(context.runtimeEnv.projectRoot, '.agora-ts/dashboard-session.json'),
+    }),
   };
 }
 
@@ -90,11 +97,13 @@ export function createCliComposition(
   const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
   const taskService = factories.createTaskService(context, { craftsmanDispatcher });
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
+  const dashboardSessionClient = factories.createDashboardSessionClient(context);
 
   return {
     config,
     db,
     taskService,
     tmuxRuntimeService,
+    dashboardSessionClient,
   };
 }

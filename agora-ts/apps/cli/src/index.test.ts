@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
 import { createCliProgram } from './index.js';
+import type { DashboardSessionClient } from './dashboard-session-client.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), '../agora/templates');
@@ -33,6 +34,23 @@ function createBuffer() {
     get value() {
       return value;
     },
+  };
+}
+
+function createDashboardSessionClientStub(): DashboardSessionClient {
+  return {
+    sessionFilePath: '/tmp/dashboard-session.json',
+    login: async ({ username }) => ({
+      ok: true,
+      username,
+      method: 'session',
+    }),
+    status: async () => ({
+      authenticated: true,
+      username: 'lizeyu',
+      method: 'session',
+    }),
+    logout: async () => ({ ok: true }),
   };
 }
 
@@ -146,6 +164,62 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('当前票数: approved=1 total=1');
     expect(stdout.value).toContain('当前票数: approved=2 total=2');
     expect(stdout.value).toContain('已解除阻塞');
+  });
+
+  it('runs dashboard session commands through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        createTask: () => {
+          throw new Error('unused');
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: {
+        up: () => {
+          throw new Error('unused');
+        },
+        status: () => {
+          throw new Error('unused');
+        },
+        send: () => {
+          throw new Error('unused');
+        },
+        start: () => {
+          throw new Error('unused');
+        },
+        resume: () => {
+          throw new Error('unused');
+        },
+        task: () => {
+          throw new Error('unused');
+        },
+        tail: () => {
+          throw new Error('unused');
+        },
+        doctor: () => {
+          throw new Error('unused');
+        },
+        down: () => {
+          throw new Error('unused');
+        },
+        recordIdentity: () => {
+          throw new Error('unused');
+        },
+      },
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['dashboard', 'session', 'login', '--username', 'lizeyu', '--password', 'secret-pass'], { from: 'user' });
+    await program.parseAsync(['dashboard', 'session', 'status'], { from: 'user' });
+    await program.parseAsync(['dashboard', 'session', 'logout'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('dashboard session 已建立: lizeyu');
+    expect(stdout.value).toContain('authenticated: true');
+    expect(stdout.value).toContain('dashboard session 已清除');
   });
 
   it('supports unblock retry through the cli command', async () => {

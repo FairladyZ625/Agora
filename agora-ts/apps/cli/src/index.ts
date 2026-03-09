@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
+import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type { TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
@@ -16,6 +17,7 @@ type Writable = {
 export interface CliDependencies {
   taskService?: TaskService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
+  dashboardSessionClient?: DashboardSessionClient;
   factories?: Partial<CliCompositionFactories>;
   configPath?: string;
   dbPath?: string;
@@ -39,7 +41,7 @@ function parseJsonOption(raw?: string): Record<string, unknown> | null {
 export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
-  const composition = !deps.taskService || !deps.tmuxRuntimeService
+  const composition = !deps.taskService || !deps.tmuxRuntimeService || !deps.dashboardSessionClient
     ? createCliComposition({
       ...(deps.configPath ? { configPath: deps.configPath } : {}),
       ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
@@ -47,7 +49,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     : null;
   const taskService = deps.taskService ?? composition?.taskService;
   const tmuxRuntimeService = deps.tmuxRuntimeService ?? composition?.tmuxRuntimeService;
-  if (!taskService || !tmuxRuntimeService) {
+  const dashboardSessionClient = deps.dashboardSessionClient ?? composition?.dashboardSessionClient;
+  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient) {
     throw new Error('CLI runtime composition is incomplete');
   }
   const program = new Command();
@@ -305,6 +308,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const craftsman = program
     .command('craftsman')
     .description('craftsman execution commands');
+  const dashboard = program
+    .command('dashboard')
+    .description('dashboard auth commands');
 
   craftsman
     .command('dispatch')
@@ -400,6 +406,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const runtime = craftsman
     .command('runtime')
     .description('generic runtime identity and observability commands');
+  const dashboardSession = dashboard
+    .command('session')
+    .description('dashboard session auth commands');
 
   tmux
     .command('up')
@@ -538,6 +547,41 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `runtime identity 已回填: ${agent}`);
       writeLine(stdout, `source: ${result.identitySource}`);
       writeLine(stdout, `session: ${result.sessionReference ?? '-'}`);
+    });
+
+  dashboardSession
+    .command('login')
+    .description('登录 dashboard session 并缓存 cookie')
+    .requiredOption('--username <username>', '用户名')
+    .requiredOption('--password <password>', '密码')
+    .action(async (options: { username: string; password: string }) => {
+      const result = await dashboardSessionClient.login({
+        username: options.username,
+        password: options.password,
+      });
+      writeLine(stdout, `dashboard session 已建立: ${result.username}`);
+      writeLine(stdout, `method: ${result.method}`);
+      writeLine(stdout, `session file: ${dashboardSessionClient.sessionFilePath}`);
+    });
+
+  dashboardSession
+    .command('status')
+    .description('查看当前 dashboard session 状态')
+    .action(async () => {
+      const result = await dashboardSessionClient.status();
+      writeLine(stdout, `authenticated: ${result.authenticated}`);
+      writeLine(stdout, `method: ${result.method ?? '-'}`);
+      writeLine(stdout, `username: ${result.username ?? '-'}`);
+      writeLine(stdout, `session file: ${dashboardSessionClient.sessionFilePath}`);
+    });
+
+  dashboardSession
+    .command('logout')
+    .description('退出当前 dashboard session 并清理本地 cookie')
+    .action(async () => {
+      await dashboardSessionClient.logout();
+      writeLine(stdout, 'dashboard session 已清除');
+      writeLine(stdout, `session file: ${dashboardSessionClient.sessionFilePath}`);
     });
 
   return program;

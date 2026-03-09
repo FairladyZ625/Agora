@@ -15,6 +15,10 @@ import {
   cleanupTasksRequestSchema,
   confirmTaskRequestSchema,
   createTodoRequestSchema,
+  dashboardSessionLoginRequestSchema,
+  dashboardSessionLoginResponseSchema,
+  dashboardSessionLogoutResponseSchema,
+  dashboardSessionStatusResponseSchema,
   createInboxRequestSchema,
   createTaskRequestSchema,
   duplicateTemplateRequestSchema,
@@ -410,10 +414,6 @@ export function buildApp(options: BuildAppOptions = {}) {
     craftsmanCallbacksByStatus: new Map(),
   };
   const dashboardSessions = new Map<string, DashboardSession>();
-  const dashboardSessionLoginSchema = z.object({
-    username: z.string().min(1),
-    password: z.string().min(1),
-  });
   const tmuxSendSchema = z.object({
     agent: z.string().min(1),
     command: z.string().min(1),
@@ -591,7 +591,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(500).send({ message: 'dashboard auth enabled but password not configured' });
     }
     try {
-      const payload = dashboardSessionLoginSchema.parse(request.body);
+      const payload = dashboardSessionLoginRequestSchema.parse(request.body);
       const allowed = dashboardAuth.allowedUsers.length === 0 || dashboardAuth.allowedUsers.includes(payload.username);
       if (!allowed || payload.password !== dashboardAuth.password) {
         return reply.status(403).send({ message: 'invalid dashboard credentials' });
@@ -601,7 +601,11 @@ export function buildApp(options: BuildAppOptions = {}) {
         'Set-Cookie',
         `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
       );
-      return reply.send({ ok: true, username: payload.username, method: 'session' });
+      return reply.send(dashboardSessionLoginResponseSchema.parse({
+        ok: true,
+        username: payload.username,
+        method: 'session',
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -617,22 +621,28 @@ export function buildApp(options: BuildAppOptions = {}) {
       'Set-Cookie',
       `${DASHBOARD_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
     );
-    return reply.send({ ok: true });
+    return reply.send(dashboardSessionLogoutResponseSchema.parse({ ok: true }));
   });
 
   app.get('/api/dashboard/session', async (request, reply) => {
     if (!dashboardAuth?.enabled || dashboardAuth.method !== 'session') {
-      return reply.send({ authenticated: false, method: dashboardAuth?.method ?? null });
+      return reply.send(dashboardSessionStatusResponseSchema.parse({
+        authenticated: false,
+        method: dashboardAuth?.method ?? null,
+      }));
     }
     const current = getDashboardSession(request, dashboardSessions);
     if (!current) {
-      return reply.send({ authenticated: false, method: 'session' });
+      return reply.send(dashboardSessionStatusResponseSchema.parse({
+        authenticated: false,
+        method: 'session',
+      }));
     }
-    return reply.send({
+    return reply.send(dashboardSessionStatusResponseSchema.parse({
       authenticated: true,
       method: 'session',
       username: current.session.username,
-    });
+    }));
   });
 
   app.post('/api/tasks', async (request, reply) => {

@@ -173,6 +173,31 @@ export const agentsStatusSchema = z.object({
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
 
+export const dashboardSessionLoginRequestSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+export type DashboardSessionLoginRequestDto = z.infer<typeof dashboardSessionLoginRequestSchema>;
+
+export const dashboardSessionLoginResponseSchema = z.object({
+  ok: z.literal(true),
+  username: z.string(),
+  method: z.literal('session'),
+});
+export type DashboardSessionLoginResponseDto = z.infer<typeof dashboardSessionLoginResponseSchema>;
+
+export const dashboardSessionStatusResponseSchema = z.object({
+  authenticated: z.boolean(),
+  method: z.enum(['basic', 'session', 'oauth2']).nullable(),
+  username: z.string().optional(),
+});
+export type DashboardSessionStatusResponseDto = z.infer<typeof dashboardSessionStatusResponseSchema>;
+
+export const dashboardSessionLogoutResponseSchema = z.object({
+  ok: z.literal(true),
+});
+export type DashboardSessionLogoutResponseDto = z.infer<typeof dashboardSessionLogoutResponseSchema>;
+
 export const archiveJobSchema = z.object({
   id: z.number().int().nonnegative(),
   task_id: z.string(),

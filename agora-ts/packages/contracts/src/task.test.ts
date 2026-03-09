@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { taskPrioritySchema, taskStateSchema } from './task.js';
-import { agentsStatusSchema, todoItemSchema } from './dashboard.js';
+import { agentsStatusSchema, dashboardSessionLoginRequestSchema, dashboardSessionStatusResponseSchema, todoItemSchema } from './dashboard.js';
 
 describe('agora-ts contracts bootstrap', () => {
   it('parses canonical task states and rejects invalid values', () => {
@@ -125,5 +125,25 @@ describe('agora-ts contracts bootstrap', () => {
         promoted_to: null,
       }).status,
     ).toBe('pending');
+  });
+
+  it('parses dashboard session DTOs', () => {
+    expect(dashboardSessionLoginRequestSchema.parse({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    })).toMatchObject({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+
+    expect(dashboardSessionStatusResponseSchema.parse({
+      authenticated: true,
+      method: 'session',
+      username: 'lizeyu',
+    })).toMatchObject({
+      authenticated: true,
+      method: 'session',
+      username: 'lizeyu',
+    });
   });
 });
