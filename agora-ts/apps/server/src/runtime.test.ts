@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
-import { TaskService } from '@agora-ts/core';
+import { LiveSessionStore, TaskService } from '@agora-ts/core';
+import type { TmuxRuntimeService } from '@agora-ts/core';
 import { createServerRuntime } from './runtime.js';
 
 const tempPaths: string[] = [];
@@ -121,6 +122,35 @@ describe('server runtime', () => {
         }),
       ]),
     );
+    runtime.db.close();
+  });
+
+  it('accepts composition factory overrides for runtime dependencies', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
+    const tmuxRuntimeService = {
+      status: () => ({ session: 'override', panes: [] }),
+    } as unknown as TmuxRuntimeService;
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createLiveSessionStore: () => liveSessionStore,
+        createTmuxRuntimeService: () => tmuxRuntimeService,
+      },
+    });
+
+    expect(runtime.liveSessionStore).toBe(liveSessionStore);
+    expect(runtime.tmuxRuntimeService).toBe(tmuxRuntimeService);
     runtime.db.close();
   });
 });
