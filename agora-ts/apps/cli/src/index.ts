@@ -288,8 +288,26 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('解除阻塞')
     .argument('<taskId>', '任务 ID')
     .option('--reason <reason>', '原因', '')
-    .action((taskId: string, options: { reason: string }) => {
-      taskService.unblockTask(taskId, { reason: options.reason });
+    .option('--action <action>', '恢复策略（当前支持 retry|skip|reassign）')
+    .option('--assignee <assignee>', 'reassign 时的新 assignee')
+    .option('--craftsman-type <craftsmanType>', 'reassign 时的新 craftsman type')
+    .action((taskId: string, options: {
+      reason: string;
+      action?: 'retry' | 'skip' | 'reassign';
+      assignee?: string;
+      craftsmanType?: string;
+    }) => {
+      taskService.unblockTask(
+        taskId,
+        options.action
+          ? {
+            reason: options.reason,
+            action: options.action,
+            ...(options.assignee ? { assignee: options.assignee } : {}),
+            ...(options.craftsmanType ? { craftsman_type: options.craftsmanType } : {}),
+          }
+          : { reason: options.reason },
+      );
       writeLine(stdout, `任务 ${taskId} 已解除阻塞`);
     });
 

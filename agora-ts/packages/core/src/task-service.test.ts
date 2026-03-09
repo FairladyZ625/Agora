@@ -2,7 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { StubCraftsmanAdapter } from './craftsman-adapter.js';
+import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -192,6 +194,7 @@ describe('task service', () => {
     ]);
     expect(status.flow_log.map((item) => item.event)).toEqual(
       expect.arrayContaining([
+        'gate_passed',
         'archon_approved',
         'force_advance',
         'subtask_done',
@@ -199,6 +202,58 @@ describe('task service', () => {
         'rejected',
         'gate_passed',
       ]),
+    );
+  });
+
+  it('records gate result events for archon review decisions', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-108',
+    });
+    const tasks = new TaskRepository(db);
+
+    service.createTask({
+      title: 'archon gate result logs',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    service.archonApproveTask('OC-108', {
+      reviewerId: 'lizeyu',
+      comment: 'approved',
+    });
+
+    tasks.insertTask({
+      id: 'OC-109',
+      title: 'archon reject logs',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: {
+        type: 'archon-review',
+        stages: [{ id: 'review', gate: { type: 'archon_review' } }],
+      },
+    });
+    tasks.updateTask('OC-109', 1, { state: 'created' });
+    tasks.updateTask('OC-109', 2, { state: 'active', current_stage: 'review' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-109', 'review');
+
+    service.archonRejectTask('OC-109', {
+      reviewerId: 'lizeyu',
+      reason: 'not ready',
+    });
+
+    expect(service.getTaskStatus('OC-108').flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining(['gate_passed', 'archon_approved']),
+    );
+    expect(service.getTaskStatus('OC-109').flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining(['gate_failed', 'archon_rejected']),
     );
   });
 
@@ -260,7 +315,651 @@ describe('task service', () => {
     expect(unblocked.state).toBe('active');
     expect(cancelled.state).toBe('cancelled');
     expect(status.flow_log.map((item) => item.event)).toEqual(
-      expect.arrayContaining(['quorum_vote', 'state_changed']),
+      expect.arrayContaining([
+        'quorum_vote',
+        'state_changed',
+        'paused',
+        'resumed',
+        'blocked',
+        'unblocked',
+        'cancelled',
+      ]),
+    );
+  });
+
+  it('supports unblock retry by resetting failed subtasks in the current stage', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-110',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'unblock retry',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'retry-me',
+      task_id: 'OC-110',
+      stage_id: 'discuss',
+      title: 'Retry this one',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timeout',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:retry-me',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+      done_at: '2026-03-09T11:01:00.000Z',
+    });
+    subtasks.insertSubtask({
+      id: 'leave-alone',
+      task_id: 'OC-110',
+      stage_id: 'discuss',
+      title: 'Already done',
+      assignee: 'opus',
+      status: 'done',
+      output: 'done',
+      done_at: '2026-03-09T11:01:00.000Z',
+    });
+    service.updateTaskState('OC-110', 'blocked', { reason: 'timeout escalation' });
+
+    const unblocked = service.unblockTask('OC-110', { reason: 'retry now', action: 'retry' });
+    const status = service.getTaskStatus('OC-110');
+
+    expect(unblocked.state).toBe('active');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'retry-me',
+          status: 'not_started',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+          dispatched_at: null,
+          done_at: null,
+        }),
+        expect.objectContaining({
+          id: 'leave-alone',
+          status: 'done',
+          output: 'done',
+        }),
+      ]),
+    );
+    expect(status.flow_log.at(-1)).toMatchObject({
+      event: 'unblocked',
+      detail: JSON.stringify({
+        reason: 'retry now',
+        action: 'retry',
+        retried_subtasks: ['retry-me'],
+      }),
+    });
+  });
+
+  it('supports unblock skip by marking failed subtasks done in the current stage', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-111',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'unblock skip',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'skip-me',
+      task_id: 'OC-111',
+      stage_id: 'discuss',
+      title: 'Skip this one',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timeout',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:skip-me',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+    });
+    subtasks.insertSubtask({
+      id: 'other-stage',
+      task_id: 'OC-111',
+      stage_id: 'develop',
+      title: 'Do not touch',
+      assignee: 'opus',
+      status: 'failed',
+      output: 'keep failed',
+      dispatch_status: 'failed',
+    });
+    service.updateTaskState('OC-111', 'blocked', { reason: 'human intervention' });
+
+    const unblocked = service.unblockTask('OC-111', { reason: 'skip now', action: 'skip' });
+    const status = service.getTaskStatus('OC-111');
+
+    expect(unblocked.state).toBe('active');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'skip-me',
+          status: 'done',
+          output: 'Skipped by archon: skip now',
+          craftsman_session: null,
+          dispatch_status: 'skipped',
+        }),
+        expect.objectContaining({
+          id: 'other-stage',
+          status: 'failed',
+          output: 'keep failed',
+          dispatch_status: 'failed',
+        }),
+      ]),
+    );
+    expect(status.flow_log.at(-1)).toMatchObject({
+      event: 'unblocked',
+      detail: JSON.stringify({
+        reason: 'skip now',
+        action: 'skip',
+        skipped_subtasks: ['skip-me'],
+      }),
+    });
+  });
+
+  it('supports unblock reassign by resetting failed subtasks to a new assignee', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-112',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'unblock reassign',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'reassign-me',
+      task_id: 'OC-112',
+      stage_id: 'discuss',
+      title: 'Reassign this one',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timeout',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:reassign-me',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+      done_at: '2026-03-09T11:01:00.000Z',
+    });
+    service.updateTaskState('OC-112', 'blocked', { reason: 'human intervention' });
+
+    const unblocked = service.unblockTask('OC-112', {
+      reason: 'reassign now',
+      action: 'reassign',
+      assignee: 'claude',
+      craftsman_type: 'claude',
+    });
+    const status = service.getTaskStatus('OC-112');
+
+    expect(unblocked.state).toBe('active');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'reassign-me',
+          status: 'not_started',
+          assignee: 'claude',
+          craftsman_type: 'claude',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+          dispatched_at: null,
+          done_at: null,
+        }),
+      ]),
+    );
+    expect(status.flow_log.at(-1)).toMatchObject({
+      event: 'unblocked',
+      detail: JSON.stringify({
+        reason: 'reassign now',
+        action: 'reassign',
+        reassigned_subtasks: ['reassign-me'],
+        assignee: 'claude',
+        craftsman_type: 'claude',
+      }),
+    });
+  });
+
+  it('cancels active subtasks and craftsmen executions while capturing a scheduler snapshot', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-105',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'cancel state closure',
+      type: 'coding',
+      creator: 'archon',
+      description: 'ensure cancel closes outstanding work',
+      priority: 'high',
+    });
+
+    subtasks.insertSubtask({
+      id: 'draft-plan',
+      task_id: 'OC-105',
+      stage_id: 'discuss',
+      title: 'Draft the plan',
+      assignee: 'opus',
+      status: 'not_started',
+    });
+    subtasks.insertSubtask({
+      id: 'run-codex',
+      task_id: 'OC-105',
+      stage_id: 'develop',
+      title: 'Run codex',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'success',
+      craftsman_session: 'tmux:run-codex',
+    });
+    subtasks.insertSubtask({
+      id: 'keep-done',
+      task_id: 'OC-105',
+      stage_id: 'review',
+      title: 'Done already',
+      assignee: 'gpt52',
+      status: 'done',
+      output: 'kept',
+      done_at: '2026-03-09T10:00:00.000Z',
+    });
+
+    executions.insertExecution({
+      execution_id: 'exec-queued',
+      task_id: 'OC-105',
+      subtask_id: 'run-codex',
+      adapter: 'codex',
+      mode: 'task',
+      status: 'queued',
+      session_id: 'tmux:queued',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-running',
+      task_id: 'OC-105',
+      subtask_id: 'run-codex',
+      adapter: 'codex',
+      mode: 'task',
+      status: 'running',
+      session_id: 'tmux:running',
+      started_at: '2026-03-09T10:01:00.000Z',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-succeeded',
+      task_id: 'OC-105',
+      subtask_id: 'keep-done',
+      adapter: 'codex',
+      mode: 'task',
+      status: 'succeeded',
+      session_id: 'tmux:done',
+      finished_at: '2026-03-09T10:02:00.000Z',
+    });
+
+    const cancelled = service.cancelTask('OC-105', { reason: 'scope dropped' });
+    const status = service.getTaskStatus('OC-105');
+
+    expect(cancelled.state).toBe('cancelled');
+    expect(cancelled.error_detail).toBe('scope dropped');
+    expect(cancelled.scheduler_snapshot).toMatchObject({
+      state: 'active',
+      current_stage: 'discuss',
+    });
+
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'draft-plan',
+          status: 'failed',
+          output: 'Task cancelled: scope dropped',
+        }),
+        expect.objectContaining({
+          id: 'run-codex',
+          status: 'failed',
+          output: 'Task cancelled: scope dropped',
+        }),
+        expect.objectContaining({
+          id: 'keep-done',
+          status: 'done',
+          output: 'kept',
+        }),
+      ]),
+    );
+
+    const executionStates = executions.listBySubtask('OC-105', 'run-codex');
+    expect(executionStates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          execution_id: 'exec-queued',
+          status: 'cancelled',
+          error: 'Task cancelled: scope dropped',
+        }),
+        expect.objectContaining({
+          execution_id: 'exec-running',
+          status: 'cancelled',
+          error: 'Task cancelled: scope dropped',
+        }),
+      ]),
+    );
+    expect(executions.getExecution('exec-succeeded')).toMatchObject({
+      status: 'succeeded',
+      error: null,
+    });
+  });
+
+  it('cleans up craftsman executions when deleting orphaned tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-106',
+    });
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    const draft = tasks.insertTask({
+      id: 'OC-106',
+      title: 'cleanup execution residue',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    tasks.updateTask('OC-106', draft.version, { state: 'orphaned' });
+    subtasks.insertSubtask({
+      id: 'cleanup-subtask',
+      task_id: 'OC-106',
+      stage_id: 'develop',
+      title: 'Orphaned craft',
+      assignee: 'codex',
+      status: 'failed',
+      craftsman_type: 'codex',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-orphaned',
+      task_id: 'OC-106',
+      subtask_id: 'cleanup-subtask',
+      adapter: 'codex',
+      mode: 'task',
+      status: 'failed',
+      session_id: 'tmux:orphaned',
+      finished_at: '2026-03-09T10:03:00.000Z',
+    });
+
+    const cleaned = service.cleanupOrphaned('OC-106');
+
+    expect(cleaned).toBe(1);
+    expect(service.getTask('OC-106')).toBeNull();
+    expect(executions.getExecution('exec-orphaned')).toBeNull();
+  });
+
+  it('rejects craftsmen dispatch when the task is not active', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-paused-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T11:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-107',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'paused dispatch guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'paused-subtask',
+      task_id: 'OC-107',
+      stage_id: 'discuss',
+      title: 'Dispatch should fail',
+      assignee: 'codex',
+      status: 'not_started',
+      craftsman_type: 'codex',
+    });
+    service.pauseTask('OC-107', { reason: 'hold' });
+
+    expect(() => service.dispatchCraftsman({
+      task_id: 'OC-107',
+      subtask_id: 'paused-subtask',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex',
+    })).toThrow("Task OC-107 is in state 'paused', expected 'active'");
+    expect(executions.listBySubtask('OC-107', 'paused-subtask')).toEqual([]);
+  });
+
+  it('flushes deferred craftsmen callbacks when resuming a paused task', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-113',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'resume deferred callbacks',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'resume-me',
+      task_id: 'OC-113',
+      stage_id: 'discuss',
+      title: 'Flush on resume',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+      craftsman_session: 'tmux:resume-me',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-resume-1',
+      task_id: 'OC-113',
+      subtask_id: 'resume-me',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:resume-me',
+      status: 'running',
+      started_at: '2026-03-09T12:00:00.000Z',
+    });
+
+    service.pauseTask('OC-113', { reason: 'hold' });
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-resume-1',
+      status: 'succeeded',
+      session_id: 'tmux:resume-me',
+      payload: { summary: 'done while paused' },
+      error: null,
+      finished_at: '2026-03-09T12:01:00.000Z',
+    });
+
+    const pausedStatus = service.getTaskStatus('OC-113');
+    expect(pausedStatus.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'resume-me',
+          status: 'in_progress',
+          dispatch_status: 'running',
+        }),
+      ]),
+    );
+
+    const resumed = service.resumeTask('OC-113');
+    const resumedStatus = service.getTaskStatus('OC-113');
+
+    expect(resumed.state).toBe('active');
+    expect(resumedStatus.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'resume-me',
+          status: 'done',
+          dispatch_status: 'succeeded',
+          output: 'done while paused',
+          done_at: '2026-03-09T12:01:00.000Z',
+        }),
+      ]),
+    );
+    expect(resumedStatus.flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining(['craftsman_callback_deferred', 'resumed', 'subtask_done']),
+    );
+  });
+
+  it('enqueues a pending archive job when a task reaches done', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-114',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+
+    service.createTask({
+      title: 'archive when done',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    service.archonApproveTask('OC-114', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    service.forceAdvanceTask('OC-114', { reason: 'move to write' });
+    subtasks.insertSubtask({
+      id: 'write-doc',
+      task_id: 'OC-114',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+    service.completeSubtask('OC-114', {
+      subtaskId: 'write-doc',
+      callerId: 'glm5',
+      output: '草稿完成',
+    });
+    service.advanceTask('OC-114', { callerId: 'archon' });
+    service.approveTask('OC-114', {
+      approverId: 'gpt52',
+      comment: 'ship it',
+    });
+
+    const done = service.advanceTask('OC-114', { callerId: 'archon' });
+    const archiveJobs = archives.listArchiveJobs({ taskId: 'OC-114' });
+
+    expect(done.state).toBe('done');
+    expect(archiveJobs).toHaveLength(1);
+    expect(archiveJobs[0]).toMatchObject({
+      task_id: 'OC-114',
+      status: 'pending',
+      writer_agent: 'writer-agent',
+    });
+    expect(archiveJobs[0]?.target_path).toContain('OC-114');
+  });
+
+  it('fails running craftsmen work on resume when the session is no longer alive', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-115',
+      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'resume dead session',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'dead-subtask',
+      task_id: 'OC-115',
+      stage_id: 'discuss',
+      title: 'Dead session subtask',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:dead',
+      dispatch_status: 'running',
+      dispatched_at: '2026-03-09T13:00:00.000Z',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-dead-1',
+      task_id: 'OC-115',
+      subtask_id: 'dead-subtask',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:dead',
+      status: 'running',
+      started_at: '2026-03-09T13:00:00.000Z',
+    });
+
+    service.pauseTask('OC-115', { reason: 'hold' });
+    const resumed = service.resumeTask('OC-115');
+    const status = service.getTaskStatus('OC-115');
+
+    expect(resumed.state).toBe('active');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'dead-subtask',
+          status: 'failed',
+          dispatch_status: 'failed',
+          output: 'Craftsman session not alive on resume: tmux:dead',
+        }),
+      ]),
+    );
+    expect(executions.getExecution('exec-dead-1')).toMatchObject({
+      status: 'failed',
+      error: 'Craftsman session not alive on resume: tmux:dead',
+      finished_at: expect.any(String),
+    });
+    expect(status.flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining(['craftsman_session_missing_on_resume', 'resumed']),
     );
   });
 });

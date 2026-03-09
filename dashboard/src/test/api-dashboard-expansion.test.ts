@@ -131,19 +131,33 @@ describe('dashboard expansion api client', () => {
           };
         }
         if (url.includes('/archive/jobs')) {
-          return url.endsWith('/retry') || /\/archive\/jobs\/\d+$/.test(url)
+          if (url.endsWith('/scan-stale')) {
+            return { failed: 1 };
+          }
+          if (url.endsWith('/scan-receipts')) {
+            return { processed: 1, synced: 1, failed: 0 };
+          }
+          return url.endsWith('/retry') || url.endsWith('/notify') || /\/archive\/jobs\/\d+$/.test(url) || /\/archive\/jobs\/\d+\/status$/.test(url)
             ? {
                 id: 7,
                 task_id: 'OC-001',
                 task_title: 'archive',
                 task_type: 'document',
-                status: 'pending',
+                status: url.endsWith('/notify') ? 'notified' : (url.endsWith('/status') ? 'synced' : 'pending'),
                 target_path: null,
                 writer_agent: null,
-                commit_hash: null,
+                commit_hash: url.endsWith('/status') ? 'abc123' : null,
                 requested_at: '2026-03-08T00:00:00.000Z',
-                completed_at: null,
-                payload: null,
+                completed_at: url.endsWith('/status') ? '2026-03-08T00:10:00.000Z' : null,
+                payload: url.endsWith('/notify')
+                  ? {
+                      notified_at: '2026-03-09T15:00:00.000Z',
+                      notification_receipt: {
+                        notification_id: 'archive-job-7',
+                        outbox_path: '/tmp/archive-job-7.json',
+                      },
+                    }
+                  : null,
               }
             : [{
                 id: 7,
@@ -247,6 +261,12 @@ describe('dashboard expansion api client', () => {
     await api.listArchiveJobs({ status: 'failed', taskId: 'OC-001' });
     await api.getArchiveJob(7);
     await api.retryArchiveJob(7, 'manual retry');
+    await api.notifyArchiveJob(7);
+    await api.updateArchiveJobStatus(7, 'notified');
+    await api.updateArchiveJobStatus(7, 'failed', { errorMessage: 'writer timeout' });
+    await api.updateArchiveJobStatus(7, 'synced', { commitHash: 'abc123' });
+    await api.scanStaleArchiveJobs(60_000);
+    await api.scanArchiveJobReceipts();
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/agents/status',
@@ -269,6 +289,46 @@ describe('dashboard expansion api client', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ reason: 'manual retry' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/archive/jobs/7/notify',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/archive/jobs/7/status',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ status: 'notified' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/archive/jobs/7/status',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ status: 'failed', error_message: 'writer timeout' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/archive/jobs/7/status',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ status: 'synced', commit_hash: 'abc123' }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/archive/jobs/scan-stale',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ timeout_ms: 60000 }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/archive/jobs/scan-receipts',
+      expect.objectContaining({
+        method: 'POST',
       }),
     );
   });

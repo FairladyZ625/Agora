@@ -258,4 +258,81 @@ describe('craftsman callback service', () => {
     expect(flowLogs.listByTask('OC-972')).toHaveLength(firstFlowCount);
     expect(progressLogs.listByTask('OC-972')).toHaveLength(firstProgressCount);
   });
+
+  it('defers callback settlement while the task is paused', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const flowLogs = new FlowLogRepository(db);
+    const progressLogs = new ProgressLogRepository(db);
+    const callback = new CraftsmanCallbackService(db);
+
+    tasks.insertTask({
+      id: 'OC-973',
+      title: 'callback paused',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    tasks.updateTask('OC-973', 1, { state: 'created' });
+    tasks.updateTask('OC-973', 2, { state: 'active', current_stage: 'develop' });
+    tasks.updateTask('OC-973', 3, { state: 'paused', error_detail: 'hold' });
+    subtasks.insertSubtask({
+      id: 'sub-codex',
+      task_id: 'OC-973',
+      stage_id: 'develop',
+      title: 'run codex later',
+      assignee: 'sonnet',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+      craftsman_session: 'codex-session-4',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-973',
+      task_id: 'OC-973',
+      subtask_id: 'sub-codex',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'codex-session-4',
+      status: 'running',
+      callback_payload: null,
+      error: null,
+      started_at: '2026-03-08T13:15:00.000Z',
+    });
+
+    const result = callback.handleCallback({
+      execution_id: 'exec-973',
+      status: 'succeeded',
+      session_id: 'codex-session-4',
+      payload: { summary: 'done while paused' },
+      error: null,
+      finished_at: '2026-03-08T13:16:00.000Z',
+    });
+
+    expect(result.execution).toMatchObject({
+      execution_id: 'exec-973',
+      status: 'succeeded',
+      callback_payload: { summary: 'done while paused' },
+    });
+    expect(result.subtask).toMatchObject({
+      id: 'sub-codex',
+      status: 'in_progress',
+      dispatch_status: 'running',
+    });
+    expect(flowLogs.listByTask('OC-973')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'craftsman_callback_deferred',
+          stage_id: 'develop',
+        }),
+      ]),
+    );
+    expect(progressLogs.listByTask('OC-973')).toEqual([]);
+  });
 });

@@ -1,4 +1,7 @@
-import { SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { TaskService } from '@agora-ts/core';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import type { CreateTestRuntimeOptions, TestRuntime } from './runtime.js';
 import { createTestRuntime } from './runtime.js';
 
@@ -7,6 +10,14 @@ export const scenarioNames = [
   'reject-rework',
   'quorum-approve',
   'cleanup-orphaned',
+  'archive-notify',
+  'archive-receipt',
+  'unblock-retry',
+  'unblock-skip',
+  'unblock-reassign',
+  'pause-resume-deferred-callback',
+  'pause-resume-missing-session',
+  'cancel-active-task',
   'inbox-promote',
   'authoring-smoke',
   'craftsman-happy-path',
@@ -46,6 +57,22 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runQuorumApproveScenario(runtime);
     case 'cleanup-orphaned':
       return runCleanupOrphanedScenario(runtime);
+    case 'archive-notify':
+      return runArchiveNotifyScenario(runtime);
+    case 'archive-receipt':
+      return runArchiveReceiptScenario(runtime);
+    case 'unblock-retry':
+      return runUnblockRetryScenario(runtime);
+    case 'unblock-skip':
+      return runUnblockSkipScenario(runtime);
+    case 'unblock-reassign':
+      return runUnblockReassignScenario(runtime);
+    case 'pause-resume-deferred-callback':
+      return runPauseResumeDeferredCallbackScenario(runtime);
+    case 'pause-resume-missing-session':
+      return runPauseResumeMissingSessionScenario(runtime);
+    case 'cancel-active-task':
+      return runCancelActiveTaskScenario(runtime);
     case 'inbox-promote':
       return runInboxPromoteScenario(runtime);
     case 'authoring-smoke':
@@ -199,6 +226,8 @@ function runQuorumApproveScenario(runtime: TestRuntime): ScenarioResult {
 
 function runCleanupOrphanedScenario(runtime: TestRuntime): ScenarioResult {
   const tasks = new TaskRepository(runtime.db);
+  const subtasks = new SubtaskRepository(runtime.db);
+  const executions = new CraftsmanExecutionRepository(runtime.db);
   const taskId = 'OC-CLEAN';
 
   const draft = tasks.insertTask({
@@ -212,6 +241,25 @@ function runCleanupOrphanedScenario(runtime: TestRuntime): ScenarioResult {
     workflow: { stages: [] },
   });
   tasks.updateTask(taskId, draft.version, { state: 'orphaned' });
+  subtasks.insertSubtask({
+    id: 'cleanup-subtask',
+    task_id: taskId,
+    stage_id: 'develop',
+    title: 'Cleanup execution residue',
+    assignee: 'codex',
+    status: 'failed',
+    craftsman_type: 'codex',
+  });
+  executions.insertExecution({
+    execution_id: 'exec-cleanup-1',
+    task_id: taskId,
+    subtask_id: 'cleanup-subtask',
+    adapter: 'codex',
+    mode: 'task',
+    status: 'failed',
+    session_id: 'tmux:cleanup',
+    finished_at: '2026-03-09T10:03:00.000Z',
+  });
 
   const cleaned = runtime.taskService.cleanupOrphaned(taskId);
 
@@ -223,7 +271,298 @@ function runCleanupOrphanedScenario(runtime: TestRuntime): ScenarioResult {
     events: [],
     completedSubtasks: [],
     cleaned,
+    executions: ['exec-cleanup-1'],
   };
+}
+
+function runArchiveNotifyScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Archive notify scenario',
+    type: 'document',
+    creator: 'archon',
+    description: 'exercise archive notify outbox',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+
+  runtime.taskService.archonApproveTask(task.id, {
+    reviewerId: 'lizeyu',
+    comment: 'outline ok',
+  });
+  runtime.taskService.forceAdvanceTask(task.id, { reason: 'move to write' });
+  subtasks.insertSubtask({
+    id: 'archive-write',
+    task_id: task.id,
+    stage_id: 'write',
+    title: 'Write archive body',
+    assignee: 'glm5',
+  });
+  runtime.taskService.completeSubtask(task.id, {
+    subtaskId: 'archive-write',
+    callerId: 'glm5',
+    output: 'archive ready',
+  });
+  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
+  runtime.taskService.approveTask(task.id, {
+    approverId: 'gpt52',
+    comment: 'approved',
+  });
+  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
+
+  const archives = new ArchiveJobRepository(runtime.db);
+  const job = archives.listArchiveJobs({ taskId: task.id })[0];
+  if (!job) {
+    throw new Error(`Archive job for ${task.id} was not enqueued`);
+  }
+  runtime.dashboardQueryService.notifyArchiveJob(job.id);
+
+  return buildScenarioResult(runtime, 'archive-notify', task.id);
+}
+
+function runArchiveReceiptScenario(runtime: TestRuntime): ScenarioResult {
+  const result = runArchiveNotifyScenario(runtime);
+  writeFileSync(join(runtime.archiveReceiptDir, 'archive-job-1.receipt.json'), JSON.stringify({
+    job_id: 1,
+    status: 'synced',
+    commit_hash: 'archive-receipt-commit',
+  }), 'utf8');
+  runtime.dashboardQueryService.ingestArchiveJobReceipts();
+  return buildScenarioResult(runtime, 'archive-receipt', result.taskId);
+}
+
+function runUnblockRetryScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Unblock retry scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise unblock retry recovery',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'retry-subtask',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Retry me',
+    assignee: 'codex',
+    status: 'failed',
+    output: 'timed out',
+    craftsman_type: 'codex',
+    craftsman_session: 'tmux:retry-subtask',
+    dispatch_status: 'failed',
+    dispatched_at: '2026-03-09T11:00:00.000Z',
+    done_at: '2026-03-09T11:01:00.000Z',
+  });
+
+  runtime.taskService.updateTaskState(task.id, 'blocked', { reason: 'timeout escalation' });
+  runtime.taskService.unblockTask(task.id, { reason: 'retry now', action: 'retry' });
+
+  return buildScenarioResult(runtime, 'unblock-retry', task.id);
+}
+
+function runUnblockSkipScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Unblock skip scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise unblock skip recovery',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'skip-subtask',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Skip me',
+    assignee: 'codex',
+    status: 'failed',
+    output: 'timed out',
+    craftsman_type: 'codex',
+    craftsman_session: 'tmux:skip-subtask',
+    dispatch_status: 'failed',
+    dispatched_at: '2026-03-09T11:00:00.000Z',
+  });
+
+  runtime.taskService.updateTaskState(task.id, 'blocked', { reason: 'human intervention' });
+  runtime.taskService.unblockTask(task.id, { reason: 'skip now', action: 'skip' });
+
+  return buildScenarioResult(runtime, 'unblock-skip', task.id);
+}
+
+function runUnblockReassignScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Unblock reassign scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise unblock reassign recovery',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'reassign-subtask',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Reassign me',
+    assignee: 'codex',
+    status: 'failed',
+    output: 'timed out',
+    craftsman_type: 'codex',
+    craftsman_session: 'tmux:reassign-subtask',
+    dispatch_status: 'failed',
+    dispatched_at: '2026-03-09T11:00:00.000Z',
+  });
+
+  runtime.taskService.updateTaskState(task.id, 'blocked', { reason: 'human intervention' });
+  runtime.taskService.unblockTask(task.id, {
+    reason: 'reassign now',
+    action: 'reassign',
+    assignee: 'claude',
+    craftsman_type: 'claude',
+  });
+
+  return buildScenarioResult(runtime, 'unblock-reassign', task.id);
+}
+
+function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Pause resume deferred callback scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise deferred callback settlement',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: (() => {
+      subtasks.insertSubtask({
+        id: 'resume-subtask',
+        task_id: task.id,
+        stage_id: task.current_stage ?? 'discuss',
+        title: 'Resume after paused callback',
+        assignee: 'codex',
+        status: 'in_progress',
+        craftsman_type: 'codex',
+      });
+      return 'resume-subtask';
+    })(),
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+
+  runtime.taskService.pauseTask(task.id, { reason: 'hold' });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: dispatch.execution.execution_id,
+    status: 'succeeded',
+    session_id: dispatch.execution.session_id,
+    payload: { summary: 'done while paused' },
+    error: null,
+    finished_at: '2026-03-09T12:01:00.000Z',
+  });
+  runtime.taskService.resumeTask(task.id);
+
+  return buildScenarioResult(runtime, 'pause-resume-deferred-callback', task.id, {
+    executions: [dispatch.execution.execution_id],
+  });
+}
+
+function runPauseResumeMissingSessionScenario(runtime: TestRuntime): ScenarioResult {
+  const taskService = new TaskService(runtime.db, {
+    templatesDir: runtime.templatesDir,
+    taskIdGenerator: () => 'OC-DEAD',
+    craftsmanDispatcher: runtime.craftsmanDispatcher,
+    isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+  });
+  const task = taskService.createTask({
+    title: 'Pause resume missing session scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise missing session failure on resume',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  const executions = new CraftsmanExecutionRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'dead-subtask',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Dead session subtask',
+    assignee: 'codex',
+    status: 'in_progress',
+    craftsman_type: 'codex',
+    craftsman_session: 'tmux:dead',
+    dispatch_status: 'running',
+    dispatched_at: '2026-03-09T13:00:00.000Z',
+  });
+  executions.insertExecution({
+    execution_id: 'exec-dead-1',
+    task_id: task.id,
+    subtask_id: 'dead-subtask',
+    adapter: 'codex',
+    mode: 'task',
+    session_id: 'tmux:dead',
+    status: 'running',
+    started_at: '2026-03-09T13:00:00.000Z',
+  });
+
+  taskService.pauseTask(task.id, { reason: 'hold' });
+  taskService.resumeTask(task.id);
+
+  return buildScenarioResult(runtime, 'pause-resume-missing-session', task.id, {
+    executions: ['exec-dead-1'],
+  }, taskService);
+}
+
+function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Cancel active task scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise cancel side effects',
+    priority: 'high',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'draft-plan',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Draft the plan',
+    assignee: 'opus',
+    status: 'not_started',
+  });
+  subtasks.insertSubtask({
+    id: 'run-codex',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Run codex',
+    assignee: 'sonnet',
+    status: 'in_progress',
+    craftsman_type: 'codex',
+  });
+  subtasks.insertSubtask({
+    id: 'keep-done',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Already done',
+    assignee: 'gpt52',
+    status: 'done',
+    output: 'kept',
+    done_at: '2026-03-09T10:00:00.000Z',
+  });
+
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'run-codex',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.cancelTask(task.id, { reason: 'scope dropped' });
+
+  return buildScenarioResult(runtime, 'cancel-active-task', task.id, {
+    executions: [dispatch.execution.execution_id],
+  });
 }
 
 function runInboxPromoteScenario(runtime: TestRuntime): ScenarioResult {
@@ -484,8 +823,9 @@ function buildScenarioResult(
   name: ScenarioName,
   taskId: string,
   overrides: Partial<ScenarioResult> = {},
+  taskService: Pick<TestRuntime['taskService'], 'getTaskStatus'> = runtime.taskService,
 ): ScenarioResult {
-  const status = runtime.taskService.getTaskStatus(taskId);
+  const status = taskService.getTaskStatus(taskId);
   return {
     name,
     taskId,

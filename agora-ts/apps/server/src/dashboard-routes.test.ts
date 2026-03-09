@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createAgoraDatabase,
@@ -11,7 +11,7 @@ import {
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
-import { DashboardQueryService, LiveSessionStore, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -120,13 +120,21 @@ describe('dashboard routes', () => {
   });
 
   it('supports todo CRUD, promote, and archive retry routes', async () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    const dbPath = makeDbPath();
+    const db = createAgoraDatabase({ dbPath });
     runMigrations(db);
     const taskService = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-501',
     });
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const outboxDir = join(dirname(dbPath), 'archive-outbox');
+    const dashboardQueries = new DashboardQueryService(db, {
+      templatesDir,
+      archiveJobNotifier: new FileArchiveJobNotifier({
+        outboxDir,
+        now: () => new Date('2026-03-09T15:00:00.000Z'),
+      }),
+    });
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
 
@@ -171,6 +179,30 @@ describe('dashboard routes', () => {
       url: `/api/archive/jobs/${archiveJob.id}/retry`,
       payload: { reason: 'manual retry' },
     });
+    const notifyArchive = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${archiveJob.id}/notify`,
+    });
+    const markArchiveNotified = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${archiveJob.id}/status`,
+      payload: { status: 'notified' },
+    });
+    const markArchiveFailed = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${archiveJob.id}/status`,
+      payload: { status: 'failed', error_message: 'writer timeout' },
+    });
+    const markArchiveSynced = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${archiveJob.id}/status`,
+      payload: { status: 'synced', commit_hash: 'abc123' },
+    });
+    const rescanArchive = await app.inject({
+      method: 'POST',
+      url: '/api/archive/jobs/scan-stale',
+      payload: { timeout_ms: 1 },
+    });
     const deleteTodo = await app.inject({
       method: 'DELETE',
       url: `/api/todos/${createdTodo.id}`,
@@ -186,6 +218,25 @@ describe('dashboard routes', () => {
     });
     expect(retryArchive.statusCode).toBe(200);
     expect(retryArchive.json()).toMatchObject({ status: 'pending' });
+    expect(notifyArchive.statusCode).toBe(200);
+    expect(notifyArchive.json()).toMatchObject({
+      status: 'notified',
+      payload: {
+        notification_receipt: {
+          notification_id: 'archive-job-1',
+          outbox_path: expect.stringContaining('archive-job-1.json'),
+        },
+      },
+    });
+    expect(readdirSync(outboxDir)).toEqual(['archive-job-1.json']);
+    expect(markArchiveNotified.statusCode).toBe(200);
+    expect(markArchiveNotified.json()).toMatchObject({ status: 'notified' });
+    expect(markArchiveFailed.statusCode).toBe(200);
+    expect(markArchiveFailed.json()).toMatchObject({ status: 'failed' });
+    expect(markArchiveSynced.statusCode).toBe(200);
+    expect(markArchiveSynced.json()).toMatchObject({ status: 'synced', commit_hash: 'abc123' });
+    expect(rescanArchive.statusCode).toBe(200);
+    expect(rescanArchive.json()).toEqual({ failed: 0 });
     expect(deleteTodo.statusCode).toBe(200);
   });
 
@@ -223,6 +274,124 @@ describe('dashboard routes', () => {
     expect(badPatchTodo.statusCode).toBe(400);
     expect(badPromoteTodo.statusCode).toBe(400);
     expect(badArchiveJob.statusCode).toBe(400);
+  });
+
+  it('supports manual stale archive scan', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-503',
+    });
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-SCAN',
+      title: '扫描超时归档',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    const archiveJob = archives.insertArchiveJob({
+      task_id: 'OC-SCAN',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+    archives.updateArchiveJob(archiveJob.id, { status: 'notified' });
+
+    const app = buildApp({ taskService, dashboardQueryService: dashboardQueries });
+    const scan = await app.inject({
+      method: 'POST',
+      url: '/api/archive/jobs/scan-stale',
+      payload: { timeout_ms: 1 },
+    });
+    const archive = await app.inject({
+      method: 'GET',
+      url: `/api/archive/jobs/${archiveJob.id}`,
+    });
+
+    expect(scan.statusCode).toBe(200);
+    expect(scan.json()).toEqual({ failed: 1 });
+    expect(archive.statusCode).toBe(200);
+    expect(archive.json()).toMatchObject({
+      status: 'failed',
+      payload: { error_message: 'archive notify timeout' },
+    });
+  });
+
+  it('supports archive receipt scans that advance jobs to synced', async () => {
+    const dbPath = makeDbPath();
+    const db = createAgoraDatabase({ dbPath });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-504',
+    });
+    const receiptDir = join(dirname(dbPath), 'archive-receipts');
+    const dashboardQueries = new DashboardQueryService(db, {
+      templatesDir,
+      archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({
+        receiptDir,
+      }),
+    });
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-RECEIPT',
+      title: 'Writer 回执归档',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    const archiveJob = archives.insertArchiveJob({
+      task_id: 'OC-RECEIPT',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+    archives.updateArchiveJob(archiveJob.id, { status: 'notified' });
+    mkdirSync(receiptDir, { recursive: true });
+    writeFileSync(join(receiptDir, 'archive-job-1.receipt.json'), JSON.stringify({
+      job_id: 1,
+      status: 'synced',
+      commit_hash: 'abc123',
+    }), 'utf8');
+
+    const app = buildApp({ taskService, dashboardQueryService: dashboardQueries });
+    const scan = await app.inject({
+      method: 'POST',
+      url: '/api/archive/jobs/scan-receipts',
+    });
+    const archive = await app.inject({
+      method: 'GET',
+      url: `/api/archive/jobs/${archiveJob.id}`,
+    });
+
+    expect(scan.statusCode).toBe(200);
+    expect(scan.json()).toEqual({ processed: 1, synced: 1, failed: 0 });
+    expect(archive.statusCode).toBe(200);
+    expect(archive.json()).toMatchObject({
+      status: 'synced',
+      commit_hash: 'abc123',
+      payload: {
+        writer_receipt: {
+          status: 'synced',
+        },
+      },
+    });
+    expect(readdirSync(receiptDir)).toEqual(['archive-job-1.processed.json']);
   });
 
   it('ingests live openclaw sessions and exposes them through dashboard status routes', async () => {

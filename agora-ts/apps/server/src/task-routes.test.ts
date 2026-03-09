@@ -382,6 +382,10 @@ describe('task routes', () => {
         reason: 'reject this stage',
       },
     });
+    const archonRejectStatus = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-206/status',
+    });
     const unblock = await app.inject({
       method: 'POST',
       url: '/api/tasks/OC-207/unblock',
@@ -394,7 +398,201 @@ describe('task routes', () => {
     expect(reject.json()).toMatchObject({ id: 'OC-205', current_stage: 'review' });
     expect(archonReject.statusCode).toBe(200);
     expect(archonReject.json()).toMatchObject({ id: 'OC-206', current_stage: 'review' });
+    expect(archonRejectStatus.statusCode).toBe(200);
+    expect(archonRejectStatus.json().flow_log.map((item: { event: string }) => item.event)).toEqual(
+      expect.arrayContaining(['gate_failed', 'archon_rejected']),
+    );
     expect(unblock.statusCode).toBe(200);
     expect(unblock.json()).toMatchObject({ id: 'OC-207', state: 'active' });
+  });
+
+  it('supports unblock retry through the task route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-208',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    taskService.createTask({
+      title: 'unblock retry route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'retry-route',
+      task_id: 'OC-208',
+      stage_id: 'discuss',
+      title: 'retry through route',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timed out',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:retry-route',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+      done_at: '2026-03-09T11:01:00.000Z',
+    });
+    taskService.updateTaskState('OC-208', 'blocked', { reason: 'timeout escalation' });
+
+    const app = buildApp({ taskService });
+    const unblock = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-208/unblock',
+      payload: {
+        reason: 'retry now',
+        action: 'retry',
+      },
+    });
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-208/status',
+    });
+
+    expect(unblock.statusCode).toBe(200);
+    expect(unblock.json()).toMatchObject({ id: 'OC-208', state: 'active' });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'retry-route',
+          status: 'not_started',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+          dispatched_at: null,
+          done_at: null,
+        }),
+      ]),
+    );
+  });
+
+  it('supports unblock skip through the task route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-209',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    taskService.createTask({
+      title: 'unblock skip route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'skip-route',
+      task_id: 'OC-209',
+      stage_id: 'discuss',
+      title: 'skip through route',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timed out',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:skip-route',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+    });
+    taskService.updateTaskState('OC-209', 'blocked', { reason: 'human intervention' });
+
+    const app = buildApp({ taskService });
+    const unblock = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-209/unblock',
+      payload: {
+        reason: 'skip now',
+        action: 'skip',
+      },
+    });
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-209/status',
+    });
+
+    expect(unblock.statusCode).toBe(200);
+    expect(unblock.json()).toMatchObject({ id: 'OC-209', state: 'active' });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'skip-route',
+          status: 'done',
+          output: 'Skipped by archon: skip now',
+          craftsman_session: null,
+          dispatch_status: 'skipped',
+        }),
+      ]),
+    );
+  });
+
+  it('supports unblock reassign through the task route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-210',
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    taskService.createTask({
+      title: 'unblock reassign route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'reassign-route',
+      task_id: 'OC-210',
+      stage_id: 'discuss',
+      title: 'reassign through route',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timed out',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:reassign-route',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+    });
+    taskService.updateTaskState('OC-210', 'blocked', { reason: 'human intervention' });
+
+    const app = buildApp({ taskService });
+    const unblock = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-210/unblock',
+      payload: {
+        reason: 'reassign now',
+        action: 'reassign',
+        assignee: 'claude',
+        craftsman_type: 'claude',
+      },
+    });
+    const status = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-210/status',
+    });
+
+    expect(unblock.statusCode).toBe(200);
+    expect(unblock.json()).toMatchObject({ id: 'OC-210', state: 'active' });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'reassign-route',
+          status: 'not_started',
+          assignee: 'claude',
+          craftsman_type: 'claude',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+        }),
+      ]),
+    );
   });
 });

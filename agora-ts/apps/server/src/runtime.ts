@@ -1,5 +1,5 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, GeminiCraftsmanAdapter, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, GeminiCraftsmanAdapter, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
@@ -70,6 +70,12 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   });
   const dashboardQueryService = new DashboardQueryService(db, {
     templatesDir,
+    archiveJobNotifier: new FileArchiveJobNotifier({
+      outboxDir: process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR ?? 'archive-outbox',
+    }),
+    archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({
+      receiptDir: process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR ?? 'archive-receipts',
+    }),
     liveSessions: liveSessionStore,
     agentRegistry,
     presenceSource,

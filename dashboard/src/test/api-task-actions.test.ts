@@ -78,6 +78,9 @@ describe('dashboard task action api client', () => {
     await api.resumeTask('OC-001');
     await api.cancelTask('OC-001', '不再需要');
     await api.unblockTask('OC-001', '解除阻塞');
+    await api.unblockTask('OC-001', '重试失败子任务', 'retry');
+    await api.unblockTask('OC-001', '跳过失败子任务', 'skip');
+    await api.unblockTask('OC-001', '重新分配失败子任务', 'reassign', 'claude', 'claude');
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/tasks/OC-001/advance',
@@ -118,6 +121,21 @@ describe('dashboard task action api client', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/tasks/OC-001/unblock',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: '解除阻塞' }) }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tasks/OC-001/unblock',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: '重试失败子任务', action: 'retry' }) }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tasks/OC-001/unblock',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: '跳过失败子任务', action: 'skip' }) }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tasks/OC-001/unblock',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reason: '重新分配失败子任务', action: 'reassign', assignee: 'claude', craftsman_type: 'claude' }),
+      }),
     );
   });
 

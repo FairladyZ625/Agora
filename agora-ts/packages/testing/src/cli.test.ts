@@ -24,6 +24,14 @@ describe('agora-ts scenario cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('happy-path');
     expect(stdout.value).toContain('cleanup-orphaned');
+    expect(stdout.value).toContain('archive-notify');
+    expect(stdout.value).toContain('archive-receipt');
+    expect(stdout.value).toContain('unblock-retry');
+    expect(stdout.value).toContain('unblock-skip');
+    expect(stdout.value).toContain('unblock-reassign');
+    expect(stdout.value).toContain('pause-resume-deferred-callback');
+    expect(stdout.value).toContain('pause-resume-missing-session');
+    expect(stdout.value).toContain('cancel-active-task');
     expect(stdout.value).toContain('inbox-promote');
     expect(stdout.value).toContain('authoring-smoke');
   });
@@ -51,9 +59,20 @@ describe('agora-ts scenario cli', () => {
     expect(exitCode).toBe(0);
     expect(stderr.value).toBe('');
     const results = JSON.parse(stdout.value);
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(18);
     expect(results.map((item: { name: string }) => item.name)).toEqual(
-      expect.arrayContaining(['inbox-promote', 'authoring-smoke']),
+      expect.arrayContaining([
+        'archive-notify',
+        'archive-receipt',
+        'unblock-retry',
+        'unblock-skip',
+        'unblock-reassign',
+        'pause-resume-deferred-callback',
+        'pause-resume-missing-session',
+        'cancel-active-task',
+        'inbox-promote',
+        'authoring-smoke',
+      ]),
     );
   });
 });

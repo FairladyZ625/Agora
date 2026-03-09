@@ -131,6 +131,58 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('rejects craftsmen dispatch for paused tasks', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-route-paused-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T11:00:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-981',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const app = buildApp({ taskService });
+
+    taskService.createTask({
+      title: 'paused craftsman route test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex-paused',
+      task_id: 'OC-981',
+      stage_id: 'discuss',
+      title: 'run codex later',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+    taskService.pauseTask('OC-981', { reason: 'hold' });
+
+    const dispatchResponse = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/dispatch',
+      payload: {
+        task_id: 'OC-981',
+        subtask_id: 'sub-codex-paused',
+        adapter: 'codex',
+        mode: 'task',
+        workdir: '/tmp/codex',
+      },
+    });
+
+    expect(dispatchResponse.statusCode).toBe(400);
+    expect(dispatchResponse.json()).toEqual({
+      message: "Task OC-981 is in state 'paused', expected 'active'",
+    });
+  });
+
   it('exposes tmux runtime status, doctor, send, task, and tail routes', async () => {
     const app = buildApp({
       tmuxRuntimeService: {

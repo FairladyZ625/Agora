@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { FileArchiveJobNotifier, FileArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
 import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
@@ -159,6 +160,248 @@ describe('dashboard query service', () => {
       status: 'pending',
       commit_hash: null,
       completed_at: null,
+    });
+  });
+
+  it('updates archive job statuses through the dashboard query service', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+    const queries = new DashboardQueryService(db, { templatesDir });
+
+    tasks.insertTask({
+      id: 'OC-403',
+      title: '归档状态推进',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-403',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+
+    const notified = queries.updateArchiveJob(job.id, { status: 'notified' });
+    const failed = queries.updateArchiveJob(job.id, { status: 'failed', error_message: 'writer timeout' });
+    const synced = queries.updateArchiveJob(job.id, { status: 'synced', commit_hash: 'abc123' });
+
+    expect(notified.status).toBe('notified');
+    expect(failed).toMatchObject({
+      status: 'failed',
+      payload: { error_message: 'writer timeout' },
+    });
+    expect(synced).toMatchObject({
+      status: 'synced',
+      commit_hash: 'abc123',
+    });
+  });
+
+  it('fails stale notified archive jobs through the dashboard query service scan', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+    const queries = new DashboardQueryService(db, { templatesDir });
+
+    tasks.insertTask({
+      id: 'OC-404',
+      title: '归档超时扫描',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-404',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+    queries.updateArchiveJob(job.id, { status: 'notified' });
+
+    const failed = queries.failStaleArchiveJobs({ timeoutMs: 1, now: new Date(Date.now() + 10) });
+    const fetched = queries.getArchiveJob(job.id);
+
+    expect(failed).toEqual({ failed: 1 });
+    expect(fetched).toMatchObject({
+      status: 'failed',
+      payload: { error_message: 'archive notify timeout', notified_at: expect.any(String) },
+    });
+  });
+
+  it('notifies a pending archive job through the writer outbox notifier', () => {
+    const dbPath = makeDbPath();
+    const db = createAgoraDatabase({ dbPath });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+    const outboxDir = join(dirname(dbPath), 'archive-outbox');
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      archiveJobNotifier: new FileArchiveJobNotifier({
+        outboxDir,
+        now: () => new Date('2026-03-09T14:00:00.000Z'),
+      }),
+    });
+
+    tasks.insertTask({
+      id: 'OC-405',
+      title: '归档通知',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-405',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: { task_id: 'OC-405' },
+      writer_agent: 'writer-agent',
+    });
+
+    const notified = queries.notifyArchiveJob(job.id);
+    const files = readdirSync(outboxDir);
+    const outboxPayload = JSON.parse(readFileSync(join(outboxDir, files[0]!), 'utf8')) as Record<string, unknown>;
+
+    expect(notified).toMatchObject({
+      status: 'notified',
+      payload: {
+        task_id: 'OC-405',
+        notified_at: expect.any(String),
+        notification_receipt: {
+          notification_id: 'archive-job-1',
+          outbox_path: expect.stringContaining('archive-job-1.json'),
+        },
+      },
+    });
+    expect(files).toEqual(['archive-job-1.json']);
+    expect(outboxPayload).toMatchObject({
+      notification_id: 'archive-job-1',
+      job_id: 1,
+      task_id: 'OC-405',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      notified_at: '2026-03-09T14:00:00.000Z',
+    });
+  });
+
+  it('ingests writer receipts and advances notified archive jobs to synced', () => {
+    const dbPath = makeDbPath();
+    const db = createAgoraDatabase({ dbPath });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+    const receiptDir = join(dirname(dbPath), 'archive-receipts');
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({
+        receiptDir,
+      }),
+    });
+
+    tasks.insertTask({
+      id: 'OC-406',
+      title: '归档回执',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-406',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+    archives.updateArchiveJob(job.id, { status: 'notified' });
+    mkdirSync(receiptDir, { recursive: true });
+    writeFileSync(join(receiptDir, 'archive-job-1.receipt.json'), JSON.stringify({
+      job_id: 1,
+      status: 'synced',
+      commit_hash: 'deadbeef',
+    }), 'utf8');
+
+    const result = queries.ingestArchiveJobReceipts();
+    const updated = queries.getArchiveJob(job.id);
+
+    expect(result).toEqual({ processed: 1, synced: 1, failed: 0 });
+    expect(updated).toMatchObject({
+      status: 'synced',
+      commit_hash: 'deadbeef',
+      payload: {
+        writer_receipt: {
+          status: 'synced',
+          processed_path: expect.stringContaining('archive-job-1.processed.json'),
+        },
+      },
+    });
+    expect(readdirSync(receiptDir)).toEqual(['archive-job-1.processed.json']);
+  });
+
+  it('surfaces archive jobs that were auto-enqueued by task completion', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-402',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const queries = new DashboardQueryService(db, { templatesDir });
+
+    service.createTask({
+      title: '归档自动入队',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    service.archonApproveTask('OC-402', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    service.forceAdvanceTask('OC-402', { reason: 'move to write' });
+    subtasks.insertSubtask({
+      id: 'write-doc',
+      task_id: 'OC-402',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+    service.completeSubtask('OC-402', {
+      subtaskId: 'write-doc',
+      callerId: 'glm5',
+      output: '草稿完成',
+    });
+    service.advanceTask('OC-402', { callerId: 'archon' });
+    service.approveTask('OC-402', {
+      approverId: 'gpt52',
+      comment: 'ship it',
+    });
+    service.advanceTask('OC-402', { callerId: 'archon' });
+
+    const jobs = queries.listArchiveJobs({ taskId: 'OC-402' });
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      task_id: 'OC-402',
+      task_title: '归档自动入队',
+      status: 'pending',
     });
   });
 

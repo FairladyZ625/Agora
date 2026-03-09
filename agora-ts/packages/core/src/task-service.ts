@@ -10,6 +10,7 @@ import type {
   WorkflowDto,
 } from '@agora-ts/contracts';
 import {
+  ArchiveJobRepository,
   CraftsmanExecutionRepository,
   FlowLogRepository,
   ProgressLogRepository,
@@ -26,6 +27,9 @@ import { GateService } from './gate-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
+
+const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed']);
+const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 
 type TaskTemplate = {
   name: string;
@@ -46,6 +50,7 @@ export interface TaskServiceOptions {
   archonUsers?: string[];
   allowAgents?: Record<string, { canCall: string[]; canAdvance: boolean }>;
   craftsmanDispatcher?: CraftsmanDispatcher;
+  isCraftsmanSessionAlive?: (sessionId: string) => boolean;
 }
 
 export interface AdvanceTaskOptions {
@@ -86,6 +91,9 @@ export interface ConfirmTaskOptions {
 
 export interface UpdateTaskStateOptions {
   reason: string;
+  action?: 'retry' | 'skip' | 'reassign';
+  assignee?: string;
+  craftsman_type?: string;
 }
 
 function defaultTemplatesDir() {
@@ -102,12 +110,14 @@ export class TaskService {
   private readonly progressLogRepository: ProgressLogRepository;
   private readonly subtaskRepository: SubtaskRepository;
   private readonly todoRepository: TodoRepository;
+  private readonly archiveJobRepository: ArchiveJobRepository;
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
+  private readonly isCraftsmanSessionAlive: ((sessionId: string) => boolean) | undefined;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
 
@@ -120,6 +130,7 @@ export class TaskService {
     this.progressLogRepository = new ProgressLogRepository(db);
     this.subtaskRepository = new SubtaskRepository(db);
     this.todoRepository = new TodoRepository(db);
+    this.archiveJobRepository = new ArchiveJobRepository(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
@@ -128,6 +139,7 @@ export class TaskService {
     this.gateService = new GateService(db, this.permissions);
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
+    this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
   }
@@ -235,6 +247,7 @@ export class TaskService {
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
       });
+      this.ensureArchiveJobForTask(taskId);
       this.flowLogRepository.insertFlowLog({
         task_id: taskId,
         kind: 'flow',
@@ -325,6 +338,14 @@ export class TaskService {
     this.gateService.recordArchonReview(taskId, stage.id, 'approved', options.reviewerId, options.comment ?? '');
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
+      kind: 'flow',
+      event: 'gate_passed',
+      stage_id: stage.id,
+      detail: { gate_type: 'archon_review', passed: true, comment: options.comment ?? '' },
+      actor: options.reviewerId,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
       kind: 'archon',
       event: 'archon_approved',
       stage_id: stage.id,
@@ -339,6 +360,14 @@ export class TaskService {
     const stage = this.getCurrentStageOrThrow(task);
     this.gateService.routeGateCommand(task, stage, 'archon-reject', options.reviewerId);
     this.gateService.recordArchonReview(taskId, stage.id, 'rejected', options.reviewerId, options.reason ?? '');
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'flow',
+      event: 'gate_failed',
+      stage_id: stage.id,
+      detail: { gate_type: 'archon_review', passed: false, reason: options.reason ?? '' },
+      actor: options.reviewerId,
+    });
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
       kind: 'archon',
@@ -384,6 +413,9 @@ export class TaskService {
       throw new Error('Craftsman dispatcher is not configured');
     }
     const task = this.getTaskOrThrow(input.task_id);
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${input.task_id} is in state '${task.state}', expected 'active'`);
+    }
     const subtask = this.subtaskRepository.listByTask(input.task_id).find((item) => item.id === input.subtask_id);
     if (!subtask) {
       throw new NotFoundError(`Subtask ${input.subtask_id} not found in task ${input.task_id}`);
@@ -435,6 +467,7 @@ export class TaskService {
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
       });
+      this.ensureArchiveJobForTask(taskId);
       this.flowLogRepository.insertFlowLog({
         task_id: taskId,
         kind: 'flow',
@@ -509,21 +542,58 @@ export class TaskService {
     if (!this.stateMachine.validateTransition(task.state as TaskState, newState as TaskState)) {
       throw new Error(`Invalid transition: ${task.state} -> ${newState}`);
     }
-    const updated = this.taskRepository.updateTask(taskId, task.version, {
-      state: newState,
-      error_detail: newState === TaskState.ACTIVE || newState === TaskState.CANCELLED ? null : task.error_detail,
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'state_changed',
-      stage_id: task.current_stage,
-      from_state: task.state,
-      to_state: newState,
-      detail: options.reason ? { reason: options.reason } : undefined,
-      actor: 'system',
-    });
-    return updated;
+    const schedulerSnapshot = this.buildSchedulerSnapshot(task, options.reason);
+    const errorDetail = newState === TaskState.ACTIVE ? null : (options.reason ?? task.error_detail);
+    const actionEvent = this.getStateActionEvent(task.state as TaskState, newState as TaskState);
+
+    this.db.exec('BEGIN');
+    try {
+      const actionDetail = this.applyStateTransitionSideEffects(task, newState as TaskState, options);
+      const updated = this.taskRepository.updateTask(taskId, task.version, {
+        state: newState,
+        scheduler_snapshot: schedulerSnapshot,
+        error_detail: errorDetail,
+      });
+
+      if (newState === TaskState.CANCELLED) {
+        this.cancelOpenWork(taskId, options.reason);
+      }
+      if (newState === TaskState.DONE) {
+        this.ensureArchiveJobForTask(taskId);
+      }
+
+      this.flowLogRepository.insertFlowLog({
+        task_id: taskId,
+        kind: 'flow',
+        event: 'state_changed',
+        stage_id: task.current_stage,
+        from_state: task.state,
+        to_state: newState,
+        detail: this.buildStateChangeDetail(options, actionDetail),
+        actor: 'system',
+      });
+      if (actionEvent) {
+        this.flowLogRepository.insertFlowLog({
+          task_id: taskId,
+          kind: 'flow',
+          event: actionEvent,
+          stage_id: task.current_stage,
+          from_state: task.state,
+          to_state: newState,
+          detail: this.buildStateChangeDetail(options, actionDetail),
+          actor: 'system',
+        });
+      }
+      if (task.state === TaskState.PAUSED && newState === TaskState.ACTIVE) {
+        this.craftsmanCallbacks.resumeDeferredCallbacks(taskId);
+        this.failMissingCraftsmanSessionsOnResume(taskId);
+      }
+      this.db.exec('COMMIT');
+      return updated;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   promoteTodo(todoId: number, options: PromoteTodoRequestDto) {
@@ -557,6 +627,7 @@ export class TaskService {
       const orphanedTaskId = row.id;
       this.db.exec('BEGIN');
       try {
+        this.db.prepare('DELETE FROM craftsman_executions WHERE task_id = ?').run(orphanedTaskId);
         this.db.prepare('DELETE FROM subtasks WHERE task_id = ?').run(orphanedTaskId);
         this.db.prepare('DELETE FROM flow_log WHERE task_id = ?').run(orphanedTaskId);
         this.db.prepare('DELETE FROM progress_log WHERE task_id = ?').run(orphanedTaskId);
@@ -619,6 +690,288 @@ export class TaskService {
     return typeof raw === 'string' && raw.length > 0 ? raw : 'reviewer';
   }
 
+  private buildSchedulerSnapshot(task: StoredTask, reason: string) {
+    const pendingSubtasks = this.subtaskRepository
+      .listByTask(task.id)
+      .filter((subtask) => !TERMINAL_SUBTASK_STATES.has(subtask.status))
+      .map((subtask) => ({
+        id: subtask.id,
+        stage_id: subtask.stage_id,
+        status: subtask.status,
+        dispatch_status: subtask.dispatch_status,
+      }));
+
+    const inflightExecutions = pendingSubtasks.flatMap((subtask) => this.craftsmanExecutions
+      .listBySubtask(task.id, subtask.id)
+      .filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
+      .map((execution) => ({
+        execution_id: execution.execution_id,
+        subtask_id: execution.subtask_id,
+        status: execution.status,
+        adapter: execution.adapter,
+      })));
+
+    return {
+      captured_at: new Date().toISOString(),
+      reason,
+      state: task.state,
+      current_stage: task.current_stage,
+      error_detail: task.error_detail,
+      pending_subtasks: pendingSubtasks,
+      inflight_executions: inflightExecutions,
+    };
+  }
+
+  private applyStateTransitionSideEffects(task: StoredTask, newState: TaskState, options: UpdateTaskStateOptions) {
+    if (task.state === TaskState.BLOCKED && newState === TaskState.ACTIVE) {
+      if (options.action === 'retry') {
+        return {
+          action: 'retry',
+          retried_subtasks: this.retryFailedSubtasks(task),
+        };
+      }
+      if (options.action === 'skip') {
+        return {
+          action: 'skip',
+          skipped_subtasks: this.skipFailedSubtasks(task, options.reason),
+        };
+      }
+      if (options.action === 'reassign') {
+        if (!options.assignee) {
+          throw new Error('unblock action=reassign requires assignee');
+        }
+        return {
+          action: 'reassign',
+          reassigned_subtasks: this.reassignFailedSubtasks(task, options.assignee, options.craftsman_type),
+          assignee: options.assignee,
+          craftsman_type: options.craftsman_type ?? null,
+        };
+      }
+    }
+    return options.action ? { action: options.action } : undefined;
+  }
+
+  private failMissingCraftsmanSessionsOnResume(taskId: string) {
+    if (!this.isCraftsmanSessionAlive) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    for (const subtask of this.subtaskRepository.listByTask(taskId)) {
+      if (TERMINAL_SUBTASK_STATES.has(subtask.status) || !subtask.craftsman_session) {
+        continue;
+      }
+      if (!this.isSubtaskRunning(subtask.status, subtask.dispatch_status)) {
+        continue;
+      }
+      if (this.isCraftsmanSessionAlive(subtask.craftsman_session)) {
+        continue;
+      }
+
+      const error = `Craftsman session not alive on resume: ${subtask.craftsman_session}`;
+      const executionIds = this.craftsmanExecutions
+        .listBySubtask(taskId, subtask.id)
+        .filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
+        .map((execution) => {
+          this.craftsmanExecutions.updateExecution(execution.execution_id, {
+            status: 'failed',
+            error,
+            finished_at: now,
+          });
+          return execution.execution_id;
+        });
+
+      this.subtaskRepository.updateSubtask(taskId, subtask.id, {
+        status: 'failed',
+        output: error,
+        dispatch_status: 'failed',
+        done_at: now,
+      });
+      this.flowLogRepository.insertFlowLog({
+        task_id: taskId,
+        kind: 'flow',
+        event: 'craftsman_session_missing_on_resume',
+        stage_id: subtask.stage_id,
+        detail: {
+          subtask_id: subtask.id,
+          session_id: subtask.craftsman_session,
+          execution_ids: executionIds,
+          reason: error,
+        },
+        actor: 'system',
+      });
+    }
+  }
+
+  private isSubtaskRunning(status: string, dispatchStatus: string | null) {
+    return status === 'in_progress' || dispatchStatus === 'running';
+  }
+
+  private buildStateChangeDetail(options: UpdateTaskStateOptions, actionDetail?: Record<string, unknown>) {
+    const detail: Record<string, unknown> = {};
+    if (options.reason) {
+      detail.reason = options.reason;
+    }
+    if (actionDetail) {
+      Object.assign(detail, actionDetail);
+    }
+    return Object.keys(detail).length > 0 ? detail : undefined;
+  }
+
+  private cancelOpenWork(taskId: string, reason: string) {
+    const message = `Task cancelled: ${reason}`;
+    const now = new Date().toISOString();
+    const subtasks = this.subtaskRepository.listByTask(taskId);
+
+    for (const subtask of subtasks) {
+      if (TERMINAL_SUBTASK_STATES.has(subtask.status)) {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(taskId, subtask.id, {
+        status: 'failed',
+        output: message,
+        dispatch_status: subtask.dispatch_status && !TERMINAL_EXECUTION_STATUSES.has(subtask.dispatch_status)
+          ? 'failed'
+          : subtask.dispatch_status,
+        done_at: now,
+      });
+    }
+
+    for (const subtask of subtasks) {
+      for (const execution of this.craftsmanExecutions.listBySubtask(taskId, subtask.id)) {
+        if (TERMINAL_EXECUTION_STATUSES.has(execution.status)) {
+          continue;
+        }
+        this.craftsmanExecutions.updateExecution(execution.execution_id, {
+          status: 'cancelled',
+          error: message,
+          finished_at: now,
+        });
+      }
+    }
+  }
+
+  private retryFailedSubtasks(task: StoredTask) {
+    if (!task.current_stage) {
+      return [] as string[];
+    }
+
+    const retried: string[] = [];
+    for (const subtask of this.subtaskRepository.listByTask(task.id)) {
+      if (subtask.stage_id !== task.current_stage || subtask.status !== 'failed') {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(task.id, subtask.id, {
+        status: 'not_started',
+        output: null,
+        craftsman_session: null,
+        dispatch_status: null,
+        dispatched_at: null,
+        done_at: null,
+      });
+      retried.push(subtask.id);
+    }
+    return retried;
+  }
+
+  private skipFailedSubtasks(task: StoredTask, reason: string) {
+    if (!task.current_stage) {
+      return [] as string[];
+    }
+
+    const skipped: string[] = [];
+    const output = reason ? `Skipped by archon: ${reason}` : 'Skipped by archon';
+    const now = new Date().toISOString();
+
+    for (const subtask of this.subtaskRepository.listByTask(task.id)) {
+      if (subtask.stage_id !== task.current_stage || subtask.status !== 'failed') {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(task.id, subtask.id, {
+        status: 'done',
+        output,
+        craftsman_session: null,
+        dispatch_status: 'skipped',
+        done_at: now,
+      });
+      skipped.push(subtask.id);
+    }
+    return skipped;
+  }
+
+  private reassignFailedSubtasks(task: StoredTask, assignee: string, craftsmanType?: string) {
+    if (!task.current_stage) {
+      return [] as string[];
+    }
+
+    const reassigned: string[] = [];
+    for (const subtask of this.subtaskRepository.listByTask(task.id)) {
+      if (subtask.stage_id !== task.current_stage || subtask.status !== 'failed') {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(task.id, subtask.id, {
+        status: 'not_started',
+        output: null,
+        craftsman_type: craftsmanType ?? subtask.craftsman_type,
+        craftsman_session: null,
+        dispatch_status: null,
+        dispatched_at: null,
+        done_at: null,
+      });
+      this.db.prepare(`
+        UPDATE subtasks
+        SET assignee = ?
+        WHERE task_id = ? AND id = ?
+      `).run(assignee, task.id, subtask.id);
+      reassigned.push(subtask.id);
+    }
+    return reassigned;
+  }
+
+  private ensureArchiveJobForTask(taskId: string) {
+    const existing = this.archiveJobRepository.listArchiveJobs({ taskId });
+    if (existing.length > 0) {
+      return existing[0]!;
+    }
+
+    const task = this.getTaskOrThrow(taskId);
+    return this.archiveJobRepository.insertArchiveJob({
+      task_id: task.id,
+      status: 'pending',
+      target_path: this.buildArchiveTargetPath(task),
+      payload: {
+        task_id: task.id,
+        title: task.title,
+        type: task.type,
+        state: task.state,
+      },
+      writer_agent: 'writer-agent',
+    });
+  }
+
+  private buildArchiveTargetPath(task: StoredTask) {
+    return `ZeYu-AI-Brain/agora/${task.id}-${slugify(task.title)}.md`;
+  }
+
+  private getStateActionEvent(fromState: TaskState, toState: TaskState): string | null {
+    if (toState === TaskState.PAUSED) {
+      return 'paused';
+    }
+    if (toState === TaskState.BLOCKED) {
+      return 'blocked';
+    }
+    if (toState === TaskState.CANCELLED) {
+      return 'cancelled';
+    }
+    if (toState === TaskState.ACTIVE && fromState === TaskState.PAUSED) {
+      return 'resumed';
+    }
+    if (toState === TaskState.ACTIVE && fromState === TaskState.BLOCKED) {
+      return 'unblocked';
+    }
+    return null;
+  }
+
   private enterStage(taskId: string, stageId: string) {
     this.db.prepare(`
       INSERT INTO stage_history (task_id, stage_id)
@@ -639,4 +992,11 @@ export class TaskService {
       )
     `).run(reason, taskId, stageId);
   }
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'task';
 }

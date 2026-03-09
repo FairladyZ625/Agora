@@ -2,7 +2,9 @@ export type AgentPresenceState = 'online' | 'offline' | 'disconnected' | 'stale'
 
 export interface RegisteredAgent {
   id: string;
-  source: string;
+  host_framework: string | null;
+  channel_providers: string[];
+  inventory_sources: string[];
   primary_model: string | null;
   workspace_dir: string | null;
 }

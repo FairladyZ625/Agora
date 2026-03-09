@@ -9,7 +9,9 @@ export interface OpenClawAgentRegistryOptions {
 
 type RegistryAccumulator = {
   id: string;
-  sources: Set<string>;
+  host_framework: string | null;
+  channel_providers: Set<string>;
+  inventory_sources: Set<string>;
   primary_model: string | null;
   workspace_dir: string | null;
 };
@@ -51,20 +53,14 @@ export class OpenClawAgentRegistry implements AgentInventorySource {
     return Array.from(registry.values())
       .map((item) => ({
         id: item.id,
-        source: normalizeSourceLabel(item.sources),
+        host_framework: item.host_framework,
+        channel_providers: Array.from(item.channel_providers).sort(),
+        inventory_sources: Array.from(item.inventory_sources).sort(),
         primary_model: item.primary_model,
         workspace_dir: item.workspace_dir,
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   }
-}
-
-function normalizeSourceLabel(sources: Set<string>) {
-  const items = Array.from(sources);
-  if (items.includes('openclaw') && items.includes('discord')) {
-    return 'openclaw+discord';
-  }
-  return items.sort().join('+');
 }
 
 function getAgentList(raw: Record<string, unknown>) {
@@ -104,11 +100,19 @@ function upsertRegistryEntry(
 ) {
   const current = registry.get(id) ?? {
     id,
-    sources: new Set<string>(),
+    host_framework: null,
+    channel_providers: new Set<string>(),
+    inventory_sources: new Set<string>(),
     primary_model: null,
     workspace_dir: null,
   };
-  current.sources.add(source);
+  current.inventory_sources.add(source);
+  if (source === 'openclaw' && !current.host_framework) {
+    current.host_framework = 'openclaw';
+  }
+  if (source !== 'openclaw') {
+    current.channel_providers.add(source);
+  }
   current.primary_model = current.primary_model ?? primaryModel;
   current.workspace_dir = current.workspace_dir ?? workspaceDir;
   registry.set(id, current);

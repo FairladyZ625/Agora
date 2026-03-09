@@ -14,6 +14,7 @@ import type { TodoFilter } from '@/types/dashboard';
 import {
   agentsStatusSchema,
   archiveJobSchema,
+  archiveJobReceiptScanResponseSchema,
   healthResponseSchema,
   promoteTodoResultSchema,
   taskSchema,
@@ -178,10 +179,21 @@ export function cancelTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
   });
 }
 
-export function unblockTask(taskId: string, reason = ''): Promise<ApiTaskDto> {
+export function unblockTask(
+  taskId: string,
+  reason = '',
+  action?: 'retry' | 'skip' | 'reassign',
+  assignee?: string,
+  craftsmanType?: string,
+): Promise<ApiTaskDto> {
   return request<ApiTaskDto>(`/tasks/${taskId}/unblock`, taskSchema, {
     method: 'POST',
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify(action ? {
+      reason,
+      action,
+      ...(assignee ? { assignee } : {}),
+      ...(craftsmanType ? { craftsman_type: craftsmanType } : {}),
+    } : { reason }),
   });
 }
 
@@ -243,6 +255,44 @@ export function retryArchiveJob(jobId: number, reason = ''): Promise<ApiArchiveJ
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+export function notifyArchiveJob(jobId: number): Promise<ApiArchiveJobDto> {
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/notify`, archiveJobSchema, {
+    method: 'POST',
+  });
+}
+
+export function updateArchiveJobStatus(
+  jobId: number,
+  status: 'notified' | 'synced' | 'failed',
+  options: { commitHash?: string; errorMessage?: string } = {},
+): Promise<ApiArchiveJobDto> {
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/status`, archiveJobSchema, {
+    method: 'POST',
+    body: JSON.stringify({
+      status,
+      ...(options.commitHash ? { commit_hash: options.commitHash } : {}),
+      ...(options.errorMessage ? { error_message: options.errorMessage } : {}),
+    }),
+  });
+}
+
+export function scanStaleArchiveJobs(timeoutMs: number): Promise<{ failed: number }> {
+  return request<{ failed: number }>(`/archive/jobs/scan-stale`, z.object({ failed: z.number().int().nonnegative() }), {
+    method: 'POST',
+    body: JSON.stringify({ timeout_ms: timeoutMs }),
+  });
+}
+
+export function scanArchiveJobReceipts(): Promise<{ processed: number; synced: number; failed: number }> {
+  return request<{ processed: number; synced: number; failed: number }>(
+    `/archive/jobs/scan-receipts`,
+    archiveJobReceiptScanResponseSchema,
+    {
+      method: 'POST',
+    },
+  );
 }
 
 export function listTodos(status?: Exclude<TodoFilter, 'all'>): Promise<ApiTodoDto[]> {

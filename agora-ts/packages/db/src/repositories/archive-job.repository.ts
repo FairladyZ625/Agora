@@ -83,6 +83,67 @@ export class ArchiveJobRepository {
     return this.getArchiveJob(jobId)!;
   }
 
+  updateArchiveJob(jobId: number, updates: {
+    status: 'notified' | 'synced' | 'failed';
+    commit_hash?: string;
+    error_message?: string;
+    payload_patch?: Record<string, unknown>;
+  }): StoredArchiveJob {
+    const existing = this.getArchiveJob(jobId);
+    if (!existing) {
+      throw new Error(`Archive job ${jobId} not found`);
+    }
+
+    const nextPayload = { ...existing.payload };
+    if (updates.error_message !== undefined) {
+      nextPayload.error_message = updates.error_message;
+    }
+    if (updates.payload_patch !== undefined) {
+      Object.assign(nextPayload, updates.payload_patch);
+    }
+    if (updates.status === 'notified') {
+      nextPayload.notified_at = new Date().toISOString();
+    }
+
+    const completedAt = updates.status === 'synced' || updates.status === 'failed'
+      ? new Date().toISOString()
+      : null;
+
+    this.db.prepare(`
+      UPDATE archive_jobs
+      SET status = ?, commit_hash = ?, payload = ?, completed_at = ?
+      WHERE id = ?
+    `).run(
+      updates.status,
+      updates.commit_hash ?? null,
+      stringifyJsonValue(nextPayload),
+      completedAt,
+      jobId,
+    );
+
+    return this.getArchiveJob(jobId)!;
+  }
+
+  failStaleNotifiedJobs(options: { timeoutMs: number; now?: Date }): number {
+    const now = options.now ?? new Date();
+    let count = 0;
+    for (const job of this.listArchiveJobs({ status: 'notified' })) {
+      const notifiedAt = typeof job.payload.notified_at === 'string' ? Date.parse(job.payload.notified_at) : Number.NaN;
+      if (!Number.isFinite(notifiedAt)) {
+        continue;
+      }
+      if (now.getTime() - notifiedAt < options.timeoutMs) {
+        continue;
+      }
+      this.updateArchiveJob(job.id, {
+        status: 'failed',
+        error_message: 'archive notify timeout',
+      });
+      count += 1;
+    }
+    return count;
+  }
+
   private parseArchiveRow(row: Record<string, unknown>): StoredArchiveJob {
     return {
       id: Number(row.id),

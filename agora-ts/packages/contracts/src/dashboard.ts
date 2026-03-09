@@ -23,9 +23,10 @@ export const agentStatusItemSchema = z.object({
   load: z.number().int().nonnegative(),
   last_active_at: z.string().nullable(),
   last_seen_at: z.string().nullable(),
-  provider: z.string().nullable().optional(),
+  channel_providers: z.array(z.string()),
+  host_framework: z.string().nullable().optional(),
+  inventory_sources: z.array(z.string()),
   account_id: z.string().nullable().optional(),
-  source: z.string().nullable().optional(),
   primary_model: z.string().nullable().optional(),
   workspace_dir: z.string().nullable().optional(),
 });
@@ -69,7 +70,7 @@ export const tmuxRuntimeSchema = z.object({
   panes: z.array(tmuxRuntimePaneSchema),
 });
 
-export const agentProviderAffectedAgentSchema = z.object({
+export const agentAxisAffectedAgentSchema = z.object({
   id: z.string(),
   status: z.string(),
   presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
@@ -78,7 +79,7 @@ export const agentProviderAffectedAgentSchema = z.object({
   account_id: z.string().nullable(),
 });
 
-export const agentProviderHistoryEventSchema = z.object({
+export const agentChannelHistoryEventSchema = z.object({
   occurred_at: z.string(),
   agent_id: z.string(),
   account_id: z.string().nullable(),
@@ -86,9 +87,9 @@ export const agentProviderHistoryEventSchema = z.object({
   reason: z.string().nullable(),
 });
 
-export const agentProviderSignalEventSchema = z.object({
+export const agentChannelSignalEventSchema = z.object({
   occurred_at: z.string(),
-  provider: z.string(),
+  channel: z.string(),
   agent_id: z.string().nullable(),
   account_id: z.string().nullable(),
   kind: z.enum([
@@ -104,14 +105,14 @@ export const agentProviderSignalEventSchema = z.object({
   detail: z.string().nullable(),
 });
 
-export const agentProviderSignalCountsSchema = z.object({
+export const agentChannelSignalCountsSchema = z.object({
   ready_events: z.number().int().nonnegative(),
   restart_events: z.number().int().nonnegative(),
   transport_errors: z.number().int().nonnegative(),
 });
 
-export const agentProviderSummarySchema = z.object({
-  provider: z.string(),
+export const agentChannelSummarySchema = z.object({
+  channel: z.string(),
   total_agents: z.number().int().nonnegative(),
   busy_agents: z.number().int().nonnegative(),
   online_agents: z.number().int().nonnegative(),
@@ -121,19 +122,34 @@ export const agentProviderSummarySchema = z.object({
   overall_presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
   last_seen_at: z.string().nullable(),
   presence_reason: z.string().nullable(),
-  affected_agents: z.array(agentProviderAffectedAgentSchema),
-  history: z.array(agentProviderHistoryEventSchema),
+  affected_agents: z.array(agentAxisAffectedAgentSchema),
+  history: z.array(agentChannelHistoryEventSchema),
   signal_status: z.enum(['healthy', 'recovering', 'degraded', 'unknown']),
   last_signal_at: z.string().nullable(),
-  signal_counts: agentProviderSignalCountsSchema,
-  signals: z.array(agentProviderSignalEventSchema),
+  signal_counts: agentChannelSignalCountsSchema,
+  signals: z.array(agentChannelSignalEventSchema),
+});
+
+export const agentHostSummarySchema = z.object({
+  host: z.string(),
+  total_agents: z.number().int().nonnegative(),
+  busy_agents: z.number().int().nonnegative(),
+  online_agents: z.number().int().nonnegative(),
+  stale_agents: z.number().int().nonnegative(),
+  disconnected_agents: z.number().int().nonnegative(),
+  offline_agents: z.number().int().nonnegative(),
+  overall_presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
+  last_seen_at: z.string().nullable(),
+  presence_reason: z.string().nullable(),
+  affected_agents: z.array(agentAxisAffectedAgentSchema),
 });
 
 export const agentsStatusSchema = z.object({
   summary: agentSummarySchema,
   agents: z.array(agentStatusItemSchema),
   craftsmen: z.array(craftsmanStatusItemSchema),
-  provider_summaries: z.array(agentProviderSummarySchema),
+  channel_summaries: z.array(agentChannelSummarySchema),
+  host_summaries: z.array(agentHostSummarySchema),
   tmux_runtime: tmuxRuntimeSchema.nullable(),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
@@ -152,6 +168,30 @@ export const archiveJobSchema = z.object({
   payload: z.record(z.string(), z.unknown()).nullable(),
 });
 export type ArchiveJobDto = z.infer<typeof archiveJobSchema>;
+
+export const archiveJobStatusUpdateRequestSchema = z.object({
+  status: z.enum(['notified', 'synced', 'failed']),
+  commit_hash: z.string().optional(),
+  error_message: z.string().optional(),
+});
+export type ArchiveJobStatusUpdateRequestDto = z.infer<typeof archiveJobStatusUpdateRequestSchema>;
+
+export const archiveJobScanRequestSchema = z.object({
+  timeout_ms: z.number().int().positive().default(3_600_000),
+});
+export type ArchiveJobScanRequestDto = z.infer<typeof archiveJobScanRequestSchema>;
+
+export const archiveJobScanResponseSchema = z.object({
+  failed: z.number().int().nonnegative(),
+});
+export type ArchiveJobScanResponseDto = z.infer<typeof archiveJobScanResponseSchema>;
+
+export const archiveJobReceiptScanResponseSchema = z.object({
+  processed: z.number().int().nonnegative(),
+  synced: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+});
+export type ArchiveJobReceiptScanResponseDto = z.infer<typeof archiveJobReceiptScanResponseSchema>;
 
 export const todoItemSchema = z.object({
   id: z.number().int().nonnegative(),

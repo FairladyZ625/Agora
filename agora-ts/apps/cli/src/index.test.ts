@@ -148,6 +148,154 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('已解除阻塞');
   });
 
+  it('supports unblock retry through the cli command', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-306',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync(['create', 'CLI unblock retry', '--type', 'coding'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'retry-cli',
+      task_id: 'OC-306',
+      stage_id: 'discuss',
+      title: 'retry from cli',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timed out',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:retry-cli',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+      done_at: '2026-03-09T11:01:00.000Z',
+    });
+    taskService.updateTaskState('OC-306', 'blocked', { reason: 'timeout escalation' });
+    await program.parseAsync(['unblock', 'OC-306', '--reason', 'retry now', '--action', 'retry'], { from: 'user' });
+
+    const status = taskService.getTaskStatus('OC-306');
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('任务 OC-306 已解除阻塞');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'retry-cli',
+          status: 'not_started',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+        }),
+      ]),
+    );
+  });
+
+  it('supports unblock skip through the cli command', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-307',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync(['create', 'CLI unblock skip', '--type', 'coding'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'skip-cli',
+      task_id: 'OC-307',
+      stage_id: 'discuss',
+      title: 'skip from cli',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timed out',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:skip-cli',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+    });
+    taskService.updateTaskState('OC-307', 'blocked', { reason: 'human intervention' });
+    await program.parseAsync(['unblock', 'OC-307', '--reason', 'skip now', '--action', 'skip'], { from: 'user' });
+
+    const status = taskService.getTaskStatus('OC-307');
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('任务 OC-307 已解除阻塞');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'skip-cli',
+          status: 'done',
+          output: 'Skipped by archon: skip now',
+          craftsman_session: null,
+          dispatch_status: 'skipped',
+        }),
+      ]),
+    );
+  });
+
+  it('supports unblock reassign through the cli command', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-308',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync(['create', 'CLI unblock reassign', '--type', 'coding'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'reassign-cli',
+      task_id: 'OC-308',
+      stage_id: 'discuss',
+      title: 'reassign from cli',
+      assignee: 'codex',
+      status: 'failed',
+      output: 'timed out',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:reassign-cli',
+      dispatch_status: 'failed',
+      dispatched_at: '2026-03-09T11:00:00.000Z',
+    });
+    taskService.updateTaskState('OC-308', 'blocked', { reason: 'human intervention' });
+    await program.parseAsync([
+      'unblock',
+      'OC-308',
+      '--reason', 'reassign now',
+      '--action', 'reassign',
+      '--assignee', 'claude',
+      '--craftsman-type', 'claude',
+    ], { from: 'user' });
+
+    const status = taskService.getTaskStatus('OC-308');
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('任务 OC-308 已解除阻塞');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'reassign-cli',
+          status: 'not_started',
+          assignee: 'claude',
+          craftsman_type: 'claude',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+        }),
+      ]),
+    );
+  });
+
   it('cleans up orphaned tasks through the cli command', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -233,6 +381,47 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('adapter: codex');
     expect(stdout.value).toContain('craftsman callback 已处理: exec-cli-1');
     expect(stdout.value).toContain('cli callback done');
+  });
+
+  it('rejects craftsmen dispatch through the cli when the task is paused', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-cli-paused-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T11:00:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-305',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync(['create', 'paused craftsmen cli guard', '--type', 'coding'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'sub-codex-paused',
+      task_id: 'OC-305',
+      stage_id: 'discuss',
+      title: 'run codex later',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+    await program.parseAsync(['pause', 'OC-305', '--reason', 'hold'], { from: 'user' });
+
+    await expect(program.parseAsync([
+      'craftsman', 'dispatch',
+      'OC-305',
+      'sub-codex-paused',
+      '--adapter', 'codex',
+      '--workdir', '/tmp/codex',
+    ], { from: 'user' })).rejects.toThrow("Task OC-305 is in state 'paused', expected 'active'");
+    expect(stderr.value).toBe('');
+    expect(stdout.value).not.toContain('craftsman execution 已派发');
   });
 
   it('supports tmux runtime management commands through the cli', async () => {

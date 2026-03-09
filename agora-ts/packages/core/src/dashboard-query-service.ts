@@ -3,12 +3,16 @@ import { resolve, basename } from 'node:path';
 import type {
   AgentsStatusDto,
   ArchiveJobDto,
+  ArchiveJobReceiptScanResponseDto,
+  ArchiveJobScanResponseDto,
+  ArchiveJobStatusUpdateRequestDto,
   CreateTodoRequestDto,
   TemplateDetailDto,
   TemplateSummaryDto,
   UpdateTodoRequestDto,
 } from '@agora-ts/contracts';
 import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
+import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type {
@@ -21,6 +25,8 @@ import type { TmuxRuntimeService } from './tmux-runtime-service.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
+  archiveJobNotifier?: ArchiveJobNotifier;
+  archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
@@ -34,6 +40,8 @@ export class DashboardQueryService {
   private readonly todos: TodoRepositoryType;
   private readonly executions: CraftsmanExecutionRepository;
   private readonly templatesDir: string;
+  private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
+  private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
@@ -49,6 +57,8 @@ export class DashboardQueryService {
     this.todos = new TodoRepository(db);
     this.executions = new CraftsmanExecutionRepository(db);
     this.templatesDir = options.templatesDir;
+    this.archiveJobNotifier = options.archiveJobNotifier;
+    this.archiveJobReceiptIngestor = options.archiveJobReceiptIngestor;
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
     this.presenceSource = options.presenceSource;
@@ -87,7 +97,9 @@ export class DashboardQueryService {
           load: 0,
           last_active_at: activityMap.get(member.agentId) ?? null,
           last_seen_at: null,
-          provider: null,
+          channel_providers: [] as string[],
+          host_framework: null as string | null,
+          inventory_sources: [] as string[],
           account_id: null,
         };
         if (!current.active_task_ids.includes(task.id)) {
@@ -108,7 +120,9 @@ export class DashboardQueryService {
           load: 0,
           last_active_at: activityMap.get(subtask.assignee) ?? null,
           last_seen_at: null,
-          provider: null,
+          channel_providers: [] as string[],
+          host_framework: null as string | null,
+          inventory_sources: [] as string[],
           account_id: null,
         };
         if (!current.active_task_ids.includes(task.id)) {
@@ -160,7 +174,9 @@ export class DashboardQueryService {
         load: 0,
         last_active_at: session.last_event_at,
         last_seen_at: session.last_event_at,
-        provider: session.channel,
+        channel_providers: [] as string[],
+        host_framework: 'openclaw' as string | null,
+        inventory_sources: ['openclaw'] as string[],
         account_id: null,
       };
       current.status = session.status === 'idle' ? 'idle' : 'busy';
@@ -169,8 +185,12 @@ export class DashboardQueryService {
       current.last_active_at = session.last_event_at;
       current.last_seen_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
-      current.provider = current.provider ?? session.channel;
-      current.source ??= 'live';
+      current.host_framework = current.host_framework ?? 'openclaw';
+      mergeUnique(current.inventory_sources, 'openclaw');
+      const channelProvider = normalizeChannelProvider(session.channel);
+      if (channelProvider) {
+        mergeUnique(current.channel_providers, channelProvider);
+      }
       current.primary_model ??= null;
       current.workspace_dir ??= null;
       agents.set(session.agent_id, current);
@@ -188,13 +208,16 @@ export class DashboardQueryService {
         load: 0,
         last_active_at: null,
         last_seen_at: null,
-        provider: inferProvider(item.source),
+        channel_providers: [] as string[],
+        host_framework: null as string | null,
+        inventory_sources: [] as string[],
         account_id: null,
       };
-      current.source = item.source;
       current.primary_model = item.primary_model;
       current.workspace_dir = item.workspace_dir;
-      current.provider = current.provider ?? inferProvider(item.source);
+      current.host_framework = current.host_framework ?? item.host_framework;
+      mergeUniqueMany(current.channel_providers, item.channel_providers);
+      mergeUniqueMany(current.inventory_sources, item.inventory_sources);
       agents.set(item.id, current);
     }
 
@@ -210,13 +233,19 @@ export class DashboardQueryService {
         load: 0,
         last_active_at: null,
         last_seen_at: item.last_seen_at,
-        provider: item.provider,
+        channel_providers: [] as string[],
+        host_framework: null as string | null,
+        inventory_sources: item.provider ? [item.provider] : [] as string[],
         account_id: item.account_id,
       };
       current.presence = item.presence;
       current.presence_reason = item.reason;
       current.last_seen_at = item.last_seen_at;
-      current.provider = item.provider;
+      const channelProvider = normalizeChannelProvider(item.provider);
+      if (channelProvider) {
+        mergeUnique(current.channel_providers, channelProvider);
+        mergeUnique(current.inventory_sources, channelProvider);
+      }
       current.account_id = item.account_id;
       agents.set(item.agent_id, current);
     }
@@ -228,9 +257,10 @@ export class DashboardQueryService {
         presence: item.load > 0 ? 'online' : item.presence,
         presence_reason: item.load > 0 ? 'live_session' : item.presence_reason ?? 'inventory_only',
         last_seen_at: item.last_seen_at ?? item.last_active_at,
-        provider: inferProvider(item.source) ?? item.provider ?? null,
+        channel_providers: item.channel_providers.sort(),
+        host_framework: item.host_framework ?? null,
+        inventory_sources: item.inventory_sources.sort(),
         account_id: item.account_id ?? null,
-        source: item.source ?? null,
         primary_model: item.primary_model ?? null,
         workspace_dir: item.workspace_dir ?? null,
       }))
@@ -262,7 +292,8 @@ export class DashboardQueryService {
       },
       agents: allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
-      provider_summaries: buildProviderSummaries(allAgents, providerHistory, providerSignals),
+      channel_summaries: buildChannelSummaries(allAgents, providerHistory, providerSignals),
+      host_summaries: buildHostSummaries(allAgents),
       tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService),
     };
   }
@@ -281,6 +312,72 @@ export class DashboardQueryService {
 
   retryArchiveJob(jobId: number): ArchiveJobDto {
     return this.archives.retryArchiveJob(jobId);
+  }
+
+  notifyArchiveJob(jobId: number): ArchiveJobDto {
+    if (!this.archiveJobNotifier) {
+      throw new Error('Archive job notifier is not configured');
+    }
+    const job = this.getArchiveJob(jobId);
+    if (job.status !== 'pending') {
+      throw new Error(`Archive job ${jobId} is in status '${job.status}', expected 'pending'`);
+    }
+    const receipt = this.archiveJobNotifier.notify(job);
+    return this.archives.updateArchiveJob(jobId, {
+      status: 'notified',
+      payload_patch: {
+        notification_receipt: receipt,
+      },
+    });
+  }
+
+  updateArchiveJob(jobId: number, updates: ArchiveJobStatusUpdateRequestDto): ArchiveJobDto {
+    return this.archives.updateArchiveJob(jobId, {
+      status: updates.status,
+      ...(updates.commit_hash ? { commit_hash: updates.commit_hash } : {}),
+      ...(updates.error_message ? { error_message: updates.error_message } : {}),
+    });
+  }
+
+  failStaleArchiveJobs(options: { timeoutMs: number; now?: Date }): ArchiveJobScanResponseDto {
+    return {
+      failed: this.archives.failStaleNotifiedJobs(options),
+    };
+  }
+
+  ingestArchiveJobReceipts(): ArchiveJobReceiptScanResponseDto {
+    if (!this.archiveJobReceiptIngestor) {
+      throw new Error('Archive job receipt ingestor is not configured');
+    }
+
+    let processed = 0;
+    let synced = 0;
+    let failed = 0;
+    for (const receipt of this.archiveJobReceiptIngestor.scan()) {
+      const job = this.archives.getArchiveJob(receipt.job_id);
+      if (!job || job.status !== 'notified') {
+        continue;
+      }
+      this.archives.updateArchiveJob(job.id, {
+        status: receipt.status,
+        ...(receipt.commit_hash ? { commit_hash: receipt.commit_hash } : {}),
+        ...(receipt.error_message ? { error_message: receipt.error_message } : {}),
+        payload_patch: {
+          writer_receipt: {
+            status: receipt.status,
+            processed_path: receipt.processed_path,
+          },
+        },
+      });
+      processed += 1;
+      if (receipt.status === 'synced') {
+        synced += 1;
+      } else {
+        failed += 1;
+      }
+    }
+
+    return { processed, synced, failed };
   }
 
   listTodos(filters: { status?: string } = {}) {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
 import { createTestRuntime, runScenario, scenarioNames } from './index.js';
 
 let runtime: ReturnType<typeof createTestRuntime> | null = null;
@@ -15,6 +16,14 @@ describe('agora-ts testing scenarios', () => {
       'reject-rework',
       'quorum-approve',
       'cleanup-orphaned',
+      'archive-notify',
+      'archive-receipt',
+      'unblock-retry',
+      'unblock-skip',
+      'unblock-reassign',
+      'pause-resume-deferred-callback',
+      'pause-resume-missing-session',
+      'cancel-active-task',
       'inbox-promote',
       'authoring-smoke',
       'craftsman-happy-path',
@@ -30,12 +39,21 @@ describe('agora-ts testing scenarios', () => {
     });
 
     const result = runScenario(runtime, 'happy-path');
+    const archives = new ArchiveJobRepository(runtime.db);
 
     expect(result.name).toBe('happy-path');
     expect(result.taskId).toBe('OC-900');
     expect(result.finalState).toBe('done');
     expect(result.events).toEqual(
       expect.arrayContaining(['state_changed', 'archon_approved', 'subtask_done', 'stage_advanced', 'gate_passed']),
+    );
+    expect(archives.listArchiveJobs({ taskId: 'OC-900' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          task_id: 'OC-900',
+          status: 'pending',
+        }),
+      ]),
     );
   });
 
@@ -66,10 +84,213 @@ describe('agora-ts testing scenarios', () => {
     runtime = createTestRuntime();
 
     const result = runScenario(runtime, 'cleanup-orphaned');
+    const executions = new CraftsmanExecutionRepository(runtime.db);
 
     expect(result.name).toBe('cleanup-orphaned');
     expect(result.cleaned).toBe(1);
     expect(result.taskId).toBe('OC-CLEAN');
+    expect(result.executions).toEqual(['exec-cleanup-1']);
+    expect(executions.getExecution('exec-cleanup-1')).toBeNull();
+  });
+
+  it('runs archive notify and writes a writer outbox artifact', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-ARCHIVE-NOTIFY',
+    });
+
+    const result = runScenario(runtime, 'archive-notify');
+    const archives = new ArchiveJobRepository(runtime.db);
+
+    expect(result.name).toBe('archive-notify');
+    expect(result.taskId).toBe('OC-ARCHIVE-NOTIFY');
+    expect(result.finalState).toBe('done');
+    expect(archives.listArchiveJobs({ taskId: 'OC-ARCHIVE-NOTIFY' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: 'notified',
+          payload: expect.objectContaining({
+            notification_receipt: expect.objectContaining({
+              notification_id: 'archive-job-1',
+            }),
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('runs archive receipt and advances the job to synced', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-ARCHIVE-RECEIPT',
+    });
+
+    const result = runScenario(runtime, 'archive-receipt');
+    const archives = new ArchiveJobRepository(runtime.db);
+
+    expect(result.name).toBe('archive-receipt');
+    expect(result.taskId).toBe('OC-ARCHIVE-RECEIPT');
+    expect(result.finalState).toBe('done');
+    expect(archives.listArchiveJobs({ taskId: 'OC-ARCHIVE-RECEIPT' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: 'synced',
+          commit_hash: 'archive-receipt-commit',
+        }),
+      ]),
+    );
+  });
+
+  it('runs unblock retry and resets failed subtasks for the current stage', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-UNBLOCK',
+    });
+
+    const result = runScenario(runtime, 'unblock-retry');
+    const subtasks = new SubtaskRepository(runtime.db);
+
+    expect(result.name).toBe('unblock-retry');
+    expect(result.taskId).toBe('OC-UNBLOCK');
+    expect(result.finalState).toBe('active');
+    expect(result.events).toEqual(expect.arrayContaining(['blocked', 'unblocked']));
+    expect(subtasks.listByTask('OC-UNBLOCK')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'retry-subtask',
+          status: 'not_started',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+          dispatched_at: null,
+          done_at: null,
+        }),
+      ]),
+    );
+  });
+
+  it('runs unblock skip and marks failed subtasks done for the current stage', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-SKIP',
+    });
+
+    const result = runScenario(runtime, 'unblock-skip');
+    const subtasks = new SubtaskRepository(runtime.db);
+
+    expect(result.name).toBe('unblock-skip');
+    expect(result.taskId).toBe('OC-SKIP');
+    expect(result.finalState).toBe('active');
+    expect(result.events).toEqual(expect.arrayContaining(['blocked', 'unblocked']));
+    expect(subtasks.listByTask('OC-SKIP')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'skip-subtask',
+          status: 'done',
+          output: 'Skipped by archon: skip now',
+          craftsman_session: null,
+          dispatch_status: 'skipped',
+        }),
+      ]),
+    );
+  });
+
+  it('runs unblock reassign and resets failed subtasks to a new assignee', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-REASSIGN',
+    });
+
+    const result = runScenario(runtime, 'unblock-reassign');
+    const subtasks = new SubtaskRepository(runtime.db);
+
+    expect(result.name).toBe('unblock-reassign');
+    expect(result.taskId).toBe('OC-REASSIGN');
+    expect(result.finalState).toBe('active');
+    expect(result.events).toEqual(expect.arrayContaining(['blocked', 'unblocked']));
+    expect(subtasks.listByTask('OC-REASSIGN')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'reassign-subtask',
+          status: 'not_started',
+          assignee: 'claude',
+          craftsman_type: 'claude',
+          output: null,
+          craftsman_session: null,
+          dispatch_status: null,
+        }),
+      ]),
+    );
+  });
+
+  it('runs pause-resume deferred callback and settles the subtask on resume', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-PAUSE',
+      executionIdGenerator: () => 'exec-pause-1',
+    });
+
+    const result = runScenario(runtime, 'pause-resume-deferred-callback');
+    const subtasks = new SubtaskRepository(runtime.db);
+
+    expect(result.name).toBe('pause-resume-deferred-callback');
+    expect(result.taskId).toBe('OC-PAUSE');
+    expect(result.finalState).toBe('active');
+    expect(result.executions).toEqual(['exec-pause-1']);
+    expect(result.events).toEqual(expect.arrayContaining(['paused', 'craftsman_callback_deferred', 'resumed', 'subtask_done']));
+    expect(subtasks.listByTask('OC-PAUSE')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'resume-subtask',
+          status: 'done',
+          output: 'done while paused',
+          dispatch_status: 'succeeded',
+        }),
+      ]),
+    );
+  });
+
+  it('runs pause-resume missing session and fails running work on resume', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-DEAD',
+    });
+
+    const result = runScenario(runtime, 'pause-resume-missing-session');
+    const subtasks = new SubtaskRepository(runtime.db);
+    const executions = new CraftsmanExecutionRepository(runtime.db);
+
+    expect(result.name).toBe('pause-resume-missing-session');
+    expect(result.taskId).toBe('OC-DEAD');
+    expect(result.finalState).toBe('active');
+    expect(result.executions).toEqual(['exec-dead-1']);
+    expect(result.events).toEqual(
+      expect.arrayContaining(['paused', 'resumed', 'craftsman_session_missing_on_resume']),
+    );
+    expect(subtasks.listByTask('OC-DEAD')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'dead-subtask',
+          status: 'failed',
+          dispatch_status: 'failed',
+          output: 'Craftsman session not alive on resume: tmux:dead',
+        }),
+      ]),
+    );
+    expect(executions.getExecution('exec-dead-1')).toMatchObject({
+      status: 'failed',
+      error: 'Craftsman session not alive on resume: tmux:dead',
+      finished_at: expect.any(String),
+    });
+  });
+
+  it('runs a cancel-active-task scenario and closes open work', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-CANCEL',
+      executionIdGenerator: () => 'exec-cancel-1',
+    });
+
+    const result = runScenario(runtime, 'cancel-active-task');
+
+    expect(result.name).toBe('cancel-active-task');
+    expect(result.taskId).toBe('OC-CANCEL');
+    expect(result.finalState).toBe('cancelled');
+    expect(result.events).toContain('state_changed');
+    expect(result.completedSubtasks).toEqual(['keep-done']);
+    expect(result.executions).toEqual(['exec-cancel-1']);
   });
 
   it('runs an inbox promote scenario across todo and task targets', () => {

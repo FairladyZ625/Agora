@@ -64,10 +64,11 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - `docs/` 是独立 Git 仓库，文档只在 `docs` 仓库提交维护；**不要把 docs 文档提交到主仓库**。
 - 每个新任务必须创建独立文件夹，不可与历史任务共用同一组过程文件。
 - 所有文档写作与使用必须遵循：`docs/11-REFERENCE/docs-library-standard.md`（强制规范）。
-- **Agora 项目唯一实施单一视图（SSoT）固定为**：`docs/Agora-实施排期.md`
-  - 该文件统一维护：实现计划、实现计审、实现状态矩阵、待开发清单、当前优先级
-  - 所有新 wave 开始前必须先读该文件
-  - 所有非平凡开发完成后必须先更新该文件，再更新对应任务过程文档与 walkthrough
+- **Agora TS 默认实施单一视图（SSoT）固定为**：`docs/Agora-实施排期-Agora-TS.md`
+  - 该文件统一维护：`agora-ts/` 的实现计划、实现计审、实现状态矩阵、待开发清单、当前优先级
+  - 所有 TS 新 wave 开始前必须先读该文件
+  - 所有 TS 非平凡开发完成后必须先更新该文件，再更新对应任务过程文档与 walkthrough
+  - `docs/Agora-实施排期.md` 仅保留为 legacy / 现网参考口径
   - 禁止额外创建并行的“总表型计划 / 状态矩阵 / 进度总览”文档
 
 ## 文档规范引用（强制）
@@ -161,7 +162,7 @@ cp .env.example .env
   - 发现高风险歧义，继续执行很可能造成错误数据、错误配置或不可逆副作用
   - 遇到明确要求人类决策的产品分叉点，且仓库内无法从现有 SSoT 推断
 - 除上述情况外，Agent 必须：
-  - 读取 `docs/Agora-实施排期*.md` 当前优先级
+  - 默认读取 `docs/Agora-实施排期-Agora-TS.md` 当前优先级；仅在维护 legacy 时参考 `docs/Agora-实施排期.md`
   - 自主创建新的 planning 任务目录
   - 按 `planning-with-files + TDD` 循环执行
   - 每一波完成后更新实施总表、planning、walkthrough
@@ -378,7 +379,8 @@ docs/
 
 ### 文档更新规则
 
-- `docs/Agora-实施排期.md` 是 Agora 项目的当前实施口径与唯一填写入口
+- `docs/Agora-实施排期-Agora-TS.md` 是 `agora-ts/` 默认实施口径与唯一填写入口
+- `docs/Agora-实施排期.md` 保留为 legacy / 现网参考口径
 - 架构变更必须更新 `00-RAW-PRDS/01-architecture.md`
 - 实施进度必须更新 `00-RAW-PRDS/07-implementation-plan.md`
 - 每周结束必须写 Walkthrough 文档
@@ -391,7 +393,8 @@ docs/
 
 ### 核心设计文档
 
-- 实施总表：`docs/Agora-实施排期.md`（**当前实现状态、开发顺序、实现计审唯一入口**）
+- 实施总表（TS 默认）：`docs/Agora-实施排期-Agora-TS.md`（**`agora-ts/` 当前实现状态、开发顺序、实现计审唯一入口**）
+- legacy / 现网参考：`docs/Agora-实施排期.md`
 - 架构：`docs/00-RAW-PRDS/01-architecture.md`
 - 生命周期：`docs/00-RAW-PRDS/02-task-lifecycle.md`
 - 枚举定义：`docs/00-RAW-PRDS/ENUMS.md`

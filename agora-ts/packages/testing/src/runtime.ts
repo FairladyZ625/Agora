@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService, type CraftsmanAdapter } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService, type CraftsmanAdapter } from '@agora-ts/core';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
@@ -15,6 +15,8 @@ export interface TestRuntime {
   dir: string;
   db: AgoraDatabase;
   templatesDir: string;
+  archiveOutboxDir: string;
+  archiveReceiptDir: string;
   taskService: TaskService;
   dashboardQueryService: DashboardQueryService;
   inboxService: InboxService;
@@ -30,7 +32,11 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   runMigrations(db);
   const sourceTemplatesDir = options.templatesDir ?? resolve(process.cwd(), '../agora/templates');
   const templatesDir = join(dir, 'templates');
+  const archiveOutboxDir = join(dir, 'archive-outbox');
+  const archiveReceiptDir = join(dir, 'archive-receipts');
   mkdirSync(templatesDir, { recursive: true });
+  mkdirSync(archiveOutboxDir, { recursive: true });
+  mkdirSync(archiveReceiptDir, { recursive: true });
   cpSync(sourceTemplatesDir, templatesDir, { recursive: true });
   const taskServiceOptions: { templatesDir: string; taskIdGenerator?: () => string } = {
     templatesDir,
@@ -59,6 +65,8 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   });
   const dashboardQueryService = new DashboardQueryService(db, {
     templatesDir,
+    archiveJobNotifier: new FileArchiveJobNotifier({ outboxDir: archiveOutboxDir }),
+    archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({ receiptDir: archiveReceiptDir }),
   });
   const inboxService = new InboxService(db, taskService);
   const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
@@ -67,6 +75,8 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     dir,
     db,
     templatesDir,
+    archiveOutboxDir,
+    archiveReceiptDir,
     taskService,
     dashboardQueryService,
     inboxService,

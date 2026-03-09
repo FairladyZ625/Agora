@@ -164,6 +164,14 @@ export const taskNoteRequestSchema = z.object({
 });
 export type TaskNoteRequestDto = z.infer<typeof taskNoteRequestSchema>;
 
+export const unblockTaskRequestSchema = z.object({
+  reason: z.string().default(''),
+  action: z.enum(['retry', 'skip', 'reassign']).optional(),
+  assignee: z.string().optional(),
+  craftsman_type: z.string().optional(),
+});
+export type UnblockTaskRequestDto = z.infer<typeof unblockTaskRequestSchema>;
+
 export const cleanupTasksRequestSchema = z.object({
   task_id: z.string().optional(),
 });

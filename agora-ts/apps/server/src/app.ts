@@ -9,6 +9,8 @@ import {
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
   archonRejectTaskRequestSchema,
+  archiveJobScanRequestSchema,
+  archiveJobStatusUpdateRequestSchema,
   cleanupTasksRequestSchema,
   confirmTaskRequestSchema,
   createTodoRequestSchema,
@@ -24,6 +26,7 @@ import {
   saveTemplateRequestSchema,
   subtaskDoneRequestSchema,
   taskNoteRequestSchema,
+  unblockTaskRequestSchema,
   templateValidationRequestSchema,
   updateTodoRequestSchema,
   updateInboxRequestSchema,
@@ -437,8 +440,18 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const params = request.params as { taskId: string };
-      const payload = taskNoteRequestSchema.parse(request.body);
-      return reply.send(taskService.unblockTask(params.taskId, { reason: payload.reason }));
+      const payload = unblockTaskRequestSchema.parse(request.body);
+      return reply.send(taskService.unblockTask(
+        params.taskId,
+        payload.action
+          ? {
+            reason: payload.reason,
+            action: payload.action,
+            ...(payload.assignee ? { assignee: payload.assignee } : {}),
+            ...(payload.craftsman_type ? { craftsman_type: payload.craftsman_type } : {}),
+          }
+          : { reason: payload.reason },
+      ));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -712,6 +725,58 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { jobId: string };
       return reply.send(dashboardQueryService.retryArchiveJob(parseNumericId(params.jobId, 'jobId')));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/archive/jobs/:jobId/notify', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { jobId: string };
+      return reply.send(dashboardQueryService.notifyArchiveJob(parseNumericId(params.jobId, 'jobId')));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/archive/jobs/:jobId/status', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { jobId: string };
+      const payload = archiveJobStatusUpdateRequestSchema.parse(request.body);
+      return reply.send(dashboardQueryService.updateArchiveJob(parseNumericId(params.jobId, 'jobId'), payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/archive/jobs/scan-stale', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const payload = archiveJobScanRequestSchema.parse(request.body ?? {});
+      return reply.send(dashboardQueryService.failStaleArchiveJobs({ timeoutMs: payload.timeout_ms }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/archive/jobs/scan-receipts', async (_request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      return reply.send(dashboardQueryService.ingestArchiveJobReceipts());
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
