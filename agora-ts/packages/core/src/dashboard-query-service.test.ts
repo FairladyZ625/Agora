@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { FileArchiveJobNotifier, FileArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { DashboardQueryService } from './dashboard-query-service.js';
@@ -704,6 +704,122 @@ describe('dashboard query service', () => {
         last_seen_at: null,
       }),
     ]);
+  });
+
+  it('builds channel detail without querying tmux runtime or craftsman execution history', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-410',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const tmuxRuntimeService = {
+      status: vi.fn(() => ({
+        session: 'agora-craftsmen',
+        panes: [],
+      })),
+      doctor: vi.fn(() => ({
+        session: 'agora-craftsmen',
+        panes: [],
+      })),
+      tail: vi.fn(() => ''),
+    };
+    const presenceSource: PresenceSource = {
+      listPresence: () => [
+        {
+          agent_id: 'sonnet',
+          presence: 'online',
+          provider: 'discord',
+          account_id: 'sonnet',
+          last_seen_at: '2026-03-08T10:00:00.000Z',
+          reason: 'provider_start',
+        },
+      ],
+      listHistory: () => [
+        {
+          occurred_at: '2026-03-08T10:00:00.000Z',
+          agent_id: 'sonnet',
+          account_id: 'sonnet',
+          presence: 'online',
+          reason: 'provider_start',
+        },
+      ],
+      listSignals: () => [
+        {
+          occurred_at: '2026-03-08T10:05:00.000Z',
+          provider: 'discord',
+          agent_id: 'sonnet',
+          account_id: 'sonnet',
+          kind: 'transport_error',
+          severity: 'error',
+          detail: 'code 1005',
+        },
+      ],
+    };
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      presenceSource,
+      tmuxRuntimeService,
+    });
+    const listBySubtaskSpy = vi.spyOn(
+      (queries as unknown as { executions: CraftsmanExecutionRepository }).executions,
+      'listBySubtask',
+    );
+
+    taskService.createTask({
+      title: '实现 dashboard refresh deepening',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+    subtasks.insertSubtask({
+      id: 'dev-api',
+      task_id: 'OC-410',
+      stage_id: 'discuss',
+      title: '后端 API',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+      dispatch_status: 'success',
+      dispatched_at: '2026-03-08T10:00:00Z',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-dashboard-410',
+      task_id: 'OC-410',
+      subtask_id: 'dev-api',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:agora-craftsmen:codex',
+      status: 'running',
+      callback_payload: {
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+      },
+      started_at: '2026-03-08T10:00:00.000Z',
+    });
+
+    const detail = queries.getAgentChannelDetail('discord');
+
+    expect(detail).toMatchObject({
+      channel: 'discord',
+      history: [
+        expect.objectContaining({
+          agent_id: 'sonnet',
+          presence: 'online',
+        }),
+      ],
+      signals: [
+        expect.objectContaining({
+          kind: 'transport_error',
+          severity: 'error',
+        }),
+      ],
+    });
+    expect(tmuxRuntimeService.status).not.toHaveBeenCalled();
+    expect(tmuxRuntimeService.doctor).not.toHaveBeenCalled();
+    expect(listBySubtaskSpy).not.toHaveBeenCalled();
   });
 
   it('merges tmux runtime panes into the agents read model', () => {

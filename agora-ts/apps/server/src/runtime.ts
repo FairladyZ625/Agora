@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions {
   configPath?: string;
+  isCraftsmanSessionAlive?: (sessionId: string) => boolean;
 }
 
 function resolveDashboardDir() {
@@ -55,12 +56,6 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
       apiToken: config.api_auth.enabled ? config.api_auth.token : null,
     }),
   });
-  const taskService = new TaskService(db, {
-    templatesDir,
-    archonUsers: config.permissions.archonUsers,
-    allowAgents: config.permissions.allowAgents,
-    craftsmanDispatcher,
-  });
   const tmuxRuntimeService = new TmuxRuntimeService({
     adapters: {
       codex: new CodexCraftsmanAdapter(),
@@ -68,6 +63,26 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
       gemini: new GeminiCraftsmanAdapter(),
     },
   });
+  const isCraftsmanSessionAlive = options.isCraftsmanSessionAlive ?? ((sessionId: string) => {
+    if (!sessionId.startsWith('tmux:')) {
+      return true;
+    }
+    try {
+      return tmuxRuntimeService.status().panes.some((pane) => pane.transportSessionId === sessionId);
+    } catch {
+      return true;
+    }
+  });
+  const taskService = new TaskService(db, {
+    templatesDir,
+    archonUsers: config.permissions.archonUsers,
+    allowAgents: config.permissions.allowAgents,
+    craftsmanDispatcher,
+    isCraftsmanSessionAlive,
+  });
+  if (config.scheduler.startup_recovery_on_boot) {
+    taskService.startupRecoveryScan();
+  }
   const dashboardQueryService = new DashboardQueryService(db, {
     templatesDir,
     archiveJobNotifier: new FileArchiveJobNotifier({

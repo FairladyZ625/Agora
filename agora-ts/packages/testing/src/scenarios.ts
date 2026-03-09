@@ -17,6 +17,7 @@ export const scenarioNames = [
   'unblock-reassign',
   'pause-resume-deferred-callback',
   'pause-resume-missing-session',
+  'startup-recovery-missing-session',
   'cancel-active-task',
   'inbox-promote',
   'authoring-smoke',
@@ -71,6 +72,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runPauseResumeDeferredCallbackScenario(runtime);
     case 'pause-resume-missing-session':
       return runPauseResumeMissingSessionScenario(runtime);
+    case 'startup-recovery-missing-session':
+      return runStartupRecoveryMissingSessionScenario(runtime);
     case 'cancel-active-task':
       return runCancelActiveTaskScenario(runtime);
     case 'inbox-promote':
@@ -511,6 +514,52 @@ function runPauseResumeMissingSessionScenario(runtime: TestRuntime): ScenarioRes
 
   return buildScenarioResult(runtime, 'pause-resume-missing-session', task.id, {
     executions: ['exec-dead-1'],
+  }, taskService);
+}
+
+function runStartupRecoveryMissingSessionScenario(runtime: TestRuntime): ScenarioResult {
+  const taskService = new TaskService(runtime.db, {
+    templatesDir: runtime.templatesDir,
+    taskIdGenerator: () => 'OC-STARTUP',
+    craftsmanDispatcher: runtime.craftsmanDispatcher,
+    isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+  });
+  const task = taskService.createTask({
+    title: 'Startup recovery missing session scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise missing session failure on startup recovery',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  const executions = new CraftsmanExecutionRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'startup-dead',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Dead session on startup',
+    assignee: 'codex',
+    status: 'in_progress',
+    craftsman_type: 'codex',
+    craftsman_session: 'tmux:dead',
+    dispatch_status: 'running',
+    dispatched_at: '2026-03-09T15:00:00.000Z',
+  });
+  executions.insertExecution({
+    execution_id: 'exec-startup-dead-1',
+    task_id: task.id,
+    subtask_id: 'startup-dead',
+    adapter: 'codex',
+    mode: 'task',
+    session_id: 'tmux:dead',
+    status: 'running',
+    started_at: '2026-03-09T15:00:00.000Z',
+  });
+
+  taskService.startupRecoveryScan();
+
+  return buildScenarioResult(runtime, 'startup-recovery-missing-session', task.id, {
+    executions: ['exec-startup-dead-1'],
   }, taskService);
 }
 

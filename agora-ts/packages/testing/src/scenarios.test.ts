@@ -23,6 +23,7 @@ describe('agora-ts testing scenarios', () => {
       'unblock-reassign',
       'pause-resume-deferred-callback',
       'pause-resume-missing-session',
+      'startup-recovery-missing-session',
       'cancel-active-task',
       'inbox-promote',
       'authoring-smoke',
@@ -273,6 +274,39 @@ describe('agora-ts testing scenarios', () => {
     expect(executions.getExecution('exec-dead-1')).toMatchObject({
       status: 'failed',
       error: 'Craftsman session not alive on resume: tmux:dead',
+      finished_at: expect.any(String),
+    });
+  });
+
+  it('runs startup recovery missing session and blocks the task on boot scan', () => {
+    runtime = createTestRuntime({
+      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+    });
+
+    const result = runScenario(runtime, 'startup-recovery-missing-session');
+    const subtasks = new SubtaskRepository(runtime.db);
+    const executions = new CraftsmanExecutionRepository(runtime.db);
+
+    expect(result.name).toBe('startup-recovery-missing-session');
+    expect(result.taskId).toBe('OC-STARTUP');
+    expect(result.finalState).toBe('blocked');
+    expect(result.executions).toEqual(['exec-startup-dead-1']);
+    expect(result.events).toEqual(
+      expect.arrayContaining(['craftsman_session_missing_on_startup', 'blocked']),
+    );
+    expect(subtasks.listByTask('OC-STARTUP')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'startup-dead',
+          status: 'failed',
+          dispatch_status: 'failed',
+          output: 'Craftsman session not alive on startup recovery: tmux:dead',
+        }),
+      ]),
+    );
+    expect(executions.getExecution('exec-startup-dead-1')).toMatchObject({
+      status: 'failed',
+      error: 'Craftsman session not alive on startup recovery: tmux:dead',
       finished_at: expect.any(String),
     });
   });

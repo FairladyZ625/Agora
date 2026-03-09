@@ -26,6 +26,7 @@ describe('agora-ts config contracts', () => {
     expect(parsed.permissions.allowAgents['*']?.canAdvance).toBe(false);
     expect(parsed.scheduler.enabled).toBe(true);
     expect(parsed.scheduler.scan_interval_sec).toBe(60);
+    expect(parsed.scheduler.startup_recovery_on_boot).toBe(true);
     expect(parsed.rate_limit.enabled).toBe(false);
     expect(parsed.dashboard_auth.enabled).toBe(false);
     expect(parsed.observability.ready_path).toBe('/ready');
@@ -37,6 +38,7 @@ describe('agora-ts config contracts', () => {
         enabled: true,
         scan_interval_sec: 30,
         orphan_scan_on_boot: true,
+        startup_recovery_on_boot: false,
       },
       rate_limit: {
         enabled: true,
@@ -58,6 +60,7 @@ describe('agora-ts config contracts', () => {
     });
 
     expect(parsed.scheduler.scan_interval_sec).toBe(30);
+    expect(parsed.scheduler.startup_recovery_on_boot).toBe(false);
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');
     expect(parsed.observability.metrics_enabled).toBe(true);

@@ -96,6 +96,13 @@ export interface UpdateTaskStateOptions {
   craftsman_type?: string;
 }
 
+export interface StartupRecoveryScanResult {
+  scanned_tasks: number;
+  blocked_tasks: number;
+  failed_subtasks: number;
+  failed_executions: number;
+}
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../../agora/templates', import.meta.url));
 }
@@ -646,6 +653,76 @@ export class TaskService {
     return count;
   }
 
+  startupRecoveryScan(): StartupRecoveryScanResult {
+    const result: StartupRecoveryScanResult = {
+      scanned_tasks: 0,
+      blocked_tasks: 0,
+      failed_subtasks: 0,
+      failed_executions: 0,
+    };
+
+    for (const task of this.taskRepository.listTasks(TaskState.ACTIVE)) {
+      result.scanned_tasks += 1;
+      const schedulerSnapshot = this.buildSchedulerSnapshot(task, 'startup_recovery_scan');
+
+      this.db.exec('BEGIN');
+      try {
+        const impacts = this.failMissingCraftsmanSessions(task.id, {
+          event: 'craftsman_session_missing_on_startup',
+          messagePrefix: 'Craftsman session not alive on startup recovery',
+        });
+
+        if (impacts.length === 0) {
+          this.db.exec('COMMIT');
+          continue;
+        }
+
+        const reason = 'startup recovery blocked task after missing craftsmen sessions';
+        this.taskRepository.updateTask(task.id, task.version, {
+          state: TaskState.BLOCKED,
+          error_detail: reason,
+          scheduler_snapshot: schedulerSnapshot,
+        });
+        this.flowLogRepository.insertFlowLog({
+          task_id: task.id,
+          kind: 'flow',
+          event: 'state_changed',
+          stage_id: task.current_stage,
+          from_state: task.state,
+          to_state: TaskState.BLOCKED,
+          detail: {
+            reason,
+            recovered_subtasks: impacts.map((impact) => impact.subtask_id),
+          },
+          actor: 'system',
+        });
+        this.flowLogRepository.insertFlowLog({
+          task_id: task.id,
+          kind: 'flow',
+          event: 'blocked',
+          stage_id: task.current_stage,
+          from_state: task.state,
+          to_state: TaskState.BLOCKED,
+          detail: {
+            reason,
+            recovered_subtasks: impacts.map((impact) => impact.subtask_id),
+          },
+          actor: 'system',
+        });
+        this.db.exec('COMMIT');
+
+        result.blocked_tasks += 1;
+        result.failed_subtasks += impacts.length;
+        result.failed_executions += impacts.reduce((sum, impact) => sum + impact.execution_ids.length, 0);
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+    }
+
+    return result;
+  }
+
   private buildWorkflow(template: TaskTemplate): WorkflowDto {
     return {
       type: template.defaultWorkflow ?? 'linear',
@@ -755,8 +832,26 @@ export class TaskService {
     if (!this.isCraftsmanSessionAlive) {
       return;
     }
+    this.failMissingCraftsmanSessions(taskId, {
+      event: 'craftsman_session_missing_on_resume',
+      messagePrefix: 'Craftsman session not alive on resume',
+    });
+  }
+
+  private isSubtaskRunning(status: string, dispatchStatus: string | null) {
+    return status === 'in_progress' || dispatchStatus === 'running';
+  }
+
+  private failMissingCraftsmanSessions(
+    taskId: string,
+    options: { event: string; messagePrefix: string },
+  ) {
+    if (!this.isCraftsmanSessionAlive) {
+      return [] as Array<{ subtask_id: string; execution_ids: string[] }>;
+    }
 
     const now = new Date().toISOString();
+    const impacts: Array<{ subtask_id: string; execution_ids: string[] }> = [];
     for (const subtask of this.subtaskRepository.listByTask(taskId)) {
       if (TERMINAL_SUBTASK_STATES.has(subtask.status) || !subtask.craftsman_session) {
         continue;
@@ -768,7 +863,7 @@ export class TaskService {
         continue;
       }
 
-      const error = `Craftsman session not alive on resume: ${subtask.craftsman_session}`;
+      const error = `${options.messagePrefix}: ${subtask.craftsman_session}`;
       const executionIds = this.craftsmanExecutions
         .listBySubtask(taskId, subtask.id)
         .filter((execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status))
@@ -790,7 +885,7 @@ export class TaskService {
       this.flowLogRepository.insertFlowLog({
         task_id: taskId,
         kind: 'flow',
-        event: 'craftsman_session_missing_on_resume',
+        event: options.event,
         stage_id: subtask.stage_id,
         detail: {
           subtask_id: subtask.id,
@@ -800,11 +895,12 @@ export class TaskService {
         },
         actor: 'system',
       });
+      impacts.push({
+        subtask_id: subtask.id,
+        execution_ids: executionIds,
+      });
     }
-  }
-
-  private isSubtaskRunning(status: string, dispatchStatus: string | null) {
-    return status === 'in_progress' || dispatchStatus === 'running';
+    return impacts;
   }
 
   private buildStateChangeDetail(options: UpdateTaskStateOptions, actionDetail?: Record<string, unknown>) {

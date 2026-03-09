@@ -962,4 +962,76 @@ describe('task service', () => {
       expect.arrayContaining(['craftsman_session_missing_on_resume', 'resumed']),
     );
   });
+
+  it('blocks active tasks with dead craftsmen sessions during startup recovery scan', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-116',
+      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'startup recovery dead session',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'startup-dead',
+      task_id: 'OC-116',
+      stage_id: 'discuss',
+      title: 'Dead on startup',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:dead',
+      dispatch_status: 'running',
+      dispatched_at: '2026-03-09T14:00:00.000Z',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-startup-dead-1',
+      task_id: 'OC-116',
+      subtask_id: 'startup-dead',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:dead',
+      status: 'running',
+      started_at: '2026-03-09T14:00:00.000Z',
+    });
+
+    const recovered = service.startupRecoveryScan();
+    const status = service.getTaskStatus('OC-116');
+
+    expect(recovered).toEqual({
+      scanned_tasks: 1,
+      blocked_tasks: 1,
+      failed_subtasks: 1,
+      failed_executions: 1,
+    });
+    expect(status.task.state).toBe('blocked');
+    expect(status.task.error_detail).toBe('startup recovery blocked task after missing craftsmen sessions');
+    expect(status.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'startup-dead',
+          status: 'failed',
+          dispatch_status: 'failed',
+          output: 'Craftsman session not alive on startup recovery: tmux:dead',
+        }),
+      ]),
+    );
+    expect(executions.getExecution('exec-startup-dead-1')).toMatchObject({
+      status: 'failed',
+      error: 'Craftsman session not alive on startup recovery: tmux:dead',
+      finished_at: expect.any(String),
+    });
+    expect(status.flow_log.map((item) => item.event)).toEqual(
+      expect.arrayContaining(['craftsman_session_missing_on_startup', 'blocked', 'state_changed']),
+    );
+  });
 });

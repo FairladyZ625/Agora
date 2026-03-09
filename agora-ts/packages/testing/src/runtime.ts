@@ -9,6 +9,7 @@ export interface CreateTestRuntimeOptions {
   templatesDir?: string;
   executionIdGenerator?: () => string;
   craftsmanAdapters?: Record<string, CraftsmanAdapter>;
+  isCraftsmanSessionAlive?: (sessionId: string) => boolean;
 }
 
 export interface TestRuntime {
@@ -59,10 +60,14 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     dispatcherOptions.executionIdGenerator = options.executionIdGenerator;
   }
   const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
-  const taskService = new TaskService(db, {
+  const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[1] = {
     ...taskServiceOptions,
     craftsmanDispatcher,
-  });
+  };
+  if (options.isCraftsmanSessionAlive !== undefined) {
+    taskServiceOptionsWithRecovery.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
+  }
+  const taskService = new TaskService(db, taskServiceOptionsWithRecovery);
   const dashboardQueryService = new DashboardQueryService(db, {
     templatesDir,
     archiveJobNotifier: new FileArchiveJobNotifier({ outboxDir: archiveOutboxDir }),

@@ -19,6 +19,7 @@ export const schedulerConfigSchema = z.object({
   enabled: z.boolean().default(true),
   scan_interval_sec: z.number().int().positive().default(60),
   orphan_scan_on_boot: z.boolean().default(false),
+  startup_recovery_on_boot: z.boolean().default(true),
 });
 export type SchedulerConfig = z.infer<typeof schedulerConfigSchema>;
 
@@ -69,6 +70,7 @@ export const agoraConfigSchema = z.object({
     enabled: true,
     scan_interval_sec: 60,
     orphan_scan_on_boot: false,
+    startup_recovery_on_boot: true,
   }),
   rate_limit: rateLimitSchema.default({
     enabled: false,
