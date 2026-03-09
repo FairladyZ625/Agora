@@ -303,4 +303,73 @@ describe('craftsman dispatcher', () => {
       ]),
     );
   });
+
+  it('rewrites repo workdirs through the configured workdir isolator', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-isolated-1',
+      workdirIsolator: {
+        isolate: () => '/tmp/isolated/codex/OC-964/sub-codex-exec-isolated-1',
+      },
+      adapters: {
+        codex: {
+          name: 'codex',
+          dispatchTask: (request) => ({
+            status: 'running',
+            session_id: `cwd:${request.workdir}`,
+            started_at: '2026-03-09T17:00:00.000Z',
+          }),
+        },
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-964',
+      title: 'dispatch isolated workdir',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex',
+      task_id: 'OC-964',
+      stage_id: 'develop',
+      title: 'run codex in isolated cwd',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    const result = dispatcher.dispatchSubtask({
+      task_id: 'OC-964',
+      stage_id: 'develop',
+      subtask_id: 'sub-codex',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/repo/root',
+      prompt: 'Implement feature',
+    });
+
+    expect(result.execution).toMatchObject({
+      workdir: '/tmp/isolated/codex/OC-964/sub-codex-exec-isolated-1',
+      session_id: 'cwd:/tmp/isolated/codex/OC-964/sub-codex-exec-isolated-1',
+    });
+    expect(executions.getExecution('exec-isolated-1')).toMatchObject({
+      workdir: '/tmp/isolated/codex/OC-964/sub-codex-exec-isolated-1',
+    });
+    expect(subtasks.listByTask('OC-964')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'sub-codex',
+          craftsman_workdir: '/tmp/isolated/codex/OC-964/sub-codex-exec-isolated-1',
+        }),
+      ]),
+    );
+  });
 });

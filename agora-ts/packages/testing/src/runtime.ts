@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService, type CraftsmanAdapter } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService, type CraftsmanAdapter, type WorkdirIsolator } from '@agora-ts/core';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
@@ -11,6 +11,7 @@ export interface CreateTestRuntimeOptions {
   craftsmanAdapters?: Record<string, CraftsmanAdapter>;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   maxConcurrentRunning?: number;
+  workdirIsolator?: WorkdirIsolator;
 }
 
 export interface TestRuntime {
@@ -50,6 +51,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     adapters: Record<string, CraftsmanAdapter>;
     executionIdGenerator?: () => string;
     maxConcurrentRunning?: number;
+    workdirIsolator?: WorkdirIsolator;
   } = {
     adapters: options.craftsmanAdapters ?? {
       shell: new ShellCraftsmanAdapter(),
@@ -63,6 +65,9 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   }
   if (options.maxConcurrentRunning !== undefined) {
     dispatcherOptions.maxConcurrentRunning = options.maxConcurrentRunning;
+  }
+  if (options.workdirIsolator !== undefined) {
+    dispatcherOptions.workdirIsolator = options.workdirIsolator;
   }
   const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
   const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[1] = {

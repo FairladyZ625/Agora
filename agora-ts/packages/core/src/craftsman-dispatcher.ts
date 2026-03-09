@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { CraftsmanExecutionRepository, SubtaskRepository, type AgoraDatabase } from '@agora-ts/db';
 import type { CraftsmanModeDto } from '@agora-ts/contracts';
 import type { CraftsmanAdapter } from './craftsman-adapter.js';
+import type { WorkdirIsolator } from './workdir-isolator.js';
 
 export interface DispatchSubtaskInput {
   task_id: string;
@@ -18,6 +19,7 @@ export interface CraftsmanDispatcherOptions {
   adapters: Record<string, CraftsmanAdapter>;
   executionIdGenerator?: () => string;
   maxConcurrentRunning?: number;
+  workdirIsolator?: WorkdirIsolator;
 }
 
 export class CraftsmanDispatcher {
@@ -26,6 +28,7 @@ export class CraftsmanDispatcher {
   private readonly adapters: Record<string, CraftsmanAdapter>;
   private readonly executionIdGenerator: () => string;
   private readonly maxConcurrentRunning: number | null;
+  private readonly workdirIsolator: WorkdirIsolator | undefined;
 
   constructor(
     db: AgoraDatabase,
@@ -36,6 +39,7 @@ export class CraftsmanDispatcher {
     this.adapters = options.adapters;
     this.executionIdGenerator = options.executionIdGenerator ?? (() => randomUUID());
     this.maxConcurrentRunning = options.maxConcurrentRunning ?? null;
+    this.workdirIsolator = options.workdirIsolator;
   }
 
   dispatchSubtask(input: DispatchSubtaskInput) {
@@ -47,6 +51,13 @@ export class CraftsmanDispatcher {
     if (!adapter) {
       throw new Error(`Craftsman adapter '${input.adapter}' not configured`);
     }
+    const isolatedWorkdir = this.workdirIsolator?.isolate({
+      executionId,
+      taskId: input.task_id,
+      subtaskId: input.subtask_id,
+      adapter: input.adapter,
+      workdir: input.workdir ?? null,
+    }) ?? input.workdir ?? null;
 
     this.executions.insertExecution({
       execution_id: executionId,
@@ -55,14 +66,14 @@ export class CraftsmanDispatcher {
       adapter: input.adapter,
       mode: input.mode,
       brief_path: input.brief_path ?? null,
-      workdir: input.workdir ?? null,
+      workdir: isolatedWorkdir,
       started_at: null,
     });
 
     this.subtasks.updateSubtask(input.task_id, input.subtask_id, {
       craftsman_type: input.adapter,
       craftsman_session: null,
-      craftsman_workdir: input.workdir ?? null,
+      craftsman_workdir: isolatedWorkdir,
       craftsman_prompt: input.prompt ?? null,
       dispatch_status: 'queued',
       dispatched_at: new Date().toISOString(),
@@ -76,7 +87,7 @@ export class CraftsmanDispatcher {
         subtask_id: input.subtask_id,
         adapter: input.adapter,
         mode: input.mode,
-        workdir: input.workdir ?? null,
+        workdir: isolatedWorkdir,
         prompt: input.prompt ?? null,
         brief_path: input.brief_path ?? null,
       });

@@ -24,6 +24,7 @@ export const scenarioNames = [
   'craftsman-happy-path',
   'craftsman-callback-failure',
   'craftsman-concurrency-limit',
+  'craftsman-workdir-isolation',
   'craftsman-retry',
   'craftsman-timeout-escalation',
 ] as const;
@@ -87,6 +88,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runCraftsmanCallbackFailureScenario(runtime);
     case 'craftsman-concurrency-limit':
       return runCraftsmanConcurrencyLimitScenario(runtime);
+    case 'craftsman-workdir-isolation':
+      return runCraftsmanWorkdirIsolationScenario(runtime);
     case 'craftsman-retry':
       return runCraftsmanRetryScenario(runtime);
     case 'craftsman-timeout-escalation':
@@ -827,6 +830,43 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
     executions: [first.execution.execution_id],
     templateChecks: {
       validated: errorMessage === 'craftsman concurrency limit exceeded: max 1 active executions',
+      saved: true,
+      duplicated: false,
+      workflowValidated: false,
+    },
+  });
+}
+
+function runCraftsmanWorkdirIsolationScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman workdir isolation scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'dispatch with isolated git workdir policy',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'craft-isolated',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Craftsman isolated workdir',
+    assignee: 'codex',
+    craftsman_type: 'codex',
+  });
+
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-isolated',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/repo/root',
+  });
+
+  return buildScenarioResult(runtime, 'craftsman-workdir-isolation', task.id, {
+    executions: [dispatch.execution.execution_id],
+    templateChecks: {
+      validated: dispatch.execution.workdir === '/isolated/codex/repo',
       saved: true,
       duplicated: false,
       workflowValidated: false,

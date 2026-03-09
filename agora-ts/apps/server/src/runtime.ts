@@ -1,7 +1,8 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, GeminiCraftsmanAdapter, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, GeminiCraftsmanAdapter, GitWorktreeWorkdirIsolator, InboxService, LiveSessionStore, OpenClawAgentRegistry, OpenClawLogPresenceSource, resolveCraftsmanRuntimeMode, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { existsSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 
 export interface CreateServerRuntimeOptions {
   configPath?: string;
@@ -49,14 +50,20 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
         },
   );
   const adapterMode = resolveCraftsmanRuntimeMode('server');
-  const craftsmanDispatcher = new CraftsmanDispatcher(db, {
+  const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
     maxConcurrentRunning: config.craftsmen.max_concurrent_running,
     adapters: createDefaultCraftsmanAdapters({
       mode: adapterMode,
       callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
       apiToken: config.api_auth.enabled ? config.api_auth.token : null,
     }),
-  });
+  };
+  if (config.craftsmen.isolate_git_worktrees) {
+    dispatcherOptions.workdirIsolator = new GitWorktreeWorkdirIsolator({
+      rootDir: resolvePath(config.craftsmen.isolated_root),
+    });
+  }
+  const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
   const tmuxRuntimeService = new TmuxRuntimeService({
     adapters: {
       codex: new CodexCraftsmanAdapter(),

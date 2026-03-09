@@ -20,3 +20,4 @@ export * from './state-machine.js';
 export * from './task-service.js';
 export * from './template-authoring-service.js';
 export * from './tmux-runtime-service.js';
+export * from './workdir-isolator.js';

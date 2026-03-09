@@ -41,6 +41,8 @@ export type DashboardAuthConfig = z.infer<typeof dashboardAuthSchema>;
 
 export const craftsmenConfigSchema = z.object({
   max_concurrent_running: z.number().int().positive().default(8),
+  isolate_git_worktrees: z.boolean().default(false),
+  isolated_root: z.string().default('.agora-ts/craftsman-workdirs'),
 });
 export type CraftsmenConfig = z.infer<typeof craftsmenConfigSchema>;
 
@@ -91,6 +93,8 @@ export const agoraConfigSchema = z.object({
   }),
   craftsmen: craftsmenConfigSchema.default({
     max_concurrent_running: 8,
+    isolate_git_worktrees: false,
+    isolated_root: '.agora-ts/craftsman-workdirs',
   }),
   observability: observabilityConfigSchema.default({
     ready_path: '/ready',

@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, resolveCraftsmanRuntimeMode, TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, GitWorktreeWorkdirIsolator, resolveCraftsmanRuntimeMode, TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import { resolve as resolvePath } from 'node:path';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
@@ -28,14 +29,20 @@ function resolveTaskService() {
   const dbPath = process.env.AGORA_DB_PATH ?? config.db_path;
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
-  const craftsmanDispatcher = new CraftsmanDispatcher(db, {
+  const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
     maxConcurrentRunning: config.craftsmen.max_concurrent_running,
     adapters: createDefaultCraftsmanAdapters({
       mode: resolveCraftsmanRuntimeMode('cli'),
       callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
       apiToken: config.api_auth.enabled ? config.api_auth.token : null,
     }),
-  });
+  };
+  if (config.craftsmen.isolate_git_worktrees) {
+    dispatcherOptions.workdirIsolator = new GitWorktreeWorkdirIsolator({
+      rootDir: resolvePath(config.craftsmen.isolated_root),
+    });
+  }
+  const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
   return new TaskService(db, {
     archonUsers: config.permissions.archonUsers,
     allowAgents: config.permissions.allowAgents,

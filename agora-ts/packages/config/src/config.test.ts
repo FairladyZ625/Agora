@@ -30,6 +30,7 @@ describe('agora-ts config contracts', () => {
     expect(parsed.rate_limit.enabled).toBe(false);
     expect(parsed.dashboard_auth.enabled).toBe(false);
     expect(parsed.craftsmen.max_concurrent_running).toBe(8);
+    expect(parsed.craftsmen.isolate_git_worktrees).toBe(false);
     expect(parsed.observability.ready_path).toBe('/ready');
   });
 
@@ -55,6 +56,8 @@ describe('agora-ts config contracts', () => {
       },
       craftsmen: {
         max_concurrent_running: 3,
+        isolate_git_worktrees: true,
+        isolated_root: '/tmp/agora-isolated',
       },
       observability: {
         ready_path: '/ready',
@@ -68,6 +71,8 @@ describe('agora-ts config contracts', () => {
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');
     expect(parsed.craftsmen.max_concurrent_running).toBe(3);
+    expect(parsed.craftsmen.isolate_git_worktrees).toBe(true);
+    expect(parsed.craftsmen.isolated_root).toBe('/tmp/agora-isolated');
     expect(parsed.observability.metrics_enabled).toBe(true);
   });
 

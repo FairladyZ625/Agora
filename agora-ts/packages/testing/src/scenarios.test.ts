@@ -30,6 +30,7 @@ describe('agora-ts testing scenarios', () => {
       'craftsman-happy-path',
       'craftsman-callback-failure',
       'craftsman-concurrency-limit',
+      'craftsman-workdir-isolation',
       'craftsman-retry',
       'craftsman-timeout-escalation',
     ]);
@@ -392,6 +393,31 @@ describe('agora-ts testing scenarios', () => {
       expect.arrayContaining([
         expect.objectContaining({ id: 'craft-limit-1', dispatch_status: 'running' }),
         expect.objectContaining({ id: 'craft-limit-2', dispatch_status: null }),
+      ]),
+    );
+  });
+
+  it('runs a craftsman workdir isolation scenario', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-CRAFT-ISO',
+      executionIdGenerator: () => 'exec-craft-iso-1',
+      workdirIsolator: {
+        isolate: () => '/isolated/codex/repo',
+      },
+    });
+
+    const result = runScenario(runtime, 'craftsman-workdir-isolation');
+    const subtasks = new SubtaskRepository(runtime.db);
+
+    expect(result.taskId).toBe('OC-CRAFT-ISO');
+    expect(result.executions).toEqual(['exec-craft-iso-1']);
+    expect(result.templateChecks?.validated).toBe(true);
+    expect(subtasks.listByTask('OC-CRAFT-ISO')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'craft-isolated',
+          craftsman_workdir: '/isolated/codex/repo',
+        }),
       ]),
     );
   });
