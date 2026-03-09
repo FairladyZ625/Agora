@@ -94,6 +94,12 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     liveSessionStore,
     tmuxRuntimeService,
     apiAuth: config.api_auth,
+    dashboardAuth: {
+      enabled: config.dashboard_auth.enabled,
+      method: config.dashboard_auth.method,
+      allowedUsers: config.dashboard_auth.allowed_users,
+      password: process.env.AGORA_DASHBOARD_BASIC_PASSWORD ?? null,
+    },
     rateLimit: {
       enabled: config.rate_limit.enabled,
       windowMs: config.rate_limit.window_ms,

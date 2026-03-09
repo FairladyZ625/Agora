@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
-import Fastify, { type FastifyReply } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
@@ -56,6 +56,12 @@ export interface BuildAppOptions {
     enabled: boolean;
     token: string;
   };
+  dashboardAuth?: {
+    enabled: boolean;
+    method: 'basic' | 'oauth2';
+    allowedUsers: string[];
+    password?: string | null;
+  };
   rateLimit?: {
     enabled: boolean;
     windowMs: number;
@@ -110,8 +116,66 @@ function parseBearerToken(authorization?: string) {
   return token;
 }
 
+function parseBasicCredentials(authorization?: string) {
+  if (!authorization) {
+    return null;
+  }
+  const [scheme, encoded] = authorization.split(' ');
+  if (scheme?.toLowerCase() !== 'basic' || !encoded) {
+    return null;
+  }
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  const separatorIndex = decoded.indexOf(':');
+  if (separatorIndex < 0) {
+    return null;
+  }
+  return {
+    username: decoded.slice(0, separatorIndex),
+    password: decoded.slice(separatorIndex + 1),
+  };
+}
+
 function isReadRequest(method: string) {
   return method === 'GET' || method === 'HEAD';
+}
+
+function isDashboardRoute(url: string) {
+  return url === '/dashboard' || url === '/dashboard/' || url.startsWith('/dashboard/');
+}
+
+function requireDashboardAccess(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  dashboardAuth: BuildAppOptions['dashboardAuth'],
+) {
+  if (!dashboardAuth?.enabled || !isDashboardRoute(request.url)) {
+    return true;
+  }
+  if (dashboardAuth.method !== 'basic') {
+    reply.status(501).send({ message: 'dashboard auth method not implemented' });
+    return false;
+  }
+  if (!dashboardAuth.password) {
+    reply.status(500).send({ message: 'dashboard auth enabled but password not configured' });
+    return false;
+  }
+  const credentials = parseBasicCredentials(request.headers.authorization);
+  if (!credentials) {
+    reply
+      .header('WWW-Authenticate', 'Basic realm="Agora Dashboard"')
+      .status(401)
+      .send({ message: 'missing dashboard credentials' });
+    return false;
+  }
+  const allowed = dashboardAuth.allowedUsers.length === 0 || dashboardAuth.allowedUsers.includes(credentials.username);
+  if (!allowed || credentials.password !== dashboardAuth.password) {
+    reply
+      .header('WWW-Authenticate', 'Basic realm="Agora Dashboard"')
+      .status(403)
+      .send({ message: 'invalid dashboard credentials' });
+    return false;
+  }
+  return true;
 }
 
 function incrementCounter(counter: Map<string, number>, key: string) {
@@ -165,6 +229,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const liveSessionStore = options.liveSessionStore;
   const tmuxRuntimeService = options.tmuxRuntimeService;
   const apiAuth = options.apiAuth;
+  const dashboardAuth = options.dashboardAuth;
   const rateLimit = options.rateLimit;
   const dashboardDir = options.dashboardDir;
   const readyPath = options.observability?.readyPath ?? '/ready';
@@ -294,12 +359,21 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   if (dashboardDir && existsSync(dashboardDir)) {
     app.get('/dashboard', async (request, reply) => {
+      if (!requireDashboardAccess(request, reply, dashboardAuth)) {
+        return reply;
+      }
       return sendDashboardShell(reply, dashboardDir);
     });
     app.get('/dashboard/', async (request, reply) => {
+      if (!requireDashboardAccess(request, reply, dashboardAuth)) {
+        return reply;
+      }
       return sendDashboardShell(reply, dashboardDir);
     });
     app.get('/dashboard/*', async (request, reply) => {
+      if (!requireDashboardAccess(request, reply, dashboardAuth)) {
+        return reply;
+      }
       const wildcard = (request.params as { '*': string })['*'];
       if (wildcard && wildcard.length > 0) {
         const requested = resolve(dashboardDir, wildcard);

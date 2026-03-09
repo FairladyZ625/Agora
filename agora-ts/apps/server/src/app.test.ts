@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
@@ -14,6 +14,14 @@ function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-app-test-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeDashboardDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-test-'));
+  tempPaths.push(dir);
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><html><body>dashboard</body></html>');
+  writeFileSync(join(dir, 'app.js'), 'console.log("dashboard");');
+  return dir;
 }
 
 afterEach(() => {
@@ -63,6 +71,41 @@ describe('agora-ts server bootstrap', () => {
     });
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it('protects dashboard shell and assets with basic auth when enabled', async () => {
+    const dashboardDir = makeDashboardDir();
+    const app = buildApp({
+      dashboardDir,
+      dashboardAuth: {
+        enabled: true,
+        method: 'basic',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+      },
+    });
+
+    const shellDenied = await app.inject({
+      method: 'GET',
+      url: '/dashboard',
+    });
+    const assetDenied = await app.inject({
+      method: 'GET',
+      url: '/dashboard/app.js',
+    });
+    const shellAllowed = await app.inject({
+      method: 'GET',
+      url: '/dashboard',
+      headers: {
+        authorization: `Basic ${Buffer.from('lizeyu:secret-pass').toString('base64')}`,
+      },
+    });
+
+    expect(shellDenied.statusCode).toBe(401);
+    expect(shellDenied.headers['www-authenticate']).toContain('Basic');
+    expect(assetDenied.statusCode).toBe(401);
+    expect(shellAllowed.statusCode).toBe(200);
+    expect(shellAllowed.body).toContain('dashboard');
   });
 
   it('returns 503 when task service routes are unconfigured', async () => {
