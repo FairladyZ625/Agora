@@ -577,18 +577,18 @@ function buildChannelSummaries(
         .filter((item) => inferChannelFromHistory(item) === summary.channel)
         .sort(compareHistoryEvents)
         .slice(0, 8);
-      const channelSignals = signals
+      const rawChannelSignals = signals
         .filter((item) => item.provider === summary.channel)
-        .sort(compareSignalEvents)
-        .slice(0, 12);
+        .sort(compareSignalEvents);
       const overallPresence = deriveAxisPresence(summary);
+      const channelSignals = compactChannelSignals(rawChannelSignals, overallPresence);
       return {
         ...summary,
         overall_presence: overallPresence,
         presence_reason: overallPresence === 'offline' ? null : (affectedAgents[0]?.presence_reason ?? null),
         affected_agents: affectedAgents,
         history: channelHistory,
-        signal_status: deriveSignalStatus(channelSignals),
+        signal_status: deriveSignalStatus(channelSignals, overallPresence),
         last_signal_at: channelSignals[0]?.occurred_at ?? null,
         signal_counts: buildSignalCounts(channelSignals),
         signals: channelSignals.map((item) => ({
@@ -787,12 +787,16 @@ function compareSignalEvents(left: AgentProviderSignalEvent, right: AgentProvide
 
 function deriveSignalStatus(
   signals: AgentProviderSignalEvent[],
+  overallPresence?: AgentsStatusDto['channel_summaries'][number]['overall_presence'],
 ): AgentsStatusDto['channel_summaries'][number]['signal_status'] {
   const latest = signals[0];
   if (!latest) {
     return 'unknown';
   }
   if (latest.kind === 'transport_error' || latest.kind === 'health_restart' || latest.kind === 'auto_restart_attempt') {
+    if (overallPresence === 'online' || overallPresence === 'stale') {
+      return 'recovering';
+    }
     return 'degraded';
   }
   if (latest.kind === 'provider_start' || latest.kind === 'gateway_proxy_enabled') {
@@ -802,6 +806,70 @@ function deriveSignalStatus(
     return 'healthy';
   }
   return 'unknown';
+}
+
+function compactChannelSignals(
+  signals: AgentProviderSignalEvent[],
+  overallPresence: AgentsStatusDto['channel_summaries'][number]['overall_presence'],
+) {
+  const collapsed = collapseDuplicateSignals(signals);
+  const latest = collapsed[0];
+  if (!latest) {
+    return [];
+  }
+
+  if (isDegradedSignal(latest)) {
+    if (overallPresence === 'online' || overallPresence === 'stale') {
+      const recovery = collapsed.find((signal) => !isDegradedSignal(signal));
+      return recovery ? [latest, recovery] : [latest];
+    }
+
+    const chain: AgentProviderSignalEvent[] = [];
+    for (const signal of collapsed) {
+      chain.push(signal);
+      if (!isDegradedSignal(signal) && chain.length > 1) {
+        break;
+      }
+      if (chain.length >= 6) {
+        break;
+      }
+    }
+    return chain;
+  }
+
+  const healthyChain: AgentProviderSignalEvent[] = [];
+  for (const signal of collapsed) {
+    if (isDegradedSignal(signal)) {
+      break;
+    }
+    healthyChain.push(signal);
+    if (healthyChain.length >= 4) {
+      break;
+    }
+  }
+  return healthyChain;
+}
+
+function collapseDuplicateSignals(signals: AgentProviderSignalEvent[]) {
+  const collapsed: AgentProviderSignalEvent[] = [];
+  for (const signal of signals) {
+    const previous = collapsed[collapsed.length - 1];
+    if (
+      previous &&
+      previous.kind === signal.kind &&
+      previous.provider === signal.provider &&
+      previous.severity === signal.severity &&
+      previous.detail === signal.detail
+    ) {
+      continue;
+    }
+    collapsed.push(signal);
+  }
+  return collapsed;
+}
+
+function isDegradedSignal(signal: AgentProviderSignalEvent) {
+  return signal.kind === 'transport_error' || signal.kind === 'health_restart' || signal.kind === 'auto_restart_attempt';
 }
 
 function buildSignalCounts(signals: AgentProviderSignalEvent[]) {

@@ -653,7 +653,7 @@ describe('dashboard query service', () => {
         signal_status: 'healthy',
         signal_counts: expect.objectContaining({
           ready_events: 1,
-          restart_events: 1,
+          restart_events: 0,
           transport_errors: 0,
         }),
         affected_agents: expect.arrayContaining([
@@ -674,16 +674,12 @@ describe('dashboard query service', () => {
             reason: 'provider_start',
           }),
         ]),
-        signals: expect.arrayContaining([
-          expect.objectContaining({
-            kind: 'health_restart',
-            severity: 'error',
-          }),
+        signals: [
           expect.objectContaining({
             kind: 'provider_ready',
             severity: 'info',
           }),
-        ]),
+        ],
       }),
     ]));
     expect(agentsStatus.host_summaries).toEqual(expect.arrayContaining([
@@ -868,5 +864,91 @@ describe('dashboard query service', () => {
         },
       ],
     });
+  });
+
+  it('marks a channel as recovering and collapses duplicate transport errors when presence is still online', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agentRegistry: AgentInventorySource = {
+      listAgents: () => [
+        {
+          id: 'main',
+          host_framework: 'openclaw',
+          channel_providers: ['discord'],
+          inventory_sources: ['discord', 'openclaw'],
+          primary_model: null,
+          workspace_dir: null,
+        },
+      ],
+    };
+    const presenceSource: PresenceSource = {
+      listPresence: () => [
+        {
+          agent_id: 'main',
+          presence: 'online',
+          provider: 'discord',
+          account_id: 'main',
+          last_seen_at: '2026-03-09T02:29:00.000Z',
+          reason: 'provider_start',
+        },
+      ],
+      listHistory: () => [],
+      listSignals: () => [
+        {
+          occurred_at: '2026-03-09T02:28:04.217Z',
+          provider: 'discord',
+          agent_id: null,
+          account_id: null,
+          kind: 'transport_error',
+          severity: 'error',
+          detail: 'code 1005',
+        },
+        {
+          occurred_at: '2026-03-09T02:19:19.938Z',
+          provider: 'discord',
+          agent_id: null,
+          account_id: null,
+          kind: 'transport_error',
+          severity: 'error',
+          detail: 'code 1005',
+        },
+        {
+          occurred_at: '2026-03-09T02:10:00.000Z',
+          provider: 'discord',
+          agent_id: null,
+          account_id: '1475474396008419490',
+          kind: 'provider_ready',
+          severity: 'info',
+          detail: 'Main ready',
+        },
+      ],
+    };
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      agentRegistry,
+      presenceSource,
+    });
+
+    const agentsStatus = queries.getAgentsStatus();
+    const discord = agentsStatus.channel_summaries.find((item) => item.channel === 'discord');
+
+    expect(discord).toMatchObject({
+      signal_status: 'recovering',
+      signal_counts: {
+        ready_events: 1,
+        restart_events: 0,
+        transport_errors: 1,
+      },
+    });
+    expect(discord?.signals).toEqual([
+      expect.objectContaining({
+        kind: 'transport_error',
+        detail: 'code 1005',
+      }),
+      expect.objectContaining({
+        kind: 'provider_ready',
+        detail: 'Main ready',
+      }),
+    ]);
   });
 });

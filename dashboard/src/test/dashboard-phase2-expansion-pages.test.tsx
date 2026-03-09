@@ -419,7 +419,7 @@ describe('dashboard expansion routes', () => {
     expect(screen.getByText(/Craftsman Runtime 摘要/i)).toBeInTheDocument();
     expect(screen.getByText(/Channel 健康详情/i)).toBeInTheDocument();
     expect(screen.getByText(/Channel 历史趋势/i)).toBeInTheDocument();
-    expect(screen.getByText(/Channel 运行信号/i)).toBeInTheDocument();
+    expect(screen.getByText(/Channel 最近事件/i)).toBeInTheDocument();
     expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
     expect(screen.getAllByText('agora-craftsmen').length).toBeGreaterThan(0);
     expect(screen.getByText(/Runtime 会话/i)).toBeInTheDocument();
