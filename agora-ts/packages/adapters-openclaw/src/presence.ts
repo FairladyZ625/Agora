@@ -7,7 +7,7 @@ import type {
   AgentPresenceState,
   AgentProviderSignalEvent,
   PresenceSource,
-} from './runtime-ports.js';
+} from '@agora-ts/core';
 
 export interface OpenClawLogPresenceSourceOptions {
   logPath?: string;

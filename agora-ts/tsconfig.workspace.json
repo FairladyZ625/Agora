@@ -5,6 +5,7 @@
     { "path": "./packages/contracts" },
     { "path": "./packages/core" },
     { "path": "./packages/db" },
+    { "path": "./packages/adapters-openclaw" },
     { "path": "./packages/testing" },
     { "path": "./apps/server" },
     { "path": "./apps/cli" }

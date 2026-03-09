@@ -11,13 +11,14 @@ import {
   GitWorktreeWorkdirIsolator,
   InboxService,
   LiveSessionStore,
-  OpenClawAgentRegistry,
-  OpenClawLogPresenceSource,
   resolveCraftsmanRuntimeMode,
   TaskService,
   TemplateAuthoringService,
   TmuxRuntimeService,
+  type AgentInventorySource,
+  type PresenceSource,
 } from '@agora-ts/core';
+import { OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import type { AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
@@ -48,8 +49,8 @@ export interface ServerComposition {
 
 export interface ServerCompositionFactories {
   createLiveSessionStore: (context: ServerCompositionContext) => LiveSessionStore;
-  createAgentRegistry: (context: ServerCompositionContext) => OpenClawAgentRegistry;
-  createPresenceSource: (context: ServerCompositionContext) => OpenClawLogPresenceSource;
+  createAgentRegistry: (context: ServerCompositionContext) => AgentInventorySource;
+  createPresenceSource: (context: ServerCompositionContext) => PresenceSource;
   createCraftsmanDispatcher: (context: ServerCompositionContext) => CraftsmanDispatcher;
   createTmuxRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
   createTaskService: (
@@ -62,8 +63,8 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: {
       liveSessionStore: LiveSessionStore;
-      agentRegistry: OpenClawAgentRegistry;
-      presenceSource: OpenClawLogPresenceSource;
+      agentRegistry: AgentInventorySource;
+      presenceSource: PresenceSource;
       tmuxRuntimeService: TmuxRuntimeService;
       archiveJobNotifier: FileArchiveJobNotifier;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;

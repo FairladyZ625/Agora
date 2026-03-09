@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import type { AgentInventorySource, RegisteredAgent } from './runtime-ports.js';
+import type { AgentInventorySource, RegisteredAgent } from '@agora-ts/core';
 
 export interface OpenClawAgentRegistryOptions {
   configPath?: string;

@@ -10,6 +10,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@agora-ts/adapters-openclaw": "0.0.0",
     "@agora-ts/config": "0.0.0",
     "@agora-ts/contracts": "0.0.0",
     "@agora-ts/core": "0.0.0",

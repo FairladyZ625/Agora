@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OpenClawLogPresenceSource } from './openclaw-provider-presence.js';
+import { OpenClawLogPresenceSource } from './presence.js';
 
 const tempPaths: string[] = [];
 
