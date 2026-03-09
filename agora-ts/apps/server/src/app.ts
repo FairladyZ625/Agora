@@ -168,6 +168,28 @@ function isDashboardRoute(url: string) {
   return url === '/dashboard' || url === '/dashboard/' || url.startsWith('/dashboard/');
 }
 
+function isDashboardSessionRoute(url: string) {
+  return url === '/api/dashboard/session'
+    || url === '/api/dashboard/session/login'
+    || url === '/api/dashboard/session/logout';
+}
+
+function isDashboardProtectedApiRoute(method: string, url: string) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    return false;
+  }
+  return url.startsWith('/api/tasks')
+    || url.startsWith('/api/agents/')
+    || url === '/api/agents/status'
+    || url.startsWith('/api/archive/')
+    || url === '/api/archive/jobs'
+    || url.startsWith('/api/todos')
+    || url.startsWith('/api/templates')
+    || url.startsWith('/api/craftsmen/tmux/')
+    || url.startsWith('/api/craftsmen/executions/')
+    || url.startsWith('/api/craftsmen/tasks/');
+}
+
 const DASHBOARD_SESSION_COOKIE = 'agora_dashboard_session';
 
 function createDashboardLoginPage() {
@@ -428,7 +450,26 @@ export function buildApp(options: BuildAppOptions = {}) {
         current.count += 1;
       }
     }
+    const dashboardSessionEnabled = dashboardAuth?.enabled && dashboardAuth.method === 'session';
+    const dashboardSession = dashboardSessionEnabled ? getDashboardSession(request, dashboardSessions) : null;
+    if (
+      dashboardSessionEnabled
+      && isDashboardProtectedApiRoute(request.method, request.url)
+      && !dashboardSession
+      && !apiAuth?.enabled
+    ) {
+      return reply.status(401).send({ message: 'missing dashboard session' });
+    }
     if (!apiAuth?.enabled) {
+      return;
+    }
+    if (
+      dashboardSessionEnabled
+      && (
+        isDashboardSessionRoute(request.url)
+        || (isDashboardProtectedApiRoute(request.method, request.url) && dashboardSession)
+      )
+    ) {
       return;
     }
     if (!apiAuth.token) {

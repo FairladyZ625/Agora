@@ -163,6 +163,60 @@ describe('agora-ts server bootstrap', () => {
     expect(dashboard.body).toContain('dashboard');
   });
 
+  it('requires a dashboard session for dashboard read APIs when session auth is enabled', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SESSION-API',
+    });
+    taskService.createTask({
+      title: 'session guarded api task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+    const app = buildApp({
+      taskService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const denied = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-SESSION-API/status',
+    });
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const allowed = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-SESSION-API/status',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+    });
+
+    expect(denied.statusCode).toBe(401);
+    expect(denied.json()).toEqual({ message: 'missing dashboard session' });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      task: { id: 'OC-SESSION-API' },
+    });
+  });
+
   it('returns 503 when task service routes are unconfigured', async () => {
     const app = buildApp();
 
