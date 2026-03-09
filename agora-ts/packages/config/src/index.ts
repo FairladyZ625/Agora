@@ -11,9 +11,39 @@ export type AgentPermission = z.infer<typeof agentPermissionSchema>;
 
 export const apiAuthSchema = z.object({
   enabled: z.boolean().default(false),
-  token: z.string().default('change-me'),
+  token: z.string().min(1).default('change-me'),
 });
 export type ApiAuthConfig = z.infer<typeof apiAuthSchema>;
+
+export const schedulerConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  scan_interval_sec: z.number().int().positive().default(60),
+  orphan_scan_on_boot: z.boolean().default(false),
+});
+export type SchedulerConfig = z.infer<typeof schedulerConfigSchema>;
+
+export const rateLimitSchema = z.object({
+  enabled: z.boolean().default(false),
+  window_ms: z.number().int().positive().default(60_000),
+  max_requests: z.number().int().positive().default(120),
+  write_max_requests: z.number().int().positive().default(30),
+});
+export type RateLimitConfig = z.infer<typeof rateLimitSchema>;
+
+export const dashboardAuthSchema = z.object({
+  enabled: z.boolean().default(false),
+  method: z.enum(['basic', 'oauth2']).default('basic'),
+  allowed_users: z.array(z.string().min(1)).default([]),
+  session_ttl_hours: z.number().int().positive().default(24),
+});
+export type DashboardAuthConfig = z.infer<typeof dashboardAuthSchema>;
+
+export const observabilityConfigSchema = z.object({
+  ready_path: z.string().startsWith('/').default('/ready'),
+  metrics_enabled: z.boolean().default(false),
+  structured_logs: z.boolean().default(false),
+});
+export type ObservabilityConfig = z.infer<typeof observabilityConfigSchema>;
 
 export const permissionsSchema = z.object({
   allowAgents: z.record(z.string(), agentPermissionSchema).default({
@@ -34,6 +64,28 @@ export const agoraConfigSchema = z.object({
   permissions: permissionsSchema.default({
     allowAgents: { '*': { canCall: [], canAdvance: false } },
     archonUsers: [],
+  }),
+  scheduler: schedulerConfigSchema.default({
+    enabled: true,
+    scan_interval_sec: 60,
+    orphan_scan_on_boot: false,
+  }),
+  rate_limit: rateLimitSchema.default({
+    enabled: false,
+    window_ms: 60_000,
+    max_requests: 120,
+    write_max_requests: 30,
+  }),
+  dashboard_auth: dashboardAuthSchema.default({
+    enabled: false,
+    method: 'basic',
+    allowed_users: [],
+    session_ttl_hours: 24,
+  }),
+  observability: observabilityConfigSchema.default({
+    ready_path: '/ready',
+    metrics_enabled: false,
+    structured_logs: false,
   }),
 });
 export type AgoraConfig = z.infer<typeof agoraConfigSchema>;

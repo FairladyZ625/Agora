@@ -3,6 +3,8 @@ import {
   approveTaskRequestSchema,
   createTaskRequestSchema,
   taskStatusSchema,
+  workflowSchema,
+  teamSchema,
 } from './task-api.js';
 
 describe('task api contracts', () => {
@@ -55,5 +57,22 @@ describe('task api contracts', () => {
         comment: 'looks good',
       }).approver_id,
     ).toBe('glm5');
+  });
+
+  it('rejects unsupported workflow gate and mode values', () => {
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [{ id: 'draft', mode: 'sidequest', gate: { type: 'magic_gate' } }],
+      }),
+    ).toThrow();
+  });
+
+  it('rejects unsupported team roles', () => {
+    expect(() =>
+      teamSchema.parse({
+        members: [{ role: 'wizard', agentId: 'opus', model_preference: 'reasoning' }],
+      }),
+    ).toThrow();
   });
 });

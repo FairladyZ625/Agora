@@ -1,10 +1,41 @@
 import { z } from 'zod';
 import { taskPrioritySchema, taskStateSchema } from './task.js';
 
+const agentRoleSchema = z.enum([
+  'architect',
+  'developer',
+  'reviewer',
+  'writer',
+  'researcher',
+  'analyst',
+  'executor',
+  'craftsman',
+]);
+
+const workflowModeSchema = z.enum([
+  'discuss',
+  'execute',
+]);
+
+const workflowGateTypeSchema = z.enum([
+  'archon_review',
+  'command',
+  'all_subtasks_done',
+  'approval',
+  'auto_timeout',
+  'quorum',
+]);
+
+const jsonPrimitiveSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([jsonPrimitiveSchema, z.array(jsonValueSchema), z.record(z.string(), jsonValueSchema)]),
+);
+
 export const teamMemberSchema = z.object({
-  role: z.string(),
-  agentId: z.string(),
-  model_preference: z.string(),
+  role: agentRoleSchema,
+  agentId: z.string().min(1),
+  model_preference: z.string().min(1),
 });
 export type TeamMemberDto = z.infer<typeof teamMemberSchema>;
 
@@ -14,20 +45,22 @@ export const teamSchema = z.object({
 export type TeamDto = z.infer<typeof teamSchema>;
 
 export const workflowGateSchema = z.object({
-  type: z.string().optional(),
-}).passthrough();
+  type: workflowGateTypeSchema.optional(),
+  required: z.number().int().positive().optional(),
+  timeout_sec: z.number().int().positive().optional(),
+}).strict();
 export type WorkflowGateDto = z.infer<typeof workflowGateSchema>;
 
 export const workflowStageSchema = z.object({
-  id: z.string(),
-  name: z.string().optional(),
-  mode: z.string().optional(),
+  id: z.string().min(1),
+  name: z.string().min(1).optional(),
+  mode: workflowModeSchema.optional(),
   gate: workflowGateSchema.nullish(),
 });
 export type WorkflowStageDto = z.infer<typeof workflowStageSchema>;
 
 export const workflowSchema = z.object({
-  type: z.string().optional(),
+  type: z.string().min(1).optional(),
   stages: z.array(workflowStageSchema).optional(),
 });
 export type WorkflowDto = z.infer<typeof workflowSchema>;
@@ -37,17 +70,17 @@ export const taskSchema = z.object({
   version: z.number().int().positive(),
   title: z.string(),
   description: z.string().nullable(),
-  type: z.string(),
+  type: z.string().min(1),
   priority: taskPrioritySchema,
-  creator: z.string(),
-  state: taskStateSchema.or(z.string()),
+  creator: z.string().min(1),
+  state: taskStateSchema,
   current_stage: z.string().nullable(),
   team: teamSchema.nullable(),
   workflow: workflowSchema.nullable(),
-  scheduler: z.unknown(),
-  scheduler_snapshot: z.unknown(),
-  discord: z.unknown(),
-  metrics: z.unknown(),
+  scheduler: jsonValueSchema,
+  scheduler_snapshot: jsonValueSchema,
+  discord: jsonValueSchema,
+  metrics: jsonValueSchema,
   error_detail: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
