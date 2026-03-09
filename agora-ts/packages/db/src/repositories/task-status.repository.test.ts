@@ -96,4 +96,61 @@ describe('task status repositories', () => {
       },
     ]);
   });
+
+  it('lists subtasks for multiple tasks in one query', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-010',
+      title: 'Task 10',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    tasks.insertTask({
+      id: 'OC-011',
+      title: 'Task 11',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    subtasks.insertSubtask({
+      id: 'subtask-a',
+      task_id: 'OC-010',
+      stage_id: 'develop',
+      title: 'A',
+      assignee: 'sonnet',
+    });
+    subtasks.insertSubtask({
+      id: 'subtask-b',
+      task_id: 'OC-011',
+      stage_id: 'develop',
+      title: 'B',
+      assignee: 'codex',
+    });
+
+    expect(subtasks.listByTaskIds(['OC-010', 'OC-011'])).toMatchObject([
+      {
+        task_id: 'OC-010',
+        id: 'subtask-a',
+        assignee: 'sonnet',
+      },
+      {
+        task_id: 'OC-011',
+        id: 'subtask-b',
+        assignee: 'codex',
+      },
+    ]);
+    expect(subtasks.listByTaskIds([])).toEqual([]);
+  });
 });

@@ -90,12 +90,18 @@ export class DashboardQueryService {
   }
 
   getAgentChannelDetail(channel: string): AgentsStatusDto['channel_summaries'][number] {
-    const status = this.buildAgentsStatus({
-      includeChannelDetails: true,
-      includeHostAffectedAgents: false,
-      includeTmuxTailPreview: false,
-    });
-    const detail = status.channel_summaries.find((item) => item.channel === channel);
+    const allAgents = this.buildAgentReadModel({
+      includeCraftsmen: false,
+    }).allAgents;
+    const providerHistory = typeof this.presenceSource?.listHistory === 'function'
+      ? this.presenceSource.listHistory()
+      : [];
+    const providerSignals = typeof this.presenceSource?.listSignals === 'function'
+      ? this.presenceSource.listSignals()
+      : [];
+    const detail = buildChannelSummaries(allAgents, providerHistory, providerSignals, {
+      includeDetails: true,
+    }).find((item) => item.channel === channel);
     if (!detail) {
       throw new NotFoundError(`Channel ${channel} not found`);
     }
@@ -107,10 +113,54 @@ export class DashboardQueryService {
     includeHostAffectedAgents: boolean;
     includeTmuxTailPreview: boolean;
   }): AgentsStatusDto {
+    const { activeTaskCount, allAgents, craftsmen } = this.buildAgentReadModel({
+      includeCraftsmen: true,
+    });
+    const providerHistory = typeof this.presenceSource?.listHistory === 'function'
+      ? (options.includeChannelDetails ? this.presenceSource.listHistory() : [])
+      : [];
+    const providerSignals = typeof this.presenceSource?.listSignals === 'function'
+      ? (options.includeChannelDetails ? this.presenceSource.listSignals() : [])
+      : [];
+
+    return {
+      summary: {
+        active_tasks: activeTaskCount,
+        active_agents: allAgents.filter((item) => item.status === 'busy').length,
+        total_agents: allAgents.length,
+        online_agents: allAgents.filter((item) => item.presence === 'online').length,
+        stale_agents: allAgents.filter((item) => item.presence === 'stale').length,
+        disconnected_agents: allAgents.filter((item) => item.presence === 'disconnected').length,
+        busy_craftsmen: craftsmen.filter((item) => item.status === 'busy').length,
+      },
+      agents: allAgents,
+      craftsmen,
+      channel_summaries: buildChannelSummaries(allAgents, providerHistory, providerSignals, {
+        includeDetails: options.includeChannelDetails,
+      }),
+      host_summaries: buildHostSummaries(allAgents, {
+        includeAffectedAgents: options.includeHostAffectedAgents,
+      }),
+      tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService, {
+        includeTailPreview: options.includeTmuxTailPreview,
+      }),
+    };
+  }
+
+  private buildAgentReadModel(options: {
+    includeCraftsmen: boolean;
+  }): {
+    activeTaskCount: number;
+    allAgents: AgentsStatusDto['agents'];
+    craftsmen: AgentsStatusDto['craftsmen'];
+  } {
     const activeTasks = this.tasks.listTasks('active');
+    const activeTaskIds = activeTasks.map((task) => task.id);
     const agents = new Map<string, AgentsStatusDto['agents'][number]>();
     const craftsmen = new Map<string, AgentsStatusDto['craftsmen'][number]>();
     const activityMap = new Map<string, string | null>();
+    const subtasksByTask = new Map<string, ReturnType<SubtaskRepository['listByTask']>>();
+    const executionsByTaskSubtask = new Map<string, ReturnType<CraftsmanExecutionRepository['listBySubtask']>>();
 
     if (activeTasks.length > 0) {
       const placeholders = activeTasks.map(() => '?').join(', ');
@@ -122,6 +172,21 @@ export class DashboardQueryService {
       `).all(...activeTasks.map((task) => task.id)) as Array<{ actor: string; last_active_at: string | null }>;
       for (const row of rows) {
         activityMap.set(row.actor, row.last_active_at);
+      }
+    }
+
+    for (const subtask of this.subtasks.listByTaskIds(activeTaskIds)) {
+      const current = subtasksByTask.get(subtask.task_id) ?? [];
+      current.push(subtask);
+      subtasksByTask.set(subtask.task_id, current);
+    }
+
+    if (options.includeCraftsmen) {
+      for (const execution of this.executions.listByTaskIds(activeTaskIds)) {
+        const key = `${execution.task_id}::${execution.subtask_id}`;
+        const current = executionsByTaskSubtask.get(key) ?? [];
+        current.push(execution);
+        executionsByTaskSubtask.set(key, current);
       }
     }
 
@@ -149,7 +214,7 @@ export class DashboardQueryService {
         agents.set(member.agentId, current);
       }
 
-      for (const subtask of this.subtasks.listByTask(task.id)) {
+      for (const subtask of subtasksByTask.get(task.id) ?? []) {
         const current = agents.get(subtask.assignee) ?? {
           id: subtask.assignee,
           role: null,
@@ -174,9 +239,8 @@ export class DashboardQueryService {
         }
         agents.set(subtask.assignee, current);
 
-        if (subtask.craftsman_type) {
-          const recentExecutions = this.executions
-            .listBySubtask(task.id, subtask.id)
+        if (options.includeCraftsmen && subtask.craftsman_type) {
+          const recentExecutions = (executionsByTaskSubtask.get(`${task.id}::${subtask.id}`) ?? [])
             .slice(0, 3)
             .map((execution) => ({
               execution_id: execution.execution_id,
@@ -314,34 +378,10 @@ export class DashboardQueryService {
         }
         return a.id.localeCompare(b.id);
       });
-    const providerHistory = typeof this.presenceSource?.listHistory === 'function'
-      ? (options.includeChannelDetails ? this.presenceSource.listHistory() : [])
-      : [];
-    const providerSignals = typeof this.presenceSource?.listSignals === 'function'
-      ? (options.includeChannelDetails ? this.presenceSource.listSignals() : [])
-      : [];
-
     return {
-      summary: {
-        active_tasks: activeTasks.length,
-        active_agents: allAgents.filter((item) => item.status === 'busy').length,
-        total_agents: allAgents.length,
-        online_agents: allAgents.filter((item) => item.presence === 'online').length,
-        stale_agents: allAgents.filter((item) => item.presence === 'stale').length,
-        disconnected_agents: allAgents.filter((item) => item.presence === 'disconnected').length,
-        busy_craftsmen: Array.from(craftsmen.values()).filter((item) => item.status === 'busy').length,
-      },
-      agents: allAgents,
+      activeTaskCount: activeTasks.length,
+      allAgents,
       craftsmen: Array.from(craftsmen.values()).sort((a, b) => a.id.localeCompare(b.id)),
-      channel_summaries: buildChannelSummaries(allAgents, providerHistory, providerSignals, {
-        includeDetails: options.includeChannelDetails,
-      }),
-      host_summaries: buildHostSummaries(allAgents, {
-        includeAffectedAgents: options.includeHostAffectedAgents,
-      }),
-      tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService, {
-        includeTailPreview: options.includeTmuxTailPreview,
-      }),
     };
   }
 

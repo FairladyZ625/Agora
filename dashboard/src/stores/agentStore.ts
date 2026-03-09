@@ -13,6 +13,7 @@ interface AgentStore {
   craftsmen: CraftsmanStatusItem[];
   channelSummaries: AgentChannelSummary[];
   channelDetails: Record<string, AgentChannelSummary>;
+  channelDetailFetchedAt: Record<string, number>;
   hostSummaries: AgentHostSummary[];
   tmuxRuntime: TmuxRuntimeStatus | null;
   tmuxTailByAgent: Record<string, string | null>;
@@ -43,6 +44,7 @@ export const useAgentStore = create<AgentStore>()(
       craftsmen: [],
       channelSummaries: [],
       channelDetails: {},
+      channelDetailFetchedAt: {},
       hostSummaries: [],
       tmuxRuntime: null,
       tmuxTailByAgent: {},
@@ -118,6 +120,10 @@ export const useAgentStore = create<AgentStore>()(
             channelDetails: {
               ...state.channelDetails,
               [channel]: detail,
+            },
+            channelDetailFetchedAt: {
+              ...state.channelDetailFetchedAt,
+              [channel]: Date.now(),
             },
             channelDetailLoading: false,
           }));

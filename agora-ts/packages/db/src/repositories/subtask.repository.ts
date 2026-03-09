@@ -73,6 +73,20 @@ export class SubtaskRepository {
     return rows.map((row) => this.parseRow(row));
   }
 
+  listByTaskIds(taskIds: string[]): StoredSubtask[] {
+    if (taskIds.length === 0) {
+      return [];
+    }
+    const placeholders = taskIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM subtasks
+      WHERE task_id IN (${placeholders})
+      ORDER BY task_id ASC, id ASC
+    `).all(...taskIds) as Record<string, unknown>[];
+    return rows.map((row) => this.parseRow(row));
+  }
+
   updateSubtask(taskId: string, subtaskId: string, updates: {
     status?: string;
     output?: string | null;

@@ -1,8 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useEffectEvent, useMemo } from 'react';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useAgentStore } from '@/stores/agentStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+
+const MIN_CHANNEL_DETAIL_STALE_AFTER_MS = 15_000;
 
 function getCraftsmanPriority(item: { status: string; recentExecutions: Array<{ status: string; startedAt: string | null }> }) {
   if (item.recentExecutions.some((execution) => execution.status === 'failed')) {
@@ -53,6 +55,7 @@ export function AgentsPage() {
   const craftsmen = useAgentStore((state) => state.craftsmen);
   const channelSummaries = useAgentStore((state) => state.channelSummaries);
   const channelDetails = useAgentStore((state) => state.channelDetails);
+  const channelDetailFetchedAt = useAgentStore((state) => state.channelDetailFetchedAt);
   const hostSummaries = useAgentStore((state) => state.hostSummaries);
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const tmuxTailByAgent = useAgentStore((state) => state.tmuxTailByAgent);
@@ -73,6 +76,18 @@ export function AgentsPage() {
   const setHostFilter = useAgentStore((state) => state.setHostFilter);
   const refreshInterval = useSettingsStore((state) => state.refreshInterval);
   const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
+  const selectedChannelId = channelFilter ?? channelSummaries[0]?.channel ?? null;
+  const channelDetailStaleAfterMs = Math.max(refreshInterval * 3_000, MIN_CHANNEL_DETAIL_STALE_AFTER_MS);
+  const isChannelDetailStale = useEffectEvent((channel: string | null) => {
+    if (!channel) {
+      return false;
+    }
+    const fetchedAt = channelDetailFetchedAt[channel];
+    if (!channelDetails[channel] || fetchedAt === undefined) {
+      return true;
+    }
+    return Date.now() - fetchedAt >= channelDetailStaleAfterMs;
+  });
 
   useEffect(() => {
     void fetchStatus();
@@ -87,6 +102,9 @@ export function AgentsPage() {
         return;
       }
       void fetchStatus();
+      if (selectedChannelId && isChannelDetailStale(selectedChannelId)) {
+        void fetchChannelDetail(selectedChannelId);
+      }
     };
     const intervalId = window.setInterval(() => {
       if (pauseOnHidden && document.hidden) {
@@ -99,16 +117,14 @@ export function AgentsPage() {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [fetchStatus, pauseOnHidden, refreshInterval]);
-
-  const selectedChannelId = channelFilter ?? channelSummaries[0]?.channel ?? null;
+  }, [fetchChannelDetail, fetchStatus, pauseOnHidden, refreshInterval, selectedChannelId]);
 
   useEffect(() => {
-    if (!selectedChannelId || channelDetails[selectedChannelId]) {
+    if (!selectedChannelId || !isChannelDetailStale(selectedChannelId)) {
       return;
     }
     void fetchChannelDetail(selectedChannelId);
-  }, [channelDetails, fetchChannelDetail, selectedChannelId]);
+  }, [fetchChannelDetail, selectedChannelId]);
 
   const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
   const selectedChannel = useMemo(

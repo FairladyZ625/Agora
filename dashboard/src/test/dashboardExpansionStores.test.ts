@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAgentStore } from '@/stores/agentStore';
 import { useArchiveStore } from '@/stores/archiveStore';
 import { useTemplateStore } from '@/stores/templateStore';
@@ -24,6 +24,7 @@ vi.mock('@/lib/api', () => ({
 describe('dashboard expansion stores', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     localStorage.clear();
     useAgentStore.setState({
       summary: null,
@@ -50,6 +51,7 @@ describe('dashboard expansion stores', () => {
       ],
       channelSummaries: [],
       channelDetails: {},
+      channelDetailFetchedAt: {},
       hostSummaries: [],
       tmuxRuntime: null,
       tmuxTailByAgent: {},
@@ -86,6 +88,10 @@ describe('dashboard expansion stores', () => {
       detailLoading: false,
       error: null,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('loads agent status into a dedicated dashboard store', async () => {
@@ -209,6 +215,7 @@ describe('dashboard expansion stores', () => {
   });
 
   it('loads channel detail into a dedicated slice without refetching the summary', async () => {
+    vi.setSystemTime(new Date('2026-03-09T12:00:00.000Z'));
     vi.mocked(api.getAgentChannelDetail).mockResolvedValue({
       channel: 'discord',
       total_agents: 2,
@@ -259,6 +266,7 @@ describe('dashboard expansion stores', () => {
     expect(result).toBe('live');
     expect(state.channelDetails.discord?.history[0]?.agentId).toBe('sonnet');
     expect(state.channelDetails.discord?.signals[0]?.kind).toBe('transport_error');
+    expect(state.channelDetailFetchedAt.discord).toBe(Date.parse('2026-03-09T12:00:00.000Z'));
   });
 
   it('loads tmux tail on demand per agent', async () => {

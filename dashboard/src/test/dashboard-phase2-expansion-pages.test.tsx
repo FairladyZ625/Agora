@@ -108,6 +108,9 @@ const agentStoreState = {
       ],
     },
   },
+  channelDetailFetchedAt: {
+    discord: Date.parse('2026-03-08T10:00:00.000Z'),
+  },
   hostSummaries: [
     {
       host: 'openclaw',
@@ -232,6 +235,7 @@ function makeAgentStoreSnapshot() {
     ...agentStoreState,
     channelSummaries: [...agentStoreState.channelSummaries],
     channelDetails: { ...agentStoreState.channelDetails },
+    channelDetailFetchedAt: { ...agentStoreState.channelDetailFetchedAt },
     hostSummaries: [...agentStoreState.hostSummaries],
     tmuxTailByAgent: { ...agentStoreState.tmuxTailByAgent },
     tmuxTailLoadingByAgent: { ...agentStoreState.tmuxTailLoadingByAgent },
@@ -466,10 +470,14 @@ vi.mock('@/stores/feedbackStore', () => ({
 
 describe('dashboard expansion routes', () => {
   beforeEach(() => {
+    agentStoreState.fetchStatus.mockClear();
+    agentStoreState.fetchChannelDetail.mockClear();
+    agentStoreState.fetchTmuxTail.mockClear();
     agentStoreState.presenceFilter = 'all';
     agentStoreState.craftsmenFilter = 'all';
     agentStoreState.channelFilter = null;
     agentStoreState.hostFilter = null;
+    agentStoreState.channelDetailFetchedAt.discord = Date.parse('2026-03-08T10:00:00.000Z');
     agentStoreState.agents.splice(1);
     agentStoreState.craftsmen.splice(1);
     agentStoreSnapshot = makeAgentStoreSnapshot();
@@ -666,7 +674,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /load tail/i }));
+    fireEvent.click(screen.getByRole('button', { name: /加载输出/i }));
 
     expect(agentStoreState.fetchTmuxTail).toHaveBeenCalledWith('codex');
   });
@@ -692,6 +700,42 @@ describe('dashboard expansion routes', () => {
     if (hiddenDescriptor) {
       Object.defineProperty(document, 'hidden', hiddenDescriptor);
     }
+  });
+
+  it('does not refetch channel detail on summary polling while cached detail is still fresh', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-08T10:00:05.000Z'));
+    agentStoreState.channelFilter = 'discord';
+    agentStoreState.channelDetailFetchedAt.discord = Date.parse('2026-03-08T10:00:00.000Z');
+    notifyAgentStore();
+
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const initialDetailCalls = agentStoreState.fetchChannelDetail.mock.calls.length;
+    vi.advanceTimersByTime(5_000);
+
+    expect(agentStoreState.fetchStatus.mock.calls.length).toBeGreaterThan(0);
+    expect(agentStoreState.fetchChannelDetail.mock.calls.length).toBe(initialDetailCalls);
+  });
+
+  it('refetches channel detail when the selected cached detail is stale', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-08T10:01:00.000Z'));
+    agentStoreState.channelFilter = 'discord';
+    agentStoreState.channelDetailFetchedAt.discord = Date.parse('2026-03-08T10:00:00.000Z');
+    notifyAgentStore();
+
+    render(
+      <MemoryRouter initialEntries={['/agents']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(agentStoreState.fetchChannelDetail).toHaveBeenCalledWith('discord');
   });
 
   it('renders the todo workspace on the dedicated route', () => {

@@ -822,6 +822,80 @@ describe('dashboard query service', () => {
     expect(listBySubtaskSpy).not.toHaveBeenCalled();
   });
 
+  it('batches subtask and craftsman execution reads when building the agent summary', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    let nextTaskId = 420;
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => `OC-${nextTaskId++}`,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const queries = new DashboardQueryService(db, { templatesDir });
+    const internalSubtasks = (queries as unknown as { subtasks: SubtaskRepository }).subtasks;
+    const internalExecutions = (queries as unknown as { executions: CraftsmanExecutionRepository }).executions;
+    const listByTaskSpy = vi.spyOn(internalSubtasks, 'listByTask');
+    const listByTaskIdsSpy = vi.spyOn(internalSubtasks, 'listByTaskIds');
+    const listBySubtaskSpy = vi.spyOn(internalExecutions, 'listBySubtask');
+    const listExecutionsByTaskIdsSpy = vi.spyOn(internalExecutions, 'listByTaskIds');
+
+    taskService.createTask({
+      title: 'Task A',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+    taskService.createTask({
+      title: 'Task B',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+    subtasks.insertSubtask({
+      id: 'dev-a',
+      task_id: 'OC-420',
+      stage_id: 'discuss',
+      title: 'Dev A',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+    subtasks.insertSubtask({
+      id: 'dev-b',
+      task_id: 'OC-421',
+      stage_id: 'discuss',
+      title: 'Dev B',
+      assignee: 'codex',
+      craftsman_type: 'claude',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-420',
+      task_id: 'OC-420',
+      subtask_id: 'dev-a',
+      adapter: 'codex',
+      mode: 'task',
+      status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-421',
+      task_id: 'OC-421',
+      subtask_id: 'dev-b',
+      adapter: 'claude',
+      mode: 'task',
+      status: 'running',
+    });
+
+    const status = queries.getAgentsStatus();
+
+    expect(status.summary.active_tasks).toBe(2);
+    expect(listByTaskIdsSpy).toHaveBeenCalledWith(expect.arrayContaining(['OC-420', 'OC-421']));
+    expect(listExecutionsByTaskIdsSpy).toHaveBeenCalledWith(expect.arrayContaining(['OC-420', 'OC-421']));
+    expect(listByTaskSpy).not.toHaveBeenCalled();
+    expect(listBySubtaskSpy).not.toHaveBeenCalled();
+  });
+
   it('merges tmux runtime panes into the agents read model', () => {
     const tail = (agent: string) => `tail:${agent}`;
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
