@@ -661,6 +661,7 @@ describe('dashboard expansion routes', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /discord/i }));
 
+    expect(screen.getByRole('heading', { name: 'discord' })).toBeInTheDocument();
     expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Channel 历史趋势/i).length).toBeGreaterThan(0);

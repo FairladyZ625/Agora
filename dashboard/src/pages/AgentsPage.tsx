@@ -334,28 +334,72 @@ export function AgentsPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="surface-panel surface-panel--workspace">
-          <div className="section-title-row">
-            <h3 className="section-title">{copy.channelDetailTitle}</h3>
-            <span className="status-pill status-pill--neutral">{selectedChannel?.channel ?? 'n/a'}</span>
+        <div className="surface-panel surface-panel--workspace xl:sticky xl:top-6">
+          <div>
+            <p className="page-kicker">{copy.channelDetailTitle}</p>
+            <div className="section-title-row mt-3">
+              <h3 className="page-title">{selectedChannel?.channel ?? 'n/a'}</h3>
+              <span className="status-pill status-pill--neutral">{selectedChannel?.signalStatus ?? 'unknown'}</span>
+            </div>
+            <p className="page-summary">
+              {selectedChannel
+                ? `${copy.presenceLabel}: ${selectedChannel.overallPresence} · ${copy.lastSeenLabel}: ${selectedChannel.lastSeenAt ?? 'n/a'}`
+                : copy.emptyChannelDetail}
+            </p>
           </div>
           <div className="mt-5 space-y-4">
             {selectedChannel ? (
               <>
-                <div className="type-text-xs flex flex-wrap items-center gap-3">
-                  <span>{copy.presenceLabel}: {selectedChannel.overallPresence}</span>
-                  <span>{copy.presenceReasonLabel}: {selectedChannel.presenceReason ?? 'n/a'}</span>
-                  <span>{copy.lastSeenLabel}: {selectedChannel.lastSeenAt ?? 'n/a'}</span>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-text-xs">{copy.presenceLabel}</p>
+                      <p className="type-heading-sm mt-2">{selectedChannel.overallPresence}</p>
+                    </div>
+                  </div>
+                  <div className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-text-xs">{copy.presenceReasonLabel}</p>
+                      <p className="type-heading-sm mt-2">{selectedChannel.presenceReason ?? 'n/a'}</p>
+                    </div>
+                  </div>
+                  <div className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-text-xs">{copy.metrics.totalAgents}</p>
+                      <p className="type-heading-sm mt-2">{selectedChannel.totalAgents}</p>
+                    </div>
+                  </div>
+                  <div className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-text-xs">{copy.metrics.activeAgents}</p>
+                      <p className="type-heading-sm mt-2">{selectedChannel.busyAgents}</p>
+                    </div>
+                  </div>
+                  <div className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-text-xs">{copy.metrics.staleAgents}</p>
+                      <p className="type-heading-sm mt-2">{selectedChannel.staleAgents}</p>
+                    </div>
+                  </div>
+                  <div className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-text-xs">{copy.metrics.disconnectedAgents}</p>
+                      <p className="type-heading-sm mt-2">{selectedChannel.disconnectedAgents}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="type-text-xs flex flex-wrap items-center gap-3">
-                  <span>{copy.metrics.totalAgents}: {selectedChannel.totalAgents}</span>
-                  <span>{copy.metrics.activeAgents}: {selectedChannel.busyAgents}</span>
-                  <span>{copy.metrics.staleAgents}: {selectedChannel.staleAgents}</span>
-                  <span>{copy.metrics.disconnectedAgents}: {selectedChannel.disconnectedAgents}</span>
-                  <span>signal: {selectedChannel.signalStatus}</span>
-                  <span>ready: {selectedChannel.signalCounts.readyEvents}</span>
-                  <span>restart: {selectedChannel.signalCounts.restartEvents}</span>
-                  <span>transport: {selectedChannel.signalCounts.transportErrors}</span>
+                <div className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="type-heading-sm">signal</strong>
+                      <span className="status-pill status-pill--neutral">{selectedChannel.signalStatus}</span>
+                    </div>
+                    <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                      <span>ready: {selectedChannel.signalCounts.readyEvents}</span>
+                      <span>restart: {selectedChannel.signalCounts.restartEvents}</span>
+                      <span>transport: {selectedChannel.signalCounts.transportErrors}</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {selectedChannel.affectedAgents.length === 0 ? (
