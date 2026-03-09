@@ -33,7 +33,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const dbPath = join(dir, 'tasks.db');
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
-  const sourceTemplatesDir = options.templatesDir ?? resolve(process.cwd(), '../agora/templates');
+  const sourceTemplatesDir = options.templatesDir ?? resolve(process.cwd(), 'templates');
   const templatesDir = join(dir, 'templates');
   const archiveOutboxDir = join(dir, 'archive-outbox');
   const archiveReceiptDir = join(dir, 'archive-receipts');

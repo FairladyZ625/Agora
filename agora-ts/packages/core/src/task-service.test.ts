@@ -8,7 +8,7 @@ import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
-const templatesDir = resolve(process.cwd(), '../agora/templates');
+const templatesDir = resolve(process.cwd(), 'templates');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-task-service-'));

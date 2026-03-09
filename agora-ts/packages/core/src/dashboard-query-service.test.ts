@@ -10,7 +10,7 @@ import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
-const templatesDir = resolve(process.cwd(), '../agora/templates');
+const templatesDir = resolve(process.cwd(), 'templates');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-core-'));

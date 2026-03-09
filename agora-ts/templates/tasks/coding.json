@@ -1,0 +1,18 @@
+{
+  "name": "编码任务",
+  "type": "coding",
+  "description": "需要设计、开发、审查的编码工作",
+  "defaultWorkflow": "discuss-execute-review",
+  "governance": "standard",
+  "defaultTeam": {
+    "architect": { "model_preference": "strong_reasoning", "suggested": ["opus"] },
+    "developer": { "model_preference": "fast_coding", "suggested": ["sonnet"] },
+    "reviewer": { "model_preference": "chinese_strong", "suggested": ["glm5", "gpt52"] },
+    "craftsman": { "model_preference": "coding_cli", "suggested": ["claude_code", "codex"] }
+  },
+  "stages": [
+    { "id": "discuss", "name": "方案讨论", "mode": "discuss", "gate": { "type": "archon_review" } },
+    { "id": "develop", "name": "并行开发", "mode": "execute", "gate": { "type": "all_subtasks_done" } },
+    { "id": "review", "name": "合并审查", "mode": "discuss", "gate": { "type": "archon_review" } }
+  ]
+}

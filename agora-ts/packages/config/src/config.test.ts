@@ -6,7 +6,7 @@ import { agoraConfigSchema, parseAgoraConfig } from './index.js';
 describe('agora-ts config contracts', () => {
   it('parses the legacy example config into a typed ts config object', () => {
     const raw = JSON.parse(
-      readFileSync(resolve(process.cwd(), '../agora/config/agora.example.json'), 'utf8'),
+      readFileSync(resolve(process.cwd(), 'packages/config/agora.example.json'), 'utf8'),
     );
 
     const parsed = parseAgoraConfig(raw);

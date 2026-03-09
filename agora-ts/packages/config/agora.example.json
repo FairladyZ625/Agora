@@ -1,0 +1,15 @@
+{
+  "db_path": "tasks.db",
+  "api_auth": {
+    "enabled": false,
+    "token": "change-me"
+  },
+  "permissions": {
+    "allowAgents": {
+      "opus": { "canCall": ["sonnet", "glm5", "haiku", "claude_code"], "canAdvance": true },
+      "sonnet": { "canCall": ["haiku"], "canAdvance": false },
+      "*": { "canCall": [], "canAdvance": false }
+    },
+    "archonUsers": ["lizeyu"]
+  }
+}

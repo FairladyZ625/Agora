@@ -70,7 +70,7 @@ describe('server runtime', () => {
     const bootstrapDb = createAgoraDatabase({ dbPath });
     runMigrations(bootstrapDb);
     const bootstrapTaskService = new TaskService(bootstrapDb, {
-      templatesDir: new URL('../../../../agora/templates', import.meta.url).pathname,
+      templatesDir: new URL('../../../templates', import.meta.url).pathname,
       taskIdGenerator: () => 'OC-BOOT',
       isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
     });

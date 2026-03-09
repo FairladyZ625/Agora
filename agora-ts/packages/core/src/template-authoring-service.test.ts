@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TemplateAuthoringService } from './template-authoring-service.js';
 
 const tempPaths: string[] = [];
-const sourceTemplatesDir = resolve(process.cwd(), '../agora/templates');
+const sourceTemplatesDir = resolve(process.cwd(), 'templates');
 
 function makeTemplatesDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-template-authoring-'));

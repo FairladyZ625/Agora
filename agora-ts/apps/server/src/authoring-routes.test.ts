@@ -7,7 +7,7 @@ import { DashboardQueryService, InboxService, TaskService, TemplateAuthoringServ
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
-const sourceTemplatesDir = resolve(process.cwd(), '../agora/templates');
+const sourceTemplatesDir = resolve(process.cwd(), 'templates');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-authoring-routes-db-'));

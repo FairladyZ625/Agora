@@ -16,7 +16,7 @@ import { buildApp } from './app.js';
 import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';
 
 const tempPaths: string[] = [];
-const templatesDir = resolve(process.cwd(), '../agora/templates');
+const templatesDir = resolve(process.cwd(), 'templates');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-server-'));

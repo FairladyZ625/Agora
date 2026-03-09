@@ -104,7 +104,7 @@ export interface StartupRecoveryScanResult {
 }
 
 function defaultTemplatesDir() {
-  return fileURLToPath(new URL('../../../../agora/templates', import.meta.url));
+  return fileURLToPath(new URL('../../../templates', import.meta.url));
 }
 
 function defaultTaskIdGenerator() {

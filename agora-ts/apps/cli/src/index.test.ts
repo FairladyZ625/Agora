@@ -8,7 +8,7 @@ import { createCliProgram } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
 const tempPaths: string[] = [];
-const templatesDir = resolve(process.cwd(), '../agora/templates');
+const templatesDir = resolve(process.cwd(), 'templates');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-'));

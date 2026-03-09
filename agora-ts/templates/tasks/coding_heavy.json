@@ -1,0 +1,20 @@
+{
+  "name": "大型编码任务",
+  "type": "coding_heavy",
+  "description": "需要架构讨论、并行开发、集成讨论和多轮收敛的大型任务",
+  "defaultWorkflow": "arch-design-build-integrate-polish-review",
+  "governance": "strict",
+  "defaultTeam": {
+    "architect": { "suggested": ["opus"] },
+    "developer": { "suggested": ["sonnet", "glm47"] },
+    "reviewer": { "suggested": ["glm5", "gpt52"] },
+    "craftsman": { "suggested": ["claude_code", "codex", "gemini_cli"] }
+  },
+  "stages": [
+    { "id": "architecture", "name": "架构讨论", "mode": "discuss", "gate": { "type": "archon_review" } },
+    { "id": "build", "name": "并行开发", "mode": "execute", "gate": { "type": "all_subtasks_done" } },
+    { "id": "integrate", "name": "集成讨论", "mode": "discuss", "gate": { "type": "archon_review" } },
+    { "id": "polish", "name": "打磨修复", "mode": "execute", "gate": { "type": "all_subtasks_done" } },
+    { "id": "review", "name": "最终审查", "mode": "discuss", "gate": { "type": "archon_review" } }
+  ]
+}

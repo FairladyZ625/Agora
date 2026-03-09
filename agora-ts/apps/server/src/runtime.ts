@@ -30,7 +30,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const db = createAgoraDatabase({ dbPath: config.db_path });
   runMigrations(db);
-  const templatesDir = new URL('../../../../agora/templates', import.meta.url).pathname;
+  const templatesDir = new URL('../../../templates', import.meta.url).pathname;
   const composition = buildServerComposition({
     config,
     runtimeEnv,

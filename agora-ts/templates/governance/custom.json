@@ -1,0 +1,6 @@
+{
+  "name": "自定义治理",
+  "preset": "custom",
+  "description": "完全由模板作者定义治理规则",
+  "rules": {}
+}
