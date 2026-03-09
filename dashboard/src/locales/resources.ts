@@ -94,8 +94,8 @@ export const resources = {
         },
       },
       home: {
-        kicker: 'Agora / 多 Agent 指挥广场',
-        title: 'Agora',
+        kicker: 'AGORA / 多 Agent 指挥广场',
+        title: 'AGORA',
         summary:
           'Agora 不是普通控制台，而是把 Agent 辩论、人类裁决与机器执行收束在同一操作平面上的编排广场。你在这里看到的不只是状态，而是从判断到执行的整条链路。',
         slogan: 'Agents debate. Humans decide. Machines execute.',
