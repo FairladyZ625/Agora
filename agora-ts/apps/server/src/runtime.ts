@@ -94,6 +94,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     liveSessionStore,
     tmuxRuntimeService,
     apiAuth: config.api_auth,
+    observability: config.observability,
     dashboardDir: resolveDashboardDir(),
   };
 }

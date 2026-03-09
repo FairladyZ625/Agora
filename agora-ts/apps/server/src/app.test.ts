@@ -38,6 +38,22 @@ describe('agora-ts server bootstrap', () => {
     expect(response.json()).toEqual({ status: 'ok' });
   });
 
+  it('serves a readiness endpoint from the configured ready path', async () => {
+    const app = buildApp({
+      observability: {
+        readyPath: '/readyz',
+      },
+    });
+
+    const ready = await app.inject({
+      method: 'GET',
+      url: '/readyz',
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toEqual({ status: 'ready' });
+  });
+
   it('returns 503 when task service routes are unconfigured', async () => {
     const app = buildApp();
 
@@ -86,17 +102,24 @@ describe('agora-ts server bootstrap', () => {
     expect(malformedCreate.statusCode).toBe(400);
   });
 
-  it('enforces bearer auth on api routes when enabled but leaves health open', async () => {
+  it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {
         enabled: true,
         token: 'secret-token',
+      },
+      observability: {
+        readyPath: '/ready',
       },
     });
 
     const health = await app.inject({
       method: 'GET',
       url: '/api/health',
+    });
+    const ready = await app.inject({
+      method: 'GET',
+      url: '/ready',
     });
     const missingAuth = await app.inject({
       method: 'GET',
@@ -111,6 +134,7 @@ describe('agora-ts server bootstrap', () => {
     });
 
     expect(health.statusCode).toBe(200);
+    expect(ready.statusCode).toBe(200);
     expect(missingAuth.statusCode).toBe(401);
     expect(invalidAuth.statusCode).toBe(403);
   });

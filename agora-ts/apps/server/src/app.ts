@@ -56,6 +56,9 @@ export interface BuildAppOptions {
     enabled: boolean;
     token: string;
   };
+  observability?: {
+    readyPath?: string;
+  };
   dashboardDir?: string;
 }
 
@@ -103,6 +106,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const tmuxRuntimeService = options.tmuxRuntimeService;
   const apiAuth = options.apiAuth;
   const dashboardDir = options.dashboardDir;
+  const readyPath = options.observability?.readyPath ?? '/ready';
   const tmuxSendSchema = z.object({
     agent: z.string().min(1),
     command: z.string().min(1),
@@ -114,7 +118,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.addHook('onRequest', async (request, reply) => {
-    if (!request.url.startsWith('/api/') || request.url === '/api/health') {
+    if (!request.url.startsWith('/api/') || request.url === '/api/health' || request.url === readyPath) {
       return;
     }
     if (!apiAuth?.enabled) {
@@ -134,6 +138,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     return { status: 'ok' };
+  });
+
+  app.get(readyPath, async () => {
+    return { status: 'ready' };
   });
 
   app.get('/api/live/openclaw/sessions', async (request, reply) => {

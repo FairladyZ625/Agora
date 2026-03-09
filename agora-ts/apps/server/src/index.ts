@@ -13,6 +13,9 @@ async function start() {
     liveSessionStore: runtime.liveSessionStore,
     tmuxRuntimeService: runtime.tmuxRuntimeService,
     apiAuth: runtime.apiAuth,
+    observability: {
+      readyPath: runtime.observability.ready_path,
+    },
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });
   const port = Number(process.env.PORT ?? environment.backendPort);
