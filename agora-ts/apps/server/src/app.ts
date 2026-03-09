@@ -65,12 +65,17 @@ export interface BuildAppOptions {
   observability?: {
     readyPath?: string;
     metricsEnabled?: boolean;
+    structuredLogs?: boolean;
   };
   dashboardDir?: string;
 }
 
 interface MetricsState {
   requestsByMethodAndStatus: Map<string, number>;
+}
+
+interface RequestTimingState {
+  startedAtMs?: number;
 }
 
 function translateError(error: unknown) {
@@ -164,6 +169,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const dashboardDir = options.dashboardDir;
   const readyPath = options.observability?.readyPath ?? '/ready';
   const metricsEnabled = options.observability?.metricsEnabled ?? false;
+  const structuredLogs = options.observability?.structuredLogs ?? false;
   const rateCounters = new Map<string, { count: number; resetAt: number }>();
   const metrics: MetricsState = {
     requestsByMethodAndStatus: new Map(),
@@ -179,6 +185,9 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.addHook('onRequest', async (request, reply) => {
+    if (structuredLogs) {
+      (request as typeof request & RequestTimingState).startedAtMs = Date.now();
+    }
     if (!request.url.startsWith('/api/') || request.url === '/api/health' || request.url === readyPath) {
       return;
     }
@@ -218,6 +227,19 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.addHook('onResponse', async (request, reply) => {
     incrementCounter(metrics.requestsByMethodAndStatus, `${request.method}:${reply.statusCode}`);
+    if (structuredLogs) {
+      const startedAtMs = (request as typeof request & RequestTimingState).startedAtMs ?? Date.now();
+      console.info(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'info',
+        module: 'http',
+        msg: 'request_complete',
+        method: request.method,
+        path: request.url,
+        status_code: reply.statusCode,
+        duration_ms: Math.max(0, Date.now() - startedAtMs),
+      }));
+    }
   });
 
   app.get('/api/health', async (): Promise<HealthResponse> => {

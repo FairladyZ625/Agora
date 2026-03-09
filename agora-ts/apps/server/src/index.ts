@@ -17,6 +17,7 @@ async function start() {
     observability: {
       readyPath: runtime.observability.ready_path,
       metricsEnabled: runtime.observability.metrics_enabled,
+      structuredLogs: runtime.observability.structured_logs,
     },
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });

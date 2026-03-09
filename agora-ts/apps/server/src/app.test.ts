@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -241,6 +241,45 @@ describe('agora-ts server bootstrap', () => {
     expect(response.body).toContain('agora_tasks_total{state="active"} 1');
     expect(response.body).toContain('agora_tasks_active 1');
     expect(response.body).toContain('agora_craftsmen_sessions_active 2');
+  });
+
+  it('does not emit structured request logs unless enabled', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const app = buildApp();
+
+    await app.inject({
+      method: 'GET',
+      url: '/api/health',
+    });
+
+    expect(logSpy).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it('emits structured request logs when enabled', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const app = buildApp({
+      observability: {
+        readyPath: '/ready',
+        structuredLogs: true,
+      },
+    });
+
+    await app.inject({
+      method: 'GET',
+      url: '/api/health',
+    });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      level: 'info',
+      module: 'http',
+      msg: 'request_complete',
+      method: 'GET',
+      path: '/api/health',
+      status_code: 200,
+    });
+    logSpy.mockRestore();
   });
 
   it('limits repeated read requests when rate limiting is enabled', async () => {
