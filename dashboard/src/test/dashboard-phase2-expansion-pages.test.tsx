@@ -416,11 +416,14 @@ describe('dashboard expansion routes', () => {
     expect(screen.getAllByText(/在线 Agent/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Channel 摘要/i)).toBeInTheDocument();
     expect(screen.getByText(/Host \/ Framework 摘要/i)).toBeInTheDocument();
+    expect(screen.getByText(/Craftsman Runtime 摘要/i)).toBeInTheDocument();
     expect(screen.getByText(/Channel 健康详情/i)).toBeInTheDocument();
     expect(screen.getByText(/Channel 历史趋势/i)).toBeInTheDocument();
     expect(screen.getByText(/Channel 运行信号/i)).toBeInTheDocument();
     expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
-    expect(screen.getByText('agora-craftsmen')).toBeInTheDocument();
+    expect(screen.getAllByText('agora-craftsmen').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Runtime 会话/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pane 总数/i)).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
     expect(screen.getByText(/身份来源: session_file/i)).toBeInTheDocument();
     expect(screen.getByText(/会话引用: codex-session-123/i)).toBeInTheDocument();

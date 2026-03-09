@@ -73,6 +73,17 @@ export function AgentsPage() {
     () => channelSummaries.find((item) => item.channel === channelFilter) ?? channelSummaries[0] ?? null,
     [channelFilter, channelSummaries],
   );
+  const runtimeSummary = useMemo(() => {
+    const panes = tmuxRuntime?.panes ?? [];
+    return {
+      session: tmuxRuntime?.session ?? 'n/a',
+      totalPanes: panes.length,
+      readyPanes: panes.filter((pane) => pane.ready).length,
+      activePanes: panes.filter((pane) => pane.active).length,
+      runningCraftsmen: craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running')).length,
+      failedCraftsmen: craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')).length,
+    };
+  }, [craftsmen, tmuxRuntime]);
   const visibleCraftsmen = useMemo(() => {
     const filtered = craftsmenFilter === 'all'
       ? craftsmen
@@ -213,23 +224,46 @@ export function AgentsPage() {
 
         <div className="surface-panel surface-panel--workspace">
           <div className="section-title-row">
-            <h3 className="section-title">{copy.filtersTitle}</h3>
-            <span className="status-pill status-pill--neutral">{visibleAgents.length}</span>
+            <h3 className="section-title">{copy.runtimeSummaryTitle}</h3>
+            <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
           </div>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {(['all', 'busy', 'online', 'stale', 'disconnected', 'offline'] as const).map((filter) => {
-              const selected = presenceFilter === filter;
-              return (
-                <button
-                  key={filter}
-                  type="button"
-                  className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
-                  onClick={() => setPresenceFilter(filter)}
-                >
-                  {copy.filterLabels[filter]}
-                </button>
-              );
-            })}
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.runtimeSessionLabel}</p>
+                <p className="type-heading-sm mt-2">{runtimeSummary.session}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.runtimePanesLabel}</p>
+                <p className="type-heading-sm mt-2">{runtimeSummary.totalPanes}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.runtimeReadyPanesLabel}</p>
+                <p className="type-heading-sm mt-2">{runtimeSummary.readyPanes}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.runtimeActivePanesLabel}</p>
+                <p className="type-heading-sm mt-2">{runtimeSummary.activePanes}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.runtimeRunningCraftsmenLabel}</p>
+                <p className="type-heading-sm mt-2">{runtimeSummary.runningCraftsmen}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.runtimeFailedCraftsmenLabel}</p>
+                <p className="type-heading-sm mt-2">{runtimeSummary.failedCraftsmen}</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -354,6 +388,22 @@ export function AgentsPage() {
           <div className="section-title-row">
             <h3 className="section-title">{copy.agentListTitle}</h3>
             <span className="status-pill status-pill--neutral">{visibleAgents.length}</span>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="type-text-xs">{copy.filtersTitle}</span>
+            {(['all', 'busy', 'online', 'stale', 'disconnected', 'offline'] as const).map((filter) => {
+              const selected = presenceFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                  onClick={() => setPresenceFilter(filter)}
+                >
+                  {copy.filterLabels[filter]}
+                </button>
+              );
+            })}
           </div>
           <div className="mt-5 space-y-3">
             {visibleAgents.length === 0 ? (
