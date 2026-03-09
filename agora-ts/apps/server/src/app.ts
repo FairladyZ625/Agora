@@ -64,8 +64,13 @@ export interface BuildAppOptions {
   };
   observability?: {
     readyPath?: string;
+    metricsEnabled?: boolean;
   };
   dashboardDir?: string;
+}
+
+interface MetricsState {
+  requestsByMethodAndStatus: Map<string, number>;
 }
 
 function translateError(error: unknown) {
@@ -104,6 +109,46 @@ function isReadRequest(method: string) {
   return method === 'GET' || method === 'HEAD';
 }
 
+function incrementCounter(counter: Map<string, number>, key: string) {
+  counter.set(key, (counter.get(key) ?? 0) + 1);
+}
+
+function renderMetrics(options: {
+  metrics: MetricsState;
+  taskService: TaskService | undefined;
+  tmuxRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
+}) {
+  const lines: string[] = [
+    '# HELP agora_http_requests_total Total HTTP requests served by agora-ts server.',
+    '# TYPE agora_http_requests_total counter',
+  ];
+  for (const [key, value] of options.metrics.requestsByMethodAndStatus.entries()) {
+    const [method, status] = key.split(':');
+    lines.push(`agora_http_requests_total{method="${method}",status="${status}"} ${value}`);
+  }
+
+  const tasks = options.taskService?.listTasks() ?? [];
+  const tasksByState = new Map<string, number>();
+  for (const task of tasks) {
+    incrementCounter(tasksByState, task.state);
+  }
+  lines.push('# HELP agora_tasks_total Total tasks grouped by state.');
+  lines.push('# TYPE agora_tasks_total counter');
+  for (const [state, value] of tasksByState.entries()) {
+    lines.push(`agora_tasks_total{state="${state}"} ${value}`);
+  }
+  lines.push('# HELP agora_tasks_active Current active tasks.');
+  lines.push('# TYPE agora_tasks_active gauge');
+  lines.push(`agora_tasks_active ${tasks.filter((task) => task.state === 'active').length}`);
+
+  const tmuxPanes = options.tmuxRuntimeService?.status().panes.length ?? 0;
+  lines.push('# HELP agora_craftsmen_sessions_active Current active tmux panes observed by the server.');
+  lines.push('# TYPE agora_craftsmen_sessions_active gauge');
+  lines.push(`agora_craftsmen_sessions_active ${tmuxPanes}`);
+
+  return `${lines.join('\n')}\n`;
+}
+
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: false,
@@ -118,7 +163,11 @@ export function buildApp(options: BuildAppOptions = {}) {
   const rateLimit = options.rateLimit;
   const dashboardDir = options.dashboardDir;
   const readyPath = options.observability?.readyPath ?? '/ready';
+  const metricsEnabled = options.observability?.metricsEnabled ?? false;
   const rateCounters = new Map<string, { count: number; resetAt: number }>();
+  const metrics: MetricsState = {
+    requestsByMethodAndStatus: new Map(),
+  };
   const tmuxSendSchema = z.object({
     agent: z.string().min(1),
     command: z.string().min(1),
@@ -167,6 +216,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.addHook('onResponse', async (request, reply) => {
+    incrementCounter(metrics.requestsByMethodAndStatus, `${request.method}:${reply.statusCode}`);
+  });
+
   app.get('/api/health', async (): Promise<HealthResponse> => {
     return { status: 'ok' };
   });
@@ -174,6 +227,14 @@ export function buildApp(options: BuildAppOptions = {}) {
   app.get(readyPath, async () => {
     return { status: 'ready' };
   });
+
+  if (metricsEnabled) {
+    app.get('/metrics', async (request, reply) => {
+      return reply
+        .type('text/plain; version=0.0.4; charset=utf-8')
+        .send(renderMetrics({ metrics, taskService, tmuxRuntimeService }));
+    });
+  }
 
   app.get('/api/live/openclaw/sessions', async (request, reply) => {
     if (!liveSessionStore) {

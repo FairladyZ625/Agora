@@ -16,6 +16,7 @@ async function start() {
     rateLimit: runtime.rateLimit,
     observability: {
       readyPath: runtime.observability.ready_path,
+      metricsEnabled: runtime.observability.metrics_enabled,
     },
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });

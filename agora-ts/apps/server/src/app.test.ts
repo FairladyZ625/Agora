@@ -54,6 +54,17 @@ describe('agora-ts server bootstrap', () => {
     expect(ready.json()).toEqual({ status: 'ready' });
   });
 
+  it('does not expose a metrics endpoint unless enabled', async () => {
+    const app = buildApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    });
+
+    expect(response.statusCode).toBe(404);
+  });
+
   it('returns 503 when task service routes are unconfigured', async () => {
     const app = buildApp();
 
@@ -137,6 +148,99 @@ describe('agora-ts server bootstrap', () => {
     expect(ready.statusCode).toBe(200);
     expect(missingAuth.statusCode).toBe(401);
     expect(invalidAuth.statusCode).toBe(403);
+  });
+
+  it('serves prometheus-style metrics when observability metrics are enabled', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-777',
+    });
+    taskService.createTask({
+      title: 'metrics task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+    const app = buildApp({
+      taskService,
+      observability: {
+        readyPath: '/ready',
+        metricsEnabled: true,
+      },
+      tmuxRuntimeService: {
+        up: () => ({ session: 'agora-craftsmen', panes: [] }),
+        status: () => ({
+          session: 'agora-craftsmen',
+          panes: [
+            {
+              id: '%0',
+              title: 'codex',
+              currentCommand: 'bash',
+              active: true,
+              continuityBackend: 'codex_session_file',
+              resumeCapability: 'native_resume',
+              sessionReference: 'codex-session-1',
+              identitySource: 'session_file',
+              identityPath: '/tmp/codex/session.json',
+              sessionObservedAt: '2026-03-09T00:00:00.000Z',
+              workspaceRoot: '/tmp/codex',
+              lastRecoveryMode: 'resume_exact',
+              transportSessionId: 'tmux:agora-craftsmen:codex',
+            },
+            {
+              id: '%1',
+              title: 'claude',
+              currentCommand: 'bash',
+              active: false,
+              continuityBackend: 'claude_session_id',
+              resumeCapability: 'native_resume',
+              sessionReference: 'claude-session-1',
+              identitySource: 'manual',
+              identityPath: null,
+              sessionObservedAt: '2026-03-09T00:00:00.000Z',
+              workspaceRoot: '/tmp/claude',
+              lastRecoveryMode: 'fresh_start',
+              transportSessionId: 'tmux:agora-craftsmen:claude',
+            },
+          ],
+        }),
+        doctor: () => ({ session: 'agora-craftsmen', panes: [] }),
+        send: () => undefined,
+        task: () => ({ status: 'running', session_id: 'tmux:agora-craftsmen:codex', started_at: '2026-03-09T00:00:00.000Z', payload: null }),
+        tail: () => 'tail',
+        down: () => undefined,
+        recordIdentity: () => ({
+          continuityBackend: 'codex_session_file',
+          resumeCapability: 'native_resume',
+          sessionReference: 'codex-session-1',
+          identitySource: 'session_file',
+          identityPath: '/tmp/codex/session.json',
+          sessionObservedAt: '2026-03-09T00:00:00.000Z',
+          workspaceRoot: '/tmp/codex',
+          lastRecoveryMode: 'resume_exact',
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        }),
+      },
+    });
+
+    await app.inject({
+      method: 'GET',
+      url: '/api/health',
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/plain');
+    expect(response.body).toContain('agora_http_requests_total{method="GET",status="200"} 1');
+    expect(response.body).toContain('agora_tasks_total{state="active"} 1');
+    expect(response.body).toContain('agora_tasks_active 1');
+    expect(response.body).toContain('agora_craftsmen_sessions_active 2');
   });
 
   it('limits repeated read requests when rate limiting is enabled', async () => {
