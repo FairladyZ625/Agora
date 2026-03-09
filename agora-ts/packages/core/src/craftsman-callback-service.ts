@@ -1,4 +1,4 @@
-import type { CraftsmanCallbackRequestDto } from '@agora-ts/contracts';
+import type { CraftsmanCallbackRequestDto, CraftsmanExecutionPayloadDto } from '@agora-ts/contracts';
 import {
   CraftsmanExecutionRepository,
   FlowLogRepository,
@@ -11,6 +11,7 @@ import {
   type AgoraDatabase,
 } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
+import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 
@@ -105,9 +106,10 @@ export class CraftsmanCallbackService {
     subtask: StoredSubtask,
     execution: StoredCraftsmanExecution,
   ) {
-    const payload = execution.callback_payload;
+    const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
+    const normalizedOutput = normalizeCraftsmanOutput(payload);
     if (execution.status === 'succeeded') {
-      const output = formatCallbackOutput(payload);
+      const output = formatCraftsmanOutput(payload);
       const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
         status: 'done',
         output,
@@ -132,13 +134,13 @@ export class CraftsmanCallbackService {
         stage_id: nextSubtask.stage_id,
         subtask_id: nextSubtask.id,
         content: output,
-        artifacts: payload ?? null,
+        artifacts: normalizedOutput ?? payload ?? null,
         actor: execution.adapter,
       });
       return { execution, subtask: nextSubtask, task };
     }
 
-    const errorMessage = execution.error ?? formatCallbackOutput(payload) ?? `${execution.adapter} callback ${execution.status}`;
+    const errorMessage = execution.error ?? formatCraftsmanOutput(payload) ?? `${execution.adapter} callback ${execution.status}`;
     const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
       status: 'failed',
       output: errorMessage,
@@ -165,22 +167,9 @@ export class CraftsmanCallbackService {
       stage_id: nextSubtask.stage_id,
       subtask_id: nextSubtask.id,
       content: errorMessage,
-      artifacts: payload ?? null,
+      artifacts: normalizedOutput ?? payload ?? null,
       actor: execution.adapter,
     });
     return { execution, subtask: nextSubtask, task };
   }
-}
-
-function formatCallbackOutput(payload: Record<string, unknown> | null | undefined) {
-  if (!payload) {
-    return '';
-  }
-  if (typeof payload.summary === 'string' && payload.summary.length > 0) {
-    return payload.summary;
-  }
-  if (typeof payload.stderr === 'string' && payload.stderr.length > 0) {
-    return payload.stderr;
-  }
-  return JSON.stringify(payload);
 }

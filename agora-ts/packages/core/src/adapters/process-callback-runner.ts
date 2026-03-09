@@ -73,9 +73,23 @@ async function postCallback(
     execution_id: payload.executionId,
     status: result.status,
     session_id: null,
-    payload: result.status === 'succeeded'
-      ? { summary: result.stdout || 'craftsman completed' }
-      : { stderr: result.stderr || result.stdout || 'craftsman failed' },
+    payload: {
+      output: result.status === 'succeeded'
+        ? {
+          summary: result.stdout || 'craftsman completed',
+          text: result.stdout || null,
+          stderr: null,
+          artifacts: [],
+          structured: null,
+        }
+        : {
+          summary: null,
+          text: result.stdout || null,
+          stderr: result.stderr || result.stdout || 'craftsman failed',
+          artifacts: [],
+          structured: null,
+        },
+    },
     error: result.status === 'failed' ? (result.stderr || result.stdout || 'craftsman failed') : null,
     finished_at: result.finishedAt,
   };

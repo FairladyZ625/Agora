@@ -17,7 +17,12 @@ describe('craftsman contracts', () => {
       status: 'running',
       brief_path: '/tmp/brief.md',
       workdir: '/tmp/worktree',
-      callback_payload: { summary: 'started' },
+      callback_payload: {
+        output: {
+          summary: 'started',
+          artifacts: [],
+        },
+      },
       error: null,
       started_at: '2026-03-08T10:00:00.000Z',
       finished_at: null,
@@ -41,7 +46,13 @@ describe('craftsman contracts', () => {
         execution_id: 'exec-001',
         status: 'succeeded',
         session_id: 'session-42',
-        payload: { files: 3 },
+        payload: {
+          output: {
+            summary: 'done',
+            artifacts: ['src/index.ts'],
+            structured: { files: 3 },
+          },
+        },
         error: null,
         finished_at: '2026-03-08T10:10:00.000Z',
       }).status,

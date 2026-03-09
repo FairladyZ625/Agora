@@ -40,7 +40,9 @@ describe('process callback runner', () => {
       execution_id: 'exec-runner-1',
       status: 'succeeded',
       payload: {
-        summary: 'RUNNER_OK',
+        output: {
+          summary: 'RUNNER_OK',
+        },
       },
     });
   });

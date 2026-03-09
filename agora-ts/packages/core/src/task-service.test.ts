@@ -808,7 +808,12 @@ describe('task service', () => {
       execution_id: 'exec-resume-1',
       status: 'succeeded',
       session_id: 'tmux:resume-me',
-      payload: { summary: 'done while paused' },
+      payload: {
+        output: {
+          summary: 'done while paused',
+          artifacts: [],
+        },
+      },
       error: null,
       finished_at: '2026-03-09T12:01:00.000Z',
     });

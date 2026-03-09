@@ -15,7 +15,18 @@ export type CraftsmanExecutionStatusDto = z.infer<typeof craftsmanExecutionStatu
 export const craftsmanAdapterSchema = z.string().min(1);
 export type CraftsmanAdapterDto = z.infer<typeof craftsmanAdapterSchema>;
 
-export const craftsmanExecutionPayloadSchema = z.record(z.string(), z.unknown());
+export const craftsmanNormalizedOutputSchema = z.object({
+  summary: z.string().nullable().optional(),
+  text: z.string().nullable().optional(),
+  stderr: z.string().nullable().optional(),
+  artifacts: z.array(z.string()).optional().default([]),
+  structured: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+export type CraftsmanNormalizedOutputDto = z.infer<typeof craftsmanNormalizedOutputSchema>;
+
+export const craftsmanExecutionPayloadSchema = z.object({
+  output: craftsmanNormalizedOutputSchema.optional(),
+}).catchall(z.unknown());
 export type CraftsmanExecutionPayloadDto = z.infer<typeof craftsmanExecutionPayloadSchema>;
 
 export const craftsmanExecutionSchema = z.object({

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runScenarioCli } from './cli.js';
+import { scenarioNames } from './scenarios.js';
 
 function createBuffer() {
   let value = '';
@@ -59,7 +60,7 @@ describe('agora-ts scenario cli', () => {
     expect(exitCode).toBe(0);
     expect(stderr.value).toBe('');
     const results = JSON.parse(stdout.value);
-    expect(results).toHaveLength(18);
+    expect(results).toHaveLength(scenarioNames.length);
     expect(results.map((item: { name: string }) => item.name)).toEqual(
       expect.arrayContaining([
         'archive-notify',
@@ -69,9 +70,12 @@ describe('agora-ts scenario cli', () => {
         'unblock-reassign',
         'pause-resume-deferred-callback',
         'pause-resume-missing-session',
+        'startup-recovery-missing-session',
         'cancel-active-task',
         'inbox-promote',
         'authoring-smoke',
+        'craftsman-concurrency-limit',
+        'craftsman-workdir-isolation',
       ]),
     );
   });

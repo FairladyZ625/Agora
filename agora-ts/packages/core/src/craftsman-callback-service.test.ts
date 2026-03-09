@@ -80,8 +80,13 @@ describe('craftsman callback service', () => {
       status: 'succeeded',
       session_id: 'codex-session-1',
       payload: {
-        summary: 'implemented the endpoint',
-        artifacts: ['src/api.ts'],
+        output: {
+          summary: 'implemented the endpoint',
+          artifacts: ['src/api.ts'],
+          structured: {
+            files: ['src/api.ts'],
+          },
+        },
       },
       error: null,
       finished_at: '2026-03-08T13:03:00.000Z',
@@ -91,8 +96,13 @@ describe('craftsman callback service', () => {
       execution_id: 'exec-970',
       status: 'succeeded',
       callback_payload: {
-        summary: 'implemented the endpoint',
-        artifacts: ['src/api.ts'],
+        output: {
+          summary: 'implemented the endpoint',
+          artifacts: ['src/api.ts'],
+          structured: {
+            files: ['src/api.ts'],
+          },
+        },
       },
     });
     expect(result.subtask).toMatchObject({
@@ -166,7 +176,14 @@ describe('craftsman callback service', () => {
       execution_id: 'exec-971',
       status: 'failed',
       session_id: 'codex-session-2',
-      payload: { stderr: 'test failures' },
+      payload: {
+        output: {
+          summary: null,
+          stderr: 'test failures',
+          artifacts: [],
+          structured: null,
+        },
+      },
       error: 'test failures',
       finished_at: '2026-03-08T13:06:00.000Z',
     });
@@ -237,7 +254,12 @@ describe('craftsman callback service', () => {
       execution_id: 'exec-972',
       status: 'succeeded',
       session_id: 'codex-session-3',
-      payload: { summary: 'done once' },
+      payload: {
+        output: {
+          summary: 'done once',
+          artifacts: [],
+        },
+      },
       error: null,
       finished_at: '2026-03-08T13:12:00.000Z',
     });
@@ -249,7 +271,12 @@ describe('craftsman callback service', () => {
       execution_id: 'exec-972',
       status: 'succeeded',
       session_id: 'codex-session-3',
-      payload: { summary: 'done once' },
+      payload: {
+        output: {
+          summary: 'done once',
+          artifacts: [],
+        },
+      },
       error: null,
       finished_at: '2026-03-08T13:12:00.000Z',
     });
@@ -310,7 +337,12 @@ describe('craftsman callback service', () => {
       execution_id: 'exec-973',
       status: 'succeeded',
       session_id: 'codex-session-4',
-      payload: { summary: 'done while paused' },
+      payload: {
+        output: {
+          summary: 'done while paused',
+          artifacts: [],
+        },
+      },
       error: null,
       finished_at: '2026-03-08T13:16:00.000Z',
     });
@@ -318,7 +350,12 @@ describe('craftsman callback service', () => {
     expect(result.execution).toMatchObject({
       execution_id: 'exec-973',
       status: 'succeeded',
-      callback_payload: { summary: 'done while paused' },
+      callback_payload: {
+        output: {
+          summary: 'done while paused',
+          artifacts: [],
+        },
+      },
     });
     expect(result.subtask).toMatchObject({
       id: 'sub-codex',
