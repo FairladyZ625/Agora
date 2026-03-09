@@ -39,6 +39,11 @@ export const dashboardAuthSchema = z.object({
 });
 export type DashboardAuthConfig = z.infer<typeof dashboardAuthSchema>;
 
+export const craftsmenConfigSchema = z.object({
+  max_concurrent_running: z.number().int().positive().default(8),
+});
+export type CraftsmenConfig = z.infer<typeof craftsmenConfigSchema>;
+
 export const observabilityConfigSchema = z.object({
   ready_path: z.string().startsWith('/').default('/ready'),
   metrics_enabled: z.boolean().default(false),
@@ -83,6 +88,9 @@ export const agoraConfigSchema = z.object({
     method: 'basic',
     allowed_users: [],
     session_ttl_hours: 24,
+  }),
+  craftsmen: craftsmenConfigSchema.default({
+    max_concurrent_running: 8,
   }),
   observability: observabilityConfigSchema.default({
     ready_path: '/ready',

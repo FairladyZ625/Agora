@@ -107,6 +107,29 @@ export class CraftsmanExecutionRepository {
     return rows.map((row) => this.parseRow(row));
   }
 
+  listByTaskIds(taskIds: string[]): StoredCraftsmanExecution[] {
+    if (taskIds.length === 0) {
+      return [];
+    }
+    const placeholders = taskIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM craftsman_executions
+      WHERE task_id IN (${placeholders})
+      ORDER BY task_id ASC, subtask_id ASC, created_at DESC, execution_id DESC
+    `).all(...taskIds) as Record<string, unknown>[];
+    return rows.map((row) => this.parseRow(row));
+  }
+
+  countActiveExecutions() {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM craftsman_executions
+      WHERE status IN ('queued', 'running')
+    `).get() as { count: number };
+    return Number(row.count ?? 0);
+  }
+
   updateExecution(executionId: string, updates: UpdateCraftsmanExecutionInput): StoredCraftsmanExecution {
     const assignments: string[] = [];
     const values: Array<string | null> = [];

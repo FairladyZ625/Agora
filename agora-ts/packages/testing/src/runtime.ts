@@ -10,6 +10,7 @@ export interface CreateTestRuntimeOptions {
   executionIdGenerator?: () => string;
   craftsmanAdapters?: Record<string, CraftsmanAdapter>;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
+  maxConcurrentRunning?: number;
 }
 
 export interface TestRuntime {
@@ -48,6 +49,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const dispatcherOptions: {
     adapters: Record<string, CraftsmanAdapter>;
     executionIdGenerator?: () => string;
+    maxConcurrentRunning?: number;
   } = {
     adapters: options.craftsmanAdapters ?? {
       shell: new ShellCraftsmanAdapter(),
@@ -58,6 +60,9 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   };
   if (options.executionIdGenerator !== undefined) {
     dispatcherOptions.executionIdGenerator = options.executionIdGenerator;
+  }
+  if (options.maxConcurrentRunning !== undefined) {
+    dispatcherOptions.maxConcurrentRunning = options.maxConcurrentRunning;
   }
   const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
   const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[1] = {

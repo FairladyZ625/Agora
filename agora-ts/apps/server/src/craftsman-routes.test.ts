@@ -183,6 +183,77 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      maxConcurrentRunning: 1,
+      executionIdGenerator: () => 'exec-route-limit-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T16:30:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-982',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const app = buildApp({ taskService });
+
+    taskService.createTask({
+      title: 'craftsman route concurrency limit',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex-1',
+      task_id: 'OC-982',
+      stage_id: 'discuss',
+      title: 'run codex 1',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex-2',
+      task_id: 'OC-982',
+      stage_id: 'discuss',
+      title: 'run codex 2',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/dispatch',
+      payload: {
+        task_id: 'OC-982',
+        subtask_id: 'sub-codex-1',
+        adapter: 'codex',
+        mode: 'task',
+        workdir: '/tmp/codex-1',
+      },
+    });
+    const overflow = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/dispatch',
+      payload: {
+        task_id: 'OC-982',
+        subtask_id: 'sub-codex-2',
+        adapter: 'codex',
+        mode: 'task',
+        workdir: '/tmp/codex-2',
+      },
+    });
+
+    expect(overflow.statusCode).toBe(400);
+    expect(overflow.json()).toEqual({
+      message: 'craftsman concurrency limit exceeded: max 1 active executions',
+    });
+  });
+
   it('exposes tmux runtime status, doctor, send, task, and tail routes', async () => {
     const app = buildApp({
       tmuxRuntimeService: {

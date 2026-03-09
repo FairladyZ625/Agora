@@ -50,6 +50,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   );
   const adapterMode = resolveCraftsmanRuntimeMode('server');
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
+    maxConcurrentRunning: config.craftsmen.max_concurrent_running,
     adapters: createDefaultCraftsmanAdapters({
       mode: adapterMode,
       callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,

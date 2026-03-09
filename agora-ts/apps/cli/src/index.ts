@@ -29,6 +29,7 @@ function resolveTaskService() {
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
   const craftsmanDispatcher = new CraftsmanDispatcher(db, {
+    maxConcurrentRunning: config.craftsmen.max_concurrent_running,
     adapters: createDefaultCraftsmanAdapters({
       mode: resolveCraftsmanRuntimeMode('cli'),
       callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,

@@ -227,4 +227,80 @@ describe('craftsman dispatcher', () => {
       pane: '%0',
     });
   });
+
+  it('rejects dispatch when active execution concurrency limit is reached', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      maxConcurrentRunning: 1,
+      adapters: {
+        codex: {
+          name: 'codex',
+          dispatchTask: () => ({
+            status: 'running',
+            session_id: 'codex-session-overflow',
+            started_at: '2026-03-09T16:00:00.000Z',
+          }),
+        },
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-963',
+      title: 'dispatch concurrency',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex-1',
+      task_id: 'OC-963',
+      stage_id: 'develop',
+      title: 'run codex 1',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex-2',
+      task_id: 'OC-963',
+      stage_id: 'develop',
+      title: 'run codex 2',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    dispatcher.dispatchSubtask({
+      task_id: 'OC-963',
+      stage_id: 'develop',
+      subtask_id: 'sub-codex-1',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex-1',
+      prompt: 'Implement feature 1',
+    });
+
+    expect(() => dispatcher.dispatchSubtask({
+      task_id: 'OC-963',
+      stage_id: 'develop',
+      subtask_id: 'sub-codex-2',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex-2',
+      prompt: 'Implement feature 2',
+    })).toThrow('craftsman concurrency limit exceeded: max 1 active executions');
+
+    expect(executions.countActiveExecutions()).toBe(1);
+    expect(subtasks.listByTask('OC-963')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'sub-codex-1', dispatch_status: 'running' }),
+        expect.objectContaining({ id: 'sub-codex-2', dispatch_status: null }),
+      ]),
+    );
+  });
 });

@@ -29,6 +29,7 @@ describe('agora-ts testing scenarios', () => {
       'authoring-smoke',
       'craftsman-happy-path',
       'craftsman-callback-failure',
+      'craftsman-concurrency-limit',
       'craftsman-retry',
       'craftsman-timeout-escalation',
     ]);
@@ -372,6 +373,27 @@ describe('agora-ts testing scenarios', () => {
     expect(result.executions).toEqual(['exec-craft-1']);
     expect(result.completedSubtasks).toEqual(['craft-1']);
     expect(result.events).toContain('subtask_done');
+  });
+
+  it('runs a craftsman concurrency limit scenario', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-CRAFT-LIMIT',
+      executionIdGenerator: () => 'exec-craft-limit-1',
+      maxConcurrentRunning: 1,
+    });
+
+    const result = runScenario(runtime, 'craftsman-concurrency-limit');
+    const subtasks = new SubtaskRepository(runtime.db);
+
+    expect(result.taskId).toBe('OC-CRAFT-LIMIT');
+    expect(result.executions).toEqual(['exec-craft-limit-1']);
+    expect(result.finalState).toBe('active');
+    expect(subtasks.listByTask('OC-CRAFT-LIMIT')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'craft-limit-1', dispatch_status: 'running' }),
+        expect.objectContaining({ id: 'craft-limit-2', dispatch_status: null }),
+      ]),
+    );
   });
 
   it('runs craftsman failure and retry scenarios', () => {

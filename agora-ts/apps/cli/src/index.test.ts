@@ -424,6 +424,64 @@ describe('agora-ts cli', () => {
     expect(stdout.value).not.toContain('craftsman execution 已派发');
   });
 
+  it('rejects craftsmen dispatch through the cli when concurrency limit is reached', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      maxConcurrentRunning: 1,
+      executionIdGenerator: () => 'exec-cli-limit-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T16:40:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-306',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync(['create', 'craftsman cli limit', '--type', 'coding'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'sub-codex-1',
+      task_id: 'OC-306',
+      stage_id: 'discuss',
+      title: 'run codex 1',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex-2',
+      task_id: 'OC-306',
+      stage_id: 'discuss',
+      title: 'run codex 2',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    await program.parseAsync([
+      'craftsman', 'dispatch',
+      'OC-306',
+      'sub-codex-1',
+      '--adapter', 'codex',
+      '--workdir', '/tmp/codex-1',
+    ], { from: 'user' });
+
+    await expect(program.parseAsync([
+      'craftsman', 'dispatch',
+      'OC-306',
+      'sub-codex-2',
+      '--adapter', 'codex',
+      '--workdir', '/tmp/codex-2',
+    ], { from: 'user' })).rejects.toThrow('craftsman concurrency limit exceeded: max 1 active executions');
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('craftsman execution 已派发: exec-cli-limit-1');
+  });
+
   it('supports tmux runtime management commands through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

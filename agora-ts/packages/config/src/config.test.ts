@@ -29,6 +29,7 @@ describe('agora-ts config contracts', () => {
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(true);
     expect(parsed.rate_limit.enabled).toBe(false);
     expect(parsed.dashboard_auth.enabled).toBe(false);
+    expect(parsed.craftsmen.max_concurrent_running).toBe(8);
     expect(parsed.observability.ready_path).toBe('/ready');
   });
 
@@ -52,6 +53,9 @@ describe('agora-ts config contracts', () => {
         allowed_users: ['lizeyu'],
         session_ttl_hours: 24,
       },
+      craftsmen: {
+        max_concurrent_running: 3,
+      },
       observability: {
         ready_path: '/ready',
         metrics_enabled: true,
@@ -63,6 +67,7 @@ describe('agora-ts config contracts', () => {
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(false);
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');
+    expect(parsed.craftsmen.max_concurrent_running).toBe(3);
     expect(parsed.observability.metrics_enabled).toBe(true);
   });
 

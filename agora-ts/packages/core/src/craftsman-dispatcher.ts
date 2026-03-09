@@ -17,6 +17,7 @@ export interface DispatchSubtaskInput {
 export interface CraftsmanDispatcherOptions {
   adapters: Record<string, CraftsmanAdapter>;
   executionIdGenerator?: () => string;
+  maxConcurrentRunning?: number;
 }
 
 export class CraftsmanDispatcher {
@@ -24,6 +25,7 @@ export class CraftsmanDispatcher {
   private readonly subtasks: SubtaskRepository;
   private readonly adapters: Record<string, CraftsmanAdapter>;
   private readonly executionIdGenerator: () => string;
+  private readonly maxConcurrentRunning: number | null;
 
   constructor(
     db: AgoraDatabase,
@@ -33,9 +35,13 @@ export class CraftsmanDispatcher {
     this.subtasks = new SubtaskRepository(db);
     this.adapters = options.adapters;
     this.executionIdGenerator = options.executionIdGenerator ?? (() => randomUUID());
+    this.maxConcurrentRunning = options.maxConcurrentRunning ?? null;
   }
 
   dispatchSubtask(input: DispatchSubtaskInput) {
+    if (this.maxConcurrentRunning !== null && this.executions.countActiveExecutions() >= this.maxConcurrentRunning) {
+      throw new Error(`craftsman concurrency limit exceeded: max ${this.maxConcurrentRunning} active executions`);
+    }
     const executionId = this.executionIdGenerator();
     const adapter = this.adapters[input.adapter];
     if (!adapter) {

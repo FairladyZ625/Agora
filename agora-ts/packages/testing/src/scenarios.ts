@@ -23,6 +23,7 @@ export const scenarioNames = [
   'authoring-smoke',
   'craftsman-happy-path',
   'craftsman-callback-failure',
+  'craftsman-concurrency-limit',
   'craftsman-retry',
   'craftsman-timeout-escalation',
 ] as const;
@@ -84,6 +85,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runCraftsmanHappyPathScenario(runtime);
     case 'craftsman-callback-failure':
       return runCraftsmanCallbackFailureScenario(runtime);
+    case 'craftsman-concurrency-limit':
+      return runCraftsmanConcurrencyLimitScenario(runtime);
     case 'craftsman-retry':
       return runCraftsmanRetryScenario(runtime);
     case 'craftsman-timeout-escalation':
@@ -771,6 +774,63 @@ function runCraftsmanCallbackFailureScenario(runtime: TestRuntime): ScenarioResu
 
   return buildScenarioResult(runtime, 'craftsman-callback-failure', task.id, {
     executions: [dispatch.execution.execution_id],
+  });
+}
+
+function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman concurrency limit scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'dispatch once and reject the second execution when limit is reached',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'craft-limit-1',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Craftsman slot 1',
+    assignee: 'codex',
+    craftsman_type: 'codex',
+  });
+  subtasks.insertSubtask({
+    id: 'craft-limit-2',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Craftsman slot 2',
+    assignee: 'codex',
+    craftsman_type: 'codex',
+  });
+
+  const first = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-limit-1',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/craft-limit-1',
+  });
+  let errorMessage = '';
+  try {
+    runtime.taskService.dispatchCraftsman({
+      task_id: task.id,
+      subtask_id: 'craft-limit-2',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/craft-limit-2',
+    });
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : String(error);
+  }
+
+  return buildScenarioResult(runtime, 'craftsman-concurrency-limit', task.id, {
+    executions: [first.execution.execution_id],
+    templateChecks: {
+      validated: errorMessage === 'craftsman concurrency limit exceeded: max 1 active executions',
+      saved: true,
+      duplicated: false,
+      workflowValidated: false,
+    },
   });
 }
 
