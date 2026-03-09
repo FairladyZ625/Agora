@@ -1,8 +1,7 @@
 import { Command } from 'commander';
-import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, createDefaultCraftsmanAdapters, CraftsmanDispatcher, GeminiCraftsmanAdapter, GitWorktreeWorkdirIsolator, resolveCraftsmanRuntimeMode, TaskService, TmuxRuntimeService } from '@agora-ts/core';
-import { resolve as resolvePath } from 'node:path';
+import type { CliCompositionFactories } from './composition.js';
+import { createCliComposition } from './composition.js';
+import type { TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
@@ -17,48 +16,14 @@ type Writable = {
 export interface CliDependencies {
   taskService?: TaskService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
+  factories?: Partial<CliCompositionFactories>;
+  configPath?: string;
+  dbPath?: string;
   stdout?: Writable;
   stderr?: Writable;
 }
 
 type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
-
-function resolveTaskService() {
-  const config = loadAgoraConfig(process.env.AGORA_CONFIG_PATH ?? '');
-  const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
-  const dbPath = process.env.AGORA_DB_PATH ?? config.db_path;
-  const db = createAgoraDatabase({ dbPath });
-  runMigrations(db);
-  const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
-    maxConcurrentRunning: config.craftsmen.max_concurrent_running,
-    adapters: createDefaultCraftsmanAdapters({
-      mode: resolveCraftsmanRuntimeMode('cli'),
-      callbackUrl: `${runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
-      apiToken: config.api_auth.enabled ? config.api_auth.token : null,
-    }),
-  };
-  if (config.craftsmen.isolate_git_worktrees) {
-    dispatcherOptions.workdirIsolator = new GitWorktreeWorkdirIsolator({
-      rootDir: resolvePath(config.craftsmen.isolated_root),
-    });
-  }
-  const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
-  return new TaskService(db, {
-    archonUsers: config.permissions.archonUsers,
-    allowAgents: config.permissions.allowAgents,
-    craftsmanDispatcher,
-  });
-}
-
-function resolveTmuxRuntimeService() {
-  return new TmuxRuntimeService({
-    adapters: {
-      codex: new CodexCraftsmanAdapter(),
-      claude: new ClaudeCraftsmanAdapter(),
-      gemini: new GeminiCraftsmanAdapter(),
-    },
-  });
-}
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
@@ -74,8 +39,17 @@ function parseJsonOption(raw?: string): Record<string, unknown> | null {
 export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
-  const taskService = deps.taskService ?? resolveTaskService();
-  const tmuxRuntimeService = deps.tmuxRuntimeService ?? resolveTmuxRuntimeService();
+  const composition = !deps.taskService || !deps.tmuxRuntimeService
+    ? createCliComposition({
+      ...(deps.configPath ? { configPath: deps.configPath } : {}),
+      ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
+    }, deps.factories)
+    : null;
+  const taskService = deps.taskService ?? composition?.taskService;
+  const tmuxRuntimeService = deps.tmuxRuntimeService ?? composition?.tmuxRuntimeService;
+  if (!taskService || !tmuxRuntimeService) {
+    throw new Error('CLI runtime composition is incomplete');
+  }
   const program = new Command();
 
   program
