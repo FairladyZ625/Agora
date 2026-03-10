@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
@@ -601,7 +603,19 @@ export async function runCli(argv: string[]) {
   await program.parseAsync(argv, { from: 'user' });
 }
 
-const isEntrypoint = process.argv[1] ? import.meta.url === new URL(`file://${process.argv[1]}`).href : false;
+export function isCliEntrypoint(moduleUrl: string, argvPath?: string): boolean {
+  if (!argvPath) {
+    return false;
+  }
+
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
+}
+
+const isEntrypoint = isCliEntrypoint(import.meta.url, process.argv[1]);
 
 if (isEntrypoint) {
   runCli(process.argv.slice(2)).catch((error: unknown) => {

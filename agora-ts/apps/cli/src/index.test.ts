@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
-import { createCliProgram } from './index.js';
+import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
 const tempPaths: string[] = [];
@@ -55,6 +56,18 @@ function createDashboardSessionClientStub(): DashboardSessionClient {
 }
 
 describe('agora-ts cli', () => {
+  it('treats a symlinked executable path as the cli entrypoint', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-entrypoint-'));
+    tempPaths.push(dir);
+
+    const target = join(dir, 'index.js');
+    const link = join(dir, 'agora');
+    writeFileSync(target, '// test entrypoint\n');
+    symlinkSync(target, link);
+
+    expect(isCliEntrypoint(pathToFileURL(target).href, link)).toBe(true);
+  });
+
   it('creates tasks and shows them in status/list commands', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
