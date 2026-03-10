@@ -1,6 +1,6 @@
 .app-topbar {
   margin: 0 auto;
-  width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
+  width: 100%;
   box-shadow: var(--topbar-shell-shadow);
   border: 1px solid var(--color-border);
   background: var(--surface-glass-authority);

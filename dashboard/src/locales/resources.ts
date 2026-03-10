@@ -183,9 +183,14 @@ export const resources = {
         ],
         resolutionTitle: '资源分配与安全约束冲突',
         resolutionSummary: '自动共识未能收敛，当前需要人工裁决来解决启发式分歧。',
-        resolutionMetrics: {
-          pro: '收益',
-          con: '约束',
+        resolutionMeta: {
+          gate: '审批门',
+          stage: '当前阶段',
+        },
+        resolutionFallbacks: {
+          gate: '待审批',
+          stage: 'review',
+          summary: '当前任务已进入人工裁决阶段，等待 Archon 给出下一步决议。',
         },
         resolutionActions: {
           authorize: '批准进入执行',
@@ -758,9 +763,14 @@ export const resources = {
         ],
         resolutionTitle: 'Resource Allocation vs. Safety Constraints',
         resolutionSummary: 'Automated consensus failed to converge. Human-in-the-loop arbitration is required to resolve heuristic divergence.',
-        resolutionMetrics: {
-          pro: 'Pro',
-          con: 'Con',
+        resolutionMeta: {
+          gate: 'Gate',
+          stage: 'Stage',
+        },
+        resolutionFallbacks: {
+          gate: 'Awaiting review',
+          stage: 'review',
+          summary: 'This task is waiting in the human arbitration loop for its next decision.',
         },
         resolutionActions: {
           authorize: 'Approve execution',

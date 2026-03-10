@@ -1,10 +1,12 @@
 import { MemoryRouter } from 'react-router';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardHome } from '@/pages/DashboardHome';
 import type { Task } from '@/types/task';
 
 const fetchTasks = vi.fn(async () => undefined);
+const resolveReview = vi.fn(async () => 'live');
+const showMessage = vi.fn();
 
 const liveTasks: Task[] = [
   {
@@ -103,7 +105,7 @@ const taskStoreState = {
   filters: { state: null, search: '' },
   fetchTasks,
   selectTask: vi.fn(async () => undefined),
-  resolveReview: vi.fn(async () => 'live'),
+  resolveReview,
   createTask: vi.fn(async () => liveTasks[0]),
   runTaskAction: vi.fn(async () => 'live'),
   cleanupTasks: vi.fn(async () => 0),
@@ -116,11 +118,19 @@ vi.mock('@/stores/taskStore', () => ({
     selector ? selector(taskStoreState) : taskStoreState,
 }));
 
+vi.mock('@/stores/feedbackStore', () => ({
+  useFeedbackStore: () => ({
+    showMessage,
+  }),
+}));
+
 describe('dashboard home live metrics', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-07T12:00:00.000Z'));
     fetchTasks.mockClear();
+    resolveReview.mockClear();
+    showMessage.mockClear();
   });
 
   afterEach(() => {
@@ -165,5 +175,21 @@ describe('dashboard home live metrics', () => {
       .find(Boolean);
     expect(completedPulse).not.toBeNull();
     expect(within(completedPulse as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
+  });
+
+  it('wires the home authority card into the live review action', async () => {
+    render(
+      <MemoryRouter>
+        <DashboardHome />
+      </MemoryRouter>,
+    );
+
+    const approveButton = screen.getByRole('button', { name: '批准进入执行' });
+    expect(approveButton).not.toBeDisabled();
+
+    fireEvent.click(approveButton);
+
+    await Promise.resolve();
+    expect(resolveReview).toHaveBeenCalledWith('OC-102', 'approve', '');
   });
 });

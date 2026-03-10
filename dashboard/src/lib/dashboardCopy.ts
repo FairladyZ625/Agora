@@ -132,9 +132,14 @@ export function useDashboardHomeCopy() {
     principleBullets: t('home.principleBullets', { returnObjects: true }) as string[],
     resolutionTitle: t('home.resolutionTitle'),
     resolutionSummary: t('home.resolutionSummary'),
-    resolutionMetrics: {
-      pro: t('home.resolutionMetrics.pro'),
-      con: t('home.resolutionMetrics.con'),
+    resolutionMeta: {
+      gate: t('home.resolutionMeta.gate'),
+      stage: t('home.resolutionMeta.stage'),
+    },
+    resolutionFallbacks: {
+      gate: t('home.resolutionFallbacks.gate'),
+      stage: t('home.resolutionFallbacks.stage'),
+      summary: t('home.resolutionFallbacks.summary'),
     },
     resolutionActions: {
       authorize: t('home.resolutionActions.authorize'),

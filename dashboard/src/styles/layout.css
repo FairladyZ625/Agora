@@ -34,13 +34,13 @@
 
 .app-shell__footer {
   margin: 0 auto;
-  width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
+  width: 100%;
   box-shadow: var(--footer-shell-shadow);
 }
 
 .app-frame {
   margin-inline: auto;
-  width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
+  width: 100%;
 }
 
 body::before {

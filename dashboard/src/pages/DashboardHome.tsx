@@ -1,11 +1,14 @@
 import { useEffect, useMemo, type CSSProperties } from 'react';
 import { ArrowRight, Waves } from 'lucide-react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
 import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
 import { useTaskStore } from '@/stores/taskStore';
+import { useFeedbackStore } from '@/stores/feedbackStore';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
+import type { Task } from '@/types/task';
 
 function getProposalTone(state: string) {
   if (state === 'gate_waiting') {
@@ -39,12 +42,51 @@ function buildTerminalLines(taskIds: string[], waitingCount: number) {
   ];
 }
 
+function formatAuthorityStage(task: Task | null, fallbackStage: string) {
+  if (!task) {
+    return fallbackStage;
+  }
+
+  return task.stageName?.trim() || task.current_stage?.trim() || fallbackStage;
+}
+
+function formatAuthorityGate(task: Task | null, fallbackGate: string) {
+  if (!task) {
+    return fallbackGate;
+  }
+
+  return task.gateType?.trim() || fallbackGate;
+}
+
+function formatAuthoritySummary(task: Task | null, fallbackSummary: string) {
+  if (!task) {
+    return fallbackSummary;
+  }
+
+  if (task.description?.trim()) {
+    return task.description;
+  }
+
+  const summaryParts = [
+    task.teamLabel?.trim(),
+    task.workflowLabel?.trim(),
+    formatRelativeTimestamp(task.updated_at),
+  ].filter(Boolean);
+
+  return summaryParts.length > 0 ? summaryParts.join(' / ') : fallbackSummary;
+}
+
 export function DashboardHome() {
+  const { t } = useTranslation();
   const homeCopy = useDashboardHomeCopy();
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
   const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
+  const resolveReview = useTaskStore((state) => state.resolveReview);
+  const selectTask = useTaskStore((state) => state.selectTask);
+  const { showMessage } = useFeedbackStore();
+  const navigate = useNavigate();
 
   useEffect(() => {
     void fetchTasks();
@@ -56,7 +98,8 @@ export function DashboardHome() {
   );
 
   const proposals = homeMetrics.recentTasks.slice(0, 2);
-  const focusTask = homeMetrics.reviewItems[0] ?? homeMetrics.recentTasks[0] ?? null;
+  const focusReview = homeMetrics.reviewItems[0] ?? null;
+  const focusTask = focusReview ?? homeMetrics.recentTasks[0] ?? null;
   const pipelineTasks = homeMetrics.recentTasks.slice(0, 8);
   const pipelineNodes = Array.from({ length: 8 }, (_, index) => {
     const task = pipelineTasks[index];
@@ -72,7 +115,40 @@ export function DashboardHome() {
         Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
       );
   const terminalLines = buildTerminalLines(proposals.map((task) => task.id), homeMetrics.waitingCount);
-  const throughputDelta = homeMetrics.activeCount > 0 ? `+${(homeMetrics.activeCount * 7.1).toFixed(1)}% THRP` : '+14.2% THRP';
+  const canResolveReview = Boolean(focusReview);
+  const authorityStage = formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage);
+  const authorityGate = formatAuthorityGate(focusReview, homeCopy.resolutionFallbacks.gate);
+  const authoritySummary = formatAuthoritySummary(focusReview, homeCopy.resolutionFallbacks.summary);
+
+  const handleReviewDecision = async (decision: 'approve' | 'reject') => {
+    if (!focusReview) {
+      return;
+    }
+
+    try {
+      await resolveReview(focusReview.id, decision, '');
+      showMessage(
+        decision === 'approve' ? t('feedback.reviewApproveTitle') : t('feedback.reviewRejectTitle'),
+        decision === 'approve' ? t('feedback.reviewApproveDetail') : t('feedback.reviewRejectDetail'),
+        'success',
+      );
+    } catch (reviewError) {
+      showMessage(
+        t('feedback.reviewFailureTitle'),
+        reviewError instanceof Error ? reviewError.message : String(reviewError),
+        'warning',
+      );
+    }
+  };
+
+  const handleSynthesis = async () => {
+    if (!focusReview) {
+      navigate('/reviews');
+      return;
+    }
+    await selectTask(focusReview.id);
+    navigate(`/reviews/${focusReview.id}`);
+  };
 
   return (
     <div className="home-os">
@@ -122,19 +198,25 @@ export function DashboardHome() {
               <h4 className="home-os__authority-title">{focusTask?.title ?? homeCopy.resolutionTitle}</h4>
               <div className="home-os__authority-grid">
                 <div className="home-os__authority-stat">
-                  <span className="page-kicker">{homeCopy.resolutionMetrics.pro}</span>
-                  <strong>{throughputDelta}</strong>
+                  <span className="page-kicker">{homeCopy.resolutionMeta.gate}</span>
+                  <strong>{authorityGate}</strong>
                 </div>
-                <div className="home-os__authority-stat home-os__authority-stat--alert">
-                  <span className="page-kicker">{homeCopy.resolutionMetrics.con}</span>
-                  <strong>{homeMetrics.waitingCount > 0 ? homeCopy.constraintSignals.waiting : homeCopy.constraintSignals.stable}</strong>
+                <div className="home-os__authority-stat">
+                  <span className="page-kicker">{homeCopy.resolutionMeta.stage}</span>
+                  <strong>{authorityStage}</strong>
                 </div>
               </div>
-              <p className="type-body-sm">{homeCopy.resolutionSummary}</p>
+              <p className="type-body-sm">{authoritySummary}</p>
               <div className="home-os__authority-actions">
-                <button type="button" className="button-primary">{homeCopy.resolutionActions.authorize}</button>
-                <button type="button" className="button-danger">{homeCopy.resolutionActions.veto}</button>
-                <button type="button" className="button-secondary home-os__authority-secondary">{homeCopy.resolutionActions.synthesize}</button>
+                <button type="button" className="button-primary" disabled={!canResolveReview} onClick={() => void handleReviewDecision('approve')}>
+                  {homeCopy.resolutionActions.authorize}
+                </button>
+                <button type="button" className="button-danger" disabled={!canResolveReview} onClick={() => void handleReviewDecision('reject')}>
+                  {homeCopy.resolutionActions.veto}
+                </button>
+                <button type="button" className="button-secondary home-os__authority-secondary" onClick={() => void handleSynthesis()}>
+                  {homeCopy.resolutionActions.synthesize}
+                </button>
               </div>
             </div>
 
