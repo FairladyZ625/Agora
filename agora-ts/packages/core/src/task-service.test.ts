@@ -2,10 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, TaskContextBindingRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { TaskService } from './task-service.js';
+import { TaskContextBindingService } from './task-context-binding-service.js';
+import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -1038,5 +1040,41 @@ describe('task service', () => {
     expect(status.flow_log.map((item) => item.event)).toEqual(
       expect.arrayContaining(['craftsman_session_missing_on_startup', 'blocked', 'state_changed']),
     );
+  });
+
+  it('fires IM provisioning and creates a binding when imProvisioningPort is configured', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort();
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROV-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Provisioning Test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    // Wait for the async provisioning to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(provisioningPort.provisioned).toHaveLength(1);
+    expect(provisioningPort.provisioned[0]).toMatchObject({
+      taskId: 'OC-PROV-1',
+      taskTitle: 'Provisioning Test',
+    });
+
+    const bindings = new TaskContextBindingRepository(db);
+    const binding = bindings.getActiveByTask('OC-PROV-1');
+    expect(binding).not.toBeNull();
+    expect(binding?.im_provider).toBe('discord');
+    expect(binding?.thread_ref).toBe('stub-thread-OC-PROV-1');
   });
 });

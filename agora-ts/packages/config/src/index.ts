@@ -1,4 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
 export * from './dev-start.js';
 export * from './env.js';
@@ -38,6 +40,19 @@ export const dashboardAuthSchema = z.object({
   session_ttl_hours: z.number().int().positive().default(24),
 });
 export type DashboardAuthConfig = z.infer<typeof dashboardAuthSchema>;
+
+export const discordImConfigSchema = z.object({
+  bot_token: z.string().optional(),
+  default_channel_id: z.string().optional(),
+  notify_on_task_create: z.boolean().default(true),
+});
+export type DiscordImConfig = z.infer<typeof discordImConfigSchema>;
+
+export const imConfigSchema = z.object({
+  provider: z.enum(['discord', 'none']).default('none'),
+  discord: discordImConfigSchema.optional(),
+});
+export type ImConfig = z.infer<typeof imConfigSchema>;
 
 export const craftsmenConfigSchema = z.object({
   max_concurrent_running: z.number().int().positive().default(8),
@@ -101,6 +116,7 @@ export const agoraConfigSchema = z.object({
     metrics_enabled: false,
     structured_logs: false,
   }),
+  im: imConfigSchema.default({ provider: 'none' }),
 });
 export type AgoraConfig = z.infer<typeof agoraConfigSchema>;
 
@@ -108,9 +124,32 @@ export function parseAgoraConfig(raw: unknown): AgoraConfig {
   return agoraConfigSchema.parse(raw);
 }
 
-export function loadAgoraConfig(path: string): AgoraConfig {
+export function globalConfigPath(): string {
+  return join(homedir(), '.agora', 'agora.json');
+}
+
+export function loadGlobalConfig(): Record<string, unknown> {
+  const path = globalConfigPath();
   if (!existsSync(path)) {
-    return agoraConfigSchema.parse({});
+    return {};
   }
-  return parseAgoraConfig(JSON.parse(readFileSync(path, 'utf8')));
+  return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+}
+
+export function saveGlobalConfig(config: Record<string, unknown>): void {
+  const dir = join(homedir(), '.agora');
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(join(dir, 'agora.json'), JSON.stringify(config, null, 2) + '\n', 'utf8');
+}
+
+export function loadAgoraConfig(projectPath?: string): AgoraConfig {
+  const global = loadGlobalConfig();
+  const project: Record<string, unknown> = projectPath && existsSync(projectPath)
+    ? (JSON.parse(readFileSync(projectPath, 'utf8')) as Record<string, unknown>)
+    : {};
+  // project-level overrides global (deep merge at top level)
+  const merged = { ...global, ...project };
+  return agoraConfigSchema.parse(merged);
 }

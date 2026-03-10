@@ -9,6 +9,7 @@ import type {
   CraftsmanRuntimeIdentitySourceDto,
   TaskPriority,
 } from '@agora-ts/contracts';
+import { runInitCommand } from './init-command.js';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -582,6 +583,13 @@ export function createCliProgram(deps: CliDependencies = {}) {
       await dashboardSessionClient.logout();
       writeLine(stdout, 'dashboard session 已清除');
       writeLine(stdout, `session file: ${dashboardSessionClient.sessionFilePath}`);
+    });
+
+  program
+    .command('init')
+    .description('交互式配置向导（配置 Discord 等 IM 集成）')
+    .action(async () => {
+      await runInitCommand();
     });
 
   return program;

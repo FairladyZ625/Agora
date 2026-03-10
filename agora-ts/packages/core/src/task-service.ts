@@ -27,6 +27,8 @@ import { GateService } from './gate-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
+import type { IMProvisioningPort } from './im-ports.js';
+import type { TaskContextBindingService } from './task-context-binding-service.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -51,6 +53,8 @@ export interface TaskServiceOptions {
   allowAgents?: Record<string, { canCall: string[]; canAdvance: boolean }>;
   craftsmanDispatcher?: CraftsmanDispatcher;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
+  imProvisioningPort?: IMProvisioningPort;
+  taskContextBindingService?: TaskContextBindingService;
 }
 
 export interface AdvanceTaskOptions {
@@ -127,6 +131,8 @@ export class TaskService {
   private readonly isCraftsmanSessionAlive: ((sessionId: string) => boolean) | undefined;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
+  private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly taskContextBindingService: TaskContextBindingService | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -149,6 +155,8 @@ export class TaskService {
     this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
+    this.imProvisioningPort = options.imProvisioningPort;
+    this.taskContextBindingService = options.taskContextBindingService;
   }
 
   createTask(input: CreateTaskRequestDto): StoredTask {
@@ -206,6 +214,21 @@ export class TaskService {
         content: `Entered stage ${firstStageId}`,
         artifacts: { stage_id: firstStageId },
         actor: 'system',
+      });
+    }
+
+    // Fire-and-forget: provision IM thread (non-blocking, failure doesn't block task creation)
+    if (this.imProvisioningPort && this.taskContextBindingService) {
+      const bindingService = this.taskContextBindingService;
+      const provisioningPort = this.imProvisioningPort;
+      void provisioningPort.provisionThread(taskId, input.title).then((threadRef) => {
+        bindingService.createBinding({
+          task_id: taskId,
+          im_provider: 'discord',
+          thread_ref: threadRef,
+        });
+      }).catch((err: unknown) => {
+        console.error(`[TaskService] IM provisioning failed for task ${taskId}:`, err);
       });
     }
 

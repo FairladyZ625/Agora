@@ -20,9 +20,11 @@ import {
   TmuxRuntimeService,
   type AgentInventorySource,
   type IMMessagingPort,
+  type IMProvisioningPort,
   type PresenceSource,
 } from '@agora-ts/core';
 import { OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
+import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import type { AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
@@ -61,7 +63,12 @@ export interface ServerCompositionFactories {
   createTmuxRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
   createTaskService: (
     context: ServerCompositionContext,
-    deps: { craftsmanDispatcher: CraftsmanDispatcher; tmuxRuntimeService: TmuxRuntimeService },
+    deps: {
+      craftsmanDispatcher: CraftsmanDispatcher;
+      tmuxRuntimeService: TmuxRuntimeService;
+      imProvisioningPort: IMProvisioningPort | undefined;
+      taskContextBindingService: TaskContextBindingService;
+    },
   ) => TaskService;
   createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier;
   createArchiveJobReceiptIngestor: (context: ServerCompositionContext) => FileArchiveJobReceiptIngestor;
@@ -79,6 +86,7 @@ export interface ServerCompositionFactories {
   createTemplateAuthoringService: (context: ServerCompositionContext) => TemplateAuthoringService;
   createInboxService: (context: ServerCompositionContext, deps: { taskService: TaskService }) => InboxService;
   createIMMessagingPort: (context: ServerCompositionContext) => IMMessagingPort;
+  createIMProvisioningPort: (context: ServerCompositionContext) => IMProvisioningPort | undefined;
   createTaskContextBindingService: (context: ServerCompositionContext) => TaskContextBindingService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
 }
@@ -127,13 +135,18 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         gemini: new GeminiCraftsmanAdapter(),
       },
     }),
-    createTaskService: (context, deps) => new TaskService(context.db, {
-      templatesDir: context.templatesDir,
-      archonUsers: context.config.permissions.archonUsers,
-      allowAgents: context.config.permissions.allowAgents,
-      craftsmanDispatcher: deps.craftsmanDispatcher,
-      isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.tmuxRuntimeService),
-    }),
+    createTaskService: (context, deps) => {
+      const imProvisioningPort = deps.imProvisioningPort;
+      return new TaskService(context.db, {
+        templatesDir: context.templatesDir,
+        archonUsers: context.config.permissions.archonUsers,
+        allowAgents: context.config.permissions.allowAgents,
+        craftsmanDispatcher: deps.craftsmanDispatcher,
+        isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.tmuxRuntimeService),
+        taskContextBindingService: deps.taskContextBindingService,
+        ...(imProvisioningPort ? { imProvisioningPort } : {}),
+      });
+    },
     createArchiveJobNotifier: () => new FileArchiveJobNotifier({
       outboxDir: process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR ?? 'archive-outbox',
     }),
@@ -151,7 +164,23 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     }),
     createTemplateAuthoringService: (context) => new TemplateAuthoringService({ templatesDir: context.templatesDir }),
     createInboxService: (context, deps) => new InboxService(context.db, deps.taskService),
-    createIMMessagingPort: () => new StubIMMessagingPort(),
+    createIMMessagingPort: (context) => {
+      const { im } = context.config;
+      if (im.provider === 'discord' && im.discord?.bot_token) {
+        return new DiscordIMMessagingAdapter({ botToken: im.discord.bot_token });
+      }
+      return new StubIMMessagingPort();
+    },
+    createIMProvisioningPort: (context) => {
+      const { im } = context.config;
+      if (im.provider === 'discord' && im.discord?.bot_token && im.discord?.default_channel_id) {
+        return new DiscordIMProvisioningAdapter({
+          botToken: im.discord.bot_token,
+          defaultChannelId: im.discord.default_channel_id,
+        });
+      }
+      return undefined;
+    },
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
     createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
   };
@@ -171,7 +200,14 @@ export function buildServerComposition(
   const presenceSource = factories.createPresenceSource(context);
   const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
-  const taskService = factories.createTaskService(context, { craftsmanDispatcher, tmuxRuntimeService });
+  const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const imProvisioningPort = factories.createIMProvisioningPort(context);
+  const taskService = factories.createTaskService(context, {
+    craftsmanDispatcher,
+    tmuxRuntimeService,
+    imProvisioningPort,
+    taskContextBindingService,
+  });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
   const dashboardQueryService = factories.createDashboardQueryService(context, {
@@ -185,7 +221,6 @@ export function buildServerComposition(
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const inboxService = factories.createInboxService(context, { taskService });
   const messagingPort = factories.createIMMessagingPort(context);
-  const taskContextBindingService = factories.createTaskContextBindingService(context);
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
 
   return {

@@ -10,6 +10,7 @@
     { "path": "../../packages/contracts" },
     { "path": "../../packages/core" },
     { "path": "../../packages/db" },
-    { "path": "../../packages/adapters-openclaw" }
+    { "path": "../../packages/adapters-openclaw" },
+    { "path": "../../packages/adapters-discord" }
   ]
 }
