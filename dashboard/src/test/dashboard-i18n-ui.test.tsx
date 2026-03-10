@@ -92,7 +92,7 @@ describe('dashboard English UI', () => {
     expect(screen.getByRole('link', { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Task Board' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refresh workspace' })).toBeInTheDocument();
-    expect(screen.getAllByText('AGORA_OS').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Agora').length).toBeGreaterThan(0);
     expect(screen.getByText('System clock')).toBeInTheDocument();
   });
 

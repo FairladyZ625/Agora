@@ -83,10 +83,10 @@ describe('dashboard visual rescue target structure', () => {
   it('adds a branded home hero that explains the Agora operating model', () => {
     renderWithRouter(<DashboardHome />);
 
-    expect(screen.getByText('AGORA_OS')).toBeInTheDocument();
-    expect(screen.getByText('I. THE AGORA')).toBeInTheDocument();
-    expect(screen.getByText('II. THE ARCHON')).toBeInTheDocument();
-    expect(screen.getByText('III. EXECUTION PIPELINE')).toBeInTheDocument();
+    expect(screen.getByText('Agora')).toBeInTheDocument();
+    expect(screen.getByText('Agora 中枢')).toBeInTheDocument();
+    expect(screen.getByText('裁决中枢')).toBeInTheDocument();
+    expect(screen.getByText('执行回路')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /打开任务总线/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /进入裁决台/i })).toBeInTheDocument();
   });
@@ -99,7 +99,7 @@ describe('dashboard visual rescue target structure', () => {
     );
 
     expect(screen.getByRole('img', { name: 'Agora 指挥广场' })).toBeInTheDocument();
-    expect(screen.getAllByText('AGORA_OS').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Agora').length).toBeGreaterThan(0);
     expect(screen.getByText('系统时钟')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重播 Agora 入场动效' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '打开导航' })).not.toBeInTheDocument();
@@ -163,8 +163,8 @@ describe('dashboard visual rescue target structure', () => {
     renderWithRouter(<DashboardHome />);
 
     expect(screen.getByText(/多 Agent 指挥广场/)).toBeInTheDocument();
-    expect(screen.getByText('SYSTEM ORCHESTRATION INTERFACE')).toBeInTheDocument();
-    expect(screen.getByText('COMMAND AUTHORITY')).toBeInTheDocument();
+    expect(screen.getByText('多 Agent 协作编排中枢')).toBeInTheDocument();
+    expect(screen.getByText('当前裁决')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /查看 Agent 监测/i })).toBeInTheDocument();
   });
 });

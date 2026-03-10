@@ -20,11 +20,11 @@ function getProposalTone(state: string) {
 function buildTerminalLines(taskIds: string[], waitingCount: number) {
   const focusId = taskIds[0] ?? 'AG-000';
   return [
-    `[SYNC] Register live context ${focusId}`,
-    `[SYNC] Debate lattice aligned.`,
-    waitingCount > 0 ? `[WAIT] Archon arbitration requested.` : '[SYNC] Arbitration queue stable.',
-    waitingCount > 0 ? '[WARN] Constraint divergence detected.' : '[SYNC] Constraint envelope stable.',
-    '[SYNC] Telemetry rail updated.',
+    `[同步] 已接入上下文 ${focusId}`,
+    '[同步] 议题拓扑已刷新。',
+    waitingCount > 0 ? '[等待] 裁决中枢需要人工判断。' : '[同步] 当前裁决队列稳定。',
+    waitingCount > 0 ? '[提示] 约束分歧仍未收敛。' : '[同步] 约束边界稳定。',
+    '[同步] 执行回路已更新。',
   ];
 }
 
@@ -64,182 +64,197 @@ export function DashboardHome() {
 
   return (
     <div className="home-os">
-      <section className="home-os__header surface-panel surface-panel--workspace signal-scan">
-        <div>
-          <p className="page-kicker">{homeCopy.kicker}</p>
-          <h2 className="home-os__display">{homeCopy.title}</h2>
-          <p className="home-os__signature">{homeCopy.architectureLabel}</p>
-        </div>
-        <div className="home-os__header-copy">
-          <p className="page-summary">{homeCopy.summary}</p>
-          <div className="home-os__header-actions">
-            <Link to="/tasks" className="button-primary">
-              {homeCopy.primaryAction}
-              <ArrowRight size={16} />
-            </Link>
-            <Link to="/reviews" className="button-secondary">
-              {homeCopy.secondaryAction}
-            </Link>
-            <Link to="/agents" className="button-secondary">
-              {homeCopy.tertiaryAction}
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {error ? (
-        <div className="inline-alert inline-alert--danger">{homeCopy.syncErrorMessage}</div>
-      ) : null}
-
-      <section className="home-os__arena">
-        <article className="home-os__panel home-os__panel--agora surface-panel surface-panel--workspace">
-          <div className="home-os__panel-head">
-            <p className="home-os__section-index">{homeCopy.sectionLabels.agora}</p>
-            <p className="page-kicker">{homeCopy.topologyLabel}</p>
-          </div>
-
-          <div className="home-os__topology">
-            <div className="home-os__topology-grid">
-              <span className="home-os__node">LGS</span>
-              <span className="home-os__node home-os__node--active signal-pulse">ETH</span>
-              <span className="home-os__node">PTH</span>
-              <span className="home-os__beam home-os__beam--left" />
-              <span className="home-os__beam home-os__beam--right flow-shift" />
+      <section className="home-os__grid">
+        <article className="home-os__main-column surface-panel surface-panel--workspace">
+          <div className="home-os__hero signal-scan">
+            <div className="home-os__hero-block">
+              <p className="page-kicker">{homeCopy.kicker}</p>
+              <h2 className="home-os__display">{homeCopy.title}</h2>
+              <p className="home-os__signature">{homeCopy.architectureLabel}</p>
             </div>
-            <div className="home-os__hash">
-              <span>{homeCopy.topologyHashLabel}</span>
-              <span>H-8f92a.c4</span>
-            </div>
-          </div>
-
-          <div className="home-os__section-divider" />
-
-          <div className="home-os__module-head">
-            <h3 className="section-title">{homeCopy.feedTitle}</h3>
-            <span className="status-pill status-pill--neutral">{proposals.length}</span>
-          </div>
-
-          <div className="home-os__proposal-stack">
-            {loading
-              ? Array.from({ length: 2 }).map((_, index) => <Skeleton key={index} variant="card" />)
-              : proposals.map((task) => {
-                  const tone = getProposalTone(task.state);
-                  return (
-                    <article key={task.id} className="home-os__proposal-card">
-                      <div className="home-os__proposal-head">
-                        <div>
-                          <p className="home-os__proposal-title">{task.title}</p>
-                          <p className="type-mono-sm">{task.id}</p>
-                        </div>
-                        <span className={`home-os__proposal-stance home-os__proposal-stance--${tone}`}>
-                          {tone === 'constraint' ? 'CONSTRAIN' : tone === 'optimize' ? 'OPTIMIZE' : 'OBSERVE'}
-                        </span>
-                      </div>
-                      <p className="type-body-sm">{task.description ?? homeCopy.emptyTaskDescription}</p>
-                      <div className="home-os__proposal-meta">
-                        <span>{task.teamLabel}</span>
-                        <span>{formatRelativeTimestamp(task.updated_at)}</span>
-                      </div>
-                    </article>
-                  );
-                })}
-          </div>
-        </article>
-
-        <article className="home-os__panel home-os__panel--archon surface-panel surface-panel--workspace">
-          <div className="home-os__archon-head">
-            <p className="page-kicker">{homeCopy.commandAuthorityLabel}</p>
-            <h3 className="home-os__archon-title">{homeCopy.sectionLabels.archon}</h3>
-          </div>
-
-          <div className="home-os__authority surface-panel surface-panel--muted signal-scan">
-            <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
-            <h4 className="home-os__authority-title">{focusTask?.title ?? homeCopy.resolutionTitle}</h4>
-            <div className="home-os__authority-grid">
-              <div className="home-os__authority-stat">
-                <span className="page-kicker">{homeCopy.resolutionMetrics.pro}</span>
-                <strong>{homeMetrics.activeCount > 0 ? `+${homeMetrics.activeCount * 7.1}% THRP` : '+14.2% THRP'}</strong>
-              </div>
-              <div className="home-os__authority-stat home-os__authority-stat--alert">
-                <span className="page-kicker">{homeCopy.resolutionMetrics.con}</span>
-                <strong>{homeMetrics.waitingCount > 0 ? '-ALPHA09' : '-LATENCY'}</strong>
+            <div className="home-os__hero-block home-os__hero-block--copy">
+              <p className="page-summary">{homeCopy.summary}</p>
+              <div className="home-os__header-actions">
+                <Link to="/tasks" className="button-primary">
+                  {homeCopy.primaryAction}
+                  <ArrowRight size={16} />
+                </Link>
+                <Link to="/reviews" className="button-secondary">
+                  {homeCopy.secondaryAction}
+                </Link>
+                <Link to="/agents" className="button-secondary">
+                  {homeCopy.tertiaryAction}
+                </Link>
               </div>
             </div>
-            <p className="type-body-sm">{homeCopy.resolutionSummary}</p>
-            <div className="home-os__authority-actions">
-              <button type="button" className="button-primary">{homeCopy.resolutionActions.authorize}</button>
-              <button type="button" className="button-danger">{homeCopy.resolutionActions.veto}</button>
-              <button type="button" className="button-secondary home-os__authority-secondary">{homeCopy.resolutionActions.synthesize}</button>
-            </div>
           </div>
 
-          <div className="home-os__load surface-panel surface-panel--muted">
+          {error ? (
+            <div className="inline-alert inline-alert--danger home-os__error">{homeCopy.syncErrorMessage}</div>
+          ) : null}
+
+          <div className="home-os__main-section">
             <div className="home-os__module-head">
-              <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
-              <span className="home-os__load-value">LOAD: {loadPercent}%</span>
+              <div>
+                <p className="home-os__section-index">{homeCopy.sectionLabels.archon}</p>
+                <p className="page-kicker">{homeCopy.commandAuthorityLabel}</p>
+              </div>
+              <span className="status-pill status-pill--info">
+                {homeMetrics.waitingCount}
+                {homeCopy.reviewCountUnit}
+              </span>
             </div>
-            <div className="home-os__load-bar">
-              <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-              <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-            </div>
 
-            <div className="home-os__metrics">
-              <div className="inline-stat">
-                <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
-                <span className="inline-stat__value">{homeMetrics.activeCount}</span>
-              </div>
-              <div className="inline-stat">
-                <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
-                <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
-              </div>
-              <div className="inline-stat">
-                <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
-                <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article className="home-os__panel home-os__panel--pipeline surface-panel surface-panel--workspace">
-          <div className="home-os__panel-head">
-            <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-            <p className="page-kicker">{homeCopy.executionLabel}</p>
-          </div>
-
-          <div className="home-os__node-grid">
-            {pipelineNodes.map((node, index) => (
-              <div key={node.id} className={node.active ? 'home-os__pipe-node home-os__pipe-node--active signal-pulse' : 'home-os__pipe-node'}>
-                {index < 3 ? <Waves size={12} /> : null}
-                <span>{node.id}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="home-os__module-head">
-            <h3 className="section-title">{homeCopy.terminalLabel}</h3>
-            <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
-          </div>
-
-          <div className="home-os__terminal">
-            {terminalLines.length === 0 ? (
-              <p className="type-body-sm">{homeCopy.terminalEmpty}</p>
-            ) : (
-              terminalLines.map((line, index) => (
-                <div key={`${line}-${index}`} className="home-os__terminal-line terminal-entry">
-                  <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
-                  <span>{line}</span>
+            <div className="home-os__authority surface-panel surface-panel--muted signal-scan">
+              <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
+              <h4 className="home-os__authority-title">{focusTask?.title ?? homeCopy.resolutionTitle}</h4>
+              <div className="home-os__authority-grid">
+                <div className="home-os__authority-stat">
+                  <span className="page-kicker">{homeCopy.resolutionMetrics.pro}</span>
+                  <strong>{homeMetrics.activeCount > 0 ? `+${homeMetrics.activeCount * 7.1}% THRP` : '+14.2% THRP'}</strong>
                 </div>
-              ))
-            )}
-          </div>
+                <div className="home-os__authority-stat home-os__authority-stat--alert">
+                  <span className="page-kicker">{homeCopy.resolutionMetrics.con}</span>
+                  <strong>{homeMetrics.waitingCount > 0 ? '-ALPHA09' : '-LATENCY'}</strong>
+                </div>
+              </div>
+              <p className="type-body-sm">{homeCopy.resolutionSummary}</p>
+              <div className="home-os__authority-actions">
+                <button type="button" className="button-primary">{homeCopy.resolutionActions.authorize}</button>
+                <button type="button" className="button-danger">{homeCopy.resolutionActions.veto}</button>
+                <button type="button" className="button-secondary home-os__authority-secondary">{homeCopy.resolutionActions.synthesize}</button>
+              </div>
+            </div>
 
-          <div className="home-os__telemetry-strip">
-            <div className="home-os__telemetry-readout">
-              <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
-              <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+            <div className="home-os__load surface-panel surface-panel--muted">
+              <div className="home-os__module-head">
+                <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
+                <span className="home-os__load-value">LOAD: {loadPercent}%</span>
+              </div>
+              <div className="home-os__load-bar">
+                <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
+                <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
+              </div>
+
+              <div className="home-os__metrics">
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
+                  <span className="inline-stat__value">{homeMetrics.activeCount}</span>
+                </div>
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
+                  <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
+                </div>
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
+                  <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
+                </div>
+              </div>
             </div>
           </div>
         </article>
+
+        <aside className="home-os__rail-column">
+          <article className="home-os__rail-panel surface-panel surface-panel--workspace">
+            <div className="home-os__module-head">
+              <div>
+                <p className="home-os__section-index">{homeCopy.sectionLabels.agora}</p>
+                <p className="page-kicker">{homeCopy.topologyLabel}</p>
+              </div>
+              <span className="status-pill status-pill--neutral">{proposals.length}</span>
+            </div>
+
+            <div className="home-os__topology">
+              <div className="home-os__topology-grid">
+                <span className="home-os__node">LGS</span>
+                <span className="home-os__node home-os__node--active signal-pulse">ETH</span>
+                <span className="home-os__node">PTH</span>
+                <span className="home-os__beam home-os__beam--left" />
+                <span className="home-os__beam home-os__beam--right flow-shift" />
+              </div>
+              <div className="home-os__hash">
+                <span>{homeCopy.topologyHashLabel}</span>
+                <span>H-8f92a.c4</span>
+              </div>
+            </div>
+
+            <div className="home-os__section-divider" />
+
+            <div className="home-os__module-head">
+              <h3 className="section-title">{homeCopy.feedTitle}</h3>
+            </div>
+
+            <div className="home-os__proposal-stack">
+              {loading
+                ? Array.from({ length: 2 }).map((_, index) => <Skeleton key={index} variant="card" />)
+                : proposals.map((task) => {
+                    const tone = getProposalTone(task.state);
+                    return (
+                      <article key={task.id} className="home-os__proposal-card">
+                        <div className="home-os__proposal-head">
+                          <div>
+                            <p className="home-os__proposal-title">{task.title}</p>
+                            <p className="type-mono-sm">{task.id}</p>
+                          </div>
+                          <span className={`home-os__proposal-stance home-os__proposal-stance--${tone}`}>
+                            {tone === 'constraint' ? '约束' : tone === 'optimize' ? '优化' : '观察'}
+                          </span>
+                        </div>
+                        <p className="type-body-sm">{task.description ?? homeCopy.emptyTaskDescription}</p>
+                        <div className="home-os__proposal-meta">
+                          <span>{task.teamLabel}</span>
+                          <span>{formatRelativeTimestamp(task.updated_at)}</span>
+                        </div>
+                      </article>
+                    );
+                  })}
+            </div>
+          </article>
+
+          <article className="home-os__rail-panel surface-panel surface-panel--workspace">
+            <div className="home-os__module-head">
+              <div>
+                <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
+                <p className="page-kicker">{homeCopy.executionLabel}</p>
+              </div>
+              <span className="home-os__telemetry-value">{homeMetrics.participantCount}</span>
+            </div>
+
+            <div className="home-os__node-grid">
+              {pipelineNodes.map((node, index) => (
+                <div key={node.id} className={node.active ? 'home-os__pipe-node home-os__pipe-node--active signal-pulse' : 'home-os__pipe-node'}>
+                  {index < 3 ? <Waves size={12} /> : null}
+                  <span>{node.id}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="home-os__module-head">
+              <h3 className="section-title">{homeCopy.terminalLabel}</h3>
+              <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
+            </div>
+
+            <div className="home-os__terminal">
+              {terminalLines.length === 0 ? (
+                <p className="type-body-sm">{homeCopy.terminalEmpty}</p>
+              ) : (
+                terminalLines.map((line, index) => (
+                  <div key={`${line}-${index}`} className="home-os__terminal-line terminal-entry">
+                    <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
+                    <span>{line}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="home-os__telemetry-strip">
+              <div className="home-os__telemetry-readout">
+                <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
+                <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+              </div>
+            </div>
+          </article>
+        </aside>
       </section>
     </div>
   );
