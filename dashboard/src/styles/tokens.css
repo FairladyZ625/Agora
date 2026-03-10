@@ -191,6 +191,8 @@
   --sidebar-backdrop: blur(24px);
   --topbar-shell-shadow: 0 4px 12px rgba(17, 36, 44, 0.06);
   --footer-shell-shadow: 0 2px 8px rgba(17, 36, 44, 0.04);
+  --topbar-intelligence-dot-glow: 0 0 0 3px rgba(2, 132, 199, 0.06);
+  --topbar-intelligence-carriage-glow: 0 0 0 4px rgba(2, 132, 199, 0.1);
   --topbar-sigil-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(216, 243, 249, 0.68));
   --topbar-sigil-border: rgba(11, 138, 168, 0.16);
   --topbar-sigil-shadow: 0 12px 24px rgba(11, 138, 168, 0.14);
@@ -355,6 +357,8 @@
   --sidebar-backdrop: blur(28px);
   --topbar-shell-shadow: 0 4px 12px rgba(3, 10, 15, 0.18);
   --footer-shell-shadow: 0 2px 8px rgba(3, 10, 15, 0.14);
+  --topbar-intelligence-dot-glow: 0 0 0 3px rgba(100, 210, 239, 0.1);
+  --topbar-intelligence-carriage-glow: 0 0 0 4px rgba(100, 210, 239, 0.16);
   --topbar-sigil-bg: linear-gradient(135deg, rgba(224, 245, 250, 0.14), rgba(100, 210, 239, 0.12));
   --topbar-sigil-border: rgba(100, 210, 239, 0.2);
   --topbar-sigil-shadow: 0 16px 28px rgba(100, 210, 239, 0.12);

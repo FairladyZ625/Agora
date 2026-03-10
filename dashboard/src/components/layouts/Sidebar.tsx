@@ -75,7 +75,7 @@ export function Sidebar({
         <div className="flex h-full w-full flex-col">
           <div
             className={cn(
-              'sidebar-brand-shell relative flex items-center border-b px-4 py-5',
+              'sidebar-brand-shell relative flex items-center border-b px-4 py-2',
               collapsed ? 'justify-center' : 'justify-start',
             )}
             style={{ borderColor: 'var(--color-border)' }}

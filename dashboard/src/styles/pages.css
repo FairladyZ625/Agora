@@ -16,6 +16,7 @@
   font-size: clamp(40px, 5vw, 56px);
   font-weight: 700;
   letter-spacing: 0.02em;
+  text-transform: uppercase;
   color: var(--color-primary);
 }
 

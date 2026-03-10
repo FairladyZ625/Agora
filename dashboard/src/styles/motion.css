@@ -28,6 +28,10 @@
   animation: flow-shift var(--motion-flow-duration) linear infinite;
 }
 
+.signal-travel {
+  animation: signal-travel 3200ms ease-in-out infinite;
+}
+
 .terminal-entry {
   animation: terminal-entry var(--motion-terminal-duration) ease both;
 }
@@ -100,6 +104,33 @@
 
   100% {
     background-position: 100% 50%;
+  }
+}
+
+@keyframes signal-travel {
+  0% {
+    transform: translateX(0);
+    opacity: 0.72;
+  }
+
+  18% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  52% {
+    transform: translateX(66px);
+    opacity: 1;
+  }
+
+  86% {
+    transform: translateX(132px);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateX(132px);
+    opacity: 0.72;
   }
 }
 

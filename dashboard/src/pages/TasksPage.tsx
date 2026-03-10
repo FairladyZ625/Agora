@@ -7,7 +7,6 @@ import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
-import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
@@ -197,34 +196,21 @@ export function TasksPage() {
               <h2 className="page-title">{tasksPageCopy.workbenchTitle}</h2>
               <p className="page-summary">{tasksPageCopy.workbenchSummary}</p>
             </div>
-            <div className="workbench-hero__stats">
-              <div className="inline-stat">
-                <span className="inline-stat__label">{tasksPageCopy.stats.currentMatches}</span>
-                <span className="inline-stat__value">{filteredTasks.length}</span>
+            <div className="workbench-header__aside">
+              <div className="workbench-hero__stats">
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{tasksPageCopy.stats.currentMatches}</span>
+                  <span className="inline-stat__value">{filteredTasks.length}</span>
+                </div>
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{tasksPageCopy.stats.awaitingReview}</span>
+                  <span className="inline-stat__value">{filteredTasks.filter((task) => task.state === 'gate_waiting').length}</span>
+                </div>
+                <div className="inline-stat">
+                  <span className="inline-stat__label">{tasksPageCopy.stats.currentFocus}</span>
+                  <span className="inline-stat__value">{activeTask?.current_stage ?? tasksPageCopy.stageFallback}</span>
+                </div>
               </div>
-              <div className="inline-stat">
-                <span className="inline-stat__label">{tasksPageCopy.stats.awaitingReview}</span>
-                <span className="inline-stat__value">{filteredTasks.filter((task) => task.state === 'gate_waiting').length}</span>
-              </div>
-              <div className="inline-stat">
-                <span className="inline-stat__label">{tasksPageCopy.stats.currentFocus}</span>
-                <span className="inline-stat__value">{activeTask?.current_stage ?? tasksPageCopy.stageFallback}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="workbench-header__center">
-            <div className="workbench-header__search-container">
-              <label className="input-shell--centered">
-                <Search size={18} className="icon-muted" />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={tasksPageCopy.searchPlaceholder}
-                  className="input-text"
-                />
-              </label>
             </div>
           </div>
         </div>
@@ -236,19 +222,17 @@ export function TasksPage() {
         <div className="workbench-toolbar">
           <div className="workbench-toolbar__actions">
             <div className="workbench-toolbar__filter-anchor">
-              <ControlGlass className="glass-control" density="flush" radius="lg">
-                <button
-                  type="button"
-                  className="glass-control__button"
-                  onClick={() => setFilterOpen((current) => !current)}
-                >
-                  <Filter size={14} />
-                  {tasksPageCopy.filterAction}
-                  {activeFilterCount > 0 ? (
-                    <span className="status-pill status-pill--info">{activeFilterCount}</span>
-                  ) : null}
-                </button>
-              </ControlGlass>
+              <button
+                type="button"
+                className="button-secondary workbench-toolbar__filter-button"
+                onClick={() => setFilterOpen((current) => !current)}
+              >
+                <Filter size={14} />
+                {tasksPageCopy.filterAction}
+                {activeFilterCount > 0 ? (
+                  <span className="status-pill status-pill--info">{activeFilterCount}</span>
+                ) : null}
+              </button>
 
               {filterOpen ? (
                 <WorkbenchFilterPopover
@@ -271,6 +255,19 @@ export function TasksPage() {
                 {tasksPageCopy.activeFilterPrefix} {activeFilterCount}
               </span>
             ) : null}
+          </div>
+
+          <div className="workbench-toolbar__search">
+            <label className="input-shell--centered">
+              <Search size={18} className="icon-muted" />
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={tasksPageCopy.searchPlaceholder}
+                className="input-text"
+              />
+            </label>
           </div>
         </div>
 
