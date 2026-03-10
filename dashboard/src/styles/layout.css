@@ -59,6 +59,7 @@ body::before {
   grid-template-columns: minmax(260px, 1fr) auto minmax(320px, 1fr);
   align-items: center;
   gap: 24px;
+  min-height: 88px;
 }
 
 .app-topbar__cluster {
@@ -74,6 +75,21 @@ body::before {
 
 .app-topbar__cluster--controls {
   justify-content: flex-end;
+}
+
+.topbar-ops {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.topbar-ops__row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-height: 40px;
 }
 
 .topbar-brand-copy {
@@ -105,13 +121,6 @@ body::before {
   position: absolute;
   left: 0;
   color: var(--color-primary);
-}
-
-.topbar-context {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
 }
 
 .topbar-context__label {

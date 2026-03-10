@@ -143,41 +143,43 @@ export function TopNav({
         </div>
 
         <div className="app-topbar__cluster app-topbar__cluster--controls">
-          <div className="topbar-context">
+          <div className="topbar-ops">
             <div className="topbar-context__label">{meta.title}</div>
-            <span className="topbar-chip topbar-chip--status">
-              <span className="status-dot status-dot--success" />
-              {reviewCount > 0 ? t('common.reviewWaitingCount', { count: reviewCount }) : t('common.systemOnline')}
-            </span>
-          </div>
-          <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
-            <span className="status-dot status-dot--info" />
-            {error
-              ? t('common.apiError')
-              : activeCount > 0
-                ? t('common.orchestratingCount', { count: activeCount })
-                : t('common.queueStable')}
-          </div>
-          <div className="topbar-clock-block">
-            <span className="topbar-clock-label">{shellCopy.systemClockLabel}</span>
-            <span className="topbar-clock-value">{clock}</span>
-          </div>
-
-          <div className="topbar-actions-group">
-            <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading}>
-              <RefreshCw size={16} />
-            </IconButton>
-            <div className="topbar-separator" />
-            <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')}>
-              <span className="flex items-center gap-1">
-                <Languages size={16} />
-                <span className="type-label-sm">{locale === 'zh-CN' ? t('common.localeShort.zh') : t('common.localeShort.en')}</span>
+            <div className="topbar-ops__row">
+              <span className="topbar-chip topbar-chip--status">
+                <span className="status-dot status-dot--success" />
+                {reviewCount > 0 ? t('common.reviewWaitingCount', { count: reviewCount }) : t('common.systemOnline')}
               </span>
-            </IconButton>
-            <div className="topbar-separator" />
-            <IconButton onClick={nextTheme} label={themeLabels[mode]}>
-              <ThemeIcon size={16} />
-            </IconButton>
+              <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
+                <span className="status-dot status-dot--info" />
+                {error
+                  ? t('common.apiError')
+                  : activeCount > 0
+                    ? t('common.orchestratingCount', { count: activeCount })
+                    : t('common.queueStable')}
+              </div>
+              <div className="topbar-clock-block">
+                <span className="topbar-clock-label">{shellCopy.systemClockLabel}</span>
+                <span className="topbar-clock-value">{clock}</span>
+              </div>
+
+              <div className="topbar-actions-group">
+                <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading}>
+                  <RefreshCw size={16} />
+                </IconButton>
+                <div className="topbar-separator" />
+                <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')}>
+                  <span className="flex items-center gap-1">
+                    <Languages size={16} />
+                    <span className="type-label-sm">{locale === 'zh-CN' ? t('common.localeShort.zh') : t('common.localeShort.en')}</span>
+                  </span>
+                </IconButton>
+                <div className="topbar-separator" />
+                <IconButton onClick={nextTheme} label={themeLabels[mode]}>
+                  <ThemeIcon size={16} />
+                </IconButton>
+              </div>
+            </div>
           </div>
         </div>
       </div>
