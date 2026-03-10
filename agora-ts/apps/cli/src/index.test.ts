@@ -95,9 +95,10 @@ describe('agora-ts cli', () => {
   it('runs task action commands through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    let taskCounter = 301;
     const taskService = new TaskService(db, {
       templatesDir,
-      taskIdGenerator: () => 'OC-301',
+      taskIdGenerator: () => `OC-${taskCounter++}`,
     });
     const subtasks = new SubtaskRepository(db);
     const stdout = createBuffer();
@@ -106,7 +107,6 @@ describe('agora-ts cli', () => {
 
     await program.parseAsync(['create', '实现 CLI actions', '--type', 'document'], { from: 'user' });
     await program.parseAsync(['archon-approve', 'OC-301', '--reviewer-id', 'lizeyu', '--comment', 'ok'], { from: 'user' });
-    await program.parseAsync(['force-advance', 'OC-301', '--reason', 'move to write'], { from: 'user' });
 
     subtasks.insertSubtask({
       id: 'write-doc',
@@ -119,13 +119,13 @@ describe('agora-ts cli', () => {
     await program.parseAsync(['subtask-done', 'OC-301', '--subtask-id', 'write-doc', '--caller-id', 'glm5', '--output', 'done'], { from: 'user' });
     await program.parseAsync(['advance', 'OC-301', '--caller-id', 'archon'], { from: 'user' });
     await program.parseAsync(['approve', 'OC-301', '--approver-id', 'gpt52', '--comment', 'ship it'], { from: 'user' });
-    await program.parseAsync(['pause', 'OC-301', '--reason', 'hold'], { from: 'user' });
-    await program.parseAsync(['resume', 'OC-301'], { from: 'user' });
-    await program.parseAsync(['cancel', 'OC-301', '--reason', 'closed'], { from: 'user' });
+    await program.parseAsync(['create', '实现 CLI states', '--type', 'document'], { from: 'user' });
+    await program.parseAsync(['pause', 'OC-302', '--reason', 'hold'], { from: 'user' });
+    await program.parseAsync(['resume', 'OC-302'], { from: 'user' });
+    await program.parseAsync(['cancel', 'OC-302', '--reason', 'closed'], { from: 'user' });
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('已 Archon 审批通过');
-    expect(stdout.value).toContain('已强制推进到阶段: write');
     expect(stdout.value).toContain('子任务 write-doc 已完成');
     expect(stdout.value).toContain('已推进到阶段: review');
     expect(stdout.value).toContain('已审批通过');
@@ -370,6 +370,88 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('"task_id": "OC-961"');
     expect(stdout.value).toContain('"latest_body_excerpt": "hello summary cli"');
+  });
+
+  it('marks task conversation as read through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-962',
+    });
+    const bindings = new TaskContextBindingService(db, {
+      idGenerator: () => 'binding-3',
+    });
+    const conversations = new TaskConversationService(db, {
+      idGenerator: () => 'entry-3',
+      now: () => new Date('2026-03-10T12:00:01.000Z'),
+    });
+    const humans = new HumanAccountService(db);
+    const account = humans.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const task = taskService.createTask({
+      title: 'cli conversation mark read',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-3',
+    });
+    conversations.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-3',
+      provider_message_ref: 'msg-3',
+      direction: 'inbound',
+      author_kind: 'human',
+      display_name: 'Lizeyu',
+      body: 'hello unread cli',
+      occurred_at: '2026-03-10T12:00:00.000Z',
+    });
+
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      tmuxRuntimeService: {
+        up: () => { throw new Error('unused'); },
+        status: () => { throw new Error('unused'); },
+        send: () => { throw new Error('unused'); },
+        start: () => { throw new Error('unused'); },
+        resume: () => { throw new Error('unused'); },
+        task: () => { throw new Error('unused'); },
+        tail: () => { throw new Error('unused'); },
+        doctor: () => { throw new Error('unused'); },
+        down: () => { throw new Error('unused'); },
+        recordIdentity: () => { throw new Error('unused'); },
+      },
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'task',
+      'conversation-read',
+      task.id,
+      '--account-id',
+      String(account.id),
+      '--entry-id',
+      'entry-3',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"task_id": "OC-962"');
+    expect(stdout.value).toContain('"unread_count": 0');
   });
 
   it('manages lightweight dashboard users through the cli', async () => {

@@ -2,7 +2,13 @@ import { create } from 'zustand';
 import type { CreateTaskInput, Task, TaskAction, TaskActionPayload, TaskStatus } from '@/types/task';
 import * as api from '@/lib/api';
 import { translate } from '@/lib/i18n';
-import { isTaskVisibleInWorkbench, mapTaskConversationEntryDto, mapTaskDto, mapTaskStatusDto } from '@/lib/taskMappers';
+import {
+  isTaskVisibleInWorkbench,
+  mapTaskConversationEntryDto,
+  mapTaskConversationSummaryDto,
+  mapTaskDto,
+  mapTaskStatusDto,
+} from '@/lib/taskMappers';
 
 interface TaskFilters {
   state: string | null;
@@ -34,13 +40,21 @@ async function refreshTaskContext(get: () => TaskStore, taskId: string) {
 }
 
 async function loadTaskStatus(taskId: string): Promise<TaskStatus> {
-  const [task, status, conversation] = await Promise.all([
+  const [task, status, conversationSummary, conversation] = await Promise.all([
     api.getTask(taskId),
     api.getTaskStatus(taskId),
+    api.getTaskConversationSummary(taskId),
     api.getTaskConversation(taskId),
   ]);
+  let resolvedSummary = conversationSummary;
+  try {
+    resolvedSummary = await api.markTaskConversationRead(taskId, {});
+  } catch {
+    resolvedSummary = conversationSummary;
+  }
   return {
     ...mapTaskStatusDto({ ...status, task }),
+    conversationSummary: mapTaskConversationSummaryDto(resolvedSummary),
     conversation: conversation.entries.map(mapTaskConversationEntryDto),
   };
 }

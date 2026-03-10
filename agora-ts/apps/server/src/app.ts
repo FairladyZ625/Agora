@@ -27,6 +27,7 @@ import {
   createTaskRequestSchema,
   createTaskContextBindingRequestSchema,
   ingestTaskConversationEntryRequestSchema,
+  taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
   type HealthResponse,
   liveSessionSchema,
@@ -112,12 +113,14 @@ interface RequestTimingState {
 }
 
 type DashboardSession = {
+  account_id: number | null;
   username: string;
   role: 'admin' | 'member';
   expiresAt: number;
 };
 
 type HumanActor = {
+  account_id: number | null;
   username: string;
   role: 'admin' | 'member';
   source: 'dashboard' | 'im';
@@ -315,6 +318,7 @@ function getDashboardSession(
 }
 
 function issueDashboardSession(
+  accountId: number | null,
   username: string,
   role: 'admin' | 'member',
   dashboardAuth: NonNullable<BuildAppOptions['dashboardAuth']>,
@@ -323,6 +327,7 @@ function issueDashboardSession(
   const token = randomBytes(24).toString('hex');
   const ttlHours = dashboardAuth.sessionTtlHours ?? 24;
   sessions.set(token, {
+    account_id: accountId,
     username,
     role,
     expiresAt: Date.now() + ttlHours * 60 * 60 * 1000,
@@ -338,6 +343,7 @@ function resolveHumanActor(
   const dashboardSession = getDashboardSession(request, sessions);
   if (dashboardSession) {
     return {
+      account_id: dashboardSession.session.account_id,
       username: dashboardSession.session.username,
       role: dashboardSession.session.role,
       source: 'dashboard',
@@ -360,6 +366,7 @@ function resolveHumanActor(
   }
 
   return {
+    account_id: account.id,
     username: account.username,
     role: account.role,
     source: 'im',
@@ -744,7 +751,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         if (!account) {
           return reply.status(403).send({ message: 'invalid dashboard credentials' });
         }
-        const session = issueDashboardSession(account.username, account.role, dashboardAuth, dashboardSessions);
+        const session = issueDashboardSession(account.id, account.username, account.role, dashboardAuth, dashboardSessions);
         reply.header(
           'Set-Cookie',
           `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
@@ -759,7 +766,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!allowed || payload.password !== dashboardAuth.password) {
         return reply.status(403).send({ message: 'invalid dashboard credentials' });
       }
-      const session = issueDashboardSession(payload.username, 'admin', dashboardAuth, dashboardSessions);
+      const session = issueDashboardSession(null, payload.username, 'admin', dashboardAuth, dashboardSessions);
       reply.header(
         'Set-Cookie',
         `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
@@ -1894,7 +1901,26 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const { id } = request.params as { id: string };
-      return reply.send(taskConversationService.getSummaryByTask(id));
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      return reply.send(taskConversationService.getSummaryByTask(id, humanActor?.account_id ?? null));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:id/conversation/read', async (request, reply) => {
+    if (!taskConversationService) {
+      return reply.status(503).send({ message: 'Task conversation service is not configured' });
+    }
+    try {
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (!humanActor?.account_id) {
+        return reply.status(401).send({ message: 'human account session is required for conversation read cursor' });
+      }
+      const { id } = request.params as { id: string };
+      const body = taskConversationMarkReadRequestSchema.parse(request.body ?? {});
+      return reply.send(taskConversationService.markRead(id, humanActor.account_id, body));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

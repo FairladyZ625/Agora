@@ -105,6 +105,18 @@ export class TaskConversationRepository {
     return row?.count ?? 0;
   }
 
+  countUnreadByTask(taskId: string, afterIngestedAt?: string | null): number {
+    if (!afterIngestedAt) {
+      return this.countByTask(taskId);
+    }
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM task_conversation_entries
+      WHERE task_id = ? AND ingested_at > ?
+    `).get(taskId, afterIngestedAt) as { count?: number } | undefined;
+    return row?.count ?? 0;
+  }
+
   listByTask(taskId: string, limit = 100): StoredTaskConversationEntry[] {
     const rows = this.db.prepare(`
       SELECT *

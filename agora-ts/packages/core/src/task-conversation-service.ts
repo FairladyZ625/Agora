@@ -2,11 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   IngestTaskConversationEntryRequestDto,
   TaskConversationEntryDto,
+  TaskConversationMarkReadRequestDto,
   TaskConversationSummaryDto,
 } from '@agora-ts/contracts';
 import {
   TaskContextBindingRepository,
   TaskConversationRepository,
+  TaskConversationReadCursorRepository,
   type AgoraDatabase,
   type StoredTaskContextBinding,
 } from '@agora-ts/db';
@@ -19,12 +21,14 @@ export interface TaskConversationServiceOptions {
 export class TaskConversationService {
   private readonly bindings: TaskContextBindingRepository;
   private readonly entries: TaskConversationRepository;
+  private readonly readCursors: TaskConversationReadCursorRepository;
   private readonly idGenerator: () => string;
   private readonly now: () => Date;
 
   constructor(db: AgoraDatabase, options: TaskConversationServiceOptions = {}) {
     this.bindings = new TaskContextBindingRepository(db);
     this.entries = new TaskConversationRepository(db);
+    this.readCursors = new TaskConversationReadCursorRepository(db);
     this.idGenerator = options.idGenerator ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
   }
@@ -58,8 +62,12 @@ export class TaskConversationService {
     return this.entries.listByTask(taskId);
   }
 
-  getSummaryByTask(taskId: string): TaskConversationSummaryDto {
+  getSummaryByTask(taskId: string, accountId?: number | null): TaskConversationSummaryDto {
     const latest = this.entries.getLatestByTask(taskId);
+    const readCursor = accountId ? this.readCursors.get(taskId, accountId) : null;
+    const unreadCount = accountId
+      ? this.entries.countUnreadByTask(taskId, readCursor?.last_read_at ?? null)
+      : 0;
     return {
       task_id: taskId,
       total_entries: this.entries.countByTask(taskId),
@@ -70,7 +78,26 @@ export class TaskConversationService {
       latest_display_name: latest?.display_name ?? null,
       latest_occurred_at: latest?.occurred_at ?? null,
       latest_body_excerpt: latest ? buildBodyExcerpt(latest.body) : null,
+      last_read_at: readCursor?.last_read_at ?? null,
+      unread_count: unreadCount,
+      has_unread: unreadCount > 0,
     };
+  }
+
+  markRead(
+    taskId: string,
+    accountId: number,
+    input: TaskConversationMarkReadRequestDto = {},
+  ): TaskConversationSummaryDto {
+    const readAt = input.read_at ?? this.now().toISOString();
+    this.readCursors.upsert({
+      task_id: taskId,
+      account_id: accountId,
+      last_read_entry_id: input.last_read_entry_id ?? this.entries.getLatestByTask(taskId)?.id ?? null,
+      last_read_at: readAt,
+      updated_at: this.now().toISOString(),
+    });
+    return this.getSummaryByTask(taskId, accountId);
   }
 
   private findBinding(input: IngestTaskConversationEntryRequestDto): StoredTaskContextBinding | null {

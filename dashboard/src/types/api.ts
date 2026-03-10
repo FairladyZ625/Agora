@@ -13,6 +13,8 @@ import type {
   TaskDto,
   TaskConversationEntryDto,
   TaskConversationListResponseDto,
+  TaskConversationMarkReadRequestDto,
+  TaskConversationSummaryDto,
   TaskState,
   TaskStatusDto,
   TeamDto,
@@ -35,6 +37,8 @@ export type ApiWorkflowDto = WorkflowDto;
 export type ApiTaskDto = TaskDto;
 export type ApiTaskConversationEntryDto = TaskConversationEntryDto;
 export type ApiTaskConversationListResponseDto = TaskConversationListResponseDto;
+export type ApiTaskConversationSummaryDto = TaskConversationSummaryDto;
+export type ApiTaskConversationMarkReadRequestDto = TaskConversationMarkReadRequestDto;
 export type ApiFlowLogDto = FlowLogDto;
 export type ApiProgressLogDto = ProgressLogDto;
 export type ApiSubtaskDto = SubtaskDto;

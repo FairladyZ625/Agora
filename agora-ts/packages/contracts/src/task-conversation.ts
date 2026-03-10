@@ -63,6 +63,16 @@ export const taskConversationSummarySchema = z.object({
   latest_display_name: z.string().nullable(),
   latest_occurred_at: z.string().nullable(),
   latest_body_excerpt: z.string().nullable(),
+  last_read_at: z.string().nullable(),
+  unread_count: z.number().int().nonnegative(),
+  has_unread: z.boolean(),
 });
 
 export type TaskConversationSummaryDto = z.infer<typeof taskConversationSummarySchema>;
+
+export const taskConversationMarkReadRequestSchema = z.object({
+  last_read_entry_id: z.string().min(1).nullable().optional(),
+  read_at: z.string().nullable().optional(),
+});
+
+export type TaskConversationMarkReadRequestDto = z.infer<typeof taskConversationMarkReadRequestSchema>;

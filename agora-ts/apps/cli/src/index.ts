@@ -363,6 +363,31 @@ export function createCliProgram(deps: CliDependencies = {}) {
       );
     });
 
+  task
+    .command('conversation-read')
+    .description('标记任务 conversation 已读')
+    .argument('<taskId>', '任务 ID')
+    .requiredOption('--account-id <accountId>', 'human account id')
+    .option('--entry-id <entryId>', 'last read entry id')
+    .option('--read-at <readAt>', 'read timestamp')
+    .option('--json', '输出 JSON', false)
+    .action((taskId: string, options: {
+      accountId: string;
+      entryId?: string;
+      readAt?: string;
+      json?: boolean;
+    }) => {
+      const summary = taskConversationService.markRead(taskId, Number(options.accountId), {
+        ...(options.entryId ? { last_read_entry_id: options.entryId } : {}),
+        ...(options.readAt ? { read_at: options.readAt } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(summary, null, 2));
+        return;
+      }
+      writeLine(stdout, `任务 ${taskId} conversation 已读，未读消息: ${summary.unread_count}`);
+    });
+
   const craftsman = program
     .command('craftsman')
     .description('craftsman execution commands');

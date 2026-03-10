@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   taskConversationEntrySchema,
   taskConversationListResponseSchema,
+  taskConversationMarkReadRequestSchema,
   taskConversationSummarySchema,
   ingestTaskConversationEntryRequestSchema,
 } from './task-conversation.js';
@@ -78,9 +79,22 @@ describe('task conversation contracts', () => {
       latest_display_name: 'Agora Bot',
       latest_occurred_at: '2026-03-10T12:05:00.000Z',
       latest_body_excerpt: 'build finished',
+      last_read_at: '2026-03-10T12:04:00.000Z',
+      unread_count: 1,
+      has_unread: true,
     });
 
     expect(summary.total_entries).toBe(3);
     expect(summary.latest_body_excerpt).toBe('build finished');
+    expect(summary.unread_count).toBe(1);
+  });
+
+  it('parses a mark-read request', () => {
+    const request = taskConversationMarkReadRequestSchema.parse({
+      last_read_entry_id: 'entry-3',
+      read_at: '2026-03-10T12:06:00.000Z',
+    });
+
+    expect(request.last_read_entry_id).toBe('entry-3');
   });
 });

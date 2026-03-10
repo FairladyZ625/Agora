@@ -103,11 +103,27 @@ export interface TaskConversationEntry {
   metadata: Record<string, unknown> | null;
 }
 
+export interface TaskConversationSummary {
+  task_id: string;
+  total_entries: number;
+  latest_entry_id: string | null;
+  latest_provider: string | null;
+  latest_direction: 'inbound' | 'outbound' | 'system' | null;
+  latest_author_kind: 'human' | 'agent' | 'craftsman' | 'system' | null;
+  latest_display_name: string | null;
+  latest_occurred_at: string | null;
+  latest_body_excerpt: string | null;
+  last_read_at: string | null;
+  unread_count: number;
+  has_unread: boolean;
+}
+
 export interface TaskStatus {
   task: Task;
   flow_log: FlowLogEntry[];
   progress_log: ProgressLogEntry[];
   subtasks: Subtask[];
+  conversationSummary?: TaskConversationSummary;
   conversation?: TaskConversationEntry[];
 }
 

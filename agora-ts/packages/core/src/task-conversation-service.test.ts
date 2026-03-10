@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createTestRuntime } from '@agora-ts/testing';
+import { HumanAccountService } from './human-account-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskConversationService } from './task-conversation-service.js';
 
@@ -147,6 +148,75 @@ describe('TaskConversationService', () => {
         latest_occurred_at: '2026-03-10T12:05:00.000Z',
       });
       expect(service.getSummaryByTask(task.id).latest_body_excerpt).toHaveLength(161);
+    } finally {
+      runtime.cleanup();
+    }
+  });
+
+  it('tracks unread counts and clears them when a human marks the task conversation as read', () => {
+    const runtime = createTestRuntime();
+    try {
+      const bindings = new TaskContextBindingService(runtime.db, {
+        idGenerator: () => 'binding-4',
+      });
+      const task = runtime.taskService.createTask({
+        title: 'Conversation unread task',
+        type: 'coding',
+        creator: 'archon',
+        description: 'test',
+        priority: 'normal',
+      });
+      bindings.createBinding({
+        task_id: task.id,
+        im_provider: 'discord',
+        thread_ref: 'thread-4',
+      });
+      const humans = new HumanAccountService(runtime.db);
+      const account = humans.bootstrapAdmin({
+        username: 'lizeyu',
+        password: 'secret-pass',
+      });
+
+      let index = 0;
+      const service = new TaskConversationService(runtime.db, {
+        idGenerator: () => `entry-${++index}`,
+        now: () => new Date('2026-03-10T12:10:00.000Z'),
+      });
+      service.ingest({
+        provider: 'discord',
+        thread_ref: 'thread-4',
+        direction: 'inbound',
+        author_kind: 'human',
+        body: 'first unread',
+        occurred_at: '2026-03-10T12:00:00.000Z',
+      });
+      service.ingest({
+        provider: 'discord',
+        thread_ref: 'thread-4',
+        direction: 'outbound',
+        author_kind: 'agent',
+        body: 'second unread',
+        occurred_at: '2026-03-10T12:05:00.000Z',
+      });
+
+      expect(service.getSummaryByTask(task.id, account.id)).toMatchObject({
+        task_id: task.id,
+        unread_count: 2,
+        has_unread: true,
+        last_read_at: null,
+      });
+
+      const readSummary = service.markRead(task.id, account.id, {
+        last_read_entry_id: 'entry-2',
+        read_at: '2026-03-10T12:15:00.000Z',
+      });
+
+      expect(readSummary).toMatchObject({
+        task_id: task.id,
+        unread_count: 0,
+        has_unread: false,
+        last_read_at: '2026-03-10T12:15:00.000Z',
+      });
     } finally {
       runtime.cleanup();
     }

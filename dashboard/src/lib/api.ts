@@ -10,6 +10,7 @@ import type {
   ApiPromoteTodoResultDto,
   ApiTaskDto,
   ApiTaskConversationListResponseDto,
+  ApiTaskConversationSummaryDto,
   ApiTaskStatusDto,
   ApiTemplateDetailDto,
   ApiTemplateSummaryDto,
@@ -33,6 +34,8 @@ import {
   promoteTodoResultSchema,
   taskSchema,
   taskConversationListResponseSchema,
+  taskConversationMarkReadRequestSchema,
+  taskConversationSummarySchema,
   taskStatusSchema,
   templateDetailSchema,
   templateSummarySchema,
@@ -118,6 +121,28 @@ export function getTaskConversation(taskId: string): Promise<ApiTaskConversation
   return request<ApiTaskConversationListResponseDto>(
     `/tasks/${taskId}/conversation`,
     taskConversationListResponseSchema,
+  );
+}
+
+export function getTaskConversationSummary(taskId: string): Promise<ApiTaskConversationSummaryDto> {
+  return request<ApiTaskConversationSummaryDto>(
+    `/tasks/${taskId}/conversation/summary`,
+    taskConversationSummarySchema,
+  );
+}
+
+export function markTaskConversationRead(
+  taskId: string,
+  input: { last_read_entry_id?: string; read_at?: string } = {},
+): Promise<ApiTaskConversationSummaryDto> {
+  const payload = taskConversationMarkReadRequestSchema.parse(input);
+  return request<ApiTaskConversationSummaryDto>(
+    `/tasks/${taskId}/conversation/read`,
+    taskConversationSummarySchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
   );
 }
 

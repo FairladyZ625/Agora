@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { TaskContextBindingService, TaskConversationService, TaskService } from '@agora-ts/core';
+import { HumanAccountService, TaskContextBindingService, TaskConversationService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -153,6 +153,109 @@ describe('task conversation routes', () => {
       latest_provider: 'discord',
       latest_direction: 'outbound',
       latest_body_excerpt: 'latest route message',
+      unread_count: 0,
+      has_unread: false,
+    });
+  });
+
+  it('tracks unread summary state and marks a task conversation as read for a dashboard session user', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humans = new HumanAccountService(db);
+    humans.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-962',
+    });
+    const bindings = new TaskContextBindingService(db, {
+      idGenerator: () => 'binding-3',
+    });
+    let index = 0;
+    const conversations = new TaskConversationService(db, {
+      idGenerator: () => `entry-${++index}`,
+      now: () => new Date('2026-03-10T12:05:01.000Z'),
+    });
+    const task = taskService.createTask({
+      title: 'Route unread summary task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-3',
+    });
+
+    conversations.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-3',
+      provider_message_ref: 'msg-1',
+      direction: 'inbound',
+      author_kind: 'human',
+      body: 'first unread',
+      occurred_at: '2026-03-10T12:00:00.000Z',
+    });
+
+    const app = buildApp({
+      db,
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      humanAccountService: humans,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const headers = {
+      cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+    };
+
+    const before = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/conversation/summary`,
+      headers,
+    });
+    const read = await app.inject({
+      method: 'POST',
+      url: `/api/tasks/${task.id}/conversation/read`,
+      headers,
+      payload: {
+        last_read_entry_id: 'entry-1',
+        read_at: '2026-03-10T12:06:00.000Z',
+      },
+    });
+
+    expect(before.statusCode).toBe(200);
+    expect(before.json()).toMatchObject({
+      task_id: task.id,
+      unread_count: 1,
+      has_unread: true,
+      last_read_at: null,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(read.json()).toMatchObject({
+      task_id: task.id,
+      unread_count: 0,
+      has_unread: false,
+      last_read_at: '2026-03-10T12:06:00.000Z',
     });
   });
 });

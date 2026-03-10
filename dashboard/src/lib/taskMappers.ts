@@ -4,10 +4,11 @@ import type {
   ApiSubtaskDto,
   ApiTaskDto,
   ApiTaskConversationEntryDto,
+  ApiTaskConversationSummaryDto,
   ApiTaskStatusDto,
   ApiWorkflowStageDto,
 } from '@/types/api';
-import type { Task, TaskConversationEntry, TaskState, TaskStatus } from '@/types/task';
+import type { Task, TaskConversationEntry, TaskConversationSummary, TaskState, TaskStatus } from '@/types/task';
 import { translate } from '@/lib/i18n';
 
 const REVIEW_GATE_TYPES = new Set(['approval', 'archon_review']);
@@ -104,6 +105,10 @@ function mapSubtask(entry: ApiSubtaskDto) {
 
 export function mapTaskConversationEntryDto(entry: ApiTaskConversationEntryDto): TaskConversationEntry {
   return { ...entry };
+}
+
+export function mapTaskConversationSummaryDto(summary: ApiTaskConversationSummaryDto): TaskConversationSummary {
+  return { ...summary };
 }
 
 export function mapTaskStatusDto(status: ApiTaskStatusDto): TaskStatus {

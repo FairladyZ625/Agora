@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
+import type { ApiTaskConversationSummaryDto, ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
 import { useTaskStore } from '@/stores/taskStore';
 import * as api from '@/lib/api';
 
@@ -7,7 +7,9 @@ vi.mock('@/lib/api', () => ({
   listTasks: vi.fn(),
   getTask: vi.fn(),
   getTaskStatus: vi.fn(),
+  getTaskConversationSummary: vi.fn(),
   getTaskConversation: vi.fn(),
+  markTaskConversationRead: vi.fn(),
   archonApprove: vi.fn(),
   archonReject: vi.fn(),
 }));
@@ -54,6 +56,24 @@ function buildTaskStatusDto(overrides: Partial<ApiTaskStatusDto> = {}): ApiTaskS
     flow_log: [],
     progress_log: [],
     subtasks: [],
+    ...overrides,
+  };
+}
+
+function buildConversationSummaryDto(overrides: Partial<ApiTaskConversationSummaryDto> = {}): ApiTaskConversationSummaryDto {
+  return {
+    task_id: 'OC-001',
+    total_entries: 1,
+    latest_entry_id: 'entry-1',
+    latest_provider: 'discord',
+    latest_direction: 'inbound',
+    latest_author_kind: 'human',
+    latest_display_name: 'Lizeyu',
+    latest_occurred_at: '2026-03-07T02:00:00.000Z',
+    latest_body_excerpt: '来自会话的消息',
+    last_read_at: null,
+    unread_count: 1,
+    has_unread: true,
     ...overrides,
   };
 }
@@ -108,7 +128,12 @@ describe('task store live API mode', () => {
       error: null,
     });
     vi.mocked(api.getTaskStatus).mockRejectedValue(new Error('status unavailable'));
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto());
     vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
 
     await useTaskStore.getState().selectTask('OC-001');
     const state = useTaskStore.getState();
@@ -133,6 +158,7 @@ describe('task store live API mode', () => {
         }),
       }),
     );
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto());
     vi.mocked(api.getTaskConversation).mockResolvedValue({
       entries: [{
         id: 'entry-1',
@@ -152,16 +178,26 @@ describe('task store live API mode', () => {
         metadata: null,
       }],
     });
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(
+      buildConversationSummaryDto({
+        unread_count: 0,
+        has_unread: false,
+        last_read_at: '2026-03-07T02:10:00.000Z',
+      }),
+    );
 
     await useTaskStore.getState().selectTask('OC-001');
     const state = useTaskStore.getState();
 
     expect(api.getTask).toHaveBeenCalledWith('OC-001');
     expect(api.getTaskStatus).toHaveBeenCalledWith('OC-001');
+    expect(api.getTaskConversationSummary).toHaveBeenCalledWith('OC-001');
     expect(api.getTaskConversation).toHaveBeenCalledWith('OC-001');
+    expect(api.markTaskConversationRead).toHaveBeenCalledWith('OC-001', {});
     expect(state.selectedTaskStatus?.task.title).toBe('来自 getTask 的标题');
     expect(state.selectedTaskStatus?.task.current_stage).toBe('review');
     expect(state.selectedTaskStatus?.conversation?.[0]?.body).toBe('来自会话的消息');
+    expect(state.selectedTaskStatus?.conversationSummary?.unread_count).toBe(0);
   });
 
   it('refreshes the selected task after a successful approval', async () => {
@@ -172,7 +208,15 @@ describe('task store live API mode', () => {
         task: buildTaskDto({ current_stage: 'review' }),
       }),
     );
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
     vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
 
     useTaskStore.setState({
       tasks: [],
