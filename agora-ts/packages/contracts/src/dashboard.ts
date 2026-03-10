@@ -190,6 +190,7 @@ export const dashboardSessionStatusResponseSchema = z.object({
   authenticated: z.boolean(),
   method: z.enum(['basic', 'session', 'oauth2']).nullable(),
   username: z.string().optional(),
+  role: z.enum(['admin', 'member']).optional(),
 });
 export type DashboardSessionStatusResponseDto = z.infer<typeof dashboardSessionStatusResponseSchema>;
 
@@ -197,6 +198,42 @@ export const dashboardSessionLogoutResponseSchema = z.object({
   ok: z.literal(true),
 });
 export type DashboardSessionLogoutResponseDto = z.infer<typeof dashboardSessionLogoutResponseSchema>;
+
+export const dashboardUserIdentitySchema = z.object({
+  provider: z.string().min(1),
+  external_user_id: z.string().min(1),
+});
+export type DashboardUserIdentityDto = z.infer<typeof dashboardUserIdentitySchema>;
+
+export const dashboardUserSchema = z.object({
+  username: z.string().min(1),
+  role: z.enum(['admin', 'member']),
+  enabled: z.boolean(),
+  identities: z.array(dashboardUserIdentitySchema),
+});
+export type DashboardUserDto = z.infer<typeof dashboardUserSchema>;
+
+export const dashboardUserListResponseSchema = z.object({
+  users: z.array(dashboardUserSchema),
+});
+export type DashboardUserListResponseDto = z.infer<typeof dashboardUserListResponseSchema>;
+
+export const dashboardUserCreateRequestSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(8),
+});
+export type DashboardUserCreateRequestDto = z.infer<typeof dashboardUserCreateRequestSchema>;
+
+export const dashboardUserUpdatePasswordRequestSchema = z.object({
+  password: z.string().min(8),
+});
+export type DashboardUserUpdatePasswordRequestDto = z.infer<typeof dashboardUserUpdatePasswordRequestSchema>;
+
+export const dashboardUserBindIdentityRequestSchema = z.object({
+  provider: z.string().min(1),
+  external_user_id: z.string().min(1),
+});
+export type DashboardUserBindIdentityRequestDto = z.infer<typeof dashboardUserBindIdentityRequestSchema>;
 
 export const archiveJobSchema = z.object({
   id: z.number().int().nonnegative(),

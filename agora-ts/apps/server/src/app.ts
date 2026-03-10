@@ -19,6 +19,10 @@ import {
   dashboardSessionLoginResponseSchema,
   dashboardSessionLogoutResponseSchema,
   dashboardSessionStatusResponseSchema,
+  dashboardUserBindIdentityRequestSchema,
+  dashboardUserCreateRequestSchema,
+  dashboardUserListResponseSchema,
+  dashboardUserUpdatePasswordRequestSchema,
   createInboxRequestSchema,
   createTaskRequestSchema,
   createTaskContextBindingRequestSchema,
@@ -222,7 +226,15 @@ function isHumanReviewRoute(method: string, url: string) {
   return url.endsWith('/archon-approve') || url.endsWith('/archon-reject');
 }
 
+function isDashboardUserRoute(url: string) {
+  return url === '/api/dashboard/users'
+    || /^\/api\/dashboard\/users\/[^/]+\/disable$/.test(url)
+    || /^\/api\/dashboard\/users\/[^/]+\/password$/.test(url)
+    || /^\/api\/dashboard\/users\/[^/]+\/identities$/.test(url);
+}
+
 const DASHBOARD_SESSION_COOKIE = 'agora_dashboard_session';
+const DASHBOARD_BOOTSTRAP_REQUIRED_MESSAGE = 'dashboard session auth has no bootstrap admin account; run `agora init` or `agora dashboard users add`';
 
 function createDashboardLoginPage() {
   return `<!doctype html>
@@ -415,6 +427,23 @@ function requireDashboardAccess(
   return true;
 }
 
+function requireDashboardAdminSession(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  sessions: Map<string, DashboardSession>,
+) {
+  const current = getDashboardSession(request, sessions);
+  if (!current) {
+    reply.status(401).send({ message: 'missing dashboard session' });
+    return null;
+  }
+  if (current.session.role !== 'admin') {
+    reply.status(403).send({ message: 'dashboard admin role required' });
+    return null;
+  }
+  return current.session;
+}
+
 function incrementCounter(counter: Map<string, number>, key: string) {
   counter.set(key, (counter.get(key) ?? 0) + 1);
 }
@@ -581,6 +610,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       dashboardSessionEnabled
       && (
         isDashboardSessionRoute(request.url)
+        || (isDashboardUserRoute(request.url) && dashboardSession)
         || (isDashboardProtectedApiRoute(request.method, request.url) && dashboardSession)
         || (isHumanReviewRoute(request.method, request.url) && dashboardSession)
       )
@@ -705,7 +735,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(404).send({ message: 'dashboard session auth is not enabled' });
     }
     if (!humanAccountService?.hasAccounts() && !dashboardAuth.password) {
-      return reply.status(500).send({ message: 'dashboard auth enabled but password not configured' });
+      return reply.status(409).send({ message: DASHBOARD_BOOTSTRAP_REQUIRED_MESSAGE });
     }
     try {
       const payload = dashboardSessionLoginRequestSchema.parse(request.body);
@@ -775,7 +805,112 @@ export function buildApp(options: BuildAppOptions = {}) {
       authenticated: true,
       method: 'session',
       username: current.session.username,
+      role: current.session.role,
     }));
+  });
+
+  app.get('/api/dashboard/users', async (request, reply) => {
+    if (!humanAccountService) {
+      return reply.status(503).send({ message: 'human account service is not configured' });
+    }
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    if (!session) {
+      return reply;
+    }
+    void session;
+    return reply.send(dashboardUserListResponseSchema.parse({
+      users: humanAccountService.listUsersWithIdentities(),
+    }));
+  });
+
+  app.post('/api/dashboard/users', async (request, reply) => {
+    if (!humanAccountService) {
+      return reply.status(503).send({ message: 'human account service is not configured' });
+    }
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    if (!session) {
+      return reply;
+    }
+    try {
+      const payload = dashboardUserCreateRequestSchema.parse(request.body);
+      humanAccountService.createUser({
+        username: payload.username,
+        password: payload.password,
+        role: 'member',
+      });
+      return reply.send(dashboardUserListResponseSchema.parse({
+        users: humanAccountService.listUsersWithIdentities(),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.patch('/api/dashboard/users/:username/disable', async (request, reply) => {
+    if (!humanAccountService) {
+      return reply.status(503).send({ message: 'human account service is not configured' });
+    }
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    if (!session) {
+      return reply;
+    }
+    try {
+      const params = request.params as { username: string };
+      humanAccountService.disableUser(params.username);
+      return reply.send(dashboardUserListResponseSchema.parse({
+        users: humanAccountService.listUsersWithIdentities(),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.patch('/api/dashboard/users/:username/password', async (request, reply) => {
+    if (!humanAccountService) {
+      return reply.status(503).send({ message: 'human account service is not configured' });
+    }
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    if (!session) {
+      return reply;
+    }
+    try {
+      const params = request.params as { username: string };
+      const payload = dashboardUserUpdatePasswordRequestSchema.parse(request.body);
+      humanAccountService.setPassword(params.username, payload.password);
+      return reply.send(dashboardUserListResponseSchema.parse({
+        users: humanAccountService.listUsersWithIdentities(),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/dashboard/users/:username/identities', async (request, reply) => {
+    if (!humanAccountService) {
+      return reply.status(503).send({ message: 'human account service is not configured' });
+    }
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    if (!session) {
+      return reply;
+    }
+    try {
+      const params = request.params as { username: string };
+      const payload = dashboardUserBindIdentityRequestSchema.parse(request.body);
+      humanAccountService.bindIdentity({
+        username: params.username,
+        provider: payload.provider,
+        externalUserId: payload.external_user_id,
+      });
+      return reply.send(dashboardUserListResponseSchema.parse({
+        users: humanAccountService.listUsersWithIdentities(),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
   });
 
   app.post('/api/tasks', async (request, reply) => {

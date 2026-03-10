@@ -1,5 +1,5 @@
 {
-  "db_path": "tasks.db",
+  "db_path": "~/.agora/agora.db",
   "api_auth": {
     "enabled": false,
     "token": "change-me"

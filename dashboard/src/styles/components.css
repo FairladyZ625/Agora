@@ -245,6 +245,48 @@
   background: var(--surface-glass-authority);
 }
 
+.topbar-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  padding: 0 4px 0 12px;
+  background: var(--topbar-chip-bg);
+}
+
+.topbar-user-chip__identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.topbar-user-chip__name {
+  color: var(--color-text-primary);
+}
+
+.topbar-user-chip__role {
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.topbar-user-chip__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  padding: 0 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 
 .settings-form-grid {
   display: grid;

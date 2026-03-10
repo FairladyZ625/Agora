@@ -1,6 +1,10 @@
 import type {
   AgentsStatusDto,
   ArchiveJobDto,
+  DashboardSessionLoginResponseDto,
+  DashboardSessionLogoutResponseDto,
+  DashboardSessionStatusResponseDto,
+  DashboardUserListResponseDto,
   FlowLogDto,
   HealthResponse,
   PromoteTodoResultDto,
@@ -42,6 +46,10 @@ export type ApiAgentDto = ApiAgentsStatusDto['agents'][number];
 export type ApiCraftsmanDto = ApiAgentsStatusDto['craftsmen'][number];
 export type ApiAgentChannelSummaryDto = ApiAgentsStatusDto['channel_summaries'][number];
 export type ApiArchiveJobDto = ArchiveJobDto;
+export type ApiDashboardSessionStatusDto = DashboardSessionStatusResponseDto;
+export type ApiDashboardSessionLoginDto = DashboardSessionLoginResponseDto;
+export type ApiDashboardSessionLogoutDto = DashboardSessionLogoutResponseDto;
+export type ApiDashboardUserListDto = DashboardUserListResponseDto;
 export type ApiTodoDto = TodoItemDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;
 export type ApiTemplateDetailDto = TemplateDetailDto;

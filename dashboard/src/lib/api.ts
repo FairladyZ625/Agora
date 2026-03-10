@@ -2,6 +2,10 @@ import type {
   ApiAgentChannelSummaryDto,
   ApiAgentsStatusDto,
   ApiArchiveJobDto,
+  ApiDashboardSessionLoginDto,
+  ApiDashboardSessionLogoutDto,
+  ApiDashboardSessionStatusDto,
+  ApiDashboardUserListDto,
   ApiHealthDto,
   ApiPromoteTodoResultDto,
   ApiTaskDto,
@@ -18,6 +22,13 @@ import {
   agentsStatusSchema,
   archiveJobSchema,
   archiveJobReceiptScanResponseSchema,
+  dashboardSessionLoginResponseSchema,
+  dashboardSessionLogoutResponseSchema,
+  dashboardSessionStatusResponseSchema,
+  dashboardUserBindIdentityRequestSchema,
+  dashboardUserCreateRequestSchema,
+  dashboardUserListResponseSchema,
+  dashboardUserUpdatePasswordRequestSchema,
   healthResponseSchema,
   promoteTodoResultSchema,
   taskSchema,
@@ -242,6 +253,71 @@ export function archonReject(
 
 export function healthCheck(): Promise<ApiHealthDto> {
   return request<ApiHealthDto>('/health', healthResponseSchema);
+}
+
+// ── Dashboard Session / Users ────────────────────
+
+export function getDashboardSessionStatus(): Promise<ApiDashboardSessionStatusDto> {
+  return request<ApiDashboardSessionStatusDto>('/dashboard/session', dashboardSessionStatusResponseSchema);
+}
+
+export function loginDashboardSession(username: string, password: string): Promise<ApiDashboardSessionLoginDto> {
+  return request<ApiDashboardSessionLoginDto>('/dashboard/session/login', dashboardSessionLoginResponseSchema, {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+    credentials: 'include',
+  });
+}
+
+export function logoutDashboardSession(): Promise<ApiDashboardSessionLogoutDto> {
+  return request<ApiDashboardSessionLogoutDto>('/dashboard/session/logout', dashboardSessionLogoutResponseSchema, {
+    method: 'POST',
+    credentials: 'include',
+  });
+}
+
+export function listDashboardUsers(): Promise<ApiDashboardUserListDto> {
+  return request<ApiDashboardUserListDto>('/dashboard/users', dashboardUserListResponseSchema, {
+    credentials: 'include',
+  });
+}
+
+export function createDashboardUser(input: { username: string; password: string }): Promise<ApiDashboardUserListDto> {
+  const payload = dashboardUserCreateRequestSchema.parse(input);
+  return request<ApiDashboardUserListDto>('/dashboard/users', dashboardUserListResponseSchema, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  });
+}
+
+export function disableDashboardUser(username: string): Promise<ApiDashboardUserListDto> {
+  return request<ApiDashboardUserListDto>(`/dashboard/users/${encodeURIComponent(username)}/disable`, dashboardUserListResponseSchema, {
+    method: 'PATCH',
+    body: JSON.stringify({}),
+    credentials: 'include',
+  });
+}
+
+export function updateDashboardUserPassword(username: string, password: string): Promise<ApiDashboardUserListDto> {
+  const payload = dashboardUserUpdatePasswordRequestSchema.parse({ password });
+  return request<ApiDashboardUserListDto>(`/dashboard/users/${encodeURIComponent(username)}/password`, dashboardUserListResponseSchema, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  });
+}
+
+export function bindDashboardUserIdentity(
+  username: string,
+  input: { provider: string; external_user_id: string },
+): Promise<ApiDashboardUserListDto> {
+  const payload = dashboardUserBindIdentityRequestSchema.parse(input);
+  return request<ApiDashboardUserListDto>(`/dashboard/users/${encodeURIComponent(username)}/identities`, dashboardUserListResponseSchema, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    credentials: 'include',
+  });
 }
 
 // ── Agents / Archive / Todos / Templates ────────

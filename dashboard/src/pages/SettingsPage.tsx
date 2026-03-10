@@ -2,17 +2,22 @@ import { useState } from 'react';
 import { Eye, EyeOff, Link2, Palette, RefreshCcw, Shield } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import * as api from '@/lib/api';
+import { HumanAccountsPanel } from '@/components/settings/HumanAccountsPanel';
 import { useSettingsPageCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 
 export function SettingsPage() {
   const { t } = useTranslation();
   const settingsPageCopy = useSettingsPageCopy();
   const { locale, setLocale } = useLocale();
+  const sessionUsername = useSessionStore((state) => state.username);
+  const sessionRole = useSessionStore((state) => state.role);
+  const sessionMethod = useSessionStore((state) => state.method);
   const cleanupTasks = useTaskStore((state) => state.cleanupTasks);
   const {
     apiBase,
@@ -83,6 +88,7 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       <section className="surface-panel surface-panel--intro space-y-2">
+        <h1 className="sr-only">{settingsPageCopy.sectionLabel}</h1>
         <p className="page-kicker">{settingsPageCopy.kicker}</p>
         <h2 className="page-title">{settingsPageCopy.title}</h2>
         <p className="page-summary">{settingsPageCopy.summary}</p>
@@ -158,6 +164,13 @@ export function SettingsPage() {
           )}
         </div>
       </section>
+
+      <HumanAccountsPanel
+        isAdmin={sessionRole === 'admin'}
+        currentUsername={sessionUsername}
+        currentRole={sessionRole}
+        authMethod={sessionMethod}
+      />
 
       <section className="surface-panel surface-panel--workspace">
         <div className="section-title-row">

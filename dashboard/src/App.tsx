@@ -1,5 +1,6 @@
 import '@/lib/i18n';
-import { Routes, Route, Navigate } from 'react-router';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate, Outlet } from 'react-router';
 import { AppShell } from '@/components/layouts/AppShell';
 import { PageTransition } from '@/components/ui/PageTransition';
 import { DashboardHome } from '@/pages/DashboardHome';
@@ -12,12 +13,36 @@ import { ArchivePage } from '@/pages/ArchivePage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { LoginPage } from '@/pages/LoginPage';
+import { RequireSession } from '@/components/auth/RequireSession';
+import { useSessionStore } from '@/stores/sessionStore';
+
+function ProtectedAppLayout() {
+  return (
+    <RequireSession>
+      <AppShell>
+        <PageTransition>
+          <Outlet />
+        </PageTransition>
+      </AppShell>
+    </RequireSession>
+  );
+}
 
 export default function App() {
+  const status = useSessionStore((state) => state.status);
+  const refresh = useSessionStore((state) => state.refresh);
+
+  useEffect(() => {
+    if (status === 'idle') {
+      void refresh();
+    }
+  }, [refresh, status]);
+
   return (
-    <AppShell>
-      <PageTransition>
-        <Routes>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<ProtectedAppLayout />}>
         <Route path="/" element={<DashboardHome />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/agents" element={<AgentsPage />} />
@@ -30,9 +55,8 @@ export default function App() {
         <Route path="/reviews" element={<ReviewsPage />} />
         <Route path="/reviews/:reviewId" element={<ReviewsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      </PageTransition>
-    </AppShell>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

@@ -21,6 +21,10 @@ export interface HumanAccountIdentityBinding {
   external_user_id: string;
 }
 
+export interface HumanAccountWithIdentities extends HumanAccount {
+  identities: HumanAccountIdentityBinding[];
+}
+
 function assertPassword(password: string) {
   if (!password || password.trim().length < 8) {
     throw new Error('password must be at least 8 characters');
@@ -91,6 +95,16 @@ export class HumanAccountService {
 
   listUsers(): HumanAccount[] {
     return this.accounts.listAccounts().map((account) => this.toHumanAccount(account));
+  }
+
+  listUsersWithIdentities(): HumanAccountWithIdentities[] {
+    return this.accounts.listAccounts().map((account) => ({
+      ...this.toHumanAccount(account),
+      identities: this.identities.listByAccountId(account.id).map((binding) => ({
+        provider: binding.provider,
+        external_user_id: binding.external_user_id,
+      })),
+    }));
   }
 
   disableUser(username: string): HumanAccount {

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Languages, Menu, Monitor, Moon, RefreshCw, Sun } from 'lucide-react';
+import { Languages, LogOut, Menu, Monitor, Moon, RefreshCw, Sun, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 import { useShellCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { useSessionStore } from '@/stores/sessionStore';
 
 const themeCycle: ThemeMode[] = ['light', 'dark', 'system'];
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
@@ -49,7 +51,11 @@ export function TopNav({
   const loading = useTaskStore((state) => state.loading);
   const tasks = useTaskStore((state) => state.tasks);
   const error = useTaskStore((state) => state.error);
+  const username = useSessionStore((state) => state.username);
+  const role = useSessionStore((state) => state.role);
+  const logout = useSessionStore((state) => state.logout);
   const { showMessage } = useFeedbackStore();
+  const navigate = useNavigate();
   const [clock, setClock] = useState(() => new Date().toISOString().split('T')[1]?.replace('Z', ' UTC') ?? '');
   const themeLabels = {
     light: t('settings.appearanceLabels.light'),
@@ -103,6 +109,16 @@ export function TopNav({
     );
   };
 
+  const handleLogout = async () => {
+    await logout();
+    showMessage(
+      t('feedback.logoutSuccessTitle'),
+      t('feedback.logoutSuccessDetail'),
+      'success',
+    );
+    navigate('/login');
+  };
+
   return (
     <header className="app-topbar sticky top-0 z-20" style={{ background: 'var(--color-panel-strong)' }}>
       <div className="app-frame app-topbar__frame px-4 py-4 md:px-6">
@@ -146,6 +162,18 @@ export function TopNav({
             <div className="topbar-clock-inline">
               <span className="topbar-clock-label">{shellCopy.systemClockLabel}</span>
               <span className="topbar-clock-value">{clock}</span>
+            </div>
+
+            <div className="topbar-user-chip">
+              <span className="topbar-user-chip__identity">
+                <UserRound size={14} />
+                <span className="topbar-user-chip__name">{username ?? 'unknown'}</span>
+                <span className="topbar-user-chip__role">{role ?? 'member'}</span>
+              </span>
+              <button type="button" className="topbar-user-chip__action" onClick={() => void handleLogout()}>
+                <LogOut size={14} />
+                <span>{t('common.logout')}</span>
+              </button>
             </div>
 
             <div className="topbar-actions-group">

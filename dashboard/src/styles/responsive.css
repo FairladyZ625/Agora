@@ -17,11 +17,25 @@
 }
 
 @media (max-width: 1180px) {
+  .login-shell__hero-content,
   .workbench-shell__hero,
   .workbench-header__top,
   .workbench-toolbar {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .login-shell__hero-content {
+    align-items: end;
+  }
+
+  .login-shell__form--floating {
+    max-width: 420px;
+    margin-left: 0;
+  }
+
+  .login-shell__copy-frame {
+    max-width: min(100%, 560px);
   }
 
   .workbench-grid,
@@ -47,6 +61,34 @@
 }
 
 @media (max-width: 767px) {
+  .login-shell__hero-content {
+    min-height: 100vh;
+    padding: 20px 16px;
+  }
+
+  .login-shell__title {
+    font-size: 44px;
+  }
+
+  .login-shell__copy-frame,
+  .login-shell__hero-copy,
+  .login-shell__form,
+  .dashboard-users-create__head,
+  .dashboard-user-card__head,
+  .dashboard-user-password {
+    padding: 18px 16px;
+  }
+
+  .login-shell__copy-frame {
+    width: 100%;
+    max-width: none;
+  }
+
+  .login-shell__form--floating {
+    max-width: none;
+    width: 100%;
+  }
+
   .app-shell {
     padding: var(--mobile-shell-padding);
   }
@@ -120,4 +162,3 @@
     text-align: left;
   }
 }
-

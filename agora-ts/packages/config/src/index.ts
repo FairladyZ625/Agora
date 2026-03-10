@@ -5,6 +5,21 @@ import { z } from 'zod';
 export * from './dev-start.js';
 export * from './env.js';
 
+export function agoraDataDirPath(): string {
+  return join(homedir(), '.agora');
+}
+
+export function defaultAgoraDbPath(): string {
+  return join(agoraDataDirPath(), 'agora.db');
+}
+
+function normalizeDbPath(value: string): string {
+  if (value.startsWith('~/')) {
+    return join(homedir(), value.slice(2));
+  }
+  return value;
+}
+
 export const agentPermissionSchema = z.object({
   canCall: z.array(z.string()).default([]),
   canAdvance: z.boolean().default(false),
@@ -82,7 +97,7 @@ export const permissionsSchema = z.object({
 export type PermissionsConfig = z.infer<typeof permissionsSchema>;
 
 export const agoraConfigSchema = z.object({
-  db_path: z.string().default('tasks.db'),
+  db_path: z.string().transform(normalizeDbPath).default(defaultAgoraDbPath()),
   api_auth: apiAuthSchema.default({ enabled: false, token: 'change-me' }),
   permissions: permissionsSchema.default({
     allowAgents: { '*': { canCall: [], canAdvance: false } },
@@ -125,7 +140,7 @@ export function parseAgoraConfig(raw: unknown): AgoraConfig {
 }
 
 export function globalConfigPath(): string {
-  return join(homedir(), '.agora', 'agora.json');
+  return join(agoraDataDirPath(), 'agora.json');
 }
 
 export function loadGlobalConfig(): Record<string, unknown> {
@@ -137,7 +152,7 @@ export function loadGlobalConfig(): Record<string, unknown> {
 }
 
 export function saveGlobalConfig(config: Record<string, unknown>): void {
-  const dir = join(homedir(), '.agora');
+  const dir = agoraDataDirPath();
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }

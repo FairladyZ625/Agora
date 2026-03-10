@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { agoraConfigSchema, parseAgoraConfig } from './index.js';
+import { agoraConfigSchema, defaultAgoraDbPath, parseAgoraConfig } from './index.js';
 
 describe('agora-ts config contracts', () => {
   it('parses the legacy example config into a typed ts config object', () => {
@@ -11,7 +11,7 @@ describe('agora-ts config contracts', () => {
 
     const parsed = parseAgoraConfig(raw);
 
-    expect(parsed.db_path).toBe('tasks.db');
+    expect(parsed.db_path).toBe(defaultAgoraDbPath());
     expect(parsed.api_auth.enabled).toBe(false);
     expect(parsed.permissions.archonUsers).toContain('lizeyu');
     expect(parsed.permissions.allowAgents.opus?.canAdvance).toBe(true);
@@ -20,7 +20,7 @@ describe('agora-ts config contracts', () => {
   it('fills defaults for optional config sections', () => {
     const parsed = agoraConfigSchema.parse({});
 
-    expect(parsed.db_path).toBe('tasks.db');
+    expect(parsed.db_path).toBe(defaultAgoraDbPath());
     expect(parsed.api_auth.enabled).toBe(false);
     expect(parsed.permissions.archonUsers).toEqual([]);
     expect(parsed.permissions.allowAgents['*']?.canAdvance).toBe(false);
@@ -74,6 +74,14 @@ describe('agora-ts config contracts', () => {
     expect(parsed.craftsmen.isolate_git_worktrees).toBe(true);
     expect(parsed.craftsmen.isolated_root).toBe('/tmp/agora-isolated');
     expect(parsed.observability.metrics_enabled).toBe(true);
+  });
+
+  it('expands db_path values rooted at the user home', () => {
+    const parsed = parseAgoraConfig({
+      db_path: '~/.agora/agora.db',
+    });
+
+    expect(parsed.db_path).toBe(defaultAgoraDbPath());
   });
 
   it('rejects invalid scheduler or dashboard auth values', () => {

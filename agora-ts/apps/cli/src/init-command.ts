@@ -1,5 +1,5 @@
 import { input, select, confirm } from '@inquirer/prompts';
-import { loadGlobalConfig, saveGlobalConfig } from '@agora-ts/config';
+import { defaultAgoraDbPath, loadGlobalConfig, saveGlobalConfig } from '@agora-ts/config';
 import type { HumanAccountService } from '@agora-ts/core';
 
 export interface RunInitCommandOptions {
@@ -41,6 +41,7 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   if (provider === 'none') {
     const config = {
       ...existing,
+      db_path: typeof existing.db_path === 'string' ? existing.db_path : defaultAgoraDbPath(),
       im: { provider: 'none' },
       dashboard_auth: {
         enabled: true,
@@ -87,6 +88,7 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
 
   const config = {
     ...existing,
+    db_path: typeof existing.db_path === 'string' ? existing.db_path : defaultAgoraDbPath(),
     im: {
       provider: 'discord',
       discord: {

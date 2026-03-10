@@ -163,6 +163,31 @@ describe('agora-ts server bootstrap', () => {
     expect(dashboard.body).toContain('dashboard');
   });
 
+  it('returns a bootstrap-required message when session auth is enabled without users or legacy password', async () => {
+    const app = buildApp({
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'admin',
+        password: 'secret-pass',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      message: 'dashboard session auth has no bootstrap admin account; run `agora init` or `agora dashboard users add`',
+    });
+  });
+
   it('requires a dashboard session for dashboard read APIs when session auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

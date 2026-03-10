@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { taskPrioritySchema, taskStateSchema } from './task.js';
-import { agentsStatusSchema, dashboardSessionLoginRequestSchema, dashboardSessionStatusResponseSchema, todoItemSchema } from './dashboard.js';
+import {
+  agentsStatusSchema,
+  dashboardSessionLoginRequestSchema,
+  dashboardSessionStatusResponseSchema,
+  dashboardUserBindIdentityRequestSchema,
+  dashboardUserCreateRequestSchema,
+  dashboardUserListResponseSchema,
+  todoItemSchema,
+} from './dashboard.js';
 
 describe('agora-ts contracts bootstrap', () => {
   it('parses canonical task states and rejects invalid values', () => {
@@ -140,10 +148,42 @@ describe('agora-ts contracts bootstrap', () => {
       authenticated: true,
       method: 'session',
       username: 'lizeyu',
+      role: 'admin',
     })).toMatchObject({
       authenticated: true,
       method: 'session',
       username: 'lizeyu',
+      role: 'admin',
     });
+  });
+
+  it('parses dashboard user management DTOs', () => {
+    expect(dashboardUserCreateRequestSchema.parse({
+      username: 'alice',
+      password: 'alice-pass',
+    })).toMatchObject({
+      username: 'alice',
+      password: 'alice-pass',
+    });
+
+    expect(dashboardUserBindIdentityRequestSchema.parse({
+      provider: 'discord',
+      external_user_id: 'discord-user-123',
+    })).toMatchObject({
+      provider: 'discord',
+      external_user_id: 'discord-user-123',
+    });
+
+    expect(dashboardUserListResponseSchema.parse({
+      users: [{
+        username: 'alice',
+        role: 'member',
+        enabled: true,
+        identities: [{
+          provider: 'discord',
+          external_user_id: 'discord-user-123',
+        }],
+      }],
+    }).users[0]?.username).toBe('alice');
   });
 });
