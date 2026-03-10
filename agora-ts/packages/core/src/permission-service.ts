@@ -15,7 +15,10 @@ export class PermissionService {
   private readonly allowAgents: Record<string, AgentPermission>;
 
   constructor(options: PermissionServiceOptions = {}) {
-    this.archonUsers = new Set(options.archonUsers ?? ['archon', 'lizeyu']);
+    const effectiveArchonUsers = options.archonUsers && options.archonUsers.length > 0
+      ? options.archonUsers
+      : ['archon', 'lizeyu'];
+    this.archonUsers = new Set(effectiveArchonUsers);
     this.allowAgents = options.allowAgents ?? {
       '*': { canCall: [], canAdvance: false },
     };

@@ -11,6 +11,6 @@
   "stages": [
     { "id": "outline", "name": "大纲讨论", "mode": "discuss", "gate": { "type": "archon_review" } },
     { "id": "write", "name": "撰写", "mode": "execute", "gate": { "type": "all_subtasks_done" } },
-    { "id": "review", "name": "审校", "mode": "discuss", "gate": { "type": "approval", "approver": "reviewer" } }
+    { "id": "review", "name": "审校", "mode": "discuss", "gate": { "type": "approval", "approver": "reviewer" }, "reject_target": "write" }
   ]
 }

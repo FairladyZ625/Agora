@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "tsBuildInfoFile": "tsconfig.build.tsbuildinfo"
+  },
+  "exclude": ["src/**/*.test.ts", "dist", "**/dist/**"]
+}

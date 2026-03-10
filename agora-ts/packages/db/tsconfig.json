@@ -2,9 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "tsBuildInfoFile": "tsconfig.typecheck.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
+  "exclude": ["dist", "**/dist/**"],
   "references": [
     { "path": "../contracts" }
   ]

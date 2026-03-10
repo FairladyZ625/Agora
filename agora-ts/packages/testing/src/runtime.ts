@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskService, TemplateAuthoringService, type CraftsmanAdapter, type WorkdirIsolator } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, InboxService, ShellCraftsmanAdapter, StubCraftsmanAdapter, TaskContextBindingService, TaskParticipationService, TaskService, TemplateAuthoringService, type AgentRuntimePort, type CraftsmanAdapter, type WorkdirIsolator } from '@agora-ts/core';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
@@ -12,6 +12,7 @@ export interface CreateTestRuntimeOptions {
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   maxConcurrentRunning?: number;
   workdirIsolator?: WorkdirIsolator;
+  agentRuntimePort?: AgentRuntimePort;
 }
 
 export interface TestRuntime {
@@ -25,6 +26,8 @@ export interface TestRuntime {
   inboxService: InboxService;
   templateAuthoringService: TemplateAuthoringService;
   craftsmanDispatcher: CraftsmanDispatcher;
+  taskContextBindingService: TaskContextBindingService;
+  taskParticipationService: TaskParticipationService;
   cleanup: () => void;
 }
 
@@ -70,9 +73,15 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     dispatcherOptions.workdirIsolator = options.workdirIsolator;
   }
   const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
+  const taskContextBindingService = new TaskContextBindingService(db);
+  const taskParticipationService = new TaskParticipationService(db, {
+    ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
+  });
   const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[1] = {
     ...taskServiceOptions,
     craftsmanDispatcher,
+    taskContextBindingService,
+    taskParticipationService,
   };
   if (options.isCraftsmanSessionAlive !== undefined) {
     taskServiceOptionsWithRecovery.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
@@ -97,6 +106,8 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     inboxService,
     templateAuthoringService,
     craftsmanDispatcher,
+    taskContextBindingService,
+    taskParticipationService,
     cleanup() {
       db.close();
       rmSync(dir, { recursive: true, force: true });

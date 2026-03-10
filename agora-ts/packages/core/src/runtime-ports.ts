@@ -52,3 +52,29 @@ export interface PresenceSource {
   listHistory?(): AgentPresenceHistoryEvent[];
   listSignals?(): AgentProviderSignalEvent[];
 }
+
+export interface RuntimeParticipantResolution {
+  agent_ref: string;
+  runtime_provider: string | null;
+  runtime_actor_ref: string | null;
+}
+
+export interface AgentRuntimePort {
+  resolveAgent(agentRef: string): RuntimeParticipantResolution | null;
+}
+
+export class InventoryBackedAgentRuntimePort implements AgentRuntimePort {
+  constructor(private readonly agentInventory: AgentInventorySource) {}
+
+  resolveAgent(agentRef: string): RuntimeParticipantResolution | null {
+    const agent = this.agentInventory.listAgents().find((item) => item.id === agentRef);
+    if (!agent) {
+      return null;
+    }
+    return {
+      agent_ref: agent.id,
+      runtime_provider: agent.host_framework ?? null,
+      runtime_actor_ref: agent.host_framework ? agent.id : null,
+    };
+  }
+}

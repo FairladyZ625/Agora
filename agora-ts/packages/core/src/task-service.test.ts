@@ -7,6 +7,7 @@ import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { TaskService } from './task-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
+import { TaskParticipationService } from './task-participation-service.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
@@ -178,7 +179,25 @@ describe('task service', () => {
       rejectorId: 'gpt52',
       reason: 'needs more structure',
     });
-    expect(rejected.id).toBe('OC-102');
+    expect(rejected).toMatchObject({
+      id: 'OC-102',
+      current_stage: 'write',
+    });
+
+    subtasks.insertSubtask({
+      id: 'write-doc-rework',
+      task_id: 'OC-102',
+      stage_id: 'write',
+      title: '重写正文',
+      assignee: 'glm5',
+    });
+    service.completeSubtask('OC-102', {
+      subtaskId: 'write-doc-rework',
+      callerId: 'glm5',
+      output: '重写完成',
+    });
+    const reviewAgain = service.advanceTask('OC-102', { callerId: 'archon' });
+    expect(reviewAgain.current_stage).toBe('review');
 
     const approved = service.approveTask('OC-102', {
       approverId: 'gpt52',
@@ -193,6 +212,11 @@ describe('task service', () => {
         status: 'done',
         output: '初稿完成',
       },
+      {
+        id: 'write-doc-rework',
+        status: 'done',
+        output: '重写完成',
+      },
     ]);
     expect(status.flow_log.map((item) => item.event)).toEqual(
       expect.arrayContaining([
@@ -201,6 +225,7 @@ describe('task service', () => {
         'force_advance',
         'subtask_done',
         'gate_failed',
+        'stage_rewound',
         'rejected',
         'gate_passed',
       ]),
@@ -239,23 +264,27 @@ describe('task service', () => {
       team: { members: [] },
       workflow: {
         type: 'archon-review',
-        stages: [{ id: 'review', gate: { type: 'archon_review' } }],
+        stages: [
+          { id: 'draft', gate: { type: 'command' } },
+          { id: 'review', gate: { type: 'archon_review' }, reject_target: 'draft' },
+        ],
       },
     });
     tasks.updateTask('OC-109', 1, { state: 'created' });
     tasks.updateTask('OC-109', 2, { state: 'active', current_stage: 'review' });
     db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-109', 'review');
 
-    service.archonRejectTask('OC-109', {
+    const rejected = service.archonRejectTask('OC-109', {
       reviewerId: 'lizeyu',
       reason: 'not ready',
     });
+    expect(rejected.current_stage).toBe('draft');
 
     expect(service.getTaskStatus('OC-108').flow_log.map((item) => item.event)).toEqual(
       expect.arrayContaining(['gate_passed', 'archon_approved']),
     );
     expect(service.getTaskStatus('OC-109').flow_log.map((item) => item.event)).toEqual(
-      expect.arrayContaining(['gate_failed', 'archon_rejected']),
+      expect.arrayContaining(['gate_failed', 'stage_rewound', 'archon_rejected']),
     );
   });
 
@@ -1047,11 +1076,27 @@ describe('task service', () => {
     runMigrations(db);
     const provisioningPort = new StubIMProvisioningPort();
     const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-prov-1', 'pb-prov-2', 'pb-prov-3', 'pb-prov-4'];
+        return () => ids.shift() ?? 'pb-prov-x';
+      })(),
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
     const service = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROV-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
     });
 
     service.createTask({
@@ -1076,5 +1121,15 @@ describe('task service', () => {
     expect(binding).not.toBeNull();
     expect(binding?.im_provider).toBe('discord');
     expect(binding?.thread_ref).toBe('stub-thread-OC-PROV-1');
+    expect(taskParticipation.listParticipants('OC-PROV-1')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          agent_ref: 'opus',
+          binding_id: binding?.id,
+          join_status: 'pending',
+          runtime_provider: 'openclaw',
+        }),
+      ]),
+    );
   });
 });

@@ -8,3 +8,5 @@ export * from './task-api.js';
 export * from './template-authoring.js';
 export * from './task-context-binding.js';
 export * from './notification-outbox.js';
+export * from './participant-binding.js';
+export * from './runtime-session-binding.js';

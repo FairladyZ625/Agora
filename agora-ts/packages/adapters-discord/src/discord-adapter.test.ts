@@ -4,6 +4,30 @@ import { DiscordIMProvisioningAdapter } from './provisioning-adapter.js';
 import { DiscordIMMessagingAdapter } from './messaging-adapter.js';
 
 describe('DiscordHttpClient', () => {
+  it('uses a proxy-aware dispatcher when proxy env is configured', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'thread-proxy' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+    const originalHttpsProxy = process.env.https_proxy;
+    process.env.https_proxy = 'http://127.0.0.1:7897';
+
+    try {
+      const client = new DiscordHttpClient({ botToken: 'test-token' });
+      await client.createThread('channel-1', 'Test Thread', 'Hello');
+
+      expect((mockFetch.mock.calls[0] as [string, { dispatcher?: unknown }])[1].dispatcher).toBeDefined();
+    } finally {
+      if (originalHttpsProxy === undefined) {
+        delete process.env.https_proxy;
+      } else {
+        process.env.https_proxy = originalHttpsProxy;
+      }
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('createThread calls Discord API and returns thread id', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,

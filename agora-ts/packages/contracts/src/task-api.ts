@@ -48,7 +48,7 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 export const teamMemberSchema = z.object({
   role: agentRoleSchema,
   agentId: z.string().min(1),
-  model_preference: z.string().min(1),
+  model_preference: z.string(),
 });
 export type TeamMemberDto = z.infer<typeof teamMemberSchema>;
 
@@ -71,6 +71,7 @@ export const workflowStageSchema = z.object({
   name: z.string().min(1).optional(),
   mode: workflowModeSchema.optional(),
   gate: workflowGateSchema.nullish(),
+  reject_target: z.string().min(1).optional(),
 });
 export type WorkflowStageDto = z.infer<typeof workflowStageSchema>;
 

@@ -11,7 +11,7 @@ import {
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
-import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskContextBindingService, TaskParticipationService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';
 
@@ -542,6 +542,117 @@ describe('dashboard routes', () => {
         busy_agents: 1,
       }),
     ]);
+  });
+
+  it('syncs live sessions into task participant and runtime session bindings', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessions = new LiveSessionStore({
+      staleAfterMs: 60_000,
+      now: () => new Date('2026-03-08T07:00:30.000Z'),
+    });
+    const taskContextBindings = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-route-1', 'pb-route-2', 'pb-route-3', 'pb-route-4'];
+        return () => ids.shift() ?? 'pb-route-x';
+      })(),
+      runtimeSessionIdGenerator: () => 'rs-route-1',
+      agentRuntimePort: {
+        resolveAgent(agentRef: string) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-592',
+      taskContextBindingService: taskContextBindings,
+      taskParticipationService: taskParticipation,
+    });
+    const app = buildApp({
+      taskService,
+      liveSessionStore: liveSessions,
+      taskContextBindingService: taskContextBindings,
+      taskParticipationService: taskParticipation,
+    });
+
+    taskService.createTask({
+      title: 'runtime binding route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+    const binding = taskContextBindings.createBinding({
+      task_id: 'OC-592',
+      im_provider: 'discord',
+      thread_ref: 'thread-route-92',
+    });
+    taskParticipation.attachContextBinding('OC-592', binding.id);
+
+    const ingest = await app.inject({
+      method: 'POST',
+      url: '/api/live/openclaw/sessions',
+      payload: {
+        source: 'openclaw',
+        agent_id: 'sonnet',
+        session_key: 'agent:sonnet:discord:thread:route-92',
+        channel: 'discord',
+        conversation_id: 'alerts',
+        thread_id: 'thread-route-92',
+        status: 'active',
+        last_event: 'session_start',
+        last_event_at: '2026-03-08T07:00:00.000Z',
+        metadata: { continuity_ref: 'cont-route-92' },
+      },
+    });
+    const participants = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-592/participant-bindings',
+    });
+    const runtimeSessions = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-592/runtime-session-bindings',
+    });
+
+    expect(ingest.statusCode).toBe(200);
+    expect(ingest.json()).toMatchObject({
+      session_key: 'agent:sonnet:discord:thread:route-92',
+      sync: {
+        matched_participant_ids: ['pb-route-2'],
+        matched_task_ids: ['OC-592'],
+      },
+    });
+    expect(participants.statusCode).toBe(200);
+    expect(participants.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'pb-route-2',
+          task_id: 'OC-592',
+          agent_ref: 'sonnet',
+          binding_id: binding.id,
+          join_status: 'joined',
+        }),
+      ]),
+    );
+    expect(runtimeSessions.statusCode).toBe(200);
+    expect(runtimeSessions.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'rs-route-1',
+          runtime_provider: 'openclaw',
+          runtime_session_ref: 'agent:sonnet:discord:thread:route-92',
+          runtime_actor_ref: 'sonnet',
+          continuity_ref: 'cont-route-92',
+          presence_state: 'active',
+        }),
+      ]),
+    );
   });
 
   it('supports manual cleanup of stale live sessions', async () => {

@@ -112,7 +112,12 @@ describe('dashboard task action api client', () => {
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/tasks/OC-001/resume',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.not.objectContaining({
+          'Content-Type': 'application/json',
+        }),
+      }),
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/tasks/OC-001/cancel',

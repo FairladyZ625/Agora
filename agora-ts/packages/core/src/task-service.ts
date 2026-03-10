@@ -29,6 +29,7 @@ import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMProvisioningPort } from './im-ports.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
+import type { TaskParticipationService } from './task-participation-service.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -55,6 +56,7 @@ export interface TaskServiceOptions {
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   imProvisioningPort?: IMProvisioningPort;
   taskContextBindingService?: TaskContextBindingService;
+  taskParticipationService?: TaskParticipationService;
 }
 
 export interface AdvanceTaskOptions {
@@ -133,6 +135,7 @@ export class TaskService {
   private readonly taskIdGenerator: () => string;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
+  private readonly taskParticipationService: TaskParticipationService | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -157,6 +160,7 @@ export class TaskService {
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
     this.taskContextBindingService = options.taskContextBindingService;
+    this.taskParticipationService = options.taskParticipationService;
   }
 
   createTask(input: CreateTaskRequestDto): StoredTask {
@@ -217,16 +221,19 @@ export class TaskService {
       });
     }
 
+    this.taskParticipationService?.seedParticipants(taskId, team);
+
     // Fire-and-forget: provision IM thread (non-blocking, failure doesn't block task creation)
     if (this.imProvisioningPort && this.taskContextBindingService) {
       const bindingService = this.taskContextBindingService;
       const provisioningPort = this.imProvisioningPort;
       void provisioningPort.provisionThread(taskId, input.title).then((threadRef) => {
-        bindingService.createBinding({
+        const binding = bindingService.createBinding({
           task_id: taskId,
           im_provider: 'discord',
           thread_ref: threadRef,
         });
+        this.taskParticipationService?.attachContextBinding(taskId, binding.id);
       }).catch((err: unknown) => {
         console.error(`[TaskService] IM provisioning failed for task ${taskId}:`, err);
       });
@@ -350,15 +357,19 @@ export class TaskService {
       detail: { gate_type: 'approval', passed: false, reason: options.reason },
       actor: options.rejectorId,
     });
+    const rewound = this.rewindRejectedStage(task, stage.id, 'rejected', options.rejectorId, options.reason);
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
       kind: 'flow',
       event: 'rejected',
       stage_id: stage.id,
-      detail: { reason: options.reason },
+      detail: {
+        reason: options.reason,
+        ...(rewound ? { reject_target: rewound.current_stage } : {}),
+      },
       actor: options.rejectorId,
     });
-    return task;
+    return rewound;
   }
 
   archonApproveTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
@@ -398,15 +409,20 @@ export class TaskService {
       detail: { gate_type: 'archon_review', passed: false, reason: options.reason ?? '' },
       actor: options.reviewerId,
     });
+    const rewound = this.rewindRejectedStage(task, stage.id, 'archon_rejected', options.reviewerId, options.reason ?? '');
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
       kind: 'archon',
       event: 'archon_rejected',
       stage_id: stage.id,
-      detail: { decision: 'rejected', reason: options.reason ?? '' },
+      detail: {
+        decision: 'rejected',
+        reason: options.reason ?? '',
+        ...(rewound ? { reject_target: rewound.current_stage } : {}),
+      },
       actor: options.reviewerId,
     });
-    return task;
+    return rewound;
   }
 
   completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {
@@ -783,6 +799,51 @@ export class TaskService {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
     return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+  }
+
+  private rewindRejectedStage(
+    task: StoredTask,
+    currentStageId: string,
+    decisionEvent: 'rejected' | 'archon_rejected',
+    actor: string,
+    reason: string,
+  ): StoredTask {
+    const rejectStage = this.stateMachine.getRejectStage(task.workflow, currentStageId);
+    if (!rejectStage) {
+      return task;
+    }
+
+    this.exitStage(task.id, currentStageId, decisionEvent);
+    const updated = this.taskRepository.updateTask(task.id, task.version, {
+      current_stage: rejectStage.id,
+    });
+    this.enterStage(task.id, rejectStage.id);
+    this.flowLogRepository.insertFlowLog({
+      task_id: task.id,
+      kind: 'flow',
+      event: 'stage_rewound',
+      stage_id: rejectStage.id,
+      detail: {
+        from_stage: currentStageId,
+        to_stage: rejectStage.id,
+        reason,
+        decision_event: decisionEvent,
+      },
+      actor,
+    });
+    this.progressLogRepository.insertProgressLog({
+      task_id: task.id,
+      kind: 'progress',
+      stage_id: rejectStage.id,
+      content: `Rewound to stage ${rejectStage.id} after ${decisionEvent}`,
+      artifacts: {
+        from_stage: currentStageId,
+        to_stage: rejectStage.id,
+        reason,
+      },
+      actor,
+    });
+    return updated;
   }
 
   private getApproverRole(stage: NonNullable<StoredTask['workflow']['stages']>[number]) {

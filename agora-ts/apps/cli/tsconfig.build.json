@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "tsBuildInfoFile": "tsconfig.build.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../../packages/config/tsconfig.build.json" },
+    { "path": "../../packages/contracts/tsconfig.build.json" },
+    { "path": "../../packages/core/tsconfig.build.json" },
+    { "path": "../../packages/db/tsconfig.build.json" }
+  ],
+  "exclude": ["src/**/*.test.ts", "dist", "**/dist/**"]
+}

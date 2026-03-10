@@ -4,6 +4,7 @@ import { GateType, TaskState } from './enums.js';
 type WorkflowStage = {
   id: string;
   next?: string[] | undefined;
+  reject_target?: string | undefined;
   gate?: {
     type?: string | undefined;
     [key: string]: unknown;
@@ -54,6 +55,27 @@ export class StateMachine {
       return stages.find((item) => item.id === current.next?.[0]) ?? null;
     }
     return stages[currentIndex + 1] ?? null;
+  }
+
+  getRejectStage(workflow: WorkflowDefinition, currentStageId: string): WorkflowStage | null {
+    const stages = workflow.stages ?? [];
+    const currentIndex = stages.findIndex((item) => item.id === currentStageId);
+    if (currentIndex === -1) {
+      throw new Error(`Stage '${currentStageId}' not found in workflow`);
+    }
+    const current = stages[currentIndex]!;
+    const rejectTarget = current.reject_target;
+    if (!rejectTarget) {
+      return null;
+    }
+    const targetIndex = stages.findIndex((item) => item.id === rejectTarget);
+    if (targetIndex === -1) {
+      throw new Error(`reject_target '${rejectTarget}' not found in workflow`);
+    }
+    if (targetIndex >= currentIndex) {
+      throw new Error(`reject_target '${rejectTarget}' for stage '${currentStageId}' must reference an earlier stage`);
+    }
+    return stages[targetIndex] ?? null;
   }
 
   advance(workflow: WorkflowDefinition, currentStageId: string): {

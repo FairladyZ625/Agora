@@ -59,6 +59,14 @@ describe('task api contracts', () => {
     ).toBe('glm5');
   });
 
+  it('accepts team members with empty model_preference for legacy and quick tasks', () => {
+    expect(
+      teamSchema.parse({
+        members: [{ role: 'executor', agentId: 'haiku', model_preference: '' }],
+      }).members[0]?.model_preference,
+    ).toBe('');
+  });
+
   it('rejects unsupported workflow gate and mode values', () => {
     expect(() =>
       workflowSchema.parse({
@@ -116,5 +124,46 @@ describe('task api contracts', () => {
         ],
       }),
     ).toThrow(/duplicate stage id/i);
+  });
+
+  it('supports reject_target backedges to earlier stages and rejects invalid targets', () => {
+    expect(
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          { id: 'draft', gate: { type: 'command' } },
+          { id: 'review', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'draft' },
+        ],
+      }).stages?.[1]?.reject_target,
+    ).toBe('draft');
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          { id: 'draft', gate: { type: 'command' } },
+          { id: 'review', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'missing' },
+        ],
+      }),
+    ).toThrow(/unknown reject_target/i);
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          { id: 'draft', gate: { type: 'command' }, reject_target: 'draft' },
+        ],
+      }),
+    ).toThrow(/must reference an earlier stage/i);
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          { id: 'draft', gate: { type: 'command' } },
+          { id: 'review', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'review' },
+        ],
+      }),
+    ).toThrow(/must reference an earlier stage/i);
   });
 });

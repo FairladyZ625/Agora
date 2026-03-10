@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
+import { CraftsmanDispatcher, HumanAccountService, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -233,6 +233,70 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('dashboard session 已建立: lizeyu');
     expect(stdout.value).toContain('authenticated: true');
     expect(stdout.value).toContain('dashboard session 已清除');
+  });
+
+  it('manages lightweight dashboard users through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccountService = new HumanAccountService(db);
+    humanAccountService.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        createTask: () => {
+          throw new Error('unused');
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: {
+        up: () => {
+          throw new Error('unused');
+        },
+        status: () => {
+          throw new Error('unused');
+        },
+        send: () => {
+          throw new Error('unused');
+        },
+        start: () => {
+          throw new Error('unused');
+        },
+        resume: () => {
+          throw new Error('unused');
+        },
+        task: () => {
+          throw new Error('unused');
+        },
+        tail: () => {
+          throw new Error('unused');
+        },
+        doctor: () => {
+          throw new Error('unused');
+        },
+        down: () => {
+          throw new Error('unused');
+        },
+        recordIdentity: () => {
+          throw new Error('unused');
+        },
+      } as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['dashboard', 'users', 'add', '--username', 'alice', '--password', 'alice-pass'], { from: 'user' });
+    await program.parseAsync(['dashboard', 'users', 'bind-identity', '--username', 'alice', '--provider', 'discord', '--external-user-id', 'discord-user-123'], { from: 'user' });
+    await program.parseAsync(['dashboard', 'users', 'list'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('dashboard 用户已创建: alice');
+    expect(stdout.value).toContain('identity 已绑定: alice -> discord:discord-user-123');
+    expect(stdout.value).toContain('alice\tmember\tenabled');
   });
 
   it('supports unblock retry through the cli command', async () => {

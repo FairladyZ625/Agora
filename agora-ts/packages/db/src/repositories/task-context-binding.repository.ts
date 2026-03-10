@@ -63,6 +63,32 @@ export class TaskContextBindingRepository {
     return rows.map((row) => this.parseRow(row));
   }
 
+  listByTaskBindingsForRefs(input: {
+    thread_ref?: string | null;
+    conversation_ref?: string | null;
+  }): StoredTaskContextBinding[] {
+    const clauses: string[] = [];
+    const params: Array<string> = [];
+    if (input.thread_ref) {
+      clauses.push('thread_ref = ?');
+      params.push(input.thread_ref);
+    }
+    if (input.conversation_ref) {
+      clauses.push('conversation_ref = ?');
+      params.push(input.conversation_ref);
+    }
+    if (clauses.length === 0) {
+      return [];
+    }
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM task_context_bindings
+      WHERE status = 'active' AND (${clauses.join(' OR ')})
+      ORDER BY created_at DESC
+    `).all(...params) as Record<string, unknown>[];
+    return rows.map((row) => this.parseRow(row));
+  }
+
   updateStatus(id: string, status: string, closedAt?: string): void {
     const closeValue = status === 'archived' || status === 'destroyed' || status === 'failed'
       ? (closedAt ?? new Date().toISOString())

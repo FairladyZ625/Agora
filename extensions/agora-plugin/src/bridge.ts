@@ -75,6 +75,7 @@ export class AgoraBridge {
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/archon-approve`, {
       method: "POST",
       body,
+      headers: this.humanIdentityHeaders('discord', reviewerId),
     });
   }
 
@@ -83,6 +84,7 @@ export class AgoraBridge {
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/archon-reject`, {
       method: "POST",
       body,
+      headers: this.humanIdentityHeaders('discord', reviewerId),
     });
   }
 
@@ -159,17 +161,18 @@ export class AgoraBridge {
     });
   }
 
-  private async request<TResponse>(path: string, init: { method?: string; body?: unknown } = {}): Promise<TResponse> {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
+  private async request<TResponse>(path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}): Promise<TResponse> {
+    const headers: Record<string, string> = {};
+    if (init.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
     if (this.apiToken && this.apiToken.trim()) {
       headers.Authorization = `Bearer ${this.apiToken.trim()}`;
     }
 
     const res = await fetch(`${this.serverUrl}${path}`, {
       method: init.method || "GET",
-      headers,
+      headers: { ...headers, ...(init.headers ?? {}) },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
 
@@ -184,6 +187,13 @@ export class AgoraBridge {
     }
 
     return payload as TResponse;
+  }
+
+  private humanIdentityHeaders(provider: string, externalUserId: string): Record<string, string> {
+    return {
+      'x-agora-human-provider': provider,
+      'x-agora-human-external-id': externalUserId,
+    };
   }
 }
 

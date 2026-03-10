@@ -10,15 +10,19 @@ import {
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   InboxService,
+  InventoryBackedAgentRuntimePort,
   LiveSessionStore,
   NotificationDispatcher,
+  HumanAccountService,
   StubIMMessagingPort,
   TaskContextBindingService,
+  TaskParticipationService,
   resolveCraftsmanRuntimeMode,
   TaskService,
   TemplateAuthoringService,
   TmuxRuntimeService,
   type AgentInventorySource,
+  type AgentRuntimePort,
   type IMMessagingPort,
   type IMProvisioningPort,
   type PresenceSource,
@@ -52,6 +56,8 @@ export interface ServerComposition {
   liveSessionStore: LiveSessionStore;
   tmuxRuntimeService: TmuxRuntimeService;
   taskContextBindingService: TaskContextBindingService;
+  taskParticipationService: TaskParticipationService;
+  humanAccountService: HumanAccountService;
   notificationDispatcher: NotificationDispatcher;
 }
 
@@ -59,6 +65,7 @@ export interface ServerCompositionFactories {
   createLiveSessionStore: (context: ServerCompositionContext) => LiveSessionStore;
   createAgentRegistry: (context: ServerCompositionContext) => AgentInventorySource;
   createPresenceSource: (context: ServerCompositionContext) => PresenceSource;
+  createAgentRuntimePort: (context: ServerCompositionContext, deps: { agentRegistry: AgentInventorySource }) => AgentRuntimePort;
   createCraftsmanDispatcher: (context: ServerCompositionContext) => CraftsmanDispatcher;
   createTmuxRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
   createTaskService: (
@@ -68,6 +75,7 @@ export interface ServerCompositionFactories {
       tmuxRuntimeService: TmuxRuntimeService;
       imProvisioningPort: IMProvisioningPort | undefined;
       taskContextBindingService: TaskContextBindingService;
+      taskParticipationService: TaskParticipationService;
     },
   ) => TaskService;
   createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier;
@@ -88,6 +96,11 @@ export interface ServerCompositionFactories {
   createIMMessagingPort: (context: ServerCompositionContext) => IMMessagingPort;
   createIMProvisioningPort: (context: ServerCompositionContext) => IMProvisioningPort | undefined;
   createTaskContextBindingService: (context: ServerCompositionContext) => TaskContextBindingService;
+  createTaskParticipationService: (
+    context: ServerCompositionContext,
+    deps: { agentRuntimePort: AgentRuntimePort },
+  ) => TaskParticipationService;
+  createHumanAccountService: (context: ServerCompositionContext) => HumanAccountService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
 }
 
@@ -106,11 +119,12 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         ? {
             logPath: process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH,
             staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
-          }
+        }
         : {
             staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
           },
     ),
+    createAgentRuntimePort: (_context, deps) => new InventoryBackedAgentRuntimePort(deps.agentRegistry),
     createCraftsmanDispatcher: (context) => {
       const adapterMode = resolveCraftsmanRuntimeMode('server');
       const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
@@ -144,6 +158,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         craftsmanDispatcher: deps.craftsmanDispatcher,
         isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.tmuxRuntimeService),
         taskContextBindingService: deps.taskContextBindingService,
+        taskParticipationService: deps.taskParticipationService,
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
       });
     },
@@ -182,6 +197,10 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       return undefined;
     },
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
+      agentRuntimePort: deps.agentRuntimePort,
+    }),
+    createHumanAccountService: (context) => new HumanAccountService(context.db),
     createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
   };
 }
@@ -198,15 +217,19 @@ export function buildServerComposition(
   const liveSessionStore = factories.createLiveSessionStore(context);
   const agentRegistry = factories.createAgentRegistry(context);
   const presenceSource = factories.createPresenceSource(context);
+  const agentRuntimePort = factories.createAgentRuntimePort(context, { agentRegistry });
   const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
+  const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     tmuxRuntimeService,
     imProvisioningPort,
     taskContextBindingService,
+    taskParticipationService,
   });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
@@ -231,6 +254,8 @@ export function buildServerComposition(
     liveSessionStore,
     tmuxRuntimeService,
     taskContextBindingService,
+    taskParticipationService,
+    humanAccountService,
     notificationDispatcher,
   };
 }

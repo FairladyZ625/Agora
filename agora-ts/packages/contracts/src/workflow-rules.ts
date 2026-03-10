@@ -11,6 +11,7 @@ type GateLike = {
 type StageLike = {
   id?: string | undefined;
   gate?: GateLike;
+  reject_target?: string | undefined;
 };
 
 function addIssue(ctx: z.RefinementCtx, path: Array<string | number>, message: string) {
@@ -43,6 +44,22 @@ export function validateWorkflowStages(
     }
 
     validateGate(stage?.gate, ctx, [...stagePath, index, 'gate']);
+
+    const rejectTarget = stage?.reject_target?.trim();
+    if (!rejectTarget) {
+      continue;
+    }
+    if (!stageId) {
+      continue;
+    }
+    const targetIndex = stages.findIndex((candidate) => candidate?.id?.trim() === rejectTarget);
+    if (targetIndex === -1) {
+      addIssue(ctx, [...stagePath, index, 'reject_target'], `unknown reject_target: ${rejectTarget}`);
+      continue;
+    }
+    if (targetIndex >= index) {
+      addIssue(ctx, [...stagePath, index, 'reject_target'], 'reject_target must reference an earlier stage');
+    }
   }
 }
 

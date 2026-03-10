@@ -45,6 +45,19 @@
   - `docs/11-REFERENCE/agora-core-decoupling-standard.md`
   - `docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md`
 
+### 人类审批与 Agent 自动化边界（强制）
+
+- Dashboard 是**人类操作入口**，CLI / REST 是**Agent 与自动化入口**；两者职责必须明确分离。
+- 任何“必须由人类确认”的动作，当前口径只允许通过 Dashboard 登录态触发；禁止用前端自由传入的 `reviewer_id` / `approver_id` 伪造人工身份。
+- Core 只消费统一 actor / permission 语义，不直接判断“是不是人类”；“这是登录的人类”这一事实必须由 Dashboard / session adapter 提供。
+- Agent 默认不通过 Dashboard 执行任务编排；Agent 侧主入口是 CLI，其次是 REST API。
+- 除“必须人类确认”的能力外，所有新增任务动作、运行态操作、运维动作、作者工具接口，都必须同步提供 CLI 入口，确保 Agent 可自动化调用。
+- 新增 REST API、task action、runtime operation、authoring capability 时，必须同时评估并补齐：
+  - 对应 CLI command
+  - 对应 CLI tests
+  - 必要的 scenario / harness 覆盖
+- 轻量多用户账号体系可以落在 SQLite，但这只解决“谁能登录 / 谁能审批”；当前阶段**不默认引入任务隔离**，未来若做企业级多租户/多人员任务域隔离，必须作为独立能力设计与实施。
+
 ## 项目概述
 
 Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 Python 版本已迁入 `archive/agora-python-legacy/`，保留为迁移参考与 legacy 对照。

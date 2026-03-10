@@ -38,4 +38,16 @@ describe('permission service', () => {
     expect(permissions.canCall('unknown', 'haiku')).toBe(true);
     expect(permissions.canCall('unknown', 'sonnet')).toBe(false);
   });
+
+  it('falls back to default archon users when config passes an empty archonUsers list', () => {
+    const permissions = new PermissionService({
+      archonUsers: [],
+      allowAgents: {
+        '*': { canCall: [], canAdvance: false },
+      },
+    });
+
+    expect(permissions.isArchon('archon')).toBe(true);
+    expect(permissions.isArchon('lizeyu')).toBe(true);
+  });
 });

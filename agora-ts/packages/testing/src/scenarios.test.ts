@@ -34,6 +34,7 @@ describe('agora-ts testing scenarios', () => {
       'craftsman-retry',
       'craftsman-timeout-escalation',
       'craftsman-callback-notify-outbox',
+      'runtime-session-binding',
     ]);
   });
 
@@ -68,8 +69,9 @@ describe('agora-ts testing scenarios', () => {
 
     expect(result.name).toBe('reject-rework');
     expect(result.finalState).toBe('done');
+    expect(result.completedSubtasks).toEqual(expect.arrayContaining(['write-rework', 'write-rework-2']));
     expect(result.events).toEqual(
-      expect.arrayContaining(['rejected', 'gate_failed', 'gate_passed', 'stage_advanced']),
+      expect.arrayContaining(['rejected', 'gate_failed', 'stage_rewound', 'gate_passed', 'stage_advanced']),
     );
   });
 
@@ -454,5 +456,26 @@ describe('agora-ts testing scenarios', () => {
 
     expect(result.executions).toEqual(['exec-timeout-1']);
     expect(result.events).toContain('subtask_failed');
+  });
+
+  it('runs a runtime session binding scenario and tracks participant join state', () => {
+    runtime = createTestRuntime({
+      agentRuntimePort: {
+        resolveAgent(agentRef: string) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+
+    const result = runScenario(runtime, 'runtime-session-binding');
+
+    expect(result.name).toBe('runtime-session-binding');
+    expect(result.finalState).toBe('active');
+    expect(result.participantBindings).toEqual(expect.arrayContaining(['sonnet:joined']));
+    expect(result.runtimeSessionRefs).toEqual(['agent:sonnet:discord:thread:scenario-92']);
   });
 });

@@ -343,7 +343,10 @@ describe('task routes', () => {
       team: { members: [{ role: 'architect', agentId: 'opus', model_preference: 'reasoning' }] },
       workflow: {
         type: 'archon-review',
-        stages: [{ id: 'review', gate: { type: 'archon_review' } }],
+        stages: [
+          { id: 'draft', gate: { type: 'command' } },
+          { id: 'review', gate: { type: 'archon_review' }, reject_target: 'draft' },
+        ],
       },
     });
     tasks.updateTask('OC-206', 1, { state: 'created' });
@@ -395,12 +398,12 @@ describe('task routes', () => {
     });
 
     expect(reject.statusCode).toBe(200);
-    expect(reject.json()).toMatchObject({ id: 'OC-205', current_stage: 'review' });
+    expect(reject.json()).toMatchObject({ id: 'OC-205', current_stage: 'write' });
     expect(archonReject.statusCode).toBe(200);
-    expect(archonReject.json()).toMatchObject({ id: 'OC-206', current_stage: 'review' });
+    expect(archonReject.json()).toMatchObject({ id: 'OC-206', current_stage: 'draft' });
     expect(archonRejectStatus.statusCode).toBe(200);
     expect(archonRejectStatus.json().flow_log.map((item: { event: string }) => item.event)).toEqual(
-      expect.arrayContaining(['gate_failed', 'archon_rejected']),
+      expect.arrayContaining(['gate_failed', 'stage_rewound', 'archon_rejected']),
     );
     expect(unblock.statusCode).toBe(200);
     expect(unblock.json()).toMatchObject({ id: 'OC-207', state: 'active' });

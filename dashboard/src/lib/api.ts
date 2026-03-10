@@ -63,9 +63,10 @@ function getConfig() {
 
 async function request<T>(path: string, schema: ZodType<T>, init?: RequestInit): Promise<T> {
   const { apiBase, apiToken } = getConfig();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const headers: Record<string, string> = {};
+  if (init?.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
   if (apiToken) {
     headers['Authorization'] = `Bearer ${apiToken}`;
   }

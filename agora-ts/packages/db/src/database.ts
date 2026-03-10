@@ -51,7 +51,7 @@ export function listAppliedMigrations(db: AgoraDatabase): string[] {
 
 export function runMigrations(db: AgoraDatabase): void {
   const applied = new Set(listAppliedMigrations(db));
-  const migrationFiles = ['001_initial.sql', '002_inbox.sql', '003_craftsman_executions.sql', '004_context_bindings.sql'];
+  const migrationFiles = ['001_initial.sql', '002_inbox.sql', '003_craftsman_executions.sql', '004_context_bindings.sql', '005_runtime_bindings.sql', '006_human_accounts.sql'];
   const migrationsDir = resolveMigrationsDir();
 
   for (const fileName of migrationFiles) {

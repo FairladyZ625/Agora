@@ -14,6 +14,8 @@ async function start() {
     liveSessionStore: runtime.liveSessionStore,
     tmuxRuntimeService: runtime.tmuxRuntimeService,
     taskContextBindingService: runtime.taskContextBindingService,
+    taskParticipationService: runtime.taskParticipationService,
+    humanAccountService: runtime.humanAccountService,
     notificationDispatcher: runtime.notificationDispatcher,
     apiAuth: runtime.apiAuth,
     dashboardAuth: runtime.dashboardAuth,

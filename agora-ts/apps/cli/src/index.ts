@@ -13,6 +13,7 @@ import type {
   TaskPriority,
 } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
+import type { HumanAccountService } from '@agora-ts/core';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -22,6 +23,7 @@ export interface CliDependencies {
   taskService?: TaskService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
+  humanAccountService?: HumanAccountService;
   factories?: Partial<CliCompositionFactories>;
   configPath?: string;
   dbPath?: string;
@@ -45,7 +47,7 @@ function parseJsonOption(raw?: string): Record<string, unknown> | null {
 export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
-  const composition = !deps.taskService || !deps.tmuxRuntimeService || !deps.dashboardSessionClient
+  const composition = !deps.taskService || !deps.tmuxRuntimeService || !deps.dashboardSessionClient || !deps.humanAccountService
     ? createCliComposition({
       ...(deps.configPath ? { configPath: deps.configPath } : {}),
       ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
@@ -54,7 +56,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const taskService = deps.taskService ?? composition?.taskService;
   const tmuxRuntimeService = deps.tmuxRuntimeService ?? composition?.tmuxRuntimeService;
   const dashboardSessionClient = deps.dashboardSessionClient ?? composition?.dashboardSessionClient;
-  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient) {
+  const humanAccountService = deps.humanAccountService ?? composition?.humanAccountService;
+  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService) {
     throw new Error('CLI runtime composition is incomplete');
   }
   const program = new Command();
@@ -413,6 +416,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardSession = dashboard
     .command('session')
     .description('dashboard session auth commands');
+  const dashboardUsers = dashboard
+    .command('users')
+    .description('dashboard human account commands');
 
   tmux
     .command('up')
@@ -588,11 +594,76 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `session file: ${dashboardSessionClient.sessionFilePath}`);
     });
 
+  dashboardUsers
+    .command('add')
+    .description('创建 dashboard 人类账号')
+    .requiredOption('--username <username>', '用户名')
+    .requiredOption('--password <password>', '密码')
+    .action((options: { username: string; password: string }) => {
+      const user = humanAccountService.createUser({
+        username: options.username,
+        password: options.password,
+        role: 'member',
+      });
+      writeLine(stdout, `dashboard 用户已创建: ${user.username}`);
+      writeLine(stdout, `role: ${user.role}`);
+    });
+
+  dashboardUsers
+    .command('list')
+    .description('列出 dashboard 人类账号')
+    .action(() => {
+      const users = humanAccountService.listUsers();
+      if (users.length === 0) {
+        writeLine(stdout, '没有 dashboard 用户');
+        return;
+      }
+      for (const user of users) {
+        writeLine(stdout, `${user.username}\t${user.role}\t${user.enabled ? 'enabled' : 'disabled'}`);
+      }
+    });
+
+  dashboardUsers
+    .command('disable')
+    .description('禁用 dashboard 人类账号')
+    .requiredOption('--username <username>', '用户名')
+    .action((options: { username: string }) => {
+      const user = humanAccountService.disableUser(options.username);
+      writeLine(stdout, `dashboard 用户已禁用: ${user.username}`);
+    });
+
+  dashboardUsers
+    .command('set-password')
+    .description('重置 dashboard 人类账号密码')
+    .requiredOption('--username <username>', '用户名')
+    .requiredOption('--password <password>', '新密码')
+    .action((options: { username: string; password: string }) => {
+      const user = humanAccountService.setPassword(options.username, options.password);
+      writeLine(stdout, `dashboard 用户密码已更新: ${user.username}`);
+    });
+
+  dashboardUsers
+    .command('bind-identity')
+    .description('绑定人类账号到外部 IM 身份')
+    .requiredOption('--username <username>', '用户名')
+    .requiredOption('--provider <provider>', 'provider')
+    .requiredOption('--external-user-id <externalUserId>', '外部用户 ID')
+    .action((options: { username: string; provider: string; externalUserId: string }) => {
+      const binding = humanAccountService.bindIdentity({
+        username: options.username,
+        provider: options.provider,
+        externalUserId: options.externalUserId,
+      });
+      writeLine(stdout, `identity 已绑定: ${options.username} -> ${binding.provider}:${binding.external_user_id}`);
+    });
+
   program
     .command('init')
     .description('交互式配置向导（配置 Discord 等 IM 集成）')
     .action(async () => {
-      await runInitCommand();
+      await runInitCommand({
+        humanAccountService,
+      });
     });
 
   return program;

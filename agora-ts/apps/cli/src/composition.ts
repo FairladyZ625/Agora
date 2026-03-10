@@ -9,6 +9,7 @@ import {
   CraftsmanDispatcher,
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
+  HumanAccountService,
   resolveCraftsmanRuntimeMode,
   TaskService,
   TmuxRuntimeService,
@@ -30,6 +31,7 @@ export interface CliCompositionFactories {
   createTaskService: (context: CliCompositionContext, deps: { craftsmanDispatcher: CraftsmanDispatcher }) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
   createDashboardSessionClient: (context: CliCompositionContext) => DashboardSessionClient;
+  createHumanAccountService: (context: CliCompositionContext) => HumanAccountService;
 }
 
 export interface CliComposition {
@@ -38,6 +40,7 @@ export interface CliComposition {
   taskService: TaskService;
   tmuxRuntimeService: TmuxRuntimeService;
   dashboardSessionClient: DashboardSessionClient;
+  humanAccountService: HumanAccountService;
 }
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
@@ -74,6 +77,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       apiBaseUrl: context.runtimeEnv.apiBaseUrl,
       sessionFilePath: resolvePath(context.runtimeEnv.projectRoot, '.agora-ts/dashboard-session.json'),
     }),
+    createHumanAccountService: (context) => new HumanAccountService(context.db),
   };
 }
 
@@ -98,6 +102,7 @@ export function createCliComposition(
   const taskService = factories.createTaskService(context, { craftsmanDispatcher });
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
+  const humanAccountService = factories.createHumanAccountService(context);
 
   return {
     config,
@@ -105,5 +110,6 @@ export function createCliComposition(
     taskService,
     tmuxRuntimeService,
     dashboardSessionClient,
+    humanAccountService,
   };
 }

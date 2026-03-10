@@ -28,6 +28,7 @@ export const scenarioNames = [
   'craftsman-retry',
   'craftsman-timeout-escalation',
   'craftsman-callback-notify-outbox',
+  'runtime-session-binding',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -50,6 +51,8 @@ export interface ScenarioResult {
     workflowValidated: boolean;
   };
   notificationDelivered?: boolean;
+  participantBindings?: string[];
+  runtimeSessionRefs?: string[];
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -98,6 +101,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runCraftsmanTimeoutScenario(runtime);
     case 'craftsman-callback-notify-outbox':
       return runCraftsmanCallbackNotifyOutboxScenario(runtime);
+    case 'runtime-session-binding':
+      return runRuntimeSessionBindingScenario(runtime);
   }
 }
 
@@ -185,6 +190,19 @@ function runRejectReworkScenario(runtime: TestRuntime): ScenarioResult {
     rejectorId: 'gpt52',
     reason: 'needs another pass',
   });
+  subtasks.insertSubtask({
+    id: 'write-rework-2',
+    task_id: task.id,
+    stage_id: 'write',
+    title: 'Rewrite after rejection',
+    assignee: 'glm5',
+  });
+  runtime.taskService.completeSubtask(task.id, {
+    subtaskId: 'write-rework-2',
+    callerId: 'glm5',
+    output: 'Reworked draft',
+  });
+  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
   runtime.taskService.approveTask(task.id, {
     approverId: 'gpt52',
     comment: 'rework accepted',
@@ -192,6 +210,45 @@ function runRejectReworkScenario(runtime: TestRuntime): ScenarioResult {
   runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
 
   return buildScenarioResult(runtime, 'reject-rework', task.id);
+}
+
+function runRuntimeSessionBindingScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Runtime session binding scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'Track live session against task participants',
+    priority: 'normal',
+  });
+  const binding = runtime.taskContextBindingService.createBinding({
+    task_id: task.id,
+    im_provider: 'discord',
+    thread_ref: 'scenario-thread-92',
+  });
+  runtime.taskParticipationService.attachContextBinding(task.id, binding.id);
+  runtime.taskParticipationService.syncLiveSession({
+    source: 'openclaw',
+    agent_id: 'sonnet',
+    session_key: 'agent:sonnet:discord:thread:scenario-92',
+    channel: 'discord',
+    conversation_id: 'scenario',
+    thread_id: 'scenario-thread-92',
+    status: 'active',
+    last_event: 'session_start',
+    last_event_at: '2026-03-10T12:00:00.000Z',
+    metadata: { continuity_ref: 'scenario-cont-92' },
+  });
+
+  return {
+    name: 'runtime-session-binding',
+    taskId: task.id,
+    finalState: runtime.taskService.getTask(task.id)?.state ?? 'unknown',
+    currentStage: runtime.taskService.getTask(task.id)?.current_stage ?? null,
+    events: runtime.taskService.getTaskStatus(task.id).flow_log.map((item) => item.event),
+    completedSubtasks: runtime.taskService.getTaskStatus(task.id).subtasks.filter((item) => item.status === 'done').map((item) => item.id),
+    participantBindings: runtime.taskParticipationService.listParticipants(task.id).map((item) => `${item.agent_ref}:${item.join_status}`),
+    runtimeSessionRefs: runtime.taskParticipationService.listRuntimeSessions(task.id).map((item) => item.runtime_session_ref),
+  };
 }
 
 function runQuorumApproveScenario(runtime: TestRuntime): ScenarioResult {

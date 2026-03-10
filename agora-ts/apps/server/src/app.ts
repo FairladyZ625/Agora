@@ -43,9 +43,11 @@ import {
   NotFoundError,
   PermissionDeniedError,
   type DashboardQueryService,
+  type HumanAccountService,
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
+  type TaskParticipationService,
   type TaskContextBindingService,
   type TaskService,
   type TmuxRuntimeService,
@@ -63,7 +65,9 @@ export interface BuildAppOptions {
   liveSessionStore?: LiveSessionStore;
   tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
   taskContextBindingService?: TaskContextBindingService;
+  taskParticipationService?: TaskParticipationService;
   notificationDispatcher?: NotificationDispatcher;
+  humanAccountService?: HumanAccountService;
   apiAuth?: {
     enabled: boolean;
     token: string;
@@ -102,7 +106,14 @@ interface RequestTimingState {
 
 type DashboardSession = {
   username: string;
+  role: 'admin' | 'member';
   expiresAt: number;
+};
+
+type HumanActor = {
+  username: string;
+  role: 'admin' | 'member';
+  source: 'dashboard' | 'im';
 };
 
 function translateError(error: unknown) {
@@ -201,6 +212,13 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     || url.startsWith('/api/craftsmen/tasks/');
 }
 
+function isHumanReviewRoute(method: string, url: string) {
+  if (method !== 'POST') {
+    return false;
+  }
+  return url.endsWith('/archon-approve') || url.endsWith('/archon-reject');
+}
+
 const DASHBOARD_SESSION_COOKIE = 'agora_dashboard_session';
 
 function createDashboardLoginPage() {
@@ -209,12 +227,55 @@ function createDashboardLoginPage() {
   <head>
     <meta charset="utf-8" />
     <title>Agora Dashboard Login</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; background: #f4f7f8; color: #13232b; }
+      main { max-width: 420px; margin: 10vh auto; padding: 24px; background: white; border: 1px solid #d7e1e4; border-radius: 16px; box-shadow: 0 18px 48px rgba(19, 35, 43, 0.08); }
+      h1 { margin-top: 0; font-size: 24px; }
+      p { color: #49616b; line-height: 1.5; }
+      label { display: block; margin-top: 16px; font-size: 14px; font-weight: 600; }
+      input { width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid #c6d4d9; border-radius: 10px; box-sizing: border-box; }
+      button { margin-top: 18px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: #0b6478; color: white; font-weight: 700; cursor: pointer; }
+      #error { margin-top: 12px; color: #b42318; min-height: 20px; }
+    </style>
   </head>
   <body>
     <main>
       <h1>Agora Dashboard Login</h1>
-      <p>Use the dashboard session login endpoint to establish access.</p>
+      <p>Sign in with a human review account to access Dashboard approval actions.</p>
+      <form id="login-form">
+        <label>
+          Username
+          <input id="username" name="username" autocomplete="username" />
+        </label>
+        <label>
+          Password
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+        </label>
+        <button type="submit">Sign in</button>
+        <div id="error"></div>
+      </form>
     </main>
+    <script>
+      const form = document.getElementById('login-form');
+      const error = document.getElementById('error');
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        error.textContent = '';
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const response = await fetch('/api/dashboard/session/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({ message: 'login failed' }));
+          error.textContent = payload.message || 'login failed';
+          return;
+        }
+        window.location.href = '/dashboard';
+      });
+    </script>
   </body>
 </html>`;
 }
@@ -240,6 +301,7 @@ function getDashboardSession(
 
 function issueDashboardSession(
   username: string,
+  role: 'admin' | 'member',
   dashboardAuth: NonNullable<BuildAppOptions['dashboardAuth']>,
   sessions: Map<string, DashboardSession>,
 ) {
@@ -247,9 +309,46 @@ function issueDashboardSession(
   const ttlHours = dashboardAuth.sessionTtlHours ?? 24;
   sessions.set(token, {
     username,
+    role,
     expiresAt: Date.now() + ttlHours * 60 * 60 * 1000,
   });
   return { token, ttlHours };
+}
+
+function resolveHumanActor(
+  request: FastifyRequest,
+  sessions: Map<string, DashboardSession>,
+  humanAccountService?: HumanAccountService,
+): HumanActor | null {
+  const dashboardSession = getDashboardSession(request, sessions);
+  if (dashboardSession) {
+    return {
+      username: dashboardSession.session.username,
+      role: dashboardSession.session.role,
+      source: 'dashboard',
+    };
+  }
+
+  if (!humanAccountService) {
+    return null;
+  }
+
+  const provider = (request.headers['x-agora-human-provider'] as string | undefined)?.trim();
+  const externalUserId = (request.headers['x-agora-human-external-id'] as string | undefined)?.trim();
+  if (!provider || !externalUserId) {
+    return null;
+  }
+
+  const account = humanAccountService.resolveIdentity(provider, externalUserId);
+  if (!account) {
+    return null;
+  }
+
+  return {
+    username: account.username,
+    role: account.role,
+    source: 'im',
+  };
 }
 
 function clearDashboardSession(
@@ -407,9 +506,11 @@ export function buildApp(options: BuildAppOptions = {}) {
   const liveSessionStore = options.liveSessionStore;
   const tmuxRuntimeService = options.tmuxRuntimeService;
   const taskContextBindingService = options.taskContextBindingService;
+  const taskParticipationService = options.taskParticipationService;
   const notificationDispatcher = options.notificationDispatcher;
   const apiAuth = options.apiAuth;
   const dashboardAuth = options.dashboardAuth;
+  const humanAccountService = options.humanAccountService;
   const rateLimit = options.rateLimit;
   const dashboardDir = options.dashboardDir;
   const readyPath = options.observability?.readyPath ?? '/ready';
@@ -477,6 +578,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       && (
         isDashboardSessionRoute(request.url)
         || (isDashboardProtectedApiRoute(request.method, request.url) && dashboardSession)
+        || (isHumanReviewRoute(request.method, request.url) && dashboardSession)
       )
     ) {
       return;
@@ -551,7 +653,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = liveSessionSchema.parse(request.body);
-      return reply.send(liveSessionStore.upsert(payload));
+      const session = liveSessionStore.upsert(payload);
+      const sync = taskParticipationService?.syncLiveSession(payload) ?? null;
+      return reply.send(sync ? { ...session, sync } : session);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -596,16 +700,32 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!dashboardAuth?.enabled || dashboardAuth.method !== 'session') {
       return reply.status(404).send({ message: 'dashboard session auth is not enabled' });
     }
-    if (!dashboardAuth.password) {
+    if (!humanAccountService?.hasAccounts() && !dashboardAuth.password) {
       return reply.status(500).send({ message: 'dashboard auth enabled but password not configured' });
     }
     try {
       const payload = dashboardSessionLoginRequestSchema.parse(request.body);
+      if (humanAccountService?.hasAccounts()) {
+        const account = humanAccountService.authenticate(payload.username, payload.password);
+        if (!account) {
+          return reply.status(403).send({ message: 'invalid dashboard credentials' });
+        }
+        const session = issueDashboardSession(account.username, account.role, dashboardAuth, dashboardSessions);
+        reply.header(
+          'Set-Cookie',
+          `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
+        );
+        return reply.send(dashboardSessionLoginResponseSchema.parse({
+          ok: true,
+          username: account.username,
+          method: 'session',
+        }));
+      }
       const allowed = dashboardAuth.allowedUsers.length === 0 || dashboardAuth.allowedUsers.includes(payload.username);
       if (!allowed || payload.password !== dashboardAuth.password) {
         return reply.status(403).send({ message: 'invalid dashboard credentials' });
       }
-      const session = issueDashboardSession(payload.username, dashboardAuth, dashboardSessions);
+      const session = issueDashboardSession(payload.username, 'admin', dashboardAuth, dashboardSessions);
       reply.header(
         'Set-Cookie',
         `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
@@ -785,9 +905,14 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = archonApproveTaskRequestSchema.parse(request.body);
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (humanAccountService?.hasAccounts() && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      }
+      const reviewerId = humanActor?.username ?? payload.reviewer_id;
       return reply.send(
         taskService.archonApproveTask(params.taskId, {
-          reviewerId: payload.reviewer_id,
+          reviewerId,
           comment: payload.comment,
         }),
       );
@@ -804,9 +929,14 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = archonRejectTaskRequestSchema.parse(request.body);
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (humanAccountService?.hasAccounts() && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      }
+      const reviewerId = humanActor?.username ?? payload.reviewer_id;
       return reply.send(
         taskService.archonRejectTask(params.taskId, {
-          reviewerId: payload.reviewer_id,
+          reviewerId,
           reason: payload.reason,
         }),
       );
@@ -1543,6 +1673,32 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const { id } = request.params as { id: string };
       return reply.send(taskContextBindingService.listBindings(id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/tasks/:id/participant-bindings', async (request, reply) => {
+    if (!taskParticipationService) {
+      return reply.status(503).send({ message: 'Task participation service is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      return reply.send(taskParticipationService.listParticipants(id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/tasks/:id/runtime-session-bindings', async (request, reply) => {
+    if (!taskParticipationService) {
+      return reply.status(503).send({ message: 'Task participation service is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      return reply.send(taskParticipationService.listRuntimeSessions(id));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
