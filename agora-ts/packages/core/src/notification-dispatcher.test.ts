@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestRuntime } from '@agora-ts/testing';
 import { NotificationDispatcher } from './notification-dispatcher.js';
 import { StubIMMessagingPort } from './im-ports.js';
-import { NotificationOutboxRepository, TaskContextBindingRepository } from '@agora-ts/db';
+import { NotificationOutboxRepository, TaskContextBindingRepository, TaskConversationRepository } from '@agora-ts/db';
 
 describe('NotificationDispatcher', () => {
   it('delivers pending notifications via the messaging port', async () => {
@@ -12,6 +12,7 @@ describe('NotificationDispatcher', () => {
       const dispatcher = new NotificationDispatcher(runtime.db, { messagingPort: port });
       const bindings = new TaskContextBindingRepository(runtime.db);
       const outbox = new NotificationOutboxRepository(runtime.db);
+      const conversations = new TaskConversationRepository(runtime.db);
 
       const task = runtime.taskService.createTask({
         title: 'Notify test',
@@ -49,6 +50,20 @@ describe('NotificationDispatcher', () => {
       const updated = outbox.getById('notif-1');
       expect(updated?.status).toBe('delivered');
       expect(updated?.delivered_at).not.toBeNull();
+      expect(conversations.listByTask(task.id)).toEqual([
+        expect.objectContaining({
+          task_id: task.id,
+          binding_id: binding.id,
+          provider: 'discord',
+          direction: 'system',
+          author_kind: 'system',
+          body: 'Notification delivered: craftsman finished: done',
+          metadata: expect.objectContaining({
+            notification_id: 'notif-1',
+            event_type: 'craftsman_completed',
+          }),
+        }),
+      ]);
     } finally {
       runtime.cleanup();
     }

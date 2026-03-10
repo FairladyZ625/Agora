@@ -1,5 +1,6 @@
 import {
   NotificationOutboxRepository,
+  TaskConversationRepository,
   TaskContextBindingRepository,
   type AgoraDatabase,
   type StoredNotificationOutbox,
@@ -13,12 +14,14 @@ export interface NotificationDispatcherOptions {
 
 export class NotificationDispatcher {
   private readonly outbox: NotificationOutboxRepository;
+  private readonly conversations: TaskConversationRepository;
   private readonly bindings: TaskContextBindingRepository;
   private readonly messagingPort: IMMessagingPort;
   private readonly batchSize: number;
 
   constructor(db: AgoraDatabase, options: NotificationDispatcherOptions) {
     this.outbox = new NotificationOutboxRepository(db);
+    this.conversations = new TaskConversationRepository(db);
     this.bindings = new TaskContextBindingRepository(db);
     this.messagingPort = options.messagingPort;
     this.batchSize = options.batchSize ?? 50;
@@ -42,6 +45,7 @@ export class NotificationDispatcher {
           data: notification.payload,
         });
         this.outbox.markDelivered(notification.id);
+        this.mirrorDeliveredNotification(notification);
         delivered += 1;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -63,4 +67,46 @@ export class NotificationDispatcher {
     }
     return binding.thread_ref ?? binding.conversation_ref ?? null;
   }
+
+  private mirrorDeliveredNotification(notification: StoredNotificationOutbox) {
+    if (!notification.target_binding_id) {
+      return;
+    }
+    const binding = this.bindings.getById(notification.target_binding_id);
+    if (!binding) {
+      return;
+    }
+    this.conversations.insert({
+      id: `${notification.id}:delivered`,
+      task_id: notification.task_id,
+      binding_id: binding.id,
+      provider: binding.im_provider,
+      direction: 'system',
+      author_kind: 'system',
+      author_ref: 'notification-dispatcher',
+      display_name: 'notification-dispatcher',
+      body: formatDeliveredNotificationBody(notification),
+      body_format: 'plain_text',
+      occurred_at: new Date().toISOString(),
+      dedupe_key: `notification-delivered:${notification.id}`,
+      metadata: {
+        notification_id: notification.id,
+        event_type: notification.event_type,
+      },
+    });
+  }
+}
+
+function formatDeliveredNotificationBody(notification: StoredNotificationOutbox) {
+  if (notification.event_type === 'craftsman_completed') {
+    const output = notification.payload.output;
+    const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'completed';
+    return `Notification delivered: craftsman finished: ${summary}`;
+  }
+  if (notification.event_type === 'craftsman_failed') {
+    const output = notification.payload.output;
+    const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'failed';
+    return `Notification delivered: craftsman failed: ${summary}`;
+  }
+  return `Notification delivered: ${notification.event_type}`;
 }
