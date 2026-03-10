@@ -275,7 +275,10 @@ describe("registerLiveStatusBridge", () => {
   });
 
   it("covers success and error branches for message send and runtime events", async () => {
-    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestTaskConversationEntry: vi.fn().mockResolvedValue({ id: "entry-2" }),
+    };
     const { api, hooks, getService, emitAgentEvent } = createApi();
 
     registerLiveStatusBridge(api as never, bridge as never);
@@ -304,6 +307,17 @@ describe("registerLiveStatusBridge", () => {
         status: "active",
         last_event: "message_sent",
         metadata: {},
+      }),
+    );
+    expect(bridge.ingestTaskConversationEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "discord",
+        conversation_ref: "alerts",
+        direction: "outbound",
+        author_kind: "agent",
+        author_ref: "ops",
+        display_name: "ops",
+        body: "done",
       }),
     );
     expect(bridge.upsertLiveSession).toHaveBeenCalledWith(

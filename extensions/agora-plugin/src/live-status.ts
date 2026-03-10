@@ -158,6 +158,23 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       last_event_at: new Date().toISOString(),
       metadata: event.success ? {} : { error: event.error ?? "unknown" },
     });
+    if (event.success && typeof bridge.ingestTaskConversationEntry === "function") {
+      void bridge.ingestTaskConversationEntry({
+        provider: ctx.channelId ?? inferChannel(sessionKey) ?? "unknown",
+        conversation_ref: ctx.conversationId ?? inferConversationId(sessionKey),
+        thread_ref: threadIdFromMetadata(event.metadata),
+        provider_message_ref: messageIdFromMetadata(event.metadata),
+        direction: "outbound",
+        author_kind: "agent",
+        author_ref: agentId,
+        display_name: agentId,
+        body: event.content,
+        occurred_at: isoNow(event.timestamp),
+        metadata: event.metadata ?? {},
+      }).catch((error) => {
+        logError(logger, error);
+      });
+    }
   });
 
   let unsubscribe: (() => void) | undefined;
