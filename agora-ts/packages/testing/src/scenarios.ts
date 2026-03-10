@@ -29,6 +29,7 @@ export const scenarioNames = [
   'craftsman-timeout-escalation',
   'craftsman-callback-notify-outbox',
   'runtime-session-binding',
+  'task-conversation-ingest',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -53,6 +54,7 @@ export interface ScenarioResult {
   notificationDelivered?: boolean;
   participantBindings?: string[];
   runtimeSessionRefs?: string[];
+  conversationBodies?: string[];
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -103,6 +105,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runCraftsmanCallbackNotifyOutboxScenario(runtime);
     case 'runtime-session-binding':
       return runRuntimeSessionBindingScenario(runtime);
+    case 'task-conversation-ingest':
+      return runTaskConversationIngestScenario(runtime);
   }
 }
 
@@ -1087,6 +1091,58 @@ function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): Scenari
   return buildScenarioResult(runtime, 'craftsman-callback-notify-outbox', task.id, {
     executions: [dispatch.execution.execution_id],
     notificationDelivered: true,
+  });
+}
+
+function runTaskConversationIngestScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Task conversation ingest scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'bind task context and ingest text messages',
+    priority: 'normal',
+  });
+
+  const binding = runtime.taskContextBindingService.createBinding({
+    task_id: task.id,
+    im_provider: 'discord',
+    conversation_ref: 'scenario-conv',
+    thread_ref: 'scenario-thread',
+  });
+
+  runtime.taskConversationService.ingest({
+    provider: 'discord',
+    thread_ref: 'scenario-thread',
+    provider_message_ref: 'msg-thread',
+    direction: 'inbound',
+    author_kind: 'human',
+    author_ref: 'reviewer-1',
+    display_name: 'Reviewer',
+    body: 'message via thread',
+    occurred_at: '2026-03-10T13:00:00.000Z',
+  });
+  runtime.taskConversationService.ingest({
+    provider: 'discord',
+    conversation_ref: 'scenario-conv',
+    provider_message_ref: 'msg-conv',
+    direction: 'inbound',
+    author_kind: 'human',
+    author_ref: 'reviewer-1',
+    display_name: 'Reviewer',
+    body: 'message via conversation',
+    occurred_at: '2026-03-10T13:00:01.000Z',
+  });
+
+  const entries = runtime.taskConversationService.listByTask(task.id);
+  if (entries.length !== 2) {
+    throw new Error(`Expected 2 conversation entries for ${task.id}, got ${entries.length}`);
+  }
+  if (entries.some((entry) => entry.binding_id !== binding.id)) {
+    throw new Error(`Expected all conversation entries to bind to ${binding.id}`);
+  }
+
+  return buildScenarioResult(runtime, 'task-conversation-ingest', task.id, {
+    conversationBodies: entries.map((entry) => entry.body),
   });
 }
 

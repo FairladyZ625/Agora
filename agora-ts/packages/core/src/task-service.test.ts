@@ -1074,7 +1074,10 @@ describe('task service', () => {
   it('fires IM provisioning and creates a binding when imProvisioningPort is configured', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const provisioningPort = new StubIMProvisioningPort();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+    });
     const bindingService = new TaskContextBindingService(db);
     const taskParticipation = new TaskParticipationService(db, {
       participantIdGenerator: (() => {
@@ -1120,6 +1123,7 @@ describe('task service', () => {
     const binding = bindings.getActiveByTask('OC-PROV-1');
     expect(binding).not.toBeNull();
     expect(binding?.im_provider).toBe('discord');
+    expect(binding?.conversation_ref).toBe('discord-parent-channel');
     expect(binding?.thread_ref).toBe('stub-thread-OC-PROV-1');
     expect(taskParticipation.listParticipants('OC-PROV-1')).toEqual(
       expect.arrayContaining([

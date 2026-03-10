@@ -81,7 +81,7 @@ describe('DiscordHttpClient', () => {
 });
 
 describe('DiscordIMProvisioningAdapter', () => {
-  it('provisionThread creates a thread and returns its id', async () => {
+  it('provisionThread creates a thread and returns provider-neutral binding refs', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ id: 'new-thread-456' }),
@@ -92,9 +92,14 @@ describe('DiscordIMProvisioningAdapter', () => {
       botToken: 'tok',
       defaultChannelId: 'chan-1',
     });
-    const ref = await adapter.provisionThread('OC-1', 'My Task');
+    const result = await adapter.provisionThread('OC-1', 'My Task');
 
-    expect(ref).toBe('new-thread-456');
+    expect(result).toEqual({
+      im_provider: 'discord',
+      conversation_ref: 'chan-1',
+      thread_ref: 'new-thread-456',
+      message_root_ref: null,
+    });
     vi.unstubAllGlobals();
   });
 });

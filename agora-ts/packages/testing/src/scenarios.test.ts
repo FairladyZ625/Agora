@@ -35,6 +35,7 @@ describe('agora-ts testing scenarios', () => {
       'craftsman-timeout-escalation',
       'craftsman-callback-notify-outbox',
       'runtime-session-binding',
+      'task-conversation-ingest',
     ]);
   });
 
@@ -477,5 +478,14 @@ describe('agora-ts testing scenarios', () => {
     expect(result.finalState).toBe('active');
     expect(result.participantBindings).toEqual(expect.arrayContaining(['sonnet:joined']));
     expect(result.runtimeSessionRefs).toEqual(['agent:sonnet:discord:thread:scenario-92']);
+  });
+
+  it('runs a task conversation ingest scenario and records both thread and conversation matched entries', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'task-conversation-ingest');
+
+    expect(result.name).toBe('task-conversation-ingest');
+    expect(result.conversationBodies).toEqual(['message via thread', 'message via conversation']);
   });
 });

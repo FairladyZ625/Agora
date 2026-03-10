@@ -227,11 +227,13 @@ export class TaskService {
     if (this.imProvisioningPort && this.taskContextBindingService) {
       const bindingService = this.taskContextBindingService;
       const provisioningPort = this.imProvisioningPort;
-      void provisioningPort.provisionThread(taskId, input.title).then((threadRef) => {
+      void provisioningPort.provisionThread(taskId, input.title).then((provisioned) => {
         const binding = bindingService.createBinding({
           task_id: taskId,
-          im_provider: 'discord',
-          thread_ref: threadRef,
+          im_provider: provisioned.im_provider,
+          ...(provisioned.conversation_ref ? { conversation_ref: provisioned.conversation_ref } : {}),
+          ...(provisioned.thread_ref ? { thread_ref: provisioned.thread_ref } : {}),
+          ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
         this.taskParticipationService?.attachContextBinding(taskId, binding.id);
       }).catch((err: unknown) => {

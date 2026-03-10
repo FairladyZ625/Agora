@@ -15,9 +15,20 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     this.defaultChannelId = options.defaultChannelId;
   }
 
-  async provisionThread(taskId: string, taskTitle: string): Promise<string> {
+  async provisionThread(taskId: string, taskTitle: string): Promise<{
+    im_provider: string;
+    conversation_ref: string;
+    thread_ref: string;
+    message_root_ref: null;
+  }> {
     const name = `[${taskId}] ${taskTitle}`.slice(0, 100);
     const message = `Task **${taskId}** created: ${taskTitle}`;
-    return this.client.createThread(this.defaultChannelId, name, message);
+    const threadRef = await this.client.createThread(this.defaultChannelId, name, message);
+    return {
+      im_provider: 'discord',
+      conversation_ref: this.defaultChannelId,
+      thread_ref: threadRef,
+      message_root_ref: null,
+    };
   }
 }
