@@ -403,18 +403,21 @@ export function DashboardHome() {
                         className={task.id === selectedRailTask?.id ? 'home-os__task-chip home-os__task-chip--active' : 'home-os__task-chip'}
                         onClick={() => setRailTaskId(task.id)}
                       >
-                        <div className="home-os__proposal-head">
-                          <div>
-                            <p className="home-os__proposal-title">{task.title}</p>
-                            <p className="type-mono-sm">{task.id}</p>
+                        <div className="home-os__task-chip-stack">
+                          <div className="home-os__proposal-head">
+                            <div>
+                              <p className="home-os__proposal-title">{task.title}</p>
+                              <p className="type-mono-sm">{task.id}</p>
+                            </div>
+                            <span className={`home-os__proposal-stance home-os__proposal-stance--${tone}`}>
+                              {getProposalToneLabel(tone, homeCopy.proposalToneLabels)}
+                            </span>
                           </div>
-                          <span className={`home-os__proposal-stance home-os__proposal-stance--${tone}`}>
-                            {getProposalToneLabel(tone, homeCopy.proposalToneLabels)}
-                          </span>
-                        </div>
-                        <div className="home-os__proposal-meta">
-                          <span>{task.stageName ?? task.current_stage ?? homeCopy.taskRailLabels.stageFallback}</span>
-                          <span>{formatRelativeTimestamp(task.updated_at)}</span>
+                          <p className="home-os__task-chip-context">{task.teamLabel} / {task.workflowLabel}</p>
+                          <div className="home-os__proposal-meta">
+                            <span>{task.stageName ?? task.current_stage ?? homeCopy.taskRailLabels.stageFallback}</span>
+                            <span>{formatRelativeTimestamp(task.updated_at)}</span>
+                          </div>
                         </div>
                       </button>
                     );
@@ -425,71 +428,67 @@ export function DashboardHome() {
 
             {selectedRailTask ? (
               <>
-                <div className="home-os__rail-summary">
-                  <div className="home-os__module-head home-os__module-head--compact">
-                    <h4 className="home-os__rail-title">{selectedRailTask.title}</h4>
+                <section className="home-os__rail-block">
+                  <div className="home-os__module-head">
+                    <div>
+                      <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
+                      <p className="page-kicker">{homeCopy.taskRailLabels.executionLoop}</p>
+                    </div>
                     <Network size={16} className="home-os__rail-icon" />
                   </div>
-                  <div className="home-os__hash">
-                    <span>{selectedRailTask.teamLabel}</span>
-                    <span>{selectedRailTask.workflowLabel}</span>
-                  </div>
-                </div>
 
-                <div className="home-os__module-head">
-                  <h3 className="section-title">{homeCopy.taskRailLabels.executionLoop}</h3>
-                </div>
-
-                <div className="home-os__dag-board">
-                  {executionLanes.map((lane) => (
-                    <div key={lane.stageId} className="home-os__dag-stage">
-                      <p className="home-os__dag-stage-label">{lane.stageId}</p>
-                      <div className="home-os__dag-stage-items">
-                        {lane.items.map((item) => (
-                          <div key={item.id} className="home-os__dag-node">
-                            <strong>{item.title}</strong>
-                            <span>{item.assignee}</span>
-                            <span className="home-os__dag-node-status">{item.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="home-os__section-divider" />
-
-                <div className="home-os__module-head">
-                  <div>
-                    <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                    <p className="page-kicker">{homeCopy.terminalLabel}</p>
-                  </div>
-                  <ScrollText size={16} className="home-os__rail-icon" />
-                </div>
-
-                <div className="home-os__module-head">
-                  <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
-                  <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
-                </div>
-
-                <div className="home-os__terminal">
-                  {runtimeLines.length === 0 ? (
-                    <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
-                  ) : (
-                    runtimeLines.map((line, index) => (
-                      <div key={line.id} className="home-os__terminal-line terminal-entry">
-                        <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
-                        <div className="home-os__terminal-body">
-                          <div className="home-os__terminal-head">
-                            <span className="home-os__terminal-token">{line.prefix}</span>
-                            <span>{line.title}</span>
-                            <span className="home-os__terminal-meta">{line.meta}</span>
-                          </div>
-                          <span>{line.body}</span>
+                  <div className="home-os__dag-board">
+                    {executionLanes.map((lane) => (
+                      <div key={lane.stageId} className="home-os__dag-stage">
+                        <p className="home-os__dag-stage-label">{lane.stageId}</p>
+                        <div className="home-os__dag-stage-items">
+                          {lane.items.map((item) => (
+                            <div key={item.id} className="home-os__dag-node">
+                              <strong>{item.title}</strong>
+                              <span>{item.assignee}</span>
+                              <span className="home-os__dag-node-status">{item.status}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="home-os__rail-block home-os__rail-block--terminal">
+                  <div className="home-os__module-head">
+                    <div>
+                      <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
+                      <p className="page-kicker">{homeCopy.terminalLabel}</p>
+                    </div>
+                    <ScrollText size={16} className="home-os__rail-icon" />
+                  </div>
+
+                  <div className="home-os__module-head">
+                    <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
+                    <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
+                  </div>
+
+                  <div className="home-os__terminal">
+                    {runtimeLines.length === 0 ? (
+                      <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
+                    ) : (
+                      runtimeLines.map((line, index) => (
+                        <div key={line.id} className="home-os__terminal-line terminal-entry">
+                          <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
+                          <div className="home-os__terminal-body">
+                            <div className="home-os__terminal-head">
+                              <span className="home-os__terminal-token">{line.prefix}</span>
+                              <span>{line.title}</span>
+                              <span className="home-os__terminal-meta">{line.meta}</span>
+                            </div>
+                            <span>{line.body}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
               </>
             ) : (
               <div className="home-os__rail-empty">
