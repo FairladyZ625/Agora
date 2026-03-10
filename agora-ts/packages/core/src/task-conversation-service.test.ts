@@ -94,4 +94,61 @@ describe('TaskConversationService', () => {
       runtime.cleanup();
     }
   });
+
+  it('builds a summary-first read model with latest excerpt and count', () => {
+    const runtime = createTestRuntime();
+    try {
+      const bindings = new TaskContextBindingService(runtime.db, {
+        idGenerator: () => 'binding-3',
+      });
+      const task = runtime.taskService.createTask({
+        title: 'Conversation summary task',
+        type: 'coding',
+        creator: 'archon',
+        description: 'test',
+        priority: 'normal',
+      });
+      bindings.createBinding({
+        task_id: task.id,
+        im_provider: 'discord',
+        thread_ref: 'thread-3',
+      });
+
+      const service = new TaskConversationService(runtime.db, {
+        idGenerator: () => `entry-${Math.random()}`,
+        now: () => new Date('2026-03-10T12:10:00.000Z'),
+      });
+      service.ingest({
+        provider: 'discord',
+        thread_ref: 'thread-3',
+        direction: 'inbound',
+        author_kind: 'human',
+        display_name: 'Lizeyu',
+        body: 'first note',
+        occurred_at: '2026-03-10T12:00:00.000Z',
+      });
+      service.ingest({
+        provider: 'discord',
+        thread_ref: 'thread-3',
+        direction: 'outbound',
+        author_kind: 'agent',
+        display_name: 'Agora Bot',
+        body: 'x'.repeat(200),
+        occurred_at: '2026-03-10T12:05:00.000Z',
+      });
+
+      expect(service.getSummaryByTask(task.id)).toMatchObject({
+        task_id: task.id,
+        total_entries: 2,
+        latest_provider: 'discord',
+        latest_direction: 'outbound',
+        latest_author_kind: 'agent',
+        latest_display_name: 'Agora Bot',
+        latest_occurred_at: '2026-03-10T12:05:00.000Z',
+      });
+      expect(service.getSummaryByTask(task.id).latest_body_excerpt).toHaveLength(161);
+    } finally {
+      runtime.cleanup();
+    }
+  });
 });

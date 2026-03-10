@@ -1753,6 +1753,19 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.get('/api/tasks/:id/conversation/summary', async (request, reply) => {
+    if (!taskConversationService) {
+      return reply.status(503).send({ message: 'Task conversation service is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      return reply.send(taskConversationService.getSummaryByTask(id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/notifications/scan', async (_request, reply) => {
     if (!notificationDispatcher) {
       return reply.status(503).send({ message: 'Notification dispatcher is not configured' });

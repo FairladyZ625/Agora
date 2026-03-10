@@ -52,3 +52,17 @@ export const taskConversationListResponseSchema = z.object({
 });
 
 export type TaskConversationListResponseDto = z.infer<typeof taskConversationListResponseSchema>;
+
+export const taskConversationSummarySchema = z.object({
+  task_id: z.string(),
+  total_entries: z.number().int().nonnegative(),
+  latest_entry_id: z.string().nullable(),
+  latest_provider: z.string().nullable(),
+  latest_direction: taskConversationDirectionSchema.nullable(),
+  latest_author_kind: taskConversationAuthorKindSchema.nullable(),
+  latest_display_name: z.string().nullable(),
+  latest_occurred_at: z.string().nullable(),
+  latest_body_excerpt: z.string().nullable(),
+});
+
+export type TaskConversationSummaryDto = z.infer<typeof taskConversationSummarySchema>;

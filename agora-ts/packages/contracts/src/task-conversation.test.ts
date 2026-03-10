@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   taskConversationEntrySchema,
   taskConversationListResponseSchema,
+  taskConversationSummarySchema,
   ingestTaskConversationEntryRequestSchema,
 } from './task-conversation.js';
 
@@ -64,5 +65,22 @@ describe('task conversation contracts', () => {
 
     expect(request.thread_ref).toBe('thread-1');
     expect(response.entries).toHaveLength(1);
+  });
+
+  it('parses a task conversation summary', () => {
+    const summary = taskConversationSummarySchema.parse({
+      task_id: 'OC-960',
+      total_entries: 3,
+      latest_entry_id: 'entry-3',
+      latest_provider: 'discord',
+      latest_direction: 'outbound',
+      latest_author_kind: 'agent',
+      latest_display_name: 'Agora Bot',
+      latest_occurred_at: '2026-03-10T12:05:00.000Z',
+      latest_body_excerpt: 'build finished',
+    });
+
+    expect(summary.total_entries).toBe(3);
+    expect(summary.latest_body_excerpt).toBe('build finished');
   });
 });

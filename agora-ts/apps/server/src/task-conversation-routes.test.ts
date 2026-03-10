@@ -95,4 +95,64 @@ describe('task conversation routes', () => {
       ],
     });
   });
+
+  it('returns a summary-first conversation payload for a task', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-961',
+    });
+    const bindings = new TaskContextBindingService(db, {
+      idGenerator: () => 'binding-2',
+    });
+    const conversations = new TaskConversationService(db, {
+      idGenerator: () => 'entry-2',
+      now: () => new Date('2026-03-10T12:05:01.000Z'),
+    });
+    const task = taskService.createTask({
+      title: 'Route conversation summary task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-2',
+    });
+
+    conversations.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-2',
+      provider_message_ref: 'msg-2',
+      direction: 'outbound',
+      author_kind: 'agent',
+      display_name: 'Agora Bot',
+      body: 'latest route message',
+      occurred_at: '2026-03-10T12:05:00.000Z',
+    });
+
+    const app = buildApp({
+      db,
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+    });
+
+    const summary = await app.inject({
+      method: 'GET',
+      url: `/api/tasks/${task.id}/conversation/summary`,
+    });
+
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json()).toMatchObject({
+      task_id: task.id,
+      total_entries: 1,
+      latest_provider: 'discord',
+      latest_direction: 'outbound',
+      latest_body_excerpt: 'latest route message',
+    });
+  });
 });

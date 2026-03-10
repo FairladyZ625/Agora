@@ -141,4 +141,61 @@ describe('TaskConversationRepository', () => {
     expect(second.id).toBe(first.id);
     expect(entries.listByTask('OC-961')).toHaveLength(1);
   });
+
+  it('returns latest entry and total count for summary reads', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+    const entries = new TaskConversationRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-962',
+      title: 'task conversation summary',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    bindings.insert({
+      id: 'binding-3',
+      task_id: 'OC-962',
+      im_provider: 'discord',
+      thread_ref: 'thread-3',
+      status: 'active',
+    });
+
+    entries.insert({
+      id: 'entry-1',
+      task_id: 'OC-962',
+      binding_id: 'binding-3',
+      provider: 'discord',
+      direction: 'inbound',
+      author_kind: 'human',
+      body: 'earlier',
+      body_format: 'plain_text',
+      occurred_at: '2026-03-10T12:00:00.000Z',
+    });
+    entries.insert({
+      id: 'entry-2',
+      task_id: 'OC-962',
+      binding_id: 'binding-3',
+      provider: 'discord',
+      direction: 'outbound',
+      author_kind: 'agent',
+      display_name: 'Agora Bot',
+      body: 'latest',
+      body_format: 'plain_text',
+      occurred_at: '2026-03-10T12:05:00.000Z',
+    });
+
+    expect(entries.countByTask('OC-962')).toBe(2);
+    expect(entries.getLatestByTask('OC-962')).toMatchObject({
+      id: 'entry-2',
+      body: 'latest',
+      direction: 'outbound',
+    });
+  });
 });

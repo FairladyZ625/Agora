@@ -96,6 +96,15 @@ export class TaskConversationRepository {
     return row ? this.parseRow(row) : null;
   }
 
+  countByTask(taskId: string): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM task_conversation_entries
+      WHERE task_id = ?
+    `).get(taskId) as { count?: number } | undefined;
+    return row?.count ?? 0;
+  }
+
   listByTask(taskId: string, limit = 100): StoredTaskConversationEntry[] {
     const rows = this.db.prepare(`
       SELECT *
@@ -105,6 +114,17 @@ export class TaskConversationRepository {
       LIMIT ?
     `).all(taskId, limit) as Record<string, unknown>[];
     return rows.map((row) => this.parseRow(row));
+  }
+
+  getLatestByTask(taskId: string): StoredTaskConversationEntry | null {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM task_conversation_entries
+      WHERE task_id = ?
+      ORDER BY occurred_at DESC, ingested_at DESC, id DESC
+      LIMIT 1
+    `).get(taskId) as Record<string, unknown> | undefined;
+    return row ? this.parseRow(row) : null;
   }
 
   private parseRow(row: Record<string, unknown>): StoredTaskConversationEntry {

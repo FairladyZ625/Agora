@@ -341,6 +341,28 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
     });
 
+  task
+    .command('conversation-summary')
+    .description('读取任务 conversation summary')
+    .argument('<taskId>', '任务 ID')
+    .option('--json', '输出 JSON', false)
+    .action((taskId: string, options: { json?: boolean }) => {
+      const summary = taskConversationService.getSummaryByTask(taskId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(summary, null, 2));
+        return;
+      }
+      writeLine(stdout, `任务 ${taskId} conversation entries: ${summary.total_entries}`);
+      if (!summary.latest_entry_id) {
+        writeLine(stdout, 'latest: -');
+        return;
+      }
+      writeLine(
+        stdout,
+        `latest: [${summary.latest_occurred_at}] ${summary.latest_author_kind}:${summary.latest_display_name ?? '-'} ${summary.latest_body_excerpt ?? '-'}`,
+      );
+    });
+
   const craftsman = program
     .command('craftsman')
     .description('craftsman execution commands');

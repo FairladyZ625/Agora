@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   IngestTaskConversationEntryRequestDto,
   TaskConversationEntryDto,
+  TaskConversationSummaryDto,
 } from '@agora-ts/contracts';
 import {
   TaskContextBindingRepository,
@@ -57,6 +58,21 @@ export class TaskConversationService {
     return this.entries.listByTask(taskId);
   }
 
+  getSummaryByTask(taskId: string): TaskConversationSummaryDto {
+    const latest = this.entries.getLatestByTask(taskId);
+    return {
+      task_id: taskId,
+      total_entries: this.entries.countByTask(taskId),
+      latest_entry_id: latest?.id ?? null,
+      latest_provider: latest?.provider ?? null,
+      latest_direction: latest?.direction ?? null,
+      latest_author_kind: latest?.author_kind ?? null,
+      latest_display_name: latest?.display_name ?? null,
+      latest_occurred_at: latest?.occurred_at ?? null,
+      latest_body_excerpt: latest ? buildBodyExcerpt(latest.body) : null,
+    };
+  }
+
   private findBinding(input: IngestTaskConversationEntryRequestDto): StoredTaskContextBinding | null {
     const candidates = this.bindings.listByTaskBindingsForRefs({
       thread_ref: input.thread_ref ?? null,
@@ -81,4 +97,12 @@ function buildDedupeKey(input: IngestTaskConversationEntryRequestDto): string {
     occurred_at: input.occurred_at,
   });
   return `${input.provider}:hash:${createHash('sha1').update(basis).digest('hex')}`;
+}
+
+function buildBodyExcerpt(body: string, maxLength = 160): string {
+  const normalized = body.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength)}…`;
 }

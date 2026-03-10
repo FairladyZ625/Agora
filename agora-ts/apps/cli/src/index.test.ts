@@ -304,6 +304,74 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"task_id": "OC-960"');
   });
 
+  it('reads task conversation summary through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-961',
+    });
+    const bindings = new TaskContextBindingService(db, {
+      idGenerator: () => 'binding-2',
+    });
+    const conversations = new TaskConversationService(db, {
+      idGenerator: () => 'entry-2',
+      now: () => new Date('2026-03-10T12:00:01.000Z'),
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const task = taskService.createTask({
+      title: 'cli conversation summary',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-2',
+    });
+    conversations.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-2',
+      provider_message_ref: 'msg-2',
+      direction: 'outbound',
+      author_kind: 'agent',
+      display_name: 'Agora Bot',
+      body: 'hello summary cli',
+      occurred_at: '2026-03-10T12:00:00.000Z',
+    });
+
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      tmuxRuntimeService: {
+        up: () => { throw new Error('unused'); },
+        status: () => { throw new Error('unused'); },
+        send: () => { throw new Error('unused'); },
+        start: () => { throw new Error('unused'); },
+        resume: () => { throw new Error('unused'); },
+        task: () => { throw new Error('unused'); },
+        tail: () => { throw new Error('unused'); },
+        doctor: () => { throw new Error('unused'); },
+        down: () => { throw new Error('unused'); },
+        recordIdentity: () => { throw new Error('unused'); },
+      },
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['task', 'conversation-summary', task.id, '--json'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"task_id": "OC-961"');
+    expect(stdout.value).toContain('"latest_body_excerpt": "hello summary cli"');
+  });
+
   it('manages lightweight dashboard users through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
