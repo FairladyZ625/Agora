@@ -28,11 +28,12 @@
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  padding: 0 var(--shell-padding) var(--shell-padding);
+  gap: var(--shell-block-gap);
+  padding: 0 0 var(--shell-padding);
 }
 
 .app-shell__footer {
-  margin: 0 auto var(--shell-padding);
+  margin: 0 auto;
   width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
   box-shadow: var(--footer-shell-shadow);
 }
@@ -77,6 +78,8 @@ body::before {
 
 .topbar-brand-copy {
   min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .topbar-system-name {
@@ -85,15 +88,6 @@ body::before {
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--color-primary);
-}
-
-.topbar-system-signature {
-  margin-top: 4px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--color-text-tertiary);
 }
 
 .topbar-manifesto-item {

@@ -17,6 +17,17 @@ function getProposalTone(state: string) {
   return 'observe';
 }
 
+function getProposalToneLabel(
+  tone: 'constraint' | 'optimize' | 'observe',
+  toneLabels: {
+    constraint: string;
+    optimize: string;
+    observe: string;
+  },
+) {
+  return toneLabels[tone];
+}
+
 function buildTerminalLines(taskIds: string[], waitingCount: number) {
   const focusId = taskIds[0] ?? 'AG-000';
   return [
@@ -61,6 +72,7 @@ export function DashboardHome() {
         Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
       );
   const terminalLines = buildTerminalLines(proposals.map((task) => task.id), homeMetrics.waitingCount);
+  const throughputDelta = homeMetrics.activeCount > 0 ? `+${(homeMetrics.activeCount * 7.1).toFixed(1)}% THRP` : '+14.2% THRP';
 
   return (
     <div className="home-os">
@@ -111,11 +123,11 @@ export function DashboardHome() {
               <div className="home-os__authority-grid">
                 <div className="home-os__authority-stat">
                   <span className="page-kicker">{homeCopy.resolutionMetrics.pro}</span>
-                  <strong>{homeMetrics.activeCount > 0 ? `+${homeMetrics.activeCount * 7.1}% THRP` : '+14.2% THRP'}</strong>
+                  <strong>{throughputDelta}</strong>
                 </div>
                 <div className="home-os__authority-stat home-os__authority-stat--alert">
                   <span className="page-kicker">{homeCopy.resolutionMetrics.con}</span>
-                  <strong>{homeMetrics.waitingCount > 0 ? '-ALPHA09' : '-LATENCY'}</strong>
+                  <strong>{homeMetrics.waitingCount > 0 ? homeCopy.constraintSignals.waiting : homeCopy.constraintSignals.stable}</strong>
                 </div>
               </div>
               <p className="type-body-sm">{homeCopy.resolutionSummary}</p>
@@ -129,7 +141,7 @@ export function DashboardHome() {
             <div className="home-os__load surface-panel surface-panel--muted">
               <div className="home-os__module-head">
                 <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
-                <span className="home-os__load-value">LOAD: {loadPercent}%</span>
+                <span className="home-os__load-value">{homeCopy.loadReadoutLabel}: {loadPercent}%</span>
               </div>
               <div className="home-os__load-bar">
                 <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
@@ -166,15 +178,15 @@ export function DashboardHome() {
 
             <div className="home-os__topology">
               <div className="home-os__topology-grid">
-                <span className="home-os__node">LGS</span>
-                <span className="home-os__node home-os__node--active signal-pulse">ETH</span>
-                <span className="home-os__node">PTH</span>
+                <span className="home-os__node">{homeCopy.topologyNodes[0]}</span>
+                <span className="home-os__node home-os__node--active signal-pulse">{homeCopy.topologyNodes[1]}</span>
+                <span className="home-os__node">{homeCopy.topologyNodes[2]}</span>
                 <span className="home-os__beam home-os__beam--left" />
                 <span className="home-os__beam home-os__beam--right flow-shift" />
               </div>
               <div className="home-os__hash">
                 <span>{homeCopy.topologyHashLabel}</span>
-                <span>H-8f92a.c4</span>
+                <span>{homeCopy.topologyHashValue}</span>
               </div>
             </div>
 
@@ -197,7 +209,7 @@ export function DashboardHome() {
                             <p className="type-mono-sm">{task.id}</p>
                           </div>
                           <span className={`home-os__proposal-stance home-os__proposal-stance--${tone}`}>
-                            {tone === 'constraint' ? '约束' : tone === 'optimize' ? '优化' : '观察'}
+                            {getProposalToneLabel(tone, homeCopy.proposalToneLabels)}
                           </span>
                         </div>
                         <p className="type-body-sm">{task.description ?? homeCopy.emptyTaskDescription}</p>

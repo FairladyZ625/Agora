@@ -144,6 +144,18 @@ export function useDashboardHomeCopy() {
     terminalStatusPrefix: t('home.terminalStatusPrefix'),
     terminalEmpty: t('home.terminalEmpty'),
     topologyHashLabel: t('home.topologyHashLabel'),
+    topologyHashValue: t('home.topologyHashValue'),
+    topologyNodes: t('home.topologyNodes', { returnObjects: true }) as string[],
+    proposalToneLabels: {
+      constraint: t('home.proposalToneLabels.constraint'),
+      optimize: t('home.proposalToneLabels.optimize'),
+      observe: t('home.proposalToneLabels.observe'),
+    },
+    loadReadoutLabel: t('home.loadReadoutLabel'),
+    constraintSignals: {
+      waiting: t('home.constraintSignals.waiting'),
+      stable: t('home.constraintSignals.stable'),
+    },
   };
 }
 

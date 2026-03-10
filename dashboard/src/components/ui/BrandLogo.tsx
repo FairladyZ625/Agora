@@ -15,7 +15,7 @@ export function BrandLogo({ collapsed = false, className }: BrandLogoProps) {
       aria-label={collapsed ? t('shell.brandName') : t('common.brandLogoLabel')}
       role="img"
     >
-      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-7 w-7">
+      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="brand-mark__svg">
         <rect x="1" y="1" width="26" height="26" rx="9" className="brand-mark__frame" />
         <path d="M7 18.5C8.9 15.6 11 14 14 14s5.1 1.6 7 4.5" className="brand-mark__line" />
         <path d="M8.8 15.2c1.3-2 2.9-3 5.2-3s3.9 1 5.2 3" className="brand-mark__line brand-mark__line--muted" />

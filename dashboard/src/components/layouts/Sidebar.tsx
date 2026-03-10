@@ -74,20 +74,19 @@ export function Sidebar({
       >
         <div className="flex h-full w-full flex-col">
           <div
-            className="relative flex items-center justify-center border-b px-3 py-4"
+            className={cn(
+              'sidebar-brand-shell relative flex items-center border-b px-4 py-5',
+              collapsed ? 'justify-center' : 'justify-start',
+            )}
             style={{ borderColor: 'var(--color-border)' }}
           >
-            <BrandLogo
-              collapsed={collapsed}
-              className={!collapsed ? "absolute left-3 top-1/2 -translate-y-1/2" : ''}
-            />
+            <BrandLogo collapsed={collapsed} />
 
             {!collapsed && (
               <div className="sidebar-brand-panel">
                 <h1 className="sidebar-brand-title">
                   {shellCopy.brandSystemName}
                 </h1>
-                <p className="sidebar-brand-signature">{shellCopy.brandSignature}</p>
               </div>
             )}
 
@@ -104,14 +103,6 @@ export function Sidebar({
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-5">
-            {!collapsed && (
-              <div className="nav-section-block">
-                <p className="nav-section-label">
-                  {shellCopy.commandLabel}
-                </p>
-                <p className="nav-section-copy">{shellCopy.workspaceLabel}</p>
-              </div>
-            )}
             <nav className="space-y-1.5">
               {shellCopy.navItems.map(({ to, key, label, hint }) => {
                 const Icon = navIcons[key as keyof typeof navIcons];

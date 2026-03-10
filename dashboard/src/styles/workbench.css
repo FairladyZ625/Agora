@@ -21,7 +21,7 @@
 }
 
 .app-topbar {
-  margin: 0 auto var(--space-4);
+  margin: 0 auto;
   width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
   border-radius: var(--radius-xl);
   box-shadow: var(--topbar-shell-shadow);
@@ -595,4 +595,3 @@
   background: var(--review-pane-bg);
   padding: 18px;
 }
-

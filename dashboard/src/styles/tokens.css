@@ -51,11 +51,14 @@
   --radius-3xl: 0px;
   --radius-pill: 0px;
   --shell-block-gap: 16px;
+  --home-column-gap: 20px;
   --shell-inline-padding: 28px;
   --home-header-padding: 32px;
   --home-panel-padding: 32px;
   --home-panel-gap: 0px;
   --home-module-gap: 24px;
+  --brand-mark-size: 52px;
+  --brand-mark-icon-size: 40px;
   --font-size-kicker: 11px;
   --font-size-caption: 12px;
   --font-size-body-sm: 13px;

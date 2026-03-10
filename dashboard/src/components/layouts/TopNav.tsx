@@ -131,7 +131,6 @@ export function TopNav({
           )}
           <div className="topbar-brand-copy">
             <div className="topbar-system-name">{shellCopy.brandSystemName}</div>
-            <div className="topbar-system-signature">{shellCopy.brandSignature}</div>
           </div>
         </div>
 

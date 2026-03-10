@@ -10,14 +10,6 @@
   height: 100%;
 }
 
-.home-os__header {
-  display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(420px, 1.1fr);
-  align-items: end;
-  gap: var(--home-module-gap);
-  padding: var(--home-header-padding);
-}
-
 .home-os__display {
   margin: 10px 0 0;
   font-family: var(--font-brand);
@@ -36,44 +28,10 @@
   color: var(--color-text-tertiary);
 }
 
-.home-os__header-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
 .home-os__header-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.home-os__arena {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.88fr) minmax(420px, 1.25fr) minmax(280px, 0.82fr);
-  gap: var(--home-panel-gap);
-  min-height: 0;
-  flex: 1;
-}
-
-.home-os__panel {
-  min-height: 0;
-  padding: var(--home-panel-padding);
-}
-
-.home-os__panel--agora,
-.home-os__panel--archon {
-  border-right: 0;
-}
-
-.home-os__panel--archon {
-  background: var(--surface-console-bg);
-}
-
-.home-os__panel-head {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .home-os__section-index {
@@ -234,24 +192,6 @@
 
 .home-os__proposal-stance--observe {
   color: var(--color-text-tertiary);
-}
-
-.home-os__archon-head {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 20px;
-  text-align: center;
-}
-
-.home-os__archon-title {
-  margin: 0;
-  font-family: var(--font-brand);
-  font-size: clamp(34px, 4.8vw, 52px);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--color-ink-primary);
 }
 
 .home-os__authority {
@@ -434,13 +374,14 @@
 .home-os__grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
-  gap: var(--shell-block-gap);
+  gap: var(--home-column-gap);
   align-items: start;
 }
 
 .home-os__main-column,
 .home-os__rail-panel {
   padding: var(--home-panel-padding);
+  min-width: 0;
 }
 
 .home-os__rail-column {
@@ -453,7 +394,7 @@
 .home-os__hero {
   display: grid;
   grid-template-columns: minmax(260px, 0.92fr) minmax(0, 1.08fr);
-  gap: var(--home-module-gap);
+  gap: var(--home-column-gap);
   padding-bottom: 24px;
   border-bottom: 1px solid var(--color-border);
 }

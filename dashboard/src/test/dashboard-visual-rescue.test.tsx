@@ -162,9 +162,19 @@ describe('dashboard visual rescue target structure', () => {
   it('uses formalized product copy on the home page', () => {
     renderWithRouter(<DashboardHome />);
 
-    expect(screen.getByText(/多 Agent 指挥广场/)).toBeInTheDocument();
-    expect(screen.getByText('多 Agent 协作编排中枢')).toBeInTheDocument();
+    expect(screen.getByText('AGORA / 指挥广场')).toBeInTheDocument();
+    expect(screen.getByText('实时编排总览')).toBeInTheDocument();
     expect(screen.getByText('当前裁决')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /查看 Agent 监测/i })).toBeInTheDocument();
+  });
+
+  it('removes duplicate shell signature copy from the sidebar header', () => {
+    renderWithRouter(
+      <AppShell>
+        <div>test-content</div>
+      </AppShell>,
+    );
+
+    expect(screen.queryByText('多 Agent 协作编排中枢')).not.toBeInTheDocument();
   });
 });
