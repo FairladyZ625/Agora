@@ -162,10 +162,29 @@ describe('dashboard phase 2 routes', () => {
           done_at: null,
         },
       ],
+      conversation: [
+        {
+          id: 'entry-1',
+          task_id: 'OC-001',
+          binding_id: 'binding-1',
+          provider: 'discord',
+          provider_message_ref: 'msg-1',
+          parent_message_ref: null,
+          direction: 'inbound',
+          author_kind: 'human',
+          author_ref: 'user-1',
+          display_name: 'Lizeyu',
+          body: '会话消息内容',
+          body_format: 'plain_text',
+          occurred_at: '2026-03-07T00:12:00.000Z',
+          ingested_at: '2026-03-07T00:12:01.000Z',
+          metadata: null,
+        },
+      ],
     };
 
     render(
-      <MemoryRouter initialEntries={['/tasks']}>
+      <MemoryRouter initialEntries={['/tasks/OC-001']}>
         <App />
       </MemoryRouter>,
     );
@@ -174,6 +193,7 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('button', { name: 'Reviewer 打回' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '标记 dev-api 完成' })).toBeInTheDocument();
+    expect(screen.getByText('会话消息内容')).toBeInTheDocument();
   });
 
   it('exposes orphan cleanup from the settings surface', () => {

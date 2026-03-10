@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { CreateTaskInput, Task, TaskAction, TaskActionPayload, TaskStatus } from '@/types/task';
 import * as api from '@/lib/api';
 import { translate } from '@/lib/i18n';
-import { isTaskVisibleInWorkbench, mapTaskDto, mapTaskStatusDto } from '@/lib/taskMappers';
+import { isTaskVisibleInWorkbench, mapTaskConversationEntryDto, mapTaskDto, mapTaskStatusDto } from '@/lib/taskMappers';
 
 interface TaskFilters {
   state: string | null;
@@ -34,8 +34,15 @@ async function refreshTaskContext(get: () => TaskStore, taskId: string) {
 }
 
 async function loadTaskStatus(taskId: string): Promise<TaskStatus> {
-  const [task, status] = await Promise.all([api.getTask(taskId), api.getTaskStatus(taskId)]);
-  return mapTaskStatusDto({ ...status, task });
+  const [task, status, conversation] = await Promise.all([
+    api.getTask(taskId),
+    api.getTaskStatus(taskId),
+    api.getTaskConversation(taskId),
+  ]);
+  return {
+    ...mapTaskStatusDto({ ...status, task }),
+    conversation: conversation.entries.map(mapTaskConversationEntryDto),
+  };
 }
 
 export const useTaskStore = create<TaskStore>()((set, get) => ({

@@ -95,4 +95,48 @@ describe("AgoraBridge", () => {
       }),
     );
   });
+
+  it("posts task conversation ingress payloads to the ts conversation endpoint", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "entry-1" }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420", "sec-token");
+    await bridge.ingestTaskConversationEntry({
+      provider: "discord",
+      conversation_ref: "alerts",
+      thread_ref: "thread-7",
+      provider_message_ref: "msg-1",
+      direction: "inbound",
+      author_kind: "human",
+      author_ref: "default",
+      display_name: "default",
+      body: "hello",
+      occurred_at: "2026-03-08T07:05:00.000Z",
+      metadata: { source: "plugin" },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8420/api/conversations/ingest",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "discord",
+          conversation_ref: "alerts",
+          thread_ref: "thread-7",
+          provider_message_ref: "msg-1",
+          direction: "inbound",
+          author_kind: "human",
+          author_ref: "default",
+          display_name: "default",
+          body: "hello",
+          occurred_at: "2026-03-08T07:05:00.000Z",
+          metadata: { source: "plugin" },
+        }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer sec-token",
+          "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
 });

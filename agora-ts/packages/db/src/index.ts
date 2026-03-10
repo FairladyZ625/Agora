@@ -13,3 +13,4 @@ export * from './repositories/task-context-binding.repository.js';
 export * from './repositories/notification-outbox.repository.js';
 export * from './repositories/participant-binding.repository.js';
 export * from './repositories/runtime-session-binding.repository.js';
+export * from './repositories/task-conversation.repository.js';

@@ -7,6 +7,7 @@ vi.mock('@/lib/api', () => ({
   listTasks: vi.fn(),
   getTask: vi.fn(),
   getTaskStatus: vi.fn(),
+  getTaskConversation: vi.fn(),
   archonApprove: vi.fn(),
   archonReject: vi.fn(),
 }));
@@ -107,6 +108,7 @@ describe('task store live API mode', () => {
       error: null,
     });
     vi.mocked(api.getTaskStatus).mockRejectedValue(new Error('status unavailable'));
+    vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
 
     await useTaskStore.getState().selectTask('OC-001');
     const state = useTaskStore.getState();
@@ -131,14 +133,35 @@ describe('task store live API mode', () => {
         }),
       }),
     );
+    vi.mocked(api.getTaskConversation).mockResolvedValue({
+      entries: [{
+        id: 'entry-1',
+        task_id: 'OC-001',
+        binding_id: 'binding-1',
+        provider: 'discord',
+        provider_message_ref: 'msg-1',
+        parent_message_ref: null,
+        direction: 'inbound',
+        author_kind: 'human',
+        author_ref: 'user-1',
+        display_name: 'Lizeyu',
+        body: '来自会话的消息',
+        body_format: 'plain_text',
+        occurred_at: '2026-03-07T02:00:00.000Z',
+        ingested_at: '2026-03-07T02:00:01.000Z',
+        metadata: null,
+      }],
+    });
 
     await useTaskStore.getState().selectTask('OC-001');
     const state = useTaskStore.getState();
 
     expect(api.getTask).toHaveBeenCalledWith('OC-001');
     expect(api.getTaskStatus).toHaveBeenCalledWith('OC-001');
+    expect(api.getTaskConversation).toHaveBeenCalledWith('OC-001');
     expect(state.selectedTaskStatus?.task.title).toBe('来自 getTask 的标题');
     expect(state.selectedTaskStatus?.task.current_stage).toBe('review');
+    expect(state.selectedTaskStatus?.conversation?.[0]?.body).toBe('来自会话的消息');
   });
 
   it('refreshes the selected task after a successful approval', async () => {
@@ -149,6 +172,7 @@ describe('task store live API mode', () => {
         task: buildTaskDto({ current_stage: 'review' }),
       }),
     );
+    vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
 
     useTaskStore.setState({
       tasks: [],

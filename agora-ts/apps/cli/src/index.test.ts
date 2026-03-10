@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { CraftsmanDispatcher, HumanAccountService, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
+import { CraftsmanDispatcher, HumanAccountService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -233,6 +233,75 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('dashboard session 已建立: lizeyu');
     expect(stdout.value).toContain('authenticated: true');
     expect(stdout.value).toContain('dashboard session 已清除');
+  });
+
+  it('reads task conversation entries through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-960',
+    });
+    const bindings = new TaskContextBindingService(db, {
+      idGenerator: () => 'binding-1',
+    });
+    const conversations = new TaskConversationService(db, {
+      idGenerator: () => 'entry-1',
+      now: () => new Date('2026-03-10T12:00:01.000Z'),
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const task = taskService.createTask({
+      title: 'cli conversation',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.createBinding({
+      task_id: task.id,
+      im_provider: 'discord',
+      thread_ref: 'thread-1',
+    });
+    conversations.ingest({
+      provider: 'discord',
+      thread_ref: 'thread-1',
+      provider_message_ref: 'msg-1',
+      direction: 'inbound',
+      author_kind: 'human',
+      author_ref: 'user-1',
+      display_name: 'Lizeyu',
+      body: 'hello cli',
+      occurred_at: '2026-03-10T12:00:00.000Z',
+    });
+
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      tmuxRuntimeService: {
+        up: () => { throw new Error('unused'); },
+        status: () => { throw new Error('unused'); },
+        send: () => { throw new Error('unused'); },
+        start: () => { throw new Error('unused'); },
+        resume: () => { throw new Error('unused'); },
+        task: () => { throw new Error('unused'); },
+        tail: () => { throw new Error('unused'); },
+        doctor: () => { throw new Error('unused'); },
+        down: () => { throw new Error('unused'); },
+        recordIdentity: () => { throw new Error('unused'); },
+      },
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['task', 'conversation', task.id, '--json'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"body": "hello cli"');
+    expect(stdout.value).toContain('"task_id": "OC-960"');
   });
 
   it('manages lightweight dashboard users through the cli', async () => {

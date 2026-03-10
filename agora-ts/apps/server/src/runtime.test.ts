@@ -49,6 +49,7 @@ describe('server runtime', () => {
     expect(runtime.taskService).toBeDefined();
     expect(runtime.dashboardQueryService).toBeDefined();
     expect(runtime.liveSessionStore).toBeDefined();
+    expect(runtime.taskConversationService).toBeDefined();
     runtime.db.close();
   });
 

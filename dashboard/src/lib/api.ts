@@ -5,6 +5,7 @@ import type {
   ApiHealthDto,
   ApiPromoteTodoResultDto,
   ApiTaskDto,
+  ApiTaskConversationListResponseDto,
   ApiTaskStatusDto,
   ApiTemplateDetailDto,
   ApiTemplateSummaryDto,
@@ -20,6 +21,7 @@ import {
   healthResponseSchema,
   promoteTodoResultSchema,
   taskSchema,
+  taskConversationListResponseSchema,
   taskStatusSchema,
   templateDetailSchema,
   templateSummarySchema,
@@ -99,6 +101,13 @@ export function getTask(taskId: string): Promise<ApiTaskDto> {
 
 export function getTaskStatus(taskId: string): Promise<ApiTaskStatusDto> {
   return request<ApiTaskStatusDto>(`/tasks/${taskId}/status`, taskStatusSchema);
+}
+
+export function getTaskConversation(taskId: string): Promise<ApiTaskConversationListResponseDto> {
+  return request<ApiTaskConversationListResponseDto>(
+    `/tasks/${taskId}/conversation`,
+    taskConversationListResponseSchema,
+  );
 }
 
 export function createTask(input: CreateTaskInput): Promise<ApiTaskDto> {

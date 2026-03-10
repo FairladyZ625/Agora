@@ -555,6 +555,29 @@ export function TasksPage() {
           </section>
 
           <section className="sheet-section">
+            <h4 className="section-title">{tasksPageCopy.conversationTitle}</h4>
+            <div className="mt-4 space-y-3">
+              {(activeStatus?.conversation ?? []).length > 0 ? (
+                (activeStatus?.conversation ?? []).map((entry) => (
+                  <div key={entry.id} className="data-row">
+                    <div className="min-w-0 flex-1">
+                      <p className="type-label-sm">
+                        {entry.display_name ?? entry.author_ref ?? entry.author_kind}
+                        {' / '}
+                        {entry.provider}
+                      </p>
+                      <p className="type-body-sm mt-2 whitespace-pre-wrap">{entry.body}</p>
+                    </div>
+                    <span className="type-text-xs">{formatRelativeTimestamp(entry.occurred_at)}</span>
+                  </div>
+                ))
+              ) : (
+                <p className="type-body-sm">{tasksPageCopy.conversationEmpty}</p>
+              )}
+            </div>
+          </section>
+
+          <section className="sheet-section">
             <h4 className="section-title">{tasksPageCopy.progressTitle}</h4>
             <div className="mt-4 space-y-3">
               {(activeStatus?.progress_log ?? []).map((entry) => (

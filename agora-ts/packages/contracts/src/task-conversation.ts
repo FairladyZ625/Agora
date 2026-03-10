@@ -1,0 +1,54 @@
+import { z } from 'zod';
+
+export const taskConversationDirectionSchema = z.enum(['inbound', 'outbound', 'system']);
+export type TaskConversationDirection = z.infer<typeof taskConversationDirectionSchema>;
+
+export const taskConversationAuthorKindSchema = z.enum(['human', 'agent', 'craftsman', 'system']);
+export type TaskConversationAuthorKind = z.infer<typeof taskConversationAuthorKindSchema>;
+
+export const taskConversationBodyFormatSchema = z.enum(['plain_text', 'markdown', 'structured']);
+export type TaskConversationBodyFormat = z.infer<typeof taskConversationBodyFormatSchema>;
+
+export const taskConversationEntrySchema = z.object({
+  id: z.string(),
+  task_id: z.string(),
+  binding_id: z.string(),
+  provider: z.string(),
+  provider_message_ref: z.string().nullable(),
+  parent_message_ref: z.string().nullable(),
+  direction: taskConversationDirectionSchema,
+  author_kind: taskConversationAuthorKindSchema,
+  author_ref: z.string().nullable(),
+  display_name: z.string().nullable(),
+  body: z.string(),
+  body_format: taskConversationBodyFormatSchema,
+  occurred_at: z.string(),
+  ingested_at: z.string(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+});
+
+export type TaskConversationEntryDto = z.infer<typeof taskConversationEntrySchema>;
+
+export const ingestTaskConversationEntryRequestSchema = z.object({
+  provider: z.string().min(1),
+  conversation_ref: z.string().min(1).nullable().optional(),
+  thread_ref: z.string().min(1).nullable().optional(),
+  provider_message_ref: z.string().min(1).nullable().optional(),
+  parent_message_ref: z.string().min(1).nullable().optional(),
+  direction: taskConversationDirectionSchema,
+  author_kind: taskConversationAuthorKindSchema,
+  author_ref: z.string().min(1).nullable().optional(),
+  display_name: z.string().min(1).nullable().optional(),
+  body: z.string().min(1),
+  body_format: taskConversationBodyFormatSchema.optional(),
+  occurred_at: z.string(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+export type IngestTaskConversationEntryRequestDto = z.infer<typeof ingestTaskConversationEntryRequestSchema>;
+
+export const taskConversationListResponseSchema = z.object({
+  entries: z.array(taskConversationEntrySchema),
+});
+
+export type TaskConversationListResponseDto = z.infer<typeof taskConversationListResponseSchema>;

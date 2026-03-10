@@ -30,7 +30,7 @@ describe('agora-ts sqlite bootstrap', () => {
 
     runMigrations(db);
 
-    expect(listAppliedMigrations(db)).toEqual(['001_initial.sql', '002_inbox.sql', '003_craftsman_executions.sql', '004_context_bindings.sql', '005_runtime_bindings.sql', '006_human_accounts.sql']);
+    expect(listAppliedMigrations(db)).toEqual(['001_initial.sql', '002_inbox.sql', '003_craftsman_executions.sql', '004_context_bindings.sql', '005_runtime_bindings.sql', '006_human_accounts.sql', '007_task_conversation.sql']);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
       .get() as { name: string } | undefined;
@@ -43,6 +43,10 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'human_accounts'")
       .get() as { name: string } | undefined;
     expect(humanAccountTable?.name).toBe('human_accounts');
+    const conversationTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_conversation_entries'")
+      .get() as { name: string } | undefined;
+    expect(conversationTable?.name).toBe('task_conversation_entries');
   });
 
   it('stores and reads task JSON fields via the task repository', () => {

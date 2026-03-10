@@ -3,10 +3,11 @@ import type {
   ApiProgressLogDto,
   ApiSubtaskDto,
   ApiTaskDto,
+  ApiTaskConversationEntryDto,
   ApiTaskStatusDto,
   ApiWorkflowStageDto,
 } from '@/types/api';
-import type { Task, TaskState, TaskStatus } from '@/types/task';
+import type { Task, TaskConversationEntry, TaskState, TaskStatus } from '@/types/task';
 import { translate } from '@/lib/i18n';
 
 const REVIEW_GATE_TYPES = new Set(['approval', 'archon_review']);
@@ -98,6 +99,10 @@ function mapProgressLogEntry(entry: ApiProgressLogDto) {
 }
 
 function mapSubtask(entry: ApiSubtaskDto) {
+  return { ...entry };
+}
+
+export function mapTaskConversationEntryDto(entry: ApiTaskConversationEntryDto): TaskConversationEntry {
   return { ...entry };
 }
 

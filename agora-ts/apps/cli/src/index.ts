@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
-import type { TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import type { TaskConversationService, TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
@@ -24,6 +24,7 @@ export interface CliDependencies {
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
+  taskConversationService?: TaskConversationService;
   factories?: Partial<CliCompositionFactories>;
   configPath?: string;
   dbPath?: string;
@@ -47,7 +48,7 @@ function parseJsonOption(raw?: string): Record<string, unknown> | null {
 export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
-  const composition = !deps.taskService || !deps.tmuxRuntimeService || !deps.dashboardSessionClient || !deps.humanAccountService
+  const composition = !deps.taskService || !deps.tmuxRuntimeService || !deps.dashboardSessionClient || !deps.humanAccountService || !deps.taskConversationService
     ? createCliComposition({
       ...(deps.configPath ? { configPath: deps.configPath } : {}),
       ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
@@ -57,7 +58,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const tmuxRuntimeService = deps.tmuxRuntimeService ?? composition?.tmuxRuntimeService;
   const dashboardSessionClient = deps.dashboardSessionClient ?? composition?.dashboardSessionClient;
   const humanAccountService = deps.humanAccountService ?? composition?.humanAccountService;
-  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService) {
+  const taskConversationService = deps.taskConversationService ?? composition?.taskConversationService;
+  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService || !taskConversationService) {
     throw new Error('CLI runtime composition is incomplete');
   }
   const program = new Command();
@@ -310,6 +312,33 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action((options: { taskId?: string }) => {
       const cleaned = taskService.cleanupOrphaned(options.taskId);
       writeLine(stdout, `已清理 orphaned 任务: ${cleaned}`);
+    });
+
+  const task = program
+    .command('task')
+    .description('task read-model commands');
+
+  task
+    .command('conversation')
+    .description('读取任务 conversation timeline')
+    .argument('<taskId>', '任务 ID')
+    .option('--json', '输出 JSON', false)
+    .action((taskId: string, options: { json?: boolean }) => {
+      const entries = taskConversationService.listByTask(taskId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ entries }, null, 2));
+        return;
+      }
+      if (entries.length === 0) {
+        writeLine(stdout, `任务 ${taskId} 暂无 conversation entries`);
+        return;
+      }
+      for (const entry of entries) {
+        writeLine(
+          stdout,
+          `[${entry.occurred_at}] ${entry.author_kind}:${entry.display_name ?? entry.author_ref ?? '-'} ${entry.body}`,
+        );
+      }
     });
 
   const craftsman = program

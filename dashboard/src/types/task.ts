@@ -85,11 +85,30 @@ export interface Subtask {
   done_at: string | null;
 }
 
+export interface TaskConversationEntry {
+  id: string;
+  task_id: string;
+  binding_id: string;
+  provider: string;
+  provider_message_ref: string | null;
+  parent_message_ref: string | null;
+  direction: 'inbound' | 'outbound' | 'system';
+  author_kind: 'human' | 'agent' | 'craftsman' | 'system';
+  author_ref: string | null;
+  display_name: string | null;
+  body: string;
+  body_format: 'plain_text' | 'markdown' | 'structured';
+  occurred_at: string;
+  ingested_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
 export interface TaskStatus {
   task: Task;
   flow_log: FlowLogEntry[];
   progress_log: ProgressLogEntry[];
   subtasks: Subtask[];
+  conversation?: TaskConversationEntry[];
 }
 
 export interface HealthStatus {

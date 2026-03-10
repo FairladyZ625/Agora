@@ -2,10 +2,8 @@ import { buildApp } from './app.js';
 import { createServerRuntime } from './runtime.js';
 import { resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 
-async function start() {
-  const runtime = createServerRuntime();
-  const environment = resolveAgoraRuntimeEnvironmentFromConfigPackage();
-  const app = buildApp({
+export function createAppFromRuntime(runtime: ReturnType<typeof createServerRuntime>) {
+  return buildApp({
     db: runtime.db,
     taskService: runtime.taskService,
     dashboardQueryService: runtime.dashboardQueryService,
@@ -14,6 +12,7 @@ async function start() {
     liveSessionStore: runtime.liveSessionStore,
     tmuxRuntimeService: runtime.tmuxRuntimeService,
     taskContextBindingService: runtime.taskContextBindingService,
+    taskConversationService: runtime.taskConversationService,
     taskParticipationService: runtime.taskParticipationService,
     humanAccountService: runtime.humanAccountService,
     notificationDispatcher: runtime.notificationDispatcher,
@@ -27,6 +26,12 @@ async function start() {
     },
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });
+}
+
+async function start() {
+  const runtime = createServerRuntime();
+  const environment = resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  const app = createAppFromRuntime(runtime);
   const port = Number(process.env.PORT ?? environment.backendPort);
   const host = process.env.HOST ?? process.env.AGORA_SERVER_HOST ?? environment.host;
 

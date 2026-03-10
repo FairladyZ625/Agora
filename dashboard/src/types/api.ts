@@ -7,6 +7,8 @@ import type {
   ProgressLogDto,
   SubtaskDto,
   TaskDto,
+  TaskConversationEntryDto,
+  TaskConversationListResponseDto,
   TaskState,
   TaskStatusDto,
   TeamDto,
@@ -27,6 +29,8 @@ export type ApiWorkflowGateDto = WorkflowGateDto;
 export type ApiWorkflowStageDto = WorkflowStageDto;
 export type ApiWorkflowDto = WorkflowDto;
 export type ApiTaskDto = TaskDto;
+export type ApiTaskConversationEntryDto = TaskConversationEntryDto;
+export type ApiTaskConversationListResponseDto = TaskConversationListResponseDto;
 export type ApiFlowLogDto = FlowLogDto;
 export type ApiProgressLogDto = ProgressLogDto;
 export type ApiSubtaskDto = SubtaskDto;

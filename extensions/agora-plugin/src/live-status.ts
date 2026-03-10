@@ -120,6 +120,23 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       last_event_at: isoNow(event.timestamp),
       metadata: event.metadata ?? {},
     });
+    if (typeof bridge.ingestTaskConversationEntry === "function") {
+      void bridge.ingestTaskConversationEntry({
+        provider: ctx.channelId ?? inferChannel(sessionKey) ?? "unknown",
+        conversation_ref: ctx.conversationId ?? inferConversationId(sessionKey),
+        thread_ref: threadIdFromMetadata(event.metadata),
+        provider_message_ref: messageIdFromMetadata(event.metadata),
+        direction: "inbound",
+        author_kind: "human",
+        author_ref: ctx.accountId ?? null,
+        display_name: ctx.accountId ?? null,
+        body: event.content,
+        occurred_at: isoNow(event.timestamp),
+        metadata: event.metadata ?? {},
+      }).catch((error) => {
+        logError(logger, error);
+      });
+    }
   });
 
   api.on?.("message_sent", (event, ctx) => {
@@ -224,6 +241,14 @@ function inferConversationId(sessionKey?: string) {
 
 function threadIdFromMetadata(metadata?: Record<string, unknown>) {
   const value = metadata?.threadId ?? metadata?.message_thread_id;
+  if (typeof value === "number" || typeof value === "string") {
+    return String(value);
+  }
+  return null;
+}
+
+function messageIdFromMetadata(metadata?: Record<string, unknown>) {
+  const value = metadata?.messageId ?? metadata?.message_id ?? metadata?.id;
   if (typeof value === "number" || typeof value === "string") {
     return String(value);
   }

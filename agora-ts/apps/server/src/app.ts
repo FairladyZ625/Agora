@@ -22,6 +22,7 @@ import {
   createInboxRequestSchema,
   createTaskRequestSchema,
   createTaskContextBindingRequestSchema,
+  ingestTaskConversationEntryRequestSchema,
   duplicateTemplateRequestSchema,
   type HealthResponse,
   liveSessionSchema,
@@ -47,6 +48,7 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
+  type TaskConversationService,
   type TaskParticipationService,
   type TaskContextBindingService,
   type TaskService,
@@ -65,6 +67,7 @@ export interface BuildAppOptions {
   liveSessionStore?: LiveSessionStore;
   tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
   taskContextBindingService?: TaskContextBindingService;
+  taskConversationService?: TaskConversationService;
   taskParticipationService?: TaskParticipationService;
   notificationDispatcher?: NotificationDispatcher;
   humanAccountService?: HumanAccountService;
@@ -507,6 +510,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const tmuxRuntimeService = options.tmuxRuntimeService;
   const taskContextBindingService = options.taskContextBindingService;
   const taskParticipationService = options.taskParticipationService;
+  const taskConversationService = options.taskConversationService;
   const notificationDispatcher = options.notificationDispatcher;
   const apiAuth = options.apiAuth;
   const dashboardAuth = options.dashboardAuth;
@@ -1713,6 +1717,36 @@ export function buildApp(options: BuildAppOptions = {}) {
       const { id } = request.params as { id: string };
       const outbox = new NotificationOutboxRepository(options.db);
       return reply.send(outbox.listByTask(id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/conversations/ingest', async (request, reply) => {
+    if (!taskConversationService) {
+      return reply.status(503).send({ message: 'Task conversation service is not configured' });
+    }
+    try {
+      const body = ingestTaskConversationEntryRequestSchema.parse(request.body);
+      const entry = taskConversationService.ingest(body);
+      if (!entry) {
+        return reply.status(202).send({ accepted: false });
+      }
+      return reply.status(201).send(entry);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/tasks/:id/conversation', async (request, reply) => {
+    if (!taskConversationService) {
+      return reply.status(503).send({ message: 'Task conversation service is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      return reply.send({ entries: taskConversationService.listByTask(id) });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -261,6 +261,8 @@ export function useTasksPageCopy() {
     briefFallback: t('tasks.briefFallback'),
     timelineTitle: t('tasks.timelineTitle'),
     timelineEmptyDetail: t('tasks.timelineEmptyDetail'),
+    conversationTitle: t('tasks.conversationTitle'),
+    conversationEmpty: t('tasks.conversationEmpty'),
     progressTitle: t('tasks.progressTitle'),
     subtasksTitle: t('tasks.subtasksTitle'),
     subtaskFallbackType: t('tasks.subtaskFallbackType'),

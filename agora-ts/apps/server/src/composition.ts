@@ -15,6 +15,7 @@ import {
   NotificationDispatcher,
   HumanAccountService,
   StubIMMessagingPort,
+  TaskConversationService,
   TaskContextBindingService,
   TaskParticipationService,
   resolveCraftsmanRuntimeMode,
@@ -59,6 +60,7 @@ export interface ServerComposition {
   taskParticipationService: TaskParticipationService;
   humanAccountService: HumanAccountService;
   notificationDispatcher: NotificationDispatcher;
+  taskConversationService: TaskConversationService;
 }
 
 export interface ServerCompositionFactories {
@@ -102,6 +104,7 @@ export interface ServerCompositionFactories {
   ) => TaskParticipationService;
   createHumanAccountService: (context: ServerCompositionContext) => HumanAccountService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
+  createTaskConversationService: (context: ServerCompositionContext) => TaskConversationService;
 }
 
 export function createDefaultServerCompositionFactories(): ServerCompositionFactories {
@@ -202,6 +205,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     }),
     createHumanAccountService: (context) => new HumanAccountService(context.db),
     createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
+    createTaskConversationService: (context) => new TaskConversationService(context.db),
   };
 }
 
@@ -245,6 +249,7 @@ export function buildServerComposition(
   const inboxService = factories.createInboxService(context, { taskService });
   const messagingPort = factories.createIMMessagingPort(context);
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
+  const taskConversationService = factories.createTaskConversationService(context);
 
   return {
     taskService,
@@ -257,6 +262,7 @@ export function buildServerComposition(
     taskParticipationService,
     humanAccountService,
     notificationDispatcher,
+    taskConversationService,
   };
 }
 

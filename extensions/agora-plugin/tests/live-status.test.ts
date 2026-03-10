@@ -188,7 +188,10 @@ describe("registerLiveStatusBridge", () => {
   });
 
   it("projects message hooks and runtime agent events into live status snapshots", async () => {
-    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestTaskConversationEntry: vi.fn().mockResolvedValue({ id: "entry-1" }),
+    };
     const { api, hooks, getService, emitAgentEvent } = createApi();
 
     registerLiveStatusBridge(api as never, bridge as never);
@@ -255,6 +258,18 @@ describe("registerLiveStatusBridge", () => {
         last_event: "tool",
         last_event_at: "2026-03-08T07:06:00.000Z",
         metadata: { tool: "exec" },
+      }),
+    );
+    expect(bridge.ingestTaskConversationEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "discord",
+        conversation_ref: "alerts",
+        thread_ref: "thread-7",
+        direction: "inbound",
+        author_kind: "human",
+        author_ref: "default",
+        display_name: "default",
+        body: "hello",
       }),
     );
   });
