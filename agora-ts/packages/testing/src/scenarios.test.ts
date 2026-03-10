@@ -459,6 +459,16 @@ describe('agora-ts testing scenarios', () => {
     expect(result.events).toContain('subtask_failed');
   });
 
+  it('runs a craftsman callback notify scenario and mirrors the callback into task conversation entries', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'craftsman-callback-notify-outbox');
+
+    expect(result.name).toBe('craftsman-callback-notify-outbox');
+    expect(result.notificationDelivered).toBe(true);
+    expect(result.conversationBodies).toEqual(['notify test done']);
+  });
+
   it('runs a runtime session binding scenario and tracks participant join state', () => {
     runtime = createTestRuntime({
       agentRuntimePort: {

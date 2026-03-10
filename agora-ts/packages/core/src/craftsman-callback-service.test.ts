@@ -10,6 +10,7 @@ import {
   NotificationOutboxRepository,
   ProgressLogRepository,
   SubtaskRepository,
+  TaskConversationRepository,
   TaskContextBindingRepository,
   TaskRepository,
 } from '@agora-ts/db';
@@ -383,6 +384,7 @@ describe('craftsman callback service', () => {
     const executions = new CraftsmanExecutionRepository(db);
     const bindings = new TaskContextBindingRepository(db);
     const outbox = new NotificationOutboxRepository(db);
+    const conversations = new TaskConversationRepository(db);
     const callback = new CraftsmanCallbackService(db);
 
     tasks.insertTask({
@@ -454,5 +456,21 @@ describe('craftsman callback service', () => {
         status: 'succeeded',
       }),
     });
+    expect(conversations.listByTask('OC-974')).toEqual([
+      expect.objectContaining({
+        task_id: 'OC-974',
+        binding_id: 'bind-974',
+        provider: 'discord',
+        direction: 'system',
+        author_kind: 'craftsman',
+        author_ref: 'codex',
+        body: 'done with binding',
+        metadata: expect.objectContaining({
+          event_type: 'craftsman_completed',
+          execution_id: 'exec-974',
+          subtask_id: 'sub-codex',
+        }),
+      }),
+    ]);
   });
 });

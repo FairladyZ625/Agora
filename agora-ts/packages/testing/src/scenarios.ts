@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TaskService, TaskContextBindingService } from '@agora-ts/core';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository, NotificationOutboxRepository } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository, NotificationOutboxRepository, TaskConversationRepository } from '@agora-ts/db';
 import type { CreateTestRuntimeOptions, TestRuntime } from './runtime.js';
 import { createTestRuntime } from './runtime.js';
 
@@ -1087,10 +1087,16 @@ function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): Scenari
   if (pending[0]?.target_binding_id !== 'bind-notify-1') {
     throw new Error(`Expected target_binding_id bind-notify-1, got ${pending[0]?.target_binding_id}`);
   }
+  const conversations = new TaskConversationRepository(runtime.db);
+  const entries = conversations.listByTask(task.id);
+  if (entries.length === 0) {
+    throw new Error('Expected mirrored conversation entry after callback');
+  }
 
   return buildScenarioResult(runtime, 'craftsman-callback-notify-outbox', task.id, {
     executions: [dispatch.execution.execution_id],
     notificationDelivered: true,
+    conversationBodies: entries.map((entry) => entry.body),
   });
 }
 

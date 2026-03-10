@@ -5,6 +5,7 @@ import {
   NotificationOutboxRepository,
   ProgressLogRepository,
   SubtaskRepository,
+  TaskConversationRepository,
   TaskContextBindingRepository,
   TaskRepository,
   type StoredCraftsmanExecution,
@@ -26,6 +27,7 @@ export class CraftsmanCallbackService {
   private readonly progressLogs: ProgressLogRepository;
   private readonly outbox: NotificationOutboxRepository;
   private readonly bindings: TaskContextBindingRepository;
+  private readonly conversations: TaskConversationRepository;
 
   constructor(private readonly db: AgoraDatabase) {
     this.executions = new CraftsmanExecutionRepository(db);
@@ -35,6 +37,7 @@ export class CraftsmanCallbackService {
     this.progressLogs = new ProgressLogRepository(db);
     this.outbox = new NotificationOutboxRepository(db);
     this.bindings = new TaskContextBindingRepository(db);
+    this.conversations = new TaskConversationRepository(db);
   }
 
   handleCallback(input: CraftsmanCallbackRequestDto) {
@@ -210,6 +213,26 @@ export class CraftsmanCallbackService {
         output: subtask.output,
       },
       sequence_no: Date.now(),
+    });
+    this.conversations.insert({
+      id: randomUUID(),
+      task_id: task.id,
+      binding_id: binding.id,
+      provider: binding.im_provider,
+      direction: 'system',
+      author_kind: 'craftsman',
+      author_ref: execution.adapter,
+      display_name: execution.adapter,
+      body: subtask.output ?? `${execution.adapter} ${eventType}`,
+      body_format: 'plain_text',
+      occurred_at: execution.finished_at ?? new Date().toISOString(),
+      dedupe_key: `callback:${execution.execution_id}:${eventType}`,
+      metadata: {
+        event_type: eventType,
+        execution_id: execution.execution_id,
+        subtask_id: subtask.id,
+        status: execution.status,
+      },
     });
   }
 }
