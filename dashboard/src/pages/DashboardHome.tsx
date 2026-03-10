@@ -423,18 +423,13 @@ export function DashboardHome() {
 
             <div className="home-os__section-divider" />
 
-            <div className="home-os__module-head">
-              <div>
-                <h3 className="section-title">{homeCopy.taskRailLabels.selectedTask}</h3>
-                <p className="page-kicker">{selectedRailTask?.id ?? homeCopy.taskRailLabels.taskEmpty}</p>
-              </div>
-              {selectedRailTask ? <Network size={16} className="home-os__rail-icon" /> : null}
-            </div>
-
             {selectedRailTask ? (
               <>
                 <div className="home-os__rail-summary">
-                  <h4 className="home-os__rail-title">{selectedRailTask.title}</h4>
+                  <div className="home-os__module-head home-os__module-head--compact">
+                    <h4 className="home-os__rail-title">{selectedRailTask.title}</h4>
+                    <Network size={16} className="home-os__rail-icon" />
+                  </div>
                   <div className="home-os__hash">
                     <span>{selectedRailTask.teamLabel}</span>
                     <span>{selectedRailTask.workflowLabel}</span>
@@ -461,43 +456,46 @@ export function DashboardHome() {
                     </div>
                   ))}
                 </div>
-              </>
-            ) : null}
-          </article>
+                <div className="home-os__section-divider" />
 
-          <article className="home-os__rail-panel surface-panel surface-panel--workspace">
-            <div className="home-os__module-head">
-              <div>
-                <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                <p className="page-kicker">{homeCopy.terminalLabel}</p>
-              </div>
-              <ScrollText size={16} className="home-os__rail-icon" />
-            </div>
-
-            <div className="home-os__module-head">
-              <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
-              <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
-            </div>
-
-            <div className="home-os__terminal">
-              {runtimeLines.length === 0 ? (
-                <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
-              ) : (
-                runtimeLines.map((line, index) => (
-                  <div key={line.id} className="home-os__terminal-line terminal-entry">
-                    <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
-                    <div className="home-os__terminal-body">
-                      <div className="home-os__terminal-head">
-                        <span className="home-os__terminal-token">{line.prefix}</span>
-                        <span>{line.title}</span>
-                        <span className="home-os__terminal-meta">{line.meta}</span>
-                      </div>
-                      <span>{line.body}</span>
-                    </div>
+                <div className="home-os__module-head">
+                  <div>
+                    <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
+                    <p className="page-kicker">{homeCopy.terminalLabel}</p>
                   </div>
-                ))
-              )}
-            </div>
+                  <ScrollText size={16} className="home-os__rail-icon" />
+                </div>
+
+                <div className="home-os__module-head">
+                  <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
+                  <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
+                </div>
+
+                <div className="home-os__terminal">
+                  {runtimeLines.length === 0 ? (
+                    <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
+                  ) : (
+                    runtimeLines.map((line, index) => (
+                      <div key={line.id} className="home-os__terminal-line terminal-entry">
+                        <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
+                        <div className="home-os__terminal-body">
+                          <div className="home-os__terminal-head">
+                            <span className="home-os__terminal-token">{line.prefix}</span>
+                            <span>{line.title}</span>
+                            <span className="home-os__terminal-meta">{line.meta}</span>
+                          </div>
+                          <span>{line.body}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="home-os__rail-empty">
+                <p className="type-body-sm">{homeCopy.taskRailLabels.taskEmpty}</p>
+              </div>
+            )}
 
             <div className="home-os__telemetry-strip">
               <div className="home-os__telemetry-readout">
