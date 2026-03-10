@@ -7,8 +7,10 @@ import {
   runMigrations,
   CraftsmanExecutionRepository,
   FlowLogRepository,
+  NotificationOutboxRepository,
   ProgressLogRepository,
   SubtaskRepository,
+  TaskContextBindingRepository,
   TaskRepository,
 } from '@agora-ts/db';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
@@ -371,5 +373,86 @@ describe('craftsman callback service', () => {
       ]),
     );
     expect(progressLogs.listByTask('OC-973')).toEqual([]);
+  });
+
+  it('enqueues a notification when an active binding exists', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+    const outbox = new NotificationOutboxRepository(db);
+    const callback = new CraftsmanCallbackService(db);
+
+    tasks.insertTask({
+      id: 'OC-974',
+      title: 'callback with binding',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    bindings.insert({
+      id: 'bind-974',
+      task_id: 'OC-974',
+      im_provider: 'discord',
+      thread_ref: 'thread-974',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex',
+      task_id: 'OC-974',
+      stage_id: 'develop',
+      title: 'run codex',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+      craftsman_session: 'codex-session-5',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-974',
+      task_id: 'OC-974',
+      subtask_id: 'sub-codex',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'codex-session-5',
+      status: 'running',
+      workdir: '/tmp/codex',
+      callback_payload: null,
+      error: null,
+      started_at: '2026-03-08T14:00:00.000Z',
+    });
+
+    callback.handleCallback({
+      execution_id: 'exec-974',
+      status: 'succeeded',
+      session_id: 'codex-session-5',
+      payload: {
+        output: {
+          summary: 'done with binding',
+          artifacts: [],
+        },
+      },
+      error: null,
+      finished_at: '2026-03-08T14:01:00.000Z',
+    });
+
+    const notifications = outbox.listByTask('OC-974');
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      task_id: 'OC-974',
+      event_type: 'craftsman_completed',
+      target_binding_id: 'bind-974',
+      status: 'pending',
+      payload: expect.objectContaining({
+        execution_id: 'exec-974',
+        subtask_id: 'sub-codex',
+        adapter: 'codex',
+        status: 'succeeded',
+      }),
+    });
   });
 });

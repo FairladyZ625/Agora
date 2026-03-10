@@ -33,6 +33,7 @@ describe('agora-ts testing scenarios', () => {
       'craftsman-workdir-isolation',
       'craftsman-retry',
       'craftsman-timeout-escalation',
+      'craftsman-callback-notify-outbox',
     ]);
   });
 

@@ -11,11 +11,15 @@ import {
   GitWorktreeWorkdirIsolator,
   InboxService,
   LiveSessionStore,
+  NotificationDispatcher,
+  StubIMMessagingPort,
+  TaskContextBindingService,
   resolveCraftsmanRuntimeMode,
   TaskService,
   TemplateAuthoringService,
   TmuxRuntimeService,
   type AgentInventorySource,
+  type IMMessagingPort,
   type PresenceSource,
 } from '@agora-ts/core';
 import { OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
@@ -45,6 +49,8 @@ export interface ServerComposition {
   inboxService: InboxService;
   liveSessionStore: LiveSessionStore;
   tmuxRuntimeService: TmuxRuntimeService;
+  taskContextBindingService: TaskContextBindingService;
+  notificationDispatcher: NotificationDispatcher;
 }
 
 export interface ServerCompositionFactories {
@@ -72,6 +78,9 @@ export interface ServerCompositionFactories {
   ) => DashboardQueryService;
   createTemplateAuthoringService: (context: ServerCompositionContext) => TemplateAuthoringService;
   createInboxService: (context: ServerCompositionContext, deps: { taskService: TaskService }) => InboxService;
+  createIMMessagingPort: (context: ServerCompositionContext) => IMMessagingPort;
+  createTaskContextBindingService: (context: ServerCompositionContext) => TaskContextBindingService;
+  createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
 }
 
 export function createDefaultServerCompositionFactories(): ServerCompositionFactories {
@@ -142,6 +151,9 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     }),
     createTemplateAuthoringService: (context) => new TemplateAuthoringService({ templatesDir: context.templatesDir }),
     createInboxService: (context, deps) => new InboxService(context.db, deps.taskService),
+    createIMMessagingPort: () => new StubIMMessagingPort(),
+    createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
   };
 }
 
@@ -172,6 +184,9 @@ export function buildServerComposition(
   });
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const inboxService = factories.createInboxService(context, { taskService });
+  const messagingPort = factories.createIMMessagingPort(context);
+  const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
 
   return {
     taskService,
@@ -180,6 +195,8 @@ export function buildServerComposition(
     inboxService,
     liveSessionStore,
     tmuxRuntimeService,
+    taskContextBindingService,
+    notificationDispatcher,
   };
 }
 

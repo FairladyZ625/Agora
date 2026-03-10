@@ -6,12 +6,15 @@ async function start() {
   const runtime = createServerRuntime();
   const environment = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const app = buildApp({
+    db: runtime.db,
     taskService: runtime.taskService,
     dashboardQueryService: runtime.dashboardQueryService,
     inboxService: runtime.inboxService,
     templateAuthoringService: runtime.templateAuthoringService,
     liveSessionStore: runtime.liveSessionStore,
     tmuxRuntimeService: runtime.tmuxRuntimeService,
+    taskContextBindingService: runtime.taskContextBindingService,
+    notificationDispatcher: runtime.notificationDispatcher,
     apiAuth: runtime.apiAuth,
     dashboardAuth: runtime.dashboardAuth,
     rateLimit: runtime.rateLimit,

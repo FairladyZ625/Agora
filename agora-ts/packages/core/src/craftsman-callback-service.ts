@@ -2,14 +2,17 @@ import type { CraftsmanCallbackRequestDto, CraftsmanExecutionPayloadDto } from '
 import {
   CraftsmanExecutionRepository,
   FlowLogRepository,
+  NotificationOutboxRepository,
   ProgressLogRepository,
   SubtaskRepository,
+  TaskContextBindingRepository,
   TaskRepository,
   type StoredCraftsmanExecution,
   type StoredSubtask,
   type StoredTask,
   type AgoraDatabase,
 } from '@agora-ts/db';
+import { randomUUID } from 'node:crypto';
 import { NotFoundError } from './errors.js';
 import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
 
@@ -21,6 +24,8 @@ export class CraftsmanCallbackService {
   private readonly tasks: TaskRepository;
   private readonly flowLogs: FlowLogRepository;
   private readonly progressLogs: ProgressLogRepository;
+  private readonly outbox: NotificationOutboxRepository;
+  private readonly bindings: TaskContextBindingRepository;
 
   constructor(private readonly db: AgoraDatabase) {
     this.executions = new CraftsmanExecutionRepository(db);
@@ -28,6 +33,8 @@ export class CraftsmanCallbackService {
     this.tasks = new TaskRepository(db);
     this.flowLogs = new FlowLogRepository(db);
     this.progressLogs = new ProgressLogRepository(db);
+    this.outbox = new NotificationOutboxRepository(db);
+    this.bindings = new TaskContextBindingRepository(db);
   }
 
   handleCallback(input: CraftsmanCallbackRequestDto) {
@@ -108,9 +115,12 @@ export class CraftsmanCallbackService {
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const normalizedOutput = normalizeCraftsmanOutput(payload);
+    let nextSubtask: StoredSubtask;
+    let eventType: string;
+
     if (execution.status === 'succeeded') {
       const output = formatCraftsmanOutput(payload);
-      const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
+      nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
         status: 'done',
         output,
         dispatch_status: 'succeeded',
@@ -137,39 +147,69 @@ export class CraftsmanCallbackService {
         artifacts: normalizedOutput ?? payload ?? null,
         actor: execution.adapter,
       });
-      return { execution, subtask: nextSubtask, task };
+      eventType = 'craftsman_completed';
+    } else {
+      const errorMessage = execution.error ?? formatCraftsmanOutput(payload) ?? `${execution.adapter} callback ${execution.status}`;
+      nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
+        status: 'failed',
+        output: errorMessage,
+        dispatch_status: execution.status,
+        done_at: null,
+      });
+      this.flowLogs.insertFlowLog({
+        task_id: execution.task_id,
+        kind: 'system',
+        event: 'subtask_failed',
+        stage_id: nextSubtask.stage_id,
+        detail: {
+          subtask_id: nextSubtask.id,
+          execution_id: execution.execution_id,
+          adapter: execution.adapter,
+          status: execution.status,
+          error: execution.error ?? null,
+        },
+        actor: execution.adapter,
+      });
+      this.progressLogs.insertProgressLog({
+        task_id: execution.task_id,
+        kind: 'progress',
+        stage_id: nextSubtask.stage_id,
+        subtask_id: nextSubtask.id,
+        content: errorMessage,
+        artifacts: normalizedOutput ?? payload ?? null,
+        actor: execution.adapter,
+      });
+      eventType = 'craftsman_failed';
     }
 
-    const errorMessage = execution.error ?? formatCraftsmanOutput(payload) ?? `${execution.adapter} callback ${execution.status}`;
-    const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
-      status: 'failed',
-      output: errorMessage,
-      dispatch_status: execution.status,
-      done_at: null,
-    });
-    this.flowLogs.insertFlowLog({
-      task_id: execution.task_id,
-      kind: 'system',
-      event: 'subtask_failed',
-      stage_id: nextSubtask.stage_id,
-      detail: {
-        subtask_id: nextSubtask.id,
+    this.enqueueNotification(task, execution, nextSubtask, eventType);
+
+    return { execution, subtask: nextSubtask, task };
+  }
+
+  private enqueueNotification(
+    task: StoredTask,
+    execution: StoredCraftsmanExecution,
+    subtask: StoredSubtask,
+    eventType: string,
+  ) {
+    const binding = this.bindings.getActiveByTask(task.id);
+    if (!binding) {
+      return;
+    }
+    this.outbox.insert({
+      id: randomUUID(),
+      task_id: task.id,
+      event_type: eventType,
+      target_binding_id: binding.id,
+      payload: {
         execution_id: execution.execution_id,
+        subtask_id: subtask.id,
         adapter: execution.adapter,
         status: execution.status,
-        error: execution.error ?? null,
+        output: subtask.output,
       },
-      actor: execution.adapter,
+      sequence_no: Date.now(),
     });
-    this.progressLogs.insertProgressLog({
-      task_id: execution.task_id,
-      kind: 'progress',
-      stage_id: nextSubtask.stage_id,
-      subtask_id: nextSubtask.id,
-      content: errorMessage,
-      artifacts: normalizedOutput ?? payload ?? null,
-      actor: execution.adapter,
-    });
-    return { execution, subtask: nextSubtask, task };
   }
 }

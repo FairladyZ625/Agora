@@ -7,3 +7,5 @@ export * from './repositories/subtask.repository.js';
 export * from './repositories/task.repository.js';
 export * from './repositories/todo.repository.js';
 export * from './repositories/archive-job.repository.js';
+export * from './repositories/task-context-binding.repository.js';
+export * from './repositories/notification-outbox.repository.js';

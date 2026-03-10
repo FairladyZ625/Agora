@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TaskService } from '@agora-ts/core';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { TaskService, TaskContextBindingService } from '@agora-ts/core';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository, NotificationOutboxRepository } from '@agora-ts/db';
 import type { CreateTestRuntimeOptions, TestRuntime } from './runtime.js';
 import { createTestRuntime } from './runtime.js';
 
@@ -27,6 +27,7 @@ export const scenarioNames = [
   'craftsman-workdir-isolation',
   'craftsman-retry',
   'craftsman-timeout-escalation',
+  'craftsman-callback-notify-outbox',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -48,6 +49,7 @@ export interface ScenarioResult {
     duplicated: boolean;
     workflowValidated: boolean;
   };
+  notificationDelivered?: boolean;
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -94,6 +96,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runCraftsmanRetryScenario(runtime);
     case 'craftsman-timeout-escalation':
       return runCraftsmanTimeoutScenario(runtime);
+    case 'craftsman-callback-notify-outbox':
+      return runCraftsmanCallbackNotifyOutboxScenario(runtime);
   }
 }
 
@@ -964,6 +968,68 @@ function runCraftsmanTimeoutScenario(runtime: TestRuntime): ScenarioResult {
 
   return buildScenarioResult(runtime, 'craftsman-timeout-escalation', task.id, {
     executions: [dispatch.execution.execution_id],
+  });
+}
+
+function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Craftsman callback notify outbox',
+    type: 'coding',
+    creator: 'archon',
+    description: 'dispatch with binding, callback, scan outbox',
+    priority: 'normal',
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  const bindingService = new TaskContextBindingService(runtime.db, {
+    idGenerator: () => 'bind-notify-1',
+  });
+  const outbox = new NotificationOutboxRepository(runtime.db);
+
+  bindingService.createBinding({
+    task_id: task.id,
+    im_provider: 'discord',
+    thread_ref: 'thread-notify-test',
+  });
+
+  subtasks.insertSubtask({
+    id: 'craft-notify',
+    task_id: task.id,
+    stage_id: task.current_stage ?? 'discuss',
+    title: 'Run codex with notification',
+    assignee: 'sonnet',
+    craftsman_type: 'codex',
+  });
+
+  const dispatch = runtime.taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'craft-notify',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/codex',
+  });
+  runtime.taskService.handleCraftsmanCallback({
+    execution_id: dispatch.execution.execution_id,
+    status: 'succeeded',
+    session_id: dispatch.execution.session_id,
+    payload: { summary: 'notify test done' },
+    error: null,
+    finished_at: '2026-03-09T16:01:00.000Z',
+  });
+
+  const pending = outbox.listByTask(task.id);
+  if (pending.length === 0) {
+    throw new Error('Expected pending notification in outbox after callback');
+  }
+  if (pending[0]?.event_type !== 'craftsman_completed') {
+    throw new Error(`Expected event_type craftsman_completed, got ${pending[0]?.event_type}`);
+  }
+  if (pending[0]?.target_binding_id !== 'bind-notify-1') {
+    throw new Error(`Expected target_binding_id bind-notify-1, got ${pending[0]?.target_binding_id}`);
+  }
+
+  return buildScenarioResult(runtime, 'craftsman-callback-notify-outbox', task.id, {
+    executions: [dispatch.execution.execution_id],
+    notificationDelivered: true,
   });
 }
 

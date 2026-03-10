@@ -21,6 +21,7 @@ import {
   dashboardSessionStatusResponseSchema,
   createInboxRequestSchema,
   createTaskRequestSchema,
+  createTaskContextBindingRequestSchema,
   duplicateTemplateRequestSchema,
   type HealthResponse,
   liveSessionSchema,
@@ -44,19 +45,25 @@ import {
   type DashboardQueryService,
   type InboxService,
   type LiveSessionStore,
+  type NotificationDispatcher,
+  type TaskContextBindingService,
   type TaskService,
   type TmuxRuntimeService,
   type TemplateAuthoringService,
 } from '@agora-ts/core';
+import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
 import { z } from 'zod';
 
 export interface BuildAppOptions {
+  db?: AgoraDatabase;
   taskService?: TaskService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
   tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
+  taskContextBindingService?: TaskContextBindingService;
+  notificationDispatcher?: NotificationDispatcher;
   apiAuth?: {
     enabled: boolean;
     token: string;
@@ -399,6 +406,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   const templateAuthoringService = options.templateAuthoringService;
   const liveSessionStore = options.liveSessionStore;
   const tmuxRuntimeService = options.tmuxRuntimeService;
+  const taskContextBindingService = options.taskContextBindingService;
+  const notificationDispatcher = options.notificationDispatcher;
   const apiAuth = options.apiAuth;
   const dashboardAuth = options.dashboardAuth;
   const rateLimit = options.rateLimit;
@@ -1498,6 +1507,69 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const payload = validateWorkflowRequestSchema.parse(request.body);
       return reply.send(templateAuthoringService.validateWorkflow(payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  // --- Context Binding & Notification routes ---
+
+  app.post('/api/tasks/:id/context-binding', async (request, reply) => {
+    if (!taskContextBindingService) {
+      return reply.status(503).send({ message: 'Task context binding service is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      const body = createTaskContextBindingRequestSchema.parse(request.body);
+      const binding = taskContextBindingService.createBinding({
+        task_id: id,
+        im_provider: body.im_provider,
+        ...(body.conversation_ref ? { conversation_ref: body.conversation_ref } : {}),
+        ...(body.thread_ref ? { thread_ref: body.thread_ref } : {}),
+        ...(body.message_root_ref ? { message_root_ref: body.message_root_ref } : {}),
+      });
+      return reply.status(201).send(binding);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/tasks/:id/context-bindings', async (request, reply) => {
+    if (!taskContextBindingService) {
+      return reply.status(503).send({ message: 'Task context binding service is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      return reply.send(taskContextBindingService.listBindings(id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/tasks/:id/notifications', async (request, reply) => {
+    if (!options.db) {
+      return reply.status(503).send({ message: 'Database is not configured' });
+    }
+    try {
+      const { id } = request.params as { id: string };
+      const outbox = new NotificationOutboxRepository(options.db);
+      return reply.send(outbox.listByTask(id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/notifications/scan', async (_request, reply) => {
+    if (!notificationDispatcher) {
+      return reply.status(503).send({ message: 'Notification dispatcher is not configured' });
+    }
+    try {
+      const result = await notificationDispatcher.scan();
+      return reply.send(result);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
