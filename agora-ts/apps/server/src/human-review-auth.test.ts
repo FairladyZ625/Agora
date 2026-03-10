@@ -82,7 +82,7 @@ describe('human review auth', () => {
     expect(approve.statusCode).toBe(200);
     expect(approve.json()).toMatchObject({
       id: 'OC-HUMAN-1',
-      current_stage: 'outline',
+      current_stage: 'write',
     });
     const status = taskService.getTaskStatus('OC-HUMAN-1');
     expect(status.flow_log).toEqual(

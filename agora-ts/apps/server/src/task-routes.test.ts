@@ -130,13 +130,6 @@ describe('task routes', () => {
         comment: 'outline ok',
       },
     });
-    const forceAdvance = await app.inject({
-      method: 'POST',
-      url: '/api/tasks/OC-202/force-advance',
-      payload: {
-        reason: 'move to write',
-      },
-    });
 
     subtasks.insertSubtask({
       id: 'write-202',
@@ -172,13 +165,16 @@ describe('task routes', () => {
     });
 
     expect(archonApprove.statusCode).toBe(200);
-    expect(forceAdvance.statusCode).toBe(200);
+    expect(archonApprove.json()).toMatchObject({
+      id: 'OC-202',
+      current_stage: 'write',
+    });
     expect(subtaskDone.statusCode).toBe(200);
     expect(advance.statusCode).toBe(200);
     expect(approve.statusCode).toBe(200);
     expect(approve.json()).toMatchObject({
       id: 'OC-202',
-      current_stage: 'review',
+      state: 'done',
     });
   });
 
@@ -318,7 +314,6 @@ describe('task routes', () => {
       reviewerId: 'lizeyu',
       comment: 'outline ok',
     });
-    taskService.forceAdvanceTask('OC-205', { reason: 'move to write' });
     subtasks.insertSubtask({
       id: 'write-205',
       task_id: 'OC-205',

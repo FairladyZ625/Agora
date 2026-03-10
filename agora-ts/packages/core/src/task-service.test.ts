@@ -152,10 +152,10 @@ describe('task service', () => {
       reviewerId: 'lizeyu',
       comment: 'outline ok',
     });
-    expect(outlineApproved.id).toBe('OC-102');
-
-    const forced = service.forceAdvanceTask('OC-102', { reason: 'skip outline wait' });
-    expect(forced.current_stage).toBe('write');
+    expect(outlineApproved).toMatchObject({
+      id: 'OC-102',
+      current_stage: 'write',
+    });
 
     subtasks.insertSubtask({
       id: 'write-doc',
@@ -205,7 +205,11 @@ describe('task service', () => {
     });
     const status = service.getTaskStatus('OC-102');
 
-    expect(approved.id).toBe('OC-102');
+    expect(approved).toMatchObject({
+      id: 'OC-102',
+      state: 'done',
+      current_stage: 'review',
+    });
     expect(status.subtasks).toMatchObject([
       {
         id: 'write-doc',
@@ -222,7 +226,7 @@ describe('task service', () => {
       expect.arrayContaining([
         'gate_passed',
         'archon_approved',
-        'force_advance',
+        'stage_advanced',
         'subtask_done',
         'gate_failed',
         'stage_rewound',
@@ -230,6 +234,37 @@ describe('task service', () => {
         'gate_passed',
       ]),
     );
+  });
+
+  it('auto-advances archon review stages and blocks repeated approval on the next gate', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-102A',
+    });
+
+    service.createTask({
+      title: 'coding review auto advance',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    const approved = service.archonApproveTask('OC-102A', {
+      reviewerId: 'lizeyu',
+      comment: 'go build',
+    });
+
+    expect(approved).toMatchObject({
+      id: 'OC-102A',
+      current_stage: 'develop',
+    });
+    expect(() => service.archonApproveTask('OC-102A', {
+      reviewerId: 'lizeyu',
+      comment: 'again',
+    })).toThrow('当前 Gate 类型为 all_subtasks_done，不是 archon_review。');
   });
 
   it('mirrors key task actions into task conversation when an active binding exists', () => {
@@ -262,7 +297,6 @@ describe('task service', () => {
       reviewerId: 'lizeyu',
       comment: 'outline ok',
     });
-    service.forceAdvanceTask('OC-103', { reason: 'skip outline wait' });
     subtasks.insertSubtask({
       id: 'write-doc',
       task_id: 'OC-103',
@@ -285,7 +319,7 @@ describe('task service', () => {
     expect(entries.map((entry) => entry.body)).toEqual(
       expect.arrayContaining([
         'Archon approved: outline ok',
-        'Force advanced to stage write',
+        'Advanced to stage write',
         'Subtask write-doc marked done',
         'Advanced to stage review',
         'Approval rejected: needs more structure',
@@ -972,7 +1006,6 @@ describe('task service', () => {
       reviewerId: 'lizeyu',
       comment: 'outline ok',
     });
-    service.forceAdvanceTask('OC-114', { reason: 'move to write' });
     subtasks.insertSubtask({
       id: 'write-doc',
       task_id: 'OC-114',
@@ -991,10 +1024,11 @@ describe('task service', () => {
       comment: 'ship it',
     });
 
-    const done = service.advanceTask('OC-114', { callerId: 'archon' });
     const archiveJobs = archives.listArchiveJobs({ taskId: 'OC-114' });
 
-    expect(done.state).toBe('done');
+    expect(service.getTask('OC-114')).toMatchObject({
+      state: 'done',
+    });
     expect(archiveJobs).toHaveLength(1);
     expect(archiveJobs[0]).toMatchObject({
       task_id: 'OC-114',

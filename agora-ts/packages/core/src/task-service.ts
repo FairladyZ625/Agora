@@ -286,73 +286,7 @@ export class TaskService {
       );
     }
 
-    const advance = this.stateMachine.advance(task.workflow, task.current_stage);
-    this.exitStage(taskId, advance.currentStage.id, 'advance');
-
-    if (advance.completesTask) {
-      const done = this.taskRepository.updateTask(taskId, task.version, {
-        state: TaskState.DONE,
-      });
-      this.ensureArchiveJobForTask(taskId);
-      this.flowLogRepository.insertFlowLog({
-        task_id: taskId,
-        kind: 'flow',
-        event: 'state_changed',
-        stage_id: advance.currentStage.id,
-        from_state: TaskState.ACTIVE,
-        to_state: TaskState.DONE,
-        actor: options.callerId,
-      });
-      this.mirrorConversationEntry(taskId, {
-        actor: options.callerId,
-        body: 'Task completed',
-        metadata: {
-          event: 'state_changed',
-          from_state: TaskState.ACTIVE,
-          to_state: TaskState.DONE,
-        },
-      });
-      return done;
-    }
-
-    const nextStage = advance.nextStage;
-    const updated = this.taskRepository.updateTask(taskId, task.version, {
-      current_stage: nextStage?.id ?? null,
-    });
-    if (nextStage) {
-      this.enterStage(taskId, nextStage.id);
-    }
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'stage_advanced',
-      stage_id: nextStage?.id ?? null,
-      detail: {
-        from_stage: advance.currentStage.id,
-        to_stage: nextStage?.id ?? 'done',
-      },
-      actor: options.callerId,
-    });
-    if (nextStage) {
-      this.progressLogRepository.insertProgressLog({
-        task_id: taskId,
-        kind: 'progress',
-        stage_id: nextStage.id,
-        content: `Advanced to stage ${nextStage.id}`,
-        artifacts: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
-        actor: options.callerId,
-      });
-      this.mirrorConversationEntry(taskId, {
-        actor: options.callerId,
-        body: `Advanced to stage ${nextStage.id}`,
-        metadata: {
-          event: 'stage_advanced',
-          from_stage: advance.currentStage.id,
-          to_stage: nextStage.id,
-        },
-      });
-    }
-    return updated;
+    return this.advanceSatisfiedStage(task, options.callerId);
   }
 
   approveTask(taskId: string, options: ApproveTaskOptions): StoredTask {
@@ -377,7 +311,7 @@ export class TaskService {
         gate_type: 'approval',
       },
     });
-    return task;
+    return this.advanceSatisfiedStage(task, options.approverId);
   }
 
   rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
@@ -443,7 +377,7 @@ export class TaskService {
         event: 'archon_approved',
       },
     });
-    return task;
+    return this.advanceSatisfiedStage(task, options.reviewerId);
   }
 
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
@@ -480,6 +414,82 @@ export class TaskService {
       },
     });
     return rewound;
+  }
+
+  private advanceSatisfiedStage(task: StoredTask, actor: string): StoredTask {
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
+    }
+    if (!task.current_stage) {
+      throw new Error(`Task ${task.id} has no current_stage set`);
+    }
+    const advance = this.stateMachine.advance(task.workflow, task.current_stage);
+    this.exitStage(task.id, advance.currentStage.id, 'advance');
+
+    if (advance.completesTask) {
+      const done = this.taskRepository.updateTask(task.id, task.version, {
+        state: TaskState.DONE,
+      });
+      this.ensureArchiveJobForTask(task.id);
+      this.flowLogRepository.insertFlowLog({
+        task_id: task.id,
+        kind: 'flow',
+        event: 'state_changed',
+        stage_id: advance.currentStage.id,
+        from_state: TaskState.ACTIVE,
+        to_state: TaskState.DONE,
+        actor,
+      });
+      this.mirrorConversationEntry(task.id, {
+        actor,
+        body: 'Task completed',
+        metadata: {
+          event: 'state_changed',
+          from_state: TaskState.ACTIVE,
+          to_state: TaskState.DONE,
+        },
+      });
+      return done;
+    }
+
+    const nextStage = advance.nextStage;
+    const updated = this.taskRepository.updateTask(task.id, task.version, {
+      current_stage: nextStage?.id ?? null,
+    });
+    if (nextStage) {
+      this.enterStage(task.id, nextStage.id);
+    }
+    this.flowLogRepository.insertFlowLog({
+      task_id: task.id,
+      kind: 'flow',
+      event: 'stage_advanced',
+      stage_id: nextStage?.id ?? null,
+      detail: {
+        from_stage: advance.currentStage.id,
+        to_stage: nextStage?.id ?? 'done',
+      },
+      actor,
+    });
+    if (nextStage) {
+      this.progressLogRepository.insertProgressLog({
+        task_id: task.id,
+        kind: 'progress',
+        stage_id: nextStage.id,
+        content: `Advanced to stage ${nextStage.id}`,
+        artifacts: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
+        actor,
+      });
+      this.mirrorConversationEntry(task.id, {
+        actor,
+        body: `Advanced to stage ${nextStage.id}`,
+        metadata: {
+          event: 'stage_advanced',
+          from_stage: advance.currentStage.id,
+          to_stage: nextStage.id,
+        },
+      });
+    }
+    return updated;
   }
 
   completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {

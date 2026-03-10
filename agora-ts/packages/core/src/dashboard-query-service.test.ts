@@ -363,7 +363,6 @@ describe('dashboard query service', () => {
       reviewerId: 'lizeyu',
       comment: 'outline ok',
     });
-    service.forceAdvanceTask('OC-402', { reason: 'move to write' });
     subtasks.insertSubtask({
       id: 'write-doc',
       task_id: 'OC-402',
@@ -381,7 +380,6 @@ describe('dashboard query service', () => {
       approverId: 'gpt52',
       comment: 'ship it',
     });
-    service.advanceTask('OC-402', { callerId: 'archon' });
 
     const jobs = queries.listArchiveJobs({ taskId: 'OC-402' });
 
