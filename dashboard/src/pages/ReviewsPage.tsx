@@ -6,7 +6,6 @@ import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { useReviewsPageCopy } from '@/lib/dashboardCopy';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTaskStore } from '@/stores/taskStore';
-import { ControlGlass } from '@/components/ui/ControlGlass';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
@@ -170,27 +169,25 @@ export function ReviewsPage() {
 
   return (
     <div className="workspace-page workspace-page--locked">
-      <section className="surface-panel surface-panel--workspace workbench-shell">
-        <div className="workbench-header">
-          <div className="workbench-header__top">
-            <div className="space-y-3">
-              <p className="page-kicker">{reviewsPageCopy.kicker}</p>
-              <h2 className="page-title">{reviewsPageCopy.workbenchTitle}</h2>
-              <p className="page-summary">{reviewsPageCopy.workbenchSummary}</p>
+      <section className="surface-panel surface-panel--workspace review-canvas">
+        <div className="review-canvas__masthead">
+          <div className="space-y-3">
+            <p className="page-kicker">{reviewsPageCopy.kicker}</p>
+            <h2 className="page-title">{reviewsPageCopy.workbenchTitle}</h2>
+            <p className="page-summary">{reviewsPageCopy.workbenchSummary}</p>
+          </div>
+          <div className="review-canvas__signals">
+            <div className="inline-stat">
+              <span className="inline-stat__label">{reviewsPageCopy.metricLabels.queue}</span>
+              <span className="inline-stat__value">{filteredQueue.length}</span>
             </div>
-            <div className="workbench-hero__stats">
-              <div className="inline-stat">
-                <span className="inline-stat__label">{reviewsPageCopy.metricLabels.queue}</span>
-                <span className="inline-stat__value">{filteredQueue.length}</span>
-              </div>
-              <div className="inline-stat">
-                <span className="inline-stat__label">{reviewsPageCopy.metricLabels.highestRisk}</span>
-                <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'high') ? reviewsPageCopy.metricValues.highestRisk : reviewsPageCopy.metricValues.normal}</span>
-              </div>
-              <div className="inline-stat">
-                <span className="inline-stat__label">{reviewsPageCopy.metricLabels.defaultAction}</span>
-                <span className="inline-stat__value">{reviewsPageCopy.metricValues.defaultAction}</span>
-              </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{reviewsPageCopy.metricLabels.highestRisk}</span>
+              <span className="inline-stat__value">{filteredQueue.some((item) => item.priority === 'high') ? reviewsPageCopy.metricValues.highestRisk : reviewsPageCopy.metricValues.normal}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{reviewsPageCopy.metricLabels.defaultAction}</span>
+              <span className="inline-stat__value">{reviewsPageCopy.metricValues.defaultAction}</span>
             </div>
           </div>
         </div>
@@ -199,61 +196,9 @@ export function ReviewsPage() {
           <div className="inline-alert inline-alert--danger">{error}</div>
         ) : null}
 
-        <div className="workbench-toolbar">
-          <div className="workbench-toolbar__actions">
-            <div className="workbench-toolbar__filter-anchor">
-              <ControlGlass className="glass-control" density="flush" radius="lg">
-                <button
-                  type="button"
-                  className="glass-control__button"
-                  onClick={() => setFilterOpen((current) => !current)}
-                >
-                  <Filter size={14} />
-                  {reviewsPageCopy.filterAction}
-                  {activeFilterCount > 0 ? (
-                    <span className="status-pill status-pill--info">{activeFilterCount}</span>
-                  ) : null}
-                </button>
-              </ControlGlass>
-
-              {filterOpen ? (
-                <WorkbenchFilterPopover
-                  title={reviewsPageCopy.filterAction}
-                  emptyLabel={reviewsPageCopy.emptySummary}
-                  sections={reviewSections}
-                  onClear={clearFilters}
-                  onClose={() => setFilterOpen(false)}
-                  footer={
-                    <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
-                      {reviewsPageCopy.applyFiltersAction}
-                    </button>
-                  }
-                />
-              ) : null}
-            </div>
-
-            {queueScopes.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setScope((current) => (current === item.value ? 'all' : item.value))}
-                className={scope === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
-              >
-                {item.label}
-              </button>
-            ))}
-
-            {activeFilterCount > 0 ? (
-              <span className="topbar-chip">
-                {reviewsPageCopy.activeFilterPrefix} {activeFilterCount}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="workbench-grid">
-          <section className="workbench-pane">
-            <div className="section-title-row">
+        <div className="review-canvas__body">
+          <section className="review-pane review-pane--queue">
+            <div className="review-pane__header">
               <div>
                 <p className="page-kicker">{reviewsPageCopy.queueKicker}</p>
                 <h3 className="section-title">{reviewsPageCopy.queueTitle}</h3>
@@ -264,7 +209,55 @@ export function ReviewsPage() {
               </span>
             </div>
 
-            <div className="workbench-scroll workbench-scroll--list">
+            <div className="review-canvas__filters">
+              <div className="workbench-toolbar__filter-anchor">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => setFilterOpen((current) => !current)}
+                >
+                  <Filter size={14} />
+                  {reviewsPageCopy.filterAction}
+                  {activeFilterCount > 0 ? (
+                    <span className="status-pill status-pill--info">{activeFilterCount}</span>
+                  ) : null}
+                </button>
+
+                {filterOpen ? (
+                  <WorkbenchFilterPopover
+                    title={reviewsPageCopy.filterAction}
+                    emptyLabel={reviewsPageCopy.emptySummary}
+                    sections={reviewSections}
+                    onClear={clearFilters}
+                    onClose={() => setFilterOpen(false)}
+                    footer={
+                      <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
+                        {reviewsPageCopy.applyFiltersAction}
+                      </button>
+                    }
+                  />
+                ) : null}
+              </div>
+
+              {queueScopes.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setScope((current) => (current === item.value ? 'all' : item.value))}
+                  className={scope === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                >
+                  {item.label}
+                </button>
+              ))}
+
+              {activeFilterCount > 0 ? (
+                <span className="topbar-chip">
+                  {reviewsPageCopy.activeFilterPrefix} {activeFilterCount}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="workbench-scroll workbench-scroll--list review-pane__scroll">
               <div className="review-table review-table--dense">
                 <div className="review-table__head" role="presentation">
                   <span>{reviewsPageCopy.tableHeaders.task}</span>
@@ -304,10 +297,10 @@ export function ReviewsPage() {
             </div>
           </section>
 
-          <aside className="workbench-pane workbench-pane--inspector">
+          <aside className="review-pane review-pane--inspector">
             {selected ? (
-              <div className="space-y-5">
-                <div className="section-title-row">
+              <div className="review-inspector__stack">
+                <div className="review-pane__header review-pane__header--inspector">
                   <div>
                     <p className="page-kicker">{reviewsPageCopy.workspaceKicker}</p>
                     <h3 className="section-title">{reviewsPageCopy.workspaceTitle}</h3>
@@ -328,20 +321,22 @@ export function ReviewsPage() {
                   </p>
                 </div>
 
-                <div className="grid gap-3">
-                  <div className="detail-card">
-                    <ShieldAlert size={16} className="detail-card__icon" />
-                    <span className="detail-card__label">{reviewsPageCopy.gateLabel}</span>
-                    <strong className="detail-card__value">{selected.gate}</strong>
-                  </div>
-                  <div className="detail-card">
-                    <CheckCircle2 size={16} className="detail-card__icon" />
-                    <span className="detail-card__label">{reviewsPageCopy.impactLabel}</span>
-                    <strong className="detail-card__value">{selected.impact}</strong>
+                <div className="review-inspector__section">
+                  <div className="review-inspector__facts">
+                    <div className="detail-card">
+                      <ShieldAlert size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{reviewsPageCopy.gateLabel}</span>
+                      <strong className="detail-card__value">{selected.gate}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <CheckCircle2 size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{reviewsPageCopy.impactLabel}</span>
+                      <strong className="detail-card__value">{selected.impact}</strong>
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="review-inspector__section">
                   <label htmlFor="decision-note" className="type-label-sm">
                     {reviewsPageCopy.noteLabel}
                   </label>
@@ -354,29 +349,32 @@ export function ReviewsPage() {
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
-                    <XCircle size={16} />
-                    {reviewsPageCopy.rejectAction}
-                  </button>
-                  <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
-                    <CheckCircle2 size={16} />
-                    {reviewsPageCopy.approveAction}
-                  </button>
+                <div className="review-inspector__section">
+                  <div className="review-inspector__actions">
+                    <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
+                      <XCircle size={16} />
+                      {reviewsPageCopy.rejectAction}
+                    </button>
+                    <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
+                      <CheckCircle2 size={16} />
+                      {reviewsPageCopy.approveAction}
+                    </button>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="button-primary w-full justify-center"
-                  onClick={() => navigate(`/reviews/${selected.id}`)}
-                >
-                  <ArrowRight size={16} />
-                  {reviewsPageCopy.detailAction}
-                </button>
-
-                <p className="type-text-xs">
-                  {reviewsPageCopy.liveApiNotice}
-                </p>
+                <div className="review-inspector__section review-inspector__section--meta">
+                  <button
+                    type="button"
+                    className="button-primary w-full justify-center"
+                    onClick={() => navigate(`/reviews/${selected.id}`)}
+                  >
+                    <ArrowRight size={16} />
+                    {reviewsPageCopy.detailAction}
+                  </button>
+                  <p className="type-text-xs">
+                    {reviewsPageCopy.liveApiNotice}
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="empty-state">
