@@ -30,6 +30,7 @@ export const scenarioNames = [
   'craftsman-callback-notify-outbox',
   'runtime-session-binding',
   'task-conversation-ingest',
+  'task-action-conversation-mirror',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -107,6 +108,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runRuntimeSessionBindingScenario(runtime);
     case 'task-conversation-ingest':
       return runTaskConversationIngestScenario(runtime);
+    case 'task-action-conversation-mirror':
+      return runTaskActionConversationMirrorScenario(runtime);
   }
 }
 
@@ -1148,6 +1151,52 @@ function runTaskConversationIngestScenario(runtime: TestRuntime): ScenarioResult
   }
 
   return buildScenarioResult(runtime, 'task-conversation-ingest', task.id, {
+    conversationBodies: entries.map((entry) => entry.body),
+  });
+}
+
+function runTaskActionConversationMirrorScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Task action conversation mirror scenario',
+    type: 'document',
+    creator: 'archon',
+    description: 'mirror core task actions into task conversation',
+    priority: 'normal',
+  });
+
+  runtime.taskContextBindingService.createBinding({
+    task_id: task.id,
+    im_provider: 'discord',
+    thread_ref: 'scenario-actions-thread',
+  });
+
+  runtime.taskService.archonApproveTask(task.id, {
+    reviewerId: 'lizeyu',
+    comment: 'outline ok',
+  });
+  runtime.taskService.forceAdvanceTask(task.id, { reason: 'skip outline wait' });
+
+  const subtasks = new SubtaskRepository(runtime.db);
+  subtasks.insertSubtask({
+    id: 'write-doc',
+    task_id: task.id,
+    stage_id: 'write',
+    title: '写正文',
+    assignee: 'glm5',
+  });
+  runtime.taskService.completeSubtask(task.id, {
+    subtaskId: 'write-doc',
+    callerId: 'glm5',
+    output: '初稿完成',
+  });
+  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
+  runtime.taskService.rejectTask(task.id, {
+    rejectorId: 'gpt52',
+    reason: 'needs more structure',
+  });
+
+  const entries = new TaskConversationRepository(runtime.db).listByTask(task.id);
+  return buildScenarioResult(runtime, 'task-action-conversation-mirror', task.id, {
     conversationBodies: entries.map((entry) => entry.body),
   });
 }

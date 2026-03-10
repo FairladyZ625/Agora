@@ -36,6 +36,7 @@ describe('agora-ts testing scenarios', () => {
       'craftsman-callback-notify-outbox',
       'runtime-session-binding',
       'task-conversation-ingest',
+      'task-action-conversation-mirror',
     ]);
   });
 
@@ -497,5 +498,22 @@ describe('agora-ts testing scenarios', () => {
 
     expect(result.name).toBe('task-conversation-ingest');
     expect(result.conversationBodies).toEqual(['message via thread', 'message via conversation']);
+  });
+
+  it('runs a task action conversation mirror scenario and records core action entries', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'task-action-conversation-mirror');
+
+    expect(result.name).toBe('task-action-conversation-mirror');
+    expect(result.conversationBodies).toEqual(
+      expect.arrayContaining([
+        'Archon approved: outline ok',
+        'Force advanced to stage write',
+        'Subtask write-doc marked done',
+        'Advanced to stage review',
+        'Approval rejected: needs more structure',
+      ]),
+    );
   });
 });

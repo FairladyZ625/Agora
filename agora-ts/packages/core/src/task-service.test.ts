@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, TaskContextBindingRepository } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { TaskService } from './task-service.js';
@@ -228,6 +228,77 @@ describe('task service', () => {
         'stage_rewound',
         'rejected',
         'gate_passed',
+      ]),
+    );
+  });
+
+  it('mirrors key task actions into task conversation when an active binding exists', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-103',
+    });
+    const bindings = new TaskContextBindingRepository(db);
+    const conversations = new TaskConversationRepository(db);
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'mirror task actions',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.insert({
+      id: 'bind-103',
+      task_id: 'OC-103',
+      im_provider: 'discord',
+      thread_ref: 'thread-103',
+      status: 'active',
+    });
+
+    service.archonApproveTask('OC-103', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    service.forceAdvanceTask('OC-103', { reason: 'skip outline wait' });
+    subtasks.insertSubtask({
+      id: 'write-doc',
+      task_id: 'OC-103',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+    service.completeSubtask('OC-103', {
+      subtaskId: 'write-doc',
+      callerId: 'glm5',
+      output: '初稿完成',
+    });
+    service.advanceTask('OC-103', { callerId: 'archon' });
+    service.rejectTask('OC-103', {
+      rejectorId: 'gpt52',
+      reason: 'needs more structure',
+    });
+
+    const entries = conversations.listByTask('OC-103');
+    expect(entries.map((entry) => entry.body)).toEqual(
+      expect.arrayContaining([
+        'Archon approved: outline ok',
+        'Force advanced to stage write',
+        'Subtask write-doc marked done',
+        'Advanced to stage review',
+        'Approval rejected: needs more structure',
+      ]),
+    );
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          binding_id: 'bind-103',
+          provider: 'discord',
+          direction: 'system',
+          author_kind: 'system',
+        }),
       ]),
     );
   });

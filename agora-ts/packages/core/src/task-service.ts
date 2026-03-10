@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,8 @@ import {
   FlowLogRepository,
   ProgressLogRepository,
   SubtaskRepository,
+  TaskContextBindingRepository,
+  TaskConversationRepository,
   TaskRepository,
   TodoRepository,
   type AgoraDatabase,
@@ -122,6 +125,8 @@ export class TaskService {
   private readonly flowLogRepository: FlowLogRepository;
   private readonly progressLogRepository: ProgressLogRepository;
   private readonly subtaskRepository: SubtaskRepository;
+  private readonly taskContextBindingRepository: TaskContextBindingRepository;
+  private readonly taskConversationRepository: TaskConversationRepository;
   private readonly todoRepository: TodoRepository;
   private readonly archiveJobRepository: ArchiveJobRepository;
   private readonly stateMachine: StateMachine;
@@ -145,6 +150,8 @@ export class TaskService {
     this.flowLogRepository = new FlowLogRepository(db);
     this.progressLogRepository = new ProgressLogRepository(db);
     this.subtaskRepository = new SubtaskRepository(db);
+    this.taskContextBindingRepository = new TaskContextBindingRepository(db);
+    this.taskConversationRepository = new TaskConversationRepository(db);
     this.todoRepository = new TodoRepository(db);
     this.archiveJobRepository = new ArchiveJobRepository(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
@@ -296,6 +303,15 @@ export class TaskService {
         to_state: TaskState.DONE,
         actor: options.callerId,
       });
+      this.mirrorConversationEntry(taskId, {
+        actor: options.callerId,
+        body: 'Task completed',
+        metadata: {
+          event: 'state_changed',
+          from_state: TaskState.ACTIVE,
+          to_state: TaskState.DONE,
+        },
+      });
       return done;
     }
 
@@ -326,6 +342,15 @@ export class TaskService {
         artifacts: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
         actor: options.callerId,
       });
+      this.mirrorConversationEntry(taskId, {
+        actor: options.callerId,
+        body: `Advanced to stage ${nextStage.id}`,
+        metadata: {
+          event: 'stage_advanced',
+          from_stage: advance.currentStage.id,
+          to_stage: nextStage.id,
+        },
+      });
     }
     return updated;
   }
@@ -344,6 +369,14 @@ export class TaskService {
       detail: { gate_type: 'approval', passed: true, comment: options.comment },
       actor: options.approverId,
     });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.approverId,
+      body: options.comment ? `Approval passed: ${options.comment}` : 'Approval passed',
+      metadata: {
+        event: 'gate_passed',
+        gate_type: 'approval',
+      },
+    });
     return task;
   }
 
@@ -358,6 +391,14 @@ export class TaskService {
       stage_id: stage.id,
       detail: { gate_type: 'approval', passed: false, reason: options.reason },
       actor: options.rejectorId,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.rejectorId,
+      body: `Approval rejected: ${options.reason}`,
+      metadata: {
+        event: 'gate_failed',
+        gate_type: 'approval',
+      },
     });
     const rewound = this.rewindRejectedStage(task, stage.id, 'rejected', options.rejectorId, options.reason);
     this.flowLogRepository.insertFlowLog({
@@ -395,6 +436,13 @@ export class TaskService {
       detail: { decision: 'approved', comment: options.comment ?? '' },
       actor: options.reviewerId,
     });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.reviewerId,
+      body: options.comment ? `Archon approved: ${options.comment}` : 'Archon approved',
+      metadata: {
+        event: 'archon_approved',
+      },
+    });
     return task;
   }
 
@@ -424,6 +472,13 @@ export class TaskService {
       },
       actor: options.reviewerId,
     });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.reviewerId,
+      body: options.reason ? `Archon rejected: ${options.reason}` : 'Archon rejected',
+      metadata: {
+        event: 'archon_rejected',
+      },
+    });
     return rewound;
   }
 
@@ -448,6 +503,14 @@ export class TaskService {
       stage_id: subtask.stage_id,
       detail: { subtask_id: options.subtaskId },
       actor: options.callerId,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.callerId,
+      body: `Subtask ${options.subtaskId} marked done`,
+      metadata: {
+        event: 'subtask_done',
+        subtask_id: options.subtaskId,
+      },
     });
     return task;
   }
@@ -525,6 +588,14 @@ export class TaskService {
         to_state: TaskState.DONE,
         actor: 'archon',
       });
+      this.mirrorConversationEntry(taskId, {
+        actor: 'archon',
+        body: 'Force advanced task to done',
+        metadata: {
+          event: 'force_advance',
+          to_state: TaskState.DONE,
+        },
+      });
       return done;
     }
 
@@ -541,6 +612,14 @@ export class TaskService {
         stage_id: nextStage.id,
         detail: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
         actor: 'archon',
+      });
+      this.mirrorConversationEntry(taskId, {
+        actor: 'archon',
+        body: `Force advanced to stage ${nextStage.id}`,
+        metadata: {
+          event: 'force_advance',
+          to_stage: nextStage.id,
+        },
       });
     }
     return updated;
@@ -562,6 +641,16 @@ export class TaskService {
         total: quorum.total,
       },
       actor: options.voterId,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.voterId,
+      body: `Quorum vote ${options.vote} (${quorum.approved}/${quorum.total})`,
+      metadata: {
+        event: 'quorum_vote',
+        vote: options.vote,
+        approved: quorum.approved,
+        total: quorum.total,
+      },
     });
     return {
       ...task,
@@ -1152,6 +1241,32 @@ export class TaskService {
       return 'unblocked';
     }
     return null;
+  }
+
+  private mirrorConversationEntry(taskId: string, input: {
+    actor: string | null;
+    body: string;
+    metadata?: Record<string, unknown>;
+    occurredAt?: string;
+  }) {
+    const binding = this.taskContextBindingRepository.getActiveByTask(taskId);
+    if (!binding) {
+      return;
+    }
+    this.taskConversationRepository.insert({
+      id: randomUUID(),
+      task_id: taskId,
+      binding_id: binding.id,
+      provider: binding.im_provider,
+      direction: 'system',
+      author_kind: 'system',
+      author_ref: input.actor,
+      display_name: input.actor,
+      body: input.body,
+      body_format: 'plain_text',
+      occurred_at: input.occurredAt ?? new Date().toISOString(),
+      metadata: input.metadata ?? null,
+    });
   }
 
   private enterStage(taskId: string, stageId: string) {
