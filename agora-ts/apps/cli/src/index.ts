@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Command } from 'commander';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
