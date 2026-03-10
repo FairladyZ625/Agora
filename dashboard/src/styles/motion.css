@@ -5,6 +5,33 @@
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
 
+.signal-pulse {
+  animation: signal-pulse var(--motion-pulse-duration) ease-in-out infinite;
+}
+
+.signal-scan {
+  position: relative;
+  overflow: hidden;
+}
+
+.signal-scan::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--signal-scan-sheen);
+  transform: translateX(-120%);
+  animation: signal-scan var(--motion-scan-duration) ease-in-out infinite;
+  pointer-events: none;
+}
+
+.flow-shift {
+  animation: flow-shift var(--motion-flow-duration) linear infinite;
+}
+
+.terminal-entry {
+  animation: terminal-entry var(--motion-terminal-duration) ease both;
+}
+
 .skeleton--text {
   height: 14px;
   width: 60%;
@@ -28,6 +55,51 @@
 
   50% {
     opacity: 0.7;
+  }
+}
+
+@keyframes signal-pulse {
+  0%,
+  100% {
+    opacity: 0.62;
+    box-shadow: none;
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: var(--signal-active-glow);
+  }
+}
+
+@keyframes signal-scan {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes terminal-entry {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flow-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 100% 50%;
   }
 }
 

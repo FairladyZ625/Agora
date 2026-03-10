@@ -246,6 +246,11 @@
   font-weight: 600;
 }
 
+.topbar-chip--status {
+  border-color: var(--signal-line);
+  background: var(--surface-glass-authority);
+}
+
 
 .settings-form-grid {
   display: grid;
@@ -441,4 +446,3 @@
 .toggle--active .toggle__knob {
   transform: translateX(20px);
 }
-

@@ -83,11 +83,12 @@ describe('dashboard visual rescue target structure', () => {
   it('adds a branded home hero that explains the Agora operating model', () => {
     renderWithRouter(<DashboardHome />);
 
-    expect(
-      screen.getByText('Agents debate. Humans decide. Machines execute.'),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /查看任务流/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /进入裁决中心/i })).toBeInTheDocument();
+    expect(screen.getByText('AGORA_OS')).toBeInTheDocument();
+    expect(screen.getByText('I. THE AGORA')).toBeInTheDocument();
+    expect(screen.getByText('II. THE ARCHON')).toBeInTheDocument();
+    expect(screen.getByText('III. EXECUTION PIPELINE')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /打开任务总线/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /进入裁决台/i })).toBeInTheDocument();
   });
 
   it('turns the app shell into a contextual operational rail', () => {
@@ -98,7 +99,8 @@ describe('dashboard visual rescue target structure', () => {
     );
 
     expect(screen.getByRole('img', { name: 'Agora 指挥广场' })).toBeInTheDocument();
-    expect(screen.getByText('Agora')).toBeInTheDocument();
+    expect(screen.getAllByText('AGORA_OS').length).toBeGreaterThan(0);
+    expect(screen.getByText('系统时钟')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重播 Agora 入场动效' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '打开导航' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '关闭侧边栏' })).not.toBeInTheDocument();
@@ -160,8 +162,9 @@ describe('dashboard visual rescue target structure', () => {
   it('uses formalized product copy on the home page', () => {
     renderWithRouter(<DashboardHome />);
 
-    expect(screen.getByText('Agora / 多 Agent 指挥广场')).toBeInTheDocument();
-    expect(screen.getByText('系统脉冲')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /进入裁决中心/i })).toBeInTheDocument();
+    expect(screen.getByText(/多 Agent 指挥广场/)).toBeInTheDocument();
+    expect(screen.getByText('SYSTEM ORCHESTRATION INTERFACE')).toBeInTheDocument();
+    expect(screen.getByText('COMMAND AUTHORITY')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /查看 Agent 监测/i })).toBeInTheDocument();
   });
 });

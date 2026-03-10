@@ -127,30 +127,42 @@ describe('dashboard home live metrics', () => {
     vi.useRealTimers();
   });
 
-  it('derives homepage metrics and pulse stats from live task data', () => {
+  it('derives homepage authority stats from live task data', () => {
     render(
       <MemoryRouter>
         <DashboardHome />
       </MemoryRouter>,
     );
 
-    const participantsCard = screen.getByText('当前参与 Agent').closest('.metric-card');
+    const participantsCard = screen.getAllByText('当前参与 Agent')[0]?.closest('.metric-card');
     expect(participantsCard).not.toBeNull();
     expect(within(participantsCard as HTMLElement).getByText('3')).toBeInTheDocument();
 
-    const cadenceCard = screen.getByText('最近完成节点').closest('.metric-card');
+    const cadenceCard = screen
+      .getAllByText('最近完成节点')
+      .map((node) => node.closest('.metric-card'))
+      .find(Boolean);
     expect(cadenceCard).not.toBeNull();
     expect(within(cadenceCard as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
 
-    const runningPulse = screen.getByText('运行中').closest('.inline-stat');
+    const runningPulse = screen
+      .getAllByText('运行中的编排')
+      .map((node) => node.closest('.inline-stat'))
+      .find(Boolean);
     expect(runningPulse).not.toBeNull();
     expect(within(runningPulse as HTMLElement).getByText('1')).toBeInTheDocument();
 
-    const waitingPulse = screen.getByText('待裁决').closest('.inline-stat');
+    const waitingPulse = screen
+      .getAllByText('待裁决事项')
+      .map((node) => node.closest('.inline-stat'))
+      .find(Boolean);
     expect(waitingPulse).not.toBeNull();
     expect(within(waitingPulse as HTMLElement).getByText('1')).toBeInTheDocument();
 
-    const completedPulse = screen.getByText('最近完成').closest('.inline-stat');
+    const completedPulse = screen
+      .getAllByText('最近完成节点')
+      .map((node) => node.closest('.inline-stat'))
+      .find(Boolean);
     expect(completedPulse).not.toBeNull();
     expect(within(completedPulse as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
   });

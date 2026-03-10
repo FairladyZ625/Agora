@@ -1,8 +1,11 @@
 .app-topbar {
   margin: var(--shell-padding) auto 0;
   width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
-  border-radius: var(--radius-2xl);
+  border-radius: 28px;
   box-shadow: var(--topbar-shell-shadow);
+  border: 1px solid var(--color-border);
+  background: var(--surface-glass-authority);
+  backdrop-filter: blur(18px);
 }
 
 .icon-button {
@@ -12,7 +15,7 @@
   width: 36px;
   height: 36px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -26,9 +29,10 @@
 .app-sidebar {
   overflow: hidden;
   border: 1px solid var(--sidebar-shell-border);
-  border-radius: var(--radius-3xl);
+  border-radius: 28px;
   background: var(--sidebar-shell-bg);
   box-shadow: var(--sidebar-shell-shadow);
+  backdrop-filter: var(--sidebar-backdrop);
 }
 
 .app-sidebar--collapsed {
@@ -40,7 +44,7 @@
 }
 
 .nav-section-label {
-  margin: 0 10px 12px;
+  margin: 0;
   font-size: var(--font-size-kicker);
   font-weight: 600;
   text-transform: uppercase;
@@ -48,12 +52,22 @@
   color: var(--color-text-tertiary);
 }
 
+.nav-section-block {
+  margin: 0 10px 14px;
+}
+
+.nav-section-copy {
+  margin-top: 6px;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-secondary);
+}
+
 .nav-link {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   border: 1px solid transparent;
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   padding: 12px 14px;
   color: var(--color-text-secondary);
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
@@ -68,7 +82,7 @@
   color: var(--color-text-primary);
   background: var(--nav-link-active-bg);
   border-color: var(--nav-link-active-border);
-  box-shadow: var(--nav-link-active-shadow);
+  box-shadow: var(--signal-active-glow);
 }
 
 .nav-meta {
@@ -79,10 +93,26 @@
 }
 
 .sidebar-brand-title {
-  font-size: 28px;
+  font-family: var(--font-brand);
+  font-size: 26px;
   font-weight: 600;
-  letter-spacing: -0.03em;
-  color: var(--color-text-primary);
+  letter-spacing: 0.01em;
+  color: var(--color-primary);
+}
+
+.sidebar-brand-panel {
+  flex: 1;
+  text-align: center;
+  padding-inline: 36px 20px;
+}
+
+.sidebar-brand-signature {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
 }
 
 .sidebar-nav-title {
@@ -130,29 +160,22 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
-  background: var(--brand-mark-bg);
-  box-shadow: var(--shadow-brand);
+  border-radius: 0;
+  border: 2px solid var(--color-primary);
+  background: var(--color-bg-elevated);
+  box-shadow: none;
 }
 
-.brand-mark__frame {
-  fill: var(--brand-mark-frame-fill);
-  stroke: var(--brand-mark-frame-stroke);
+.brand-mark__letter {
+  font-family: var(--font-brand);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1;
 }
 
-.brand-mark__line,
-.brand-mark__spine {
-  stroke: var(--color-primary);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
-
-.brand-mark__line--muted {
-  opacity: 0.65;
-}
-
-.brand-mark__node {
-  fill: var(--color-primary);
+.brand-mark__letter--compact {
+  font-size: 20px;
 }
 
 .input-shell,
@@ -185,4 +208,3 @@
   text-transform: uppercase;
   color: var(--color-text-tertiary);
 }
-

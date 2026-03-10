@@ -161,7 +161,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - Tailwind CSS 4.x（样式 + CSS 变量主题）
 - Zustand 5.x（状态管理）
 - React Router 7.x + Lucide React（图标）
-- 设计基调：**沉稳克制高信息密度**，参考 Linear/Raycast，**禁止紫色**
+- 设计基调：**白昼中枢式高信息密度系统界面**，强调 OS / console / command authority / telemetry 语法，**禁止紫色**
 - Light / Dark / System 三态主题
 - 详细规范：`docs/11-REFERENCE/dashboard-frontend-standard.md`
 - Dashboard 前端强制治理规则：
@@ -175,6 +175,8 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 运行时禁止 silent mock fallback；请求失败必须显示真实错误
   - 新增接口接入前必须先写 mapper/store 测试，再写页面接线
   - Vite `/api` 代理与本地联调默认从根目录 `.env` 的 `VITE_API_BASE_URL` 读取
+  - 玻璃只能作为 authority / focus / overlay 增强层，不能重新退回“材质主导”视觉
+  - 动态必须表达真实系统状态、信号或流转，不允许装饰性动画主导
 
 ### 开发环境一键启动
 

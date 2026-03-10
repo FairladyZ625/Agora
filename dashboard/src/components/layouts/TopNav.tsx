@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Languages, Menu, Monitor, Moon, RefreshCw, Sun } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { usePageMetaCopy } from '@/lib/dashboardCopy';
+import { usePageMetaCopy, useShellCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
@@ -44,6 +45,7 @@ export function TopNav({
   const { t } = useTranslation();
   const pageMetaCopy = usePageMetaCopy();
   const { locale, setLocale } = useLocale();
+  const shellCopy = useShellCopy();
   const { mode, setMode } = useThemeStore();
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const loading = useTaskStore((state) => state.loading);
@@ -51,6 +53,7 @@ export function TopNav({
   const error = useTaskStore((state) => state.error);
   const { showMessage } = useFeedbackStore();
   const location = useLocation();
+  const [clock, setClock] = useState(() => new Date().toISOString().split('T')[1]?.replace('Z', ' UTC') ?? '');
   const themeLabels = {
     light: t('settings.appearanceLabels.light'),
     dark: t('settings.appearanceLabels.dark'),
@@ -80,6 +83,14 @@ export function TopNav({
   };
 
   const ThemeIcon = themeIcons[mode];
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setClock(new Date().toISOString().split('T')[1]?.replace('Z', ' UTC') ?? '');
+    }, 120);
+    return () => window.clearInterval(timerId);
+  }, []);
+
   const meta = (() => {
     if (location.pathname.startsWith('/tasks/new')) return pageMetaCopy['/tasks/new'];
     if (location.pathname.startsWith('/tasks')) return pageMetaCopy['/tasks'];
@@ -109,8 +120,8 @@ export function TopNav({
 
   return (
     <header className="app-topbar sticky top-0 z-20" style={{ background: 'var(--color-panel-strong)' }}>
-      <div className="app-frame flex items-center justify-between gap-4 px-4 py-4 md:px-6">
-        <div className="flex items-center gap-3">
+      <div className="app-frame app-topbar__frame px-4 py-4 md:px-6">
+        <div className="app-topbar__cluster app-topbar__cluster--brand">
           {isMobile ? (
             <IconButton onClick={onOpenMobileNav} label={t('common.openNavigation')}>
               <Menu size={18} />
@@ -118,18 +129,28 @@ export function TopNav({
           ) : (
             <BrandLogo collapsed className="topbar-brand-mark" />
           )}
-          <div className="flex items-center gap-2">
-            <h1 className="type-heading-nav">
-              {meta.title}
-            </h1>
-            <span className="topbar-chip">
+          <div className="topbar-brand-copy">
+            <div className="topbar-system-name">{shellCopy.brandSystemName}</div>
+            <div className="topbar-system-signature">{shellCopy.brandSignature}</div>
+          </div>
+        </div>
+
+        <div className="app-topbar__cluster app-topbar__cluster--manifesto">
+          {shellCopy.manifesto.map((item) => (
+            <span key={item} className="topbar-manifesto-item">
+              {item}
+            </span>
+          ))}
+        </div>
+
+        <div className="app-topbar__cluster app-topbar__cluster--controls">
+          <div className="topbar-context">
+            <div className="topbar-context__label">{meta.title}</div>
+            <span className="topbar-chip topbar-chip--status">
               <span className="status-dot status-dot--success" />
               {reviewCount > 0 ? t('common.reviewWaitingCount', { count: reviewCount }) : t('common.systemOnline')}
             </span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-4">
           <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
             <span className="status-dot status-dot--info" />
             {error
@@ -137,6 +158,10 @@ export function TopNav({
               : activeCount > 0
                 ? t('common.orchestratingCount', { count: activeCount })
                 : t('common.queueStable')}
+          </div>
+          <div className="topbar-clock-block">
+            <span className="topbar-clock-label">{shellCopy.systemClockLabel}</span>
+            <span className="topbar-clock-value">{clock}</span>
           </div>
 
           <div className="topbar-actions-group">

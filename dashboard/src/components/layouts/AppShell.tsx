@@ -39,12 +39,19 @@ export function AppShell({ children }: AppShellProps) {
           className="app-shell__footer border-t"
           style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}
         >
-          <div className="app-frame app-shell__footer-inner flex items-center justify-between px-4 py-3 type-footer-meta md:px-6">
-            <span className="flex items-center gap-2">
-              <span className="status-dot status-dot--info" />
-              {shellCopy.footerTagline}
-            </span>
-            <span className="type-footer-code">{shellCopy.footerVersion}</span>
+          <div className="app-frame app-shell__footer-inner px-4 py-3 md:px-6">
+            <div className="footer-plaque">
+              <span className="footer-plaque__label">{shellCopy.footerProjectLabel}</span>
+              <span className="footer-plaque__value">{shellCopy.footerProjectValue}</span>
+            </div>
+            <div className="footer-plaque">
+              <span className="footer-plaque__label">{shellCopy.footerRevisionLabel}</span>
+              <span className="footer-plaque__value">{shellCopy.footerRevisionValue}</span>
+            </div>
+            <div className="footer-plaque footer-plaque--status">
+              <span className="footer-plaque__label">{shellCopy.footerStatusLabel}</span>
+              <span className="footer-plaque__value footer-plaque__value--status">{shellCopy.footerStatusValue}</span>
+            </div>
           </div>
         </footer>
       </div>

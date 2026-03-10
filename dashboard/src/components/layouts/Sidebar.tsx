@@ -83,10 +83,11 @@ export function Sidebar({
             />
 
             {!collapsed && (
-              <div className="flex-1 text-center">
+              <div className="sidebar-brand-panel">
                 <h1 className="sidebar-brand-title">
-                  {shellCopy.brandName}
+                  {shellCopy.brandSystemName}
                 </h1>
+                <p className="sidebar-brand-signature">{shellCopy.brandSignature}</p>
               </div>
             )}
 
@@ -104,9 +105,12 @@ export function Sidebar({
 
           <div className="flex-1 overflow-y-auto px-3 py-5">
             {!collapsed && (
-              <p className="nav-section-label">
-                {shellCopy.workspaceLabel}
-              </p>
+              <div className="nav-section-block">
+                <p className="nav-section-label">
+                  {shellCopy.commandLabel}
+                </p>
+                <p className="nav-section-copy">{shellCopy.workspaceLabel}</p>
+              </div>
             )}
             <nav className="space-y-1.5">
               {shellCopy.navItems.map(({ to, key, label, hint }) => {
