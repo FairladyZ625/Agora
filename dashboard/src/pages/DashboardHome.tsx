@@ -1,5 +1,5 @@
-import { useEffect, useMemo, type CSSProperties } from 'react';
-import { ArrowRight, Waves } from 'lucide-react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { ArrowRight, ChevronLeft, ChevronRight, Network, ScrollText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
@@ -8,7 +8,7 @@ import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
-import type { Task } from '@/types/task';
+import type { Task, TaskStatus } from '@/types/task';
 
 function getProposalTone(state: string) {
   if (state === 'gate_waiting') {
@@ -29,17 +29,6 @@ function getProposalToneLabel(
   },
 ) {
   return toneLabels[tone];
-}
-
-function buildTerminalLines(taskIds: string[], waitingCount: number) {
-  const focusId = taskIds[0] ?? 'AG-000';
-  return [
-    `[同步] 已接入上下文 ${focusId}`,
-    '[同步] 议题拓扑已刷新。',
-    waitingCount > 0 ? '[等待] 裁决中枢需要人工判断。' : '[同步] 当前裁决队列稳定。',
-    waitingCount > 0 ? '[提示] 约束分歧仍未收敛。' : '[同步] 约束边界稳定。',
-    '[同步] 执行回路已更新。',
-  ];
 }
 
 function formatAuthorityStage(task: Task | null, fallbackStage: string) {
@@ -76,6 +65,98 @@ function formatAuthoritySummary(task: Task | null, fallbackSummary: string) {
   return summaryParts.length > 0 ? summaryParts.join(' / ') : fallbackSummary;
 }
 
+function buildExecutionLanes(status: TaskStatus | null, task: Task | null, fallbackStage: string) {
+  const subtasks = status?.subtasks ?? [];
+  if (subtasks.length === 0) {
+    if (!task) {
+      return [];
+    }
+
+    return [
+      {
+        stageId: task.current_stage ?? fallbackStage,
+        items: [
+          {
+            id: task.id,
+            title: task.title,
+            assignee: task.teamLabel,
+            status: task.state,
+          },
+        ],
+      },
+    ];
+  }
+
+  const lanes = new Map<
+    string,
+    {
+      stageId: string;
+      items: Array<{ id: string; title: string; assignee: string; status: string }>;
+    }
+  >();
+
+  subtasks.forEach((subtask) => {
+    const stageId = subtask.stage_id?.trim() || fallbackStage;
+    if (!lanes.has(stageId)) {
+      lanes.set(stageId, { stageId, items: [] });
+    }
+
+    lanes.get(stageId)?.items.push({
+      id: subtask.id,
+      title: subtask.title,
+      assignee: subtask.assignee,
+      status: subtask.status,
+    });
+  });
+
+  return [...lanes.values()];
+}
+
+function buildOperationalLines(status: TaskStatus | null, task: Task | null, fallbackStage: string) {
+  const flowEntries =
+    status?.flow_log.map((entry) => ({
+      id: `flow-${entry.id}`,
+      prefix: 'FLOW',
+      title: entry.event,
+      meta: entry.stage_id ?? fallbackStage,
+      body: entry.detail ?? entry.event,
+      createdAt: entry.created_at,
+    })) ?? [];
+
+  const progressEntries =
+    status?.progress_log.map((entry) => ({
+      id: `progress-${entry.id}`,
+      prefix: 'LOG',
+      title: entry.actor,
+      meta: entry.stage_id ?? fallbackStage,
+      body: entry.content,
+      createdAt: entry.created_at,
+    })) ?? [];
+
+  const merged = [...flowEntries, ...progressEntries].sort((left, right) => {
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+  });
+
+  if (merged.length > 0) {
+    return merged.slice(0, 8);
+  }
+
+  if (!task) {
+    return [];
+  }
+
+  return [
+    {
+      id: `task-${task.id}`,
+      prefix: 'TASK',
+      title: task.id,
+      meta: task.current_stage ?? fallbackStage,
+      body: task.description ?? task.workflowLabel,
+      createdAt: task.updated_at,
+    },
+  ];
+}
+
 export function DashboardHome() {
   const { t } = useTranslation();
   const homeCopy = useDashboardHomeCopy();
@@ -85,8 +166,11 @@ export function DashboardHome() {
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const resolveReview = useTaskStore((state) => state.resolveReview);
   const selectTask = useTaskStore((state) => state.selectTask);
+  const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [railTaskId, setRailTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchTasks();
@@ -97,28 +181,38 @@ export function DashboardHome() {
     [homeCopy.latestCompletedFallback, tasks],
   );
 
-  const proposals = homeMetrics.recentTasks.slice(0, 2);
-  const focusReview = homeMetrics.reviewItems[0] ?? null;
+  const reviewItems = homeMetrics.reviewItems;
+  const currentReviewIndex =
+    reviewItems.length === 0 ? 0 : Math.min(reviewIndex, reviewItems.length - 1);
+  const focusReview = reviewItems[currentReviewIndex] ?? null;
   const focusTask = focusReview ?? homeMetrics.recentTasks[0] ?? null;
-  const pipelineTasks = homeMetrics.recentTasks.slice(0, 8);
-  const pipelineNodes = Array.from({ length: 8 }, (_, index) => {
-    const task = pipelineTasks[index];
-    return {
-      id: `N${String(index + 1).padStart(2, '0')}`,
-      active: task ? ['in_progress', 'gate_waiting'].includes(task.state) : false,
-    };
-  });
+  const railTasks = useMemo(() => {
+    const activeTasks = homeMetrics.recentTasks.filter((task) =>
+      ['in_progress', 'gate_waiting', 'paused', 'blocked'].includes(task.state),
+    );
+    return (activeTasks.length > 0 ? activeTasks : homeMetrics.recentTasks).slice(0, 5);
+  }, [homeMetrics.recentTasks]);
   const loadPercent = homeMetrics.recentTasks.length === 0
     ? 0
     : Math.min(
         92,
         Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
       );
-  const terminalLines = buildTerminalLines(proposals.map((task) => task.id), homeMetrics.waitingCount);
   const canResolveReview = Boolean(focusReview);
   const authorityStage = formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage);
   const authorityGate = formatAuthorityGate(focusReview, homeCopy.resolutionFallbacks.gate);
   const authoritySummary = formatAuthoritySummary(focusReview, homeCopy.resolutionFallbacks.summary);
+  const selectedRailTask = railTasks.find((task) => task.id === railTaskId) ?? railTasks[0] ?? null;
+  const railStatus = selectedRailTask && selectedTaskStatus?.task.id === selectedRailTask.id ? selectedTaskStatus : null;
+  const executionLanes = buildExecutionLanes(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback);
+  const runtimeLines = buildOperationalLines(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback);
+
+  useEffect(() => {
+    if (!selectedRailTask) {
+      return;
+    }
+    void selectTask(selectedRailTask.id);
+  }, [selectTask, selectedRailTask]);
 
   const handleReviewDecision = async (decision: 'approve' | 'reject') => {
     if (!focusReview) {
@@ -148,6 +242,19 @@ export function DashboardHome() {
     }
     await selectTask(focusReview.id);
     navigate(`/reviews/${focusReview.id}`);
+  };
+
+  const shiftReview = (direction: 'previous' | 'next') => {
+    if (reviewItems.length === 0) {
+      return;
+    }
+
+    setReviewIndex(() => {
+      if (direction === 'previous') {
+        return currentReviewIndex === 0 ? reviewItems.length - 1 : currentReviewIndex - 1;
+      }
+      return currentReviewIndex === reviewItems.length - 1 ? 0 : currentReviewIndex + 1;
+    });
   };
 
   return (
@@ -187,10 +294,33 @@ export function DashboardHome() {
                 <p className="home-os__section-index">{homeCopy.sectionLabels.archon}</p>
                 <p className="page-kicker">{homeCopy.commandAuthorityLabel}</p>
               </div>
-              <span className="status-pill status-pill--info">
-                {homeMetrics.waitingCount}
-                {homeCopy.reviewCountUnit}
-              </span>
+              <div className="home-os__review-deck-controls">
+                <span className="status-pill status-pill--info">
+                  {homeMetrics.waitingCount}
+                  {homeCopy.reviewCountUnit}
+                </span>
+                <button
+                  type="button"
+                  className="home-os__deck-button"
+                  onClick={() => shiftReview('previous')}
+                  disabled={reviewItems.length <= 1}
+                  aria-label={homeCopy.reviewDeck.previous}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="home-os__deck-position">
+                  {homeCopy.reviewDeck.position} {reviewItems.length === 0 ? '0 / 0' : `${currentReviewIndex + 1} / ${reviewItems.length}`}
+                </span>
+                <button
+                  type="button"
+                  className="home-os__deck-button"
+                  onClick={() => shiftReview('next')}
+                  disabled={reviewItems.length <= 1}
+                  aria-label={homeCopy.reviewDeck.next}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
 
             <div className="home-os__authority surface-panel surface-panel--muted signal-scan">
@@ -244,6 +374,7 @@ export function DashboardHome() {
                   <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
                 </div>
               </div>
+              <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>
             </div>
           </div>
         </article>
@@ -255,36 +386,23 @@ export function DashboardHome() {
                 <p className="home-os__section-index">{homeCopy.sectionLabels.agora}</p>
                 <p className="page-kicker">{homeCopy.topologyLabel}</p>
               </div>
-              <span className="status-pill status-pill--neutral">{proposals.length}</span>
+              <span className="status-pill status-pill--neutral">{railTasks.length}</span>
             </div>
 
-            <div className="home-os__topology">
-              <div className="home-os__topology-grid">
-                <span className="home-os__node">{homeCopy.topologyNodes[0]}</span>
-                <span className="home-os__node home-os__node--active signal-pulse">{homeCopy.topologyNodes[1]}</span>
-                <span className="home-os__node">{homeCopy.topologyNodes[2]}</span>
-                <span className="home-os__beam home-os__beam--left" />
-                <span className="home-os__beam home-os__beam--right flow-shift" />
-              </div>
-              <div className="home-os__hash">
-                <span>{homeCopy.topologyHashLabel}</span>
-                <span>{homeCopy.topologyHashValue}</span>
-              </div>
-            </div>
-
-            <div className="home-os__section-divider" />
-
-            <div className="home-os__module-head">
-              <h3 className="section-title">{homeCopy.feedTitle}</h3>
-            </div>
-
-            <div className="home-os__proposal-stack">
+            <div className="home-os__task-selector">
               {loading
-                ? Array.from({ length: 2 }).map((_, index) => <Skeleton key={index} variant="card" />)
-                : proposals.map((task) => {
+                ? Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="card" />)
+                : railTasks.length === 0
+                  ? <p className="type-body-sm">{homeCopy.feedEmpty}</p>
+                  : railTasks.map((task) => {
                     const tone = getProposalTone(task.state);
                     return (
-                      <article key={task.id} className="home-os__proposal-card">
+                      <button
+                        key={task.id}
+                        type="button"
+                        className={task.id === selectedRailTask?.id ? 'home-os__task-chip home-os__task-chip--active' : 'home-os__task-chip'}
+                        onClick={() => setRailTaskId(task.id)}
+                      >
                         <div className="home-os__proposal-head">
                           <div>
                             <p className="home-os__proposal-title">{task.title}</p>
@@ -294,48 +412,88 @@ export function DashboardHome() {
                             {getProposalToneLabel(tone, homeCopy.proposalToneLabels)}
                           </span>
                         </div>
-                        <p className="type-body-sm">{task.description ?? homeCopy.emptyTaskDescription}</p>
                         <div className="home-os__proposal-meta">
-                          <span>{task.teamLabel}</span>
+                          <span>{task.stageName ?? task.current_stage ?? homeCopy.taskRailLabels.stageFallback}</span>
                           <span>{formatRelativeTimestamp(task.updated_at)}</span>
                         </div>
-                      </article>
+                      </button>
                     );
                   })}
             </div>
+
+            <div className="home-os__section-divider" />
+
+            <div className="home-os__module-head">
+              <div>
+                <h3 className="section-title">{homeCopy.taskRailLabels.selectedTask}</h3>
+                <p className="page-kicker">{selectedRailTask?.id ?? homeCopy.taskRailLabels.taskEmpty}</p>
+              </div>
+              {selectedRailTask ? <Network size={16} className="home-os__rail-icon" /> : null}
+            </div>
+
+            {selectedRailTask ? (
+              <>
+                <div className="home-os__rail-summary">
+                  <h4 className="home-os__rail-title">{selectedRailTask.title}</h4>
+                  <div className="home-os__hash">
+                    <span>{selectedRailTask.teamLabel}</span>
+                    <span>{selectedRailTask.workflowLabel}</span>
+                  </div>
+                </div>
+
+                <div className="home-os__module-head">
+                  <h3 className="section-title">{homeCopy.taskRailLabels.executionLoop}</h3>
+                </div>
+
+                <div className="home-os__dag-board">
+                  {executionLanes.map((lane) => (
+                    <div key={lane.stageId} className="home-os__dag-stage">
+                      <p className="home-os__dag-stage-label">{lane.stageId}</p>
+                      <div className="home-os__dag-stage-items">
+                        {lane.items.map((item) => (
+                          <div key={item.id} className="home-os__dag-node">
+                            <strong>{item.title}</strong>
+                            <span>{item.assignee}</span>
+                            <span className="home-os__dag-node-status">{item.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </article>
 
           <article className="home-os__rail-panel surface-panel surface-panel--workspace">
             <div className="home-os__module-head">
               <div>
                 <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                <p className="page-kicker">{homeCopy.executionLabel}</p>
+                <p className="page-kicker">{homeCopy.terminalLabel}</p>
               </div>
-              <span className="home-os__telemetry-value">{homeMetrics.participantCount}</span>
-            </div>
-
-            <div className="home-os__node-grid">
-              {pipelineNodes.map((node, index) => (
-                <div key={node.id} className={node.active ? 'home-os__pipe-node home-os__pipe-node--active signal-pulse' : 'home-os__pipe-node'}>
-                  {index < 3 ? <Waves size={12} /> : null}
-                  <span>{node.id}</span>
-                </div>
-              ))}
+              <ScrollText size={16} className="home-os__rail-icon" />
             </div>
 
             <div className="home-os__module-head">
-              <h3 className="section-title">{homeCopy.terminalLabel}</h3>
+              <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
               <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
             </div>
 
             <div className="home-os__terminal">
-              {terminalLines.length === 0 ? (
-                <p className="type-body-sm">{homeCopy.terminalEmpty}</p>
+              {runtimeLines.length === 0 ? (
+                <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
               ) : (
-                terminalLines.map((line, index) => (
-                  <div key={`${line}-${index}`} className="home-os__terminal-line terminal-entry">
+                runtimeLines.map((line, index) => (
+                  <div key={line.id} className="home-os__terminal-line terminal-entry">
                     <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
-                    <span>{line}</span>
+                    <div className="home-os__terminal-body">
+                      <div className="home-os__terminal-head">
+                        <span className="home-os__terminal-token">{line.prefix}</span>
+                        <span>{line.title}</span>
+                        <span className="home-os__terminal-meta">{line.meta}</span>
+                      </div>
+                      <span>{line.body}</span>
+                    </div>
                   </div>
                 ))
               )}
