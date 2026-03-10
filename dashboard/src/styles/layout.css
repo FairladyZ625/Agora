@@ -2,7 +2,7 @@
   position: relative;
   display: flex;
   min-height: 100vh;
-  gap: var(--shell-gap);
+  gap: var(--shell-block-gap);
   padding: var(--shell-padding);
   background: transparent;
   isolation: isolate;
@@ -34,7 +34,6 @@
 .app-shell__footer {
   margin: 0 auto var(--shell-padding);
   width: min(var(--page-max-width), calc(100% - var(--page-inline-padding)));
-  border-radius: 18px;
   box-shadow: var(--footer-shell-shadow);
 }
 
@@ -58,7 +57,7 @@ body::before {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto minmax(320px, 1fr);
   align-items: center;
-  gap: 18px;
+  gap: 24px;
 }
 
 .app-topbar__cluster {
@@ -157,7 +156,7 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 24px;
 }
 
 .footer-plaque {

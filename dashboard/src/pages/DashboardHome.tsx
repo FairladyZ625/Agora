@@ -61,28 +61,6 @@ export function DashboardHome() {
         Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
       );
   const terminalLines = buildTerminalLines(proposals.map((task) => task.id), homeMetrics.waitingCount);
-  const summaryCards = [
-    {
-      label: homeCopy.metricLabels.active,
-      value: String(homeMetrics.activeCount),
-      note: homeCopy.metricNotes.active,
-    },
-    {
-      label: homeCopy.metricLabels.waiting,
-      value: String(homeMetrics.waitingCount),
-      note: homeCopy.metricNotes.waiting,
-    },
-    {
-      label: homeCopy.metricLabels.participants,
-      value: String(homeMetrics.participantCount),
-      note: homeCopy.metricNotes.participants,
-    },
-    {
-      label: homeCopy.metricLabels.latestCompleted,
-      value: homeMetrics.latestCompletedLabel,
-      note: homeCopy.metricNotes.latestCompleted,
-    },
-  ];
 
   return (
     <div className="home-os">
@@ -256,23 +234,12 @@ export function DashboardHome() {
           </div>
 
           <div className="home-os__telemetry-strip">
-            <div className="metric-card metric-card--neutral">
-              <p className="metric-label">{homeCopy.metricLabels.participants}</p>
-              <p className="metric-value">{homeMetrics.participantCount}</p>
-              <p className="metric-note">{homeCopy.metricNotes.participants}</p>
+            <div className="home-os__telemetry-readout">
+              <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
+              <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
             </div>
           </div>
         </article>
-      </section>
-
-      <section className="home-os__summary-grid">
-        {summaryCards.map((item) => (
-          <article key={item.label} className="metric-card metric-card--neutral">
-            <p className="metric-label">{item.label}</p>
-            <p className="metric-value">{item.value}</p>
-            <p className="metric-note">{item.note}</p>
-          </article>
-        ))}
       </section>
     </div>
   );

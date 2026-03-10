@@ -134,13 +134,13 @@ describe('dashboard home live metrics', () => {
       </MemoryRouter>,
     );
 
-    const participantsCard = screen.getAllByText('当前参与 Agent')[0]?.closest('.metric-card');
+    const participantsCard = screen.getAllByText('当前参与 Agent')[0]?.closest('.home-os__telemetry-readout');
     expect(participantsCard).not.toBeNull();
     expect(within(participantsCard as HTMLElement).getByText('3')).toBeInTheDocument();
 
     const cadenceCard = screen
       .getAllByText('最近完成节点')
-      .map((node) => node.closest('.metric-card'))
+      .map((node) => node.closest('.inline-stat'))
       .find(Boolean);
     expect(cadenceCard).not.toBeNull();
     expect(within(cadenceCard as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
