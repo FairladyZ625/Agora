@@ -58,7 +58,7 @@ export interface TestRuntime {
 
 export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-runtime-'));
-  const dbPath = join(dir, 'tasks.db');
+  const dbPath = join(dir, 'agora-test.db');
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
   const sourceTemplatesDir = options.templatesDir ?? resolve(process.cwd(), 'templates');
