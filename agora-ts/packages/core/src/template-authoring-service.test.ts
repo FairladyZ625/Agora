@@ -128,6 +128,24 @@ describe('template authoring service', () => {
     }).valid).toBe(false);
   });
 
+  it('accepts template stages with reject_target backedges to earlier stages', () => {
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ templatesDir });
+
+    const result = service.validateTemplate({
+      name: '带回边模板',
+      type: 'reworkable',
+      governance: 'lean',
+      stages: [
+        { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+        { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'draft' },
+      ],
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.normalized?.stages?.[1]?.reject_target).toBe('draft');
+  });
+
   it('rejects invalid gate semantics and duplicate stage ids during authoring validation', () => {
     const templatesDir = makeTemplatesDir();
     const service = new TemplateAuthoringService({ templatesDir });

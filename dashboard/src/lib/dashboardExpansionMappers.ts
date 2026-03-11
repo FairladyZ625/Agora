@@ -23,6 +23,7 @@ import type {
   TmuxRuntimeStatus,
   Todo,
 } from '@/types/dashboard';
+import { templateDetailSchema } from '@agora-ts/contracts';
 
 function formatGovernance(value: unknown): string {
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -250,6 +251,7 @@ export function mapArchiveJobDto(dto: ApiArchiveJobDto): ArchiveJob {
     completedAt: dto.completed_at,
     payload: dto.payload,
     payloadSummary: summarizePayload(dto.payload),
+    canConfirm: dto.status === 'pending',
     canRetry: dto.status === 'failed',
   };
 }
@@ -272,11 +274,21 @@ function mapTemplateStage(stage: NonNullable<ApiTemplateDetailDto['stages']>[num
     name: stage.name ?? stage.id,
     mode: stage.mode ?? 'custom',
     gateType: stage.gate?.type ?? null,
+    rejectTarget: stage.reject_target ?? null,
   };
+}
+
+function mapTemplateTeamPreset(dto: ApiTemplateDetailDto): TemplateDetail['defaultTeam'] {
+  return Object.entries(dto.defaultTeam ?? {}).map(([role, member]) => ({
+    role,
+    modelPreference: member.model_preference ?? null,
+    suggested: member.suggested ?? [],
+  }));
 }
 
 export function mapTemplateDetailDto(id: string, dto: ApiTemplateDetailDto): TemplateDetail {
   const stages = (dto.stages ?? []).map(mapTemplateStage);
+  const defaultTeam = mapTemplateTeamPreset(dto);
   return {
     id,
     name: dto.name ?? id,
@@ -285,7 +297,42 @@ export function mapTemplateDetailDto(id: string, dto: ApiTemplateDetailDto): Tem
     governance: formatGovernance(dto.governance),
     stageCount: stages.length,
     stages,
-    defaultTeamRoles: Object.keys(dto.defaultTeam ?? {}),
+    defaultTeamRoles: defaultTeam.map((member) => member.role),
+    defaultTeam,
     raw: dto,
   };
+}
+
+export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetailDto {
+  const raw = detail.raw as Partial<ApiTemplateDetailDto>;
+  const rawStages = raw.stages ?? [];
+  const rawGovernance = typeof raw.governance === 'string' ? raw.governance : undefined;
+
+  return templateDetailSchema.parse({
+    ...raw,
+    name: detail.name,
+    type: detail.type,
+    description: detail.description,
+    ...(detail.governance !== 'default' || rawGovernance
+      ? { governance: detail.governance }
+      : {}),
+    defaultTeam: Object.fromEntries(detail.defaultTeam.map((member) => [
+      member.role,
+      {
+        ...(member.modelPreference ? { model_preference: member.modelPreference } : {}),
+        ...(member.suggested.length > 0 ? { suggested: member.suggested } : {}),
+      },
+    ])),
+    stages: detail.stages.map((stage) => {
+      const rawStage = rawStages.find((item) => item.id === stage.id);
+      return {
+        ...rawStage,
+        id: stage.id,
+        name: stage.name,
+        mode: stage.mode,
+        ...(rawStage?.gate ? { gate: rawStage.gate } : {}),
+        ...(!rawStage?.gate && stage.gateType ? { gate: { type: stage.gateType } } : {}),
+      };
+    }),
+  });
 }

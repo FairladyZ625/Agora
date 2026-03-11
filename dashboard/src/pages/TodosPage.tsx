@@ -55,17 +55,31 @@ export function TodosPage() {
   return (
     <div className="space-y-6">
       <section className="surface-panel surface-panel--workspace">
-        <div className="section-title-row">
+        <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{copy.kicker}</p>
             <h2 className="page-title">{copy.title}</h2>
             <p className="page-summary">{copy.summary}</p>
           </div>
+          <div className="workbench-masthead__signals">
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.filters.all}</span>
+              <span className="inline-stat__value">{todos.length}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.filters.pending}</span>
+              <span className="inline-stat__value">{todos.filter((todo) => todo.status === 'pending').length}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.filters.done}</span>
+              <span className="inline-stat__value">{todos.filter((todo) => todo.status === 'done').length}</span>
+            </div>
+          </div>
         </div>
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="surface-panel surface-panel--workspace">
+      <section className="surface-panel surface-panel--workspace" data-testid="todos-composer-panel">
         <form className="grid gap-4 lg:grid-cols-4" onSubmit={submitTodo}>
           <label className="space-y-2 lg:col-span-2">
             <span className="field-label">{copy.inputLabel}</span>
@@ -104,7 +118,7 @@ export function TodosPage() {
         </form>
       </section>
 
-      <section className="surface-panel surface-panel--workspace">
+      <section className="surface-panel surface-panel--workspace" data-testid="todos-queue-panel">
         <div className="mb-5 flex flex-wrap gap-2">
           {filterOptions.map((item) => (
             <button

@@ -3,12 +3,20 @@ import type {
   ApiProgressLogDto,
   ApiSubtaskDto,
   ApiTaskDto,
+  ApiTeamMemberDto,
   ApiTaskConversationEntryDto,
   ApiTaskConversationSummaryDto,
   ApiTaskStatusDto,
   ApiWorkflowStageDto,
 } from '@/types/api';
-import type { Task, TaskConversationEntry, TaskConversationSummary, TaskState, TaskStatus } from '@/types/task';
+import type {
+  Task,
+  TaskBlueprint,
+  TaskConversationEntry,
+  TaskConversationSummary,
+  TaskState,
+  TaskStatus,
+} from '@/types/task';
 import { translate } from '@/lib/i18n';
 
 const REVIEW_GATE_TYPES = new Set(['approval', 'archon_review']);
@@ -58,7 +66,7 @@ function formatTeamLabel(task: ApiTaskDto): string {
 }
 
 export function isTaskVisibleInWorkbench(task: ApiTaskDto): boolean {
-  return !HIDDEN_TASK_STATES.has(task.state);
+  return !HIDDEN_TASK_STATES.has(task.state) && (task.archive_status == null || task.archive_status === 'pending');
 }
 
 export function mapTaskDto(task: ApiTaskDto): Task {
@@ -72,6 +80,7 @@ export function mapTaskDto(task: ApiTaskDto): Task {
     priority: task.priority,
     creator: task.creator,
     state: mapTaskState(task),
+    archiveStatus: task.archive_status,
     current_stage: task.current_stage,
     teamLabel: formatTeamLabel(task),
     workflowLabel: task.workflow?.type ?? 'custom',
@@ -103,6 +112,33 @@ function mapSubtask(entry: ApiSubtaskDto) {
   return { ...entry };
 }
 
+function mapRoleBinding(member: ApiTeamMemberDto) {
+  return { ...member };
+}
+
+function mapTaskBlueprint(status: ApiTaskStatusDto): TaskBlueprint | undefined {
+  if (!status.task_blueprint) {
+    return undefined;
+  }
+
+  return {
+    graphVersion: status.task_blueprint.graph_version,
+    entryNodes: [...status.task_blueprint.entry_nodes],
+    nodes: status.task_blueprint.nodes.map((node) => ({
+      id: node.id,
+      name: node.name ?? null,
+      mode: node.mode ?? null,
+      gateType: node.gate_type ?? null,
+    })),
+    edges: status.task_blueprint.edges.map((edge) => ({ ...edge })),
+    artifactContracts: status.task_blueprint.artifact_contracts.map((artifact) => ({
+      nodeId: artifact.node_id,
+      artifactType: artifact.artifact_type,
+    })),
+    roleBindings: status.task_blueprint.role_bindings.map(mapRoleBinding),
+  };
+}
+
 export function mapTaskConversationEntryDto(entry: ApiTaskConversationEntryDto): TaskConversationEntry {
   return { ...entry };
 }
@@ -117,5 +153,6 @@ export function mapTaskStatusDto(status: ApiTaskStatusDto): TaskStatus {
     flow_log: status.flow_log.map(mapFlowLogEntry),
     progress_log: status.progress_log.map(mapProgressLogEntry),
     subtasks: status.subtasks.map(mapSubtask),
+    taskBlueprint: mapTaskBlueprint(status),
   };
 }

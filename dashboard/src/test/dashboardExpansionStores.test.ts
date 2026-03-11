@@ -11,6 +11,7 @@ vi.mock('@/lib/api', () => ({
   getTmuxTail: vi.fn(),
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
+  notifyArchiveJob: vi.fn(),
   retryArchiveJob: vi.fn(),
   listTodos: vi.fn(),
   createTodo: vi.fn(),
@@ -19,6 +20,9 @@ vi.mock('@/lib/api', () => ({
   promoteTodo: vi.fn(),
   listTemplates: vi.fn(),
   getTemplate: vi.fn(),
+  updateTemplate: vi.fn(),
+  duplicateTemplate: vi.fn(),
+  validateWorkflow: vi.fn(),
 }));
 
 describe('dashboard expansion stores', () => {
@@ -86,6 +90,7 @@ describe('dashboard expansion stores', () => {
       selectedTemplate: null,
       loading: false,
       detailLoading: false,
+      saving: false,
       error: null,
     });
   });
@@ -184,6 +189,8 @@ describe('dashboard expansion stores', () => {
             resume_capability: 'native_resume',
             session_reference: 'codex-session-123',
             identity_source: 'session_file',
+            identity_source_rank: 0,
+            identity_conflict_count: 0,
             identity_path: '/tmp/codex/session.json',
             session_observed_at: '2026-03-08T23:01:00.000Z',
             last_recovery_mode: 'resume_exact',
@@ -337,6 +344,81 @@ describe('dashboard expansion stores', () => {
     expect(state.selectedJob?.canRetry).toBe(true);
   });
 
+  it('confirms a pending archive job through the store layer', async () => {
+    useArchiveStore.setState({
+      jobs: [{
+        id: 9,
+        taskId: 'OC-302',
+        taskTitle: '待归档任务',
+        taskType: 'document',
+        status: 'pending',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { state: 'cancelled' },
+        payloadSummary: '{"state":"cancelled"}',
+        canConfirm: true,
+        canRetry: false,
+      }],
+      selectedJobId: 9,
+      selectedJob: {
+        id: 9,
+        taskId: 'OC-302',
+        taskTitle: '待归档任务',
+        taskType: 'document',
+        status: 'pending',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { state: 'cancelled' },
+        payloadSummary: '{"state":"cancelled"}',
+        canConfirm: true,
+        canRetry: false,
+      },
+    });
+    vi.mocked(api.notifyArchiveJob).mockResolvedValue({
+      id: 9,
+      task_id: 'OC-302',
+      task_title: '待归档任务',
+      task_type: 'document',
+      status: 'notified',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      commit_hash: null,
+      requested_at: '2026-03-07T08:00:00.000Z',
+      completed_at: null,
+      payload: {
+        notified_at: '2026-03-07T08:01:00.000Z',
+      },
+    });
+
+    await useArchiveStore.getState().confirmJob(9);
+
+    expect(api.notifyArchiveJob).toHaveBeenCalledWith(9);
+    expect(useArchiveStore.getState().selectedJob).toMatchObject({
+      id: 9,
+      status: 'notified',
+      canConfirm: false,
+      canRetry: false,
+    });
+  });
+
+  it('maps the completed archive filter to synced jobs for the API query', async () => {
+    vi.mocked(api.listArchiveJobs).mockResolvedValue([]);
+
+    useArchiveStore.getState().setFilters({ status: 'completed' });
+    await useArchiveStore.getState().fetchJobs();
+
+    expect(api.listArchiveJobs).toHaveBeenCalledWith({
+      status: 'synced',
+      taskId: undefined,
+    });
+  });
+
   it('supports todo CRUD and promote refreshes through the store layer', async () => {
     vi.mocked(api.listTodos).mockResolvedValue([
       {
@@ -418,5 +500,120 @@ describe('dashboard expansion stores', () => {
 
     expect(state.templates[0]?.id).toBe('coding');
     expect(state.selectedTemplate?.stageCount).toBe(1);
+  });
+
+  it('saves an edited template and refreshes selected detail', async () => {
+    vi.mocked(api.updateTemplate).mockResolvedValue({
+      id: 'coding',
+      saved: true,
+      template: {
+        type: 'coding',
+        name: 'Coding Task v2',
+        description: '更新后的模板',
+        governance: 'standard',
+        defaultWorkflow: 'linear',
+        defaultTeam: {
+          architect: {
+            model_preference: 'strong_reasoning',
+            suggested: ['opus', 'codex'],
+          },
+        },
+        stages: [{ id: 'develop', name: '实现', mode: 'execute' }],
+      },
+    });
+
+    await useTemplateStore.getState().saveSelectedTemplate({
+      id: 'coding',
+      name: 'Coding Task v2',
+      type: 'coding',
+      description: '更新后的模板',
+      governance: 'standard',
+      stageCount: 1,
+      stages: [{ id: 'develop', name: '实现', mode: 'execute', gateType: null }],
+      defaultTeamRoles: ['architect'],
+      defaultTeam: [{ role: 'architect', modelPreference: 'strong_reasoning', suggested: ['opus', 'codex'] }],
+      raw: {},
+    });
+
+    expect(api.updateTemplate).toHaveBeenCalledWith('coding', {
+      type: 'coding',
+      name: 'Coding Task v2',
+      description: '更新后的模板',
+      governance: 'standard',
+      defaultTeam: {
+        architect: {
+          model_preference: 'strong_reasoning',
+          suggested: ['opus', 'codex'],
+        },
+      },
+      stages: [{ id: 'develop', name: '实现', mode: 'execute' }],
+    });
+    expect(useTemplateStore.getState().selectedTemplate?.name).toBe('Coding Task v2');
+  });
+
+  it('validates selected template workflow and stores the validation result', async () => {
+    vi.mocked(api.validateWorkflow).mockResolvedValue({
+      valid: true,
+      errors: [],
+      normalized: {
+        type: 'coding',
+        name: 'Coding Task',
+        description: '实现代码任务',
+        defaultWorkflow: 'linear',
+        stages: [{ id: 'develop', name: '实现', mode: 'execute' }],
+      },
+    });
+
+    const result = await useTemplateStore.getState().validateSelectedTemplate({
+      id: 'coding',
+      name: 'Coding Task',
+      type: 'coding',
+      description: '实现代码任务',
+      governance: 'standard',
+      stageCount: 1,
+      stages: [{ id: 'develop', name: '实现', mode: 'execute', gateType: null }],
+      defaultTeamRoles: [],
+      defaultTeam: [],
+      raw: {},
+    });
+
+    expect(result).toBe('live');
+    expect(api.validateWorkflow).toHaveBeenCalledWith({
+      defaultWorkflow: undefined,
+      stages: [{ id: 'develop', name: '实现', mode: 'execute' }],
+    });
+    expect(useTemplateStore.getState().validationResult).toMatchObject({ valid: true, errors: [] });
+  });
+
+  it('duplicates the selected template and switches focus to the duplicated detail', async () => {
+    vi.mocked(api.duplicateTemplate).mockResolvedValue({
+      id: 'coding_copy',
+      template: {
+        type: 'coding_copy',
+        name: 'Coding Task Copy',
+        description: 'copy',
+        governance: 'standard',
+        defaultWorkflow: 'linear',
+        defaultTeam: {
+          architect: {
+            suggested: ['opus'],
+          },
+        },
+        stages: [{ id: 'develop', name: '开发', mode: 'execute' }],
+      },
+    });
+
+    await useTemplateStore.getState().duplicateSelectedTemplate({
+      templateId: 'coding',
+      newId: 'coding_copy',
+      name: 'Coding Task Copy',
+    });
+
+    expect(api.duplicateTemplate).toHaveBeenCalledWith('coding', {
+      new_id: 'coding_copy',
+      name: 'Coding Task Copy',
+    });
+    expect(useTemplateStore.getState().selectedTemplateId).toBe('coding_copy');
+    expect(useTemplateStore.getState().selectedTemplate?.name).toBe('Coding Task Copy');
   });
 });

@@ -142,6 +142,25 @@ cd extensions/agora-plugin && npm install
 
 ### Start Local Dev Stack
 
+推荐入口：
+
+```bash
+cd agora-ts
+npm run dev -w @agora-ts/cli -- start
+```
+
+如果已经通过 `npm link` 暴露全局命令，也可以直接在仓库内执行：
+
+```bash
+agora start
+# 或
+agora run
+```
+
+上述 CLI 入口会复用同一份 `docs/02-PRODUCT/scripts/dev-start.sh` 启动编排。
+
+也可以继续直接执行脚本：
+
 ```bash
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```

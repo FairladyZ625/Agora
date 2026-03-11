@@ -20,6 +20,37 @@ describe('task api contracts', () => {
     ).toBe('coding');
   });
 
+  it('parses create task payloads with team/workflow/im target overrides', () => {
+    expect(
+      createTaskRequestSchema.parse({
+        title: '定向拉起 coding 任务',
+        type: 'coding',
+        creator: 'archon',
+        description: '覆盖模板默认 team',
+        priority: 'high',
+        team_override: {
+          members: [
+            { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+          ],
+        },
+        workflow_override: {
+          type: 'custom',
+          stages: [
+            { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+            { id: 'ship', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          ],
+        },
+        im_target: {
+          provider: 'discord',
+          conversation_ref: 'channel-123',
+          visibility: 'private',
+          participant_refs: ['opus', 'sonnet'],
+        },
+      }).im_target?.visibility,
+    ).toBe('private');
+  });
+
   it('parses task status responses with nested flow/progress/subtasks', () => {
     expect(
       taskStatusSchema.parse({
@@ -32,6 +63,7 @@ describe('task api contracts', () => {
           priority: 'normal',
           creator: 'archon',
           state: 'active',
+          archive_status: null,
           current_stage: 'develop',
           team: { members: [] },
           workflow: { stages: [] },
@@ -43,11 +75,37 @@ describe('task api contracts', () => {
           created_at: '2026-03-08T00:00:00Z',
           updated_at: '2026-03-08T00:00:00Z',
         },
+        task_blueprint: {
+          graph_version: 1,
+          entry_nodes: ['develop'],
+          nodes: [
+            { id: 'develop', name: '开发', mode: 'execute', gate_type: 'all_subtasks_done' },
+            { id: 'review', name: '审查', mode: 'discuss', gate_type: 'approval' },
+          ],
+          edges: [
+            { from: 'develop', to: 'review', kind: 'advance' },
+            { from: 'review', to: 'develop', kind: 'reject' },
+          ],
+          artifact_contracts: [
+            { node_id: 'develop', artifact_type: 'stage_output' },
+          ],
+          role_bindings: [
+            { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+          ],
+        },
         flow_log: [],
         progress_log: [],
         subtasks: [],
-      }).task.id,
-    ).toBe('OC-001');
+      }),
+    ).toMatchObject({
+      task: {
+        id: 'OC-001',
+        archive_status: null,
+      },
+      task_blueprint: {
+        entry_nodes: ['develop'],
+      },
+    });
   });
 
   it('parses approve action payloads', () => {

@@ -2,6 +2,7 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
+import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
@@ -12,7 +13,9 @@ import type {
   CraftsmanRuntimeIdentitySourceDto,
   TaskPriority,
 } from '@agora-ts/contracts';
+import { createTaskRequestSchema } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
+import { runStartCommand } from './start-command.js';
 import type { HumanAccountService } from '@agora-ts/core';
 
 type Writable = {
@@ -26,6 +29,7 @@ export interface CliDependencies {
   humanAccountService?: HumanAccountService;
   taskConversationService?: TaskConversationService;
   factories?: Partial<CliCompositionFactories>;
+  startCommandRunner?: StartCommandRunner;
   configPath?: string;
   dbPath?: string;
   stdout?: Writable;
@@ -88,14 +92,28 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('-t, --type <type>', '任务类型', 'coding')
     .option('-p, --priority <priority>', '优先级', 'normal')
     .option('-c, --creator <creator>', '创建者', 'archon')
-    .action((title: string, options: { type: string; priority: TaskPriority; creator: string }) => {
-      const task = taskService.createTask({
+    .option('--team-json <json>', 'team override JSON')
+    .option('--workflow-json <json>', 'workflow override JSON')
+    .option('--im-target-json <json>', 'IM target override JSON')
+    .action((title: string, options: {
+      type: string;
+      priority: TaskPriority;
+      creator: string;
+      teamJson?: string;
+      workflowJson?: string;
+      imTargetJson?: string;
+    }) => {
+      const input = createTaskRequestSchema.parse({
         title,
         type: options.type,
         creator: options.creator,
         description: '',
         priority: options.priority,
+        ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson) } : {}),
+        ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson) } : {}),
+        ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson) } : {}),
       });
+      const task = taskService.createTask(input);
       writeLine(stdout, `任务已创建: ${task.id}`);
       writeLine(stdout, `标题: ${task.title}`);
       writeLine(stdout, `类型: ${task.type}`);
@@ -739,6 +757,17 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action(async () => {
       await runInitCommand({
         humanAccountService,
+      });
+    });
+
+  program
+    .command('start')
+    .alias('run')
+    .description('一键启动本地开发栈（后端 + Dashboard）')
+    .action(async () => {
+      await runStartCommand({
+        cwd: process.cwd(),
+        ...(deps.startCommandRunner ? { runner: deps.startCommandRunner } : {}),
       });
     });
 

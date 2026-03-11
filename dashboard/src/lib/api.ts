@@ -30,6 +30,7 @@ import {
   dashboardUserCreateRequestSchema,
   dashboardUserListResponseSchema,
   dashboardUserUpdatePasswordRequestSchema,
+  duplicateTemplateRequestSchema,
   healthResponseSchema,
   promoteTodoResultSchema,
   taskSchema,
@@ -39,7 +40,9 @@ import {
   taskStatusSchema,
   templateDetailSchema,
   templateSummarySchema,
+  templateValidationResponseSchema,
   todoItemSchema,
+  validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
 import { z, type ZodType } from 'zod';
 
@@ -476,6 +479,56 @@ export function listTemplates(): Promise<ApiTemplateSummaryDto[]> {
 
 export function getTemplate(templateId: string): Promise<ApiTemplateDetailDto> {
   return request<ApiTemplateDetailDto>(`/templates/${templateId}`, templateDetailSchema);
+}
+
+export function updateTemplate(templateId: string, input: ApiTemplateDetailDto): Promise<{
+  id: string;
+  saved: boolean;
+  template: ApiTemplateDetailDto;
+}> {
+  return request(
+    `/templates/${templateId}`,
+    z.object({
+      id: z.string(),
+      saved: z.boolean(),
+      template: templateDetailSchema,
+    }),
+    {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function duplicateTemplate(
+  templateId: string,
+  input: { new_id: string; name?: string },
+): Promise<{ id: string; template: ApiTemplateDetailDto }> {
+  return request(
+    `/templates/${templateId}/duplicate`,
+    z.object({
+      id: z.string(),
+      template: templateDetailSchema,
+    }),
+    {
+      method: 'POST',
+      body: JSON.stringify(duplicateTemplateRequestSchema.parse(input)),
+    },
+  );
+}
+
+export function validateWorkflow(input: {
+  defaultWorkflow?: string;
+  stages: ApiTemplateDetailDto['stages'];
+}) {
+  return request(
+    '/workflows/validate',
+    templateValidationResponseSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(validateWorkflowRequestSchema.parse(input)),
+    },
+  );
 }
 
 export { ApiError };

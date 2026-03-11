@@ -142,6 +142,50 @@ describe('agora-ts sqlite bootstrap', () => {
     expect(archives.listArchiveJobs()[0]?.task_type).toBe('document');
   });
 
+  it('surfaces the latest archive job status on task reads', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-ARCHIVE-STATUS',
+      title: '归档状态透传',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    tasks.updateTask('OC-ARCHIVE-STATUS', 1, {
+      state: 'cancelled',
+    });
+
+    expect(tasks.getTask('OC-ARCHIVE-STATUS')?.archive_status).toBeNull();
+
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-ARCHIVE-STATUS',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+
+    expect(tasks.getTask('OC-ARCHIVE-STATUS')?.archive_status).toBe('pending');
+
+    archives.updateArchiveJob(job.id, { status: 'synced', commit_hash: 'deadbeef' });
+
+    expect(tasks.getTask('OC-ARCHIVE-STATUS')).toMatchObject({
+      id: 'OC-ARCHIVE-STATUS',
+      archive_status: 'synced',
+    });
+    expect(tasks.listTasks()[0]).toMatchObject({
+      id: 'OC-ARCHIVE-STATUS',
+      archive_status: 'synced',
+    });
+  });
+
   it('updates archive job status with commit hash and error payloads', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

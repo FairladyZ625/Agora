@@ -16,6 +16,7 @@ function buildTaskDto(overrides: Partial<ApiTaskDto> = {}): ApiTaskDto {
     priority: 'high',
     creator: 'archon',
     state: 'active',
+    archive_status: null,
     current_stage: 'develop',
     team: {
       members: [
@@ -86,6 +87,25 @@ describe('task mappers', () => {
       ],
       progress_log: [],
       subtasks: [],
+      task_blueprint: {
+        graph_version: 1,
+        entry_nodes: ['discuss'],
+        nodes: [
+          { id: 'discuss', name: '方案讨论', mode: 'discuss', gate_type: 'archon_review' },
+          { id: 'develop', name: '并行开发', mode: 'execute', gate_type: 'all_subtasks_done' },
+          { id: 'review', name: '合并审查', mode: 'discuss', gate_type: 'archon_review' },
+        ],
+        edges: [
+          { from: 'discuss', to: 'develop', kind: 'advance' },
+          { from: 'develop', to: 'review', kind: 'advance' },
+          { from: 'review', to: 'discuss', kind: 'reject' },
+        ],
+        artifact_contracts: [{ node_id: 'develop', artifact_type: 'stage_output' }],
+        role_bindings: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+        ],
+      },
     };
 
     const status = mapTaskStatusDto(statusDto);
@@ -93,6 +113,25 @@ describe('task mappers', () => {
     expect(status.task.state).toBe('gate_waiting');
     expect(status.flow_log).toHaveLength(1);
     expect(status.flow_log[0]?.event).toBe('archon_review_entered');
+    expect(status.taskBlueprint).toEqual({
+      graphVersion: 1,
+      entryNodes: ['discuss'],
+      nodes: [
+        { id: 'discuss', name: '方案讨论', mode: 'discuss', gateType: 'archon_review' },
+        { id: 'develop', name: '并行开发', mode: 'execute', gateType: 'all_subtasks_done' },
+        { id: 'review', name: '合并审查', mode: 'discuss', gateType: 'archon_review' },
+      ],
+      edges: [
+        { from: 'discuss', to: 'develop', kind: 'advance' },
+        { from: 'develop', to: 'review', kind: 'advance' },
+        { from: 'review', to: 'discuss', kind: 'reject' },
+      ],
+      artifactContracts: [{ nodeId: 'develop', artifactType: 'stage_output' }],
+      roleBindings: [
+        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+      ],
+    });
   });
 
   it('hides draft, created, and orphaned tasks from the workbench list', () => {
@@ -100,5 +139,12 @@ describe('task mappers', () => {
     expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'created' }))).toBe(false);
     expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'orphaned' }))).toBe(false);
     expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'paused' }))).toBe(true);
+  });
+
+  it('keeps pending-archive tasks visible until archive sync completes', () => {
+    expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'cancelled', archive_status: 'pending' }))).toBe(true);
+    expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'done', archive_status: 'notified' }))).toBe(false);
+    expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'done', archive_status: 'failed' }))).toBe(false);
+    expect(isTaskVisibleInWorkbench(buildTaskDto({ state: 'done', archive_status: 'synced' }))).toBe(false);
   });
 });

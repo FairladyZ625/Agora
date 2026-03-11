@@ -67,9 +67,74 @@ describe('task routes', () => {
       task: {
         id: 'OC-200',
       },
+      task_blueprint: {
+        entry_nodes: ['discuss'],
+        nodes: expect.any(Array),
+        edges: expect.any(Array),
+      },
       flow_log: expect.any(Array),
       progress_log: expect.any(Array),
       subtasks: [],
+    });
+  });
+
+  it('accepts create-task overrides through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-200B',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'override create route',
+        type: 'coding',
+        creator: 'archon',
+        description: 'custom team',
+        priority: 'normal',
+        team_override: {
+          members: [
+            { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+          ],
+        },
+        workflow_override: {
+          type: 'custom',
+          stages: [
+            { id: 'kickoff', mode: 'discuss', gate: { type: 'command' } },
+            { id: 'build', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          ],
+        },
+        im_target: {
+          provider: 'discord',
+          conversation_ref: 'channel-abc',
+          visibility: 'private',
+          participant_refs: ['opus', 'codex'],
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-200B',
+      current_stage: 'kickoff',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus' },
+          { role: 'developer', agentId: 'codex' },
+        ],
+      },
+      workflow: {
+        type: 'custom',
+        stages: [
+          { id: 'kickoff' },
+          { id: 'build' },
+        ],
+      },
     });
   });
 

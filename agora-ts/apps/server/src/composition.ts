@@ -28,7 +28,7 @@ import {
   type IMProvisioningPort,
   type PresenceSource,
 } from '@agora-ts/core';
-import { OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
+import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import type { AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
@@ -192,9 +192,17 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createIMProvisioningPort: (context) => {
       const { im } = context.config;
       if (im.provider === 'discord' && im.discord?.bot_token && im.discord?.default_channel_id) {
+        const accountTokens = loadOpenClawDiscordAccountTokens(
+          process.env.AGORA_OPENCLAW_CONFIG_PATH
+            ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+            : {},
+        );
+        const primaryAccountId = Object.entries(accountTokens).find(([, token]) => token === im.discord?.bot_token)?.[0] ?? null;
         return new DiscordIMProvisioningAdapter({
           botToken: im.discord.bot_token,
           defaultChannelId: im.discord.default_channel_id,
+          participantTokens: accountTokens,
+          primaryAccountId,
         });
       }
       return undefined;

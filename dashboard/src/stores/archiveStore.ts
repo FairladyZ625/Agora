@@ -18,6 +18,7 @@ interface ArchiveStore {
   filters: ArchiveFilters;
   fetchJobs: () => Promise<'live' | 'error'>;
   selectJob: (id: number | null) => Promise<void>;
+  confirmJob: (id: number) => Promise<void>;
   retryJob: (id: number, reason?: string) => Promise<void>;
   setFilters: (filters: Partial<ArchiveFilters>) => void;
   clearError: () => void;
@@ -36,8 +37,11 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const { filters, selectedJobId } = get();
+      const status = filters.status === 'completed'
+        ? 'synced'
+        : (filters.status ?? undefined);
       const jobs = (await api.listArchiveJobs({
-        status: filters.status ?? undefined,
+        status,
         taskId: filters.taskId.trim() || undefined,
       })).map(mapArchiveJobDto);
       const selectedJob = selectedJobId ? jobs.find((job) => job.id === selectedJobId) ?? get().selectedJob : get().selectedJob;
@@ -70,6 +74,17 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  },
+
+  confirmJob: async (id) => {
+    set({ error: null });
+    const updated = mapArchiveJobDto(await api.notifyArchiveJob(id));
+    const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
+    set({
+      jobs,
+      selectedJobId: id,
+      selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
+    });
   },
 
   retryJob: async (id, reason = '') => {

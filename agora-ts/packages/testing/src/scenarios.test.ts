@@ -337,6 +337,7 @@ describe('agora-ts testing scenarios', () => {
     });
 
     const result = runScenario(runtime, 'cancel-active-task');
+    const archives = new ArchiveJobRepository(runtime.db);
 
     expect(result.name).toBe('cancel-active-task');
     expect(result.taskId).toBe('OC-CANCEL');
@@ -344,6 +345,17 @@ describe('agora-ts testing scenarios', () => {
     expect(result.events).toContain('state_changed');
     expect(result.completedSubtasks).toEqual(['keep-done']);
     expect(result.executions).toEqual(['exec-cancel-1']);
+    expect(archives.listArchiveJobs({ taskId: 'OC-CANCEL' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          task_id: 'OC-CANCEL',
+          status: 'pending',
+          payload: expect.objectContaining({
+            state: 'cancelled',
+          }),
+        }),
+      ]),
+    );
   });
 
   it('runs an inbox promote scenario across todo and task targets', () => {
@@ -525,6 +537,8 @@ describe('agora-ts testing scenarios', () => {
         'Subtask write-doc marked done',
         'Advanced to stage review',
         'Approval rejected: needs more structure',
+        'Task paused: human hold',
+        'Task resumed',
       ]),
     );
   });

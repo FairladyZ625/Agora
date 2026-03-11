@@ -12,6 +12,7 @@ export interface StoredTask {
   priority: string;
   creator: string;
   state: string;
+  archive_status: string | null;
   current_stage: string | null;
   team: TeamDto;
   workflow: WorkflowDto;
@@ -53,6 +54,18 @@ export interface UpdateTaskInput {
 export class TaskRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
+  private readonly baseSelect = `
+    SELECT t.*, aj.status AS archive_status
+    FROM tasks t
+    LEFT JOIN archive_jobs aj ON aj.id = (
+      SELECT aj2.id
+      FROM archive_jobs aj2
+      WHERE aj2.task_id = t.id
+      ORDER BY aj2.requested_at DESC, aj2.id DESC
+      LIMIT 1
+    )
+  `;
+
   insertTask(input: InsertTaskInput): StoredTask {
     const now = new Date().toISOString();
     this.db.prepare(`
@@ -75,7 +88,7 @@ export class TaskRepository {
   }
 
   getTask(taskId: string): StoredTask | null {
-    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Record<string, unknown> | undefined;
+    const row = this.db.prepare(`${this.baseSelect} WHERE t.id = ?`).get(taskId) as Record<string, unknown> | undefined;
     return row ? this.parseTaskRow(row) : null;
   }
 
@@ -123,8 +136,8 @@ export class TaskRepository {
 
   listTasks(state?: string): StoredTask[] {
     const rows = state
-      ? (this.db.prepare('SELECT * FROM tasks WHERE state = ? ORDER BY created_at DESC').all(state) as Record<string, unknown>[])
-      : (this.db.prepare("SELECT * FROM tasks WHERE state != 'draft' ORDER BY created_at DESC").all() as Record<string, unknown>[]);
+      ? (this.db.prepare(`${this.baseSelect} WHERE t.state = ? ORDER BY t.created_at DESC`).all(state) as Record<string, unknown>[])
+      : (this.db.prepare(`${this.baseSelect} WHERE t.state != 'draft' ORDER BY t.created_at DESC`).all() as Record<string, unknown>[]);
     return rows.map((row) => this.parseTaskRow(row));
   }
 
@@ -138,6 +151,7 @@ export class TaskRepository {
       priority: String(row.priority),
       creator: String(row.creator),
       state: String(row.state),
+      archive_status: row.archive_status === null || row.archive_status === undefined ? null : String(row.archive_status),
       current_stage: row.current_stage === null ? null : String(row.current_stage),
       team: parseJsonValue<TeamDto>(row.team, { members: [] }),
       workflow: parseJsonValue<WorkflowDto>(row.workflow, {}),

@@ -18,17 +18,25 @@ export class DiscordHttpClient {
     this.dispatcher = hasProxyEnvironment() ? new EnvHttpProxyAgent() : undefined;
   }
 
-  async createThread(channelId: string, name: string, message: string): Promise<string> {
+  async createThread(channelId: string, name: string, message: string, visibility: 'public' | 'private' = 'public'): Promise<string> {
+    const body = visibility === 'private'
+      ? {
+          name,
+          auto_archive_duration: 1440,
+          type: 12,
+          invitable: false,
+        }
+      : {
+          name,
+          auto_archive_duration: 1440,
+          type: 11,
+          message: { content: message },
+        };
     const res = await fetch(`${DISCORD_API}/channels/${channelId}/threads`, {
       method: 'POST',
       headers: this.headers,
       ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
-      body: JSON.stringify({
-        name,
-        auto_archive_duration: 1440,
-        type: 11, // PUBLIC_THREAD
-        message: { content: message },
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -48,6 +56,18 @@ export class DiscordHttpClient {
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`Discord sendMessage failed: ${res.status} ${body}`);
+    }
+  }
+
+  async joinThread(threadId: string): Promise<void> {
+    const res = await fetch(`${DISCORD_API}/channels/${threadId}/thread-members/@me`, {
+      method: 'PUT',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord joinThread failed: ${res.status} ${body}`);
     }
   }
 }

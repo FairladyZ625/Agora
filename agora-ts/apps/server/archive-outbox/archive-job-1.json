@@ -1,0 +1,17 @@
+{
+  "notification_id": "archive-job-1",
+  "job_id": 1,
+  "task_id": "OC-1773197168460",
+  "task_title": "TEST02",
+  "task_type": "coding",
+  "target_path": "ZeYu-AI-Brain/agora/OC-1773197168460-test02.md",
+  "writer_agent": "writer-agent",
+  "requested_at": "2026-03-11 02:46:11",
+  "notified_at": "2026-03-11T03:06:34.265Z",
+  "payload": {
+    "task_id": "OC-1773197168460",
+    "title": "TEST02",
+    "type": "coding",
+    "state": "cancelled"
+  }
+}

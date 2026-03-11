@@ -43,9 +43,9 @@ describe('OpenClawAgentRegistry', () => {
       channels: {
         discord: {
           accounts: {
-            main: {},
-            review: {},
-            writer: {},
+            main: { token: 'main-token' },
+            review: { token: 'review-token' },
+            writer: { token: 'writer-token' },
             default: {},
           },
         },

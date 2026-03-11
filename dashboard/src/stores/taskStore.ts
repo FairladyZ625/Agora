@@ -75,12 +75,20 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       const tasks = (await api.listTasks(filters.state ?? undefined))
         .filter(isTaskVisibleInWorkbench)
         .map(mapTaskDto);
-      set({ tasks, loading: false });
+      const { selectedTaskId } = get();
+      const selectedTaskStillVisible = selectedTaskId ? tasks.some((task) => task.id === selectedTaskId) : false;
+      set({
+        tasks,
+        loading: false,
+        ...(selectedTaskId && !selectedTaskStillVisible
+          ? { selectedTaskId: null, selectedTaskStatus: null }
+          : {}),
+      });
 
       // Refresh detail if a task is selected
-      const { selectedTaskId } = get();
-      if (selectedTaskId) {
-        const taskStatus = await loadTaskStatus(selectedTaskId);
+      const { selectedTaskId: refreshedSelectedTaskId } = get();
+      if (refreshedSelectedTaskId) {
+        const taskStatus = await loadTaskStatus(refreshedSelectedTaskId);
         set({ selectedTaskStatus: taskStatus });
       }
       return 'live';

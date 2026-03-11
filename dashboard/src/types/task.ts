@@ -24,6 +24,7 @@ export interface Task {
   priority: TaskPriority | string;
   creator: string;
   state: TaskState;
+  archiveStatus: string | null;
   current_stage: string | null;
   teamLabel: string;
   workflowLabel: string;
@@ -118,11 +119,43 @@ export interface TaskConversationSummary {
   has_unread: boolean;
 }
 
+export interface TaskBlueprintNode {
+  id: string;
+  name: string | null;
+  mode: string | null;
+  gateType: string | null;
+}
+
+export interface TaskBlueprintEdge {
+  from: string;
+  to: string;
+  kind: string;
+}
+
+export interface TaskBlueprintArtifactContract {
+  nodeId: string;
+  artifactType: string;
+}
+
+export interface TaskBlueprint {
+  graphVersion: number;
+  entryNodes: string[];
+  nodes: TaskBlueprintNode[];
+  edges: TaskBlueprintEdge[];
+  artifactContracts: TaskBlueprintArtifactContract[];
+  roleBindings: Array<{
+    role: string;
+    agentId: string;
+    model_preference: string;
+  }>;
+}
+
 export interface TaskStatus {
   task: Task;
   flow_log: FlowLogEntry[];
   progress_log: ProgressLogEntry[];
   subtasks: Subtask[];
+  taskBlueprint?: TaskBlueprint;
   conversationSummary?: TaskConversationSummary;
   conversation?: TaskConversationEntry[];
 }
@@ -137,6 +170,35 @@ export interface CreateTaskInput {
   creator: string;
   description: string;
   priority: TaskPriority | string;
+  team_override?: {
+    members: Array<{
+      role: string;
+      agentId: string;
+      model_preference?: string;
+    }>;
+  };
+  workflow_override?: {
+    type?: string;
+    stages: Array<{
+      id: string;
+      name?: string;
+      mode?: string;
+      reject_target?: string;
+      gate?: {
+        type?: string;
+        approver?: string;
+        required?: number;
+        timeout_sec?: number;
+      } | null;
+    }>;
+  };
+  im_target?: {
+    provider: string;
+    channel_ref?: string;
+    thread_name?: string;
+    visibility?: 'public' | 'private';
+    participant_refs?: string[];
+  };
 }
 
 export type TaskAction =

@@ -1,4 +1,5 @@
-import { useEffect, useEffectEvent, useMemo } from 'react';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useAgentStore } from '@/stores/agentStore';
@@ -6,8 +7,11 @@ import { useSettingsStore } from '@/stores/settingsStore';
 
 const MIN_CHANNEL_DETAIL_STALE_AFTER_MS = 15_000;
 
+type DrawerAxis = 'agents' | 'channels' | 'execution' | null;
+type ChannelDetailTab = 'summary' | 'signals' | 'history';
+
 function getCraftsmanPriority(item: { status: string; recentExecutions: Array<{ status: string; startedAt: string | null }> }) {
-  if (item.recentExecutions.some((execution) => execution.status === 'failed')) {
+  if (item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')) {
     return 0;
   }
   if (item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running')) {
@@ -48,6 +52,21 @@ function formatList(values: string[], fallback: string) {
   return values.length > 0 ? values.join(', ') : fallback;
 }
 
+function getPillClass(tone: 'danger' | 'warning' | 'success' | 'info' | 'neutral') {
+  switch (tone) {
+    case 'danger':
+      return 'status-pill status-pill--danger';
+    case 'warning':
+      return 'status-pill status-pill--warning';
+    case 'success':
+      return 'status-pill status-pill--success';
+    case 'info':
+      return 'status-pill status-pill--info';
+    default:
+      return 'status-pill status-pill--neutral';
+  }
+}
+
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
   const summary = useAgentStore((state) => state.summary);
@@ -76,7 +95,11 @@ export function AgentsPage() {
   const setHostFilter = useAgentStore((state) => state.setHostFilter);
   const refreshInterval = useSettingsStore((state) => state.refreshInterval);
   const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
-  const selectedChannelId = channelFilter ?? channelSummaries[0]?.channel ?? null;
+
+  const [activeDrawer, setActiveDrawer] = useState<DrawerAxis>(null);
+  const [channelTab, setChannelTab] = useState<ChannelDetailTab>('summary');
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(() => channelFilter ?? channelSummaries[0]?.channel ?? null);
+
   const channelDetailStaleAfterMs = Math.max(refreshInterval * 3_000, MIN_CHANNEL_DETAIL_STALE_AFTER_MS);
   const isChannelDetailStale = useEffectEvent((channel: string | null) => {
     if (!channel) {
@@ -88,6 +111,16 @@ export function AgentsPage() {
     }
     return Date.now() - fetchedAt >= channelDetailStaleAfterMs;
   });
+
+  useEffect(() => {
+    if (channelFilter) {
+      setSelectedChannelId(channelFilter);
+      return;
+    }
+    if (!selectedChannelId && channelSummaries[0]?.channel) {
+      setSelectedChannelId(channelSummaries[0].channel);
+    }
+  }, [channelFilter, channelSummaries, selectedChannelId]);
 
   useEffect(() => {
     void fetchStatus();
@@ -117,14 +150,19 @@ export function AgentsPage() {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [fetchChannelDetail, fetchStatus, pauseOnHidden, refreshInterval, selectedChannelId]);
+  }, [fetchChannelDetail, fetchStatus, isChannelDetailStale, pauseOnHidden, refreshInterval, selectedChannelId]);
 
   useEffect(() => {
     if (!selectedChannelId || !isChannelDetailStale(selectedChannelId)) {
       return;
     }
     void fetchChannelDetail(selectedChannelId);
-  }, [fetchChannelDetail, selectedChannelId]);
+  }, [fetchChannelDetail, isChannelDetailStale, selectedChannelId]);
+
+  const selectChannel = (channel: string) => {
+    setSelectedChannelId(channel);
+    setChannelFilter(channel);
+  };
 
   const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
   const selectedChannel = useMemo(
@@ -147,6 +185,7 @@ export function AgentsPage() {
       activePanes: panes.filter((pane) => pane.active).length,
       runningCraftsmen: craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running')).length,
       failedCraftsmen: craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')).length,
+      unhealthyPanes: panes.filter((pane) => !pane.ready).length,
     };
   }, [craftsmen, tmuxRuntime]);
   const visibleCraftsmen = useMemo(() => {
@@ -154,7 +193,7 @@ export function AgentsPage() {
       ? craftsmen
       : craftsmenFilter === 'running'
         ? craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running'))
-        : craftsmen.filter((item) => item.recentExecutions.some((execution) => execution.status === 'failed'));
+        : craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed'));
     return [...filtered].sort((left, right) => {
       const priorityDiff = getCraftsmanPriority(left) - getCraftsmanPriority(right);
       if (priorityDiff !== 0) {
@@ -163,6 +202,140 @@ export function AgentsPage() {
       return getCraftsmanSortTime(right) - getCraftsmanSortTime(left);
     });
   }, [craftsmen, craftsmenFilter]);
+
+  const degradedChannels = channelSummaries.filter(
+    (item) => item.signalStatus !== 'healthy' || item.overallPresence === 'stale' || item.overallPresence === 'disconnected',
+  );
+  const staleAgents = agents.filter((agent) => ['stale', 'disconnected', 'offline'].includes(agent.presence));
+  const issueQueue = useMemo(() => {
+    const channelIssues = degradedChannels.map((item) => ({
+      id: `channel:${item.channel}`,
+      axis: 'channels' as const,
+      severity: item.disconnectedAgents > 0 || item.signalCounts.transportErrors > 0 ? 'danger' as const : 'warning' as const,
+      title: item.channel,
+      summary: `${copy.presenceLabel}: ${item.overallPresence} · transport ${item.signalCounts.transportErrors}`,
+      action: () => {
+        selectChannel(item.channel);
+        setChannelTab('summary');
+        setActiveDrawer('channels');
+      },
+    }));
+    const agentIssues = staleAgents.map((agent) => ({
+      id: `agent:${agent.id}`,
+      axis: 'agents' as const,
+      severity: agent.presence === 'disconnected' || agent.presence === 'offline' ? 'danger' as const : 'warning' as const,
+      title: agent.id,
+      summary: `${copy.presenceReasonLabel}: ${agent.presenceReason ?? 'n/a'} · ${copy.lastSeenLabel}: ${agent.lastSeenAt ?? 'n/a'}`,
+      action: () => {
+        setPresenceFilter(agent.presence as typeof presenceFilter);
+        setActiveDrawer('agents');
+      },
+    }));
+    const executionIssues = [
+      ...craftsmen
+        .filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed'))
+        .map((item) => ({
+          id: `craftsman:${item.id}`,
+          axis: 'execution' as const,
+          severity: 'danger' as const,
+          title: item.id,
+          summary: `${copy.statusLabel}: ${item.status} · ${copy.currentTaskLabel}: ${item.taskId}`,
+          action: () => {
+            setCraftsmenFilter('failures');
+            setActiveDrawer('execution');
+          },
+        })),
+      ...(tmuxRuntime?.panes ?? [])
+        .filter((pane) => !pane.ready)
+        .map((pane) => ({
+          id: `pane:${pane.agent}`,
+          axis: 'execution' as const,
+          severity: 'warning' as const,
+          title: pane.agent,
+          summary: `${copy.readyLabel}: no · ${copy.paneLabel}: ${pane.paneId ?? 'n/a'}`,
+          action: () => {
+            setActiveDrawer('execution');
+          },
+        })),
+    ];
+    return [...channelIssues, ...executionIssues, ...agentIssues];
+  }, [
+    channelSummaries,
+    craftsmen,
+    copy.currentTaskLabel,
+    copy.lastSeenLabel,
+    copy.paneLabel,
+    copy.presenceLabel,
+    copy.presenceReasonLabel,
+    copy.readyLabel,
+    copy.statusLabel,
+    degradedChannels,
+    presenceFilter,
+    setCraftsmenFilter,
+    setPresenceFilter,
+    staleAgents,
+    tmuxRuntime?.panes,
+  ]);
+
+  const globalSignals = [
+    {
+      label: 'Degraded channels',
+      value: degradedChannels.length,
+      note: `${channelSummaries.length} total`,
+      tone: degradedChannels.length > 0 ? 'warning' : 'success',
+    },
+    {
+      label: 'Failed craftsmen',
+      value: runtimeSummary.failedCraftsmen,
+      note: `${runtimeSummary.runningCraftsmen} running`,
+      tone: runtimeSummary.failedCraftsmen > 0 ? 'danger' : 'success',
+    },
+    {
+      label: 'Stale agents',
+      value: staleAgents.length,
+      note: `${summary?.onlineAgents ?? 0} online`,
+      tone: staleAgents.length > 0 ? 'warning' : 'success',
+    },
+    {
+      label: 'tmux health',
+      value: runtimeSummary.unhealthyPanes,
+      note: `${runtimeSummary.readyPanes}/${runtimeSummary.totalPanes} ready`,
+      tone: runtimeSummary.unhealthyPanes > 0 ? 'warning' : 'success',
+    },
+  ] as const;
+
+  const axisCards = [
+    {
+      key: 'agents' as const,
+      title: 'Agent',
+      action: 'Agents inventory',
+      summary: '完整 inventory、host 负载、presence 筛选。',
+      count: agents.length,
+      tone: staleAgents.length > 0 ? 'warning' as const : 'success' as const,
+      onClick: () => setActiveDrawer('agents'),
+    },
+    {
+      key: 'channels' as const,
+      title: 'Channel',
+      action: 'Channel health',
+      summary: 'Channel 列表、选中详情、signals / history 分页。',
+      count: channelSummaries.length,
+      tone: degradedChannels.length > 0 ? 'warning' as const : 'success' as const,
+      onClick: () => {
+        setChannelTab('summary');
+        setActiveDrawer('channels');
+      },
+    },
+    {
+      key: 'execution' as const,
+      title: 'Execution',
+      action: 'Execution runtime',
+      summary: 'tmux session 与 craftsmen CLI 合并在同一操作面。',
+      count: runtimeSummary.totalPanes + craftsmen.length,
+      tone: runtimeSummary.failedCraftsmen > 0 ? 'danger' as const : 'info' as const,
+      onClick: () => setActiveDrawer('execution'),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -183,482 +356,602 @@ export function AgentsPage() {
               <span className="inline-stat__value">{summary?.activeAgents ?? 0}</span>
             </div>
             <div className="inline-stat">
-              <span className="inline-stat__label">{copy.metrics.busyCraftsmen}</span>
-              <span className="inline-stat__value">{summary?.busyCraftsmen ?? 0}</span>
+              <span className="inline-stat__label">{copy.runtimeSessionLabel}</span>
+              <span className="inline-stat__value">{runtimeSummary.session}</span>
             </div>
           </div>
         </div>
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.onlineAgents}</p>
-          <p className="metric-value">{summary?.onlineAgents ?? 0}</p>
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]" data-testid="agents-global-status">
+        <div className="surface-panel surface-panel--workspace space-y-5">
+          <div className="section-title-row">
+            <div>
+              <p className="page-kicker">Global status</p>
+              <h3 className="section-title">首屏只看健康度和异常浓度</h3>
+            </div>
+            <span className={getPillClass(issueQueue.length > 0 ? 'warning' : 'success')}>
+              {issueQueue.length > 0 ? `${issueQueue.length} open` : 'healthy'}
+            </span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {globalSignals.map((signal) => (
+              <div key={signal.label} className="data-row">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="type-text-xs">{signal.label}</p>
+                    <span className={getPillClass(signal.tone)}>{signal.note}</span>
+                  </div>
+                  <p className="type-heading-sm mt-3">{signal.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.staleAgents}</p>
-          <p className="metric-value">{summary?.staleAgents ?? 0}</p>
-        </div>
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.disconnectedAgents}</p>
-          <p className="metric-value">{summary?.disconnectedAgents ?? 0}</p>
-        </div>
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.totalAgents}</p>
-          <p className="metric-value">{summary?.totalAgents ?? 0}</p>
+
+        <div className="surface-panel surface-panel--workspace space-y-4">
+          <div className="section-title-row">
+            <div>
+              <p className="page-kicker">{copy.runtimeSummaryTitle}</p>
+              <h3 className="section-title">Overview</h3>
+            </div>
+            <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
+          </div>
+          <div className="space-y-3">
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.channelSummaryTitle}</p>
+                <p className="type-body-sm mt-2">{degradedChannels.length > 0 ? `${degradedChannels[0].channel} 需要优先处理` : '所有 channel 当前无阻塞信号。'}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.agentListTitle}</p>
+                <p className="type-body-sm mt-2">{staleAgents.length > 0 ? `${staleAgents[0].id} 最近状态异常。` : 'Agent inventory 当前稳定。'}</p>
+              </div>
+            </div>
+            <div className="data-row">
+              <div className="min-w-0 flex-1">
+                <p className="type-text-xs">{copy.tmuxRuntimeTitle}</p>
+                <p className="type-body-sm mt-2">
+                  {runtimeSummary.failedCraftsmen > 0
+                    ? `${runtimeSummary.failedCraftsmen} craftsmen 失败，先看 execution runtime。`
+                    : `${runtimeSummary.readyPanes}/${runtimeSummary.totalPanes} panes ready。`}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-3">
-        <div className="surface-panel surface-panel--workspace">
+      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="surface-panel surface-panel--workspace" data-testid="agents-issue-queue">
           <div className="section-title-row">
-            <h3 className="section-title">{copy.channelSummaryTitle}</h3>
-            <span className="status-pill status-pill--neutral">{channelSummaries.length}</span>
+            <div>
+              <p className="page-kicker">Issue queue</p>
+              <h3 className="section-title">异常优先，完整信息延后展开</h3>
+            </div>
+            <span className="status-pill status-pill--neutral">{issueQueue.length}</span>
           </div>
           <div className="mt-5 space-y-3">
-            {channelSummaries.map((item) => {
-              const isActive = channelFilter === item.channel;
-              return (
-                <button
-                  key={item.channel}
-                  type="button"
-                  className="data-row w-full text-left"
-                  onClick={() => setChannelFilter(isActive ? null : item.channel)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <strong className="type-heading-sm">{item.channel}</strong>
-                      <span className="status-pill status-pill--neutral">{item.totalAgents}</span>
+            {issueQueue.length === 0 ? (
+              <div className="empty-state">
+                <p className="type-body-sm">当前没有需要优先介入的 channel、agent 或 tmux 异常。</p>
+              </div>
+            ) : (
+              issueQueue.map((issue) => (
+                <button key={issue.id} type="button" className="dense-row" onClick={issue.action}>
+                  <div className="dense-row__main">
+                    <div className="dense-row__titleblock">
+                      <strong className="dense-row__title">{issue.title}</strong>
+                      <span className={getPillClass(issue.severity)}>{issue.axis}</span>
                     </div>
-                    <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                      <span>{copy.presenceLabel}: {item.overallPresence}</span>
-                      <span>{copy.presenceReasonLabel}: {item.presenceReason ?? 'n/a'}</span>
-                      <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
-                      <span>{copy.metrics.activeAgents}: {item.busyAgents}</span>
-                      <span>{copy.metrics.onlineAgents}: {item.onlineAgents}</span>
-                      <span>{copy.metrics.staleAgents}: {item.staleAgents}</span>
-                      <span>{copy.metrics.disconnectedAgents}: {item.disconnectedAgents}</span>
+                    <div className="dense-row__meta">
+                      <span>{issue.summary}</span>
                     </div>
                   </div>
                 </button>
-              );
-            })}
+              ))
+            )}
           </div>
         </div>
 
-        <div className="surface-panel surface-panel--workspace">
+        <div className="surface-panel surface-panel--workspace" data-testid="agents-axis-entry">
           <div className="section-title-row">
-            <h3 className="section-title">{copy.hostSummaryTitle}</h3>
-            <span className="status-pill status-pill--neutral">{hostSummaries.length}</span>
+            <div>
+              <p className="page-kicker">Workbench axes</p>
+              <h3 className="section-title">详情都进二级子页，不再在首页平铺</h3>
+            </div>
+            <span className="status-pill status-pill--neutral">3</span>
           </div>
-          <div className="mt-5 space-y-3">
-            {hostSummaries.length === 0 ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.emptyHostSummary}</p>
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {axisCards.map((axis) => (
+              <button key={axis.key} type="button" className="decision-card text-left" onClick={axis.onClick}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="type-text-xs">{axis.title}</p>
+                    <p className="type-heading-sm mt-2">{axis.action}</p>
+                  </div>
+                  <span className={getPillClass(axis.tone)}>{axis.count}</span>
+                </div>
+                <p className="type-body-sm mt-4">{axis.summary}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {activeDrawer === 'agents' ? (
+        <WorkbenchDetailSheet
+          label="Agent detail workspace"
+          title="Agents inventory"
+          onClose={() => setActiveDrawer(null)}
+        >
+          <div className="space-y-6">
+            <section className="space-y-4">
+              <div className="section-title-row">
+                <h3 className="section-title">{copy.agentListTitle}</h3>
+                <span className="status-pill status-pill--neutral">{visibleAgents.length}</span>
               </div>
-            ) : (
-              hostSummaries.map((item) => {
-                const isActive = hostFilter === item.host;
-                return (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="type-text-xs">{copy.filtersTitle}</span>
+                {(['all', 'busy', 'online', 'stale', 'disconnected', 'offline'] as const).map((filter) => {
+                  const selected = presenceFilter === filter;
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                      onClick={() => setPresenceFilter(filter)}
+                    >
+                      {copy.filterLabels[filter]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="type-text-xs">{copy.channelLabel}</span>
+                <button
+                  type="button"
+                  className={channelFilter === null ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                  onClick={() => setChannelFilter(null)}
+                >
+                  all
+                </button>
+                {channelSummaries.map((item) => (
+                  <button
+                    key={item.channel}
+                    type="button"
+                    className={channelFilter === item.channel ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                    onClick={() => setChannelFilter(item.channel)}
+                  >
+                    {item.channel}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="type-text-xs">{copy.hostLabel}</span>
+                <button
+                  type="button"
+                  className={hostFilter === null ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                  onClick={() => setHostFilter(null)}
+                >
+                  all
+                </button>
+                {hostSummaries.map((item) => (
                   <button
                     key={item.host}
                     type="button"
-                    className="data-row w-full text-left"
-                    onClick={() => setHostFilter(isActive ? null : item.host)}
+                    className={hostFilter === item.host ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                    onClick={() => setHostFilter(item.host)}
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <strong className="type-heading-sm">{item.host}</strong>
-                        <span className="status-pill status-pill--neutral">{item.totalAgents}</span>
+                    {item.host}
+                  </button>
+                ))}
+              </div>
+              {visibleAgents.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-body-sm">{copy.emptyAgents}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {visibleAgents.map((agent) => (
+                    <div key={agent.id} className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="type-heading-sm">{agent.id}</strong>
+                          <span className="status-pill status-pill--neutral">{agent.status}</span>
+                          <span className={getPillClass(agent.presence === 'online' ? 'success' : agent.presence === 'stale' ? 'warning' : 'danger')}>
+                            {agent.presence}
+                          </span>
+                        </div>
+                        <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                          <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
+                          <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
+                          <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
+                          <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
+                          <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
+                          <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
+                          <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
+                          <span>{copy.loadLabel}: {agent.load}</span>
+                          <span>{copy.taskCountLabel}: {agent.taskCount}</span>
+                          <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <div className="section-title-row">
+                <h3 className="section-title">{copy.hostSummaryTitle}</h3>
+                <span className="status-pill status-pill--neutral">{hostSummaries.length}</span>
+              </div>
+              {hostSummaries.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-body-sm">{copy.emptyHostSummary}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {hostSummaries.map((item) => (
+                    <div key={item.host} className="decision-card">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="type-heading-sm">{item.host}</p>
+                          <p className="type-body-sm mt-2">{copy.presenceLabel}: {item.overallPresence}</p>
+                        </div>
+                        <span className={getPillClass(item.overallPresence === 'online' ? 'success' : 'warning')}>{item.totalAgents}</span>
                       </div>
                       <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                        <span>{copy.presenceLabel}: {item.overallPresence}</span>
-                        <span>{copy.presenceReasonLabel}: {item.presenceReason ?? 'n/a'}</span>
-                        <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
                         <span>{copy.metrics.activeAgents}: {item.busyAgents}</span>
                         <span>{copy.metrics.onlineAgents}: {item.onlineAgents}</span>
                         <span>{copy.metrics.staleAgents}: {item.staleAgents}</span>
                         <span>{copy.metrics.disconnectedAgents}: {item.disconnectedAgents}</span>
                       </div>
                     </div>
-                  </button>
-                );
-              })
-            )}
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
-        </div>
+        </WorkbenchDetailSheet>
+      ) : null}
 
-        <div className="surface-panel surface-panel--workspace">
-          <div className="section-title-row">
-            <h3 className="section-title">{copy.runtimeSummaryTitle}</h3>
-            <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.runtimeSessionLabel}</p>
-                <p className="type-heading-sm mt-2">{runtimeSummary.session}</p>
+      {activeDrawer === 'channels' ? (
+        <WorkbenchDetailSheet
+          label="Channel detail workspace"
+          title="Channel health"
+          onClose={() => setActiveDrawer(null)}
+        >
+          <div className="space-y-6">
+            <section className="space-y-4">
+              <div className="section-title-row">
+                <h3 className="section-title">{copy.channelSummaryTitle}</h3>
+                <span className="status-pill status-pill--neutral">{channelSummaries.length}</span>
               </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.runtimePanesLabel}</p>
-                <p className="type-heading-sm mt-2">{runtimeSummary.totalPanes}</p>
-              </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.runtimeReadyPanesLabel}</p>
-                <p className="type-heading-sm mt-2">{runtimeSummary.readyPanes}</p>
-              </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.runtimeActivePanesLabel}</p>
-                <p className="type-heading-sm mt-2">{runtimeSummary.activePanes}</p>
-              </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.runtimeRunningCraftsmenLabel}</p>
-                <p className="type-heading-sm mt-2">{runtimeSummary.runningCraftsmen}</p>
-              </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.runtimeFailedCraftsmenLabel}</p>
-                <p className="type-heading-sm mt-2">{runtimeSummary.failedCraftsmen}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+              {channelSummaries.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-body-sm">{copy.emptyChannelDetail}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {channelSummaries.map((item) => (
+                    <button
+                      key={item.channel}
+                      type="button"
+                      className={selectedChannelId === item.channel ? 'dense-row dense-row--active' : 'dense-row'}
+                      onClick={() => selectChannel(item.channel)}
+                    >
+                      <div className="dense-row__main">
+                        <div className="dense-row__titleblock">
+                          <strong className="dense-row__title">{item.channel}</strong>
+                          <span className={getPillClass(item.signalStatus === 'healthy' ? 'success' : 'warning')}>{item.signalStatus}</span>
+                        </div>
+                        <div className="dense-row__meta">
+                          <span>{copy.presenceLabel}: {item.overallPresence}</span>
+                          <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
-        <div className="surface-panel surface-panel--workspace xl:sticky xl:top-6">
-          <div>
-            <p className="page-kicker">{copy.channelDetailTitle}</p>
-            <div className="section-title-row mt-3">
-              <h3 className="page-title">{selectedChannel?.channel ?? 'n/a'}</h3>
-              <span className="status-pill status-pill--neutral">{selectedChannel?.signalStatus ?? 'unknown'}</span>
-            </div>
-            <p className="page-summary">
-              {selectedChannel
-                ? `${copy.presenceLabel}: ${selectedChannel.overallPresence} · ${copy.lastSeenLabel}: ${selectedChannel.lastSeenAt ?? 'n/a'}`
-                : copy.emptyChannelDetail}
-            </p>
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {(['summary', 'signals', 'history'] as const).map((tab) => {
+                  const selected = channelTab === tab;
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                      onClick={() => setChannelTab(tab)}
+                    >
+                      {tab}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedChannel ? (
+                <>
+                  {channelTab === 'summary' ? (
+                    <div className="space-y-3">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <p className="type-text-xs">{copy.presenceLabel}</p>
+                            <p className="type-heading-sm mt-2">{selectedChannel.overallPresence}</p>
+                          </div>
+                        </div>
+                        <div className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <p className="type-text-xs">{copy.presenceReasonLabel}</p>
+                            <p className="type-heading-sm mt-2">{selectedChannel.presenceReason ?? 'n/a'}</p>
+                          </div>
+                        </div>
+                        <div className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <p className="type-text-xs">{copy.metrics.totalAgents}</p>
+                            <p className="type-heading-sm mt-2">{selectedChannel.totalAgents}</p>
+                          </div>
+                        </div>
+                        <div className="data-row">
+                          <div className="min-w-0 flex-1">
+                            <p className="type-text-xs">{copy.metrics.staleAgents}</p>
+                            <p className="type-heading-sm mt-2">{selectedChannel.staleAgents}</p>
+                          </div>
+                        </div>
+                      </div>
+                      {selectedChannel.affectedAgents.length === 0 ? (
+                        <div className="empty-state">
+                          <p className="type-body-sm">{copy.emptyChannelDetail}</p>
+                        </div>
+                      ) : (
+                        selectedChannel.affectedAgents.map((item) => (
+                          <div key={`${selectedChannel.channel}-${item.id}`} className="decision-card">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="type-heading-sm">{item.id}</p>
+                                <p className="type-body-sm mt-2">{item.presenceReason ?? 'n/a'}</p>
+                              </div>
+                              <span className={getPillClass(item.presence === 'online' ? 'success' : item.presence === 'stale' ? 'warning' : 'danger')}>
+                                {item.presence}
+                              </span>
+                            </div>
+                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                              <span>{copy.statusLabel}: {item.status}</span>
+                              <span>{copy.accountLabel}: {item.accountId ?? 'n/a'}</span>
+                              <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+
+                  {channelTab === 'signals' ? (
+                    <div className="space-y-3">
+                      {selectedChannel.signals.length === 0 ? (
+                        <div className="empty-state">
+                          <p className="type-body-sm">{copy.emptyChannelSignals}</p>
+                        </div>
+                      ) : (
+                        selectedChannel.signals.map((signal) => (
+                          <div key={`${selectedChannel.channel}-${signal.occurredAt}-${signal.kind}`} className="data-row">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <strong className="type-heading-sm">{signal.kind}</strong>
+                                <span className={getPillClass(signal.severity === 'error' ? 'danger' : 'warning')}>{signal.severity}</span>
+                              </div>
+                              <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                                <span>{copy.channelLabel}: {signal.channel}</span>
+                                <span>{copy.accountLabel}: {signal.accountId ?? 'n/a'}</span>
+                                <span>{copy.lastSeenLabel}: {signal.occurredAt}</span>
+                                <span>{copy.presenceReasonLabel}: {signal.detail ?? 'n/a'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+
+                  {channelTab === 'history' ? (
+                    <div className="space-y-3">
+                      {selectedChannel.history.length === 0 ? (
+                        <div className="empty-state">
+                          <p className="type-body-sm">{copy.emptyChannelHistory}</p>
+                        </div>
+                      ) : (
+                        selectedChannel.history.map((event) => (
+                          <div key={`${selectedChannel.channel}-${event.occurredAt}-${event.agentId}`} className="data-row">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <strong className="type-heading-sm">{event.agentId}</strong>
+                                <span className={getPillClass(event.presence === 'online' ? 'success' : event.presence === 'stale' ? 'warning' : 'danger')}>
+                                  {event.presence}
+                                </span>
+                              </div>
+                              <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                                <span>{copy.presenceReasonLabel}: {event.reason ?? 'n/a'}</span>
+                                <span>{copy.lastSeenLabel}: {event.occurredAt}</span>
+                                <span>{copy.accountLabel}: {event.accountId ?? 'n/a'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="empty-state">
+                  <p className="type-body-sm">{copy.emptyChannelDetail}</p>
+                </div>
+              )}
+              {channelDetailLoading ? <p className="type-text-xs">{copy.loadingTailAction}</p> : null}
+              {!channelDetailLoading && channelDetailError ? (
+                <div className="inline-alert inline-alert--danger">{channelDetailError}</div>
+              ) : null}
+            </section>
           </div>
-          <div className="mt-5 space-y-4">
-            {selectedChannel ? (
-              <>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-text-xs">{copy.presenceLabel}</p>
-                      <p className="type-heading-sm mt-2">{selectedChannel.overallPresence}</p>
-                    </div>
-                  </div>
-                  <div className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-text-xs">{copy.presenceReasonLabel}</p>
-                      <p className="type-heading-sm mt-2">{selectedChannel.presenceReason ?? 'n/a'}</p>
-                    </div>
-                  </div>
-                  <div className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-text-xs">{copy.metrics.totalAgents}</p>
-                      <p className="type-heading-sm mt-2">{selectedChannel.totalAgents}</p>
-                    </div>
-                  </div>
-                  <div className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-text-xs">{copy.metrics.activeAgents}</p>
-                      <p className="type-heading-sm mt-2">{selectedChannel.busyAgents}</p>
-                    </div>
-                  </div>
-                  <div className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-text-xs">{copy.metrics.staleAgents}</p>
-                      <p className="type-heading-sm mt-2">{selectedChannel.staleAgents}</p>
-                    </div>
-                  </div>
-                  <div className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-text-xs">{copy.metrics.disconnectedAgents}</p>
-                      <p className="type-heading-sm mt-2">{selectedChannel.disconnectedAgents}</p>
-                    </div>
+        </WorkbenchDetailSheet>
+      ) : null}
+
+      {activeDrawer === 'execution' ? (
+        <WorkbenchDetailSheet
+          label="Execution detail workspace"
+          title="Execution runtime"
+          onClose={() => setActiveDrawer(null)}
+        >
+          <div className="space-y-6">
+            <section className="space-y-4">
+              <div className="section-title-row">
+                <h3 className="section-title">{copy.runtimeSummaryTitle}</h3>
+                <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <p className="type-text-xs">{copy.runtimePanesLabel}</p>
+                    <p className="type-heading-sm mt-2">{runtimeSummary.totalPanes}</p>
                   </div>
                 </div>
                 <div className="data-row">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <strong className="type-heading-sm">signal</strong>
-                      <span className="status-pill status-pill--neutral">{selectedChannel.signalStatus}</span>
-                    </div>
-                    <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                      <span>ready: {selectedChannel.signalCounts.readyEvents}</span>
-                      <span>restart: {selectedChannel.signalCounts.restartEvents}</span>
-                      <span>transport: {selectedChannel.signalCounts.transportErrors}</span>
-                    </div>
+                    <p className="type-text-xs">{copy.runtimeReadyPanesLabel}</p>
+                    <p className="type-heading-sm mt-2">{runtimeSummary.readyPanes}</p>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  {selectedChannel.affectedAgents.length === 0 ? (
-                    <div className="empty-state">
-                      <p className="type-body-sm">{copy.emptyChannelDetail}</p>
-                    </div>
-                  ) : (
-                    selectedChannel.affectedAgents.map((item) => (
-                      <div key={`${selectedChannel.channel}-${item.id}`} className="decision-card">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="type-heading-sm">{item.id}</p>
-                            <p className="type-body-sm mt-2">{item.presenceReason ?? 'n/a'}</p>
-                          </div>
-                          <span className="status-pill status-pill--info">{item.presence}</span>
-                        </div>
-                        <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                          <span>{copy.statusLabel}: {item.status}</span>
-                          <span>{copy.lastSeenLabel}: {item.lastSeenAt ?? 'n/a'}</span>
-                          <span>{copy.accountLabel}: {item.accountId ?? 'n/a'}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
-                  <div className="section-title-row">
-                    <h4 className="section-title">{copy.channelSignalsTitle}</h4>
-                    <span className="status-pill status-pill--neutral">{selectedChannel.signals.length}</span>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {selectedChannel.signals.length === 0 ? (
-                      <div className="empty-state">
-                        <p className="type-body-sm">{copy.emptyChannelSignals}</p>
-                      </div>
-                    ) : (
-                      selectedChannel.signals.map((signal) => (
-                        <div key={`${selectedChannel.channel}-${signal.occurredAt}-${signal.kind}`} className="data-row">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <strong className="type-heading-sm">{signal.kind}</strong>
-                              <span className="status-pill status-pill--info">{signal.severity}</span>
-                            </div>
-                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                              <span>{copy.channelLabel}: {signal.channel}</span>
-                              <span>{copy.lastSeenLabel}: {signal.occurredAt}</span>
-                              <span>{copy.accountLabel}: {signal.accountId ?? 'n/a'}</span>
-                              <span>{copy.presenceReasonLabel}: {signal.detail ?? 'n/a'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-                <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
-                  <div className="section-title-row">
-                    <h4 className="section-title">{copy.channelTimelineTitle}</h4>
-                    <span className="status-pill status-pill--neutral">{selectedChannel.history.length}</span>
-                  </div>
-                  <div className="mt-4 space-y-3">
-                    {selectedChannel.history.length === 0 ? (
-                      <div className="empty-state">
-                        <p className="type-body-sm">{copy.emptyChannelHistory}</p>
-                      </div>
-                    ) : (
-                      selectedChannel.history.map((event) => (
-                        <div key={`${selectedChannel.channel}-${event.occurredAt}-${event.agentId}`} className="data-row">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <strong className="type-heading-sm">{event.agentId}</strong>
-                              <span className="status-pill status-pill--info">{event.presence}</span>
-                            </div>
-                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                              <span>{copy.presenceReasonLabel}: {event.reason ?? 'n/a'}</span>
-                              <span>{copy.lastSeenLabel}: {event.occurredAt}</span>
-                              <span>{copy.accountLabel}: {event.accountId ?? 'n/a'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.emptyChannelDetail}</p>
-              </div>
-            )}
-            {channelDetailLoading ? <p className="type-text-xs">{copy.loadingTailAction}</p> : null}
-            {!channelDetailLoading && channelDetailError ? (
-              <div className="inline-alert inline-alert--danger">{channelDetailError}</div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="surface-panel surface-panel--workspace">
-          <div className="section-title-row">
-            <h3 className="section-title">{copy.agentListTitle}</h3>
-            <span className="status-pill status-pill--neutral">{visibleAgents.length}</span>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="type-text-xs">{copy.filtersTitle}</span>
-            {(['all', 'busy', 'online', 'stale', 'disconnected', 'offline'] as const).map((filter) => {
-              const selected = presenceFilter === filter;
-              return (
-                <button
-                  key={filter}
-                  type="button"
-                  className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
-                  onClick={() => setPresenceFilter(filter)}
-                >
-                  {copy.filterLabels[filter]}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-5 space-y-3">
-            {visibleAgents.length === 0 ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.emptyAgents}</p>
-              </div>
-            ) : (
-              visibleAgents.map((agent) => (
-                <div key={agent.id} className="data-row">
+                <div className="data-row">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <strong className="type-heading-sm">{agent.id}</strong>
-                      <span className="status-pill status-pill--neutral">{agent.status}</span>
-                      <span className="status-pill status-pill--info">{agent.presence}</span>
-                    </div>
-                    <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                      <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
-                      <span>{copy.presenceLabel}: {agent.presence}</span>
-                      <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
-                      <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
-                      <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
-                      <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
-                      <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
-                      <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
-                      <span>{copy.loadLabel}: {agent.load}</span>
-                      <span>{copy.taskCountLabel}: {agent.taskCount}</span>
-                      <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>
-                    </div>
+                    <p className="type-text-xs">{copy.runtimeRunningCraftsmenLabel}</p>
+                    <p className="type-heading-sm mt-2">{runtimeSummary.runningCraftsmen}</p>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <div className="surface-panel surface-panel--workspace">
-          <div className="section-title-row">
-            <h3 className="section-title">{copy.craftsmenTitle}</h3>
-            <span className="status-pill status-pill--neutral">{visibleCraftsmen.length}</span>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(['all', 'failures', 'running'] as const).map((filter) => {
-              const selected = craftsmenFilter === filter;
-              return (
-                <button
-                  key={filter}
-                  type="button"
-                  className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
-                  onClick={() => setCraftsmenFilter(filter)}
-                >
-                  {filter}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-5 space-y-3">
-            {visibleCraftsmen.length === 0 ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.emptyCraftsmen}</p>
-              </div>
-            ) : (
-              visibleCraftsmen.map((item) => (
-                <div key={item.id} className="decision-card">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="type-heading-sm">{item.id}</p>
-                      <p className="type-body-sm mt-2">{item.title}</p>
-                    </div>
-                    <span className="status-pill status-pill--info">{item.status}</span>
+                <div className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <p className="type-text-xs">{copy.runtimeFailedCraftsmenLabel}</p>
+                    <p className="type-heading-sm mt-2">{runtimeSummary.failedCraftsmen}</p>
                   </div>
-                  <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                    <span>{copy.currentTaskLabel}: {item.taskId}</span>
-                    <span>{item.subtaskId}</span>
-                  </div>
-                  {item.recentExecutions.length > 0 ? (
-                    <div className="mt-4 space-y-2">
-                      {sortExecutions(item.recentExecutions).map((execution) => (
-                        <div key={execution.executionId} className="type-text-xs">
-                          {execution.executionId} · {execution.status} · {execution.runtimeMode ?? 'n/a'} · {execution.transport ?? 'n/a'}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="surface-panel surface-panel--workspace">
-          <div className="section-title-row">
-            <h3 className="section-title">{copy.tmuxRuntimeTitle}</h3>
-            <span className="status-pill status-pill--neutral">{tmuxRuntime?.session ?? 'n/a'}</span>
-          </div>
-          <div className="mt-5 space-y-3">
-            {!tmuxRuntime || tmuxRuntime.panes.length === 0 ? (
-              <div className="empty-state">
-                <p className="type-body-sm">{copy.emptyTmuxRuntime}</p>
               </div>
-            ) : (
-              tmuxRuntime.panes.map((pane) => (
-                <div key={pane.agent} className="decision-card">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="type-heading-sm">{pane.agent}</p>
-                      <p className="type-body-sm mt-2">{copy.paneLabel}: {pane.paneId ?? 'n/a'}</p>
-                    </div>
-                    <span className={pane.ready ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}>
-                      {copy.readyLabel}: {pane.ready ? 'yes' : 'no'}
-                    </span>
-                  </div>
-                  <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                    <span>{copy.commandLabel}: {pane.currentCommand ?? 'n/a'}</span>
-                    <span>{copy.statusLabel}: {pane.active ? 'active' : 'idle'}</span>
-                    <span>{copy.continuityBackendLabel}: {pane.continuityBackend}</span>
-                    <span>{copy.resumeCapabilityLabel}: {pane.resumeCapability}</span>
-                    <span>{copy.identitySourceLabel}: {pane.identitySource}</span>
-                    <span>{copy.identityPathLabel}: {pane.identityPath ?? 'n/a'}</span>
-                    <span>{copy.observedAtLabel}: {pane.sessionObservedAt ?? 'n/a'}</span>
-                    <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
-                    <span>{copy.recoveryModeLabel}: {pane.lastRecoveryMode ?? 'n/a'}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <p className="type-text-xs">{copy.tailPreviewLabel}: {tmuxTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>
+            </section>
+
+            <section className="space-y-4">
+              <div className="section-title-row">
+                <h3 className="section-title">{copy.craftsmenTitle}</h3>
+                <span className="status-pill status-pill--neutral">{visibleCraftsmen.length}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(['all', 'failures', 'running'] as const).map((filter) => {
+                  const selected = craftsmenFilter === filter;
+                  return (
                     <button
+                      key={filter}
                       type="button"
-                      className="status-pill status-pill--neutral"
-                      onClick={() => void fetchTmuxTail(pane.agent)}
+                      className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                      onClick={() => setCraftsmenFilter(filter)}
                     >
-                      {tmuxTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
+                      {filter}
                     </button>
-                  </div>
+                  );
+                })}
+              </div>
+              {visibleCraftsmen.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-body-sm">{copy.emptyCraftsmen}</p>
                 </div>
-              ))
-            )}
+              ) : (
+                <div className="space-y-3">
+                  {visibleCraftsmen.map((item) => (
+                    <div key={item.id} className="decision-card">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="type-heading-sm">{item.id}</p>
+                          <p className="type-body-sm mt-2">{item.title}</p>
+                        </div>
+                        <span className={getPillClass(item.status === 'failed' ? 'danger' : item.status === 'busy' ? 'warning' : 'success')}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                        <span>{copy.currentTaskLabel}: {item.taskId}</span>
+                        <span>{item.subtaskId}</span>
+                        <span>{copy.lastSeenLabel}: {item.runningSince ?? 'n/a'}</span>
+                      </div>
+                      {item.recentExecutions.length > 0 ? (
+                        <div className="mt-4 space-y-2">
+                          {sortExecutions(item.recentExecutions).map((execution) => (
+                            <div key={execution.executionId} className="type-text-xs">
+                              {execution.executionId} · {execution.status} · {execution.runtimeMode ?? 'n/a'} · {execution.transport ?? 'n/a'}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <div className="section-title-row">
+                <h3 className="section-title">{copy.tmuxRuntimeTitle}</h3>
+                <span className="status-pill status-pill--neutral">{tmuxRuntime?.session ?? 'n/a'}</span>
+              </div>
+              {!tmuxRuntime || tmuxRuntime.panes.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-body-sm">{copy.emptyTmuxRuntime}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {tmuxRuntime.panes.map((pane) => (
+                    <div key={pane.agent} className="decision-card">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="type-heading-sm">{pane.agent}</p>
+                          <p className="type-body-sm mt-2">{copy.paneLabel}: {pane.paneId ?? 'n/a'}</p>
+                        </div>
+                        <span className={getPillClass(pane.ready ? 'success' : 'warning')}>
+                          {copy.readyLabel}: {pane.ready ? 'yes' : 'no'}
+                        </span>
+                      </div>
+                      <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                        <span>{copy.commandLabel}: {pane.currentCommand ?? 'n/a'}</span>
+                        <span>{copy.statusLabel}: {pane.active ? 'active' : 'idle'}</span>
+                        <span>{copy.continuityBackendLabel}: {pane.continuityBackend}</span>
+                        <span>{copy.resumeCapabilityLabel}: {pane.resumeCapability}</span>
+                        <span>{copy.identitySourceLabel}: {pane.identitySource}</span>
+                        <span>{copy.identityPathLabel}: {pane.identityPath ?? 'n/a'}</span>
+                        <span>{copy.observedAtLabel}: {pane.sessionObservedAt ?? 'n/a'}</span>
+                        <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
+                        <span>{copy.recoveryModeLabel}: {pane.lastRecoveryMode ?? 'n/a'}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <p className="type-text-xs">{copy.tailPreviewLabel}: {tmuxTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>
+                        <button
+                          type="button"
+                          className="status-pill status-pill--neutral"
+                          onClick={() => void fetchTmuxTail(pane.agent)}
+                        >
+                          {tmuxTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
-        </div>
-      </section>
+        </WorkbenchDetailSheet>
+      ) : null}
     </div>
   );
 }

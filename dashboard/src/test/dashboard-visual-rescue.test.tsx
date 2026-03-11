@@ -107,11 +107,36 @@ describe('dashboard visual rescue target structure', () => {
   });
 
   it('rebuilds the tasks page into a dense list and detail workspace', () => {
+    taskStoreState.selectedTaskStatus = {
+      ...getMockTaskStatus('TSK-001')!,
+      taskBlueprint: {
+        graphVersion: 1,
+        entryNodes: ['proposal'],
+        nodes: [
+          { id: 'proposal', name: '提案', mode: 'discuss', gateType: 'archon_review' },
+          { id: 'policy-guard', name: '策略护栏', mode: 'execute', gateType: 'all_subtasks_done' },
+          { id: 'review', name: '合并审查', mode: 'discuss', gateType: 'approval' },
+        ],
+        edges: [
+          { from: 'proposal', to: 'policy-guard', kind: 'advance' },
+          { from: 'policy-guard', to: 'review', kind: 'advance' },
+          { from: 'review', to: 'policy-guard', kind: 'reject' },
+        ],
+        artifactContracts: [{ nodeId: 'policy-guard', artifactType: 'stage_output' }],
+        roleBindings: [
+          { role: 'architect', agentId: 'archon', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'craftsman-2', model_preference: 'fast_coding' },
+        ],
+      },
+    };
     renderWithRouter(<TasksPage />);
 
     expect(screen.getByRole('button', { name: /筛选与分类/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /打开任务详情/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('按任务标题、ID、创建者搜索')).toBeInTheDocument();
+    expect(screen.getByText('编排图')).toBeInTheDocument();
+    expect(screen.getByText('策略护栏')).toBeInTheDocument();
+    expect(screen.getByText('review -> policy-guard')).toBeInTheDocument();
   });
 
   it('rebuilds the reviews page as a decision queue workspace', () => {

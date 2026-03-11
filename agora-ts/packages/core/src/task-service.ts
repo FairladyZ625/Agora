@@ -7,6 +7,7 @@ import type {
   CraftsmanDispatchRequestDto,
   CreateTaskRequestDto,
   PromoteTodoRequestDto,
+  TaskBlueprintDto,
   TaskStatusDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
@@ -172,8 +173,8 @@ export class TaskService {
 
   createTask(input: CreateTaskRequestDto): StoredTask {
     const template = this.loadTemplate(input.type);
-    const workflow = this.buildWorkflow(template);
-    const team = this.buildTeam(template);
+    const workflow = input.workflow_override ?? this.buildWorkflow(template);
+    const team = input.team_override ?? this.buildTeam(template);
     const taskId = this.taskIdGenerator();
 
     const draft = this.taskRepository.insertTask({
@@ -234,7 +235,20 @@ export class TaskService {
     if (this.imProvisioningPort && this.taskContextBindingService) {
       const bindingService = this.taskContextBindingService;
       const provisioningPort = this.imProvisioningPort;
-      void provisioningPort.provisionThread(taskId, input.title).then((provisioned) => {
+      void provisioningPort.provisionContext({
+        task_id: taskId,
+        title: input.title,
+        target: input.im_target
+          ? {
+              ...(input.im_target.provider ? { provider: input.im_target.provider } : {}),
+              ...(input.im_target.conversation_ref ? { conversation_ref: input.im_target.conversation_ref } : {}),
+              ...(input.im_target.thread_ref ? { thread_ref: input.im_target.thread_ref } : {}),
+              ...(input.im_target.visibility ? { visibility: input.im_target.visibility } : {}),
+              ...(input.im_target.participant_refs ? { participant_refs: input.im_target.participant_refs } : {}),
+            }
+          : null,
+        participant_refs: team.members.map((member) => member.agentId),
+      }).then((provisioned) => {
         const binding = bindingService.createBinding({
           task_id: taskId,
           im_provider: provisioned.im_provider,
@@ -243,6 +257,19 @@ export class TaskService {
           ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
         this.taskParticipationService?.attachContextBinding(taskId, binding.id);
+        for (const member of team.members) {
+          void provisioningPort.joinParticipant({
+            binding_id: binding.id,
+            participant_ref: member.agentId,
+            ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
+            ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
+          }).catch((err: unknown) => {
+            console.error(
+              `[TaskService] IM participant join failed for task ${taskId} participant ${member.agentId}:`,
+              err,
+            );
+          });
+        }
       }).catch((err: unknown) => {
         console.error(`[TaskService] IM provisioning failed for task ${taskId}:`, err);
       });
@@ -263,6 +290,7 @@ export class TaskService {
     const task = this.getTaskOrThrow(taskId);
     return {
       task: task as TaskStatusDto['task'],
+      task_blueprint: this.buildTaskBlueprint(task),
       flow_log: this.flowLogRepository.listByTask(taskId),
       progress_log: this.progressLogRepository.listByTask(taskId),
       subtasks: this.subtaskRepository.listByTask(taskId),
@@ -705,7 +733,7 @@ export class TaskService {
       if (newState === TaskState.CANCELLED) {
         this.cancelOpenWork(taskId, options.reason);
       }
-      if (newState === TaskState.DONE) {
+      if (newState === TaskState.DONE || newState === TaskState.CANCELLED) {
         this.ensureArchiveJobForTask(taskId);
       }
 
@@ -719,6 +747,19 @@ export class TaskService {
         detail: this.buildStateChangeDetail(options, actionDetail),
         actor: 'system',
       });
+      const conversationBody = this.buildStateConversationBody(task.state as TaskState, newState as TaskState, options);
+      if (conversationBody) {
+        this.mirrorConversationEntry(taskId, {
+          actor: 'system',
+          body: conversationBody,
+          metadata: {
+            event: actionEvent ?? 'state_changed',
+            from_state: task.state,
+            to_state: newState,
+            ...(options.reason ? { reason: options.reason } : {}),
+          },
+        });
+      }
       if (actionEvent) {
         this.flowLogRepository.insertFlowLog({
           task_id: taskId,
@@ -849,6 +890,17 @@ export class TaskService {
           },
           actor: 'system',
         });
+        this.mirrorConversationEntry(task.id, {
+          actor: 'system',
+          body: `Task blocked: ${reason}`,
+          metadata: {
+            event: 'blocked',
+            from_state: task.state,
+            to_state: TaskState.BLOCKED,
+            reason,
+            recovered_subtasks: impacts.map((impact) => impact.subtask_id),
+          },
+        });
         this.db.exec('COMMIT');
 
         result.blocked_tasks += 1;
@@ -867,6 +919,50 @@ export class TaskService {
     return {
       type: template.defaultWorkflow ?? 'linear',
       stages: template.stages ?? [],
+    };
+  }
+
+  private buildTaskBlueprint(task: StoredTask): TaskBlueprintDto {
+    const stages = task.workflow.stages ?? [];
+    const nodes: TaskBlueprintDto['nodes'] = stages.map((stage) => ({
+      id: stage.id,
+      name: stage.name ?? null,
+      mode: stage.mode ?? null,
+      gate_type: stage.gate?.type ?? null,
+    }));
+
+    const edges: TaskBlueprintDto['edges'] = [];
+    for (let index = 0; index < stages.length; index += 1) {
+      const stage = stages[index]!;
+      const nextStageId = stages[index + 1]?.id;
+      if (nextStageId) {
+        edges.push({
+          from: stage.id,
+          to: nextStageId,
+          kind: 'advance',
+        });
+      }
+      if (stage.reject_target) {
+        edges.push({
+          from: stage.id,
+          to: stage.reject_target,
+          kind: 'reject',
+        });
+      }
+    }
+
+    return {
+      graph_version: 1,
+      entry_nodes: stages[0] ? [stages[0].id] : [],
+      nodes,
+      edges,
+      artifact_contracts: stages
+        .filter((stage) => stage.mode === 'execute')
+        .map((stage) => ({
+          node_id: stage.id,
+          artifact_type: 'stage_output',
+        })),
+      role_bindings: task.team.members,
     };
   }
 
@@ -1249,6 +1345,29 @@ export class TaskService {
     }
     if (toState === TaskState.ACTIVE && fromState === TaskState.BLOCKED) {
       return 'unblocked';
+    }
+    return null;
+  }
+
+  private buildStateConversationBody(
+    fromState: TaskState,
+    toState: TaskState,
+    options: UpdateTaskStateOptions,
+  ): string | null {
+    if (toState === TaskState.PAUSED) {
+      return options.reason ? `Task paused: ${options.reason}` : 'Task paused';
+    }
+    if (toState === TaskState.CANCELLED) {
+      return options.reason ? `Task cancelled: ${options.reason}` : 'Task cancelled';
+    }
+    if (toState === TaskState.BLOCKED) {
+      return options.reason ? `Task blocked: ${options.reason}` : 'Task blocked';
+    }
+    if (toState === TaskState.ACTIVE && fromState === TaskState.PAUSED) {
+      return 'Task resumed';
+    }
+    if (toState === TaskState.ACTIVE && fromState === TaskState.BLOCKED) {
+      return options.reason ? `Task unblocked: ${options.reason}` : 'Task unblocked';
     }
     return null;
   }

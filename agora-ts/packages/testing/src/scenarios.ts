@@ -1193,6 +1193,8 @@ function runTaskActionConversationMirrorScenario(runtime: TestRuntime): Scenario
     rejectorId: 'gpt52',
     reason: 'needs more structure',
   });
+  runtime.taskService.pauseTask(task.id, { reason: 'human hold' });
+  runtime.taskService.resumeTask(task.id);
 
   const entries = new TaskConversationRepository(runtime.db).listByTask(task.id);
   return buildScenarioResult(runtime, 'task-action-conversation-mirror', task.id, {

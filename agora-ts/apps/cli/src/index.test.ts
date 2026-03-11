@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
 import { CraftsmanDispatcher, HumanAccountService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
@@ -90,6 +90,40 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('OC-300');
     expect(stdout.value).toContain('实现 CLI parity');
     expect(stdout.value).toContain('active');
+  });
+
+  it('creates tasks with team/workflow/im-target overrides through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-300B',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync([
+      'create',
+      '实现 CLI override create',
+      '--type', 'coding',
+      '--team-json', '{"members":[{"role":"architect","agentId":"opus","model_preference":"strong_reasoning"},{"role":"developer","agentId":"codex","model_preference":"fast_coding"}]}',
+      '--workflow-json', '{"type":"custom","stages":[{"id":"kickoff","mode":"discuss","gate":{"type":"command"}},{"id":"build","mode":"execute","gate":{"type":"all_subtasks_done"}}]}',
+      '--im-target-json', '{"provider":"discord","conversation_ref":"channel-1","visibility":"private","participant_refs":["opus","codex"]}',
+    ], {
+      from: 'user',
+    });
+
+    const created = taskService.getTask('OC-300B');
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('任务已创建: OC-300B');
+    expect(created?.current_stage).toBe('kickoff');
+    expect(created?.team).toEqual({
+      members: [
+        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+      ],
+    });
   });
 
   it('runs task action commands through the cli', async () => {
@@ -233,6 +267,72 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('dashboard session 已建立: lizeyu');
     expect(stdout.value).toContain('authenticated: true');
     expect(stdout.value).toContain('dashboard session 已清除');
+  });
+
+  it('runs local dev stack through the start command and run alias', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const startCommandRunner = vi.fn().mockResolvedValue(undefined);
+    const program = createCliProgram({
+      taskService: {
+        createTask: () => {
+          throw new Error('unused');
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: {
+        up: () => {
+          throw new Error('unused');
+        },
+        status: () => {
+          throw new Error('unused');
+        },
+        send: () => {
+          throw new Error('unused');
+        },
+        start: () => {
+          throw new Error('unused');
+        },
+        resume: () => {
+          throw new Error('unused');
+        },
+        task: () => {
+          throw new Error('unused');
+        },
+        tail: () => {
+          throw new Error('unused');
+        },
+        doctor: () => {
+          throw new Error('unused');
+        },
+        down: () => {
+          throw new Error('unused');
+        },
+        recordIdentity: () => {
+          throw new Error('unused');
+        },
+      } as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: {
+        bootstrapAdmin: () => {
+          throw new Error('unused');
+        },
+      } as unknown as HumanAccountService,
+      taskConversationService: {
+        listByTaskId: () => {
+          throw new Error('unused');
+        },
+      } as unknown as TaskConversationService,
+      startCommandRunner,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['start'], { from: 'user' });
+    await program.parseAsync(['run'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(startCommandRunner).toHaveBeenCalledTimes(2);
+    expect(startCommandRunner.mock.calls[0]?.[0]?.args?.[0]).toContain('docs/02-PRODUCT/scripts/dev-start.sh');
   });
 
   it('reads task conversation entries through the cli', async () => {

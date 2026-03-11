@@ -35,6 +35,7 @@ const taskStoreState: TaskStoreMockState = {
       priority: 'high',
       creator: 'archon',
       state: 'in_progress',
+      archiveStatus: null,
       current_stage: 'develop',
       teamLabel: 'opus / sonnet',
       workflowLabel: 'discuss-execute-review',

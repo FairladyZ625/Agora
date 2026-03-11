@@ -10,6 +10,7 @@ function buildTaskResponse() {
     priority: 'high',
     creator: 'archon',
     state: 'active',
+    archive_status: null,
     current_stage: 'execute',
     team: { members: [] },
     workflow: { stages: [] },
@@ -117,6 +118,8 @@ describe('dashboard expansion api client', () => {
                 resume_capability: 'native_resume',
                 session_reference: 'codex-session-123',
                 identity_source: 'session_file',
+                identity_source_rank: 0,
+                identity_conflict_count: 0,
                 last_recovery_mode: 'resume_exact',
                 transport_session_id: 'tmux:agora-craftsmen:codex',
               }],
@@ -280,6 +283,37 @@ describe('dashboard expansion api client', () => {
             stage_count: 3,
           }];
         }
+        if (method === 'PUT' && url.includes('/templates/')) {
+          return {
+            id: 'coding',
+            saved: true,
+            template: JSON.parse(String(init?.body ?? '{}')),
+          };
+        }
+        if (method === 'POST' && /\/templates\/[^/]+\/duplicate$/.test(url)) {
+          return {
+            id: 'coding_copy',
+            template: {
+              name: 'Coding Copy',
+              type: 'coding_copy',
+              description: 'template copy',
+              defaultWorkflow: 'linear',
+              stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
+            },
+          };
+        }
+        if (method === 'POST' && url.endsWith('/workflows/validate')) {
+          return {
+            valid: true,
+            errors: [],
+            normalized: {
+              name: 'workflow',
+              type: 'workflow',
+              defaultWorkflow: 'linear',
+              stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
+            },
+          };
+        }
         if (url.includes('/templates/')) {
           return {
             name: 'Coding',
@@ -434,6 +468,20 @@ describe('dashboard expansion api client', () => {
 
     await api.listTemplates();
     await api.getTemplate('coding');
+    await api.updateTemplate('coding', {
+      name: 'Coding',
+      type: 'coding',
+      description: 'updated template',
+      governance: 'standard',
+      defaultWorkflow: 'linear',
+      defaultTeam: {
+        architect: {
+          model_preference: 'strong_reasoning',
+          suggested: ['opus', 'codex'],
+        },
+      },
+      stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
+    });
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/templates',
@@ -442,6 +490,60 @@ describe('dashboard expansion api client', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       '/api/templates/coding',
       expect.objectContaining({ method: 'GET' }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/templates/coding',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          name: 'Coding',
+          type: 'coding',
+          description: 'updated template',
+          governance: 'standard',
+          defaultWorkflow: 'linear',
+          defaultTeam: {
+            architect: {
+              model_preference: 'strong_reasoning',
+              suggested: ['opus', 'codex'],
+            },
+          },
+          stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
+        }),
+      }),
+    );
+  });
+
+  it('targets template authoring routes for duplicate and workflow validation', async () => {
+    const api = await import('@/lib/api');
+
+    await api.duplicateTemplate('coding', {
+      new_id: 'coding_copy',
+      name: 'Coding Copy',
+    });
+    await api.validateWorkflow({
+      defaultWorkflow: 'linear',
+      stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/templates/coding/duplicate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          new_id: 'coding_copy',
+          name: 'Coding Copy',
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/workflows/validate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          defaultWorkflow: 'linear',
+          stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
+        }),
+      }),
     );
   });
 

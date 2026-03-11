@@ -24,6 +24,7 @@ function buildTaskDto(overrides: Partial<ApiTaskDto> = {}): ApiTaskDto {
     priority: 'normal',
     creator: 'archon',
     state: 'active',
+    archive_status: null,
     current_stage: 'develop',
     team: {
       members: [
@@ -103,6 +104,55 @@ describe('task store live API mode', () => {
     expect(state.tasks[0]?.state).toBe('in_progress');
     expect(state.tasks[0]?.teamLabel).toContain('opus');
     expect(state.error).toBeNull();
+  });
+
+  it('drops synced archived tasks from the workbench list and clears stale selection', async () => {
+    useTaskStore.setState({
+      tasks: [],
+      selectedTaskId: 'OC-001',
+      selectedTaskStatus: null,
+      filters: { state: null, search: '' },
+      loading: false,
+      detailLoading: false,
+      error: null,
+    });
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto({ id: 'OC-001', state: 'done', archive_status: 'synced' }));
+    vi.mocked(api.getTaskStatus).mockResolvedValue(
+      buildTaskStatusDto({
+        task: buildTaskDto({ id: 'OC-001', state: 'done', archive_status: 'synced' }),
+      }),
+    );
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto());
+    vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
+    vi.mocked(api.listTasks).mockResolvedValue([
+      buildTaskDto({ id: 'OC-001', state: 'done', archive_status: 'synced' }),
+      buildTaskDto({ id: 'OC-002', state: 'cancelled', archive_status: 'pending' }),
+    ]);
+
+    const result = await useTaskStore.getState().fetchTasks();
+    const state = useTaskStore.getState();
+
+    expect(result).toBe('live');
+    expect(state.tasks.map((task) => task.id)).toEqual(['OC-002']);
+    expect(state.selectedTaskId).toBeNull();
+    expect(state.selectedTaskStatus).toBeNull();
+  });
+
+  it('drops confirmed archive jobs from the workbench list as soon as they are notified', async () => {
+    vi.mocked(api.listTasks).mockResolvedValue([
+      buildTaskDto({ id: 'OC-010', state: 'cancelled', archive_status: 'notified' }),
+      buildTaskDto({ id: 'OC-011', state: 'cancelled', archive_status: 'pending' }),
+    ]);
+
+    const result = await useTaskStore.getState().fetchTasks();
+    const state = useTaskStore.getState();
+
+    expect(result).toBe('live');
+    expect(state.tasks.map((task) => task.id)).toEqual(['OC-011']);
   });
 
   it('records API failures instead of silently switching to mock data', async () => {

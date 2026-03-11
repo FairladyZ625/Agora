@@ -11,6 +11,7 @@ export function ArchivePage() {
   const error = useArchiveStore((state) => state.error);
   const fetchJobs = useArchiveStore((state) => state.fetchJobs);
   const selectJob = useArchiveStore((state) => state.selectJob);
+  const confirmJob = useArchiveStore((state) => state.confirmJob);
   const retryJob = useArchiveStore((state) => state.retryJob);
   const setFilters = useArchiveStore((state) => state.setFilters);
 
@@ -29,11 +30,25 @@ export function ArchivePage() {
   return (
     <div className="space-y-6">
       <section className="surface-panel surface-panel--workspace">
-        <div className="section-title-row">
+        <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{copy.kicker}</p>
             <h2 className="page-title">{copy.title}</h2>
             <p className="page-summary">{copy.summary}</p>
+          </div>
+          <div className="workbench-masthead__signals">
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.filters.all}</span>
+              <span className="inline-stat__value">{jobs.length}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.detailTitle}</span>
+              <span className="inline-stat__value">{selectedJob?.status ?? 'n/a'}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.retryAction}</span>
+              <span className="inline-stat__value">{selectedJob?.canRetry ? 1 : 0}</span>
+            </div>
           </div>
         </div>
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
@@ -66,7 +81,7 @@ export function ArchivePage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="surface-panel surface-panel--workspace">
+        <div className="surface-panel surface-panel--workspace" data-testid="archive-list-panel">
           <div className="space-y-3">
             {jobs.length === 0 ? (
               <div className="empty-state">
@@ -96,14 +111,21 @@ export function ArchivePage() {
           </div>
         </div>
 
-        <div className="surface-panel surface-panel--workspace">
+        <div className="surface-panel surface-panel--workspace" data-testid="archive-detail-panel">
           <div className="section-title-row">
             <h3 className="section-title">{copy.detailTitle}</h3>
-            {selectedJob?.canRetry ? (
-              <button type="button" className="button-primary" onClick={() => void retryJob(selectedJob.id, 'manual retry')}>
-                {copy.retryAction}
-              </button>
-            ) : null}
+            <div className="flex flex-wrap gap-3">
+              {selectedJob?.canConfirm ? (
+                <button type="button" className="button-primary" onClick={() => void confirmJob(selectedJob.id)}>
+                  {copy.confirmAction}
+                </button>
+              ) : null}
+              {selectedJob?.canRetry ? (
+                <button type="button" className="button-primary" onClick={() => void retryJob(selectedJob.id, 'manual retry')}>
+                  {copy.retryAction}
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {selectedJob ? (

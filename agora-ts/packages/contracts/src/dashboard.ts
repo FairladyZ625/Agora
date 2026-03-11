@@ -352,6 +352,7 @@ export const templateStageSchema = z.object({
   id: z.string().min(1),
   name: z.string().optional(),
   mode: templateStageModeSchema.optional(),
+  reject_target: z.string().min(1).optional(),
   gate: z.object({
     type: templateGateTypeSchema.optional(),
     approver: templateRoleSchema.optional(),

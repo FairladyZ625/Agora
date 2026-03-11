@@ -78,6 +78,21 @@ describe('DiscordHttpClient', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('joinThread calls Discord API for the current account', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await client.joinThread('thread-join-1');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-join-1/thread-members/@me',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('DiscordIMProvisioningAdapter', () => {
@@ -92,7 +107,10 @@ describe('DiscordIMProvisioningAdapter', () => {
       botToken: 'tok',
       defaultChannelId: 'chan-1',
     });
-    const result = await adapter.provisionThread('OC-1', 'My Task');
+    const result = await adapter.provisionContext({
+      task_id: 'OC-1',
+      title: 'My Task',
+    });
 
     expect(result).toEqual({
       im_provider: 'discord',
@@ -101,6 +119,89 @@ describe('DiscordIMProvisioningAdapter', () => {
       message_root_ref: null,
     });
     vi.unstubAllGlobals();
+  });
+
+  it('provisionContext honors conversation target and private visibility', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'private-thread-789' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'tok',
+      defaultChannelId: 'chan-default',
+    });
+    const result = await adapter.provisionContext({
+      task_id: 'OC-2',
+      title: 'Private Task',
+      target: {
+        provider: 'discord',
+        conversation_ref: 'chan-private',
+        visibility: 'private',
+      },
+    });
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { type: number; message?: unknown; invitable?: boolean };
+    expect(body.type).toBe(12);
+    expect(body.message).toBeUndefined();
+    expect(body.invitable).toBe(false);
+    expect(result.conversation_ref).toBe('chan-private');
+    expect(result.thread_ref).toBe('private-thread-789');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('joinParticipant uses the participant account token to join the thread', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      primaryAccountId: 'main',
+      participantTokens: {
+        main: 'main-token',
+        sonnet: 'token-sonnet',
+      },
+    });
+
+    const result = await adapter.joinParticipant({
+      binding_id: 'bind-1',
+      participant_ref: 'sonnet',
+      thread_ref: 'thread-join-2',
+    });
+
+    expect(result).toEqual({ status: 'joined', detail: null });
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-join-2/thread-members/@me',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({ Authorization: 'Bot token-sonnet' }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('joinParticipant ignores the primary provisioning account', async () => {
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      primaryAccountId: 'main',
+      participantTokens: {
+        main: 'main-token',
+      },
+    });
+
+    await expect(adapter.joinParticipant({
+      binding_id: 'bind-1',
+      participant_ref: 'main',
+      thread_ref: 'thread-join-3',
+    })).resolves.toEqual({
+      status: 'ignored',
+      detail: 'primary provisioning account already owns the thread',
+    });
   });
 });
 

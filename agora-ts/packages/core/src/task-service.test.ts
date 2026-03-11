@@ -53,6 +53,20 @@ describe('task service', () => {
     expect(task.team.members.map((member) => member.role)).toContain('architect');
     expect(listed).toHaveLength(1);
     expect(status.task.id).toBe('OC-100');
+    expect(status.task_blueprint).toMatchObject({
+      graph_version: 1,
+      entry_nodes: ['discuss'],
+      nodes: [
+        { id: 'discuss', gate_type: 'archon_review' },
+        { id: 'develop', gate_type: 'all_subtasks_done' },
+        { id: 'review', gate_type: 'archon_review' },
+      ],
+      edges: [
+        { from: 'discuss', to: 'develop', kind: 'advance' },
+        { from: 'develop', to: 'review', kind: 'advance' },
+        { from: 'review', to: 'develop', kind: 'reject' },
+      ],
+    });
     expect(status.flow_log).toHaveLength(2);
     expect(status.progress_log).toHaveLength(1);
     expect(status.subtasks).toEqual([]);
@@ -337,6 +351,53 @@ describe('task service', () => {
     );
   });
 
+  it('mirrors state transition actions into task conversation when an active binding exists', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-103B',
+    });
+    const bindings = new TaskContextBindingRepository(db);
+    const conversations = new TaskConversationRepository(db);
+    const tasks = new TaskRepository(db);
+
+    service.createTask({
+      title: 'mirror state transitions',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.insert({
+      id: 'bind-103b',
+      task_id: 'OC-103B',
+      im_provider: 'discord',
+      thread_ref: 'thread-103b',
+      status: 'active',
+    });
+
+    service.pauseTask('OC-103B', { reason: 'hold for review' });
+    service.resumeTask('OC-103B');
+    const latest = tasks.getTask('OC-103B');
+    if (!latest) {
+      throw new Error('Expected task OC-103B to exist');
+    }
+    tasks.updateTask('OC-103B', latest.version, { state: 'blocked' });
+    service.unblockTask('OC-103B', { reason: 'dependency resolved' });
+    service.cancelTask('OC-103B', { reason: 'manual stop' });
+
+    const entries = conversations.listByTask('OC-103B');
+    expect(entries.map((entry) => entry.body)).toEqual(
+      expect.arrayContaining([
+        'Task paused: hold for review',
+        'Task resumed',
+        'Task unblocked: dependency resolved',
+        'Task cancelled: manual stop',
+      ]),
+    );
+  });
+
   it('records gate result events for archon review decisions', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -401,6 +462,7 @@ describe('task service', () => {
       taskIdGenerator: () => 'OC-103',
     });
     const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
 
     tasks.insertTask({
       id: 'OC-103',
@@ -450,6 +512,17 @@ describe('task service', () => {
     expect(blocked.state).toBe('blocked');
     expect(unblocked.state).toBe('active');
     expect(cancelled.state).toBe('cancelled');
+    expect(archives.listArchiveJobs({ taskId: 'OC-103' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          task_id: 'OC-103',
+          status: 'pending',
+          payload: expect.objectContaining({
+            state: 'cancelled',
+          }),
+        }),
+      ]),
+    );
     expect(status.flow_log.map((item) => item.event)).toEqual(
       expect.arrayContaining([
         'quorum_vote',
@@ -1176,6 +1249,66 @@ describe('task service', () => {
     );
   });
 
+  it('mirrors startup recovery blocking into task conversation when an active binding exists', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-116B',
+      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+    });
+    const bindings = new TaskContextBindingRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const conversations = new TaskConversationRepository(db);
+
+    service.createTask({
+      title: 'startup recovery mirror',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    bindings.insert({
+      id: 'bind-116b',
+      task_id: 'OC-116B',
+      im_provider: 'discord',
+      thread_ref: 'thread-116b',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'startup-dead',
+      task_id: 'OC-116B',
+      stage_id: 'discuss',
+      title: 'Dead on startup',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:dead',
+      dispatch_status: 'running',
+      dispatched_at: '2026-03-09T14:00:00.000Z',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-startup-dead-116b',
+      task_id: 'OC-116B',
+      subtask_id: 'startup-dead',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:dead',
+      status: 'running',
+      started_at: '2026-03-09T14:00:00.000Z',
+    });
+
+    service.startupRecoveryScan();
+
+    const entries = conversations.listByTask('OC-116B');
+    expect(entries.map((entry) => entry.body)).toEqual(
+      expect.arrayContaining([
+        'Task blocked: startup recovery blocked task after missing craftsmen sessions',
+      ]),
+    );
+  });
+
   it('fires IM provisioning and creates a binding when imProvisioningPort is configured', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1220,8 +1353,9 @@ describe('task service', () => {
 
     expect(provisioningPort.provisioned).toHaveLength(1);
     expect(provisioningPort.provisioned[0]).toMatchObject({
-      taskId: 'OC-PROV-1',
-      taskTitle: 'Provisioning Test',
+      task_id: 'OC-PROV-1',
+      title: 'Provisioning Test',
+      participant_refs: expect.arrayContaining(['opus', 'sonnet', 'glm5', 'claude_code']),
     });
 
     const bindings = new TaskContextBindingRepository(db);
@@ -1240,5 +1374,64 @@ describe('task service', () => {
         }),
       ]),
     );
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          binding_id: binding?.id,
+          participant_ref: 'opus',
+          thread_ref: 'stub-thread-OC-PROV-1',
+        }),
+        expect.objectContaining({
+          binding_id: binding?.id,
+          participant_ref: 'sonnet',
+          thread_ref: 'stub-thread-OC-PROV-1',
+        }),
+      ]),
+    );
+  });
+
+  it('applies team/workflow overrides when creating a task', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-OVERRIDE-1',
+    });
+
+    const created = service.createTask({
+      title: 'Override team and workflow',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'claude-opus', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'deliver', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+        ],
+      },
+    });
+
+    expect(created.current_stage).toBe('triage');
+    expect(created.team).toEqual({
+      members: [
+        { role: 'architect', agentId: 'claude-opus', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+      ],
+    });
+    expect(created.workflow).toMatchObject({
+      type: 'custom',
+      stages: [
+        { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+        { id: 'deliver', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+      ],
+    });
   });
 });

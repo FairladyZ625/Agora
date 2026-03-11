@@ -364,6 +364,27 @@
   color: var(--color-text-primary);
 }
 
+.selection-card {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--detail-card-bg);
+  padding: 16px;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.selection-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.selection-card--active {
+  border-color: var(--row-active-border);
+  background: var(--row-active-bg);
+  box-shadow: var(--shadow-active);
+}
+
 .timeline-item {
   position: relative;
   display: flex;

@@ -7,6 +7,9 @@ vi.mock('@/lib/api', () => ({
   listTasks: vi.fn(),
   getTask: vi.fn(),
   getTaskStatus: vi.fn(),
+  getTaskConversationSummary: vi.fn(),
+  getTaskConversation: vi.fn(),
+  markTaskConversationRead: vi.fn(),
   createTask: vi.fn(),
   advanceTask: vi.fn(),
   approveTask: vi.fn(),
@@ -33,6 +36,7 @@ function buildTaskDto(overrides: Partial<ApiTaskDto> = {}): ApiTaskDto {
     priority: 'normal',
     creator: 'archon',
     state: 'active',
+    archive_status: null,
     current_stage: 'develop',
     team: {
       members: [
@@ -83,10 +87,37 @@ function buildTaskStatusDto(overrides: Partial<ApiTaskStatusDto> = {}): ApiTaskS
   };
 }
 
+function buildConversationSummary() {
+  return {
+    task_id: 'OC-001',
+    total_entries: 0,
+    latest_entry_id: null,
+    latest_provider: null,
+    latest_direction: null,
+    latest_author_kind: null,
+    latest_display_name: null,
+    latest_occurred_at: null,
+    latest_body_excerpt: null,
+    last_read_at: null,
+    unread_count: 0,
+    has_unread: false,
+  };
+}
+
+function buildConversationList() {
+  return {
+    task_id: 'OC-001',
+    entries: [],
+  };
+}
+
 describe('task store phase 2 actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getTask).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummary());
+    vi.mocked(api.getTaskConversation).mockResolvedValue(buildConversationList());
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummary());
     useTaskStore.setState({
       tasks: [],
       selectedTaskId: 'OC-001',
@@ -121,6 +152,51 @@ describe('task store phase 2 actions', () => {
     });
     expect(created.id).toBe('OC-009');
     expect(useTaskStore.getState().tasks[0]?.id).toBe('OC-009');
+  });
+
+  it('passes create-task overrides through the store to the api client', async () => {
+    vi.mocked(api.createTask).mockResolvedValue(buildTaskDto({ id: 'OC-010', title: '带 override 的任务' }));
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto({ id: 'OC-010', title: '带 override 的任务' }));
+    vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto({ id: 'OC-010', title: '带 override 的任务' })]);
+    vi.mocked(api.getTaskStatus).mockResolvedValue(buildTaskStatusDto({ task: buildTaskDto({ id: 'OC-010', title: '带 override 的任务' }) }));
+
+    await useTaskStore.getState().createTask({
+      title: '带 override 的任务',
+      type: 'coding',
+      creator: 'archon',
+      description: '创建任务',
+      priority: 'high',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+        participant_refs: ['opus', 'codex'],
+      },
+    });
+
+    expect(api.createTask).toHaveBeenCalledWith({
+      title: '带 override 的任务',
+      type: 'coding',
+      creator: 'archon',
+      description: '创建任务',
+      priority: 'high',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+        participant_refs: ['opus', 'codex'],
+      },
+    });
   });
 
   it('executes an advance action and refreshes the selected task context', async () => {

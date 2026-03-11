@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
-import { mapTemplateDetailDto, mapTemplateSummaryDto } from '@/lib/dashboardExpansionMappers';
+import { mapTemplateDetailDto, mapTemplateDetailToDto, mapTemplateSummaryDto } from '@/lib/dashboardExpansionMappers';
 import type { TemplateDetail, TemplateSummary } from '@/types/dashboard';
 
 interface TemplateStore {
@@ -9,9 +9,14 @@ interface TemplateStore {
   selectedTemplate: TemplateDetail | null;
   loading: boolean;
   detailLoading: boolean;
+  saving: boolean;
+  validationResult: { valid: boolean; errors: string[] } | null;
   error: string | null;
   fetchTemplates: () => Promise<'live' | 'error'>;
   selectTemplate: (id: string | null) => Promise<void>;
+  saveSelectedTemplate: (template: TemplateDetail) => Promise<'live' | 'error'>;
+  validateSelectedTemplate: (template: TemplateDetail) => Promise<'live' | 'error'>;
+  duplicateSelectedTemplate: (input: { templateId: string; newId: string; name?: string }) => Promise<'live' | 'error'>;
   clearError: () => void;
 }
 
@@ -21,6 +26,8 @@ export const useTemplateStore = create<TemplateStore>()((set) => ({
   selectedTemplate: null,
   loading: false,
   detailLoading: false,
+  saving: false,
+  validationResult: null,
   error: null,
 
   fetchTemplates: async () => {
@@ -54,6 +61,94 @@ export const useTemplateStore = create<TemplateStore>()((set) => ({
         detailLoading: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  },
+
+  saveSelectedTemplate: async (template) => {
+    set({ saving: true, error: null });
+    try {
+      const response = await api.updateTemplate(template.id, mapTemplateDetailToDto(template));
+      const selectedTemplate = mapTemplateDetailDto(response.id, response.template);
+      set((state) => ({
+        selectedTemplate,
+        saving: false,
+        templates: state.templates.map((item) => (
+          item.id === response.id
+            ? {
+                ...item,
+                name: selectedTemplate.name,
+                type: selectedTemplate.type,
+                description: selectedTemplate.description,
+                governance: selectedTemplate.governance,
+                stageCount: selectedTemplate.stageCount,
+                stageCountLabel: `${selectedTemplate.stageCount} stages`,
+              }
+            : item
+        )),
+      }));
+      return 'live';
+    } catch (error) {
+      set({
+        saving: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  validateSelectedTemplate: async (template) => {
+    set({ error: null, validationResult: null });
+    try {
+      const dto = mapTemplateDetailToDto(template);
+      const result = await api.validateWorkflow({
+        defaultWorkflow: dto.defaultWorkflow,
+        stages: dto.stages ?? [],
+      });
+      set({
+        validationResult: {
+          valid: result.valid,
+          errors: result.errors,
+        },
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  duplicateSelectedTemplate: async ({ templateId, newId, name }) => {
+    set({ error: null });
+    try {
+      const response = await api.duplicateTemplate(templateId, {
+        new_id: newId,
+        ...(name ? { name } : {}),
+      });
+      const selectedTemplate = mapTemplateDetailDto(response.id, response.template);
+      set((state) => ({
+        selectedTemplateId: response.id,
+        selectedTemplate,
+        templates: [
+          ...state.templates.filter((item) => item.id !== response.id),
+          {
+            id: response.id,
+            name: selectedTemplate.name,
+            type: selectedTemplate.type,
+            description: selectedTemplate.description,
+            governance: selectedTemplate.governance,
+            stageCount: selectedTemplate.stageCount,
+            stageCountLabel: `${selectedTemplate.stageCount} stages`,
+          },
+        ],
+      }));
+      return 'live';
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
     }
   },
 

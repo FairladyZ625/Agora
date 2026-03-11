@@ -10,6 +10,7 @@ function buildTaskResponse() {
     priority: 'high',
     creator: 'archon',
     state: 'active',
+    archive_status: null,
     current_stage: 'develop',
     team: { members: [] },
     workflow: { stages: [] },
@@ -60,6 +61,54 @@ describe('dashboard task action api client', () => {
           creator: 'archon',
           description: '补齐 kanban',
           priority: 'high',
+        }),
+      }),
+    );
+  });
+
+  it('posts create-task overrides to the real backend route', async () => {
+    const api = await import('@/lib/api');
+
+    await api.createTask({
+      title: '实现私有线程任务',
+      type: 'coding',
+      creator: 'archon',
+      description: '补 create flow',
+      priority: 'high',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+        participant_refs: ['opus', 'codex'],
+      },
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/tasks',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          title: '实现私有线程任务',
+          type: 'coding',
+          creator: 'archon',
+          description: '补 create flow',
+          priority: 'high',
+          team_override: {
+            members: [
+              { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+              { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+            ],
+          },
+          im_target: {
+            provider: 'discord',
+            visibility: 'private',
+            participant_refs: ['opus', 'codex'],
+          },
         }),
       }),
     );

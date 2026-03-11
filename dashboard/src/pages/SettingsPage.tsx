@@ -87,14 +87,32 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="surface-panel surface-panel--intro space-y-2">
+      <section className="surface-panel surface-panel--workspace" data-testid="settings-masthead">
         <h1 className="sr-only">{settingsPageCopy.sectionLabel}</h1>
-        <p className="page-kicker">{settingsPageCopy.kicker}</p>
-        <h2 className="page-title">{settingsPageCopy.title}</h2>
-        <p className="page-summary">{settingsPageCopy.summary}</p>
+        <div className="workbench-masthead">
+          <div>
+            <p className="page-kicker">{settingsPageCopy.kicker}</p>
+            <h2 className="page-title">{settingsPageCopy.title}</h2>
+            <p className="page-summary">{settingsPageCopy.summary}</p>
+          </div>
+          <div className="workbench-masthead__signals">
+            <div className="inline-stat">
+              <span className="inline-stat__label">{settingsPageCopy.sessionLabels.actor}</span>
+              <span className="inline-stat__value">{sessionUsername ?? 'n/a'}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{settingsPageCopy.sessionLabels.role}</span>
+              <span className="inline-stat__value">{sessionRole ?? 'n/a'}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{settingsPageCopy.refreshLabel}</span>
+              <span className="inline-stat__value">{refreshInterval}s</span>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="surface-panel surface-panel--workspace">
+      <section className="surface-panel surface-panel--workspace" data-testid="settings-gateway-panel">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">{settingsPageCopy.gatewayKicker}</p>
@@ -172,7 +190,7 @@ export function SettingsPage() {
         authMethod={sessionMethod}
       />
 
-      <section className="surface-panel surface-panel--workspace">
+      <section className="surface-panel surface-panel--workspace" data-testid="settings-sync-panel">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">{settingsPageCopy.refreshKicker}</p>
@@ -213,7 +231,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="surface-panel surface-panel--workspace">
+      <section className="surface-panel surface-panel--workspace" data-testid="settings-appearance-panel">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">{settingsPageCopy.appearanceKicker}</p>
@@ -235,8 +253,7 @@ export function SettingsPage() {
                   'info',
                 );
               }}
-              className="surface-panel surface-panel--muted text-left"
-              style={mode === option.value ? { borderColor: 'var(--color-primary)' } : undefined}
+              className={mode === option.value ? 'selection-card selection-card--active text-left' : 'selection-card text-left'}
             >
               <p className="type-heading-xs">{option.label}</p>
               <p className="type-body-sm mt-2">{option.description}</p>
@@ -245,7 +262,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      <section className="surface-panel surface-panel--workspace">
+      <section className="surface-panel surface-panel--workspace" data-testid="settings-language-panel">
         <div className="section-title-row">
           <div>
             <p className="page-kicker">{settingsPageCopy.languageKicker}</p>
@@ -269,8 +286,7 @@ export function SettingsPage() {
                   'info',
                 );
               }}
-              className="surface-panel surface-panel--muted text-left"
-              style={locale === option.value ? { borderColor: 'var(--color-primary)' } : undefined}
+              className={locale === option.value ? 'selection-card selection-card--active text-left' : 'selection-card text-left'}
             >
               <p className="type-heading-xs">{option.label}</p>
               <p className="type-body-sm mt-2">{option.description}</p>

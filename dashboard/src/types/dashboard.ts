@@ -183,6 +183,7 @@ export interface ArchiveJob {
   completedAt: string | null;
   payload: Record<string, unknown> | null;
   payloadSummary: string;
+  canConfirm: boolean;
   canRetry: boolean;
 }
 
@@ -201,6 +202,13 @@ export interface TemplateStage {
   name: string;
   mode: string;
   gateType: string | null;
+  rejectTarget?: string | null;
+}
+
+export interface TemplateTeamPresetMember {
+  role: string;
+  modelPreference: string | null;
+  suggested: string[];
 }
 
 export interface TemplateDetail {
@@ -212,5 +220,6 @@ export interface TemplateDetail {
   stageCount: number;
   stages: TemplateStage[];
   defaultTeamRoles: string[];
+  defaultTeam: TemplateTeamPresetMember[];
   raw: Record<string, unknown>;
 }

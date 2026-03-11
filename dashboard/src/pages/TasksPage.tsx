@@ -12,11 +12,87 @@ import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
-import type { TaskAction } from '@/types/task';
+import type { TaskAction, TaskBlueprint } from '@/types/task';
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
 const TASK_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
 
+function TaskBlueprintSection({
+  blueprint,
+  copy,
+}: {
+  blueprint: TaskBlueprint | undefined;
+  copy: ReturnType<typeof useTasksPageCopy>;
+}) {
+  return (
+    <section className="task-authority__section">
+      <h4 className="section-title">{copy.blueprintTitle}</h4>
+      {!blueprint ? (
+        <p className="type-body-sm mt-3">{copy.blueprintEmpty}</p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <div>
+            <p className="field-label">{copy.blueprintEntryLabel}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {blueprint.entryNodes.map((nodeId) => (
+                <span key={nodeId} className="choice-pill choice-pill--active">
+                  {nodeId}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="field-label">{copy.blueprintNodesLabel}</p>
+            <div className="mt-2 space-y-2">
+              {blueprint.nodes.map((node) => (
+                <div key={node.id} className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <p className="type-heading-xs">{node.name ?? node.id}</p>
+                    <p className="type-text-xs mt-1">
+                      {node.id}
+                      {' / '}
+                      {node.mode ?? 'stage'}
+                    </p>
+                  </div>
+                  {node.gateType ? <span className="status-pill status-pill--neutral">{node.gateType}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="field-label">{copy.blueprintEdgesLabel}</p>
+            <div className="mt-2 space-y-2">
+              {blueprint.edges.map((edge, index) => (
+                <div key={`${edge.from}-${edge.to}-${edge.kind}-${index}`} className="data-row">
+                  <span className="type-mono-xs">{`${edge.from} -> ${edge.to}`}</span>
+                  <span className={edge.kind === 'reject' ? 'status-pill status-pill--warning' : 'status-pill status-pill--info'}>
+                    {edge.kind}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {blueprint.artifactContracts.length > 0 ? (
+            <div>
+              <p className="field-label">{copy.blueprintArtifactsLabel}</p>
+              <div className="mt-2 space-y-2">
+                {blueprint.artifactContracts.map((artifact) => (
+                  <div key={`${artifact.nodeId}-${artifact.artifactType}`} className="data-row">
+                    <span className="type-mono-xs">{artifact.nodeId}</span>
+                    <span className="status-pill status-pill--neutral">{artifact.artifactType}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function TasksPage() {
   const { t } = useTranslation();
@@ -96,6 +172,7 @@ export function TasksPage() {
   const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
   const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
   const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
+  const activeBlueprint = activeStatus?.taskBlueprint;
   const preferredActorId =
     !activeTask
       ? ''
@@ -362,6 +439,8 @@ export function TasksPage() {
                   </div>
                 </div>
 
+                <TaskBlueprintSection blueprint={activeBlueprint} copy={tasksPageCopy} />
+
                 <div className="task-authority__section">
                   <h4 className="section-title">{tasksPageCopy.actionsTitle}</h4>
                   <div>
@@ -525,6 +604,10 @@ export function TasksPage() {
               {activeTask.description ?? tasksPageCopy.briefFallback}
             </p>
           </div>
+
+          <section className="sheet-section">
+            <TaskBlueprintSection blueprint={activeBlueprint} copy={tasksPageCopy} />
+          </section>
 
           <section className="sheet-section">
             <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>

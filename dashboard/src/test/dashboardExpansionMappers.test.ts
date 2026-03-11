@@ -135,6 +135,8 @@ describe('dashboard expansion mappers', () => {
           resume_capability: 'native_resume',
           session_reference: 'codex-session-123',
           identity_source: 'session_file',
+          identity_source_rank: 0,
+          identity_conflict_count: 0,
           identity_path: '/tmp/codex/session.json',
           session_observed_at: '2026-03-08T23:01:00.000Z',
           last_recovery_mode: 'resume_exact',
@@ -237,7 +239,29 @@ describe('dashboard expansion mappers', () => {
     expect(job.id).toBe(7);
     expect(job.taskTitle).toBe('归档日报');
     expect(job.payloadSummary).toContain('timeout');
+    expect(job.canConfirm).toBe(false);
     expect(job.canRetry).toBe(true);
+  });
+
+  it('maps pending archive jobs into confirmable view models', () => {
+    const dto: ApiArchiveJobDto = {
+      id: 8,
+      task_id: 'OC-302',
+      task_title: '待归档任务',
+      task_type: 'document',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      commit_hash: null,
+      requested_at: '2026-03-07T08:00:00.000Z',
+      completed_at: null,
+      payload: { state: 'cancelled' },
+    };
+
+    const job = mapArchiveJobDto(dto);
+
+    expect(job.canConfirm).toBe(true);
+    expect(job.canRetry).toBe(false);
   });
 
   it('maps template summaries and details for explorer-style rendering', () => {
@@ -256,12 +280,13 @@ describe('dashboard expansion mappers', () => {
       governance: 'standard',
       defaultTeam: {
         architect: {
+          model_preference: 'strong_reasoning',
           suggested: ['opus'],
         },
       },
       stages: [
         { id: 'discuss', name: '讨论', mode: 'discuss' },
-        { id: 'develop', name: '开发', mode: 'execute' },
+        { id: 'develop', name: '开发', mode: 'execute', reject_target: 'discuss' },
       ],
     };
 
@@ -272,5 +297,11 @@ describe('dashboard expansion mappers', () => {
     expect(detail.id).toBe('coding');
     expect(detail.stageCount).toBe(2);
     expect(detail.defaultTeamRoles[0]).toBe('architect');
+    expect(detail.defaultTeam[0]).toEqual({
+      role: 'architect',
+      modelPreference: 'strong_reasoning',
+      suggested: ['opus'],
+    });
+    expect(detail.stages[1]?.rejectTarget).toBe('discuss');
   });
 });

@@ -83,6 +83,46 @@ export const workflowSchema = z.object({
 });
 export type WorkflowDto = z.infer<typeof workflowSchema>;
 
+export const taskBlueprintNodeSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().nullable(),
+  mode: workflowModeSchema.nullable(),
+  gate_type: workflowGateTypeSchema.nullable(),
+});
+export type TaskBlueprintNodeDto = z.infer<typeof taskBlueprintNodeSchema>;
+
+export const taskBlueprintEdgeSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  kind: z.enum(['advance', 'reject']),
+});
+export type TaskBlueprintEdgeDto = z.infer<typeof taskBlueprintEdgeSchema>;
+
+export const taskBlueprintArtifactContractSchema = z.object({
+  node_id: z.string().min(1),
+  artifact_type: z.string().min(1),
+});
+export type TaskBlueprintArtifactContractDto = z.infer<typeof taskBlueprintArtifactContractSchema>;
+
+export const taskBlueprintSchema = z.object({
+  graph_version: z.number().int().positive(),
+  entry_nodes: z.array(z.string().min(1)),
+  nodes: z.array(taskBlueprintNodeSchema),
+  edges: z.array(taskBlueprintEdgeSchema),
+  artifact_contracts: z.array(taskBlueprintArtifactContractSchema),
+  role_bindings: z.array(teamMemberSchema),
+});
+export type TaskBlueprintDto = z.infer<typeof taskBlueprintSchema>;
+
+export const createTaskImTargetSchema = z.object({
+  provider: z.string().min(1).optional(),
+  conversation_ref: z.string().min(1).optional(),
+  thread_ref: z.string().min(1).optional(),
+  visibility: z.enum(['public', 'private']).optional(),
+  participant_refs: z.array(z.string().min(1)).optional(),
+}).strict();
+export type CreateTaskImTargetDto = z.infer<typeof createTaskImTargetSchema>;
+
 export const taskSchema = z.object({
   id: z.string(),
   version: z.number().int().positive(),
@@ -92,6 +132,7 @@ export const taskSchema = z.object({
   priority: taskPrioritySchema,
   creator: z.string().min(1),
   state: taskStateSchema,
+  archive_status: z.string().nullable(),
   current_stage: z.string().nullable(),
   team: teamSchema.nullable(),
   workflow: workflowSchema.nullable(),
@@ -152,6 +193,7 @@ export type SubtaskDto = z.infer<typeof subtaskSchema>;
 
 export const taskStatusSchema = z.object({
   task: taskSchema,
+  task_blueprint: taskBlueprintSchema.optional(),
   flow_log: z.array(flowLogSchema),
   progress_log: z.array(progressLogSchema),
   subtasks: z.array(subtaskSchema),
@@ -164,6 +206,9 @@ export const createTaskRequestSchema = z.object({
   creator: z.string().min(1),
   description: z.string(),
   priority: taskPrioritySchema,
+  team_override: teamSchema.optional(),
+  workflow_override: workflowSchema.optional(),
+  im_target: createTaskImTargetSchema.optional(),
 });
 export type CreateTaskRequestDto = z.infer<typeof createTaskRequestSchema>;
 
