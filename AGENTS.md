@@ -198,6 +198,26 @@ cp .env.example .env
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```
 
+### 本地数据库路径治理（强制）
+
+- **Agora TS 的统一运行时数据库默认路径固定为**：`~/.agora/agora.db`
+- 该口径必须在以下位置保持一致：
+  - `agora-ts/packages/config/src/index.ts` 中的 `defaultAgoraDbPath()`
+  - 根目录 `.env` / `.env.example` 的 `AGORA_DB_PATH`
+  - `docs/02-PRODUCT/scripts/dev-start.sh`
+  - `agora-ts/packages/config/agora.example.json`
+- **禁止把项目工作区内的 `tasks.db` 当作生产/默认数据库路径。**
+- 项目目录下出现的 `tasks.db`、`runtime.db`、`test.db` 等文件名，当前默认只允许出现在：
+  - test fixtures
+  - tmp runtime
+  - legacy / raw docs 示例
+- 任何新增 runtime entrypoint、CLI bootstrap、server bootstrap、dev script、示例配置，如果默认仍指向 repo-local `tasks.db`，视为实现回退，必须修正。
+- 数据表 schema/migration 的变更仍然发生在 **同一个统一 SQLite 数据库** 中；当前不再采用“项目侧单独一份数据库”的口径。
+- 如需覆盖默认路径，必须显式通过：
+  - `db_path`
+  - `AGORA_DB_PATH`
+ 进行配置，而不是隐式回退到当前工作目录。
+
 ### 全仓 TypeScript 质量门
 
 ```bash
