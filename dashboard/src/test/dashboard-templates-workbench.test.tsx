@@ -360,7 +360,8 @@ describe('templates workbench layout', () => {
   it('renders craftsman suggestions from tmux runtime catalog and normalizes legacy ids', () => {
     renderPage();
 
-    const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
+    const craftsmanHeading = screen.getAllByText('craftsman').find((node) => node.tagName === 'STRONG');
+    const craftsmanCard = craftsmanHeading?.closest('.detail-card') ?? null;
     expect(craftsmanCard).not.toBeNull();
     expect(screen.queryByText(/缺失于当前 runtime: claude_code/i)).not.toBeInTheDocument();
     expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'claude' })).toBeInTheDocument();

@@ -5,10 +5,10 @@
   "defaultWorkflow": "arch-design-build-integrate-polish-review",
   "governance": "strict",
   "defaultTeam": {
-    "architect": { "suggested": ["opus"] },
-    "developer": { "suggested": ["sonnet", "glm47"] },
-    "reviewer": { "suggested": ["glm5", "gpt52"] },
-    "craftsman": { "suggested": ["claude_code", "codex", "gemini_cli"] }
+    "architect": { "member_kind": "controller", "suggested": ["opus"] },
+    "developer": { "member_kind": "citizen", "suggested": ["sonnet", "glm47"] },
+    "reviewer": { "member_kind": "citizen", "suggested": ["glm5", "gpt52"] },
+    "craftsman": { "member_kind": "craftsman", "suggested": ["claude_code", "codex", "gemini_cli"] }
   },
   "stages": [
     { "id": "architecture", "name": "架构讨论", "mode": "discuss", "gate": { "type": "archon_review" } },

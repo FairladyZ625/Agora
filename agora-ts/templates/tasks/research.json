@@ -5,9 +5,9 @@
   "defaultWorkflow": "collect-analyze-report",
   "governance": "lean",
   "defaultTeam": {
-    "researcher": { "suggested": ["gemini31pro"] },
-    "analyst": { "suggested": ["gpt52"] },
-    "writer": { "suggested": ["glm5"] }
+    "researcher": { "member_kind": "controller", "suggested": ["gemini31pro"] },
+    "analyst": { "member_kind": "citizen", "suggested": ["gpt52"] },
+    "writer": { "member_kind": "citizen", "suggested": ["glm5"] }
   },
   "stages": [
     { "id": "collect", "name": "资料收集", "mode": "execute", "gate": { "type": "all_subtasks_done" } },

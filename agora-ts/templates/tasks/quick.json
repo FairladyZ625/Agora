@@ -5,7 +5,7 @@
   "defaultWorkflow": "execute-done",
   "governance": "lean",
   "defaultTeam": {
-    "executor": { "suggested": ["haiku", "sonnet"] }
+    "executor": { "member_kind": "controller", "suggested": ["haiku", "sonnet"] }
   },
   "stages": [
     { "id": "execute", "name": "执行", "mode": "execute", "gate": { "type": "command" } }

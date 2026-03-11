@@ -5,8 +5,8 @@
   "defaultWorkflow": "outline-write-review",
   "governance": "standard",
   "defaultTeam": {
-    "writer": { "suggested": ["glm5"] },
-    "reviewer": { "suggested": ["gpt52"] }
+    "writer": { "member_kind": "controller", "suggested": ["glm5"] },
+    "reviewer": { "member_kind": "citizen", "suggested": ["gpt52"] }
   },
   "stages": [
     { "id": "outline", "name": "大纲讨论", "mode": "discuss", "gate": { "type": "archon_review" } },
