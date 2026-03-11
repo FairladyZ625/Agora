@@ -449,6 +449,7 @@ Python legacy 参考规范：
 - 前缀：`feat/fix/refactor/docs/test`
 - 信息聚焦变更本身，不提 AI
 - 每个独立功能完成后立即提交
+- 多线程并行开发默认规则：每完成一轮后，Agent 必须优先提交自己本轮的改动；禁止把他人的现有改动、未确认改动或生成产物一并提交。
 - Commit message 格式：`<type>: <description>`
   - 示例：`feat: implement GateKeeper with all 6 gate types and command routing`
 
