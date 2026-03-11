@@ -33,6 +33,7 @@ import { StateMachine } from './state-machine.js';
 import type { IMProvisioningPort } from './im-ports.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
+import { isInteractiveParticipant } from './team-member-kind.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -43,6 +44,7 @@ type TaskTemplate = {
   defaultTeam?: Record<
     string,
     {
+      member_kind?: 'controller' | 'citizen' | 'craftsman';
       model_preference?: string;
       suggested?: string[];
     }
@@ -232,6 +234,7 @@ export class TaskService {
     }
 
     this.taskParticipationService?.seedParticipants(taskId, team);
+    const interactiveMembers = team.members.filter(isInteractiveParticipant);
 
     // Fire-and-forget: provision IM thread (non-blocking, failure doesn't block task creation)
     if (this.imProvisioningPort && this.taskContextBindingService) {
@@ -249,7 +252,7 @@ export class TaskService {
               ...(input.im_target.participant_refs ? { participant_refs: input.im_target.participant_refs } : {}),
             }
           : null,
-        participant_refs: team.members.map((member) => member.agentId),
+        participant_refs: interactiveMembers.map((member) => member.agentId),
       }).then((provisioned) => {
         const binding = bindingService.createBinding({
           task_id: taskId,
@@ -259,7 +262,7 @@ export class TaskService {
           ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
         this.taskParticipationService?.attachContextBinding(taskId, binding.id);
-        for (const member of team.members) {
+        for (const member of interactiveMembers) {
           void provisioningPort.joinParticipant({
             binding_id: binding.id,
             participant_ref: member.agentId,
@@ -972,6 +975,7 @@ export class TaskService {
     const members = Object.entries(template.defaultTeam ?? {}).map(([role, config]) => ({
       role,
       agentId: config.suggested?.[0] ?? role,
+      ...(config.member_kind ? { member_kind: config.member_kind } : {}),
       model_preference: config.model_preference ?? '',
     }));
     return { members };

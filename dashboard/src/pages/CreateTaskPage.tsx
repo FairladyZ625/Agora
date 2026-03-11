@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createTaskDraft';
+import { buildCraftsmanInventory, isCraftsmanRole } from '@/lib/orchestrationRoles';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
 import { useAgentStore } from '@/stores/agentStore';
@@ -49,6 +50,7 @@ export function CreateTaskPage() {
   const selectTemplate = useTemplateStore((state) => state.selectTemplate);
   const agents = useAgentStore((state) => state.agents);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
+  const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
@@ -80,20 +82,26 @@ export function CreateTaskPage() {
   }, [selectedTemplateId, selectTemplate, templates, type]);
 
   useEffect(() => {
-    const nextAssignments = buildInitialRoleAssignments(selectedTemplate, agents);
+    const craftsmanInventory = buildCraftsmanInventory(tmuxRuntime);
+    const nextAssignments = buildInitialRoleAssignments(selectedTemplate, {
+      agents,
+      craftsmen: craftsmanInventory.map((id) => ({ id })),
+    });
     const availableAgentIds = new Set(agents.map((agent) => agent.id));
+    const availableCraftsmanIds = new Set(craftsmanInventory);
     const nextState = reconcileAssignments(
       assignments,
       nextAssignments,
       selectedTemplate?.defaultTeamRoles ?? [],
-      availableAgentIds,
+      new Set([...availableAgentIds, ...availableCraftsmanIds]),
     );
     if (!haveSameAssignments(assignments, nextState)) {
       setAssignments(nextState);
     }
-  }, [agents, assignments, selectedTemplate]);
+  }, [agents, assignments, selectedTemplate, tmuxRuntime]);
 
   const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
+  const availableCraftsmen = buildCraftsmanInventory(tmuxRuntime);
   const templateChoices = templates.length > 0
     ? templates.map((template) => ({
         value: template.id,
@@ -272,17 +280,19 @@ export function CreateTaskPage() {
                         {member.modelPreference ? <span className="type-text-xs">{member.modelPreference}</span> : null}
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {availableAgents.length > 0 ? availableAgents.map((agent) => (
-                          <button
-                            key={`${member.role}-${agent.id}`}
-                            type="button"
-                            aria-pressed={assignments[member.role] === agent.id}
-                            onClick={() => setAssignments((current) => ({ ...current, [member.role]: agent.id }))}
-                            className={assignments[member.role] === agent.id ? 'choice-pill choice-pill--active' : 'choice-pill'}
-                          >
-                            {agent.id}
-                          </button>
-                        )) : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
+                        {(isCraftsmanRole(member.role, member.memberKind ?? null) ? availableCraftsmen : availableAgents.map((agent) => agent.id)).length > 0
+                          ? (isCraftsmanRole(member.role, member.memberKind ?? null) ? availableCraftsmen : availableAgents.map((agent) => agent.id)).map((agentId) => (
+                              <button
+                                key={`${member.role}-${agentId}`}
+                                type="button"
+                                aria-pressed={assignments[member.role] === agentId}
+                                onClick={() => setAssignments((current) => ({ ...current, [member.role]: agentId }))}
+                                className={assignments[member.role] === agentId ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                              >
+                                {agentId}
+                              </button>
+                            ))
+                          : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
                       </div>
                     </div>
                   </div>

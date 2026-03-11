@@ -24,6 +24,7 @@ import type {
   Todo,
 } from '@/types/dashboard';
 import { templateDetailSchema } from '@agora-ts/contracts';
+import { normalizeRoleBindingId, resolveMemberKind } from '@/lib/orchestrationRoles';
 
 function formatGovernance(value: unknown): string {
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -284,8 +285,9 @@ function mapTemplateStage(stage: NonNullable<ApiTemplateDetailDto['stages']>[num
 function mapTemplateTeamPreset(dto: ApiTemplateDetailDto): TemplateDetail['defaultTeam'] {
   return Object.entries(dto.defaultTeam ?? {}).map(([role, member]) => ({
     role,
+    memberKind: member.member_kind ?? resolveMemberKind(role),
     modelPreference: member.model_preference ?? null,
-    suggested: member.suggested ?? [],
+    suggested: (member.suggested ?? []).map((value) => normalizeRoleBindingId(role, value, member.member_kind ?? resolveMemberKind(role))),
   }));
 }
 
@@ -321,8 +323,11 @@ export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetai
     defaultTeam: Object.fromEntries(detail.defaultTeam.map((member) => [
       member.role,
       {
+        member_kind: resolveMemberKind(member.role, member.memberKind),
         ...(member.modelPreference ? { model_preference: member.modelPreference } : {}),
-        ...(member.suggested.length > 0 ? { suggested: member.suggested } : {}),
+        ...(member.suggested.length > 0
+          ? { suggested: member.suggested.map((value) => normalizeRoleBindingId(member.role, value, member.memberKind)) }
+          : {}),
       },
     ])),
     stages: detail.stages.map((stage) => {

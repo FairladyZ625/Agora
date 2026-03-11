@@ -1,7 +1,17 @@
 import type { AgentStatusItem, TemplateDetail } from '@/types/dashboard';
 import type { CreateTaskInput, TaskPriority } from '@/types/task';
+import { isCitizenRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 
 export type RoleAssignments = Record<string, string>;
+interface CraftsmanOption {
+  id: string;
+  label?: string;
+  selectable?: boolean;
+}
+interface AssignmentInventory {
+  agents: AgentStatusItem[];
+  craftsmen: CraftsmanOption[];
+}
 
 interface BuildCreateTaskInputParams {
   title: string;
@@ -22,6 +32,7 @@ function buildTeamMembers(template: TemplateDetail, assignments: RoleAssignments
     return [{
       role: member.role,
       agentId,
+      ...(member.memberKind ? { member_kind: member.memberKind } : {}),
       ...(member.modelPreference ? { model_preference: member.modelPreference } : {}),
     }];
   });
@@ -29,15 +40,22 @@ function buildTeamMembers(template: TemplateDetail, assignments: RoleAssignments
 
 export function buildInitialRoleAssignments(
   template: TemplateDetail | null,
-  agents: AgentStatusItem[],
+  inventory: AssignmentInventory,
 ): RoleAssignments {
   if (!template) {
     return {};
   }
 
-  const availableAgentIds = new Set(agents.map((agent) => agent.id));
+  const availableAgentIds = new Set(inventory.agents.map((agent) => agent.id));
+  const availableCraftsmanIds = new Set(inventory.craftsmen.map((agent) => normalizeRoleBindingId('craftsman', agent.id, 'craftsman')));
   return template.defaultTeam.reduce<RoleAssignments>((acc, member) => {
-    const suggested = member.suggested.find((agentId) => availableAgentIds.has(agentId));
+    const suggested = member.suggested
+      .map((agentId) => normalizeRoleBindingId(member.role, agentId, member.memberKind))
+      .find((agentId) => (
+        member.memberKind === 'craftsman' || member.role === 'craftsman'
+          ? availableCraftsmanIds.has(agentId)
+          : availableAgentIds.has(agentId)
+      ));
     if (suggested) {
       acc[member.role] = suggested;
     }
@@ -55,7 +73,11 @@ export function buildCreateTaskInput({
   assignments,
 }: BuildCreateTaskInputParams): CreateTaskInput {
   const members = buildTeamMembers(template, assignments);
-  const participantRefs = Array.from(new Set(members.map((member) => member.agentId)));
+  const participantRefs = Array.from(new Set(
+    members
+      .filter((member) => isCitizenRole(member.role, member.member_kind ?? null))
+      .map((member) => member.agentId),
+  ));
 
   return {
     title: title.trim(),

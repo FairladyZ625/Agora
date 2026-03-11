@@ -5,8 +5,8 @@
   "defaultWorkflow": "brainstorm-summarize",
   "governance": "lean",
   "defaultTeam": {
-    "architect": { "suggested": ["opus"] },
-    "analyst": { "suggested": ["gpt52", "gemini31pro"] }
+    "architect": { "member_kind": "controller", "suggested": ["opus"] },
+    "analyst": { "member_kind": "citizen", "suggested": ["gpt52", "gemini31pro"] }
   },
   "stages": [
     { "id": "brainstorm", "name": "自由讨论", "mode": "discuss", "gate": { "type": "command" } },

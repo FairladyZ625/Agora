@@ -1388,7 +1388,7 @@ describe('task service', () => {
     expect(provisioningPort.provisioned[0]).toMatchObject({
       task_id: 'OC-PROV-1',
       title: 'Provisioning Test',
-      participant_refs: expect.arrayContaining(['opus', 'sonnet', 'glm5', 'claude_code']),
+      participant_refs: expect.arrayContaining(['opus', 'sonnet', 'glm5']),
     });
 
     const bindings = new TaskContextBindingRepository(db);
@@ -1407,6 +1407,13 @@ describe('task service', () => {
         }),
       ]),
     );
+    expect(taskParticipation.listParticipants('OC-PROV-1')).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          agent_ref: 'claude_code',
+        }),
+      ]),
+    );
     expect(provisioningPort.joined).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1418,6 +1425,13 @@ describe('task service', () => {
           binding_id: binding?.id,
           participant_ref: 'sonnet',
           thread_ref: 'stub-thread-OC-PROV-1',
+        }),
+      ]),
+    );
+    expect(provisioningPort.joined).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          participant_ref: 'claude_code',
         }),
       ]),
     );
@@ -1439,8 +1453,9 @@ describe('task service', () => {
       priority: 'high',
       team_override: {
         members: [
-          { role: 'architect', agentId: 'claude-opus', model_preference: 'strong_reasoning' },
-          { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+          { role: 'architect', agentId: 'claude-opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
         ],
       },
       workflow_override: {
@@ -1455,8 +1470,9 @@ describe('task service', () => {
     expect(created.current_stage).toBe('triage');
     expect(created.team).toEqual({
       members: [
-        { role: 'architect', agentId: 'claude-opus', model_preference: 'strong_reasoning' },
-        { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+        { role: 'architect', agentId: 'claude-opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'codex', member_kind: 'citizen', model_preference: 'fast_coding' },
+        { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
       ],
     });
     expect(created.workflow).toMatchObject({

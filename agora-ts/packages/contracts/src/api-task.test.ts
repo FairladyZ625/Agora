@@ -30,8 +30,9 @@ describe('task api contracts', () => {
         priority: 'high',
         team_override: {
           members: [
-            { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-            { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+            { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: 'coding_cli' },
           ],
         },
         workflow_override: {
@@ -47,8 +48,27 @@ describe('task api contracts', () => {
           visibility: 'private',
           participant_refs: ['opus', 'sonnet'],
         },
-      }).im_target?.visibility,
-    ).toBe('private');
+      }).team_override?.members[2]?.member_kind,
+    ).toBe('craftsman');
+  });
+
+  it('parses create task payloads with member kind hints for orchestration control', () => {
+    expect(
+      createTaskRequestSchema.parse({
+        title: 'controller aware task',
+        type: 'coding',
+        creator: 'archon',
+        description: 'mark controller/citizen/craftsman separately',
+        priority: 'normal',
+        team_override: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+            { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: 'coding_cli' },
+          ],
+        },
+      }).team_override?.members[0]?.member_kind,
+    ).toBe('controller');
   });
 
   it('parses task status responses with nested flow/progress/subtasks', () => {

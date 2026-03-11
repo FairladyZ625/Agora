@@ -280,8 +280,13 @@ describe('dashboard expansion mappers', () => {
       governance: 'standard',
       defaultTeam: {
         architect: {
+          member_kind: 'controller',
           model_preference: 'strong_reasoning',
           suggested: ['opus'],
+        },
+        craftsman: {
+          member_kind: 'craftsman',
+          suggested: ['codex'],
         },
       },
       stages: [
@@ -300,8 +305,15 @@ describe('dashboard expansion mappers', () => {
     expect(detail.defaultTeamRoles[0]).toBe('architect');
     expect(detail.defaultTeam[0]).toEqual({
       role: 'architect',
+      memberKind: 'controller',
       modelPreference: 'strong_reasoning',
       suggested: ['opus'],
+    });
+    expect(detail.defaultTeam[1]).toEqual({
+      role: 'craftsman',
+      memberKind: 'craftsman',
+      modelPreference: null,
+      suggested: ['codex'],
     });
     expect(detail.stages[0]).toMatchObject({
       gateType: 'approval',

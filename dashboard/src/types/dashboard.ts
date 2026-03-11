@@ -210,6 +210,7 @@ export interface TemplateStage {
 
 export interface TemplateTeamPresetMember {
   role: string;
+  memberKind?: 'controller' | 'citizen' | 'craftsman' | null;
   modelPreference: string | null;
   suggested: string[];
 }

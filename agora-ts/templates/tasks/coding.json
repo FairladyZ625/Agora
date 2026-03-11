@@ -5,10 +5,10 @@
   "defaultWorkflow": "discuss-execute-review",
   "governance": "standard",
   "defaultTeam": {
-    "architect": { "model_preference": "strong_reasoning", "suggested": ["opus"] },
-    "developer": { "model_preference": "fast_coding", "suggested": ["sonnet"] },
-    "reviewer": { "model_preference": "chinese_strong", "suggested": ["glm5", "gpt52"] },
-    "craftsman": { "model_preference": "coding_cli", "suggested": ["claude_code", "codex"] }
+    "architect": { "member_kind": "controller", "model_preference": "strong_reasoning", "suggested": ["opus"] },
+    "developer": { "member_kind": "citizen", "model_preference": "fast_coding", "suggested": ["sonnet"] },
+    "reviewer": { "member_kind": "citizen", "model_preference": "chinese_strong", "suggested": ["glm5", "gpt52"] },
+    "craftsman": { "member_kind": "craftsman", "model_preference": "coding_cli", "suggested": ["claude_code", "codex"] }
   },
   "stages": [
     { "id": "discuss", "name": "方案讨论", "mode": "discuss", "gate": { "type": "archon_review" } },

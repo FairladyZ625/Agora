@@ -48,6 +48,7 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 export const teamMemberSchema = z.object({
   role: agentRoleSchema,
   agentId: z.string().min(1),
+  member_kind: z.enum(['controller', 'citizen', 'craftsman']).optional(),
   model_preference: z.string(),
 });
 export type TeamMemberDto = z.infer<typeof teamMemberSchema>;

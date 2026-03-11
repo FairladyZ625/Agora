@@ -9,6 +9,7 @@ import {
   type StoredRuntimeSessionBinding,
 } from '@agora-ts/db';
 import type { AgentRuntimePort } from './runtime-ports.js';
+import { isInteractiveParticipant } from './team-member-kind.js';
 
 export interface TaskParticipationServiceOptions {
   participantIdGenerator?: () => string;
@@ -41,7 +42,7 @@ export class TaskParticipationService {
   }
 
   seedParticipants(taskId: string, team: TeamDto | null | undefined, bindingId?: string | null): StoredParticipantBinding[] {
-    const members = team?.members ?? [];
+    const members = (team?.members ?? []).filter(isInteractiveParticipant);
     return members.map((member) => {
       const resolved = this.agentRuntimePort?.resolveAgent(member.agentId);
       return this.participants.insert({

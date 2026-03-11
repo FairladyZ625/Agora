@@ -1,4 +1,5 @@
 import type { AgentStatusItem, TemplateTeamPresetMember } from '@/types/dashboard';
+import { isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 
 export interface TemplateRuntimeCompatibilityItem {
   role: string;
@@ -10,8 +11,10 @@ export interface TemplateRuntimeCompatibilityItem {
 export function evaluateTemplateRuntimeCompatibility(
   members: TemplateTeamPresetMember[],
   agents: AgentStatusItem[],
+  craftsmanAgents: string[] = [],
 ): TemplateRuntimeCompatibilityItem[] {
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
+  const craftsmanIds = new Set(craftsmanAgents.map((agentId) => normalizeRoleBindingId('craftsman', agentId)));
 
   return members.map((member) => {
     const compatibleSuggested: string[] = [];
@@ -19,16 +22,25 @@ export function evaluateTemplateRuntimeCompatibility(
     const missingSuggested: string[] = [];
 
     for (const suggested of member.suggested) {
-      const agent = agentById.get(suggested);
+      const normalizedSuggested = normalizeRoleBindingId(member.role, suggested, member.memberKind);
+      if (isCraftsmanRole(member.role, member.memberKind)) {
+        if (!craftsmanIds.has(normalizedSuggested)) {
+          missingSuggested.push(normalizedSuggested);
+          continue;
+        }
+        compatibleSuggested.push(normalizedSuggested);
+        continue;
+      }
+      const agent = agentById.get(normalizedSuggested);
       if (!agent) {
-        missingSuggested.push(suggested);
+        missingSuggested.push(normalizedSuggested);
         continue;
       }
       if (agent.presence === 'offline' || agent.presence === 'disconnected') {
-        unavailableSuggested.push(suggested);
+        unavailableSuggested.push(normalizedSuggested);
         continue;
       }
-      compatibleSuggested.push(suggested);
+      compatibleSuggested.push(normalizedSuggested);
     }
 
     return {

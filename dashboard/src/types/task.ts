@@ -174,6 +174,7 @@ export interface CreateTaskInput {
     members: Array<{
       role: string;
       agentId: string;
+      member_kind?: 'controller' | 'citizen' | 'craftsman';
       model_preference?: string;
     }>;
   };

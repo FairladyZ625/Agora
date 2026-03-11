@@ -43,7 +43,12 @@ vi.mock('@/stores/templateStore', () => ({
       stageCount: number;
       stages: Array<{ id: string; name: string; mode: string; gateType: string | null }>;
       defaultTeamRoles: string[];
-      defaultTeam: Array<{ role: string; modelPreference: string; suggested: string[] }>;
+      defaultTeam: Array<{
+        role: string;
+        memberKind?: 'controller' | 'citizen' | 'craftsman' | null;
+        modelPreference: string;
+        suggested: string[];
+      }>;
       raw: Record<string, unknown>;
     } | null;
     fetchTemplates: typeof fetchTemplates;
@@ -69,10 +74,11 @@ vi.mock('@/stores/templateStore', () => ({
         { id: 'discuss', name: '讨论', mode: 'discuss', gateType: 'archon_review' },
         { id: 'develop', name: '开发', mode: 'execute', gateType: 'all_subtasks_done' },
       ],
-      defaultTeamRoles: ['architect', 'developer'],
+      defaultTeamRoles: ['architect', 'developer', 'craftsman'],
       defaultTeam: [
-        { role: 'architect', modelPreference: 'strong_reasoning', suggested: ['opus'] },
-        { role: 'developer', modelPreference: 'fast_coding', suggested: ['sonnet'] },
+        { role: 'architect', memberKind: 'controller', modelPreference: 'strong_reasoning', suggested: ['opus'] },
+        { role: 'developer', memberKind: 'citizen', modelPreference: 'fast_coding', suggested: ['sonnet'] },
+        { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code'] },
       ],
       raw: {},
     },
@@ -104,6 +110,25 @@ vi.mock('@/stores/agentStore', () => ({
       lastSeenAt: string | null;
     }>;
     fetchStatus: typeof fetchStatus;
+    tmuxRuntime: {
+      session: string | null;
+      panes: Array<{
+        agent: string;
+        paneId: string | null;
+        currentCommand: string | null;
+        active: boolean;
+        ready: boolean;
+        tailPreview: string | null;
+        continuityBackend: 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
+        resumeCapability: 'native_resume' | 'resume_last' | 'none';
+        sessionReference: string | null;
+        identitySource: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
+        identityPath: string | null;
+        sessionObservedAt: string | null;
+        lastRecoveryMode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
+        transportSessionId: string | null;
+      }>;
+    } | null;
   }) => unknown) => selector({
     agents: [
       {
@@ -118,26 +143,6 @@ vi.mock('@/stores/agentStore', () => ({
         primaryModel: null,
         workspaceDir: null,
         accountId: 'opus',
-        activeTaskIds: [],
-        activeSubtaskIds: [],
-        taskCount: 0,
-        subtaskCount: 0,
-        load: 0,
-        lastActiveAt: null,
-        lastSeenAt: null,
-      },
-      {
-        id: 'codex',
-        role: null,
-        status: 'idle',
-        presence: 'online',
-        presenceReason: null,
-        channelProviders: ['discord'],
-        hostFramework: 'openclaw',
-        inventorySources: ['discord', 'openclaw'],
-        primaryModel: null,
-        workspaceDir: null,
-        accountId: 'codex',
         activeTaskIds: [],
         activeSubtaskIds: [],
         taskCount: 0,
@@ -168,6 +173,43 @@ vi.mock('@/stores/agentStore', () => ({
       },
     ],
     fetchStatus,
+    tmuxRuntime: {
+      session: 'agora-craftsmen',
+      panes: [
+        {
+          agent: 'claude',
+          paneId: '%0',
+          currentCommand: 'claude',
+          active: true,
+          ready: true,
+          tailPreview: null,
+          continuityBackend: 'claude_session_id',
+          resumeCapability: 'native_resume',
+          sessionReference: 'claude-session-1',
+          identitySource: 'session_file',
+          identityPath: null,
+          sessionObservedAt: null,
+          lastRecoveryMode: 'resume_exact',
+          transportSessionId: 'tmux:agora-craftsmen:claude',
+        },
+        {
+          agent: 'codex',
+          paneId: '%1',
+          currentCommand: 'codex',
+          active: true,
+          ready: true,
+          tailPreview: null,
+          continuityBackend: 'codex_session_file',
+          resumeCapability: 'native_resume',
+          sessionReference: 'codex-session-1',
+          identitySource: 'session_file',
+          identityPath: null,
+          sessionObservedAt: null,
+          lastRecoveryMode: 'resume_exact',
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        },
+      ],
+    },
   }),
 }));
 
@@ -176,7 +218,7 @@ describe('create task page', () => {
     vi.clearAllMocks();
   });
 
-  it('builds a private-thread payload from selected agents and submits it', async () => {
+  it('builds a private-thread payload from selected citizens while keeping craftsman separate from participants', async () => {
     render(
       <MemoryRouter>
         <CreateTaskPage />
@@ -191,7 +233,10 @@ describe('create task page', () => {
     });
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
-    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'codex' }));
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
+    const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
+    expect(craftsmanCard).not.toBeNull();
+    fireEvent.click(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' }));
     fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
 
     await waitFor(() => {
@@ -200,14 +245,15 @@ describe('create task page', () => {
         type: 'coding',
         team_override: {
           members: [
-            { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-            { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'opus', member_kind: 'citizen', model_preference: 'fast_coding' },
+            { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: 'coding_cli' },
           ],
         },
         im_target: {
           provider: 'discord',
           visibility: 'private',
-          participant_refs: ['opus', 'codex'],
+          participant_refs: ['opus'],
         },
       }));
     });
@@ -226,5 +272,19 @@ describe('create task page', () => {
     expect(screen.getByRole('button', { name: '头脑风暴' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '大型编码任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '调研任务' })).toBeInTheDocument();
+  });
+
+  it('renders craftsman selectors from tmux runtime inventory instead of citizen agents', () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
+    expect(craftsmanCard).not.toBeNull();
+    expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'claude' })).toBeInTheDocument();
+    expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' })).toBeInTheDocument();
+    expect(within(craftsmanCard as HTMLElement).queryByRole('button', { name: 'sonnet' })).not.toBeInTheDocument();
   });
 });

@@ -37,10 +37,11 @@ function buildTemplate(): TemplateDetail {
       { id: 'discuss', name: '讨论', mode: 'discuss', gateType: 'archon_review' },
       { id: 'develop', name: '开发', mode: 'execute', gateType: 'all_subtasks_done' },
     ],
-    defaultTeamRoles: ['architect', 'developer'],
+    defaultTeamRoles: ['architect', 'developer', 'craftsman'],
     defaultTeam: [
-      { role: 'architect', modelPreference: 'strong_reasoning', suggested: ['opus'] },
-      { role: 'developer', modelPreference: 'fast_coding', suggested: ['sonnet'] },
+      { role: 'architect', memberKind: 'controller', modelPreference: 'strong_reasoning', suggested: ['opus'] },
+      { role: 'developer', memberKind: 'citizen', modelPreference: 'fast_coding', suggested: ['sonnet'] },
+      { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code', 'codex'] },
     ],
     raw: {},
   };
@@ -48,19 +49,27 @@ function buildTemplate(): TemplateDetail {
 
 describe('create task draft helpers', () => {
   it('initializes role assignments from template suggestions when agents exist', () => {
-    const assignments = buildInitialRoleAssignments(buildTemplate(), [
-      buildAgent('opus'),
-      buildAgent('sonnet'),
-      buildAgent('codex'),
-    ]);
+    const assignments = buildInitialRoleAssignments(buildTemplate(), {
+      agents: [
+        buildAgent('opus'),
+        buildAgent('sonnet'),
+        buildAgent('codex'),
+      ],
+      craftsmen: [
+        { id: 'claude', label: 'Claude Code', selectable: true },
+        { id: 'codex', label: 'Codex', selectable: true },
+        { id: 'gemini', label: 'Gemini CLI', selectable: true },
+      ],
+    });
 
     expect(assignments).toEqual({
       architect: 'opus',
       developer: 'sonnet',
+      craftsman: 'claude',
     });
   });
 
-  it('builds a private-thread create payload with team override from selected roles', () => {
+  it('builds a private-thread create payload without inviting craftsman adapters into participant refs', () => {
     const payload = buildCreateTaskInput({
       title: '实现动态选人',
       description: 'create flow',
@@ -71,6 +80,7 @@ describe('create task draft helpers', () => {
       assignments: {
         architect: 'opus',
         developer: 'codex',
+        craftsman: 'claude',
       },
     });
 
@@ -79,8 +89,9 @@ describe('create task draft helpers', () => {
       type: 'coding',
       team_override: {
         members: [
-          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-          { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
         ],
       },
       im_target: {

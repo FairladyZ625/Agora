@@ -330,6 +330,7 @@ export const templateSummarySchema = z.object({
 export type TemplateSummaryDto = z.infer<typeof templateSummarySchema>;
 
 export const templateTeamMemberSchema = z.object({
+  member_kind: z.enum(['controller', 'citizen', 'craftsman']).optional(),
   model_preference: z.string().min(1).optional(),
   suggested: z.array(z.string()).optional(),
 }).strict();
