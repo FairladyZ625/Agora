@@ -93,6 +93,42 @@ describe('DiscordHttpClient', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('addThreadMember calls Discord API for another user', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await client.addThreadMember('thread-add-1', 'user-42');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-add-1/thread-members/user-42',
+      expect.objectContaining({ method: 'PUT' }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('getCurrentUser resolves the current bot user id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'bot-user-7', username: 'agora-bot' }),
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await expect(client.getCurrentUser()).resolves.toEqual({
+      id: 'bot-user-7',
+      username: 'agora-bot',
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/users/@me',
+      expect.objectContaining({ method: 'GET' }),
+    );
+
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('DiscordIMProvisioningAdapter', () => {
@@ -163,8 +199,18 @@ describe('DiscordIMProvisioningAdapter', () => {
     vi.unstubAllGlobals();
   });
 
-  it('joinParticipant uses the participant account token to join the thread', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+  it('joinParticipant uses the Agora bot to add the participant account to the thread', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-sonnet', username: 'sonnet' }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'discord-user-sonnet' }]),
+      });
     vi.stubGlobal('fetch', mockFetch);
 
     const adapter = new DiscordIMProvisioningAdapter({
@@ -184,11 +230,28 @@ describe('DiscordIMProvisioningAdapter', () => {
     });
 
     expect(result).toEqual({ status: 'joined', detail: null });
-    expect(mockFetch).toHaveBeenCalledWith(
-      'https://discord.com/api/v10/channels/thread-join-2/thread-members/@me',
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/users/@me',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bot token-sonnet' }),
+      }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://discord.com/api/v10/channels/thread-join-2/thread-members/discord-user-sonnet',
       expect.objectContaining({
         method: 'PUT',
-        headers: expect.objectContaining({ Authorization: 'Bot token-sonnet' }),
+        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+      }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      'https://discord.com/api/v10/channels/thread-join-2/thread-members',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
       }),
     );
 

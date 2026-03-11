@@ -6,6 +6,19 @@ export interface DiscordClientOptions {
   botToken: string;
 }
 
+export interface DiscordCurrentUser {
+  id: string;
+  username?: string;
+}
+
+export interface DiscordThreadMember {
+  user_id?: string;
+  id?: string;
+  user?: {
+    id?: string;
+  };
+}
+
 export class DiscordHttpClient {
   private readonly headers: Record<string, string>;
   private readonly dispatcher: Dispatcher | undefined;
@@ -69,6 +82,44 @@ export class DiscordHttpClient {
       const body = await res.text();
       throw new Error(`Discord joinThread failed: ${res.status} ${body}`);
     }
+  }
+
+  async addThreadMember(threadId: string, userId: string): Promise<void> {
+    const res = await fetch(`${DISCORD_API}/channels/${threadId}/thread-members/${userId}`, {
+      method: 'PUT',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord addThreadMember failed: ${res.status} ${body}`);
+    }
+  }
+
+  async listThreadMembers(threadId: string): Promise<DiscordThreadMember[]> {
+    const res = await fetch(`${DISCORD_API}/channels/${threadId}/thread-members`, {
+      method: 'GET',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord listThreadMembers failed: ${res.status} ${body}`);
+    }
+    return (await res.json()) as DiscordThreadMember[];
+  }
+
+  async getCurrentUser(): Promise<DiscordCurrentUser> {
+    const res = await fetch(`${DISCORD_API}/users/@me`, {
+      method: 'GET',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord getCurrentUser failed: ${res.status} ${body}`);
+    }
+    return (await res.json()) as DiscordCurrentUser;
   }
 }
 

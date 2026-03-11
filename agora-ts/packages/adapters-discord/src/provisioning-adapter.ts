@@ -20,6 +20,7 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
   private readonly defaultChannelId: string;
   private readonly participantTokens: Record<string, string>;
   private readonly primaryAccountId: string | null;
+  private readonly participantUserIds = new Map<string, string>();
 
   constructor(options: DiscordIMProvisioningAdapterOptions) {
     this.client = new DiscordHttpClient({ botToken: options.botToken });
@@ -73,12 +74,35 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     if (!token) {
       return { status: 'failed', detail: `no discord token configured for participant ${_input.participant_ref}` };
     }
-    const client = new DiscordHttpClient({ botToken: token });
-    await client.joinThread(threadRef);
+    const userId = await this.resolveParticipantUserId(_input.participant_ref, token);
+    await this.client.addThreadMember(threadRef, userId);
+    const members = await this.client.listThreadMembers(threadRef);
+    const joined = members.some((member) => this.readThreadMemberUserId(member) === userId);
+    if (!joined) {
+      return {
+        status: 'failed',
+        detail: `participant ${_input.participant_ref} was not visible in thread member list after add`,
+      };
+    }
     return { status: 'joined', detail: null };
   }
 
   async archiveContext(_input: IMArchiveContextRequest): Promise<void> {
     // Intentionally left as a no-op in Plan A. Archive semantics will be hardened in a later wave.
+  }
+
+  private async resolveParticipantUserId(participantRef: string, token: string): Promise<string> {
+    const cached = this.participantUserIds.get(participantRef);
+    if (cached) {
+      return cached;
+    }
+    const client = new DiscordHttpClient({ botToken: token });
+    const user = await client.getCurrentUser();
+    this.participantUserIds.set(participantRef, user.id);
+    return user.id;
+  }
+
+  private readThreadMemberUserId(member: { user_id?: string; id?: string; user?: { id?: string } }): string | null {
+    return member.user_id ?? member.user?.id ?? member.id ?? null;
   }
 }
