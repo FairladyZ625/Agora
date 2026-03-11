@@ -105,6 +105,42 @@ describe('task service', () => {
     });
   });
 
+  it('repairs stale database-backed templates with missing member_kind before building the task team', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+    templates.saveTemplate('coding', {
+      name: 'stale coding template',
+      type: 'coding',
+      governance: 'standard',
+      defaultTeam: {
+        architect: { suggested: ['opus'] },
+        developer: { suggested: ['sonnet'] },
+        craftsman: { suggested: ['codex'] },
+      },
+      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+    }, 'user');
+
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REPAIRED-TEMPLATE',
+    });
+
+    const task = service.createTask({
+      title: 'repair stale template team semantics',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    expect(task.team.members).toEqual([
+      { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: '' },
+      { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: '' },
+      { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: '' },
+    ]);
+  });
+
   it('rejects advance before gate passes and advances once archon review is recorded', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

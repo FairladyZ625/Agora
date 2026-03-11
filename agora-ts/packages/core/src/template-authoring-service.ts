@@ -24,6 +24,7 @@ export class TemplateAuthoringService {
   constructor(private readonly options: TemplateAuthoringServiceOptions) {
     this.templateRepository = options.db ? new TemplateRepository(options.db) : null;
     this.templateRepository?.seedFromDir(options.templatesDir);
+    this.templateRepository?.repairMemberKindsFromDir(options.templatesDir);
   }
 
   validateTemplate(template: TemplateDetailDto): TemplateValidationResponseDto {

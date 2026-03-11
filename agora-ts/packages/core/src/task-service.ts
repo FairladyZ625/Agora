@@ -169,6 +169,7 @@ export class TaskService {
     this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.templateRepository.seedFromDir(this.templatesDir);
+    this.templateRepository.repairMemberKindsFromDir(this.templatesDir);
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
     this.taskContextBindingService = options.taskContextBindingService;

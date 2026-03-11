@@ -136,6 +136,37 @@ describe('template authoring service', () => {
     });
   });
 
+  it('repairs existing sqlite templates with missing member_kind on service bootstrap', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const repository = new TemplateRepository(db);
+
+    repository.saveTemplate('coding', {
+      name: '旧编码模板',
+      type: 'coding',
+      governance: 'standard',
+      defaultTeam: {
+        architect: { suggested: ['opus'] },
+        developer: { suggested: ['sonnet'] },
+        craftsman: { suggested: ['codex'] },
+      },
+      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+    }, 'user');
+
+    new TemplateAuthoringService({ db, templatesDir });
+
+    expect(repository.getTemplate('coding')).toMatchObject({
+      template: {
+        defaultTeam: {
+          architect: { member_kind: 'controller' },
+          developer: { member_kind: 'citizen' },
+          craftsman: { member_kind: 'craftsman' },
+        },
+      },
+    });
+  });
+
   it('rejects invalid governance, team role, and workflow mode values', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

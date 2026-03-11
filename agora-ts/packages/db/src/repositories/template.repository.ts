@@ -13,6 +13,11 @@ export interface StoredTemplate {
   updated_at: string;
 }
 
+export interface TemplateRepairResult {
+  scanned: number;
+  updated: number;
+}
+
 export class TemplateRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
@@ -80,6 +85,33 @@ export class TemplateRepository {
     return { inserted };
   }
 
+  repairMemberKindsFromDir(templatesDir: string): TemplateRepairResult {
+    const dir = resolve(templatesDir, 'tasks');
+    if (!existsSync(dir)) {
+      return { scanned: 0, updated: 0 };
+    }
+
+    let scanned = 0;
+    let updated = 0;
+    for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
+      const templateId = name.slice(0, -5);
+      const existing = this.getTemplate(templateId);
+      if (!existing) {
+        continue;
+      }
+      scanned += 1;
+      const seedTemplate = JSON.parse(readFileSync(resolve(dir, name), 'utf8')) as TemplateDetailDto;
+      const repaired = repairTemplateMemberKinds(existing.template, seedTemplate);
+      if (!repaired.changed) {
+        continue;
+      }
+      this.saveTemplate(templateId, repaired.template, existing.source);
+      updated += 1;
+    }
+
+    return { scanned, updated };
+  }
+
   private parseTemplateRow(row: Record<string, unknown>): StoredTemplate {
     return {
       id: String(row.id),
@@ -90,4 +122,43 @@ export class TemplateRepository {
       updated_at: String(row.updated_at),
     };
   }
+}
+
+function repairTemplateMemberKinds(
+  existing: TemplateDetailDto,
+  seedTemplate: TemplateDetailDto,
+): { changed: boolean; template: TemplateDetailDto } {
+  const existingTeam = existing.defaultTeam ?? {};
+  const seedTeam = seedTemplate.defaultTeam ?? {};
+  let changed = false;
+
+  const repairedTeam = Object.fromEntries(Object.entries(existingTeam).map(([role, member]) => {
+    if (member.member_kind) {
+      return [role, member];
+    }
+    const seedMemberKind = seedTeam[role]?.member_kind;
+    if (!seedMemberKind) {
+      return [role, member];
+    }
+    changed = true;
+    return [
+      role,
+      {
+        ...member,
+        member_kind: seedMemberKind,
+      },
+    ];
+  }));
+
+  if (!changed) {
+    return { changed: false, template: existing };
+  }
+
+  return {
+    changed: true,
+    template: {
+      ...existing,
+      defaultTeam: repairedTeam,
+    },
+  };
 }

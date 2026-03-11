@@ -91,6 +91,42 @@ describe('agora-ts sqlite bootstrap', () => {
     });
   });
 
+  it('repairs existing sqlite templates with missing member_kind from the seed directory without overwriting other fields', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+
+    templates.saveTemplate('coding', {
+      name: '自定义编码模板',
+      type: 'coding',
+      description: 'db customized',
+      governance: 'standard',
+      defaultTeam: {
+        architect: { suggested: ['custom-opus'] },
+        developer: { model_preference: 'custom-fast', suggested: ['custom-sonnet'] },
+        craftsman: { suggested: ['codex'] },
+      },
+      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+    }, 'user');
+
+    const repaired = templates.repairMemberKindsFromDir(resolve(process.cwd(), 'templates'));
+
+    expect(repaired.updated).toBe(1);
+    expect(templates.getTemplate('coding')).toMatchObject({
+      source: 'user',
+      template: {
+        name: '自定义编码模板',
+        defaultTeam: {
+          architect: { member_kind: 'controller', suggested: ['custom-opus'] },
+          developer: { member_kind: 'citizen', model_preference: 'custom-fast', suggested: ['custom-sonnet'] },
+          craftsman: { member_kind: 'craftsman', suggested: ['codex'] },
+        },
+      },
+    });
+
+    expect(templates.repairMemberKindsFromDir(resolve(process.cwd(), 'templates')).updated).toBe(0);
+  });
+
   it('stores and reads task JSON fields via the task repository', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
