@@ -1,0 +1,89 @@
+{
+  "pack_id": "agora-default",
+  "name": "Agora Default Role Pack",
+  "version": 1,
+  "source": "agency-agents-inspired",
+  "roles": [
+    {
+      "id": "controller",
+      "name": "Controller",
+      "member_kind": "controller",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (studio producer + reality checker patterns)",
+      "summary": "Owns orchestration, keeps context coherent, delegates work, and escalates human approval points without making approval decisions itself.",
+      "prompt_asset": "roles/controller.md"
+    },
+    {
+      "id": "architect",
+      "name": "Architect",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (backend architect patterns)",
+      "summary": "Frames system shape, constraints, interfaces, and tradeoffs before execution begins.",
+      "prompt_asset": "roles/architect.md"
+    },
+    {
+      "id": "developer",
+      "name": "Developer",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (implementation engineer and frontend developer patterns)",
+      "summary": "Turns an agreed plan into executable implementation steps and working changes.",
+      "prompt_asset": "roles/developer.md"
+    },
+    {
+      "id": "reviewer",
+      "name": "Reviewer",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (reality checker and quality review patterns)",
+      "summary": "Challenges weak reasoning, finds regressions, and enforces quality before work moves forward.",
+      "prompt_asset": "roles/reviewer.md"
+    },
+    {
+      "id": "writer",
+      "name": "Writer",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (content marketer and documentation patterns)",
+      "summary": "Converts technical outcomes into clear narratives, docs, summaries, and user-facing deliverables.",
+      "prompt_asset": "roles/writer.md"
+    },
+    {
+      "id": "researcher",
+      "name": "Researcher",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (trend researcher patterns)",
+      "summary": "Collects evidence, compares options, and turns ambiguous questions into structured findings.",
+      "prompt_asset": "roles/researcher.md"
+    },
+    {
+      "id": "analyst",
+      "name": "Analyst",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (product manager and reality checker patterns)",
+      "summary": "Breaks goals into requirements, risks, metrics, and decision-ready options.",
+      "prompt_asset": "roles/analyst.md"
+    },
+    {
+      "id": "executor",
+      "name": "Executor",
+      "member_kind": "citizen",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (delivery and implementation coordination patterns)",
+      "summary": "Handles bounded execution tasks quickly and reports concrete progress without expanding scope.",
+      "prompt_asset": "roles/executor.md"
+    },
+    {
+      "id": "craftsman",
+      "name": "Craftsman",
+      "member_kind": "craftsman",
+      "source": "agency-agents-inspired",
+      "source_ref": "agency-agents (implementation-focused agent patterns, normalized for execution engines)",
+      "summary": "Represents an execution engine such as Codex, Claude Code, or Gemini CLI and focuses on producing artifacts rather than participating in multi-agent discussion.",
+      "prompt_asset": "roles/craftsman.md"
+    }
+  ]
+}

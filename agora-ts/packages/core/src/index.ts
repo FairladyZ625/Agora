@@ -17,6 +17,7 @@ export * from './mode-controller.js';
 export * from './notification-dispatcher.js';
 export * from './permission-service.js';
 export * from './progress-service.js';
+export * from './role-pack-service.js';
 export * from './runtime-ports.js';
 export * from './state-machine.js';
 export * from './task-context-binding-service.js';

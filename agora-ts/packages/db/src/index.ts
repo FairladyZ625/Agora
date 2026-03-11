@@ -16,3 +16,5 @@ export * from './repositories/participant-binding.repository.js';
 export * from './repositories/runtime-session-binding.repository.js';
 export * from './repositories/task-conversation.repository.js';
 export * from './repositories/task-conversation-read-cursor.repository.js';
+export * from './repositories/role-definition.repository.js';
+export * from './repositories/role-binding.repository.js';

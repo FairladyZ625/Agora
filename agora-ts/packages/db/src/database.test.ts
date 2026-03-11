@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, listAppliedMigrations, runMigrations } from './database.js';
 import { ArchiveJobRepository } from './repositories/archive-job.repository.js';
+import { RoleDefinitionRepository } from './repositories/role-definition.repository.js';
 import { TaskRepository } from './repositories/task.repository.js';
 import { TemplateRepository } from './repositories/template.repository.js';
 import { TodoRepository } from './repositories/todo.repository.js';
@@ -41,6 +42,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '007_task_conversation.sql',
       '008_task_conversation_read_cursors.sql',
       '009_templates.sql',
+      '010_role_pack_bindings.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -62,6 +64,50 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'templates'")
       .get() as { name: string } | undefined;
     expect(templatesTable?.name).toBe('templates');
+    const roleDefinitionsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'role_definitions'")
+      .get() as { name: string } | undefined;
+    expect(roleDefinitionsTable?.name).toBe('role_definitions');
+  });
+
+  it('can persist role definitions inside the single sqlite database', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const roles = new RoleDefinitionRepository(db);
+
+    roles.saveRoleDefinition({
+      id: 'controller',
+      name: 'Controller',
+      member_kind: 'controller',
+      summary: 'Owns orchestration flow.',
+      prompt_asset: 'roles/controller.md',
+      source: 'agora',
+      allowed_target_kinds: ['runtime_agent'],
+    });
+
+    expect(roles.getRoleDefinition('controller')).toMatchObject({
+      id: 'controller',
+      member_kind: 'controller',
+    });
+  });
+
+  it('seeds the checked-in Agora default role pack from disk', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const roles = new RoleDefinitionRepository(db);
+
+    const seeded = roles.seedFromPackDir(resolve(process.cwd(), 'role-packs', 'agora-default'));
+
+    expect(seeded.inserted).toBeGreaterThanOrEqual(9);
+    expect(roles.getRoleDefinition('controller')).toMatchObject({
+      id: 'controller',
+      member_kind: 'controller',
+      prompt_asset_path: 'roles/controller.md',
+    });
+    expect(roles.getRoleDefinition('craftsman')).toMatchObject({
+      id: 'craftsman',
+      member_kind: 'craftsman',
+    });
   });
 
   it('seeds templates from disk into the single sqlite database and persists later edits there', () => {
