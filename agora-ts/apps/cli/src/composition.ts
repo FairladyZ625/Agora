@@ -10,9 +10,11 @@ import {
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
+  RolePackService,
   resolveCraftsmanRuntimeMode,
   TaskConversationService,
   TaskService,
+  TemplateAuthoringService,
   TmuxRuntimeService,
 } from '@agora-ts/core';
 
@@ -25,6 +27,8 @@ export interface CliCompositionContext {
   config: AgoraConfig;
   runtimeEnv: ReturnType<typeof resolveAgoraRuntimeEnvironmentFromConfigPackage>;
   db: AgoraDatabase;
+  templatesDir: string;
+  rolePackDir: string;
 }
 
 export interface CliCompositionFactories {
@@ -34,6 +38,8 @@ export interface CliCompositionFactories {
   createDashboardSessionClient: (context: CliCompositionContext) => DashboardSessionClient;
   createHumanAccountService: (context: CliCompositionContext) => HumanAccountService;
   createTaskConversationService: (context: CliCompositionContext) => TaskConversationService;
+  createTemplateAuthoringService: (context: CliCompositionContext) => TemplateAuthoringService;
+  createRolePackService: (context: CliCompositionContext) => RolePackService;
 }
 
 export interface CliComposition {
@@ -44,6 +50,8 @@ export interface CliComposition {
   dashboardSessionClient: DashboardSessionClient;
   humanAccountService: HumanAccountService;
   taskConversationService: TaskConversationService;
+  templateAuthoringService: TemplateAuthoringService;
+  rolePackService: RolePackService;
 }
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
@@ -82,6 +90,14 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     }),
     createHumanAccountService: (context) => new HumanAccountService(context.db),
     createTaskConversationService: (context) => new TaskConversationService(context.db),
+    createTemplateAuthoringService: (context) => new TemplateAuthoringService({
+      db: context.db,
+      templatesDir: context.templatesDir,
+    }),
+    createRolePackService: (context) => new RolePackService({
+      db: context.db,
+      rolePacksDir: context.rolePackDir,
+    }),
   };
 }
 
@@ -93,10 +109,14 @@ export function createCliComposition(
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const db = createAgoraDatabase({ dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path });
   runMigrations(db);
+  const templatesDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/templates');
+  const rolePackDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/role-packs/agora-default');
   const context: CliCompositionContext = {
     config,
     runtimeEnv,
     db,
+    templatesDir,
+    rolePackDir,
   };
   const factories = {
     ...createDefaultCliCompositionFactories(),
@@ -108,6 +128,8 @@ export function createCliComposition(
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);
   const taskConversationService = factories.createTaskConversationService(context);
+  const templateAuthoringService = factories.createTemplateAuthoringService(context);
+  const rolePackService = factories.createRolePackService(context);
 
   return {
     config,
@@ -117,5 +139,7 @@ export function createCliComposition(
     dashboardSessionClient,
     humanAccountService,
     taskConversationService,
+    templateAuthoringService,
+    rolePackService,
   };
 }

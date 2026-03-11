@@ -4,12 +4,13 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { CraftsmanDispatcher, HumanAccountService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService } from '@agora-ts/core';
+import { CraftsmanDispatcher, HumanAccountService, RolePackService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+const rolePackDir = resolve(process.cwd(), 'role-packs', 'agora-default');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-'));
@@ -52,6 +53,21 @@ function createDashboardSessionClientStub(): DashboardSessionClient {
       method: 'session',
     }),
     logout: async () => ({ ok: true }),
+  };
+}
+
+function createTmuxRuntimeServiceStub() {
+  return {
+    up: () => { throw new Error('unused'); },
+    status: () => { throw new Error('unused'); },
+    send: () => { throw new Error('unused'); },
+    start: () => { throw new Error('unused'); },
+    resume: () => { throw new Error('unused'); },
+    task: () => { throw new Error('unused'); },
+    tail: () => { throw new Error('unused'); },
+    doctor: () => { throw new Error('unused'); },
+    down: () => { throw new Error('unused'); },
+    recordIdentity: () => { throw new Error('unused'); },
   };
 }
 
@@ -124,6 +140,120 @@ describe('agora-ts cli', () => {
         { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
       ],
     });
+  });
+
+  it('creates tasks with controller and role binding convenience options', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-300C',
+    });
+    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const rolePackService = new RolePackService({ db, rolePacksDir: rolePackDir });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      templateAuthoringService,
+      rolePackService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'create',
+      'controller aware cli create',
+      '--type', 'coding',
+      '--controller', 'opus',
+      '--bind', 'developer=sonnet',
+      '--bind', 'craftsman=codex',
+    ], { from: 'user' });
+
+    const created = taskService.getTask('OC-300C');
+    expect(stderr.value).toBe('');
+    expect(created?.team?.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'architect', agentId: 'opus', member_kind: 'controller' }),
+        expect.objectContaining({ role: 'developer', agentId: 'sonnet', member_kind: 'citizen' }),
+        expect.objectContaining({ role: 'craftsman', agentId: 'codex', member_kind: 'craftsman' }),
+      ]),
+    );
+  });
+
+  it('lists roles and stores scoped bindings through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: new TaskService(db, { templatesDir }),
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['roles', 'show', 'controller'], { from: 'user' });
+    await program.parseAsync([
+      'bindings',
+      'set',
+      '--scope', 'workspace',
+      '--ref', 'default',
+      '--role', 'controller',
+      '--target-kind', 'runtime_agent',
+      '--target-adapter', 'openclaw',
+      '--target-ref', 'opus',
+    ], { from: 'user' });
+    await program.parseAsync(['bindings', 'list', '--scope', 'workspace', '--ref', 'default'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('controller — Controller');
+    expect(stdout.value).toContain('binding 已设置: controller -> openclaw:opus');
+    expect(stdout.value).toContain('controller\tworkspace:default\truntime_agent\topenclaw:opus');
+  });
+
+  it('supports template role and stage CRUD through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: new TaskService(db, { templatesDir }),
+      templateAuthoringService,
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['templates', 'role', 'add', 'coding', '--role', 'analyst', '--member-kind', 'citizen', '--suggested', 'gpt52'], { from: 'user' });
+    await program.parseAsync(['templates', 'role', 'remove', 'coding', '--role', 'reviewer'], { from: 'user' });
+    await program.parseAsync(['templates', 'stage', 'add', 'coding', '--id', 'implement', '--name', '实施', '--mode', 'execute'], { from: 'user' });
+    await program.parseAsync(['templates', 'stage', 'move', 'coding', '--id', 'implement', '--before', 'review'], { from: 'user' });
+    await program.parseAsync(['templates', 'show', 'coding', '--json'], { from: 'user' });
+
+    const template = templateAuthoringService.getTemplate('coding');
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('模板角色已新增: coding -> analyst');
+    expect(stdout.value).toContain('模板角色已删除: coding -> reviewer');
+    expect(stdout.value).toContain('模板阶段已新增: coding -> implement');
+    expect(stdout.value).toContain('模板阶段已重排: coding -> implement');
+    expect(template.defaultTeam?.analyst?.member_kind).toBe('citizen');
+    expect(template.defaultTeam?.reviewer).toBeUndefined();
+    expect(template.stages?.map((stage) => stage.id)).toEqual(['discuss', 'develop', 'implement', 'review']);
   });
 
   it('runs task action commands through the cli', async () => {

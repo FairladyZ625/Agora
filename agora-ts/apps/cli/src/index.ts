@@ -6,12 +6,14 @@ import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
-import type { TaskConversationService, TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import type { RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
   CraftsmanRuntimeIdentitySourceDto,
+  CreateTaskRequestDto,
   TaskPriority,
+  TemplateDetailDto,
 } from '@agora-ts/contracts';
 import { createTaskRequestSchema } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
@@ -28,6 +30,8 @@ export interface CliDependencies {
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
   taskConversationService?: TaskConversationService;
+  templateAuthoringService?: TemplateAuthoringService;
+  rolePackService?: RolePackService;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
   configPath?: string;
@@ -49,10 +53,137 @@ function parseJsonOption(raw?: string): Record<string, unknown> | null {
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
+function collectOption(value: string, previous: string[] = []) {
+  return [...previous, value];
+}
+
+function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
+  const bindings = new Map<string, string>();
+  for (const raw of rawBindings) {
+    const [role, target] = raw.split('=');
+    if (!role || !target) {
+      throw new Error(`invalid --bind value: ${raw}. Expected role=target.`);
+    }
+    bindings.set(role, target);
+  }
+  return bindings;
+}
+
+function buildTemplateMembers(template: TemplateDetailDto): NonNullable<CreateTaskRequestDto['team_override']>['members'] {
+  return Object.entries(template.defaultTeam ?? {}).map(([role, member]) => {
+    const agentId = member.suggested?.[0];
+    if (!agentId) {
+      throw new Error(`template role ${role} has no suggested agent; use --bind ${role}=<agent>`);
+    }
+    return {
+      role,
+      agentId,
+      ...(member.member_kind ? { member_kind: member.member_kind } : {}),
+      model_preference: member.model_preference ?? '',
+    };
+  });
+}
+
+function applyTaskCreateOverrides(input: CreateTaskRequestDto, template: TemplateDetailDto | null, controllerRef: string | undefined, binds: Map<string, string>) {
+  if (!controllerRef && binds.size === 0) {
+    return input;
+  }
+
+  const baseMembers = input.team_override?.members
+    ? [...input.team_override.members]
+    : template
+      ? buildTemplateMembers(template)
+      : [];
+
+  if (baseMembers.length === 0) {
+    throw new Error('cannot apply --controller/--bind without a template defaultTeam or explicit --team-json');
+  }
+
+  const nextMembers = baseMembers.map((member) => {
+    if (controllerRef && member.member_kind === 'controller') {
+      return { ...member, agentId: controllerRef };
+    }
+    const explicitBinding = binds.get(member.role);
+    if (explicitBinding) {
+      return { ...member, agentId: explicitBinding };
+    }
+    return member;
+  });
+
+  if (controllerRef && !nextMembers.some((member) => member.member_kind === 'controller' && member.agentId === controllerRef)) {
+    throw new Error('template/team override does not declare a controller role to receive --controller');
+  }
+
+  return createTaskRequestSchema.parse({
+    ...input,
+    team_override: {
+      members: nextMembers,
+    },
+  });
+}
+
+function insertStage(
+  stages: NonNullable<TemplateDetailDto['stages']>,
+  stage: NonNullable<TemplateDetailDto['stages']>[number],
+) {
+  return [...stages, stage];
+}
+
+function removeStage(
+  stages: NonNullable<TemplateDetailDto['stages']>,
+  stageId: string,
+) {
+  return stages
+    .filter((stage) => stage.id !== stageId)
+    .map((stage) => (
+      stage.reject_target === stageId
+        ? { ...stage, reject_target: undefined }
+        : stage
+    ));
+}
+
+function moveStage(
+  stages: NonNullable<TemplateDetailDto['stages']>,
+  stageId: string,
+  beforeId?: string,
+  afterId?: string,
+) {
+  const currentIndex = stages.findIndex((stage) => stage.id === stageId);
+  if (currentIndex === -1) {
+    throw new Error(`unknown stage id: ${stageId}`);
+  }
+  const stage = stages[currentIndex];
+  if (!stage) {
+    throw new Error(`unknown stage id: ${stageId}`);
+  }
+  const remaining = stages.filter((candidate) => candidate.id !== stageId);
+  if (beforeId) {
+    const targetIndex = remaining.findIndex((candidate) => candidate.id === beforeId);
+    if (targetIndex === -1) {
+      throw new Error(`unknown --before target: ${beforeId}`);
+    }
+    return [...remaining.slice(0, targetIndex), stage, ...remaining.slice(targetIndex)];
+  }
+  if (afterId) {
+    const targetIndex = remaining.findIndex((candidate) => candidate.id === afterId);
+    if (targetIndex === -1) {
+      throw new Error(`unknown --after target: ${afterId}`);
+    }
+    return [...remaining.slice(0, targetIndex + 1), stage, ...remaining.slice(targetIndex + 1)];
+  }
+  throw new Error('stage move requires --before or --after');
+}
+
 export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
-  const composition = !deps.taskService || !deps.tmuxRuntimeService || !deps.dashboardSessionClient || !deps.humanAccountService || !deps.taskConversationService
+  const composition = !deps.taskService
+    || !deps.tmuxRuntimeService
+    || !deps.dashboardSessionClient
+    || !deps.humanAccountService
+    || !deps.taskConversationService
+    || !deps.templateAuthoringService
+    || !deps.rolePackService
     ? createCliComposition({
       ...(deps.configPath ? { configPath: deps.configPath } : {}),
       ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
@@ -63,7 +194,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardSessionClient = deps.dashboardSessionClient ?? composition?.dashboardSessionClient;
   const humanAccountService = deps.humanAccountService ?? composition?.humanAccountService;
   const taskConversationService = deps.taskConversationService ?? composition?.taskConversationService;
-  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService || !taskConversationService) {
+  const templateAuthoringService = deps.templateAuthoringService ?? composition?.templateAuthoringService;
+  const rolePackService = deps.rolePackService ?? composition?.rolePackService;
+  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService || !taskConversationService || !templateAuthoringService || !rolePackService) {
     throw new Error('CLI runtime composition is incomplete');
   }
   const program = new Command();
@@ -95,6 +228,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--team-json <json>', 'team override JSON')
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
+    .option('--controller <agentId>', 'controller agent override')
+    .option('--bind <binding>', 'role binding override (role=agent)', collectOption, [])
     .action((title: string, options: {
       type: string;
       priority: TaskPriority;
@@ -102,6 +237,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       teamJson?: string;
       workflowJson?: string;
       imTargetJson?: string;
+      controller?: string;
+      bind?: string[];
     }) => {
       const input = createTaskRequestSchema.parse({
         title,
@@ -113,7 +250,19 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson) } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson) } : {}),
       });
-      const task = taskService.createTask(input);
+      const template = (() => {
+        try {
+          return templateAuthoringService.getTemplate(options.type);
+        } catch {
+          return null;
+        }
+      })();
+      const task = taskService.createTask(applyTaskCreateOverrides(
+        input,
+        template,
+        options.controller,
+        parseRoleBindings(options.bind),
+      ));
       writeLine(stdout, `任务已创建: ${task.id}`);
       writeLine(stdout, `标题: ${task.title}`);
       writeLine(stdout, `类型: ${task.type}`);
@@ -134,6 +283,236 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `状态: ${task.state}`);
       writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
       writeLine(stdout, `Flow Log: ${status.flow_log.length}`);
+    });
+
+  const roles = program
+    .command('roles')
+    .description('Agora role pack commands');
+
+  roles
+    .command('list')
+    .description('列出 canonical roles')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const items = rolePackService.listRoleDefinitions();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(items, null, 2));
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.id}\t${item.member_kind}\t${item.source}\t${item.prompt_asset_path}`);
+      }
+    });
+
+  roles
+    .command('show')
+    .description('查看单个 role')
+    .argument('<roleId>', 'role id')
+    .option('--json', '输出 JSON', false)
+    .action((roleId: string, options: { json?: boolean }) => {
+      const role = rolePackService.getRoleDefinition(roleId);
+      if (!role) {
+        throw new Error(`role not found: ${roleId}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(role, null, 2));
+        return;
+      }
+      writeLine(stdout, `${role.id} — ${role.name}`);
+      writeLine(stdout, `kind: ${role.member_kind}`);
+      writeLine(stdout, `source: ${role.source}`);
+      writeLine(stdout, `prompt: ${role.prompt_asset_path}`);
+      writeLine(stdout, `summary: ${role.summary}`);
+    });
+
+  const bindings = program
+    .command('bindings')
+    .description('Agora role binding commands');
+
+  bindings
+    .command('list')
+    .description('按 scope 列出绑定')
+    .requiredOption('--scope <scope>', 'workspace|template|task')
+    .requiredOption('--ref <scopeRef>', 'scope ref')
+    .option('--json', '输出 JSON', false)
+    .action((options: { scope: 'workspace' | 'template' | 'task'; ref: string; json?: boolean }) => {
+      const items = rolePackService.listBindingsByScope(options.scope, options.ref);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(items, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 bindings');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.role_id}\t${item.scope}:${item.scope_ref}\t${item.target_kind}\t${item.target_adapter}:${item.target_ref}`);
+      }
+    });
+
+  bindings
+    .command('set')
+    .description('设置 role binding')
+    .requiredOption('--scope <scope>', 'workspace|template|task')
+    .requiredOption('--ref <scopeRef>', 'scope ref')
+    .requiredOption('--role <roleId>', 'role id')
+    .requiredOption('--target-kind <targetKind>', 'runtime_agent|craftsman_executor')
+    .requiredOption('--target-adapter <targetAdapter>', 'target adapter')
+    .requiredOption('--target-ref <targetRef>', 'target ref')
+    .option('--binding-mode <bindingMode>', 'overlay|generated', 'overlay')
+    .option('--id <id>', 'binding id')
+    .action((options: {
+      scope: 'workspace' | 'template' | 'task';
+      ref: string;
+      role: string;
+      targetKind: 'runtime_agent' | 'craftsman_executor';
+      targetAdapter: string;
+      targetRef: string;
+      bindingMode: 'overlay' | 'generated';
+      id?: string;
+    }) => {
+      const binding = rolePackService.saveBinding({
+        id: options.id ?? `binding-${Date.now()}`,
+        role_id: options.role,
+        scope: options.scope,
+        scope_ref: options.ref,
+        target_kind: options.targetKind,
+        target_adapter: options.targetAdapter,
+        target_ref: options.targetRef,
+        binding_mode: options.bindingMode,
+      });
+      writeLine(stdout, `binding 已设置: ${binding.role_id} -> ${binding.target_adapter}:${binding.target_ref}`);
+    });
+
+  const templates = program
+    .command('templates')
+    .description('template authoring commands');
+
+  templates
+    .command('show')
+    .description('查看模板详情')
+    .argument('<templateId>', 'template id')
+    .option('--json', '输出 JSON', false)
+    .action((templateId: string, options: { json?: boolean }) => {
+      const template = templateAuthoringService.getTemplate(templateId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(template, null, 2));
+        return;
+      }
+      writeLine(stdout, `${templateId} — ${template.name}`);
+      writeLine(stdout, `roles: ${Object.keys(template.defaultTeam ?? {}).join(', ') || '-'}`);
+      writeLine(stdout, `stages: ${(template.stages ?? []).map((stage) => stage.id).join(' -> ') || '-'}`);
+    });
+
+  const templateRole = templates.command('role').description('template role CRUD');
+
+  templateRole
+    .command('add')
+    .description('新增模板角色')
+    .argument('<templateId>', 'template id')
+    .requiredOption('--role <roleId>', 'role id')
+    .option('--member-kind <memberKind>', 'controller|citizen|craftsman')
+    .option('--model-preference <modelPreference>', 'model preference')
+    .option('--suggested <agentId>', 'suggested agent', collectOption, [])
+    .action((templateId: string, options: {
+      role: string;
+      memberKind?: 'controller' | 'citizen' | 'craftsman';
+      modelPreference?: string;
+      suggested?: string[];
+    }) => {
+      const template = templateAuthoringService.getTemplate(templateId);
+      const existingTeam = template.defaultTeam ?? {};
+      if (existingTeam[options.role]) {
+        throw new Error(`template role already exists: ${options.role}`);
+      }
+      const hasController = Object.values(existingTeam).some((member) => member.member_kind === 'controller');
+      const memberKind = options.memberKind ?? (options.role === 'craftsman' ? 'craftsman' : (hasController ? 'citizen' : 'controller'));
+      const saved = templateAuthoringService.saveTemplate(templateId, {
+        ...template,
+        defaultTeam: {
+          ...existingTeam,
+          [options.role]: {
+            member_kind: memberKind,
+            ...(options.modelPreference ? { model_preference: options.modelPreference } : {}),
+            ...((options.suggested ?? []).length > 0 ? { suggested: options.suggested ?? [] } : {}),
+          },
+        },
+      });
+      writeLine(stdout, `模板角色已新增: ${templateId} -> ${options.role}`);
+      writeLine(stdout, `当前角色数: ${Object.keys(saved.template.defaultTeam ?? {}).length}`);
+    });
+
+  templateRole
+    .command('remove')
+    .description('删除模板角色')
+    .argument('<templateId>', 'template id')
+    .requiredOption('--role <roleId>', 'role id')
+    .action((templateId: string, options: { role: string }) => {
+      const template = templateAuthoringService.getTemplate(templateId);
+      const nextTeam = { ...(template.defaultTeam ?? {}) };
+      delete nextTeam[options.role];
+      const saved = templateAuthoringService.saveTemplate(templateId, {
+        ...template,
+        defaultTeam: nextTeam,
+      });
+      writeLine(stdout, `模板角色已删除: ${templateId} -> ${options.role}`);
+      writeLine(stdout, `当前角色数: ${Object.keys(saved.template.defaultTeam ?? {}).length}`);
+    });
+
+  const templateStage = templates.command('stage').description('template stage CRUD');
+
+  templateStage
+    .command('add')
+    .description('新增模板阶段')
+    .argument('<templateId>', 'template id')
+    .requiredOption('--id <stageId>', 'stage id')
+    .option('--name <name>', 'stage name')
+    .option('--mode <mode>', 'discuss|execute', 'discuss')
+    .action((templateId: string, options: { id: string; name?: string; mode: 'discuss' | 'execute' }) => {
+      const template = templateAuthoringService.getTemplate(templateId);
+      const stages = template.stages ?? [];
+      const saved = templateAuthoringService.saveTemplate(templateId, {
+        ...template,
+        stages: insertStage(stages, {
+          id: options.id,
+          ...(options.name ? { name: options.name } : {}),
+          mode: options.mode,
+        }),
+      });
+      writeLine(stdout, `模板阶段已新增: ${templateId} -> ${options.id}`);
+      writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
+    });
+
+  templateStage
+    .command('remove')
+    .description('删除模板阶段')
+    .argument('<templateId>', 'template id')
+    .requiredOption('--id <stageId>', 'stage id')
+    .action((templateId: string, options: { id: string }) => {
+      const template = templateAuthoringService.getTemplate(templateId);
+      const saved = templateAuthoringService.saveTemplate(templateId, {
+        ...template,
+        stages: removeStage(template.stages ?? [], options.id),
+      });
+      writeLine(stdout, `模板阶段已删除: ${templateId} -> ${options.id}`);
+      writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
+    });
+
+  templateStage
+    .command('move')
+    .description('调整模板阶段顺序')
+    .argument('<templateId>', 'template id')
+    .requiredOption('--id <stageId>', 'stage id')
+    .option('--before <targetStageId>', 'move before target stage')
+    .option('--after <targetStageId>', 'move after target stage')
+    .action((templateId: string, options: { id: string; before?: string; after?: string }) => {
+      const template = templateAuthoringService.getTemplate(templateId);
+      const saved = templateAuthoringService.saveTemplate(templateId, {
+        ...template,
+        stages: moveStage(template.stages ?? [], options.id, options.before, options.after),
+      });
+      writeLine(stdout, `模板阶段已重排: ${templateId} -> ${options.id}`);
+      writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
     });
 
   program
