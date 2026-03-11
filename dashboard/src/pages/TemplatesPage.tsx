@@ -33,6 +33,9 @@ function buildTemplateEdges(template: TemplateDetail) {
   return edges;
 }
 
+const STAGE_MODE_OPTIONS = ['discuss', 'execute'] as const;
+const STAGE_GATE_OPTIONS = ['none', 'command', 'approval', 'archon_review', 'all_subtasks_done', 'auto_timeout', 'quorum'] as const;
+
 export function TemplatesPage() {
   const copy = useTemplatesPageCopy();
   const templates = useTemplateStore((state) => state.templates);
@@ -319,7 +322,7 @@ export function TemplatesPage() {
                               <button
                                 key={`${member.role}-missing-${suggested}`}
                                 type="button"
-                                aria-label={`移除 ${suggested}`}
+                                aria-label={copy.removeSuggestedAgentAria(suggested)}
                                 className="choice-pill"
                                 onClick={() => removeMissingSuggestedAgent(member.role, suggested)}
                               >
@@ -354,7 +357,7 @@ export function TemplatesPage() {
                         <label className="space-y-2">
                           <span className="field-label">{stage.id}</span>
                           <input
-                            aria-label={`阶段 ${stage.id} 名称`}
+                            aria-label={copy.stageNameAria(stage.id)}
                             className="input-shell"
                             type="text"
                             value={stage.name}
@@ -375,6 +378,92 @@ export function TemplatesPage() {
                             ))}
                           />
                         </label>
+                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <label className="space-y-2">
+                            <span className="field-label">{copy.stageModeLabel}</span>
+                            <select
+                              aria-label={`阶段 ${stage.id} ${copy.stageModeLabel}`}
+                              className="input-shell"
+                              value={stage.mode}
+                              onChange={(event) => setDraft((current) => (
+                                current
+                                  ? {
+                                      ...current,
+                                      stages: current.stages.map((item) => (
+                                        item.id === stage.id
+                                          ? {
+                                              ...item,
+                                              mode: event.target.value,
+                                            }
+                                          : item
+                                      )),
+                                    }
+                                  : current
+                              ))}
+                            >
+                              {STAGE_MODE_OPTIONS.map((option) => (
+                                <option key={`${stage.id}-mode-${option}`} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-2">
+                            <span className="field-label">{copy.stageGateLabel}</span>
+                            <select
+                              aria-label={`阶段 ${stage.id} ${copy.stageGateLabel}`}
+                              className="input-shell"
+                              value={stage.gateType ?? 'none'}
+                              onChange={(event) => setDraft((current) => (
+                                current
+                                  ? {
+                                      ...current,
+                                      stages: current.stages.map((item) => (
+                                        item.id === stage.id
+                                          ? {
+                                              ...item,
+                                              gateType: event.target.value === 'none' ? null : event.target.value,
+                                            }
+                                          : item
+                                      )),
+                                    }
+                                  : current
+                              ))}
+                            >
+                              {STAGE_GATE_OPTIONS.map((option) => (
+                                <option key={`${stage.id}-gate-${option}`} value={option}>{option}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="space-y-2">
+                            <span className="field-label">{copy.stageRejectTargetLabel}</span>
+                            <select
+                              aria-label={`阶段 ${stage.id} ${copy.stageRejectTargetLabel}`}
+                              className="input-shell"
+                              value={stage.rejectTarget ?? ''}
+                              onChange={(event) => setDraft((current) => (
+                                current
+                                  ? {
+                                      ...current,
+                                      stages: current.stages.map((item) => (
+                                        item.id === stage.id
+                                          ? {
+                                              ...item,
+                                              rejectTarget: event.target.value.length > 0 ? event.target.value : null,
+                                            }
+                                          : item
+                                      )),
+                                    }
+                                  : current
+                              ))}
+                            >
+                              <option value="">{copy.stageNoRejectTargetLabel}</option>
+                              {draft.stages
+                                .filter((candidate) => candidate.id !== stage.id)
+                                .map((candidate) => (
+                                  <option key={`${stage.id}-reject-${candidate.id}`} value={candidate.id}>{candidate.id}</option>
+                                ))}
+                            </select>
+                          </label>
+                        </div>
                         <div className="type-text-xs mt-2 flex flex-wrap items-center gap-3">
                           <span>{stage.id}</span>
                           <span>{stage.mode}</span>

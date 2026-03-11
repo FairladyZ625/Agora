@@ -195,6 +195,30 @@ describe('templates workbench layout', () => {
     }));
   });
 
+  it('edits stage graph semantics before saving the selected template', async () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('阶段 develop 模式'), {
+      target: { value: 'discuss' },
+    });
+    fireEvent.change(screen.getByLabelText('阶段 review Gate'), {
+      target: { value: 'archon_review' },
+    });
+    fireEvent.change(screen.getByLabelText('阶段 review 回退目标'), {
+      target: { value: 'discuss' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      stages: [
+        { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
+        { id: 'develop', name: '开发', mode: 'discuss', gateType: null },
+        { id: 'review', name: '审查', mode: 'discuss', gateType: 'archon_review', rejectTarget: 'discuss' },
+      ],
+    }));
+    expect(screen.getByText('review -> discuss')).toBeInTheDocument();
+  });
+
   it('validates the current workflow draft and duplicates the template with a new id', async () => {
     renderPage();
 
