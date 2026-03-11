@@ -12,8 +12,13 @@ export interface TmuxPaneState {
   resumeCapability: TmuxResumeCapability;
   sessionReference: string | null;
   identitySource: TmuxIdentitySource;
+  identitySourceRank?: number;
   identityPath?: string | null;
   sessionObservedAt?: string | null;
+  identityConflictCount?: number;
+  lastRejectedIdentitySource?: TmuxIdentitySource | null;
+  lastRejectedSessionReference?: string | null;
+  lastRejectedObservedAt?: string | null;
   workspaceRoot?: string | null;
   lastRecoveryMode: TmuxRecoveryMode | null;
   transportSessionId: string | null;
@@ -192,8 +197,13 @@ export class TmuxPaneRegistry {
       resumeCapability: (raw.resume_capability as TmuxResumeCapability | null) ?? 'none',
       sessionReference: raw.session_reference ?? null,
       identitySource: (raw.identity_source as TmuxIdentitySource | null) ?? 'registry_default',
+      identitySourceRank: Number(raw.identity_source_rank ?? 0),
       identityPath: raw.identity_path ?? null,
       sessionObservedAt: raw.session_observed_at ?? null,
+      identityConflictCount: Number(raw.identity_conflict_count ?? 0),
+      lastRejectedIdentitySource: (raw.last_rejected_identity_source as TmuxIdentitySource | null) ?? null,
+      lastRejectedSessionReference: raw.last_rejected_session_reference ?? null,
+      lastRejectedObservedAt: raw.last_rejected_observed_at ?? null,
       workspaceRoot: raw.workspace_root ?? null,
       lastRecoveryMode: (raw.last_recovery_mode as TmuxRecoveryMode | null) ?? null,
       transportSessionId: raw.transport_session_id ?? null,
@@ -209,8 +219,13 @@ export class TmuxPaneRegistry {
           resume_capability: state.resumeCapability,
           session_reference: state.sessionReference,
           identity_source: state.identitySource,
+          identity_source_rank: state.identitySourceRank,
           identity_path: state.identityPath,
           session_observed_at: state.sessionObservedAt,
+          identity_conflict_count: state.identityConflictCount,
+          last_rejected_identity_source: state.lastRejectedIdentitySource,
+          last_rejected_session_reference: state.lastRejectedSessionReference,
+          last_rejected_observed_at: state.lastRejectedObservedAt,
           workspace_root: state.workspaceRoot,
           last_recovery_mode: state.lastRecoveryMode,
           transport_session_id: state.transportSessionId,
@@ -235,8 +250,13 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'native_resume',
         sessionReference: null,
         identitySource: 'registry_default',
+        identitySourceRank: 0,
         identityPath: null,
         sessionObservedAt: null,
+        identityConflictCount: 0,
+        lastRejectedIdentitySource: null,
+        lastRejectedSessionReference: null,
+        lastRejectedObservedAt: null,
         workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
@@ -247,8 +267,13 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'native_resume',
         sessionReference: null,
         identitySource: 'registry_default',
+        identitySourceRank: 0,
         identityPath: null,
         sessionObservedAt: null,
+        identityConflictCount: 0,
+        lastRejectedIdentitySource: null,
+        lastRejectedSessionReference: null,
+        lastRejectedObservedAt: null,
         workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
@@ -259,8 +284,13 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'native_resume',
         sessionReference: null,
         identitySource: 'registry_default',
+        identitySourceRank: 0,
         identityPath: null,
         sessionObservedAt: null,
+        identityConflictCount: 0,
+        lastRejectedIdentitySource: null,
+        lastRejectedSessionReference: null,
+        lastRejectedObservedAt: null,
         workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,
@@ -271,8 +301,13 @@ function defaultPaneState(agent: string): TmuxPaneState {
         resumeCapability: 'none',
         sessionReference: null,
         identitySource: 'registry_default',
+        identitySourceRank: 0,
         identityPath: null,
         sessionObservedAt: null,
+        identityConflictCount: 0,
+        lastRejectedIdentitySource: null,
+        lastRejectedSessionReference: null,
+        lastRejectedObservedAt: null,
         workspaceRoot: null,
         lastRecoveryMode: null,
         transportSessionId: null,

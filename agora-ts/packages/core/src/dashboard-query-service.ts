@@ -561,8 +561,13 @@ function buildTmuxRuntime(
           resume_capability: paneStatus?.resumeCapability ?? paneDoctor?.resumeCapability ?? 'none',
           session_reference: paneStatus?.sessionReference ?? paneDoctor?.sessionReference ?? null,
           identity_source: paneStatus?.identitySource ?? paneDoctor?.identitySource ?? 'registry_default',
+          identity_source_rank: paneStatus?.identitySourceRank ?? paneDoctor?.identitySourceRank ?? 0,
           identity_path: paneStatus?.identityPath ?? paneDoctor?.identityPath ?? null,
           session_observed_at: paneStatus?.sessionObservedAt ?? paneDoctor?.sessionObservedAt ?? null,
+          identity_conflict_count: paneStatus?.identityConflictCount ?? paneDoctor?.identityConflictCount ?? 0,
+          last_rejected_identity_source: paneStatus?.lastRejectedIdentitySource ?? paneDoctor?.lastRejectedIdentitySource ?? null,
+          last_rejected_session_reference: paneStatus?.lastRejectedSessionReference ?? paneDoctor?.lastRejectedSessionReference ?? null,
+          last_rejected_observed_at: paneStatus?.lastRejectedObservedAt ?? paneDoctor?.lastRejectedObservedAt ?? null,
           last_recovery_mode: paneStatus?.lastRecoveryMode ?? paneDoctor?.lastRecoveryMode ?? null,
           transport_session_id: paneStatus?.transportSessionId ?? paneDoctor?.transportSessionId ?? null,
         };

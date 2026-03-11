@@ -302,7 +302,11 @@ describe('tmux runtime service', () => {
     expect(service.status().panes.find((pane) => pane.title === 'gemini')).toMatchObject({
       sessionReference: 'gemini-runtime-123',
       identitySource: 'runtime_gateway',
+      identitySourceRank: 80,
       identityPath: '/tmp/runtime/session.json',
+      identityConflictCount: 3,
+      lastRejectedIdentitySource: 'chat_file',
+      lastRejectedSessionReference: 'gemini-chat-file-999',
       lastRecoveryMode: 'resume_exact',
     });
   });

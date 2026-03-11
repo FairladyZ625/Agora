@@ -22,8 +22,13 @@ export interface TmuxDoctorPane {
   resumeCapability: TmuxResumeCapability;
   sessionReference: string | null;
   identitySource: TmuxIdentitySource;
+  identitySourceRank?: number;
   identityPath?: string | null;
   sessionObservedAt?: string | null;
+  identityConflictCount?: number;
+  lastRejectedIdentitySource?: TmuxIdentitySource | null;
+  lastRejectedSessionReference?: string | null;
+  lastRejectedObservedAt?: string | null;
   lastRecoveryMode: TmuxRecoveryMode | null;
   transportSessionId: string | null;
 }
@@ -54,6 +59,16 @@ export interface TmuxRuntimeServiceOptions extends TmuxPaneRegistryOptions {
 }
 
 type IdentitySnapshot = Pick<TmuxDoctorPane, 'sessionReference' | 'identitySource' | 'identityPath' | 'sessionObservedAt'>;
+type IdentityMergeResult = {
+  next: IdentitySnapshot;
+  rejected:
+    | {
+        source: TmuxIdentitySource;
+        sessionReference: string | null;
+        observedAt: string | null;
+      }
+    | null;
+};
 
 export class TmuxRuntimeService {
   private readonly registry: TmuxPaneRegistry;
@@ -87,7 +102,7 @@ export class TmuxRuntimeService {
   recordIdentity(agent: string, identity: TmuxRuntimeIdentityUpdate) {
     this.registry.ensureSession();
     const currentState = this.registry.getPaneState(agent);
-    const nextIdentity = choosePreferredIdentity(
+    const identityMerge = choosePreferredIdentity(
       toIdentitySnapshot(currentState),
       {
         sessionReference: identity.sessionReference ?? null,
@@ -97,10 +112,15 @@ export class TmuxRuntimeService {
       },
     );
     return this.registry.updatePaneState(agent, {
-      sessionReference: nextIdentity.sessionReference,
-      identitySource: nextIdentity.identitySource,
-      identityPath: nextIdentity.identityPath ?? null,
-      sessionObservedAt: nextIdentity.sessionObservedAt ?? null,
+      sessionReference: identityMerge.next.sessionReference,
+      identitySource: identityMerge.next.identitySource,
+      identitySourceRank: identitySourcePriority(identityMerge.next.identitySource),
+      identityPath: identityMerge.next.identityPath ?? null,
+      sessionObservedAt: identityMerge.next.sessionObservedAt ?? null,
+      identityConflictCount: (currentState.identityConflictCount ?? 0) + (identityMerge.rejected ? 1 : 0),
+      lastRejectedIdentitySource: identityMerge.rejected?.source ?? currentState.lastRejectedIdentitySource ?? null,
+      lastRejectedSessionReference: identityMerge.rejected?.sessionReference ?? currentState.lastRejectedSessionReference ?? null,
+      lastRejectedObservedAt: identityMerge.rejected?.observedAt ?? currentState.lastRejectedObservedAt ?? null,
       workspaceRoot: identity.workspaceRoot ?? currentState.workspaceRoot ?? null,
     });
   }
@@ -136,7 +156,7 @@ export class TmuxRuntimeService {
           identityPath: currentState.sessionReference === sessionReference ? currentState.identityPath ?? null : null,
           sessionObservedAt: currentState.sessionReference === sessionReference ? currentState.sessionObservedAt ?? null : null,
         } satisfies IdentitySnapshot)
-      : choosePreferredIdentity(toIdentitySnapshot(currentState), discovered);
+      : choosePreferredIdentity(toIdentitySnapshot(currentState), discovered).next;
     const nextReference = resolvedIdentity.sessionReference ?? null;
     const resume = adapter.createInteractiveResumeSpec(nextReference);
     const command = renderShellCommand(resume.spec.command, resume.spec.args);
@@ -197,10 +217,15 @@ export class TmuxRuntimeService {
     }
     const nextIdentity = choosePreferredIdentity(toIdentitySnapshot(currentState), discovered);
     this.registry.updatePaneState('gemini', {
-      sessionReference: nextIdentity.sessionReference,
-      identitySource: nextIdentity.identitySource,
-      identityPath: nextIdentity.identityPath ?? null,
-      sessionObservedAt: nextIdentity.sessionObservedAt ?? null,
+      sessionReference: nextIdentity.next.sessionReference,
+      identitySource: nextIdentity.next.identitySource,
+      identitySourceRank: identitySourcePriority(nextIdentity.next.identitySource),
+      identityPath: nextIdentity.next.identityPath ?? null,
+      sessionObservedAt: nextIdentity.next.sessionObservedAt ?? null,
+      identityConflictCount: (currentState.identityConflictCount ?? 0) + (nextIdentity.rejected ? 1 : 0),
+      lastRejectedIdentitySource: nextIdentity.rejected?.source ?? currentState.lastRejectedIdentitySource ?? null,
+      lastRejectedSessionReference: nextIdentity.rejected?.sessionReference ?? currentState.lastRejectedSessionReference ?? null,
+      lastRejectedObservedAt: nextIdentity.rejected?.observedAt ?? currentState.lastRejectedObservedAt ?? null,
     });
   }
 
@@ -243,8 +268,13 @@ function toDoctorPane(agent: string, pane: TmuxPaneInfo | null): TmuxDoctorPane 
     resumeCapability: pane?.resumeCapability ?? 'none',
     sessionReference: pane?.sessionReference ?? null,
     identitySource: pane?.identitySource ?? 'registry_default',
+    identitySourceRank: pane?.identitySourceRank ?? 0,
     identityPath: pane?.identityPath ?? null,
     sessionObservedAt: pane?.sessionObservedAt ?? null,
+    identityConflictCount: pane?.identityConflictCount ?? 0,
+    lastRejectedIdentitySource: pane?.lastRejectedIdentitySource ?? null,
+    lastRejectedSessionReference: pane?.lastRejectedSessionReference ?? null,
+    lastRejectedObservedAt: pane?.lastRejectedObservedAt ?? null,
     lastRecoveryMode: pane?.lastRecoveryMode ?? null,
     transportSessionId: pane?.transportSessionId ?? null,
   };
@@ -262,25 +292,39 @@ function toIdentitySnapshot(input: IdentitySnapshot): IdentitySnapshot {
 function choosePreferredIdentity(
   current: IdentitySnapshot,
   candidate: GeminiSessionIdentity | IdentitySnapshot | null,
-): IdentitySnapshot {
+): IdentityMergeResult {
   if (!candidate || !candidate.sessionReference) {
-    return current;
+    return { next: current, rejected: null };
   }
   if (!current.sessionReference) {
-    return toIdentitySnapshot(candidate);
+    return { next: toIdentitySnapshot(candidate), rejected: null };
   }
   const currentPriority = identitySourcePriority(current.identitySource);
   const candidatePriority = identitySourcePriority(candidate.identitySource);
   if (candidatePriority > currentPriority) {
-    return toIdentitySnapshot(candidate);
+    return { next: toIdentitySnapshot(candidate), rejected: null };
   }
   if (candidatePriority < currentPriority) {
-    return current;
+    return {
+      next: current,
+      rejected: {
+        source: candidate.identitySource,
+        sessionReference: candidate.sessionReference ?? null,
+        observedAt: candidate.sessionObservedAt ?? null,
+      },
+    };
   }
   if (isMoreRecent(candidate.sessionObservedAt ?? null, current.sessionObservedAt ?? null)) {
-    return toIdentitySnapshot(candidate);
+    return { next: toIdentitySnapshot(candidate), rejected: null };
   }
-  return current;
+  return {
+    next: current,
+    rejected: {
+      source: candidate.identitySource,
+      sessionReference: candidate.sessionReference ?? null,
+      observedAt: candidate.sessionObservedAt ?? null,
+    },
+  };
 }
 
 function identitySourcePriority(source: TmuxIdentitySource) {
