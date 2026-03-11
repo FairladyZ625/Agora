@@ -347,6 +347,17 @@ export const templateDefaultTeamSchema = z.record(z.string().min(1), templateTea
         });
       }
     }
+
+    const controllerRoles = Object.entries(value)
+      .filter(([, member]) => member.member_kind === 'controller')
+      .map(([role]) => role);
+    if (controllerRoles.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'template must not declare more than one controller role',
+        path: [],
+      });
+    }
   });
 
 export const templateStageSchema = z.object({
@@ -373,5 +384,18 @@ export const templateDetailSchema = z.object({
   stages: z.array(templateStageSchema).optional(),
 }).superRefine((value, ctx) => {
   validateWorkflowStages(value.stages, ctx);
+  if (!value.defaultTeam) {
+    return;
+  }
+  const controllerRoles = Object.entries(value.defaultTeam)
+    .filter(([, member]) => member.member_kind === 'controller')
+    .map(([role]) => role);
+  if (controllerRoles.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'template defaultTeam must declare exactly one controller role',
+      path: ['defaultTeam'],
+    });
+  }
 });
 export type TemplateDetailDto = z.infer<typeof templateDetailSchema>;

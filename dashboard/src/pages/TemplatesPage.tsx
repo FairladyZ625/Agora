@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
 import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
-import { evaluateTemplateRuntimeCompatibility } from '@/lib/templateRuntimeCompatibility';
+import { evaluateTemplateControllerTopology, evaluateTemplateRuntimeCompatibility } from '@/lib/templateRuntimeCompatibility';
 import { useAgentStore } from '@/stores/agentStore';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { TemplateDetail } from '@/types/dashboard';
@@ -67,6 +67,7 @@ export function TemplatesPage() {
   const [draft, setDraft] = useState<TemplateDetail | null>(null);
   const [duplicateId, setDuplicateId] = useState('');
   const [showCompatibilitySaveError, setShowCompatibilitySaveError] = useState(false);
+  const [showControllerSaveError, setShowControllerSaveError] = useState(false);
 
   useEffect(() => {
     void fetchTemplates();
@@ -83,10 +84,15 @@ export function TemplatesPage() {
     setDraft(selectedTemplate ? cloneTemplateDetail(selectedTemplate) : null);
     setDuplicateId(selectedTemplate ? `${selectedTemplate.id}_copy` : '');
     setShowCompatibilitySaveError(false);
+    setShowControllerSaveError(false);
   }, [selectedTemplate]);
 
   const handleSave = async () => {
     if (!draft) {
+      return;
+    }
+    if (controllerTopology.isMissingController || controllerTopology.hasDuplicateControllers) {
+      setShowControllerSaveError(true);
       return;
     }
     if (compatibility.some((item) => item.missingSuggested.length > 0 || item.unavailableSuggested.length > 0)) {
@@ -94,6 +100,7 @@ export function TemplatesPage() {
       return;
     }
     setShowCompatibilitySaveError(false);
+    setShowControllerSaveError(false);
     await saveSelectedTemplate(draft);
   };
 
@@ -117,6 +124,9 @@ export function TemplatesPage() {
 
   const craftsmanInventory = buildCraftsmanInventory(tmuxRuntime);
   const compatibility = draft ? evaluateTemplateRuntimeCompatibility(draft.defaultTeam, agents, craftsmanInventory) : [];
+  const controllerTopology = draft
+    ? evaluateTemplateControllerTopology(draft.defaultTeam)
+    : { controllerRoles: [], isMissingController: false, hasDuplicateControllers: false };
   const compatibilityByRole = new Map(compatibility.map((item) => [item.role, item]));
   const knownAgentIds = new Set(agents.map((agent) => agent.id));
   const graphEdges = draft ? buildTemplateEdges(draft) : [];
@@ -285,8 +295,19 @@ export function TemplatesPage() {
                   {copy.compatibilitySaveBlocked}
                 </div>
               ) : null}
+              {showControllerSaveError ? (
+                <div className="inline-alert inline-alert--danger">
+                  {copy.controllerSaveBlocked}
+                </div>
+              ) : null}
               <div className="space-y-3">
                 <p className="page-kicker">{copy.teamLabel}</p>
+                {controllerTopology.isMissingController || controllerTopology.hasDuplicateControllers ? (
+                  <div className="inline-alert inline-alert--warning">
+                    <strong>{copy.missingControllerLabel}</strong>
+                    {controllerTopology.hasDuplicateControllers ? ` ${copy.duplicateControllersLabel}: ${controllerTopology.controllerRoles.join(', ')}` : ''}
+                  </div>
+                ) : null}
                 {draft.defaultTeam.map((member) => (
                   <div key={member.role} className="detail-card space-y-3">
                     <strong className="type-heading-sm">{member.role}</strong>

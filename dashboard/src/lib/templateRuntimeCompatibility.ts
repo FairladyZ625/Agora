@@ -8,6 +8,12 @@ export interface TemplateRuntimeCompatibilityItem {
   missingSuggested: string[];
 }
 
+export interface TemplateControllerTopology {
+  controllerRoles: string[];
+  isMissingController: boolean;
+  hasDuplicateControllers: boolean;
+}
+
 export function evaluateTemplateRuntimeCompatibility(
   members: TemplateTeamPresetMember[],
   agents: AgentStatusItem[],
@@ -50,4 +56,16 @@ export function evaluateTemplateRuntimeCompatibility(
       missingSuggested,
     };
   });
+}
+
+export function evaluateTemplateControllerTopology(members: TemplateTeamPresetMember[]): TemplateControllerTopology {
+  const controllerRoles = members
+    .filter((member) => member.memberKind === 'controller')
+    .map((member) => member.role);
+
+  return {
+    controllerRoles,
+    isMissingController: controllerRoles.length === 0,
+    hasDuplicateControllers: controllerRoles.length > 1,
+  };
 }

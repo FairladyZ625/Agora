@@ -55,6 +55,15 @@ export type TeamMemberDto = z.infer<typeof teamMemberSchema>;
 
 export const teamSchema = z.object({
   members: z.array(teamMemberSchema),
+}).superRefine((value, ctx) => {
+  const controllerMembers = value.members.filter((member) => member.member_kind === 'controller');
+  if (controllerMembers.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'team must not declare more than one controller',
+      path: ['members'],
+    });
+  }
 });
 export type TeamDto = z.infer<typeof teamSchema>;
 

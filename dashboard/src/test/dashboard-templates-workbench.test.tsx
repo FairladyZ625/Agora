@@ -357,6 +357,31 @@ describe('templates workbench layout', () => {
     expect(screen.getByText(/请先修复 runtime compatibility 问题/i)).toBeInTheDocument();
   });
 
+  it('blocks save when the template no longer has exactly one controller', () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('architect 成员类型'), {
+      target: { value: 'citizen' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).not.toHaveBeenCalled();
+    expect(screen.getByText(/请先修复 controller 配置问题/i)).toBeInTheDocument();
+    expect(screen.getByText(/必须恰好声明一个 controller/i)).toBeInTheDocument();
+  });
+
+  it('blocks save when more than one controller is selected', () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('craftsman 成员类型'), {
+      target: { value: 'controller' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).not.toHaveBeenCalled();
+    expect(screen.getByText(/当前存在多个 controller/i)).toBeInTheDocument();
+  });
+
   it('renders craftsman suggestions from tmux runtime catalog and normalizes legacy ids', () => {
     renderPage();
 

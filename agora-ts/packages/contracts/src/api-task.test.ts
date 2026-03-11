@@ -149,6 +149,17 @@ describe('task api contracts', () => {
     ).toBe('');
   });
 
+  it('rejects multiple controller members in a single team override', () => {
+    expect(() =>
+      teamSchema.parse({
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'controller', model_preference: 'fast_coding' },
+        ],
+      }),
+    ).toThrow(/more than one controller/i);
+  });
+
   it('rejects unsupported workflow gate and mode values', () => {
     expect(() =>
       workflowSchema.parse({

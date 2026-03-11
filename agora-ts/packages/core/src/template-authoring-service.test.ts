@@ -56,7 +56,7 @@ describe('template authoring service', () => {
       defaultWorkflow: 'brainstorm',
       governance: 'lean',
       defaultTeam: {
-        architect: { suggested: ['opus'] },
+        architect: { member_kind: 'controller', suggested: ['opus'] },
       },
       stages: [
         { id: 'brainstorm', name: '脑暴', mode: 'discuss', gate: { type: 'command' } },
@@ -185,7 +185,7 @@ describe('template authoring service', () => {
       type: 'broken',
       governance: 'lean',
       defaultTeam: {
-        wizard: { suggested: ['merlin'] },
+        wizard: { member_kind: 'controller', suggested: ['merlin'] },
       },
       stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
     }).valid).toBe(false);
@@ -196,6 +196,39 @@ describe('template authoring service', () => {
       governance: 'lean',
       stages: [{ id: 'draft', mode: 'sidequest', gate: { type: 'magic_gate' } }],
     }).valid).toBe(false);
+  });
+
+  it('rejects templates with missing or duplicate controller roles', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const missingController = service.validateTemplate({
+      name: '缺主控模板',
+      type: 'broken',
+      governance: 'lean',
+      defaultTeam: {
+        developer: { member_kind: 'citizen', suggested: ['sonnet'] },
+        craftsman: { member_kind: 'craftsman', suggested: ['codex'] },
+      },
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    });
+    expect(missingController.valid).toBe(false);
+    expect(missingController.errors.join(' ')).toContain('exactly one controller');
+
+    const duplicateController = service.validateTemplate({
+      name: '双主控模板',
+      type: 'broken',
+      governance: 'lean',
+      defaultTeam: {
+        architect: { member_kind: 'controller', suggested: ['opus'] },
+        developer: { member_kind: 'controller', suggested: ['sonnet'] },
+      },
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    });
+    expect(duplicateController.valid).toBe(false);
+    expect(duplicateController.errors.join(' ')).toContain('more than one controller');
   });
 
   it('accepts template stages with reject_target backedges to earlier stages', () => {
