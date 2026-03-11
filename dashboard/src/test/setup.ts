@@ -2,6 +2,9 @@ import '@testing-library/jest-dom/vitest';
 import { beforeEach } from 'vitest';
 
 function installLocalStorageMock() {
+  if (typeof window === 'undefined') {
+    return;
+  }
   const storage = new Map<string, string>();
   const mock = {
     getItem: (key: string) => storage.get(key) ?? null,
@@ -34,19 +37,21 @@ function installLocalStorageMock() {
 
 installLocalStorageMock();
 
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: (query: string) => ({
-    matches: query.includes('dark'),
-    media: query,
-    onchange: null,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    addListener: () => undefined,
-    removeListener: () => undefined,
-    dispatchEvent: () => false,
-  }),
-});
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: query.includes('dark'),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+  });
+}
 
 class ResizeObserverMock {
   observe() {
@@ -65,6 +70,9 @@ class ResizeObserverMock {
 globalThis.ResizeObserver = ResizeObserverMock;
 
 beforeEach(async () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
   const { default: i18n } = await import('@/lib/i18n');
   localStorage.clear();
   await i18n.changeLanguage('zh-CN');

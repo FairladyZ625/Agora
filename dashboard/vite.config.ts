@@ -8,10 +8,44 @@ import { resolveAgoraRuntimeEnvironment } from '../agora-ts/packages/config/src/
 const repoRoot = path.resolve(__dirname, '..');
 const loadedEnv = loadEnv('', repoRoot, '');
 const runtimeEnv = resolveAgoraRuntimeEnvironment(__dirname, loadedEnv);
+const dashboardBasePath = '/dashboard/';
+
+function createBasePathRedirectMiddleware(basePath: string) {
+  const canonicalBasePath = basePath.endsWith('/') ? basePath : `${basePath}/`;
+  const slashlessBasePath = canonicalBasePath.slice(0, -1);
+
+  return (req: { url?: string }, res: { statusCode: number; setHeader(name: string, value: string): void; end(): void }, next: () => void) => {
+    const requestUrl = req.url ?? '/';
+    const pathname = requestUrl.split('?')[0] ?? '/';
+
+    if (pathname === '/' || pathname === slashlessBasePath) {
+      res.statusCode = 302;
+      res.setHeader('Location', canonicalBasePath);
+      res.end();
+      return;
+    }
+
+    next();
+  };
+}
+
+function dashboardBaseRedirectPlugin(basePath: string) {
+  const middleware = createBasePathRedirectMiddleware(basePath);
+
+  return {
+    name: 'agora-dashboard-base-redirect',
+    configureServer(server: { middlewares: { use(fn: typeof middleware): void } }) {
+      server.middlewares.use(middleware);
+    },
+    configurePreviewServer(server: { middlewares: { use(fn: typeof middleware): void } }) {
+      server.middlewares.use(middleware);
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  base: '/dashboard/',
+  plugins: [react(), tailwindcss(), dashboardBaseRedirectPlugin(dashboardBasePath)],
+  base: dashboardBasePath,
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
