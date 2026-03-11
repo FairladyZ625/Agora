@@ -108,6 +108,7 @@ export type TaskBlueprintArtifactContractDto = z.infer<typeof taskBlueprintArtif
 export const taskBlueprintSchema = z.object({
   graph_version: z.number().int().positive(),
   entry_nodes: z.array(z.string().min(1)),
+  controller_ref: z.string().nullable().optional(),
   nodes: z.array(taskBlueprintNodeSchema),
   edges: z.array(taskBlueprintEdgeSchema),
   artifact_contracts: z.array(taskBlueprintArtifactContractSchema),
@@ -134,6 +135,7 @@ export const taskSchema = z.object({
   creator: z.string().min(1),
   state: taskStateSchema,
   archive_status: z.string().nullable(),
+  controller_ref: z.string().nullable().optional(),
   current_stage: z.string().nullable(),
   team: teamSchema.nullable(),
   workflow: workflowSchema.nullable(),

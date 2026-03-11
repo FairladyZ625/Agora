@@ -60,9 +60,11 @@ describe('task service', () => {
     expect(task.team.members.map((member) => member.role)).toContain('architect');
     expect(listed).toHaveLength(1);
     expect(status.task.id).toBe('OC-100');
+    expect(status.task.controller_ref).toBe('opus');
     expect(status.task_blueprint).toMatchObject({
       graph_version: 1,
       entry_nodes: ['discuss'],
+      controller_ref: 'opus',
       nodes: [
         { id: 'discuss', gate_type: 'archon_review' },
         { id: 'develop', gate_type: 'all_subtasks_done' },
@@ -139,6 +141,7 @@ describe('task service', () => {
       { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: '' },
       { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: '' },
     ]);
+    expect(service.getTaskStatus('OC-REPAIRED-TEMPLATE').task.controller_ref).toBe('opus');
   });
 
   it('rejects advance before gate passes and advances once archon review is recorded', () => {

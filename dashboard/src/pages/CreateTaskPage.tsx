@@ -102,6 +102,8 @@ export function CreateTaskPage() {
 
   const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
   const availableCraftsmen = buildCraftsmanInventory(tmuxRuntime);
+  const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
+  const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;
   const templateChoices = templates.length > 0
     ? templates.map((template) => ({
         value: template.id,
@@ -265,6 +267,12 @@ export function CreateTaskPage() {
               <span className="detail-card__label">{createTaskCopy.threadLabel}</span>
               <span className="type-body-sm">{createTaskCopy.privateThreadLabel}</span>
             </div>
+            {controllerRef ? (
+              <div className="detail-card">
+                <span className="detail-card__label">{createTaskCopy.controllerLabel}</span>
+                <span className="type-body-sm">{controllerRef}</span>
+              </div>
+            ) : null}
 
             {selectedTemplate?.defaultTeam.length ? (
               <div className="space-y-3">

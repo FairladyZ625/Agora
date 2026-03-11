@@ -17,13 +17,14 @@ function buildTaskDto(overrides: Partial<ApiTaskDto> = {}): ApiTaskDto {
     creator: 'archon',
     state: 'active',
     archive_status: null,
+    controller_ref: 'opus',
     current_stage: 'develop',
     team: {
       members: [
-        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-        { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
-        { role: 'reviewer', agentId: 'glm5', model_preference: 'chinese_strong' },
-        { role: 'craftsman', agentId: 'claude_code', model_preference: 'coding_cli' },
+        { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+        { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'chinese_strong' },
+        { role: 'craftsman', agentId: 'claude_code', member_kind: 'craftsman', model_preference: 'coding_cli' },
       ],
     },
     workflow: {
@@ -51,6 +52,7 @@ describe('task mappers', () => {
 
     expect(task.state).toBe('in_progress');
     expect(task.teamLabel).toContain('opus');
+    expect(task.controllerRef).toBe('opus');
     expect(task.workflowLabel).toBe('discuss-execute-review');
     expect(task.memberCount).toBe(4);
     expect(task.isReviewStage).toBe(false);
@@ -90,6 +92,7 @@ describe('task mappers', () => {
       task_blueprint: {
         graph_version: 1,
         entry_nodes: ['discuss'],
+        controller_ref: 'opus',
         nodes: [
           { id: 'discuss', name: '方案讨论', mode: 'discuss', gate_type: 'archon_review' },
           { id: 'develop', name: '并行开发', mode: 'execute', gate_type: 'all_subtasks_done' },
@@ -102,8 +105,8 @@ describe('task mappers', () => {
         ],
         artifact_contracts: [{ node_id: 'develop', artifact_type: 'stage_output' }],
         role_bindings: [
-          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-          { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
         ],
       },
     };
@@ -111,11 +114,13 @@ describe('task mappers', () => {
     const status = mapTaskStatusDto(statusDto);
 
     expect(status.task.state).toBe('gate_waiting');
+    expect(status.task.controllerRef).toBe('opus');
     expect(status.flow_log).toHaveLength(1);
     expect(status.flow_log[0]?.event).toBe('archon_review_entered');
     expect(status.taskBlueprint).toEqual({
       graphVersion: 1,
       entryNodes: ['discuss'],
+      controllerRef: 'opus',
       nodes: [
         { id: 'discuss', name: '方案讨论', mode: 'discuss', gateType: 'archon_review' },
         { id: 'develop', name: '并行开发', mode: 'execute', gateType: 'all_subtasks_done' },
@@ -128,8 +133,8 @@ describe('task mappers', () => {
       ],
       artifactContracts: [{ nodeId: 'develop', artifactType: 'stage_output' }],
       roleBindings: [
-        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-        { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+        { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
       ],
     });
   });

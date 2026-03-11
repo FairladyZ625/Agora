@@ -25,6 +25,7 @@ export interface Task {
   creator: string;
   state: TaskState;
   archiveStatus: string | null;
+  controllerRef?: string | null;
   current_stage: string | null;
   teamLabel: string;
   workflowLabel: string;
@@ -140,6 +141,7 @@ export interface TaskBlueprintArtifactContract {
 export interface TaskBlueprint {
   graphVersion: number;
   entryNodes: string[];
+  controllerRef?: string | null;
   nodes: TaskBlueprintNode[];
   edges: TaskBlueprintEdge[];
   artifactContracts: TaskBlueprintArtifactContract[];

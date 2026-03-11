@@ -81,6 +81,7 @@ export function mapTaskDto(task: ApiTaskDto): Task {
     creator: task.creator,
     state: mapTaskState(task),
     archiveStatus: task.archive_status,
+    controllerRef: task.controller_ref ?? null,
     current_stage: task.current_stage,
     teamLabel: formatTeamLabel(task),
     workflowLabel: task.workflow?.type ?? 'custom',
@@ -124,6 +125,7 @@ function mapTaskBlueprint(status: ApiTaskStatusDto): TaskBlueprint | undefined {
   return {
     graphVersion: status.task_blueprint.graph_version,
     entryNodes: [...status.task_blueprint.entry_nodes],
+    controllerRef: status.task_blueprint.controller_ref ?? null,
     nodes: status.task_blueprint.nodes.map((node) => ({
       id: node.id,
       name: node.name ?? null,

@@ -84,6 +84,7 @@ describe('task api contracts', () => {
           creator: 'archon',
           state: 'active',
           archive_status: null,
+          controller_ref: 'opus',
           current_stage: 'develop',
           team: { members: [] },
           workflow: { stages: [] },
@@ -98,6 +99,7 @@ describe('task api contracts', () => {
         task_blueprint: {
           graph_version: 1,
           entry_nodes: ['develop'],
+          controller_ref: 'opus',
           nodes: [
             { id: 'develop', name: '开发', mode: 'execute', gate_type: 'all_subtasks_done' },
             { id: 'review', name: '审查', mode: 'discuss', gate_type: 'approval' },
@@ -121,9 +123,11 @@ describe('task api contracts', () => {
       task: {
         id: 'OC-001',
         archive_status: null,
+        controller_ref: 'opus',
       },
       task_blueprint: {
         entry_nodes: ['develop'],
+        controller_ref: 'opus',
       },
     });
   });

@@ -109,9 +109,14 @@ describe('dashboard visual rescue target structure', () => {
   it('rebuilds the tasks page into a dense list and detail workspace', () => {
     taskStoreState.selectedTaskStatus = {
       ...getMockTaskStatus('TSK-001')!,
+      task: {
+        ...getMockTaskStatus('TSK-001')!.task,
+        controllerRef: 'archon',
+      },
       taskBlueprint: {
         graphVersion: 1,
         entryNodes: ['proposal'],
+        controllerRef: 'archon',
         nodes: [
           { id: 'proposal', name: '提案', mode: 'discuss', gateType: 'archon_review' },
           { id: 'policy-guard', name: '策略护栏', mode: 'execute', gateType: 'all_subtasks_done' },
@@ -135,6 +140,8 @@ describe('dashboard visual rescue target structure', () => {
     expect(screen.getByRole('button', { name: /打开任务详情/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('按任务标题、ID、创建者搜索')).toBeInTheDocument();
     expect(screen.getByText('编排图')).toBeInTheDocument();
+    expect(screen.getAllByText('主控 Agent').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('archon').length).toBeGreaterThan(0);
     expect(screen.getByText('策略护栏')).toBeInTheDocument();
     expect(screen.getByText('review -> policy-guard')).toBeInTheDocument();
   });

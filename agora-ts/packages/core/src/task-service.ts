@@ -33,7 +33,7 @@ import { StateMachine } from './state-machine.js';
 import type { IMProvisioningPort } from './im-ports.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
-import { isInteractiveParticipant } from './team-member-kind.js';
+import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -285,17 +285,18 @@ export class TaskService {
   }
 
   getTask(taskId: string): StoredTask | null {
-    return this.taskRepository.getTask(taskId);
+    const task = this.taskRepository.getTask(taskId);
+    return task ? this.withControllerRef(task) : null;
   }
 
   listTasks(state?: string): StoredTask[] {
-    return this.taskRepository.listTasks(state);
+    return this.taskRepository.listTasks(state).map((task) => this.withControllerRef(task));
   }
 
   getTaskStatus(taskId: string): TaskStatusDto {
     const task = this.getTaskOrThrow(taskId);
     return {
-      task: task as TaskStatusDto['task'],
+      task: this.withControllerRef(task) as TaskStatusDto['task'],
       task_blueprint: this.buildTaskBlueprint(task),
       flow_log: this.flowLogRepository.listByTask(taskId),
       progress_log: this.progressLogRepository.listByTask(taskId),
@@ -960,6 +961,7 @@ export class TaskService {
     return {
       graph_version: 1,
       entry_nodes: stages[0] ? [stages[0].id] : [],
+      controller_ref: resolveControllerRef(task.team.members),
       nodes,
       edges,
       artifact_contracts: stages
@@ -996,6 +998,13 @@ export class TaskService {
       throw new NotFoundError(`Task ${taskId} not found`);
     }
     return task;
+  }
+
+  private withControllerRef(task: StoredTask): StoredTask & { controller_ref: string | null } {
+    return {
+      ...task,
+      controller_ref: resolveControllerRef(task.team.members),
+    };
   }
 
   private getCurrentStageOrThrow(task: StoredTask) {

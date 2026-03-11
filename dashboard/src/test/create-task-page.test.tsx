@@ -287,4 +287,16 @@ describe('create task page', () => {
     expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' })).toBeInTheDocument();
     expect(within(craftsmanCard as HTMLElement).queryByRole('button', { name: 'sonnet' })).not.toBeInTheDocument();
   });
+
+  it('shows the selected controller agent in the provisioning summary', () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    const provisioning = screen.getByTestId('create-task-provisioning');
+    expect(within(provisioning).getByText('主控 Agent')).toBeInTheDocument();
+    expect(within(provisioning).getAllByText('opus').length).toBeGreaterThan(0);
+  });
 });

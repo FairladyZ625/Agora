@@ -31,6 +31,14 @@ function TaskBlueprintSection({
         <p className="type-body-sm mt-3">{copy.blueprintEmpty}</p>
       ) : (
         <div className="mt-4 space-y-4">
+          {blueprint.controllerRef ? (
+            <div>
+              <p className="field-label">{copy.blueprintControllerLabel}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span className="choice-pill choice-pill--active">{blueprint.controllerRef}</span>
+              </div>
+            </div>
+          ) : null}
           <div>
             <p className="field-label">{copy.blueprintEntryLabel}</p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -430,6 +438,11 @@ export function TasksPage() {
                       <PanelRightOpen size={16} className="detail-card__icon" />
                       <span className="detail-card__label">{tasksPageCopy.teamLabel}</span>
                       <strong className="detail-card__value">{activeTask.teamLabel}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <PanelRightOpen size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{tasksPageCopy.controllerLabel}</span>
+                      <strong className="detail-card__value">{activeTask.controllerRef ?? tasksPageCopy.stageFallback}</strong>
                     </div>
                     <div className="detail-card">
                       <Clock3 size={16} className="detail-card__icon" />
