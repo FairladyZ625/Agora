@@ -602,6 +602,10 @@ export function useTemplatesPageCopy() {
     missingControllerLabel: t('templates.missingControllerLabel'),
     duplicateControllersLabel: t('templates.duplicateControllersLabel'),
     stagesTitle: t('templates.stagesTitle'),
+    addStageAction: t('templates.addStageAction'),
+    deleteStageAction: t('templates.deleteStageAction'),
+    moveStageUpAction: t('templates.moveStageUpAction'),
+    moveStageDownAction: t('templates.moveStageDownAction'),
     stageModeLabel: t('templates.stageModeLabel'),
     stageGateLabel: t('templates.stageGateLabel'),
     stageRejectTargetLabel: t('templates.stageRejectTargetLabel'),
@@ -615,6 +619,9 @@ export function useTemplatesPageCopy() {
     emptyTitle: t('templates.emptyTitle'),
     removeSuggestedAgentAria: (agentId: string) => t('templates.removeSuggestedAgentAria', { agentId }),
     stageNameAria: (stageId: string) => t('templates.stageNameAria', { stageId }),
+    stageDeleteAria: (stageId: string) => t('templates.stageDeleteAria', { stageId }),
+    stageMoveUpAria: (stageId: string) => t('templates.stageMoveUpAria', { stageId }),
+    stageMoveDownAria: (stageId: string) => t('templates.stageMoveDownAria', { stageId }),
   };
 }
 

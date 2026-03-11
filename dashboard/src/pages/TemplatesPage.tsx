@@ -44,6 +44,39 @@ function normalizeStageForGateType(stage: TemplateDetail['stages'][number], gate
   };
 }
 
+function createNextStageId(stages: TemplateDetail['stages']) {
+  const usedIds = new Set(stages.map((stage) => stage.id));
+  let index = stages.length + 1;
+  while (usedIds.has(`stage_${index}`)) {
+    index += 1;
+  }
+  return `stage_${index}`;
+}
+
+function moveStage(stages: TemplateDetail['stages'], index: number, direction: -1 | 1) {
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= stages.length) {
+    return stages;
+  }
+  const nextStages = [...stages];
+  const [stage] = nextStages.splice(index, 1);
+  nextStages.splice(nextIndex, 0, stage);
+  return nextStages;
+}
+
+function removeStage(stages: TemplateDetail['stages'], stageId: string) {
+  return stages
+    .filter((stage) => stage.id !== stageId)
+    .map((stage) => (
+      stage.rejectTarget === stageId
+        ? {
+            ...stage,
+            rejectTarget: null,
+          }
+        : stage
+    ));
+}
+
 const STAGE_MODE_OPTIONS = ['discuss', 'execute'] as const;
 const STAGE_GATE_OPTIONS = ['none', 'command', 'approval', 'archon_review', 'all_subtasks_done', 'auto_timeout', 'quorum'] as const;
 const TEAM_MEMBER_KIND_OPTIONS = ['controller', 'citizen', 'craftsman'] as const;
@@ -421,11 +454,89 @@ export function TemplatesPage() {
                 ))}
               </div>
               <div>
-                <p className="page-kicker">{copy.stagesTitle}</p>
+                <div className="section-title-row">
+                  <p className="page-kicker">{copy.stagesTitle}</p>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => setDraft((current) => (
+                      current
+                        ? {
+                            ...current,
+                            stages: [
+                              ...current.stages,
+                              {
+                                id: createNextStageId(current.stages),
+                                name: '新阶段',
+                                mode: 'discuss',
+                                gateType: null,
+                                gateApprover: null,
+                                gateRequired: null,
+                                gateTimeoutSec: null,
+                                rejectTarget: null,
+                              },
+                            ],
+                          }
+                        : current
+                    ))}
+                  >
+                    {copy.addStageAction}
+                  </button>
+                </div>
                 <div className="mt-3 space-y-3">
-                  {draft.stages.map((stage) => (
+                  {draft.stages.map((stage, stageIndex) => (
                     <div key={stage.id} className="data-row">
                       <div className="min-w-0 flex-1">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="button-secondary"
+                            aria-label={copy.stageMoveUpAria(stage.id)}
+                            disabled={stageIndex === 0}
+                            onClick={() => setDraft((current) => (
+                              current
+                                ? {
+                                    ...current,
+                                    stages: moveStage(current.stages, stageIndex, -1),
+                                  }
+                                : current
+                            ))}
+                          >
+                            {copy.moveStageUpAction}
+                          </button>
+                          <button
+                            type="button"
+                            className="button-secondary"
+                            aria-label={copy.stageMoveDownAria(stage.id)}
+                            disabled={stageIndex === draft.stages.length - 1}
+                            onClick={() => setDraft((current) => (
+                              current
+                                ? {
+                                    ...current,
+                                    stages: moveStage(current.stages, stageIndex, 1),
+                                  }
+                                : current
+                            ))}
+                          >
+                            {copy.moveStageDownAction}
+                          </button>
+                          <button
+                            type="button"
+                            className="button-secondary"
+                            aria-label={copy.stageDeleteAria(stage.id)}
+                            disabled={draft.stages.length === 1}
+                            onClick={() => setDraft((current) => (
+                              current
+                                ? {
+                                    ...current,
+                                    stages: removeStage(current.stages, stage.id),
+                                  }
+                                : current
+                            ))}
+                          >
+                            {copy.deleteStageAction}
+                          </button>
+                        </div>
                         <label className="space-y-2">
                           <span className="field-label">{stage.id}</span>
                           <input

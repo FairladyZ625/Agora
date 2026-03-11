@@ -393,4 +393,35 @@ describe('templates workbench layout', () => {
     expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' })).toBeInTheDocument();
     expect(within(craftsmanCard as HTMLElement).queryByRole('button', { name: 'sonnet' })).not.toBeInTheDocument();
   });
+
+  it('supports adding and deleting stages before saving the selected template', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '新增阶段' }));
+    fireEvent.change(screen.getByLabelText('阶段 stage_4 名称'), {
+      target: { value: '发布' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '删除阶段 develop' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      stages: [
+        expect.objectContaining({ id: 'discuss', name: '讨论' }),
+        expect.objectContaining({ id: 'review', name: '审查', rejectTarget: null }),
+        expect.objectContaining({ id: 'stage_4', name: '发布', mode: 'discuss', gateType: null }),
+      ],
+    }));
+  });
+
+  it('supports reordering stages and refreshes graph preview', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '上移阶段 review' }));
+
+    const graphPanel = screen.getByText('边').closest('.detail-card');
+    expect(graphPanel).not.toBeNull();
+    expect(within(graphPanel as HTMLElement).getByText('discuss -> review')).toBeInTheDocument();
+    expect(within(graphPanel as HTMLElement).getAllByText('review -> develop').length).toBeGreaterThanOrEqual(2);
+    expect(within(graphPanel as HTMLElement).queryByText('discuss -> develop')).not.toBeInTheDocument();
+  });
 });
