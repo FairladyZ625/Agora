@@ -331,6 +331,12 @@
   flex: 1;
 }
 
+.agents-issue-queue__scroll {
+  max-height: 420px;
+  margin-top: 18px;
+  padding-right: 4px;
+}
+
 .dense-list {
   display: flex;
   flex-direction: column;

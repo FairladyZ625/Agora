@@ -38,6 +38,26 @@ const agentStoreState = {
       lastActiveAt: null,
       lastSeenAt: '2026-03-08T10:00:00.000Z',
     },
+    {
+      id: 'chronicle',
+      role: 'writer',
+      status: 'idle',
+      presence: 'stale',
+      presenceReason: 'stale_gateway_log',
+      channelProviders: ['discord'],
+      hostFramework: 'openclaw',
+      inventorySources: ['openclaw'],
+      primaryModel: 'gac/claude-haiku-4-5',
+      workspaceDir: '/tmp/chronicle',
+      accountId: 'chronicle',
+      taskCount: 0,
+      subtaskCount: 0,
+      load: 0,
+      activeTaskIds: [],
+      activeSubtaskIds: [],
+      lastActiveAt: null,
+      lastSeenAt: '2026-03-08T09:30:00.000Z',
+    },
   ],
   craftsmen: [
     {
@@ -262,25 +282,28 @@ describe('agents workbench layout', () => {
     fetchTmuxTail.mockClear();
   });
 
-  it('uses an anomaly-first overview and drawer-based detail axes', () => {
+  it('uses grouped anomaly queue rows and drawer-based detail axes', () => {
     renderPage();
 
     expect(screen.getByTestId('agents-global-status')).toBeInTheDocument();
     expect(screen.getByTestId('agents-issue-queue')).toBeInTheDocument();
     expect(screen.getByTestId('agents-axis-entry')).toBeInTheDocument();
+    expect(screen.getByTestId('agents-issue-queue-scroll')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /channel 健康异常/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /agent 状态异常/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /agents inventory/i }));
-    expect(screen.getByRole('dialog', { name: /agent detail workspace/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /agent 状态异常/i }));
+    expect(screen.getByRole('dialog', { name: /agent 明细工作区/i })).toBeInTheDocument();
     expect(screen.getByText('sonnet')).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: /close|关闭/i }).at(-1)!);
-    fireEvent.click(screen.getByRole('button', { name: /channel health/i }));
-    expect(screen.getByRole('dialog', { name: /channel detail workspace/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /channel 健康异常/i }));
+    expect(screen.getByRole('dialog', { name: /channel 明细工作区/i })).toBeInTheDocument();
     expect(screen.getAllByText('discord').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole('button', { name: /close|关闭/i }).at(-1)!);
-    fireEvent.click(screen.getByRole('button', { name: /execution runtime/i }));
-    expect(screen.getByRole('dialog', { name: /execution detail workspace/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /执行运行态/i }));
+    expect(screen.getByRole('dialog', { name: /执行明细工作区/i })).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
   });
 });

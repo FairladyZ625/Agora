@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 
@@ -44,8 +44,11 @@ const templateStoreState = {
       { id: 'develop', name: '开发', mode: 'execute', gateType: null },
       { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
     ],
-    defaultTeamRoles: ['architect'],
-    defaultTeam: [{ role: 'architect', modelPreference: null, suggested: ['opus'] }],
+    defaultTeamRoles: ['architect', 'craftsman'],
+    defaultTeam: [
+      { role: 'architect', memberKind: 'controller', modelPreference: null, suggested: ['opus'] },
+      { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code'] },
+    ],
     raw: {},
   },
   error: null,
@@ -122,6 +125,59 @@ const agentStoreState = {
     },
   ],
   fetchStatus,
+  tmuxRuntime: {
+    session: 'agora-craftsmen',
+    panes: [
+      {
+        agent: 'claude',
+        paneId: '%0',
+        currentCommand: 'claude',
+        active: true,
+        ready: true,
+        tailPreview: null,
+        continuityBackend: 'claude_session_id' as const,
+        resumeCapability: 'native_resume' as const,
+        sessionReference: 'claude-session-1',
+        identitySource: 'session_file' as const,
+        identityPath: null,
+        sessionObservedAt: null,
+        lastRecoveryMode: 'resume_exact' as const,
+        transportSessionId: 'tmux:agora-craftsmen:claude',
+      },
+      {
+        agent: 'codex',
+        paneId: '%1',
+        currentCommand: 'codex',
+        active: true,
+        ready: true,
+        tailPreview: null,
+        continuityBackend: 'codex_session_file' as const,
+        resumeCapability: 'native_resume' as const,
+        sessionReference: 'codex-session-1',
+        identitySource: 'session_file' as const,
+        identityPath: null,
+        sessionObservedAt: null,
+        lastRecoveryMode: 'resume_exact' as const,
+        transportSessionId: 'tmux:agora-craftsmen:codex',
+      },
+      {
+        agent: 'gemini',
+        paneId: '%2',
+        currentCommand: 'gemini',
+        active: true,
+        ready: true,
+        tailPreview: null,
+        continuityBackend: 'gemini_session_id' as const,
+        resumeCapability: 'resume_last' as const,
+        sessionReference: 'gemini-session-1',
+        identitySource: 'session_file' as const,
+        identityPath: null,
+        sessionObservedAt: null,
+        lastRecoveryMode: 'resume_last' as const,
+        transportSessionId: 'tmux:agora-craftsmen:gemini',
+      },
+    ],
+  },
 };
 
 vi.mock('@/stores/templateStore', () => ({
@@ -169,10 +225,15 @@ describe('templates workbench layout', () => {
     fireEvent.change(screen.getByLabelText('模板描述'), {
       target: { value: '更新后的说明' },
     });
+    fireEvent.change(screen.getByLabelText('architect 成员类型'), {
+      target: { value: 'controller' },
+    });
     fireEvent.change(screen.getByLabelText('architect 模型偏好'), {
       target: { value: 'strong_reasoning_v2' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'sonnet' }));
+    const architectCard = screen.getByText('architect').closest('.detail-card');
+    expect(architectCard).not.toBeNull();
+    fireEvent.click(within(architectCard as HTMLElement).getByRole('button', { name: 'sonnet' }));
     fireEvent.change(screen.getByLabelText('阶段 develop 名称'), {
       target: { value: '实施' },
     });
@@ -183,8 +244,15 @@ describe('templates workbench layout', () => {
       defaultTeam: [
         {
           role: 'architect',
+          memberKind: 'controller',
           modelPreference: 'strong_reasoning_v2',
           suggested: ['opus', 'sonnet'],
+        },
+        {
+          role: 'craftsman',
+          memberKind: 'craftsman',
+          modelPreference: 'coding_cli',
+          suggested: ['claude_code'],
         },
       ],
       stages: [
@@ -269,7 +337,9 @@ describe('templates workbench layout', () => {
   it('shows runtime compatibility warnings for missing or unavailable suggested agents', () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'codex' }));
+    const architectCard = screen.getByText('architect').closest('.detail-card');
+    expect(architectCard).not.toBeNull();
+    fireEvent.click(within(architectCard as HTMLElement).getByRole('button', { name: 'codex' }));
 
     expect(screen.getByText(/运行时兼容性/i)).toBeInTheDocument();
     expect(screen.getByText(/当前不可用: codex/i)).toBeInTheDocument();
@@ -278,10 +348,23 @@ describe('templates workbench layout', () => {
   it('blocks save when runtime compatibility issues still exist', () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'codex' }));
+    const architectCard = screen.getByText('architect').closest('.detail-card');
+    expect(architectCard).not.toBeNull();
+    fireEvent.click(within(architectCard as HTMLElement).getByRole('button', { name: 'codex' }));
     fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
 
     expect(saveSelectedTemplate).not.toHaveBeenCalled();
     expect(screen.getByText(/请先修复 runtime compatibility 问题/i)).toBeInTheDocument();
+  });
+
+  it('renders craftsman suggestions from tmux runtime catalog and normalizes legacy ids', () => {
+    renderPage();
+
+    const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
+    expect(craftsmanCard).not.toBeNull();
+    expect(screen.queryByText(/缺失于当前 runtime: claude_code/i)).not.toBeInTheDocument();
+    expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'claude' })).toBeInTheDocument();
+    expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' })).toBeInTheDocument();
+    expect(within(craftsmanCard as HTMLElement).queryByRole('button', { name: 'sonnet' })).not.toBeInTheDocument();
   });
 });

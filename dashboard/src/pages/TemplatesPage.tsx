@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
+import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 import { evaluateTemplateRuntimeCompatibility } from '@/lib/templateRuntimeCompatibility';
 import { useAgentStore } from '@/stores/agentStore';
 import { useTemplateStore } from '@/stores/templateStore';
@@ -45,6 +46,7 @@ function normalizeStageForGateType(stage: TemplateDetail['stages'][number], gate
 
 const STAGE_MODE_OPTIONS = ['discuss', 'execute'] as const;
 const STAGE_GATE_OPTIONS = ['none', 'command', 'approval', 'archon_review', 'all_subtasks_done', 'auto_timeout', 'quorum'] as const;
+const TEAM_MEMBER_KIND_OPTIONS = ['controller', 'citizen', 'craftsman'] as const;
 
 export function TemplatesPage() {
   const copy = useTemplatesPageCopy();
@@ -61,6 +63,7 @@ export function TemplatesPage() {
   const duplicateSelectedTemplate = useTemplateStore((state) => state.duplicateSelectedTemplate);
   const agents = useAgentStore((state) => state.agents);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
+  const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const [draft, setDraft] = useState<TemplateDetail | null>(null);
   const [duplicateId, setDuplicateId] = useState('');
   const [showCompatibilitySaveError, setShowCompatibilitySaveError] = useState(false);
@@ -112,7 +115,8 @@ export function TemplatesPage() {
     });
   };
 
-  const compatibility = draft ? evaluateTemplateRuntimeCompatibility(draft.defaultTeam, agents) : [];
+  const craftsmanInventory = buildCraftsmanInventory(tmuxRuntime);
+  const compatibility = draft ? evaluateTemplateRuntimeCompatibility(draft.defaultTeam, agents, craftsmanInventory) : [];
   const compatibilityByRole = new Map(compatibility.map((item) => [item.role, item]));
   const knownAgentIds = new Set(agents.map((agent) => agent.id));
   const graphEdges = draft ? buildTemplateEdges(draft) : [];
@@ -128,12 +132,14 @@ export function TemplatesPage() {
           if (item.role !== role) {
             return item;
           }
-          const alreadySelected = item.suggested.includes(agentId);
+          const alreadySelected = item.suggested.some((value) => (
+            normalizeRoleBindingId(item.role, value, item.memberKind) === normalizeRoleBindingId(item.role, agentId, item.memberKind)
+          ));
           return {
             ...item,
             suggested: alreadySelected
-              ? item.suggested.filter((value) => value !== agentId)
-              : [...item.suggested, agentId],
+              ? item.suggested.filter((value) => normalizeRoleBindingId(item.role, value, item.memberKind) !== normalizeRoleBindingId(item.role, agentId, item.memberKind))
+              : [...item.suggested, normalizeRoleBindingId(item.role, agentId, item.memberKind)],
           };
         }),
       };
@@ -285,6 +291,33 @@ export function TemplatesPage() {
                   <div key={member.role} className="detail-card space-y-3">
                     <strong className="type-heading-sm">{member.role}</strong>
                     <label className="space-y-2">
+                      <span className="field-label">{copy.memberKindLabel}</span>
+                      <select
+                        aria-label={`${member.role} ${copy.memberKindLabel}`}
+                        className="input-shell"
+                        value={member.memberKind ?? 'citizen'}
+                        onChange={(event) => setDraft((current) => (
+                          current
+                            ? {
+                                ...current,
+                                defaultTeam: current.defaultTeam.map((item) => (
+                                  item.role === member.role
+                                    ? {
+                                        ...item,
+                                        memberKind: event.target.value as TemplateDetail['defaultTeam'][number]['memberKind'],
+                                      }
+                                    : item
+                                )),
+                              }
+                            : current
+                        ))}
+                      >
+                        {TEAM_MEMBER_KIND_OPTIONS.map((option) => (
+                          <option key={`${member.role}-member-kind-${option}`} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-2">
                       <span className="field-label">{copy.modelPreferenceLabel}</span>
                       <input
                         aria-label={`${member.role} ${copy.modelPreferenceLabel}`}
@@ -311,32 +344,40 @@ export function TemplatesPage() {
                     <label className="space-y-2">
                       <span className="field-label">{copy.suggestedAgentsLabel}</span>
                       <div className="flex flex-wrap gap-2">
-                        {agents.map((agent) => (
+                        {(isCraftsmanRole(member.role, member.memberKind ?? null) ? craftsmanInventory : agents.map((agent) => agent.id)).map((agentId) => (
                           <button
-                            key={`${member.role}-${agent.id}`}
+                            key={`${member.role}-${agentId}`}
                             type="button"
-                            aria-label={agent.id}
-                            aria-pressed={member.suggested.includes(agent.id)}
-                            className={member.suggested.includes(agent.id) ? 'choice-pill choice-pill--active' : 'choice-pill'}
-                            onClick={() => toggleSuggestedAgent(member.role, agent.id)}
+                            aria-label={agentId}
+                            aria-pressed={member.suggested.some((suggested) => normalizeRoleBindingId(member.role, suggested, member.memberKind) === agentId)}
+                            className={member.suggested.some((suggested) => normalizeRoleBindingId(member.role, suggested, member.memberKind) === agentId) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                            onClick={() => toggleSuggestedAgent(member.role, agentId)}
                           >
-                            {agent.id}
+                            {agentId}
                           </button>
                         ))}
                       </div>
-                      {member.suggested.some((suggested) => !knownAgentIds.has(suggested)) ? (
+                      {member.suggested.some((suggested) => (
+                        isCraftsmanRole(member.role, member.memberKind ?? null)
+                          ? !craftsmanInventory.includes(normalizeRoleBindingId(member.role, suggested, member.memberKind))
+                          : !knownAgentIds.has(normalizeRoleBindingId(member.role, suggested, member.memberKind))
+                      )) ? (
                         <div className="flex flex-wrap gap-2">
                           {member.suggested
-                            .filter((suggested) => !knownAgentIds.has(suggested))
+                            .filter((suggested) => (
+                              isCraftsmanRole(member.role, member.memberKind ?? null)
+                                ? !craftsmanInventory.includes(normalizeRoleBindingId(member.role, suggested, member.memberKind))
+                                : !knownAgentIds.has(normalizeRoleBindingId(member.role, suggested, member.memberKind))
+                            ))
                             .map((suggested) => (
                               <button
-                                key={`${member.role}-missing-${suggested}`}
+                                key={`${member.role}-missing-${normalizeRoleBindingId(member.role, suggested, member.memberKind)}`}
                                 type="button"
-                                aria-label={copy.removeSuggestedAgentAria(suggested)}
+                                aria-label={copy.removeSuggestedAgentAria(normalizeRoleBindingId(member.role, suggested, member.memberKind))}
                                 className="choice-pill"
                                 onClick={() => removeMissingSuggestedAgent(member.role, suggested)}
                               >
-                                {suggested}
+                                {normalizeRoleBindingId(member.role, suggested, member.memberKind)}
                               </button>
                             ))}
                         </div>

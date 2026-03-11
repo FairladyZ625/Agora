@@ -74,14 +74,10 @@ export function BoardPage() {
 
       <section className="grid gap-6 xl:grid-cols-3">
         <div className="surface-panel surface-panel--workspace xl:col-span-2" data-testid="board-state-grid">
-          <div className="section-title-row">
-            <h3 className="section-title">{boardCopy.title}</h3>
-            <span className="status-pill status-pill--neutral">{tasks.length}</span>
-          </div>
-
-          <div className="mt-5 grid gap-4 xl:grid-cols-5">
+          <div className="workbench-scroll board-grid-scroll">
+            <div className="board-grid-columns">
             {columns.map((column) => (
-              <div key={column.state} className="surface-panel surface-panel--muted space-y-3">
+              <div key={column.state} className="surface-panel surface-panel--muted board-grid-column">
                 <div className="section-title-row">
                   <h4 className="section-title">{column.label}</h4>
                   <span className="status-pill status-pill--neutral">{column.tasks.length}</span>
@@ -106,14 +102,15 @@ export function BoardPage() {
                   ))}
 
                   {column.tasks.length === 0 ? (
-                    <div className="empty-state">
+                    <div className="empty-state board-grid-column__empty">
                       <p className="type-heading-sm">{boardCopy.emptyTitle}</p>
-                      <p className="type-body-sm mt-2">{boardCopy.emptySummary}</p>
+                      <p className="type-body-sm">{boardCopy.emptySummary}</p>
                     </div>
                   ) : null}
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
 

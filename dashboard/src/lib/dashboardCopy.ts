@@ -582,6 +582,7 @@ export function useTemplatesPageCopy() {
     governanceLabel: t('templates.governanceLabel'),
     teamLabel: t('templates.teamLabel'),
     descriptionLabel: t('templates.descriptionLabel'),
+    memberKindLabel: t('templates.memberKindLabel'),
     modelPreferenceLabel: t('templates.modelPreferenceLabel'),
     suggestedAgentsLabel: t('templates.suggestedAgentsLabel'),
     duplicateIdLabel: t('templates.duplicateIdLabel'),

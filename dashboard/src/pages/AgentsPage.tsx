@@ -9,6 +9,15 @@ const MIN_CHANNEL_DETAIL_STALE_AFTER_MS = 15_000;
 
 type DrawerAxis = 'agents' | 'channels' | 'execution' | null;
 type ChannelDetailTab = 'summary' | 'signals' | 'history';
+type IssueGroup = {
+  id: string;
+  label: string;
+  count: number;
+  severity: 'danger' | 'warning';
+  summary: string;
+  detail: string;
+  action: () => void;
+};
 
 function getCraftsmanPriority(item: { status: string; recentExecutions: Array<{ status: string; startedAt: string | null }> }) {
   if (item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')) {
@@ -206,100 +215,116 @@ export function AgentsPage() {
   const degradedChannels = channelSummaries.filter(
     (item) => item.signalStatus !== 'healthy' || item.overallPresence === 'stale' || item.overallPresence === 'disconnected',
   );
-  const staleAgents = agents.filter((agent) => ['stale', 'disconnected', 'offline'].includes(agent.presence));
-  const issueQueue = useMemo(() => {
-    const channelIssues = degradedChannels.map((item) => ({
-      id: `channel:${item.channel}`,
-      axis: 'channels' as const,
-      severity: item.disconnectedAgents > 0 || item.signalCounts.transportErrors > 0 ? 'danger' as const : 'warning' as const,
-      title: item.channel,
-      summary: `${copy.presenceLabel}: ${item.overallPresence} · transport ${item.signalCounts.transportErrors}`,
-      action: () => {
-        selectChannel(item.channel);
-        setChannelTab('summary');
-        setActiveDrawer('channels');
-      },
-    }));
-    const agentIssues = staleAgents.map((agent) => ({
-      id: `agent:${agent.id}`,
-      axis: 'agents' as const,
-      severity: agent.presence === 'disconnected' || agent.presence === 'offline' ? 'danger' as const : 'warning' as const,
-      title: agent.id,
-      summary: `${copy.presenceReasonLabel}: ${agent.presenceReason ?? 'n/a'} · ${copy.lastSeenLabel}: ${agent.lastSeenAt ?? 'n/a'}`,
-      action: () => {
-        setPresenceFilter(agent.presence as typeof presenceFilter);
-        setActiveDrawer('agents');
-      },
-    }));
-    const executionIssues = [
-      ...craftsmen
-        .filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed'))
-        .map((item) => ({
-          id: `craftsman:${item.id}`,
-          axis: 'execution' as const,
-          severity: 'danger' as const,
-          title: item.id,
-          summary: `${copy.statusLabel}: ${item.status} · ${copy.currentTaskLabel}: ${item.taskId}`,
-          action: () => {
-            setCraftsmenFilter('failures');
-            setActiveDrawer('execution');
-          },
-        })),
-      ...(tmuxRuntime?.panes ?? [])
-        .filter((pane) => !pane.ready)
-        .map((pane) => ({
-          id: `pane:${pane.agent}`,
-          axis: 'execution' as const,
-          severity: 'warning' as const,
-          title: pane.agent,
-          summary: `${copy.readyLabel}: no · ${copy.paneLabel}: ${pane.paneId ?? 'n/a'}`,
-          action: () => {
-            setActiveDrawer('execution');
-          },
-        })),
-    ];
-    return [...channelIssues, ...executionIssues, ...agentIssues];
-  }, [
-    channelSummaries,
-    craftsmen,
-    copy.currentTaskLabel,
-    copy.lastSeenLabel,
-    copy.paneLabel,
-    copy.presenceLabel,
-    copy.presenceReasonLabel,
-    copy.readyLabel,
-    copy.statusLabel,
-    degradedChannels,
-    presenceFilter,
-    setCraftsmenFilter,
-    setPresenceFilter,
-    staleAgents,
-    tmuxRuntime?.panes,
-  ]);
+  const criticalAgents = agents.filter((agent) => ['disconnected', 'offline'].includes(agent.presence));
+  const staleAgents = agents.filter((agent) => agent.presence === 'stale');
+  const failedCraftsmen = craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed'));
+  const unhealthyPanes = (tmuxRuntime?.panes ?? []).filter((pane) => !pane.ready);
+  const openIssueCount =
+    degradedChannels.length +
+    criticalAgents.length +
+    staleAgents.length +
+    failedCraftsmen.length +
+    unhealthyPanes.length;
+  const issueGroups = useMemo<IssueGroup[]>(() => {
+    const groups: IssueGroup[] = [];
+    if (degradedChannels.length > 0) {
+      const transportErrors = degradedChannels.reduce((sum, item) => sum + item.signalCounts.transportErrors, 0);
+      const primaryChannel = degradedChannels[0];
+      groups.push({
+        id: 'channel-health',
+        label: copy.workspace.issueGroups.channelHealth,
+        count: degradedChannels.length,
+        severity: transportErrors > 0 || degradedChannels.some((item) => item.disconnectedAgents > 0) ? 'danger' : 'warning',
+        summary: copy.workspace.issueGroups.channelSummary(degradedChannels.length),
+        detail: copy.workspace.issueGroups.channelDetail(primaryChannel.channel, primaryChannel.overallPresence, transportErrors),
+        action: () => {
+          selectChannel(primaryChannel.channel);
+          setChannelTab('summary');
+          setActiveDrawer('channels');
+        },
+      });
+    }
+    if (criticalAgents.length > 0) {
+      groups.push({
+        id: 'agent-critical',
+        label: copy.workspace.issueGroups.agentCritical,
+        count: criticalAgents.length,
+        severity: 'danger',
+        summary: copy.workspace.issueGroups.agentCriticalSummary(criticalAgents.length),
+        detail: copy.workspace.issueGroups.agentCriticalDetail(criticalAgents[0].id),
+        action: () => {
+          setPresenceFilter('disconnected');
+          setActiveDrawer('agents');
+        },
+      });
+    }
+    if (staleAgents.length > 0) {
+      groups.push({
+        id: 'agent-stale',
+        label: copy.workspace.issueGroups.agentStale,
+        count: staleAgents.length,
+        severity: 'warning',
+        summary: copy.workspace.issueGroups.agentStaleSummary(staleAgents.length),
+        detail: copy.workspace.issueGroups.agentStaleDetail(staleAgents[0].id),
+        action: () => {
+          setPresenceFilter('stale');
+          setActiveDrawer('agents');
+        },
+      });
+    }
+    if (failedCraftsmen.length > 0) {
+      groups.push({
+        id: 'craftsman-failed',
+        label: copy.workspace.issueGroups.craftsmanFailed,
+        count: failedCraftsmen.length,
+        severity: 'danger',
+        summary: copy.workspace.issueGroups.craftsmanFailedSummary(failedCraftsmen.length),
+        detail: copy.workspace.issueGroups.craftsmanFailedDetail(failedCraftsmen[0].id),
+        action: () => {
+          setCraftsmenFilter('failures');
+          setActiveDrawer('execution');
+        },
+      });
+    }
+    if (unhealthyPanes.length > 0) {
+      groups.push({
+        id: 'tmux-unhealthy',
+        label: copy.workspace.issueGroups.tmuxUnhealthy,
+        count: unhealthyPanes.length,
+        severity: 'warning',
+        summary: copy.workspace.issueGroups.tmuxUnhealthySummary(unhealthyPanes.length),
+        detail: copy.workspace.issueGroups.tmuxUnhealthyDetail(unhealthyPanes[0].agent),
+        action: () => {
+          setActiveDrawer('execution');
+        },
+      });
+    }
+    return groups;
+  }, [copy.workspace.issueGroups, criticalAgents, degradedChannels, failedCraftsmen, setCraftsmenFilter, setPresenceFilter, staleAgents, unhealthyPanes]);
 
   const globalSignals = [
     {
-      label: 'Degraded channels',
+      label: copy.workspace.signalLabels.channelIssues,
       value: degradedChannels.length,
-      note: `${channelSummaries.length} total`,
+      note: copy.workspace.signalNotes.channels(channelSummaries.length),
       tone: degradedChannels.length > 0 ? 'warning' : 'success',
     },
     {
-      label: 'Failed craftsmen',
+      label: copy.workspace.signalLabels.craftsmanFailures,
       value: runtimeSummary.failedCraftsmen,
-      note: `${runtimeSummary.runningCraftsmen} running`,
+      note: copy.workspace.signalNotes.craftsmen(runtimeSummary.runningCraftsmen),
       tone: runtimeSummary.failedCraftsmen > 0 ? 'danger' : 'success',
     },
     {
-      label: 'Stale agents',
-      value: staleAgents.length,
-      note: `${summary?.onlineAgents ?? 0} online`,
-      tone: staleAgents.length > 0 ? 'warning' : 'success',
+      label: copy.workspace.signalLabels.agentIssues,
+      value: criticalAgents.length + staleAgents.length,
+      note: copy.workspace.signalNotes.onlineAgents(summary?.onlineAgents ?? 0),
+      tone: criticalAgents.length + staleAgents.length > 0 ? 'warning' : 'success',
     },
     {
-      label: 'tmux health',
+      label: copy.workspace.signalLabels.tmuxUnready,
       value: runtimeSummary.unhealthyPanes,
-      note: `${runtimeSummary.readyPanes}/${runtimeSummary.totalPanes} ready`,
+      note: copy.workspace.signalNotes.readyPanes(runtimeSummary.readyPanes, runtimeSummary.totalPanes),
       tone: runtimeSummary.unhealthyPanes > 0 ? 'warning' : 'success',
     },
   ] as const;
@@ -308,8 +333,8 @@ export function AgentsPage() {
     {
       key: 'agents' as const,
       title: 'Agent',
-      action: 'Agents inventory',
-      summary: '完整 inventory、host 负载、presence 筛选。',
+      action: copy.workspace.axis.agentAction,
+      summary: copy.workspace.axis.agentSummary,
       count: agents.length,
       tone: staleAgents.length > 0 ? 'warning' as const : 'success' as const,
       onClick: () => setActiveDrawer('agents'),
@@ -317,8 +342,8 @@ export function AgentsPage() {
     {
       key: 'channels' as const,
       title: 'Channel',
-      action: 'Channel health',
-      summary: 'Channel 列表、选中详情、signals / history 分页。',
+      action: copy.workspace.axis.channelAction,
+      summary: copy.workspace.axis.channelSummary,
       count: channelSummaries.length,
       tone: degradedChannels.length > 0 ? 'warning' as const : 'success' as const,
       onClick: () => {
@@ -329,8 +354,8 @@ export function AgentsPage() {
     {
       key: 'execution' as const,
       title: 'Execution',
-      action: 'Execution runtime',
-      summary: 'tmux session 与 craftsmen CLI 合并在同一操作面。',
+      action: copy.workspace.axis.executionAction,
+      summary: copy.workspace.axis.executionSummary,
       count: runtimeSummary.totalPanes + craftsmen.length,
       tone: runtimeSummary.failedCraftsmen > 0 ? 'danger' as const : 'info' as const,
       onClick: () => setActiveDrawer('execution'),
@@ -368,22 +393,23 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace space-y-5">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">Global status</p>
-              <h3 className="section-title">首屏只看健康度和异常浓度</h3>
+              <p className="page-kicker">{copy.workspace.overviewKicker}</p>
+              <h3 className="section-title">{copy.workspace.overviewTitle}</h3>
             </div>
-            <span className={getPillClass(issueQueue.length > 0 ? 'warning' : 'success')}>
-              {issueQueue.length > 0 ? `${issueQueue.length} open` : 'healthy'}
+            <span className={getPillClass(openIssueCount > 0 ? 'warning' : 'success')}>
+              {openIssueCount > 0 ? copy.workspace.issueCountOpen(openIssueCount) : copy.workspace.issueCountStable}
             </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {globalSignals.map((signal) => (
               <div key={signal.label} className="data-row">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="type-text-xs">{signal.label}</p>
-                    <span className={getPillClass(signal.tone)}>{signal.note}</span>
-                  </div>
+                  <p className="type-text-xs">{signal.label}</p>
                   <p className="type-heading-sm mt-3">{signal.value}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className={getPillClass(signal.tone)}>{signal.value > 0 ? copy.workspace.attentionLabel : copy.workspace.stableLabel}</span>
+                    <span className="type-text-xs">{signal.note}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -393,34 +419,40 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace space-y-4">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">{copy.runtimeSummaryTitle}</p>
-              <h3 className="section-title">Overview</h3>
+              <p className="page-kicker">{copy.workspace.focusKicker}</p>
+              <h3 className="section-title">{copy.workspace.focusTitle}</h3>
             </div>
             <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
           </div>
           <div className="space-y-3">
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.channelSummaryTitle}</p>
-                <p className="type-body-sm mt-2">{degradedChannels.length > 0 ? `${degradedChannels[0].channel} 需要优先处理` : '所有 channel 当前无阻塞信号。'}</p>
+              <div className="data-row">
+                <div className="min-w-0 flex-1">
+                  <p className="type-text-xs">{copy.workspace.channelFocusLabel}</p>
+                  <p className="type-body-sm mt-2">{degradedChannels.length > 0 ? copy.workspace.channelFocusMessage(degradedChannels[0].channel) : copy.workspace.channelFocusEmpty}</p>
+                </div>
               </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.agentListTitle}</p>
-                <p className="type-body-sm mt-2">{staleAgents.length > 0 ? `${staleAgents[0].id} 最近状态异常。` : 'Agent inventory 当前稳定。'}</p>
+              <div className="data-row">
+                <div className="min-w-0 flex-1">
+                  <p className="type-text-xs">{copy.workspace.agentFocusLabel}</p>
+                  <p className="type-body-sm mt-2">
+                    {criticalAgents.length > 0
+                      ? copy.workspace.agentCriticalMessage(criticalAgents[0].id)
+                      : staleAgents.length > 0
+                        ? copy.workspace.agentStaleMessage(staleAgents[0].id)
+                        : copy.workspace.agentFocusEmpty}
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="data-row">
-              <div className="min-w-0 flex-1">
-                <p className="type-text-xs">{copy.tmuxRuntimeTitle}</p>
-                <p className="type-body-sm mt-2">
-                  {runtimeSummary.failedCraftsmen > 0
-                    ? `${runtimeSummary.failedCraftsmen} craftsmen 失败，先看 execution runtime。`
-                    : `${runtimeSummary.readyPanes}/${runtimeSummary.totalPanes} panes ready。`}
-                </p>
+              <div className="data-row">
+                <div className="min-w-0 flex-1">
+                  <p className="type-text-xs">{copy.workspace.executionFocusLabel}</p>
+                  <p className="type-body-sm mt-2">
+                    {runtimeSummary.failedCraftsmen > 0
+                      ? copy.workspace.executionFailedMessage(runtimeSummary.failedCraftsmen)
+                      : copy.workspace.executionReadyMessage(runtimeSummary.readyPanes, runtimeSummary.totalPanes)}
+                  </p>
+                </div>
               </div>
-            </div>
           </div>
         </div>
       </section>
@@ -429,30 +461,33 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace" data-testid="agents-issue-queue">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">Issue queue</p>
-              <h3 className="section-title">异常优先，完整信息延后展开</h3>
+              <p className="page-kicker">{copy.workspace.issueQueueKicker}</p>
+              <h3 className="section-title">{copy.workspace.issueQueueTitle}</h3>
             </div>
-            <span className="status-pill status-pill--neutral">{issueQueue.length}</span>
+            <span className="status-pill status-pill--neutral">{openIssueCount}</span>
           </div>
-          <div className="mt-5 space-y-3">
-            {issueQueue.length === 0 ? (
+          <div className="workbench-scroll workbench-scroll--list agents-issue-queue__scroll" data-testid="agents-issue-queue-scroll">
+            {issueGroups.length === 0 ? (
               <div className="empty-state">
-                <p className="type-body-sm">当前没有需要优先介入的 channel、agent 或 tmux 异常。</p>
+                <p className="type-body-sm">{copy.workspace.issueQueueEmpty}</p>
               </div>
             ) : (
-              issueQueue.map((issue) => (
-                <button key={issue.id} type="button" className="dense-row" onClick={issue.action}>
-                  <div className="dense-row__main">
-                    <div className="dense-row__titleblock">
-                      <strong className="dense-row__title">{issue.title}</strong>
-                      <span className={getPillClass(issue.severity)}>{issue.axis}</span>
+              <div className="dense-list mt-5">
+                {issueGroups.map((issue) => (
+                  <button key={issue.id} type="button" className="dense-row" onClick={issue.action}>
+                    <div className="dense-row__main">
+                      <div className="dense-row__titleblock">
+                        <strong className="dense-row__title">{issue.label}</strong>
+                        <span className={getPillClass(issue.severity)}>{issue.count}</span>
+                      </div>
+                      <div className="dense-row__meta">
+                        <span>{issue.summary}</span>
+                        <span>{issue.detail}</span>
+                      </div>
                     </div>
-                    <div className="dense-row__meta">
-                      <span>{issue.summary}</span>
-                    </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -460,8 +495,8 @@ export function AgentsPage() {
         <div className="surface-panel surface-panel--workspace" data-testid="agents-axis-entry">
           <div className="section-title-row">
             <div>
-              <p className="page-kicker">Workbench axes</p>
-              <h3 className="section-title">详情都进二级子页，不再在首页平铺</h3>
+              <p className="page-kicker">{copy.workspace.detailEntryKicker}</p>
+              <h3 className="section-title">{copy.workspace.detailEntryTitle}</h3>
             </div>
             <span className="status-pill status-pill--neutral">3</span>
           </div>
@@ -484,8 +519,8 @@ export function AgentsPage() {
 
       {activeDrawer === 'agents' ? (
         <WorkbenchDetailSheet
-          label="Agent detail workspace"
-          title="Agents inventory"
+          label={copy.workspace.drawers.agentLabel}
+          title={copy.workspace.drawers.agentTitle}
           onClose={() => setActiveDrawer(null)}
         >
           <div className="space-y-6">
@@ -622,8 +657,8 @@ export function AgentsPage() {
 
       {activeDrawer === 'channels' ? (
         <WorkbenchDetailSheet
-          label="Channel detail workspace"
-          title="Channel health"
+          label={copy.workspace.drawers.channelLabel}
+          title={copy.workspace.drawers.channelTitle}
           onClose={() => setActiveDrawer(null)}
         >
           <div className="space-y-6">
@@ -672,7 +707,7 @@ export function AgentsPage() {
                       className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
                       onClick={() => setChannelTab(tab)}
                     >
-                      {tab}
+                      {copy.workspace.tabs[tab]}
                     </button>
                   );
                 })}
@@ -806,8 +841,8 @@ export function AgentsPage() {
 
       {activeDrawer === 'execution' ? (
         <WorkbenchDetailSheet
-          label="Execution detail workspace"
-          title="Execution runtime"
+          label={copy.workspace.drawers.executionLabel}
+          title={copy.workspace.drawers.executionTitle}
           onClose={() => setActiveDrawer(null)}
         >
           <div className="space-y-6">
