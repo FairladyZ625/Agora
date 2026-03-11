@@ -101,4 +101,30 @@ describe('create task draft helpers', () => {
       },
     });
   });
+
+  it('fills empty model_preference strings for roles that omit a preference in the template', () => {
+    const template = buildTemplate();
+    template.defaultTeam = [
+      { role: 'architect', memberKind: 'controller', modelPreference: null, suggested: ['opus'] },
+      { role: 'developer', memberKind: 'citizen', modelPreference: null, suggested: ['sonnet'] },
+    ];
+
+    const payload = buildCreateTaskInput({
+      title: 'null model preference payload',
+      description: '',
+      priority: 'normal',
+      template,
+      type: 'coding',
+      visibility: 'private',
+      assignments: {
+        architect: 'opus',
+        developer: 'sonnet',
+      },
+    });
+
+    expect(payload.team_override?.members).toEqual([
+      { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: '' },
+      { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: '' },
+    ]);
+  });
 });

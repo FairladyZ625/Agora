@@ -33,7 +33,7 @@ function buildTeamMembers(template: TemplateDetail, assignments: RoleAssignments
       role: member.role,
       agentId,
       ...(member.memberKind ? { member_kind: member.memberKind } : {}),
-      ...(member.modelPreference ? { model_preference: member.modelPreference } : {}),
+      model_preference: member.modelPreference ?? '',
     }];
   });
 }
