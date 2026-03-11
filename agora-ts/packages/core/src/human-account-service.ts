@@ -129,6 +129,17 @@ export class HumanAccountService {
     };
   }
 
+  getIdentity(accountId: number, provider: string): HumanAccountIdentityBinding | null {
+    const binding = this.identities.listByAccountId(accountId).find((item) => item.provider === provider);
+    if (!binding) {
+      return null;
+    }
+    return {
+      provider: binding.provider,
+      external_user_id: binding.external_user_id,
+    };
+  }
+
   authenticate(username: string, password: string): HumanAccount | null {
     const account = this.accounts.getByUsername(username);
     if (!account || !account.enabled) {

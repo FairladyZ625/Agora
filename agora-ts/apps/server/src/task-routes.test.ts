@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { TaskService } from '@agora-ts/core';
+import { HumanAccountService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -136,6 +136,86 @@ describe('task routes', () => {
         ],
       },
     });
+  });
+
+  it('adds the dashboard session user discord identity to private-thread participants', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'stub-thread-OC-200C',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-200C',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+    const humanAccountService = new HumanAccountService(db);
+    humanAccountService.createUser({
+      username: 'alice',
+      password: 'secret-pass',
+      role: 'member',
+    });
+    humanAccountService.bindIdentity({
+      username: 'alice',
+      provider: 'discord',
+      externalUserId: 'discord-user-123',
+    });
+    const app = buildApp({
+      taskService,
+      humanAccountService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'alice',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+      payload: {
+        title: 'route adds human discord identity',
+        type: 'coding',
+        creator: 'archon',
+        description: 'custom team',
+        priority: 'normal',
+        im_target: {
+          provider: 'discord',
+          visibility: 'private',
+          participant_refs: ['opus'],
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(response.statusCode).toBe(200);
+    expect(provisioningPort.provisioned[0]?.participant_refs).toEqual(
+      expect.arrayContaining(['opus', 'discord-user-123']),
+    );
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'opus' }),
+        expect.objectContaining({ participant_ref: 'discord-user-123' }),
+      ]),
+    );
   });
 
   it('returns 403 on advance when gate is not satisfied', async () => {

@@ -36,6 +36,7 @@ import {
   promoteInboxRequestSchema,
   rejectTaskRequestSchema,
   saveTemplateRequestSchema,
+  type CreateTaskRequestDto,
   subtaskDoneRequestSchema,
   taskNoteRequestSchema,
   unblockTaskRequestSchema,
@@ -370,6 +371,39 @@ function resolveHumanActor(
     username: account.username,
     role: account.role,
     source: 'im',
+  };
+}
+
+function appendDashboardHumanImParticipantRef(
+  payload: CreateTaskRequestDto,
+  humanActor: HumanActor | null,
+  humanAccountService?: HumanAccountService,
+): CreateTaskRequestDto {
+  if (!humanActor?.account_id || !humanAccountService) {
+    return payload;
+  }
+  if (payload.im_target?.provider && payload.im_target.provider !== 'discord') {
+    return payload;
+  }
+  if (payload.im_target?.visibility !== 'private') {
+    return payload;
+  }
+  const discordIdentity = humanAccountService.getIdentity(humanActor.account_id, 'discord');
+  if (!discordIdentity) {
+    return payload;
+  }
+  const participantRefs = Array.from(new Set([
+    ...(payload.im_target?.participant_refs ?? []),
+    discordIdentity.external_user_id,
+  ]));
+  return {
+    ...payload,
+    im_target: {
+      ...(payload.im_target ?? {}),
+      provider: payload.im_target?.provider ?? 'discord',
+      visibility: payload.im_target?.visibility ?? 'private',
+      participant_refs: participantRefs,
+    },
   };
 }
 
@@ -926,7 +960,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = createTaskRequestSchema.parse(request.body);
-      const created = taskService.createTask(payload);
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      const enriched = appendDashboardHumanImParticipantRef(payload, humanActor, humanAccountService);
+      const created = taskService.createTask(enriched);
       recordTaskAction(metrics, 'create', 'success');
       emitStructuredLog(structuredLogs, {
         module: 'task',

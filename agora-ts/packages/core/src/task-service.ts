@@ -236,6 +236,7 @@ export class TaskService {
 
     this.taskParticipationService?.seedParticipants(taskId, team);
     const interactiveMembers = team.members.filter(isInteractiveParticipant);
+    const imParticipantRefs = this.collectImParticipantRefs(team, input.im_target?.participant_refs);
 
     // Fire-and-forget: provision IM thread (non-blocking, failure doesn't block task creation)
     if (this.imProvisioningPort && this.taskContextBindingService) {
@@ -253,7 +254,7 @@ export class TaskService {
               ...(input.im_target.participant_refs ? { participant_refs: input.im_target.participant_refs } : {}),
             }
           : null,
-        participant_refs: interactiveMembers.map((member) => member.agentId),
+        participant_refs: imParticipantRefs,
       }).then((provisioned) => {
         const binding = bindingService.createBinding({
           task_id: taskId,
@@ -263,15 +264,15 @@ export class TaskService {
           ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
         this.taskParticipationService?.attachContextBinding(taskId, binding.id);
-        for (const member of interactiveMembers) {
+        for (const participantRef of imParticipantRefs) {
           void provisioningPort.joinParticipant({
             binding_id: binding.id,
-            participant_ref: member.agentId,
+            participant_ref: participantRef,
             ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
             ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
           }).catch((err: unknown) => {
             console.error(
-              `[TaskService] IM participant join failed for task ${taskId} participant ${member.agentId}:`,
+              `[TaskService] IM participant join failed for task ${taskId} participant ${participantRef}:`,
               err,
             );
           });
@@ -1057,6 +1058,16 @@ export class TaskService {
       actor,
     });
     return updated;
+  }
+
+  private collectImParticipantRefs(
+    team: StoredTask['team'],
+    explicitRefs?: string[] | null,
+  ): string[] {
+    return Array.from(new Set([
+      ...team.members.filter(isInteractiveParticipant).map((member) => member.agentId),
+      ...(explicitRefs ?? []),
+    ]));
   }
 
   private getApproverRole(stage: NonNullable<StoredTask['workflow']['stages']>[number]) {

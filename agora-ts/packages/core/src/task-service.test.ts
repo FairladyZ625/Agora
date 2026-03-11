@@ -1476,6 +1476,49 @@ describe('task service', () => {
     );
   });
 
+  it('joins explicit im_target participant refs in addition to interactive team members', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROV-HUMAN',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Provisioning Human Viewer Test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+        participant_refs: ['discord-user-123'],
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(provisioningPort.provisioned).toHaveLength(1);
+    expect(provisioningPort.provisioned[0]).toMatchObject({
+      task_id: 'OC-PROV-HUMAN',
+      participant_refs: expect.arrayContaining(['opus', 'sonnet', 'glm5', 'discord-user-123']),
+    });
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'opus' }),
+        expect.objectContaining({ participant_ref: 'discord-user-123' }),
+      ]),
+    );
+  });
+
   it('applies team/workflow overrides when creating a task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
