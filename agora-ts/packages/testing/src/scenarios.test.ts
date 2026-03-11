@@ -37,6 +37,7 @@ describe('agora-ts testing scenarios', () => {
       'runtime-session-binding',
       'task-conversation-ingest',
       'task-action-conversation-mirror',
+      'task-conversation-read-cursor',
     ]);
   });
 
@@ -75,6 +76,17 @@ describe('agora-ts testing scenarios', () => {
     expect(result.events).toEqual(
       expect.arrayContaining(['rejected', 'gate_failed', 'stage_rewound', 'gate_passed', 'stage_advanced']),
     );
+  });
+
+  it('runs a task conversation read cursor scenario and clears unread counts after mark-read', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'task-conversation-read-cursor');
+
+    expect(result.name).toBe('task-conversation-read-cursor');
+    expect(result.unreadBefore).toBe(2);
+    expect(result.unreadAfter).toBe(0);
+    expect(result.conversationBodies).toEqual(['first unread', 'second unread']);
   });
 
   it('runs a quorum scenario and advances after the required votes are met', () => {
@@ -509,7 +521,7 @@ describe('agora-ts testing scenarios', () => {
     expect(result.conversationBodies).toEqual(
       expect.arrayContaining([
         'Archon approved: outline ok',
-        'Force advanced to stage write',
+        'Advanced to stage write',
         'Subtask write-doc marked done',
         'Advanced to stage review',
         'Approval rejected: needs more structure',

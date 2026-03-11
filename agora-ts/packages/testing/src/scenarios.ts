@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TaskService, TaskContextBindingService } from '@agora-ts/core';
+import { HumanAccountService, TaskService, TaskContextBindingService } from '@agora-ts/core';
 import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository, NotificationOutboxRepository, TaskConversationRepository } from '@agora-ts/db';
 import type { CreateTestRuntimeOptions, TestRuntime } from './runtime.js';
 import { createTestRuntime } from './runtime.js';
@@ -31,6 +31,7 @@ export const scenarioNames = [
   'runtime-session-binding',
   'task-conversation-ingest',
   'task-action-conversation-mirror',
+  'task-conversation-read-cursor',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -56,6 +57,8 @@ export interface ScenarioResult {
   participantBindings?: string[];
   runtimeSessionRefs?: string[];
   conversationBodies?: string[];
+  unreadBefore?: number;
+  unreadAfter?: number;
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -110,6 +113,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runTaskConversationIngestScenario(runtime);
     case 'task-action-conversation-mirror':
       return runTaskActionConversationMirrorScenario(runtime);
+    case 'task-conversation-read-cursor':
+      return runTaskConversationReadCursorScenario(runtime);
   }
 }
 
@@ -139,7 +144,6 @@ function runHappyPathScenario(runtime: TestRuntime): ScenarioResult {
     reviewerId: 'lizeyu',
     comment: 'outline approved',
   });
-  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
 
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
@@ -159,7 +163,6 @@ function runHappyPathScenario(runtime: TestRuntime): ScenarioResult {
     approverId: 'gpt52',
     comment: 'review passed',
   });
-  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
 
   return buildScenarioResult(runtime, 'happy-path', task.id);
 }
@@ -177,7 +180,6 @@ function runRejectReworkScenario(runtime: TestRuntime): ScenarioResult {
     reviewerId: 'lizeyu',
     comment: 'outline approved',
   });
-  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
 
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
@@ -214,7 +216,6 @@ function runRejectReworkScenario(runtime: TestRuntime): ScenarioResult {
     approverId: 'gpt52',
     comment: 'rework accepted',
   });
-  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
 
   return buildScenarioResult(runtime, 'reject-rework', task.id);
 }
@@ -366,7 +367,6 @@ function runArchiveNotifyScenario(runtime: TestRuntime): ScenarioResult {
     reviewerId: 'lizeyu',
     comment: 'outline ok',
   });
-  runtime.taskService.forceAdvanceTask(task.id, { reason: 'move to write' });
   subtasks.insertSubtask({
     id: 'archive-write',
     task_id: task.id,
@@ -384,7 +384,6 @@ function runArchiveNotifyScenario(runtime: TestRuntime): ScenarioResult {
     approverId: 'gpt52',
     comment: 'approved',
   });
-  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
 
   const archives = new ArchiveJobRepository(runtime.db);
   const job = archives.listArchiveJobs({ taskId: task.id })[0];
@@ -395,6 +394,7 @@ function runArchiveNotifyScenario(runtime: TestRuntime): ScenarioResult {
 
   return buildScenarioResult(runtime, 'archive-notify', task.id);
 }
+
 
 function runArchiveReceiptScenario(runtime: TestRuntime): ScenarioResult {
   const result = runArchiveNotifyScenario(runtime);
@@ -1174,7 +1174,6 @@ function runTaskActionConversationMirrorScenario(runtime: TestRuntime): Scenario
     reviewerId: 'lizeyu',
     comment: 'outline ok',
   });
-  runtime.taskService.forceAdvanceTask(task.id, { reason: 'skip outline wait' });
 
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
@@ -1198,6 +1197,56 @@ function runTaskActionConversationMirrorScenario(runtime: TestRuntime): Scenario
   const entries = new TaskConversationRepository(runtime.db).listByTask(task.id);
   return buildScenarioResult(runtime, 'task-action-conversation-mirror', task.id, {
     conversationBodies: entries.map((entry) => entry.body),
+  });
+}
+
+function runTaskConversationReadCursorScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Task conversation read cursor scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'track unread and read cursor semantics',
+    priority: 'normal',
+  });
+  runtime.taskContextBindingService.createBinding({
+    task_id: task.id,
+    im_provider: 'discord',
+    thread_ref: 'scenario-read-thread',
+  });
+  const humans = new HumanAccountService(runtime.db);
+  const account = humans.bootstrapAdmin({
+    username: 'lizeyu',
+    password: 'secret-pass',
+  });
+
+  runtime.taskConversationService.ingest({
+    provider: 'discord',
+    thread_ref: 'scenario-read-thread',
+    provider_message_ref: 'msg-1',
+    direction: 'inbound',
+    author_kind: 'human',
+    body: 'first unread',
+    occurred_at: '2026-03-10T14:00:00.000Z',
+  });
+  runtime.taskConversationService.ingest({
+    provider: 'discord',
+    thread_ref: 'scenario-read-thread',
+    provider_message_ref: 'msg-2',
+    direction: 'outbound',
+    author_kind: 'agent',
+    body: 'second unread',
+    occurred_at: '2026-03-10T14:00:01.000Z',
+  });
+
+  const before = runtime.taskConversationService.getSummaryByTask(task.id, account.id);
+  const after = runtime.taskConversationService.markRead(task.id, account.id, {
+    last_read_entry_id: before.latest_entry_id,
+  });
+
+  return buildScenarioResult(runtime, 'task-conversation-read-cursor', task.id, {
+    conversationBodies: runtime.taskConversationService.listByTask(task.id).map((entry) => entry.body),
+    unreadBefore: before.unread_count,
+    unreadAfter: after.unread_count,
   });
 }
 
