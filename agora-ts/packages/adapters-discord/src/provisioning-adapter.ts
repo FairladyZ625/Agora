@@ -50,6 +50,9 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
       message,
       input.target?.visibility ?? 'public',
     );
+    if ((input.target?.visibility ?? 'public') === 'private') {
+      await this.client.sendMessage(threadRef, message);
+    }
     return {
       im_provider: 'discord',
       conversation_ref: conversationRef,

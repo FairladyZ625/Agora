@@ -122,10 +122,16 @@ describe('DiscordIMProvisioningAdapter', () => {
   });
 
   it('provisionContext honors conversation target and private visibility', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'private-thread-789' }),
-    });
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'private-thread-789' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({}),
+      });
     vi.stubGlobal('fetch', mockFetch);
 
     const adapter = new DiscordIMProvisioningAdapter({
@@ -146,6 +152,11 @@ describe('DiscordIMProvisioningAdapter', () => {
     expect(body.type).toBe(12);
     expect(body.message).toBeUndefined();
     expect(body.invitable).toBe(false);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://discord.com/api/v10/channels/private-thread-789/messages',
+      expect.objectContaining({ method: 'POST' }),
+    );
     expect(result.conversation_ref).toBe('chan-private');
     expect(result.thread_ref).toBe('private-thread-789');
 
