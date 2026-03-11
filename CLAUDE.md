@@ -1,4 +1,3 @@
-
 # Agora 项目约定
 
 ## 架构最高原则（最高优先级，强制）
@@ -44,6 +43,19 @@
 - 当前与未来所有 adapter 开发，必须遵循：
   - `docs/11-REFERENCE/agora-core-decoupling-standard.md`
   - `docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md`
+
+### 人类审批与 Agent 自动化边界（强制）
+
+- Dashboard 是**人类操作入口**，CLI / REST 是**Agent 与自动化入口**；两者职责必须明确分离。
+- 任何“必须由人类确认”的动作，当前口径只允许通过 Dashboard 登录态触发；禁止用前端自由传入的 `reviewer_id` / `approver_id` 伪造人工身份。
+- Core 只消费统一 actor / permission 语义，不直接判断“是不是人类”；“这是登录的人类”这一事实必须由 Dashboard / session adapter 提供。
+- Agent 默认不通过 Dashboard 执行任务编排；Agent 侧主入口是 CLI，其次是 REST API。
+- 除“必须人类确认”的能力外，所有新增任务动作、运行态操作、运维动作、作者工具接口，都必须同步提供 CLI 入口，确保 Agent 可自动化调用。
+- 新增 REST API、task action、runtime operation、authoring capability 时，必须同时评估并补齐：
+  - 对应 CLI command
+  - 对应 CLI tests
+  - 必要的 scenario / harness 覆盖
+- 轻量多用户账号体系可以落在 SQLite，但这只解决“谁能登录 / 谁能审批”；当前阶段**不默认引入任务隔离**，未来若做企业级多租户/多人员任务域隔离，必须作为独立能力设计与实施。
 
 ## 项目概述
 
@@ -161,7 +173,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 - Tailwind CSS 4.x（样式 + CSS 变量主题）
 - Zustand 5.x（状态管理）
 - React Router 7.x + Lucide React（图标）
-- 设计基调：**沉稳克制高信息密度**，参考 Linear/Raycast，**禁止紫色**
+- 设计基调：**白昼中枢式高信息密度系统界面**，强调 OS / console / command authority / telemetry 语法，**禁止紫色**
 - Light / Dark / System 三态主题
 - 详细规范：`docs/11-REFERENCE/dashboard-frontend-standard.md`
 - Dashboard 前端强制治理规则：
@@ -175,6 +187,8 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 运行时禁止 silent mock fallback；请求失败必须显示真实错误
   - 新增接口接入前必须先写 mapper/store 测试，再写页面接线
   - Vite `/api` 代理与本地联调默认从根目录 `.env` 的 `VITE_API_BASE_URL` 读取
+  - 玻璃只能作为 authority / focus / overlay 增强层，不能重新退回“材质主导”视觉
+  - 动态必须表达真实系统状态、信号或流转，不允许装饰性动画主导
 
 ### 开发环境一键启动
 
@@ -182,6 +196,26 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 cp .env.example .env
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```
+
+### 本地数据库路径治理（强制）
+
+- **Agora TS 的统一运行时数据库默认路径固定为**：`~/.agora/agora.db`
+- 该口径必须在以下位置保持一致：
+  - `agora-ts/packages/config/src/index.ts` 中的 `defaultAgoraDbPath()`
+  - 根目录 `.env` / `.env.example` 的 `AGORA_DB_PATH`
+  - `docs/02-PRODUCT/scripts/dev-start.sh`
+  - `agora-ts/packages/config/agora.example.json`
+- **禁止把项目工作区内的 `tasks.db` 当作生产/默认数据库路径。**
+- 项目目录下出现的 `tasks.db`、`runtime.db`、`test.db` 等文件名，当前默认只允许出现在：
+  - test fixtures
+  - tmp runtime
+  - legacy / raw docs 示例
+- 任何新增 runtime entrypoint、CLI bootstrap、server bootstrap、dev script、示例配置，如果默认仍指向 repo-local `tasks.db`，视为实现回退，必须修正。
+- 数据表 schema/migration 的变更仍然发生在 **同一个统一 SQLite 数据库** 中；当前不再采用“项目侧单独一份数据库”的口径。
+- 如需覆盖默认路径，必须显式通过：
+  - `db_path`
+  - `AGORA_DB_PATH`
+    进行配置，而不是隐式回退到当前工作目录。
 
 ### 全仓 TypeScript 质量门
 
@@ -413,6 +447,7 @@ Python legacy 参考规范：
 - 前缀：`feat/fix/refactor/docs/test`
 - 信息聚焦变更本身，不提 AI
 - 每个独立功能完成后立即提交
+- 多线程并行开发默认规则：每完成一轮后，Agent 必须优先提交自己本轮的改动；禁止把他人的现有改动、未确认改动或生成产物一并提交。
 - Commit message 格式：`<type>: <description>`
   - 示例：`feat: implement GateKeeper with all 6 gate types and command routing`
 
