@@ -582,6 +582,12 @@
   padding: 20px 24px;
 }
 
+.home-os__summary-loading {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+}
+
 .home-os__load-value {
   font-family: var(--font-mono);
   font-size: 16px;

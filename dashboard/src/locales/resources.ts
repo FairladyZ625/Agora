@@ -225,6 +225,7 @@ export const resources = {
           runtimeLog: '运行日志',
           stageFallback: '当前阶段',
           logEmpty: '当前任务还没有新的流转记录。',
+          focusPrompt: '选择一个任务后再展开执行回路。',
           taskEmpty: '暂无活跃任务。',
         },
         proposalToneLabels: {
@@ -883,6 +884,7 @@ export const resources = {
           runtimeLog: 'Runtime log',
           stageFallback: 'Current stage',
           logEmpty: 'No new flow records for this task yet.',
+          focusPrompt: 'Select a task to expand the execution loop.',
           taskEmpty: 'No active task is available.',
         },
         proposalToneLabels: {

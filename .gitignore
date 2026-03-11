@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 .venv/
 dist/
+dashboard/.artifacts/
 .env
 .env.local
 .env.*.local

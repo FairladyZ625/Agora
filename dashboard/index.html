@@ -32,6 +32,17 @@
     <script>
       (function () {
         try {
+          var motionState = JSON.parse(localStorage.getItem('agora-motion'));
+          var motionMode = motionState && motionState.state && motionState.state.mode;
+          document.documentElement.dataset.motion = motionMode === 'lite' ? 'lite' : 'full';
+        } catch (e) {
+          document.documentElement.dataset.motion = 'full';
+        }
+      })();
+    </script>
+    <script>
+      (function () {
+        try {
           var storedLocale = localStorage.getItem('agora-locale');
           var browserLocale = navigator.language || 'zh-CN';
           var resolvedLocale = storedLocale || browserLocale;

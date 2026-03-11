@@ -171,6 +171,7 @@ export function DashboardHome() {
   const navigate = useNavigate();
   const [reviewIndex, setReviewIndex] = useState(0);
   const [railTaskId, setRailTaskId] = useState<string | null>(null);
+  const [summaryReady, setSummaryReady] = useState(false);
   const [railReady, setRailReady] = useState(false);
 
   useEffect(() => {
@@ -180,11 +181,17 @@ export function DashboardHome() {
   }, [error, fetchTasks, loading, tasks.length]);
 
   useEffect(() => {
-    const timerId = window.setTimeout(() => {
+    const summaryTimerId = window.setTimeout(() => {
+      startTransition(() => setSummaryReady(true));
+    }, 120);
+    const railTimerId = window.setTimeout(() => {
       startTransition(() => setRailReady(true));
-    }, 180);
+    }, 420);
 
-    return () => window.clearTimeout(timerId);
+    return () => {
+      window.clearTimeout(summaryTimerId);
+      window.clearTimeout(railTimerId);
+    };
   }, []);
 
   const homeMetrics = useMemo(
@@ -203,6 +210,7 @@ export function DashboardHome() {
     );
     return (activeTasks.length > 0 ? activeTasks : homeMetrics.recentTasks).slice(0, 5);
   }, [homeMetrics.recentTasks]);
+  const visibleRailTasks = summaryReady ? railTasks : railTasks.slice(0, 3);
   const loadPercent = homeMetrics.recentTasks.length === 0
     ? 0
     : Math.min(
@@ -213,10 +221,22 @@ export function DashboardHome() {
   const authorityStage = formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage);
   const authorityGate = formatAuthorityGate(focusReview, homeCopy.resolutionFallbacks.gate);
   const authoritySummary = formatAuthoritySummary(focusReview, homeCopy.resolutionFallbacks.summary);
-  const selectedRailTask = railTasks.find((task) => task.id === railTaskId) ?? railTasks[0] ?? null;
+  const selectedRailTask = railTaskId
+    ? railTasks.find((task) => task.id === railTaskId) ?? null
+    : null;
   const railStatus = selectedRailTask && selectedTaskStatus?.task.id === selectedRailTask.id ? selectedTaskStatus : null;
-  const executionLanes = buildExecutionLanes(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback);
-  const runtimeLines = buildOperationalLines(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback);
+  const executionLanes = useMemo(
+    () => (railReady
+      ? buildExecutionLanes(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback)
+      : []),
+    [homeCopy.taskRailLabels.stageFallback, railReady, railStatus, selectedRailTask],
+  );
+  const runtimeLines = useMemo(
+    () => (railReady
+      ? buildOperationalLines(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback)
+      : []),
+    [homeCopy.taskRailLabels.stageFallback, railReady, railStatus, selectedRailTask],
+  );
 
   const handleSelectRailTask = async (taskId: string) => {
     setRailTaskId(taskId);
@@ -270,7 +290,7 @@ export function DashboardHome() {
     <div className="home-os">
       <section className="home-os__grid">
         <article className="home-os__main-column surface-panel surface-panel--workspace">
-          <div className="home-os__hero signal-scan">
+          <div className="home-os__hero">
             <div className="home-os__hero-block">
               <p className="page-kicker">{homeCopy.kicker}</p>
               <h2 className="home-os__display">{homeCopy.title}</h2>
@@ -359,32 +379,39 @@ export function DashboardHome() {
               </div>
             </div>
 
-            <div className="home-os__load surface-panel surface-panel--muted">
-              <div className="home-os__module-head">
-                <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
-                <span className="home-os__load-value">{homeCopy.loadReadoutLabel}: {loadPercent}%</span>
-              </div>
-              <div className="home-os__load-bar">
-                <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-                <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-              </div>
+            {summaryReady ? (
+              <div className="home-os__load surface-panel surface-panel--muted page-transition">
+                <div className="home-os__module-head">
+                  <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
+                  <span className="home-os__load-value">{homeCopy.loadReadoutLabel}: {loadPercent}%</span>
+                </div>
+                <div className="home-os__load-bar">
+                  <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
+                  <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
+                </div>
 
-              <div className="home-os__metrics">
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
-                  <span className="inline-stat__value">{homeMetrics.activeCount}</span>
+                <div className="home-os__metrics">
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
+                    <span className="inline-stat__value">{homeMetrics.activeCount}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
+                    <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
+                    <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
+                  </div>
                 </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
-                  <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
-                </div>
-                <div className="inline-stat">
-                  <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
-                  <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
-                </div>
+                <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>
               </div>
-              <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>
-            </div>
+            ) : (
+              <div className="home-os__summary-loading" aria-hidden="true">
+                <Skeleton variant="row" />
+                <Skeleton variant="card" />
+              </div>
+            )}
           </div>
         </article>
 
@@ -401,9 +428,9 @@ export function DashboardHome() {
             <div className="home-os__task-selector">
               {loading
                 ? Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} variant="card" />)
-                : railTasks.length === 0
+               : visibleRailTasks.length === 0
                   ? <p className="type-body-sm">{homeCopy.feedEmpty}</p>
-                  : railTasks.map((task) => {
+                  : visibleRailTasks.map((task) => {
                     const tone = getProposalTone(task.state);
                     return (
                       <button
@@ -502,7 +529,11 @@ export function DashboardHome() {
             ) : (
               <div className="home-os__rail-empty">
                 {railReady ? (
-                  <p className="type-body-sm">{homeCopy.taskRailLabels.taskEmpty}</p>
+                  <p className="type-body-sm">
+                    {visibleRailTasks.length > 0
+                      ? homeCopy.taskRailLabels.focusPrompt
+                      : homeCopy.taskRailLabels.taskEmpty}
+                  </p>
                 ) : (
                   <div className="home-os__rail-loading">
                     <Skeleton variant="card" />
@@ -512,12 +543,14 @@ export function DashboardHome() {
               </div>
             )}
 
-            <div className="home-os__telemetry-strip">
-              <div className="home-os__telemetry-readout">
-                <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
-                <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+            {summaryReady ? (
+              <div className="home-os__telemetry-strip page-transition">
+                <div className="home-os__telemetry-readout">
+                  <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
+                  <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+                </div>
               </div>
-            </div>
+            ) : null}
           </article>
         </aside>
       </section>

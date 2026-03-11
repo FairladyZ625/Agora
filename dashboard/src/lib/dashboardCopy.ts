@@ -164,6 +164,7 @@ export function useDashboardHomeCopy() {
       runtimeLog: t('home.taskRailLabels.runtimeLog'),
       stageFallback: t('home.taskRailLabels.stageFallback'),
       logEmpty: t('home.taskRailLabels.logEmpty'),
+      focusPrompt: t('home.taskRailLabels.focusPrompt'),
       taskEmpty: t('home.taskRailLabels.taskEmpty'),
     },
     proposalToneLabels: {

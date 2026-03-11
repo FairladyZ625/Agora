@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'motion/react';
+import type { CSSProperties } from 'react';
 
 interface StaggeredItemProps {
   children: React.ReactNode;
@@ -6,20 +6,16 @@ interface StaggeredItemProps {
 }
 
 export function StaggeredItem({ children, index }: StaggeredItemProps) {
-  const shouldReduce = useReducedMotion();
-
-  if (shouldReduce) {
+  if (index >= 4) {
     return <>{children}</>;
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03, duration: 0.16, ease: 'easeOut' }}
-      style={{ display: 'contents' }}
+    <div
+      className="staggered-item"
+      style={{ '--stagger-delay': `${Math.min(index, 12) * 28}ms` } as CSSProperties}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }

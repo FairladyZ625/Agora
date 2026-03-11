@@ -1,5 +1,5 @@
 import { MemoryRouter } from 'react-router';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardHome } from '@/pages/DashboardHome';
 import type { Task } from '@/types/task';
@@ -145,6 +145,10 @@ describe('dashboard home live metrics', () => {
       </MemoryRouter>,
     );
 
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
     const participantsCard = screen.getAllByText('当前参与 Agent')[0]?.closest('.home-os__telemetry-readout');
     expect(participantsCard).not.toBeNull();
     expect(within(participantsCard as HTMLElement).getByText('3')).toBeInTheDocument();
@@ -178,6 +182,24 @@ describe('dashboard home live metrics', () => {
     expect(within(completedPulse as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
   });
 
+  it('defers secondary homepage panels until after the first paint window', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <DashboardHome />
+      </MemoryRouter>,
+    );
+
+    expect(container.querySelector('.home-os__load')).toBeNull();
+    expect(container.querySelector('.home-os__telemetry-readout')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(160);
+    });
+
+    expect(container.querySelector('.home-os__load')).not.toBeNull();
+    expect(container.querySelector('.home-os__telemetry-readout')).not.toBeNull();
+  });
+
   it('wires the home authority card into the live review action', async () => {
     render(
       <MemoryRouter>
@@ -201,7 +223,12 @@ describe('dashboard home live metrics', () => {
       </MemoryRouter>,
     );
 
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
     expect(taskStoreState.selectTask).not.toHaveBeenCalled();
+    expect(screen.getByText('选择一个任务后再展开执行回路。')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /等待裁决/i }));
     expect(taskStoreState.selectTask).toHaveBeenCalledWith('OC-102');

@@ -11,6 +11,29 @@ Currently, two official plugins are available:
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
+## Browser Audits
+
+Run the Dashboard browser baselines after starting the local stack:
+
+```bash
+./docs/02-PRODUCT/scripts/dev-start.sh
+cd dashboard
+npm run test:browsers:install
+npm run test:compat
+npm run test:perf
+```
+
+Optional authenticated audit:
+
+```bash
+export DASHBOARD_LOGIN_USER=<username>
+export DASHBOARD_LOGIN_PASSWORD=<password>
+npm run test:compat
+npm run test:perf
+```
+
+Reports are written to `dashboard/.artifacts/browser-audits/`.
+
 ## Expanding the ESLint configuration
 
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
