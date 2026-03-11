@@ -3,6 +3,7 @@ import type {
   ApproveTaskRequestDto,
   ArchonApproveTaskRequestDto,
   ArchonRejectTaskRequestDto,
+  CraftsmanRuntimeIdentityRequestDto,
   ConfirmTaskRequestDto,
   CreateTaskRequestDto,
   IngestTaskConversationEntryRequestDto,
@@ -157,6 +158,15 @@ export class AgoraBridge {
 
   async upsertLiveSession(payload: LiveSessionDto): Promise<{ ok: true } | LiveSessionDto> {
     return this.request("/api/live/openclaw/sessions", {
+      method: "POST",
+      body: payload,
+    });
+  }
+
+  async ingestRuntimeIdentity(
+    payload: CraftsmanRuntimeIdentityRequestDto,
+  ): Promise<{ ok: true; identity: Record<string, unknown> }> {
+    return this.request("/api/craftsmen/runtime/identity", {
       method: "POST",
       body: payload,
     });

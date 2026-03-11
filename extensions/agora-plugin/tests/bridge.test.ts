@@ -139,4 +139,38 @@ describe("AgoraBridge", () => {
       }),
     );
   });
+
+  it("posts runtime identity payloads to the ts craftsmen identity endpoint", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true, identity: {} }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420", "sec-token");
+    await bridge.ingestRuntimeIdentity({
+      agent: "gemini",
+      session_reference: "gemini-session-123",
+      identity_source: "hook_event",
+      identity_path: "/tmp/gemini/session.json",
+      session_observed_at: "2026-03-08T08:00:00.000Z",
+      workspace_root: "/Users/lizeyu/Projects/Agora",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8420/api/craftsmen/runtime/identity",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          agent: "gemini",
+          session_reference: "gemini-session-123",
+          identity_source: "hook_event",
+          identity_path: "/tmp/gemini/session.json",
+          session_observed_at: "2026-03-08T08:00:00.000Z",
+          workspace_root: "/Users/lizeyu/Projects/Agora",
+        }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer sec-token",
+          "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
 });

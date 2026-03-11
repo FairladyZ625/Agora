@@ -74,7 +74,10 @@ describe("registerLiveStatusBridge", () => {
   });
 
   it("projects before_agent_start and agent_end hooks into live snapshots", async () => {
-    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
+    };
     const { api, hooks } = createApi();
 
     registerLiveStatusBridge(api as never, bridge as never);
@@ -135,10 +138,14 @@ describe("registerLiveStatusBridge", () => {
         }),
       }),
     );
+    expect(bridge.ingestRuntimeIdentity).not.toHaveBeenCalled();
   });
 
   it("derives agent, channel, and conversation from sessionKey for agent lifecycle hooks", async () => {
-    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
+    };
     const { api, hooks } = createApi();
 
     registerLiveStatusBridge(api as never, bridge as never);
@@ -185,12 +192,77 @@ describe("registerLiveStatusBridge", () => {
         }),
       }),
     );
+    expect(bridge.ingestRuntimeIdentity).not.toHaveBeenCalled();
+  });
+
+  it("forwards runtime identity from craftsman lifecycle hooks when the agent is a CLI runtime", async () => {
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
+    };
+    const { api, hooks } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const beforeAgentStart = hooks.get("before_agent_start");
+    const agentEnd = hooks.get("agent_end");
+
+    await beforeAgentStart?.(
+      {
+        prompt: "resume gemini",
+        metadata: {
+          workspaceRoot: "/Users/lizeyu/Projects/Agora",
+          chatFile: "/tmp/gemini/session.json",
+        },
+      },
+      {
+        agentId: "gemini",
+        sessionKey: "agent:gemini:discord:channel:alerts",
+        sessionId: "gemini-session-123",
+        channelId: "discord",
+        trigger: "user",
+      },
+    );
+    await agentEnd?.(
+      {
+        success: true,
+        metadata: {
+          workspaceRoot: "/Users/lizeyu/Projects/Agora",
+        },
+      } as never,
+      {
+        agentId: "gemini",
+        sessionKey: "agent:gemini:discord:channel:alerts",
+        sessionId: "gemini-session-123",
+        channelId: "discord",
+        trigger: "user",
+      },
+    );
+
+    expect(bridge.ingestRuntimeIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "gemini",
+        session_reference: "gemini-session-123",
+        identity_source: "hook_event",
+        identity_path: "/tmp/gemini/session.json",
+        workspace_root: "/Users/lizeyu/Projects/Agora",
+      }),
+    );
+    expect(bridge.ingestRuntimeIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "gemini",
+        session_reference: "gemini-session-123",
+        identity_source: "hook_event",
+        workspace_root: "/Users/lizeyu/Projects/Agora",
+      }),
+    );
   });
 
   it("projects message hooks and runtime agent events into live status snapshots", async () => {
     const bridge = {
       upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
       ingestTaskConversationEntry: vi.fn().mockResolvedValue({ id: "entry-1" }),
+      ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
     };
     const { api, hooks, getService, emitAgentEvent } = createApi();
 
@@ -272,12 +344,14 @@ describe("registerLiveStatusBridge", () => {
         body: "hello",
       }),
     );
+    expect(bridge.ingestRuntimeIdentity).not.toHaveBeenCalled();
   });
 
   it("covers success and error branches for message send and runtime events", async () => {
     const bridge = {
       upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
       ingestTaskConversationEntry: vi.fn().mockResolvedValue({ id: "entry-2" }),
+      ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
     };
     const { api, hooks, getService, emitAgentEvent } = createApi();
 
@@ -299,7 +373,13 @@ describe("registerLiveStatusBridge", () => {
       stream: "error",
       ts: Date.parse("2026-03-08T07:07:00.000Z"),
       sessionKey: "agent:ops:discord:channel:alerts",
-      data: { error: "timeout" },
+      data: {
+        error: "timeout",
+        agent: "codex",
+        sessionId: "codex-session-123",
+        identityPath: "/tmp/codex/session.json",
+        workspaceRoot: "/Users/lizeyu/Projects/Agora",
+      },
     });
 
     expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
@@ -324,7 +404,16 @@ describe("registerLiveStatusBridge", () => {
       expect.objectContaining({
         status: "idle",
         last_event: "error",
-        metadata: { error: "timeout" },
+        metadata: expect.objectContaining({ error: "timeout" }),
+      }),
+    );
+    expect(bridge.ingestRuntimeIdentity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "codex",
+        session_reference: "codex-session-123",
+        identity_source: "hook_event",
+        identity_path: "/tmp/codex/session.json",
+        workspace_root: "/Users/lizeyu/Projects/Agora",
       }),
     );
   });

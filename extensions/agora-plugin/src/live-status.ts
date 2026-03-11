@@ -11,6 +11,29 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
     });
   };
 
+  const pushRuntimeIdentity = (payload: {
+    agent: string;
+    sessionReference?: string | null;
+    identitySource: "hook_event";
+    identityPath?: string | null;
+    sessionObservedAt: string;
+    workspaceRoot?: string | null;
+  }) => {
+    if (typeof bridge.ingestRuntimeIdentity !== "function") {
+      return;
+    }
+    void bridge.ingestRuntimeIdentity({
+      agent: payload.agent,
+      session_reference: payload.sessionReference ?? null,
+      identity_source: payload.identitySource,
+      identity_path: payload.identityPath ?? null,
+      session_observed_at: payload.sessionObservedAt,
+      workspace_root: payload.workspaceRoot ?? null,
+    }).catch((error) => {
+      logError(logger, error);
+    });
+  };
+
   api.on?.("session_start", (event, ctx) => {
     const sessionKey = event.sessionKey ?? ctx.sessionKey;
     const agentId = ctx.agentId ?? parseAgentId(sessionKey);
@@ -53,6 +76,18 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
         sessionId: ctx.sessionId,
       },
     });
+    const runtimeIdentity = extractRuntimeIdentity(
+      ctx.agentId,
+      {
+        sessionId: ctx.sessionId,
+        workspaceRoot: metadataString(event, "workspaceRoot") ?? metadataString(event, "workdir") ?? metadataString(event, "cwd"),
+        identityPath: metadataString(event, "identityPath") ?? metadataString(event, "sessionPath") ?? metadataString(event, "chatFile"),
+      },
+      new Date().toISOString(),
+    );
+    if (runtimeIdentity) {
+      pushRuntimeIdentity(runtimeIdentity);
+    }
   });
 
   api.on?.("session_end", (event, ctx) => {
@@ -99,6 +134,18 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
         sessionId: ctx.sessionId,
       },
     });
+    const runtimeIdentity = extractRuntimeIdentity(
+      ctx.agentId,
+      {
+        sessionId: ctx.sessionId,
+        workspaceRoot: metadataString(event, "workspaceRoot") ?? metadataString(event, "workdir") ?? metadataString(event, "cwd"),
+        identityPath: metadataString(event, "identityPath") ?? metadataString(event, "sessionPath") ?? metadataString(event, "chatFile"),
+      },
+      new Date().toISOString(),
+    );
+    if (runtimeIdentity) {
+      pushRuntimeIdentity(runtimeIdentity);
+    }
   });
 
   api.on?.("message_received", (event, ctx) => {
@@ -202,6 +249,24 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
           last_event_at: new Date(event.ts).toISOString(),
           metadata: event.data,
         });
+        const runtimeIdentity = extractRuntimeIdentity(
+          runtimeAgentId(event.data),
+          {
+            sessionId: stringValue(event.data.sessionId) ?? stringValue(event.data.session_id),
+            workspaceRoot:
+              stringValue(event.data.workspaceRoot)
+              ?? stringValue(event.data.workdir)
+              ?? stringValue(event.data.cwd),
+            identityPath:
+              stringValue(event.data.identityPath)
+              ?? stringValue(event.data.sessionPath)
+              ?? stringValue(event.data.chatFile),
+          },
+          new Date(event.ts).toISOString(),
+        );
+        if (runtimeIdentity) {
+          pushRuntimeIdentity(runtimeIdentity);
+        }
       });
     },
     stop: () => {
@@ -209,6 +274,55 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       unsubscribe = undefined;
     },
   });
+}
+
+function extractRuntimeIdentity(
+  agentId: string | undefined,
+  input: {
+    sessionId?: string | null;
+    workspaceRoot?: string | null;
+    identityPath?: string | null;
+  },
+  observedAt: string,
+) {
+  if (!isCraftsmanRuntimeAgent(agentId)) {
+    return null;
+  }
+  if (!input.sessionId && !input.identityPath && !input.workspaceRoot) {
+    return null;
+  }
+  return {
+    agent: agentId,
+    sessionReference: input.sessionId ?? null,
+    identitySource: "hook_event" as const,
+    identityPath: input.identityPath ?? null,
+    sessionObservedAt: observedAt,
+    workspaceRoot: input.workspaceRoot ?? null,
+  };
+}
+
+function isCraftsmanRuntimeAgent(agentId?: string) {
+  return agentId === "codex" || agentId === "claude" || agentId === "gemini";
+}
+
+function runtimeAgentId(data: Record<string, unknown>) {
+  const direct =
+    stringValue(data.agent)
+    ?? stringValue(data.agentId)
+    ?? stringValue(data.runtimeAgent)
+    ?? stringValue(data.craftsman)
+    ?? stringValue(data.adapter);
+  return isCraftsmanRuntimeAgent(direct) ? direct : undefined;
+}
+
+function metadataString(event: object, key: string) {
+  const direct = (event as Record<string, unknown>)[key];
+  const metadata = (event as { metadata?: Record<string, unknown> }).metadata;
+  return stringValue(direct) ?? stringValue(metadata?.[key]);
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function inferSessionKeyFromMessage(api: OpenClawPluginApi, ctx: { channelId?: string; conversationId?: string }) {
