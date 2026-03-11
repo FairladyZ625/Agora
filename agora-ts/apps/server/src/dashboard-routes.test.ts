@@ -11,7 +11,7 @@ import {
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
-import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskContextBindingService, TaskParticipationService, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskContextBindingService, TaskParticipationService, TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';
 
@@ -701,4 +701,142 @@ describe('dashboard routes', () => {
       }),
     ]);
   });
+
+  it('keeps runtime gateway identity over weaker plugin and discovery signals across route and dashboard reads', async () => {
+    const tmuxRuntimeService = new TmuxRuntimeService({
+      exec: createTmuxExec(),
+      registryDir: join(mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-tmux-')), 'registry'),
+      adapters: {},
+      geminiSessionDiscovery: {
+        resolveIdentity: () => ({
+          sessionReference: 'gemini-chat-file-999',
+          identitySource: 'chat_file',
+          identityPath: '/tmp/gemini/chats/session-z.json',
+          sessionObservedAt: '2026-03-08T12:00:00Z',
+        }),
+      },
+    });
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir, tmuxRuntimeService });
+    const app = buildApp({ dashboardQueryService: dashboardQueries, tmuxRuntimeService });
+
+    const runtimeIdentity = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/runtime/identity',
+      payload: {
+        agent: 'gemini',
+        session_reference: 'gemini-runtime-123',
+        identity_source: 'runtime_gateway',
+        identity_path: '/tmp/runtime/session.json',
+        session_observed_at: '2026-03-08T13:00:00Z',
+        workspace_root: '/tmp/agora-workspace',
+      },
+    });
+    const pluginIdentity = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/runtime/identity',
+      payload: {
+        agent: 'gemini',
+        session_reference: 'gemini-plugin-456',
+        identity_source: 'plugin_event',
+        session_observed_at: '2026-03-08T14:00:00Z',
+      },
+    });
+    const agents = await app.inject({
+      method: 'GET',
+      url: '/api/agents/status',
+    });
+
+    expect(runtimeIdentity.statusCode).toBe(200);
+    expect(runtimeIdentity.json()).toEqual({
+      ok: true,
+      identity: expect.objectContaining({
+        sessionReference: 'gemini-runtime-123',
+        identitySource: 'runtime_gateway',
+        identityPath: '/tmp/runtime/session.json',
+      }),
+    });
+    expect(pluginIdentity.statusCode).toBe(200);
+    expect(pluginIdentity.json()).toEqual({
+      ok: true,
+      identity: expect.objectContaining({
+        sessionReference: 'gemini-runtime-123',
+        identitySource: 'runtime_gateway',
+        identityPath: '/tmp/runtime/session.json',
+      }),
+    });
+    expect(agents.statusCode).toBe(200);
+    expect(agents.json().tmux_runtime).toEqual({
+      session: 'agora-craftsmen',
+      panes: [
+        {
+          agent: 'claude',
+          pane_id: '%1',
+          current_command: 'bash',
+          active: false,
+          ready: true,
+          tail_preview: null,
+          continuity_backend: 'claude_session_id',
+          resume_capability: 'native_resume',
+          session_reference: null,
+          identity_source: 'registry_default',
+          identity_path: null,
+          session_observed_at: null,
+          last_recovery_mode: null,
+          transport_session_id: null,
+        },
+        {
+          agent: 'codex',
+          pane_id: '%0',
+          current_command: 'bash',
+          active: true,
+          ready: true,
+          tail_preview: null,
+          continuity_backend: 'codex_session_file',
+          resume_capability: 'native_resume',
+          session_reference: null,
+          identity_source: 'registry_default',
+          identity_path: null,
+          session_observed_at: null,
+          last_recovery_mode: null,
+          transport_session_id: null,
+        },
+        {
+          agent: 'gemini',
+          pane_id: '%2',
+          current_command: 'bash',
+          active: false,
+          ready: true,
+          tail_preview: null,
+          continuity_backend: 'gemini_session_id',
+          resume_capability: 'native_resume',
+          session_reference: 'gemini-runtime-123',
+          identity_source: 'runtime_gateway',
+          identity_path: '/tmp/runtime/session.json',
+          session_observed_at: '2026-03-08T13:00:00Z',
+          last_recovery_mode: null,
+          transport_session_id: null,
+        },
+      ],
+    });
+  });
 });
+
+function createTmuxExec() {
+  return (args: string[]) => {
+    if (args[0] === 'has-session') {
+      return '';
+    }
+    if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+      return ['%0|codex|bash|1', '%1|claude|bash|0', '%2|gemini|bash|0'].join('\n');
+    }
+    if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+      return ['%0|codex', '%1|claude', '%2|gemini'].join('\n');
+    }
+    if (args[0] === 'capture-pane') {
+      return 'tmux dashboard tail';
+    }
+    return '';
+  };
+}
