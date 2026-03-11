@@ -43,7 +43,7 @@ describe('authoring routes', () => {
     });
     const inboxService = new InboxService(db, taskService);
     const dashboardQueryService = new DashboardQueryService(db, { templatesDir });
-    const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
+    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
     const app = buildApp({
       taskService,
       dashboardQueryService,
@@ -203,7 +203,7 @@ describe('authoring routes', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-802',
     });
-    const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
+    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
     const app = buildApp({ taskService, templateAuthoringService });
 
     const validateTemplate = await app.inject({

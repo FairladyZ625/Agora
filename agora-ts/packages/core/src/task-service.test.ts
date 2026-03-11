@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { TaskService } from './task-service.js';
@@ -17,6 +17,13 @@ function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-task-service-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeEmptyTemplatesDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-empty-templates-'));
+  tempPaths.push(dir);
+  mkdirSync(join(dir, 'tasks'), { recursive: true });
+  return dir;
 }
 
 afterEach(() => {
@@ -70,6 +77,32 @@ describe('task service', () => {
     expect(status.flow_log).toHaveLength(2);
     expect(status.progress_log).toHaveLength(1);
     expect(status.subtasks).toEqual([]);
+  });
+
+  it('creates tasks from the database-backed template catalog even when the legacy templates directory is empty', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+    templates.seedFromDir(templatesDir);
+
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-DB-TEMPLATE',
+    });
+
+    const task = service.createTask({
+      title: '数据库模板创建',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'high',
+    });
+
+    expect(task).toMatchObject({
+      id: 'OC-DB-TEMPLATE',
+      type: 'coding',
+      current_stage: 'discuss',
+    });
   });
 
   it('rejects advance before gate passes and advances once archon review is recorded', () => {

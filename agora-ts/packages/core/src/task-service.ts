@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   CraftsmanCallbackRequestDto,
@@ -20,6 +18,7 @@ import {
   TaskContextBindingRepository,
   TaskConversationRepository,
   TaskRepository,
+  TemplateRepository,
   TodoRepository,
   type AgoraDatabase,
   type StoredTask,
@@ -137,6 +136,7 @@ export class TaskService {
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
   private readonly isCraftsmanSessionAlive: ((sessionId: string) => boolean) | undefined;
+  private readonly templateRepository: TemplateRepository;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
@@ -156,6 +156,7 @@ export class TaskService {
     this.todoRepository = new TodoRepository(db);
     this.archiveJobRepository = new ArchiveJobRepository(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
+    this.templateRepository = new TemplateRepository(db);
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
@@ -165,6 +166,7 @@ export class TaskService {
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
+    this.templateRepository.seedFromDir(this.templatesDir);
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
     this.taskContextBindingService = options.taskContextBindingService;
@@ -976,11 +978,11 @@ export class TaskService {
   }
 
   private loadTemplate(taskType: string): TaskTemplate {
-    const path = resolve(this.templatesDir, 'tasks', `${taskType}.json`);
-    if (!existsSync(path)) {
-      throw new NotFoundError(`Template not found: ${path}`);
+    const stored = this.templateRepository.getTemplate(taskType);
+    if (!stored) {
+      throw new NotFoundError(`Template not found: ${taskType}`);
     }
-    return JSON.parse(readFileSync(path, 'utf8')) as TaskTemplate;
+    return stored.template as TaskTemplate;
   }
 
   private getTaskOrThrow(taskId: string): StoredTask {

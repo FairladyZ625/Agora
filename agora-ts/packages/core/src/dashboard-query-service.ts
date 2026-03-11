@@ -1,5 +1,3 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { resolve, basename } from 'node:path';
 import type {
   AgentsStatusDto,
   ArchiveJobDto,
@@ -11,7 +9,7 @@ import type {
   TemplateSummaryDto,
   UpdateTodoRequestDto,
 } from '@agora-ts/contracts';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TemplateRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
 import type { LiveSessionStore } from './live-session-store.js';
@@ -41,7 +39,7 @@ export class DashboardQueryService {
   private readonly archives: ArchiveJobRepository;
   private readonly todos: TodoRepositoryType;
   private readonly executions: CraftsmanExecutionRepository;
-  private readonly templatesDir: string;
+  private readonly templateRepository: TemplateRepository;
   private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
   private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
   private readonly liveSessions: LiveSessionStore | undefined;
@@ -61,7 +59,8 @@ export class DashboardQueryService {
     this.archives = new ArchiveJobRepository(db);
     this.todos = new TodoRepository(db);
     this.executions = new CraftsmanExecutionRepository(db);
-    this.templatesDir = options.templatesDir;
+    this.templateRepository = new TemplateRepository(db);
+    this.templateRepository.seedFromDir(options.templatesDir);
     this.archiveJobNotifier = options.archiveJobNotifier;
     this.archiveJobReceiptIngestor = options.archiveJobReceiptIngestor;
     this.liveSessions = options.liveSessions;
@@ -501,30 +500,22 @@ export class DashboardQueryService {
   }
 
   listTemplates(): TemplateSummaryDto[] {
-    const dir = resolve(this.templatesDir, 'tasks');
-    return readdirSync(dir)
-      .filter((name) => name.endsWith('.json'))
-      .sort()
-      .map((name) => resolve(dir, name))
-      .map((path) => {
-        const payload = JSON.parse(readFileSync(path, 'utf8')) as TemplateDetailDto;
-        return {
-          id: basename(path, '.json'),
-          name: payload.name,
-          type: payload.type,
-          description: payload.description ?? '',
-          governance: payload.governance ?? null,
-          stage_count: payload.stages?.length ?? 0,
-        };
-      });
+    return this.templateRepository.listTemplates().map(({ id, template }) => ({
+      id,
+      name: template.name,
+      type: template.type,
+      description: template.description ?? '',
+      governance: template.governance ?? null,
+      stage_count: template.stages?.length ?? 0,
+    }));
   }
 
   getTemplate(templateId: string): TemplateDetailDto {
-    const path = resolve(this.templatesDir, 'tasks', `${templateId}.json`);
-    if (!existsSync(path)) {
+    const stored = this.templateRepository.getTemplate(templateId);
+    if (!stored) {
       throw new NotFoundError(`Template ${templateId} not found`);
     }
-    return JSON.parse(readFileSync(path, 'utf8')) as TemplateDetailDto;
+    return stored.template;
   }
 }
 

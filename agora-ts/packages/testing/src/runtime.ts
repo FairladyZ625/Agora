@@ -134,7 +134,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({ receiptDir: archiveReceiptDir }),
   });
   const inboxService = new InboxService(db, taskService);
-  const templateAuthoringService = new TemplateAuthoringService({ templatesDir });
+  const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
 
   return {
     dir,

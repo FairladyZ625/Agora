@@ -1,5 +1,3 @@
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import type {
   DuplicateTemplateRequestDto,
   TemplateDetailDto,
@@ -12,14 +10,21 @@ import {
   templateDetailSchema,
   validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
+import { TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
+  db?: AgoraDatabase;
 }
 
 export class TemplateAuthoringService {
-  constructor(private readonly options: TemplateAuthoringServiceOptions) {}
+  private readonly templateRepository: TemplateRepository | null;
+
+  constructor(private readonly options: TemplateAuthoringServiceOptions) {
+    this.templateRepository = options.db ? new TemplateRepository(options.db) : null;
+    this.templateRepository?.seedFromDir(options.templatesDir);
+  }
 
   validateTemplate(template: TemplateDetailDto): TemplateValidationResponseDto {
     const parsed = templateDetailSchema.safeParse(template);
@@ -97,11 +102,11 @@ export class TemplateAuthoringService {
   }
 
   getTemplate(templateId: string): TemplateDetailDto {
-    const path = this.resolveTemplatePath(templateId);
-    if (!existsSync(path)) {
-      throw new NotFoundError(`Template ${templateId} not found`);
+    const stored = this.templateRepository?.getTemplate(templateId);
+    if (stored) {
+      return stored.template;
     }
-    return JSON.parse(readFileSync(path, 'utf8')) as TemplateDetailDto;
+    throw new NotFoundError(`Template ${templateId} not found`);
   }
 
   private validateStages(stages: TemplateStageDto[]): string[] {
@@ -125,19 +130,9 @@ export class TemplateAuthoringService {
   }
 
   private writeTemplate(templateId: string, template: TemplateDetailDto) {
-    const targetPath = this.resolveTemplatePath(templateId);
-    const tempPath = `${targetPath}.tmp`;
-    try {
-      writeFileSync(tempPath, `${JSON.stringify(template, null, 2)}\n`);
-      renameSync(tempPath, targetPath);
-    } finally {
-      if (existsSync(tempPath)) {
-        unlinkSync(tempPath);
-      }
+    if (!this.templateRepository) {
+      throw new Error('TemplateAuthoringService requires a database-backed template repository');
     }
-  }
-
-  private resolveTemplatePath(templateId: string) {
-    return resolve(this.options.templatesDir, 'tasks', `${templateId}.json`);
+    this.templateRepository.saveTemplate(templateId, template, 'user');
   }
 }

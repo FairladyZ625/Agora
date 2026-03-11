@@ -1,7 +1,8 @@
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createAgoraDatabase, runMigrations, TemplateRepository } from '@agora-ts/db';
 import { TemplateAuthoringService } from './template-authoring-service.js';
 
 const tempPaths: string[] = [];
@@ -15,6 +16,12 @@ function makeTemplatesDir() {
   return dir;
 }
 
+function makeDbPath() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-template-authoring-db-'));
+  tempPaths.push(dir);
+  return join(dir, 'tasks.db');
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -26,8 +33,10 @@ afterEach(() => {
 
 describe('template authoring service', () => {
   it('validates, saves, updates workflow, and duplicates templates', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ templatesDir });
+    const service = new TemplateAuthoringService({ db, templatesDir });
 
     const invalid = service.validateTemplate({
       name: '非法模板',
@@ -73,22 +82,23 @@ describe('template authoring service', () => {
     expect(duplicated.id).toBe('brainwave_copy');
     expect(duplicated.template.name).toBe('脑暴模板副本');
 
-    const written = JSON.parse(readFileSync(join(templatesDir, 'tasks', 'brainwave_copy.json'), 'utf8')) as {
-      name: string;
-      stages: Array<{ id: string }>;
-    };
-    expect(written).toMatchObject({
+    expect(service.getTemplate('brainwave_copy')).toMatchObject({
       name: '脑暴模板副本',
       stages: [{ id: 'brainstorm' }, { id: 'review' }],
     });
   });
 
-  it('writes templates atomically to the tasks directory', () => {
+  it('updates existing templates inside the sqlite-backed template catalog', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ templatesDir });
-    const targetPath = join(templatesDir, 'tasks', 'atomic.json');
-
-    writeFileSync(targetPath, '{"name":"old","type":"atomic","stages":[{"id":"old"}]}');
+    const repository = new TemplateRepository(db);
+    repository.saveTemplate('atomic', {
+      name: 'old',
+      type: 'atomic',
+      stages: [{ id: 'old', gate: { type: 'command' } }],
+    }, 'user');
+    const service = new TemplateAuthoringService({ db, templatesDir });
 
     service.saveTemplate('atomic', {
       name: 'atomic',
@@ -96,12 +106,41 @@ describe('template authoring service', () => {
       stages: [{ id: 'new', gate: { type: 'command' } }],
     });
 
-    expect(readFileSync(targetPath, 'utf8')).toContain('"new"');
+    expect(repository.getTemplate('atomic')).toMatchObject({
+      template: {
+        stages: [{ id: 'new' }],
+      },
+    });
+  });
+
+  it('persists authoring writes into the sqlite-backed template catalog', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const repository = new TemplateRepository(db);
+    repository.seedFromDir(templatesDir);
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    service.saveTemplate('db_persisted', {
+      name: '数据库持久化模板',
+      type: 'db_persisted',
+      governance: 'lean',
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    });
+
+    expect(repository.getTemplate('db_persisted')).toMatchObject({
+      id: 'db_persisted',
+      template: {
+        name: '数据库持久化模板',
+      },
+    });
   });
 
   it('rejects invalid governance, team role, and workflow mode values', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ templatesDir });
+    const service = new TemplateAuthoringService({ db, templatesDir });
 
     expect(service.validateTemplate({
       name: '非法治理模板',
@@ -129,8 +168,10 @@ describe('template authoring service', () => {
   });
 
   it('accepts template stages with reject_target backedges to earlier stages', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ templatesDir });
+    const service = new TemplateAuthoringService({ db, templatesDir });
 
     const result = service.validateTemplate({
       name: '带回边模板',
@@ -147,8 +188,10 @@ describe('template authoring service', () => {
   });
 
   it('rejects invalid gate semantics and duplicate stage ids during authoring validation', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ templatesDir });
+    const service = new TemplateAuthoringService({ db, templatesDir });
 
     const invalidApproval = service.validateTemplate({
       name: '缺 approver 的审批模板',

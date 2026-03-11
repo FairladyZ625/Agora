@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, listAppliedMigrations, runMigrations } from './database.js';
 import { ArchiveJobRepository } from './repositories/archive-job.repository.js';
 import { TaskRepository } from './repositories/task.repository.js';
+import { TemplateRepository } from './repositories/template.repository.js';
 import { TodoRepository } from './repositories/todo.repository.js';
 
 const tempPaths: string[] = [];
@@ -39,6 +40,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '006_human_accounts.sql',
       '007_task_conversation.sql',
       '008_task_conversation_read_cursors.sql',
+      '009_templates.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -56,6 +58,37 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_conversation_entries'")
       .get() as { name: string } | undefined;
     expect(conversationTable?.name).toBe('task_conversation_entries');
+    const templatesTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'templates'")
+      .get() as { name: string } | undefined;
+    expect(templatesTable?.name).toBe('templates');
+  });
+
+  it('seeds templates from disk into the single sqlite database and persists later edits there', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+
+    const seeded = templates.seedFromDir(resolve(process.cwd(), 'templates'));
+
+    expect(seeded.inserted).toBeGreaterThan(0);
+    expect(templates.listTemplates().some((template) => template.id === 'coding')).toBe(true);
+    expect(templates.getTemplate('coding')?.template.name).toBeTruthy();
+
+    templates.saveTemplate('db_only', {
+      name: '数据库模板',
+      type: 'db_only',
+      governance: 'lean',
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    }, 'user');
+
+    expect(templates.getTemplate('db_only')).toMatchObject({
+      id: 'db_only',
+      source: 'user',
+      template: {
+        name: '数据库模板',
+      },
+    });
   });
 
   it('stores and reads task JSON fields via the task repository', () => {

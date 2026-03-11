@@ -180,7 +180,10 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       presenceSource: deps.presenceSource,
       tmuxRuntimeService: deps.tmuxRuntimeService,
     }),
-    createTemplateAuthoringService: (context) => new TemplateAuthoringService({ templatesDir: context.templatesDir }),
+    createTemplateAuthoringService: (context) => new TemplateAuthoringService({
+      db: context.db,
+      templatesDir: context.templatesDir,
+    }),
     createInboxService: (context, deps) => new InboxService(context.db, deps.taskService),
     createIMMessagingPort: (context) => {
       const { im } = context.config;
