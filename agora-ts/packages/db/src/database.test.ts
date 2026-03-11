@@ -30,7 +30,16 @@ describe('agora-ts sqlite bootstrap', () => {
 
     runMigrations(db);
 
-    expect(listAppliedMigrations(db)).toEqual(['001_initial.sql', '002_inbox.sql', '003_craftsman_executions.sql', '004_context_bindings.sql', '005_runtime_bindings.sql', '006_human_accounts.sql', '007_task_conversation.sql']);
+    expect(listAppliedMigrations(db)).toEqual([
+      '001_initial.sql',
+      '002_inbox.sql',
+      '003_craftsman_executions.sql',
+      '004_context_bindings.sql',
+      '005_runtime_bindings.sql',
+      '006_human_accounts.sql',
+      '007_task_conversation.sql',
+      '008_task_conversation_read_cursors.sql',
+    ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
       .get() as { name: string } | undefined;

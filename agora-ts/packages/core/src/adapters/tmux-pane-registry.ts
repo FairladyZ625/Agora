@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 export type TmuxContinuityBackend = 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
 export type TmuxResumeCapability = 'native_resume' | 'resume_last' | 'none';
-export type TmuxIdentitySource = 'registry_default' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
+export type TmuxIdentitySource = 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
 export type TmuxRecoveryMode = 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last';
 
 export interface TmuxPaneState {

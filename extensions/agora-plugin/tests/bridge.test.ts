@@ -148,7 +148,7 @@ describe("AgoraBridge", () => {
     await bridge.ingestRuntimeIdentity({
       agent: "gemini",
       session_reference: "gemini-session-123",
-      identity_source: "hook_event",
+      identity_source: "plugin_event",
       identity_path: "/tmp/gemini/session.json",
       session_observed_at: "2026-03-08T08:00:00.000Z",
       workspace_root: "/Users/lizeyu/Projects/Agora",
@@ -161,7 +161,7 @@ describe("AgoraBridge", () => {
         body: JSON.stringify({
           agent: "gemini",
           session_reference: "gemini-session-123",
-          identity_source: "hook_event",
+          identity_source: "plugin_event",
           identity_path: "/tmp/gemini/session.json",
           session_observed_at: "2026-03-08T08:00:00.000Z",
           workspace_root: "/Users/lizeyu/Projects/Agora",
@@ -169,6 +169,52 @@ describe("AgoraBridge", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer sec-token",
           "Content-Type": "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("posts cleanup requests with an empty body when no task id is provided", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cleaned: 0 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.cleanup();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8420/api/tasks/cleanup",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    );
+  });
+
+  it("sends human identity headers for archon review actions", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-001" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.archonApprove("OC-001", "reviewer-1", "ok");
+    await bridge.archonReject("OC-001", "reviewer-2", "nope");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8420/api/tasks/OC-001/archon-approve",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-agora-human-provider": "discord",
+          "x-agora-human-external-id": "reviewer-1",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8420/api/tasks/OC-001/archon-reject",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-agora-human-provider": "discord",
+          "x-agora-human-external-id": "reviewer-2",
         }),
       }),
     );

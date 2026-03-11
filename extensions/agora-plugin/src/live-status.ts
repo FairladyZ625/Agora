@@ -14,7 +14,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
   const pushRuntimeIdentity = (payload: {
     agent: string;
     sessionReference?: string | null;
-    identitySource: "hook_event";
+    identitySource: "plugin_event";
     identityPath?: string | null;
     sessionObservedAt: string;
     workspaceRoot?: string | null;
@@ -294,7 +294,7 @@ function extractRuntimeIdentity(
   return {
     agent: agentId,
     sessionReference: input.sessionId ?? null,
-    identitySource: "hook_event" as const,
+    identitySource: "plugin_event" as const,
     identityPath: input.identityPath ?? null,
     sessionObservedAt: observedAt,
     workspaceRoot: input.workspaceRoot ?? null,

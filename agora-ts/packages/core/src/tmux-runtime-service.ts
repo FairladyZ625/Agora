@@ -53,6 +53,8 @@ export interface TmuxRuntimeServiceOptions extends TmuxPaneRegistryOptions {
   geminiSessionDiscovery?: Pick<GeminiSessionDiscovery, 'resolveIdentity'>;
 }
 
+type IdentitySnapshot = Pick<TmuxDoctorPane, 'sessionReference' | 'identitySource' | 'identityPath' | 'sessionObservedAt'>;
+
 export class TmuxRuntimeService {
   private readonly registry: TmuxPaneRegistry;
   private readonly adapters: Record<string, ProcessCraftsmanAdapter>;
@@ -84,12 +86,22 @@ export class TmuxRuntimeService {
 
   recordIdentity(agent: string, identity: TmuxRuntimeIdentityUpdate) {
     this.registry.ensureSession();
+    const currentState = this.registry.getPaneState(agent);
+    const nextIdentity = choosePreferredIdentity(
+      toIdentitySnapshot(currentState),
+      {
+        sessionReference: identity.sessionReference ?? null,
+        identitySource: identity.identitySource,
+        identityPath: identity.identityPath ?? null,
+        sessionObservedAt: identity.sessionObservedAt ?? null,
+      },
+    );
     return this.registry.updatePaneState(agent, {
-      sessionReference: identity.sessionReference ?? null,
-      identitySource: identity.identitySource,
-      identityPath: identity.identityPath ?? null,
-      sessionObservedAt: identity.sessionObservedAt ?? null,
-      workspaceRoot: identity.workspaceRoot ?? null,
+      sessionReference: nextIdentity.sessionReference,
+      identitySource: nextIdentity.identitySource,
+      identityPath: nextIdentity.identityPath ?? null,
+      sessionObservedAt: nextIdentity.sessionObservedAt ?? null,
+      workspaceRoot: identity.workspaceRoot ?? currentState.workspaceRoot ?? null,
     });
   }
 
@@ -117,15 +129,23 @@ export class TmuxRuntimeService {
     const nextWorkspaceRoot = workspaceRoot ?? currentState.workspaceRoot ?? null;
     this.persistWorkspaceRoot(agent, nextWorkspaceRoot);
     const discovered = agent === 'gemini' && !sessionReference ? this.resolveGeminiIdentity(nextWorkspaceRoot) : null;
-    const nextReference = sessionReference ?? discovered?.sessionReference ?? currentState.sessionReference ?? null;
+    const resolvedIdentity = sessionReference
+      ? ({
+          sessionReference,
+          identitySource: currentState.sessionReference === sessionReference ? currentState.identitySource : 'manual',
+          identityPath: currentState.sessionReference === sessionReference ? currentState.identityPath ?? null : null,
+          sessionObservedAt: currentState.sessionReference === sessionReference ? currentState.sessionObservedAt ?? null : null,
+        } satisfies IdentitySnapshot)
+      : choosePreferredIdentity(toIdentitySnapshot(currentState), discovered);
+    const nextReference = resolvedIdentity.sessionReference ?? null;
     const resume = adapter.createInteractiveResumeSpec(nextReference);
     const command = renderShellCommand(resume.spec.command, resume.spec.args);
     this.registry.sendKeys(target, command);
     this.registry.updatePaneState(agent, {
       sessionReference: nextReference,
-      identitySource: discovered?.identitySource ?? currentState.identitySource,
-      identityPath: discovered?.identityPath ?? currentState.identityPath ?? null,
-      sessionObservedAt: discovered?.sessionObservedAt ?? currentState.sessionObservedAt ?? null,
+      identitySource: resolvedIdentity.identitySource,
+      identityPath: resolvedIdentity.identityPath ?? null,
+      sessionObservedAt: resolvedIdentity.sessionObservedAt ?? null,
       lastRecoveryMode: resume.recoveryMode,
     });
     return {
@@ -175,11 +195,12 @@ export class TmuxRuntimeService {
     if (!discovered) {
       return;
     }
+    const nextIdentity = choosePreferredIdentity(toIdentitySnapshot(currentState), discovered);
     this.registry.updatePaneState('gemini', {
-      sessionReference: discovered.sessionReference,
-      identitySource: discovered.identitySource,
-      identityPath: discovered.identityPath,
-      sessionObservedAt: discovered.sessionObservedAt,
+      sessionReference: nextIdentity.sessionReference,
+      identitySource: nextIdentity.identitySource,
+      identityPath: nextIdentity.identityPath ?? null,
+      sessionObservedAt: nextIdentity.sessionObservedAt ?? null,
     });
   }
 
@@ -227,4 +248,70 @@ function toDoctorPane(agent: string, pane: TmuxPaneInfo | null): TmuxDoctorPane 
     lastRecoveryMode: pane?.lastRecoveryMode ?? null,
     transportSessionId: pane?.transportSessionId ?? null,
   };
+}
+
+function toIdentitySnapshot(input: IdentitySnapshot): IdentitySnapshot {
+  return {
+    sessionReference: input.sessionReference ?? null,
+    identitySource: input.identitySource,
+    identityPath: input.identityPath ?? null,
+    sessionObservedAt: input.sessionObservedAt ?? null,
+  };
+}
+
+function choosePreferredIdentity(
+  current: IdentitySnapshot,
+  candidate: GeminiSessionIdentity | IdentitySnapshot | null,
+): IdentitySnapshot {
+  if (!candidate || !candidate.sessionReference) {
+    return current;
+  }
+  if (!current.sessionReference) {
+    return toIdentitySnapshot(candidate);
+  }
+  const currentPriority = identitySourcePriority(current.identitySource);
+  const candidatePriority = identitySourcePriority(candidate.identitySource);
+  if (candidatePriority > currentPriority) {
+    return toIdentitySnapshot(candidate);
+  }
+  if (candidatePriority < currentPriority) {
+    return current;
+  }
+  if (isMoreRecent(candidate.sessionObservedAt ?? null, current.sessionObservedAt ?? null)) {
+    return toIdentitySnapshot(candidate);
+  }
+  return current;
+}
+
+function identitySourcePriority(source: TmuxIdentitySource) {
+  switch (source) {
+    case 'manual':
+      return 90;
+    case 'runtime_gateway':
+      return 80;
+    case 'hook_event':
+      return 70;
+    case 'plugin_event':
+      return 60;
+    case 'session_file':
+    case 'chat_file':
+      return 40;
+    case 'transport_session':
+      return 30;
+    case 'latest_fallback':
+      return 20;
+    case 'registry_default':
+    default:
+      return 0;
+  }
+}
+
+function isMoreRecent(candidate: string | null, current: string | null) {
+  if (!candidate) {
+    return false;
+  }
+  if (!current) {
+    return true;
+  }
+  return candidate > current;
 }

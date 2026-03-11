@@ -77,7 +77,7 @@ export const tmuxRuntimePaneSchema = z.object({
   continuity_backend: z.enum(['claude_session_id', 'codex_session_file', 'gemini_session_id', 'unknown']),
   resume_capability: z.enum(['native_resume', 'resume_last', 'none']),
   session_reference: z.string().nullable(),
-  identity_source: z.enum(['registry_default', 'hook_event', 'session_file', 'chat_file', 'latest_fallback', 'manual', 'transport_session']),
+  identity_source: z.enum(['registry_default', 'runtime_gateway', 'plugin_event', 'hook_event', 'session_file', 'chat_file', 'latest_fallback', 'manual', 'transport_session']),
   identity_path: z.string().nullable().optional(),
   session_observed_at: z.string().nullable().optional(),
   last_recovery_mode: z.enum(['fresh_start', 'resume_exact', 'resume_latest', 'resume_last']).nullable(),

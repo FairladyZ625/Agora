@@ -243,7 +243,7 @@ describe("registerLiveStatusBridge", () => {
       expect.objectContaining({
         agent: "gemini",
         session_reference: "gemini-session-123",
-        identity_source: "hook_event",
+        identity_source: "plugin_event",
         identity_path: "/tmp/gemini/session.json",
         workspace_root: "/Users/lizeyu/Projects/Agora",
       }),
@@ -252,7 +252,7 @@ describe("registerLiveStatusBridge", () => {
       expect.objectContaining({
         agent: "gemini",
         session_reference: "gemini-session-123",
-        identity_source: "hook_event",
+        identity_source: "plugin_event",
         workspace_root: "/Users/lizeyu/Projects/Agora",
       }),
     );
@@ -411,7 +411,7 @@ describe("registerLiveStatusBridge", () => {
       expect.objectContaining({
         agent: "codex",
         session_reference: "codex-session-123",
-        identity_source: "hook_event",
+        identity_source: "plugin_event",
         identity_path: "/tmp/codex/session.json",
         workspace_root: "/Users/lizeyu/Projects/Agora",
       }),
@@ -582,5 +582,45 @@ describe("registerLiveStatusBridge", () => {
     await Promise.resolve();
 
     expect(api.logger.error).toHaveBeenCalledWith("raw failure");
+  });
+
+  it("passes numeric provider message ids through conversation ingest and skips identity when no runtime fields exist", async () => {
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestTaskConversationEntry: vi.fn().mockResolvedValue({ id: "entry-3" }),
+      ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
+    };
+    const { api, hooks, getService, emitAgentEvent } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const messageReceived = hooks.get("message_received");
+    await messageReceived?.(
+      {
+        content: "hello",
+        metadata: { id: 42 },
+      },
+      {
+        channelId: "discord",
+        conversationId: "alerts",
+      },
+    );
+
+    await getService()?.start();
+    emitAgentEvent({
+      runId: "run-tool-no-identity",
+      seq: 3,
+      stream: "tool",
+      ts: Date.parse("2026-03-08T07:08:00.000Z"),
+      sessionKey: "agent:ops:discord:channel:alerts",
+      data: { tool: "exec", adapter: "codex" },
+    });
+
+    expect(bridge.ingestTaskConversationEntry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider_message_ref: "42",
+      }),
+    );
+    expect(bridge.ingestRuntimeIdentity).not.toHaveBeenCalled();
   });
 });

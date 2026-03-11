@@ -249,6 +249,63 @@ describe('tmux runtime service', () => {
       workspaceRoot: '/tmp/codex',
     });
   });
+
+  it('does not let weaker plugin or discovery identity override runtime gateway identity', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|bash|1', '%1|claude|bash|0', '%2|gemini|bash|0'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|claude', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const resolveIdentity = vi.fn(
+      (): GeminiSessionIdentity => ({
+        sessionReference: 'gemini-chat-file-999',
+        identitySource: 'chat_file',
+        identityPath: '/tmp/gemini/chats/session-z.json',
+        sessionObservedAt: '2026-03-08T12:00:00Z',
+      }),
+    );
+    const service = new TmuxRuntimeService({
+      exec,
+      registryDir: createRegistryDir(),
+      geminiSessionDiscovery: { resolveIdentity },
+      adapters: {
+        codex: new CodexCraftsmanAdapter(),
+        claude: new ClaudeCraftsmanAdapter(),
+        gemini: new GeminiCraftsmanAdapter(),
+      },
+    });
+
+    service.up();
+    service.recordIdentity('gemini', {
+      sessionReference: 'gemini-runtime-123',
+      identitySource: 'runtime_gateway',
+      identityPath: '/tmp/runtime/session.json',
+      sessionObservedAt: '2026-03-08T13:00:00Z',
+      workspaceRoot: '/tmp/agora-workspace',
+    });
+    service.recordIdentity('gemini', {
+      sessionReference: 'gemini-plugin-456',
+      identitySource: 'plugin_event',
+      sessionObservedAt: '2026-03-08T14:00:00Z',
+    });
+
+    service.status();
+    const resumed = service.resume('gemini', null, '/tmp/agora-workspace');
+
+    expect(resumed.recoveryMode).toBe('resume_exact');
+    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%2', '-l', '--', 'gemini --resume gemini-runtime-123 --approval-mode yolo']);
+    expect(service.status().panes.find((pane) => pane.title === 'gemini')).toMatchObject({
+      sessionReference: 'gemini-runtime-123',
+      identitySource: 'runtime_gateway',
+      identityPath: '/tmp/runtime/session.json',
+      lastRecoveryMode: 'resume_exact',
+    });
+  });
 });
 
 function createRegistryDir() {

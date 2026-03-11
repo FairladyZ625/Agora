@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultAgoraDbPath } from '@agora-ts/config';
+import type * as AgoraConfigModule from '@agora-ts/config';
 import { runInitCommand } from './init-command.js';
 
 const promptState = {
@@ -20,7 +21,7 @@ vi.mock('@inquirer/prompts', () => ({
 }));
 
 vi.mock('@agora-ts/config', async () => {
-  const actual = await vi.importActual<typeof import('@agora-ts/config')>('@agora-ts/config');
+  const actual = await vi.importActual<typeof AgoraConfigModule>('@agora-ts/config');
   return {
     ...actual,
     loadGlobalConfig: vi.fn(() => configState.existing),

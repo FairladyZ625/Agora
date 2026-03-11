@@ -3,6 +3,7 @@ import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
   craftsmanExecutionSchema,
+  craftsmanRuntimeIdentityRequestSchema,
 } from './craftsman.js';
 
 describe('craftsman contracts', () => {
@@ -84,5 +85,25 @@ describe('craftsman contracts', () => {
       created_at: '2026-03-08T10:00:00.000Z',
       updated_at: '2026-03-08T10:00:00.000Z',
     })).toThrow();
+  });
+
+  it('accepts runtime identity provenance values for gateway and plugin signals', () => {
+    expect(
+      craftsmanRuntimeIdentityRequestSchema.parse({
+        agent: 'gemini',
+        session_reference: 'gemini-runtime-123',
+        identity_source: 'runtime_gateway',
+        identity_path: '/tmp/runtime/session.json',
+        session_observed_at: '2026-03-08T13:00:00Z',
+      }).identity_source,
+    ).toBe('runtime_gateway');
+
+    expect(
+      craftsmanRuntimeIdentityRequestSchema.parse({
+        agent: 'gemini',
+        session_reference: 'gemini-plugin-456',
+        identity_source: 'plugin_event',
+      }).identity_source,
+    ).toBe('plugin_event');
   });
 });

@@ -75,6 +75,8 @@ export type CraftsmanCallbackRequestDto = z.infer<typeof craftsmanCallbackReques
 
 export const craftsmanRuntimeIdentitySourceSchema = z.enum([
   'registry_default',
+  'runtime_gateway',
+  'plugin_event',
   'hook_event',
   'session_file',
   'chat_file',
