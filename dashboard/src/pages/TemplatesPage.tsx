@@ -33,6 +33,16 @@ function buildTemplateEdges(template: TemplateDetail) {
   return edges;
 }
 
+function normalizeStageForGateType(stage: TemplateDetail['stages'][number], gateType: string | null) {
+  return {
+    ...stage,
+    gateType,
+    gateApprover: gateType === 'approval' ? stage.gateApprover ?? null : null,
+    gateRequired: gateType === 'quorum' ? stage.gateRequired ?? null : null,
+    gateTimeoutSec: gateType === 'auto_timeout' ? stage.gateTimeoutSec ?? null : null,
+  };
+}
+
 const STAGE_MODE_OPTIONS = ['discuss', 'execute'] as const;
 const STAGE_GATE_OPTIONS = ['none', 'command', 'approval', 'archon_review', 'all_subtasks_done', 'auto_timeout', 'quorum'] as const;
 
@@ -420,7 +430,10 @@ export function TemplatesPage() {
                                         item.id === stage.id
                                           ? {
                                               ...item,
-                                              gateType: event.target.value === 'none' ? null : event.target.value,
+                                              ...normalizeStageForGateType(
+                                                item,
+                                                event.target.value === 'none' ? null : event.target.value,
+                                              ),
                                             }
                                           : item
                                       )),
@@ -464,6 +477,92 @@ export function TemplatesPage() {
                             </select>
                           </label>
                         </div>
+                        {stage.gateType === 'approval' ? (
+                          <div className="mt-3">
+                            <label className="space-y-2">
+                              <span className="field-label">{copy.stageApproverLabel}</span>
+                              <input
+                                aria-label={`阶段 ${stage.id} ${copy.stageApproverLabel}`}
+                                className="input-shell"
+                                type="text"
+                                value={stage.gateApprover ?? ''}
+                                onChange={(event) => setDraft((current) => (
+                                  current
+                                    ? {
+                                        ...current,
+                                        stages: current.stages.map((item) => (
+                                          item.id === stage.id
+                                            ? {
+                                                ...item,
+                                                gateApprover: event.target.value.trim().length > 0 ? event.target.value : null,
+                                              }
+                                            : item
+                                        )),
+                                      }
+                                    : current
+                                ))}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                        {stage.gateType === 'quorum' ? (
+                          <div className="mt-3">
+                            <label className="space-y-2">
+                              <span className="field-label">{copy.stageRequiredLabel}</span>
+                              <input
+                                aria-label={`阶段 ${stage.id} ${copy.stageRequiredLabel}`}
+                                className="input-shell"
+                                type="number"
+                                min={1}
+                                value={stage.gateRequired ?? ''}
+                                onChange={(event) => setDraft((current) => (
+                                  current
+                                    ? {
+                                        ...current,
+                                        stages: current.stages.map((item) => (
+                                          item.id === stage.id
+                                            ? {
+                                                ...item,
+                                                gateRequired: event.target.value.length > 0 ? Number(event.target.value) : null,
+                                              }
+                                            : item
+                                        )),
+                                      }
+                                    : current
+                                ))}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                        {stage.gateType === 'auto_timeout' ? (
+                          <div className="mt-3">
+                            <label className="space-y-2">
+                              <span className="field-label">{copy.stageTimeoutLabel}</span>
+                              <input
+                                aria-label={`阶段 ${stage.id} ${copy.stageTimeoutLabel}`}
+                                className="input-shell"
+                                type="number"
+                                min={1}
+                                value={stage.gateTimeoutSec ?? ''}
+                                onChange={(event) => setDraft((current) => (
+                                  current
+                                    ? {
+                                        ...current,
+                                        stages: current.stages.map((item) => (
+                                          item.id === stage.id
+                                            ? {
+                                                ...item,
+                                                gateTimeoutSec: event.target.value.length > 0 ? Number(event.target.value) : null,
+                                              }
+                                            : item
+                                        )),
+                                      }
+                                    : current
+                                ))}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
                         <div className="type-text-xs mt-2 flex flex-wrap items-center gap-3">
                           <span>{stage.id}</span>
                           <span>{stage.mode}</span>

@@ -53,7 +53,7 @@ export function CreateTaskPage() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [type, setType] = useState<(typeof createTaskCopy.taskTypes)[number]['value']>('coding');
+  const [type, setType] = useState<string>(selectedTemplateId ?? 'coding');
   const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal');
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -66,7 +66,14 @@ export function CreateTaskPage() {
   }, [fetchStatus, fetchTemplates]);
 
   useEffect(() => {
+    if (!templates.length) {
+      return;
+    }
     const matchingTemplate = templates.find((template) => template.id === type || template.type === type);
+    if (!matchingTemplate) {
+      setType(templates[0].id);
+      return;
+    }
     if (matchingTemplate && selectedTemplateId !== matchingTemplate.id) {
       void selectTemplate(matchingTemplate.id);
     }
@@ -87,6 +94,12 @@ export function CreateTaskPage() {
   }, [agents, assignments, selectedTemplate]);
 
   const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
+  const templateChoices = templates.length > 0
+    ? templates.map((template) => ({
+        value: template.id,
+        label: template.name,
+      }))
+    : createTaskCopy.taskTypes;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -182,7 +195,7 @@ export function CreateTaskPage() {
             <div>
               <span className="field-label">{createTaskCopy.typeLabel}</span>
               <div className="mt-3 flex flex-wrap gap-2">
-                {createTaskCopy.taskTypes.map((item) => (
+                {templateChoices.map((item) => (
                   <button
                     key={item.value}
                     type="button"

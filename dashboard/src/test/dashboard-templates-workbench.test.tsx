@@ -42,7 +42,7 @@ const templateStoreState = {
     stages: [
       { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
       { id: 'develop', name: '开发', mode: 'execute', gateType: null },
-      { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', rejectTarget: 'develop' },
+      { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
     ],
     defaultTeamRoles: ['architect'],
     defaultTeam: [{ role: 'architect', modelPreference: null, suggested: ['opus'] }],
@@ -190,7 +190,7 @@ describe('templates workbench layout', () => {
       stages: [
         { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
         { id: 'develop', name: '实施', mode: 'execute', gateType: null },
-        { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', rejectTarget: 'develop' },
+        { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
       ],
     }));
   });
@@ -211,12 +211,35 @@ describe('templates workbench layout', () => {
 
     expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
       stages: [
-        { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
-        { id: 'develop', name: '开发', mode: 'discuss', gateType: null },
-        { id: 'review', name: '审查', mode: 'discuss', gateType: 'archon_review', rejectTarget: 'discuss' },
+        expect.objectContaining({ id: 'discuss', name: '讨论', mode: 'discuss', gateType: null }),
+        expect.objectContaining({ id: 'develop', name: '开发', mode: 'discuss', gateType: null }),
+        expect.objectContaining({ id: 'review', name: '审查', mode: 'discuss', gateType: 'archon_review', gateApprover: null, rejectTarget: 'discuss' }),
       ],
     }));
     expect(screen.getByText('review -> discuss')).toBeInTheDocument();
+  });
+
+  it('edits gate parameters before saving the selected template', async () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('阶段 review 审批人'), {
+      target: { value: 'archon' },
+    });
+    fireEvent.change(screen.getByLabelText('阶段 review Gate'), {
+      target: { value: 'quorum' },
+    });
+    fireEvent.change(screen.getByLabelText('阶段 review 通过票数'), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      stages: [
+        expect.objectContaining({ id: 'discuss', name: '讨论', mode: 'discuss', gateType: null }),
+        expect.objectContaining({ id: 'develop', name: '开发', mode: 'execute', gateType: null }),
+        expect.objectContaining({ id: 'review', name: '审查', mode: 'discuss', gateType: 'quorum', gateApprover: null, gateRequired: 3, rejectTarget: 'develop' }),
+      ],
+    }));
   });
 
   it('validates the current workflow draft and duplicates the template with a new id', async () => {
@@ -233,7 +256,7 @@ describe('templates workbench layout', () => {
       stages: [
         { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
         { id: 'develop', name: '开发', mode: 'execute', gateType: null },
-        { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', rejectTarget: 'develop' },
+        { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
       ],
     }));
     expect(duplicateSelectedTemplate).toHaveBeenCalledWith({

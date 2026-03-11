@@ -202,6 +202,9 @@ export interface TemplateStage {
   name: string;
   mode: string;
   gateType: string | null;
+  gateApprover?: string | null;
+  gateRequired?: number | null;
+  gateTimeoutSec?: number | null;
   rejectTarget?: string | null;
 }
 

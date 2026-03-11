@@ -285,8 +285,9 @@ describe('dashboard expansion mappers', () => {
         },
       },
       stages: [
-        { id: 'discuss', name: '讨论', mode: 'discuss' },
-        { id: 'develop', name: '开发', mode: 'execute', reject_target: 'discuss' },
+        { id: 'discuss', name: '讨论', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        { id: 'develop', name: '开发', mode: 'execute', gate: { type: 'quorum', required: 2 }, reject_target: 'discuss' },
+        { id: 'wait', name: '等待', mode: 'discuss', gate: { type: 'auto_timeout', timeout_sec: 600 } },
       ],
     };
 
@@ -295,13 +296,25 @@ describe('dashboard expansion mappers', () => {
 
     expect(summary.stageCountLabel).toBe('4 stages');
     expect(detail.id).toBe('coding');
-    expect(detail.stageCount).toBe(2);
+    expect(detail.stageCount).toBe(3);
     expect(detail.defaultTeamRoles[0]).toBe('architect');
     expect(detail.defaultTeam[0]).toEqual({
       role: 'architect',
       modelPreference: 'strong_reasoning',
       suggested: ['opus'],
     });
+    expect(detail.stages[0]).toMatchObject({
+      gateType: 'approval',
+      gateApprover: 'reviewer',
+    });
     expect(detail.stages[1]?.rejectTarget).toBe('discuss');
+    expect(detail.stages[1]).toMatchObject({
+      gateType: 'quorum',
+      gateRequired: 2,
+    });
+    expect(detail.stages[2]).toMatchObject({
+      gateType: 'auto_timeout',
+      gateTimeoutSec: 600,
+    });
   });
 });

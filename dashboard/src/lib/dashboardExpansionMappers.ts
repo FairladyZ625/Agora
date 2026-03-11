@@ -274,6 +274,9 @@ function mapTemplateStage(stage: NonNullable<ApiTemplateDetailDto['stages']>[num
     name: stage.name ?? stage.id,
     mode: stage.mode ?? 'custom',
     gateType: stage.gate?.type ?? null,
+    gateApprover: stage.gate?.approver ?? null,
+    gateRequired: stage.gate?.required ?? null,
+    gateTimeoutSec: stage.gate?.timeout_sec ?? null,
     rejectTarget: stage.reject_target ?? null,
   };
 }
@@ -305,7 +308,6 @@ export function mapTemplateDetailDto(id: string, dto: ApiTemplateDetailDto): Tem
 
 export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetailDto {
   const raw = detail.raw as Partial<ApiTemplateDetailDto>;
-  const rawStages = raw.stages ?? [];
   const rawGovernance = typeof raw.governance === 'string' ? raw.governance : undefined;
 
   return templateDetailSchema.parse({
@@ -324,14 +326,36 @@ export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetai
       },
     ])),
     stages: detail.stages.map((stage) => {
-      const rawStage = rawStages.find((item) => item.id === stage.id);
+      const gate = (() => {
+        if (!stage.gateType) {
+          return undefined;
+        }
+        if (stage.gateType === 'approval') {
+          return {
+            type: stage.gateType,
+            ...(stage.gateApprover ? { approver: stage.gateApprover } : {}),
+          };
+        }
+        if (stage.gateType === 'quorum') {
+          return {
+            type: stage.gateType,
+            ...(typeof stage.gateRequired === 'number' ? { required: stage.gateRequired } : {}),
+          };
+        }
+        if (stage.gateType === 'auto_timeout') {
+          return {
+            type: stage.gateType,
+            ...(typeof stage.gateTimeoutSec === 'number' ? { timeout_sec: stage.gateTimeoutSec } : {}),
+          };
+        }
+        return { type: stage.gateType };
+      })();
       return {
-        ...rawStage,
         id: stage.id,
         name: stage.name,
         mode: stage.mode,
-        ...(rawStage?.gate ? { gate: rawStage.gate } : {}),
-        ...(!rawStage?.gate && stage.gateType ? { gate: { type: stage.gateType } } : {}),
+        ...(gate ? { gate } : {}),
+        ...(stage.rejectTarget ? { reject_target: stage.rejectTarget } : {}),
       };
     }),
   });

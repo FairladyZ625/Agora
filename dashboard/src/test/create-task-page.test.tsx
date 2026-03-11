@@ -51,6 +51,11 @@ vi.mock('@/stores/templateStore', () => ({
   }) => unknown) => selector({
     templates: [
       { id: 'coding', name: '编码任务', type: 'coding', description: '', governance: 'standard', stageCount: 2, stageCountLabel: '2 stages' },
+      { id: 'brainstorm', name: '头脑风暴', type: 'brainstorm', description: '', governance: 'lean', stageCount: 2, stageCountLabel: '2 stages' },
+      { id: 'coding_heavy', name: '大型编码任务', type: 'coding_heavy', description: '', governance: 'strict', stageCount: 5, stageCountLabel: '5 stages' },
+      { id: 'document', name: '文档撰写', type: 'document', description: '', governance: 'standard', stageCount: 3, stageCountLabel: '3 stages' },
+      { id: 'quick', name: '快速任务', type: 'quick', description: '', governance: 'lean', stageCount: 1, stageCountLabel: '1 stages' },
+      { id: 'research', name: '调研任务', type: 'research', description: '', governance: 'lean', stageCount: 3, stageCountLabel: '3 stages' },
     ],
     selectedTemplateId: 'coding',
     selectedTemplate: {
@@ -209,5 +214,17 @@ describe('create task page', () => {
     expect(fetchTemplates).toHaveBeenCalled();
     expect(fetchStatus).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/tasks/OC-200');
+  });
+
+  it('renders template choices from the live template catalog instead of a hardcoded subset', () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: '头脑风暴' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '大型编码任务' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '调研任务' })).toBeInTheDocument();
   });
 });
