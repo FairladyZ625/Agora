@@ -18,6 +18,14 @@ function makeDbPath() {
   return join(dir, 'tasks.db');
 }
 
+function makeWorkflowFile(payload: Record<string, unknown>) {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-workflow-'));
+  tempPaths.push(dir);
+  const path = join(dir, 'workflow.json');
+  writeFileSync(path, JSON.stringify(payload, null, 2), 'utf8');
+  return path;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -221,6 +229,49 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('controller\tworkspace:default\truntime_agent\topenclaw:opus');
   });
 
+  it('uses workspace role bindings as create-time defaults before template suggested values', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-300D',
+    });
+    const rolePackService = new RolePackService({ db, rolePacksDir: rolePackDir });
+    rolePackService.saveBinding({
+      id: 'binding-create-1',
+      role_id: 'developer',
+      scope: 'workspace',
+      scope_ref: 'default',
+      target_kind: 'runtime_agent',
+      target_adapter: 'openclaw',
+      target_ref: 'glm47',
+      binding_mode: 'overlay',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      rolePackService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['create', 'binding aware create', '--type', 'coding'], { from: 'user' });
+
+    const created = taskService.getTask('OC-300D');
+    expect(stderr.value).toBe('');
+    expect(created?.team?.members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'developer', agentId: 'glm47' }),
+      ]),
+    );
+  });
+
   it('supports template role and stage CRUD through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -254,6 +305,45 @@ describe('agora-ts cli', () => {
     expect(template.defaultTeam?.analyst?.member_kind).toBe('citizen');
     expect(template.defaultTeam?.reviewer).toBeUndefined();
     expect(template.stages?.map((stage) => stage.id)).toEqual(['discuss', 'develop', 'implement', 'review']);
+  });
+
+  it('validates, renders, and applies workflow graphs through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const workflowFile = makeWorkflowFile({
+      defaultWorkflow: 'custom',
+      stages: [
+        { id: 'triage', name: 'Triage', mode: 'discuss', gate: { type: 'command' } },
+        { id: 'implement', name: 'Implement', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+        { id: 'review', name: 'Review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'implement' },
+      ],
+    });
+    const program = createCliProgram({
+      taskService: new TaskService(db, { templatesDir }),
+      templateAuthoringService,
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['graph', 'validate', '--file', workflowFile], { from: 'user' });
+    await program.parseAsync(['graph', 'render', '--format', 'mermaid', '--file', workflowFile], { from: 'user' });
+    await program.parseAsync(['graph', 'apply', '--template', 'coding', '--file', workflowFile], { from: 'user' });
+
+    const template = templateAuthoringService.getTemplate('coding');
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('workflow graph valid');
+    expect(stdout.value).toContain('flowchart TD');
+    expect(stdout.value).toContain('triage --> implement');
+    expect(stdout.value).toContain('workflow graph 已应用到模板: coding');
+    expect(template.stages?.map((stage) => stage.id)).toEqual(['triage', 'implement', 'review']);
   });
 
   it('runs task action commands through the cli', async () => {

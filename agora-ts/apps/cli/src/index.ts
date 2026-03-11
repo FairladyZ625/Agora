@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import type { StartCommandRunner } from './start-command.js';
@@ -14,6 +15,7 @@ import type {
   CreateTaskRequestDto,
   TaskPriority,
   TemplateDetailDto,
+  ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
 import { createTaskRequestSchema } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
@@ -69,30 +71,36 @@ function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
   return bindings;
 }
 
-function buildTemplateMembers(template: TemplateDetailDto): NonNullable<CreateTaskRequestDto['team_override']>['members'] {
-  return Object.entries(template.defaultTeam ?? {}).map(([role, member]) => {
-    const agentId = member.suggested?.[0];
-    if (!agentId) {
-      throw new Error(`template role ${role} has no suggested agent; use --bind ${role}=<agent>`);
+function buildTemplateMembers(
+  templateId: string,
+  template: TemplateDetailDto,
+  rolePackService: RolePackService,
+): NonNullable<CreateTaskRequestDto['team_override']>['members'] {
+  return rolePackService.resolveTemplateTeam(templateId, template, [{ scope: 'workspace', scope_ref: 'default' }]).map((member) => {
+    if (!member.agentId) {
+      throw new Error(`template role ${member.role} has no resolved agent; use --bind ${member.role}=<agent>`);
     }
-    return {
-      role,
-      agentId,
-      ...(member.member_kind ? { member_kind: member.member_kind } : {}),
-      model_preference: member.model_preference ?? '',
-    };
+    return member;
   });
 }
 
-function applyTaskCreateOverrides(input: CreateTaskRequestDto, template: TemplateDetailDto | null, controllerRef: string | undefined, binds: Map<string, string>) {
-  if (!controllerRef && binds.size === 0) {
+function applyTaskCreateOverrides(
+  input: CreateTaskRequestDto,
+  templateId: string,
+  template: TemplateDetailDto | null,
+  rolePackService: RolePackService,
+  controllerRef: string | undefined,
+  binds: Map<string, string>,
+) {
+  const shouldResolveTemplateTeam = !input.team_override && !!template;
+  if (!shouldResolveTemplateTeam && !controllerRef && binds.size === 0) {
     return input;
   }
 
   const baseMembers = input.team_override?.members
     ? [...input.team_override.members]
     : template
-      ? buildTemplateMembers(template)
+      ? buildTemplateMembers(templateId, template, rolePackService)
       : [];
 
   if (baseMembers.length === 0) {
@@ -120,6 +128,42 @@ function applyTaskCreateOverrides(input: CreateTaskRequestDto, template: Templat
       members: nextMembers,
     },
   });
+}
+
+function renderWorkflowMermaid(input: ValidateWorkflowRequestDto) {
+  const stages = input.stages ?? [];
+  const lines = ['flowchart TD'];
+  for (const stage of stages) {
+    lines.push(`  ${stage.id}[\"${stage.name ?? stage.id}\"]`);
+  }
+  for (let index = 0; index < stages.length; index += 1) {
+    const stage = stages[index]!;
+    const next = stages[index + 1];
+    if (next) {
+      lines.push(`  ${stage.id} --> ${next.id}`);
+    }
+    if (stage.reject_target) {
+      lines.push(`  ${stage.id} -. reject .-> ${stage.reject_target}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function loadWorkflowSource(
+  templateAuthoringService: TemplateAuthoringService,
+  input: { template?: string; file?: string },
+): ValidateWorkflowRequestDto {
+  if (input.file) {
+    return JSON.parse(readFileSync(input.file, 'utf8')) as ValidateWorkflowRequestDto;
+  }
+  if (input.template) {
+    const template = templateAuthoringService.getTemplate(input.template);
+    return {
+      defaultWorkflow: template.defaultWorkflow,
+      stages: template.stages ?? [],
+    };
+  }
+  throw new Error('graph command requires --template or --file');
 }
 
 function insertStage(
@@ -259,7 +303,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
       })();
       const task = taskService.createTask(applyTaskCreateOverrides(
         input,
+        options.type,
         template,
+        rolePackService,
         options.controller,
         parseRoleBindings(options.bind),
       ));
@@ -388,6 +434,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .command('templates')
     .description('template authoring commands');
 
+  const graph = program
+    .command('graph')
+    .description('workflow graph commands');
+
   templates
     .command('show')
     .description('查看模板详情')
@@ -480,6 +530,46 @@ export function createCliProgram(deps: CliDependencies = {}) {
         }),
       });
       writeLine(stdout, `模板阶段已新增: ${templateId} -> ${options.id}`);
+      writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
+    });
+
+  graph
+    .command('validate')
+    .description('校验 workflow graph')
+    .option('--template <templateId>', 'template id')
+    .option('--file <filePath>', 'workflow json file')
+    .action((options: { template?: string; file?: string }) => {
+      const workflow = loadWorkflowSource(templateAuthoringService, options);
+      const result = templateAuthoringService.validateWorkflow(workflow);
+      if (!result.valid) {
+        throw new Error(result.errors.join('; '));
+      }
+      writeLine(stdout, 'workflow graph valid');
+    });
+
+  graph
+    .command('render')
+    .description('渲染 workflow graph')
+    .requiredOption('--format <format>', 'currently supports mermaid')
+    .option('--template <templateId>', 'template id')
+    .option('--file <filePath>', 'workflow json file')
+    .action((options: { format: string; template?: string; file?: string }) => {
+      if (options.format !== 'mermaid') {
+        throw new Error(`unsupported graph render format: ${options.format}`);
+      }
+      const workflow = loadWorkflowSource(templateAuthoringService, options);
+      writeLine(stdout, renderWorkflowMermaid(workflow));
+    });
+
+  graph
+    .command('apply')
+    .description('把 workflow json 应用到模板')
+    .requiredOption('--template <templateId>', 'template id')
+    .requiredOption('--file <filePath>', 'workflow json file')
+    .action((options: { template: string; file: string }) => {
+      const workflow = loadWorkflowSource(templateAuthoringService, { file: options.file });
+      const saved = templateAuthoringService.updateTemplateWorkflow(options.template, workflow);
+      writeLine(stdout, `workflow graph 已应用到模板: ${options.template}`);
       writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
     });
 

@@ -1,4 +1,4 @@
-import type { RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto } from '@agora-ts/contracts';
+import type { RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto, TemplateDetailDto } from '@agora-ts/contracts';
 import { RoleBindingRepository, RoleDefinitionRepository, type AgoraDatabase } from '@agora-ts/db';
 
 export interface RolePackServiceOptions {
@@ -56,5 +56,29 @@ export class RolePackService {
 
   toRoleSeed(definition: RoleDefinitionDto): RoleDefinitionDto {
     return definition;
+  }
+
+  resolveTemplateTeam(
+    templateId: string,
+    template: TemplateDetailDto,
+    scopes: Array<{ scope: RoleBindingScopeDto; scope_ref: string }>,
+  ): Array<{
+    role: string;
+    agentId: string;
+    member_kind?: 'controller' | 'citizen' | 'craftsman';
+    model_preference: string;
+  }> {
+    return Object.entries(template.defaultTeam ?? {}).map(([role, config]) => {
+      const binding = this.resolveRoleTarget(role, [
+        { scope: 'template', scope_ref: templateId },
+        ...scopes,
+      ]);
+      return {
+        role,
+        agentId: binding?.target_ref ?? config.suggested?.[0] ?? role,
+        ...(config.member_kind ? { member_kind: config.member_kind } : {}),
+        model_preference: config.model_preference ?? '',
+      };
+    });
   }
 }

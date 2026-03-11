@@ -104,4 +104,47 @@ describe('role pack service', () => {
       { scope: 'workspace', scope_ref: 'default' },
     ])?.target_ref).toBe('sonnet');
   });
+
+  it('resolves template team members from template and workspace bindings before suggested defaults', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new RolePackService({
+      db,
+      rolePacksDir: makeRolePackDir(),
+    });
+
+    service.saveBinding({
+      id: 'binding-3',
+      role_id: 'architect',
+      scope: 'workspace',
+      scope_ref: 'default',
+      target_kind: 'runtime_agent',
+      target_adapter: 'openclaw',
+      target_ref: 'opus',
+      binding_mode: 'overlay',
+    });
+
+    const members = service.resolveTemplateTeam('coding', {
+      name: 'Coding',
+      type: 'coding',
+      defaultTeam: {
+        architect: {
+          member_kind: 'citizen',
+          suggested: ['fallback-architect'],
+        },
+        controller: {
+          member_kind: 'controller',
+          suggested: ['fallback-controller'],
+        },
+      },
+      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+    }, [{ scope: 'workspace', scope_ref: 'default' }]);
+
+    expect(members).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'architect', agentId: 'opus' }),
+        expect.objectContaining({ role: 'controller', agentId: 'fallback-controller' }),
+      ]),
+    );
+  });
 });
