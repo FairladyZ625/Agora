@@ -80,6 +80,7 @@ function removeStage(stages: TemplateDetail['stages'], stageId: string) {
 const STAGE_MODE_OPTIONS = ['discuss', 'execute'] as const;
 const STAGE_GATE_OPTIONS = ['none', 'command', 'approval', 'archon_review', 'all_subtasks_done', 'auto_timeout', 'quorum'] as const;
 const TEAM_MEMBER_KIND_OPTIONS = ['controller', 'citizen', 'craftsman'] as const;
+const TEAM_ROLE_OPTIONS = ['architect', 'developer', 'reviewer', 'writer', 'researcher', 'analyst', 'executor', 'craftsman'] as const;
 
 export function TemplatesPage() {
   const copy = useTemplatesPageCopy();
@@ -99,6 +100,7 @@ export function TemplatesPage() {
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const [draft, setDraft] = useState<TemplateDetail | null>(null);
   const [duplicateId, setDuplicateId] = useState('');
+  const [roleToAdd, setRoleToAdd] = useState('');
   const [showCompatibilitySaveError, setShowCompatibilitySaveError] = useState(false);
   const [showControllerSaveError, setShowControllerSaveError] = useState(false);
 
@@ -116,6 +118,7 @@ export function TemplatesPage() {
   useEffect(() => {
     setDraft(selectedTemplate ? cloneTemplateDetail(selectedTemplate) : null);
     setDuplicateId(selectedTemplate ? `${selectedTemplate.id}_copy` : '');
+    setRoleToAdd('');
     setShowCompatibilitySaveError(false);
     setShowControllerSaveError(false);
   }, [selectedTemplate]);
@@ -163,6 +166,9 @@ export function TemplatesPage() {
   const compatibilityByRole = new Map(compatibility.map((item) => [item.role, item]));
   const knownAgentIds = new Set(agents.map((agent) => agent.id));
   const graphEdges = draft ? buildTemplateEdges(draft) : [];
+  const availableRoleOptions = draft
+    ? TEAM_ROLE_OPTIONS.filter((role) => !draft.defaultTeam.some((member) => member.role === role))
+    : TEAM_ROLE_OPTIONS;
 
   const toggleSuggestedAgent = (role: string, agentId: string) => {
     setDraft((current) => {
@@ -334,7 +340,57 @@ export function TemplatesPage() {
                 </div>
               ) : null}
               <div className="space-y-3">
-                <p className="page-kicker">{copy.teamLabel}</p>
+                <div className="section-title-row">
+                  <p className="page-kicker">{copy.teamLabel}</p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="space-y-2">
+                      <span className="field-label">{copy.teamRoleSelectLabel}</span>
+                      <select
+                        aria-label={copy.teamRoleSelectLabel}
+                        className="input-shell"
+                        value={roleToAdd}
+                        onChange={(event) => setRoleToAdd(event.target.value)}
+                      >
+                        <option value="">-</option>
+                        {availableRoleOptions.map((role) => (
+                          <option key={`add-role-${role}`} value={role}>{role}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      disabled={!draft || roleToAdd.length === 0}
+                      onClick={() => {
+                        setDraft((current) => {
+                          if (!current || roleToAdd.length === 0 || current.defaultTeam.some((member) => member.role === roleToAdd)) {
+                            return current;
+                          }
+                          const hasController = current.defaultTeam.some((member) => member.memberKind === 'controller');
+                          const memberKind = roleToAdd === 'craftsman'
+                            ? 'craftsman'
+                            : (hasController ? 'citizen' : 'controller');
+                          return {
+                            ...current,
+                            defaultTeamRoles: [...current.defaultTeamRoles, roleToAdd],
+                            defaultTeam: [
+                              ...current.defaultTeam,
+                              {
+                                role: roleToAdd,
+                                memberKind,
+                                modelPreference: null,
+                                suggested: [],
+                              },
+                            ],
+                          };
+                        });
+                        setRoleToAdd('');
+                      }}
+                    >
+                      {copy.addRoleAction}
+                    </button>
+                  </div>
+                </div>
                 {controllerTopology.isMissingController || controllerTopology.hasDuplicateControllers ? (
                   <div className="inline-alert inline-alert--warning">
                     <strong>{copy.missingControllerLabel}</strong>
@@ -343,7 +399,25 @@ export function TemplatesPage() {
                 ) : null}
                 {draft.defaultTeam.map((member) => (
                   <div key={member.role} className="detail-card space-y-3">
-                    <strong className="type-heading-sm">{member.role}</strong>
+                    <div className="section-title-row">
+                      <strong className="type-heading-sm">{member.role}</strong>
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        aria-label={copy.removeRoleAria(member.role)}
+                        onClick={() => setDraft((current) => (
+                          current
+                            ? {
+                                ...current,
+                                defaultTeamRoles: current.defaultTeamRoles.filter((role) => role !== member.role),
+                                defaultTeam: current.defaultTeam.filter((item) => item.role !== member.role),
+                              }
+                            : current
+                        ))}
+                      >
+                        {copy.deleteRoleAction}
+                      </button>
+                    </div>
                     <label className="space-y-2">
                       <span className="field-label">{copy.memberKindLabel}</span>
                       <select

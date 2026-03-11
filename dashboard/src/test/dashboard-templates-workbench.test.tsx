@@ -424,4 +424,25 @@ describe('templates workbench layout', () => {
     expect(within(graphPanel as HTMLElement).getAllByText('review -> develop').length).toBeGreaterThanOrEqual(2);
     expect(within(graphPanel as HTMLElement).queryByText('discuss -> develop')).not.toBeInTheDocument();
   });
+
+  it('supports adding and removing team roles before saving the selected template', () => {
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText('新增团队角色'), {
+      target: { value: 'reviewer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新增角色' }));
+    fireEvent.change(screen.getByLabelText('reviewer 成员类型'), {
+      target: { value: 'citizen' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '删除角色 craftsman' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      defaultTeam: [
+        expect.objectContaining({ role: 'architect', memberKind: 'controller' }),
+        expect.objectContaining({ role: 'reviewer', memberKind: 'citizen', suggested: [] }),
+      ],
+    }));
+  });
 });

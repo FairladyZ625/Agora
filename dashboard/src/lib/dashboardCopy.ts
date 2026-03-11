@@ -584,6 +584,9 @@ export function useTemplatesPageCopy() {
     detailTitle: t('templates.detailTitle'),
     governanceLabel: t('templates.governanceLabel'),
     teamLabel: t('templates.teamLabel'),
+    addRoleAction: t('templates.addRoleAction'),
+    deleteRoleAction: t('templates.deleteRoleAction'),
+    teamRoleSelectLabel: t('templates.teamRoleSelectLabel'),
     descriptionLabel: t('templates.descriptionLabel'),
     memberKindLabel: t('templates.memberKindLabel'),
     modelPreferenceLabel: t('templates.modelPreferenceLabel'),
@@ -622,6 +625,7 @@ export function useTemplatesPageCopy() {
     stageDeleteAria: (stageId: string) => t('templates.stageDeleteAria', { stageId }),
     stageMoveUpAria: (stageId: string) => t('templates.stageMoveUpAria', { stageId }),
     stageMoveDownAria: (stageId: string) => t('templates.stageMoveDownAria', { stageId }),
+    removeRoleAria: (role: string) => t('templates.removeRoleAria', { role }),
   };
 }
 
