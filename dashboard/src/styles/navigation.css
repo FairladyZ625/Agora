@@ -4,19 +4,25 @@
   box-shadow: var(--topbar-shell-shadow);
   border: 1px solid var(--color-border);
   background: var(--surface-glass-authority);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(10px);
 }
 
 .icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 36px;
   width: 36px;
   height: 36px;
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
+}
+
+.icon-button--compound {
+  width: auto;
+  padding-inline: 10px;
 }
 
 .icon-button:hover {
@@ -29,7 +35,6 @@
   border: 1px solid var(--sidebar-shell-border);
   background: var(--sidebar-shell-bg);
   box-shadow: var(--sidebar-shell-shadow);
-  backdrop-filter: var(--sidebar-backdrop);
 }
 
 .app-sidebar--collapsed {

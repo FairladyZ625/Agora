@@ -116,17 +116,14 @@ body::before {
 
 .topbar-intelligence__dot--1 {
   left: 22px;
-  animation-delay: 0ms;
 }
 
 .topbar-intelligence__dot--2 {
   left: 88px;
-  animation-delay: 220ms;
 }
 
 .topbar-intelligence__dot--3 {
   left: 154px;
-  animation-delay: 440ms;
 }
 
 .topbar-intelligence__rail {

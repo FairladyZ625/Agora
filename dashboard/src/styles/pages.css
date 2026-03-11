@@ -696,6 +696,12 @@
   background: var(--color-bg-elevated);
 }
 
+.home-os__rail-loading {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+}
+
 .home-os__rail-title {
   margin: 0;
   font-family: var(--font-brand);

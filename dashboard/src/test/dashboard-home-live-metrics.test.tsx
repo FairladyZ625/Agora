@@ -131,6 +131,7 @@ describe('dashboard home live metrics', () => {
     fetchTasks.mockClear();
     resolveReview.mockClear();
     showMessage.mockClear();
+    taskStoreState.selectTask.mockClear();
   });
 
   afterEach(() => {
@@ -191,5 +192,18 @@ describe('dashboard home live metrics', () => {
 
     await Promise.resolve();
     expect(resolveReview).toHaveBeenCalledWith('OC-102', 'approve', '');
+  });
+
+  it('does not preload task detail context until the operator focuses a rail task', () => {
+    render(
+      <MemoryRouter>
+        <DashboardHome />
+      </MemoryRouter>,
+    );
+
+    expect(taskStoreState.selectTask).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /等待裁决/i }));
+    expect(taskStoreState.selectTask).toHaveBeenCalledWith('OC-102');
   });
 });

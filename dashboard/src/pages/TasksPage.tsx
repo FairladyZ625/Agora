@@ -188,14 +188,14 @@ export function TasksPage() {
 
   return (
     <div className="workspace-page workspace-page--locked">
-      <section className="surface-panel surface-panel--workspace task-canvas">
-        <div className="task-canvas__masthead">
+      <section className="surface-panel surface-panel--workspace">
+        <div className="workbench-masthead">
           <div className="space-y-3">
             <p className="page-kicker">{tasksPageCopy.kicker}</p>
-            <h2 className="page-title">{tasksPageCopy.workbenchTitle}</h2>
-            <p className="page-summary">{tasksPageCopy.workbenchSummary}</p>
+            <h2 className="page-title">{tasksPageCopy.title}</h2>
+            <p className="page-summary">{tasksPageCopy.summary}</p>
           </div>
-          <div className="task-canvas__signals">
+          <div className="workbench-masthead__signals">
             <div className="inline-stat">
               <span className="inline-stat__label">{tasksPageCopy.stats.currentMatches}</span>
               <span className="inline-stat__value">{filteredTasks.length}</span>
@@ -214,117 +214,118 @@ export function TasksPage() {
         {error ? (
           <div className="inline-alert inline-alert--danger">{error}</div>
         ) : null}
+      </section>
 
-        <div className="task-canvas__body">
-          <section className="task-pane task-pane--queue">
-            <div className="task-pane__header">
-              <div>
-                <p className="page-kicker">{tasksPageCopy.listKicker}</p>
-                <h3 className="section-title">{tasksPageCopy.listTitle}</h3>
-              </div>
-              <span className="status-pill status-pill--neutral">
-                {filteredTasks.length}
-                {tasksPageCopy.listCountUnit}
-              </span>
+      <div className="workbench-grid workbench-grid--page">
+        <section className="workbench-pane task-pane task-pane--queue">
+          <div className="task-pane__header">
+            <div>
+              <p className="page-kicker">{tasksPageCopy.listKicker}</p>
+              <h3 className="section-title">{tasksPageCopy.listTitle}</h3>
             </div>
+            <span className="status-pill status-pill--neutral">
+              {filteredTasks.length}
+              {tasksPageCopy.listCountUnit}
+            </span>
+          </div>
 
-            <div className="task-pane__filters">
-              <div className="workbench-toolbar__filter-anchor">
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => setFilterOpen((current) => !current)}
-                >
-                  <Filter size={14} />
-                  {tasksPageCopy.filterAction}
-                  {activeFilterCount > 0 ? (
-                    <span className="status-pill status-pill--info">{activeFilterCount}</span>
-                  ) : null}
-                </button>
-
-                {filterOpen ? (
-                  <WorkbenchFilterPopover
-                    title={tasksPageCopy.filterAction}
-                    emptyLabel={tasksPageCopy.filterEmpty}
-                    sections={taskSections}
-                    onClear={clearFilters}
-                    onClose={() => setFilterOpen(false)}
-                    footer={
-                      <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
-                        {tasksPageCopy.applyFiltersAction}
-                      </button>
-                    }
-                  />
+          <div className="task-pane__filters">
+            <div className="workbench-toolbar__filter-anchor">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setFilterOpen((current) => !current)}
+              >
+                <Filter size={14} />
+                {tasksPageCopy.filterAction}
+                {activeFilterCount > 0 ? (
+                  <span className="status-pill status-pill--info">{activeFilterCount}</span>
                 ) : null}
-              </div>
+              </button>
 
-              {activeFilterCount > 0 ? (
-                <span className="topbar-chip">
-                  {tasksPageCopy.activeFilterPrefix} {activeFilterCount}
-                </span>
-              ) : null}
-
-              <label className="input-shell--centered task-pane__search">
-                <Search size={18} className="icon-muted" />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={tasksPageCopy.searchPlaceholder}
-                  className="input-text"
-                />
-              </label>
-            </div>
-
-            <div className="workbench-scroll workbench-scroll--list task-pane__scroll">
-              <div className="dense-list">
-                {filteredTasks.map((task, index) => (
-                  <StaggeredItem key={task.id} index={index}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActionActor('');
-                        void selectTask(task.id);
-                      }}
-                      className={task.id === activeTask?.id ? 'dense-row dense-row--active' : 'dense-row'}
-                    >
-                      <div className="dense-row__main">
-                        <div className="dense-row__titleblock">
-                          <span className="type-mono-xs">{task.id}</span>
-                          <strong className="dense-row__title">{task.title}</strong>
-                        </div>
-                        <div className="dense-row__meta">
-                          <StateBadge state={task.state} />
-                          <PriorityBadge priority={task.priority} />
-                          <span>{task.teamLabel}</span>
-                          <span>{task.workflowLabel}</span>
-                        </div>
-                      </div>
-                      <span className="dense-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
+              {filterOpen ? (
+                <WorkbenchFilterPopover
+                  title={tasksPageCopy.filterAction}
+                  emptyLabel={tasksPageCopy.filterEmpty}
+                  sections={taskSections}
+                  onClear={clearFilters}
+                  onClose={() => setFilterOpen(false)}
+                  footer={
+                    <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
+                      {tasksPageCopy.applyFiltersAction}
                     </button>
-                  </StaggeredItem>
-                ))}
-
-                {filteredTasks.length === 0 ? (
-                  <div className="empty-state">
-                    <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
-                    <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
-                  </div>
-                ) : null}
-              </div>
+                  }
+                />
+              ) : null}
             </div>
-          </section>
 
-          <aside className="task-pane task-pane--authority">
-            {activeTask ? (
-              <div className="task-authority__stack">
-                <div className="task-pane__header task-pane__header--authority">
-                  <div>
-                    <p className="page-kicker">{tasksPageCopy.detailKicker}</p>
-                    <h3 className="section-title">{tasksPageCopy.quickViewTitle}</h3>
-                  </div>
-                  <StateBadge state={activeTask.state} />
+            {activeFilterCount > 0 ? (
+              <span className="topbar-chip">
+                {tasksPageCopy.activeFilterPrefix} {activeFilterCount}
+              </span>
+            ) : null}
+
+            <label className="input-shell--centered task-pane__search">
+              <Search size={18} className="icon-muted" />
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={tasksPageCopy.searchPlaceholder}
+                className="input-text"
+              />
+            </label>
+          </div>
+
+          <div className="workbench-scroll workbench-scroll--list task-pane__scroll">
+            <div className="dense-list">
+              {filteredTasks.map((task, index) => (
+                <StaggeredItem key={task.id} index={index}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionActor('');
+                      void selectTask(task.id);
+                    }}
+                    className={task.id === activeTask?.id ? 'dense-row dense-row--active' : 'dense-row'}
+                  >
+                    <div className="dense-row__main">
+                      <div className="dense-row__titleblock">
+                        <span className="type-mono-xs">{task.id}</span>
+                        <strong className="dense-row__title">{task.title}</strong>
+                      </div>
+                      <div className="dense-row__meta">
+                        <StateBadge state={task.state} />
+                        <PriorityBadge priority={task.priority} />
+                        <span>{task.teamLabel}</span>
+                        <span>{task.workflowLabel}</span>
+                      </div>
+                    </div>
+                    <span className="dense-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
+                  </button>
+                </StaggeredItem>
+              ))}
+
+              {filteredTasks.length === 0 ? (
+                <div className="empty-state">
+                  <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
+                  <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
                 </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <aside className="workbench-pane workbench-pane--inspector task-pane task-pane--authority">
+          {activeTask ? (
+            <div className="task-authority__stack">
+              <div className="task-pane__header task-pane__header--authority">
+                <div>
+                  <p className="page-kicker">{tasksPageCopy.detailKicker}</p>
+                  <h3 className="section-title">{tasksPageCopy.quickViewTitle}</h3>
+                </div>
+                <StateBadge state={activeTask.state} />
+              </div>
 
                 <div className="inspector-hero">
                   <span className="type-mono-sm">{activeTask.id}</span>
@@ -499,16 +500,15 @@ export function TasksPage() {
                     {tasksPageCopy.detailAction}
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
-                <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
-              </div>
-            )}
-          </aside>
-        </div>
-      </section>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p className="type-heading-sm">{tasksPageCopy.emptyTitle}</p>
+              <p className="type-body-sm mt-2">{tasksPageCopy.emptySummary}</p>
+            </div>
+          )}
+        </aside>
+      </div>
 
       {taskId && activeTask ? (
         <WorkbenchDetailSheet

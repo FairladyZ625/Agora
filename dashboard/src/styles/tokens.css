@@ -34,7 +34,11 @@
   --motion-pulse-duration: 2200ms;
   --motion-scan-duration: 2600ms;
   --motion-flow-duration: 2800ms;
+  --motion-travel-duration: 3200ms;
   --motion-terminal-duration: 520ms;
+  --motion-page-duration: 420ms;
+  --motion-stagger-duration: 160ms;
+  --motion-loop-play-state: running;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -188,7 +192,7 @@
   --sidebar-shell-bg: linear-gradient(180deg, rgba(252, 255, 255, 0.68), rgba(238, 247, 250, 0.58));
   --sidebar-shell-border: rgba(171, 212, 223, 0.26);
   --sidebar-shell-shadow: 0 10px 24px rgba(17, 36, 44, 0.08);
-  --sidebar-backdrop: blur(24px);
+  --sidebar-backdrop: blur(14px);
   --topbar-shell-shadow: 0 4px 12px rgba(17, 36, 44, 0.06);
   --footer-shell-shadow: 0 2px 8px rgba(17, 36, 44, 0.04);
   --topbar-intelligence-dot-glow: 0 0 0 3px rgba(2, 132, 199, 0.06);
@@ -233,6 +237,17 @@
   --liquid-detail-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(243, 250, 252, 0.82));
   --liquid-hero-glow: radial-gradient(circle at 18% 24%, rgba(170, 229, 241, 0.28), transparent 30%), radial-gradient(circle at 78% 22%, rgba(255, 255, 255, 0.42), transparent 22%);
   --sheet-backdrop-bg: rgba(15, 23, 42, 0.18);
+}
+
+[data-motion='lite'] {
+  --motion-pulse-duration: 4200ms;
+  --motion-scan-duration: 5200ms;
+  --motion-flow-duration: 5600ms;
+  --motion-travel-duration: 4800ms;
+  --motion-terminal-duration: 320ms;
+  --motion-page-duration: 220ms;
+  --motion-stagger-duration: 120ms;
+  --motion-loop-play-state: paused;
 }
 
 [data-theme='dark'] {
@@ -354,7 +369,7 @@
   --sidebar-shell-bg: linear-gradient(180deg, rgba(12, 29, 37, 0.58), rgba(8, 20, 27, 0.62));
   --sidebar-shell-border: rgba(175, 226, 240, 0.14);
   --sidebar-shell-shadow: 0 10px 24px rgba(3, 10, 15, 0.26);
-  --sidebar-backdrop: blur(28px);
+  --sidebar-backdrop: blur(18px);
   --topbar-shell-shadow: 0 4px 12px rgba(3, 10, 15, 0.18);
   --footer-shell-shadow: 0 2px 8px rgba(3, 10, 15, 0.14);
   --topbar-intelligence-dot-glow: 0 0 0 3px rgba(100, 210, 239, 0.1);

@@ -169,14 +169,14 @@ export function ReviewsPage() {
 
   return (
     <div className="workspace-page workspace-page--locked">
-      <section className="surface-panel surface-panel--workspace review-canvas">
-        <div className="review-canvas__masthead">
+      <section className="surface-panel surface-panel--workspace">
+        <div className="workbench-masthead">
           <div className="space-y-3">
             <p className="page-kicker">{reviewsPageCopy.kicker}</p>
-            <h2 className="page-title">{reviewsPageCopy.workbenchTitle}</h2>
-            <p className="page-summary">{reviewsPageCopy.workbenchSummary}</p>
+            <h2 className="page-title">{reviewsPageCopy.title}</h2>
+            <p className="page-summary">{reviewsPageCopy.summary}</p>
           </div>
-          <div className="review-canvas__signals">
+          <div className="workbench-masthead__signals">
             <div className="inline-stat">
               <span className="inline-stat__label">{reviewsPageCopy.metricLabels.queue}</span>
               <span className="inline-stat__value">{filteredQueue.length}</span>
@@ -195,118 +195,119 @@ export function ReviewsPage() {
         {error ? (
           <div className="inline-alert inline-alert--danger">{error}</div>
         ) : null}
+      </section>
 
-        <div className="review-canvas__body">
-          <section className="review-pane review-pane--queue">
-            <div className="review-pane__header">
-              <div>
-                <p className="page-kicker">{reviewsPageCopy.queueKicker}</p>
-                <h3 className="section-title">{reviewsPageCopy.queueTitle}</h3>
-              </div>
-              <span className="status-pill status-pill--warning">
-                {filteredQueue.length}
-                {reviewsPageCopy.queueCountUnit}
-              </span>
+      <div className="workbench-grid workbench-grid--page">
+        <section className="workbench-pane review-pane review-pane--queue">
+          <div className="review-pane__header">
+            <div>
+              <p className="page-kicker">{reviewsPageCopy.queueKicker}</p>
+              <h3 className="section-title">{reviewsPageCopy.queueTitle}</h3>
             </div>
+            <span className="status-pill status-pill--warning">
+              {filteredQueue.length}
+              {reviewsPageCopy.queueCountUnit}
+            </span>
+          </div>
 
-            <div className="review-canvas__filters">
-              <div className="workbench-toolbar__filter-anchor">
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => setFilterOpen((current) => !current)}
-                >
-                  <Filter size={14} />
-                  {reviewsPageCopy.filterAction}
-                  {activeFilterCount > 0 ? (
-                    <span className="status-pill status-pill--info">{activeFilterCount}</span>
-                  ) : null}
-                </button>
-
-                {filterOpen ? (
-                  <WorkbenchFilterPopover
-                    title={reviewsPageCopy.filterAction}
-                    emptyLabel={reviewsPageCopy.emptySummary}
-                    sections={reviewSections}
-                    onClear={clearFilters}
-                    onClose={() => setFilterOpen(false)}
-                    footer={
-                      <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
-                        {reviewsPageCopy.applyFiltersAction}
-                      </button>
-                    }
-                  />
+          <div className="review-canvas__filters">
+            <div className="workbench-toolbar__filter-anchor">
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setFilterOpen((current) => !current)}
+              >
+                <Filter size={14} />
+                {reviewsPageCopy.filterAction}
+                {activeFilterCount > 0 ? (
+                  <span className="status-pill status-pill--info">{activeFilterCount}</span>
                 ) : null}
-              </div>
+              </button>
 
-              {queueScopes.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setScope((current) => (current === item.value ? 'all' : item.value))}
-                  className={scope === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
-                >
-                  {item.label}
-                </button>
-              ))}
-
-              {activeFilterCount > 0 ? (
-                <span className="topbar-chip">
-                  {reviewsPageCopy.activeFilterPrefix} {activeFilterCount}
-                </span>
+              {filterOpen ? (
+                <WorkbenchFilterPopover
+                  title={reviewsPageCopy.filterAction}
+                  emptyLabel={reviewsPageCopy.emptySummary}
+                  sections={reviewSections}
+                  onClear={clearFilters}
+                  onClose={() => setFilterOpen(false)}
+                  footer={
+                    <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
+                      {reviewsPageCopy.applyFiltersAction}
+                    </button>
+                  }
+                />
               ) : null}
             </div>
 
-            <div className="workbench-scroll workbench-scroll--list review-pane__scroll">
-              <div className="review-table review-table--dense">
-                <div className="review-table__head" role="presentation">
-                  <span>{reviewsPageCopy.tableHeaders.task}</span>
-                  <span>{reviewsPageCopy.tableHeaders.gate}</span>
-                  <span>{reviewsPageCopy.tableHeaders.priority}</span>
-                  <span className="text-right">{reviewsPageCopy.tableHeaders.wait}</span>
-                </div>
+            {queueScopes.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setScope((current) => (current === item.value ? 'all' : item.value))}
+                className={scope === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
+              >
+                {item.label}
+              </button>
+            ))}
 
-                {filteredQueue.length > 0 ? (
-                  filteredQueue.map((item, index) => (
-                    <StaggeredItem key={item.id} index={index}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedId(item.id)}
-                        className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
-                      >
-                        <div className="review-table__task">
-                          <span className="type-mono-xs">{item.id}</span>
-                          <strong className="review-table__title">{item.title}</strong>
-                          <p className="review-table__summary">{item.summary}</p>
-                        </div>
-                        <span className="review-table__cell">{item.gate}</span>
-                        <div className="review-table__cell">
-                          <PriorityBadge priority={item.priority} />
-                        </div>
-                        <span className="review-table__cell review-table__cell--right">{item.waitTime}</span>
-                      </button>
-                    </StaggeredItem>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <p className="type-heading-sm">{reviewsPageCopy.emptyTitle}</p>
-                    <p className="type-body-sm mt-2">{reviewsPageCopy.emptySummary}</p>
-                  </div>
-                )}
+            {activeFilterCount > 0 ? (
+              <span className="topbar-chip">
+                {reviewsPageCopy.activeFilterPrefix} {activeFilterCount}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="workbench-scroll workbench-scroll--list review-pane__scroll">
+            <div className="review-table review-table--dense">
+              <div className="review-table__head" role="presentation">
+                <span>{reviewsPageCopy.tableHeaders.task}</span>
+                <span>{reviewsPageCopy.tableHeaders.gate}</span>
+                <span>{reviewsPageCopy.tableHeaders.priority}</span>
+                <span className="text-right">{reviewsPageCopy.tableHeaders.wait}</span>
               </div>
-            </div>
-          </section>
 
-          <aside className="review-pane review-pane--inspector">
-            {selected ? (
-              <div className="review-inspector__stack">
-                <div className="review-pane__header review-pane__header--inspector">
-                  <div>
-                    <p className="page-kicker">{reviewsPageCopy.workspaceKicker}</p>
-                    <h3 className="section-title">{reviewsPageCopy.workspaceTitle}</h3>
-                  </div>
-                  <PriorityBadge priority={selected.priority} />
+              {filteredQueue.length > 0 ? (
+                filteredQueue.map((item, index) => (
+                  <StaggeredItem key={item.id} index={index}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(item.id)}
+                      className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
+                    >
+                      <div className="review-table__task">
+                        <span className="type-mono-xs">{item.id}</span>
+                        <strong className="review-table__title">{item.title}</strong>
+                        <p className="review-table__summary">{item.summary}</p>
+                      </div>
+                      <span className="review-table__cell">{item.gate}</span>
+                      <div className="review-table__cell">
+                        <PriorityBadge priority={item.priority} />
+                      </div>
+                      <span className="review-table__cell review-table__cell--right">{item.waitTime}</span>
+                    </button>
+                  </StaggeredItem>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <p className="type-heading-sm">{reviewsPageCopy.emptyTitle}</p>
+                  <p className="type-body-sm mt-2">{reviewsPageCopy.emptySummary}</p>
                 </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <aside className="workbench-pane workbench-pane--inspector review-pane review-pane--inspector">
+          {selected ? (
+            <div className="review-inspector__stack">
+              <div className="review-pane__header review-pane__header--inspector">
+                <div>
+                  <p className="page-kicker">{reviewsPageCopy.workspaceKicker}</p>
+                  <h3 className="section-title">{reviewsPageCopy.workspaceTitle}</h3>
+                </div>
+                <PriorityBadge priority={selected.priority} />
+              </div>
 
                 <div className="inspector-hero">
                   <div className="flex flex-wrap items-center gap-2">
@@ -375,16 +376,15 @@ export function ReviewsPage() {
                     {reviewsPageCopy.liveApiNotice}
                   </p>
                 </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <p className="type-heading-sm">{reviewsPageCopy.emptyTitle}</p>
-                <p className="type-body-sm mt-2">{reviewsPageCopy.emptySummary}</p>
-              </div>
-            )}
-          </aside>
-        </div>
-      </section>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <p className="type-heading-sm">{reviewsPageCopy.emptyTitle}</p>
+              <p className="type-body-sm mt-2">{reviewsPageCopy.emptySummary}</p>
+            </div>
+          )}
+        </aside>
+      </div>
 
       {reviewId && selected && selectedStatus ? (
         <WorkbenchDetailSheet

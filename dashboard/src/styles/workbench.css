@@ -288,6 +288,25 @@
   margin-top: 18px;
 }
 
+.workbench-grid--page {
+  margin-top: 0;
+  align-items: start;
+}
+
+.workbench-masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workbench-masthead__signals {
+  display: grid;
+  min-width: 320px;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .workbench-pane {
   display: flex;
   flex-direction: column;
@@ -664,6 +683,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.workbench-grid--page .review-pane--queue,
+.workbench-grid--page .task-pane--queue {
+  border-right: 0;
 }
 
 .review-table {

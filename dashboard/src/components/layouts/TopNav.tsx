@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Languages, LogOut, Menu, Monitor, Moon, RefreshCw, Sun, UserRound } from 'lucide-react';
+import { Gauge, Languages, LogOut, Menu, Monitor, Moon, RefreshCw, Sun, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { useShellCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
+import { useMotionStore } from '@/stores/motionStore';
 import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
@@ -13,21 +14,46 @@ import { useSessionStore } from '@/stores/sessionStore';
 const themeCycle: ThemeMode[] = ['light', 'dark', 'system'];
 const themeIcons = { light: Sun, dark: Moon, system: Monitor };
 
+function formatClockValue() {
+  return `${new Date().toISOString().slice(11, 19)} UTC`;
+}
+
+function TopbarClock({ label }: { label: string }) {
+  const [clock, setClock] = useState(() => formatClockValue());
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setClock(formatClockValue());
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, []);
+
+  return (
+    <div className="topbar-clock-inline">
+      <span className="topbar-clock-label">{label}</span>
+      <span className="topbar-clock-value">{clock}</span>
+    </div>
+  );
+}
+
 function IconButton({
   onClick,
   label,
   children,
   spinning,
+  compact = true,
 }: {
   onClick: () => void | Promise<void>;
   label: string;
   children: React.ReactNode;
   spinning?: boolean;
+  compact?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="icon-button"
+      className={compact ? 'icon-button' : 'icon-button icon-button--compound'}
       aria-label={label}
       title={label}
     >
@@ -46,6 +72,8 @@ export function TopNav({
   const { t } = useTranslation();
   const { locale, setLocale } = useLocale();
   const shellCopy = useShellCopy();
+  const motionMode = useMotionStore((state) => state.mode);
+  const setMotionMode = useMotionStore((state) => state.setMode);
   const { mode, setMode } = useThemeStore();
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const loading = useTaskStore((state) => state.loading);
@@ -56,11 +84,18 @@ export function TopNav({
   const logout = useSessionStore((state) => state.logout);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
-  const [clock, setClock] = useState(() => new Date().toISOString().split('T')[1]?.replace('Z', ' UTC') ?? '');
   const themeLabels = {
     light: t('settings.appearanceLabels.light'),
     dark: t('settings.appearanceLabels.dark'),
     system: t('settings.appearanceLabels.system'),
+  };
+  const motionLabels = {
+    full: t('common.motionModes.full'),
+    lite: t('common.motionModes.lite'),
+  };
+  const motionShortLabels = {
+    full: t('common.motionShort.full'),
+    lite: t('common.motionShort.lite'),
   };
 
   const nextTheme = () => {
@@ -85,14 +120,19 @@ export function TopNav({
     );
   };
 
-  const ThemeIcon = themeIcons[mode];
+  const nextMotion = motionMode === 'full' ? 'lite' : 'full';
+  const motionToggleLabel = t('common.motionToggleAction', { label: motionLabels[nextMotion] });
 
-  useEffect(() => {
-    const timerId = window.setInterval(() => {
-      setClock(new Date().toISOString().split('T')[1]?.replace('Z', ' UTC') ?? '');
-    }, 120);
-    return () => window.clearInterval(timerId);
-  }, []);
+  const toggleMotionMode = () => {
+    setMotionMode(nextMotion);
+    showMessage(
+      t('feedback.motionChangedTitle'),
+      t('feedback.motionChangedDetail', { label: motionLabels[nextMotion] }),
+      'info',
+    );
+  };
+
+  const ThemeIcon = themeIcons[mode];
 
   const activeCount = tasks.filter((task) => task.state === 'in_progress').length;
   const reviewCount = tasks.filter((task) => task.state === 'gate_waiting').length;
@@ -136,10 +176,10 @@ export function TopNav({
           ) : (
             <div className="topbar-intelligence" aria-hidden="true">
               <span className="topbar-intelligence__dot topbar-intelligence__dot--1 signal-pulse" />
-              <span className="topbar-intelligence__dot topbar-intelligence__dot--2 signal-pulse" />
-              <span className="topbar-intelligence__dot topbar-intelligence__dot--3 signal-pulse" />
+              <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
+              <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
               <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
-              <span className="topbar-intelligence__rail topbar-intelligence__rail--right flow-shift" />
+              <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
               <span className="topbar-intelligence__carrier signal-travel" />
             </div>
           )}
@@ -159,10 +199,7 @@ export function TopNav({
                   ? t('common.orchestratingCount', { count: activeCount })
                   : t('common.queueStable')}
             </div>
-            <div className="topbar-clock-inline">
-              <span className="topbar-clock-label">{shellCopy.systemClockLabel}</span>
-              <span className="topbar-clock-value">{clock}</span>
-            </div>
+            <TopbarClock label={shellCopy.systemClockLabel} />
 
             <div className="topbar-user-chip">
               <span className="topbar-user-chip__identity">
@@ -181,13 +218,19 @@ export function TopNav({
                 <RefreshCw size={16} />
               </IconButton>
               <div className="topbar-separator" />
-              <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')}>
+              <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')} compact={false}>
                 <span className="flex items-center gap-1">
                   <Languages size={16} />
                   <span className="type-label-sm">{locale === 'zh-CN' ? t('common.localeShort.zh') : t('common.localeShort.en')}</span>
                 </span>
               </IconButton>
               <div className="topbar-separator" />
+              <IconButton onClick={toggleMotionMode} label={motionToggleLabel} compact={false}>
+                <span className="flex items-center gap-1">
+                  <Gauge size={16} />
+                  <span className="type-label-sm">{motionShortLabels[motionMode]}</span>
+                </span>
+              </IconButton>
               <IconButton onClick={nextTheme} label={themeLabels[mode]}>
                 <ThemeIcon size={16} />
               </IconButton>

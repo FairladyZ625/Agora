@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { startTransition, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, Network, ScrollText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -171,10 +171,21 @@ export function DashboardHome() {
   const navigate = useNavigate();
   const [reviewIndex, setReviewIndex] = useState(0);
   const [railTaskId, setRailTaskId] = useState<string | null>(null);
+  const [railReady, setRailReady] = useState(false);
 
   useEffect(() => {
-    void fetchTasks();
-  }, [fetchTasks]);
+    if (tasks.length === 0 && !loading && !error) {
+      void fetchTasks();
+    }
+  }, [error, fetchTasks, loading, tasks.length]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      startTransition(() => setRailReady(true));
+    }, 180);
+
+    return () => window.clearTimeout(timerId);
+  }, []);
 
   const homeMetrics = useMemo(
     () => deriveDashboardHomeMetrics(tasks, homeCopy.latestCompletedFallback),
@@ -207,12 +218,10 @@ export function DashboardHome() {
   const executionLanes = buildExecutionLanes(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback);
   const runtimeLines = buildOperationalLines(railStatus, selectedRailTask, homeCopy.taskRailLabels.stageFallback);
 
-  useEffect(() => {
-    if (!selectedRailTask) {
-      return;
-    }
-    void selectTask(selectedRailTask.id);
-  }, [selectTask, selectedRailTask]);
+  const handleSelectRailTask = async (taskId: string) => {
+    setRailTaskId(taskId);
+    await selectTask(taskId);
+  };
 
   const handleReviewDecision = async (decision: 'approve' | 'reject') => {
     if (!focusReview) {
@@ -323,7 +332,7 @@ export function DashboardHome() {
               </div>
             </div>
 
-            <div className="home-os__authority surface-panel surface-panel--muted signal-scan">
+            <div className="home-os__authority surface-panel surface-panel--muted">
               <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
               <h4 className="home-os__authority-title">{focusTask?.title ?? homeCopy.resolutionTitle}</h4>
               <div className="home-os__authority-grid">
@@ -401,7 +410,7 @@ export function DashboardHome() {
                         key={task.id}
                         type="button"
                         className={task.id === selectedRailTask?.id ? 'home-os__task-chip home-os__task-chip--active' : 'home-os__task-chip'}
-                        onClick={() => setRailTaskId(task.id)}
+                        onClick={() => void handleSelectRailTask(task.id)}
                       >
                         <div className="home-os__task-chip-stack">
                           <div className="home-os__proposal-head">
@@ -426,7 +435,7 @@ export function DashboardHome() {
 
             <div className="home-os__section-divider" />
 
-            {selectedRailTask ? (
+            {railReady && selectedRailTask ? (
               <>
                 <section className="home-os__rail-block">
                   <div className="home-os__module-head">
@@ -492,7 +501,14 @@ export function DashboardHome() {
               </>
             ) : (
               <div className="home-os__rail-empty">
-                <p className="type-body-sm">{homeCopy.taskRailLabels.taskEmpty}</p>
+                {railReady ? (
+                  <p className="type-body-sm">{homeCopy.taskRailLabels.taskEmpty}</p>
+                ) : (
+                  <div className="home-os__rail-loading">
+                    <Skeleton variant="card" />
+                    <Skeleton variant="card" />
+                  </div>
+                )}
               </div>
             )}
 

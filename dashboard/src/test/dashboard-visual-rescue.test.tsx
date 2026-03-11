@@ -86,7 +86,7 @@ describe('dashboard visual rescue target structure', () => {
     expect(screen.getByText('Agora')).toBeInTheDocument();
     expect(screen.getByText('Agora 中枢')).toBeInTheDocument();
     expect(screen.getByText('裁决中枢')).toBeInTheDocument();
-    expect(screen.getByText('执行回路')).toBeInTheDocument();
+    expect(screen.getByText('任务总线')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /打开任务总线/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /进入裁决台/i })).toBeInTheDocument();
   });

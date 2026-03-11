@@ -7,6 +7,8 @@
 
 .signal-pulse {
   animation: signal-pulse var(--motion-pulse-duration) ease-in-out infinite;
+  animation-play-state: var(--motion-loop-play-state);
+  will-change: opacity, transform;
 }
 
 .signal-scan {
@@ -21,19 +23,34 @@
   background: var(--signal-scan-sheen);
   transform: translateX(-120%);
   animation: signal-scan var(--motion-scan-duration) ease-in-out infinite;
+  animation-play-state: var(--motion-loop-play-state);
+  will-change: transform;
   pointer-events: none;
 }
 
 .flow-shift {
   animation: flow-shift var(--motion-flow-duration) linear infinite;
+  animation-play-state: var(--motion-loop-play-state);
+  will-change: background-position;
 }
 
 .signal-travel {
-  animation: signal-travel 3200ms ease-in-out infinite;
+  animation: signal-travel var(--motion-travel-duration) ease-in-out infinite;
+  animation-play-state: var(--motion-loop-play-state);
+  will-change: transform, opacity;
 }
 
 .terminal-entry {
   animation: terminal-entry var(--motion-terminal-duration) ease both;
+}
+
+.page-transition {
+  animation: page-enter var(--motion-page-duration) cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.staggered-item {
+  animation: staggered-enter var(--motion-stagger-duration) ease-out both;
+  animation-delay: var(--stagger-delay, 0ms);
 }
 
 .skeleton--text {
@@ -66,12 +83,12 @@
   0%,
   100% {
     opacity: 0.62;
-    box-shadow: none;
+    transform: scale(0.92);
   }
 
   50% {
     opacity: 1;
-    box-shadow: var(--signal-active-glow);
+    transform: scale(1);
   }
 }
 
@@ -89,6 +106,30 @@
   0% {
     opacity: 0;
     transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes page-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes staggered-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
   }
 
   100% {

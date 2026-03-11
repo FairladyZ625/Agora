@@ -129,6 +129,16 @@
     min-width: 0;
   }
 
+  .workbench-masthead {
+    flex-direction: column;
+  }
+
+  .workbench-masthead__signals {
+    min-width: 0;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
   .workbench-sheet__panel {
     width: calc(100vw - 16px);
     height: calc(100vh - 16px);

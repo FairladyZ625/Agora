@@ -167,29 +167,31 @@ export function AgentsPage() {
   return (
     <div className="space-y-6">
       <section className="surface-panel surface-panel--workspace">
-        <div className="section-title-row">
+        <div className="workbench-masthead">
           <div>
             <p className="page-kicker">{copy.kicker}</p>
             <h2 className="page-title">{copy.title}</h2>
             <p className="page-summary">{copy.summary}</p>
           </div>
+          <div className="workbench-masthead__signals">
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.metrics.activeTasks}</span>
+              <span className="inline-stat__value">{summary?.activeTasks ?? 0}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.metrics.activeAgents}</span>
+              <span className="inline-stat__value">{summary?.activeAgents ?? 0}</span>
+            </div>
+            <div className="inline-stat">
+              <span className="inline-stat__label">{copy.metrics.busyCraftsmen}</span>
+              <span className="inline-stat__value">{summary?.busyCraftsmen ?? 0}</span>
+            </div>
+          </div>
         </div>
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-6">
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.activeTasks}</p>
-          <p className="metric-value">{summary?.activeTasks ?? 0}</p>
-        </div>
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.activeAgents}</p>
-          <p className="metric-value">{summary?.activeAgents ?? 0}</p>
-        </div>
-        <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.totalAgents}</p>
-          <p className="metric-value">{summary?.totalAgents ?? 0}</p>
-        </div>
+      <section className="grid gap-4 md:grid-cols-4">
         <div className="surface-panel surface-panel--workspace">
           <p className="metric-label">{copy.metrics.onlineAgents}</p>
           <p className="metric-value">{summary?.onlineAgents ?? 0}</p>
@@ -203,8 +205,8 @@ export function AgentsPage() {
           <p className="metric-value">{summary?.disconnectedAgents ?? 0}</p>
         </div>
         <div className="surface-panel surface-panel--workspace">
-          <p className="metric-label">{copy.metrics.busyCraftsmen}</p>
-          <p className="metric-value">{summary?.busyCraftsmen ?? 0}</p>
+          <p className="metric-label">{copy.metrics.totalAgents}</p>
+          <p className="metric-value">{summary?.totalAgents ?? 0}</p>
         </div>
       </section>
 
