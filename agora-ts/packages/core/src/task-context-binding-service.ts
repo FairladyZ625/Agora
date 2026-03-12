@@ -44,6 +44,18 @@ export class TaskContextBindingService {
     return this.bindings.listByTask(taskId);
   }
 
+  findLatestBindingByRefs(input: {
+    provider?: string | null;
+    thread_ref?: string | null;
+    conversation_ref?: string | null;
+  }): StoredTaskContextBinding | null {
+    const candidates = this.bindings.listByTaskBindingsForRefs({
+      thread_ref: input.thread_ref ?? null,
+      conversation_ref: input.conversation_ref ?? null,
+    });
+    return candidates.find((binding) => !input.provider || binding.im_provider === input.provider) ?? null;
+  }
+
   updateStatus(bindingId: string, status: string): void {
     this.bindings.updateStatus(bindingId, status);
   }

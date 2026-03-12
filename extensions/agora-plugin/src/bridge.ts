@@ -64,11 +64,51 @@ export class AgoraBridge {
     });
   }
 
+  async approveCurrent(input: {
+    provider?: string;
+    threadRef?: string;
+    conversationRef?: string;
+    actorId?: string;
+    comment?: string;
+  }): Promise<TaskDto> {
+    return this.request("/api/im/tasks/current/approve", {
+      method: "POST",
+      body: {
+        provider: input.provider ?? "discord",
+        ...(input.threadRef ? { thread_ref: input.threadRef } : {}),
+        ...(input.conversationRef ? { conversation_ref: input.conversationRef } : {}),
+        ...(input.actorId ? { actor_id: input.actorId } : {}),
+        comment: input.comment ?? "",
+      },
+      headers: input.actorId ? this.humanIdentityHeaders(input.provider ?? "discord", input.actorId) : {},
+    });
+  }
+
   async reject(taskId: string, rejectorId: string, reason = ""): Promise<TaskDto> {
     const body: RejectTaskRequestDto = { rejector_id: rejectorId, reason };
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/reject`, {
       method: "POST",
       body,
+    });
+  }
+
+  async rejectCurrent(input: {
+    provider?: string;
+    threadRef?: string;
+    conversationRef?: string;
+    actorId?: string;
+    reason?: string;
+  }): Promise<TaskDto> {
+    return this.request("/api/im/tasks/current/reject", {
+      method: "POST",
+      body: {
+        provider: input.provider ?? "discord",
+        ...(input.threadRef ? { thread_ref: input.threadRef } : {}),
+        ...(input.conversationRef ? { conversation_ref: input.conversationRef } : {}),
+        ...(input.actorId ? { actor_id: input.actorId } : {}),
+        reason: input.reason ?? "",
+      },
+      headers: input.actorId ? this.humanIdentityHeaders(input.provider ?? "discord", input.actorId) : {},
     });
   }
 

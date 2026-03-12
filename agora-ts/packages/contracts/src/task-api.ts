@@ -296,6 +296,40 @@ export const archonRejectTaskRequestSchema = z.object({
 });
 export type ArchonRejectTaskRequestDto = z.infer<typeof archonRejectTaskRequestSchema>;
 
+export const currentImTaskApproveRequestSchema = z.object({
+  provider: z.string().min(1).default('discord'),
+  thread_ref: z.string().min(1).optional(),
+  conversation_ref: z.string().min(1).optional(),
+  actor_id: z.string().min(1).optional(),
+  comment: z.string().default(''),
+}).superRefine((value, ctx) => {
+  if (!value.thread_ref && !value.conversation_ref) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'thread_ref or conversation_ref is required',
+      path: ['thread_ref'],
+    });
+  }
+});
+export type CurrentImTaskApproveRequestDto = z.infer<typeof currentImTaskApproveRequestSchema>;
+
+export const currentImTaskRejectRequestSchema = z.object({
+  provider: z.string().min(1).default('discord'),
+  thread_ref: z.string().min(1).optional(),
+  conversation_ref: z.string().min(1).optional(),
+  actor_id: z.string().min(1).optional(),
+  reason: z.string().default(''),
+}).superRefine((value, ctx) => {
+  if (!value.thread_ref && !value.conversation_ref) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'thread_ref or conversation_ref is required',
+      path: ['thread_ref'],
+    });
+  }
+});
+export type CurrentImTaskRejectRequestDto = z.infer<typeof currentImTaskRejectRequestSchema>;
+
 export const confirmTaskRequestSchema = z.object({
   voter_id: z.string().min(1),
   vote: z.enum(['approve', 'reject']),

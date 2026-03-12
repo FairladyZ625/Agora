@@ -26,6 +26,8 @@ import {
   createInboxRequestSchema,
   createTaskRequestSchema,
   createTaskContextBindingRequestSchema,
+  currentImTaskApproveRequestSchema,
+  currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
@@ -1073,6 +1075,100 @@ export function buildApp(options: BuildAppOptions = {}) {
           rejectorId: payload.rejector_id,
           reason: payload.reason,
         }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/im/tasks/current/approve', async (request, reply) => {
+    if (!taskService || !taskContextBindingService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = currentImTaskApproveRequestSchema.parse(request.body);
+      const binding = taskContextBindingService.findLatestBindingByRefs({
+        provider: payload.provider,
+        thread_ref: payload.thread_ref ?? null,
+        conversation_ref: payload.conversation_ref ?? null,
+      });
+      if (!binding) {
+        return reply.status(404).send({ message: 'task context binding not found for current IM context' });
+      }
+      const task = taskService.getTask(binding.task_id);
+      if (!task?.current_stage) {
+        return reply.status(400).send({ message: 'task has no active stage for approval' });
+      }
+      const stage = (task.workflow.stages ?? []).find((item) => item.id === task.current_stage);
+      if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
+        return reply.status(400).send({ message: 'current stage does not accept human approval' });
+      }
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (stage.gate.type === 'archon_review' && humanAccountService?.hasAccounts() && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      }
+      const actorId = humanActor?.username ?? payload.actor_id;
+      if (!actorId) {
+        return reply.status(400).send({ message: 'missing actor identity for current IM approval' });
+      }
+      return reply.send(
+        stage.gate.type === 'archon_review'
+          ? taskService.archonApproveTask(binding.task_id, {
+              reviewerId: actorId,
+              comment: payload.comment,
+            })
+          : taskService.approveTask(binding.task_id, {
+              approverId: actorId,
+              comment: payload.comment,
+            }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/im/tasks/current/reject', async (request, reply) => {
+    if (!taskService || !taskContextBindingService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = currentImTaskRejectRequestSchema.parse(request.body);
+      const binding = taskContextBindingService.findLatestBindingByRefs({
+        provider: payload.provider,
+        thread_ref: payload.thread_ref ?? null,
+        conversation_ref: payload.conversation_ref ?? null,
+      });
+      if (!binding) {
+        return reply.status(404).send({ message: 'task context binding not found for current IM context' });
+      }
+      const task = taskService.getTask(binding.task_id);
+      if (!task?.current_stage) {
+        return reply.status(400).send({ message: 'task has no active stage for rejection' });
+      }
+      const stage = (task.workflow.stages ?? []).find((item) => item.id === task.current_stage);
+      if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
+        return reply.status(400).send({ message: 'current stage does not accept human rejection' });
+      }
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (stage.gate.type === 'archon_review' && humanAccountService?.hasAccounts() && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      }
+      const actorId = humanActor?.username ?? payload.actor_id;
+      if (!actorId) {
+        return reply.status(400).send({ message: 'missing actor identity for current IM rejection' });
+      }
+      return reply.send(
+        stage.gate.type === 'archon_review'
+          ? taskService.archonRejectTask(binding.task_id, {
+              reviewerId: actorId,
+              reason: payload.reason,
+            })
+          : taskService.rejectTask(binding.task_id, {
+              rejectorId: actorId,
+              reason: payload.reason,
+            }),
       );
     } catch (error) {
       const translated = translateError(error);

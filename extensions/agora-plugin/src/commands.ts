@@ -23,9 +23,9 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
           case "advance":
             return await handleAdvance(bridge, rest, senderId);
           case "approve":
-            return await handleApprove(bridge, rest, senderId);
+            return await handleApprove(bridge, rest, ctx);
           case "reject":
-            return await handleReject(bridge, rest, senderId);
+            return await handleReject(bridge, rest, ctx);
           case "archon-approve":
             return await handleArchonApprove(bridge, rest, senderId);
           case "archon-reject":
@@ -107,20 +107,50 @@ async function handleAdvance(bridge: AgoraBridge, args: string[], senderId: stri
   return { text: `${task.id} advanced to ${task.current_stage || task.state}` };
 }
 
-async function handleApprove(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
+async function handleApprove(
+  bridge: AgoraBridge,
+  args: string[],
+  ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; provider?: string },
+): Promise<CommandResult> {
+  const senderId = ctx.senderId || ctx.from || "unknown";
+  if (!looksLikeTaskId(args[0]) && (ctx.threadId || ctx.conversationId)) {
+    const task = await bridge.approveCurrent({
+      provider: ctx.provider ?? "discord",
+      threadRef: ctx.threadId,
+      conversationRef: ctx.conversationId,
+      actorId: senderId,
+      comment: args.join(" "),
+    });
+    return { text: `${task.id} approved` };
+  }
   const taskId = args[0];
   if (!taskId) {
-    return { text: "Usage: /task approve <task_id> [comment]" };
+    return { text: "Usage: /task approve [task_id] [comment]" };
   }
   const comment = args.slice(1).join(" ");
   const task = await bridge.approve(taskId, senderId, comment);
   return { text: `${task.id} approved` };
 }
 
-async function handleReject(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
+async function handleReject(
+  bridge: AgoraBridge,
+  args: string[],
+  ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; provider?: string },
+): Promise<CommandResult> {
+  const senderId = ctx.senderId || ctx.from || "unknown";
+  if (!looksLikeTaskId(args[0]) && (ctx.threadId || ctx.conversationId)) {
+    const task = await bridge.rejectCurrent({
+      provider: ctx.provider ?? "discord",
+      threadRef: ctx.threadId,
+      conversationRef: ctx.conversationId,
+      actorId: senderId,
+      reason: args.join(" "),
+    });
+    return { text: `${task.id} rejected` };
+  }
   const taskId = args[0];
   if (!taskId) {
-    return { text: "Usage: /task reject <task_id> [reason]" };
+    return { text: "Usage: /task reject [task_id] [reason]" };
   }
   const reason = args.slice(1).join(" ");
   const task = await bridge.reject(taskId, senderId, reason);
@@ -231,8 +261,8 @@ function formatHelp(): string {
     "- /task list [state]",
     "- /task status <task_id>",
     "- /task advance <task_id>",
-    "- /task approve <task_id> [comment]",
-    "- /task reject <task_id> [reason]",
+    "- /task approve [task_id] [comment]",
+    "- /task reject [task_id] [reason]",
     "- /task archon-approve <task_id> [comment]",
     "- /task archon-reject <task_id> [reason]",
     "- /task confirm <task_id> [approve|reject] [comment]",
@@ -258,4 +288,8 @@ export function tokenize(raw: string): string[] {
 
 function isTaskType(value: string): boolean {
   return ["coding", "coding_heavy", "research", "document", "quick", "brainstorm"].includes(value);
+}
+
+function looksLikeTaskId(value?: string): boolean {
+  return typeof value === "string" && /^OC[-A-Z0-9]/i.test(value);
 }

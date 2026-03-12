@@ -219,4 +219,86 @@ describe("AgoraBridge", () => {
       }),
     );
   });
+
+  it("posts thread-scoped current-task approval and rejection requests", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-777" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.approveCurrent({
+      threadRef: "thread-7",
+      actorId: "reviewer-1",
+      comment: "ship it",
+    });
+    await bridge.rejectCurrent({
+      conversationRef: "channel-9",
+      actorId: "reviewer-2",
+      reason: "needs tests",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8420/api/im/tasks/current/approve",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "discord",
+          thread_ref: "thread-7",
+          actor_id: "reviewer-1",
+          comment: "ship it",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8420/api/im/tasks/current/reject",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          provider: "discord",
+          conversation_ref: "channel-9",
+          actor_id: "reviewer-2",
+          reason: "needs tests",
+        }),
+      }),
+    );
+  });
+
+  it("omits optional identity headers when current-task IM actions have no actor id", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-778" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.approveCurrent({ threadRef: "thread-9" });
+    await bridge.rejectCurrent({ threadRef: "thread-10" });
+
+    const [, approveInit] = fetchMock.mock.calls[0];
+    const [, rejectInit] = fetchMock.mock.calls[1];
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8420/api/im/tasks/current/approve",
+      expect.objectContaining({
+        body: JSON.stringify({
+          provider: "discord",
+          thread_ref: "thread-9",
+          comment: "",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8420/api/im/tasks/current/reject",
+      expect.objectContaining({
+        body: JSON.stringify({
+          provider: "discord",
+          thread_ref: "thread-10",
+          reason: "",
+        }),
+      }),
+    );
+    expect(approveInit.headers["x-agora-human-provider"]).toBeUndefined();
+    expect(approveInit.headers["x-agora-human-external-id"]).toBeUndefined();
+    expect(rejectInit.headers["x-agora-human-provider"]).toBeUndefined();
+    expect(rejectInit.headers["x-agora-human-external-id"]).toBeUndefined();
+  });
 });

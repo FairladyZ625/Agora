@@ -44,6 +44,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '009_templates.sql',
       '010_role_pack_bindings.sql',
       '011_task_brain_bindings.sql',
+      '012_approval_requests.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -69,6 +70,10 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'role_definitions'")
       .get() as { name: string } | undefined;
     expect(roleDefinitionsTable?.name).toBe('role_definitions');
+    const approvalRequestsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'approval_requests'")
+      .get() as { name: string } | undefined;
+    expect(approvalRequestsTable?.name).toBe('approval_requests');
   });
 
   it('can persist role definitions inside the single sqlite database', () => {

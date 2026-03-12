@@ -12,6 +12,7 @@ import type {
   WorkflowDto,
 } from '@agora-ts/contracts';
 import {
+  ApprovalRequestRepository,
   ArchiveJobRepository,
   CraftsmanExecutionRepository,
   FlowLogRepository,
@@ -140,6 +141,7 @@ export class TaskService {
   private readonly taskConversationRepository: TaskConversationRepository;
   private readonly todoRepository: TodoRepository;
   private readonly archiveJobRepository: ArchiveJobRepository;
+  private readonly approvalRequestRepository: ApprovalRequestRepository;
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
@@ -170,6 +172,7 @@ export class TaskService {
     this.taskConversationRepository = new TaskConversationRepository(db);
     this.todoRepository = new TodoRepository(db);
     this.archiveJobRepository = new ArchiveJobRepository(db);
+    this.approvalRequestRepository = new ApprovalRequestRepository(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
     this.templateRepository = new TemplateRepository(db);
     this.stateMachine = new StateMachine();
@@ -375,6 +378,17 @@ export class TaskService {
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
     if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
+      const approvalRequest = this.ensureApprovalRequestForGate(task, currentStage, options.callerId);
+      if (approvalRequest) {
+        this.publishTaskStatusBroadcast(task, {
+          kind: 'gate_waiting',
+          bodyLines: [
+            `Gate ${approvalRequest.gate_type} is waiting for human decision.`,
+            `Approval Request: ${approvalRequest.id}`,
+            ...(approvalRequest.summary_path ? [`Summary Path: ${approvalRequest.summary_path}`] : []),
+          ],
+        });
+      }
       throw new PermissionDeniedError(
         `Gate check failed for stage '${task.current_stage}' (gate type: ${currentStage.gate?.type ?? 'command'})`,
       );
@@ -405,6 +419,7 @@ export class TaskService {
         gate_type: 'approval',
       },
     });
+    this.resolvePendingApprovalRequest(taskId, stage.id, 'approved', options.approverId, options.comment);
     const advanced = this.advanceSatisfiedStage(task, options.approverId);
     this.publishGateDecisionBroadcast(advanced, {
       decision: 'approved',
@@ -435,6 +450,7 @@ export class TaskService {
         gate_type: 'approval',
       },
     });
+    this.resolvePendingApprovalRequest(taskId, stage.id, 'rejected', options.rejectorId, options.reason);
     const rewound = this.rewindRejectedStage(task, stage.id, 'rejected', options.rejectorId, options.reason);
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
@@ -484,6 +500,7 @@ export class TaskService {
         event: 'archon_approved',
       },
     });
+    this.resolvePendingApprovalRequest(taskId, stage.id, 'approved', options.reviewerId, options.comment ?? '');
     const advanced = this.advanceSatisfiedStage(task, options.reviewerId);
     this.publishGateDecisionBroadcast(advanced, {
       decision: 'approved',
@@ -527,6 +544,7 @@ export class TaskService {
         event: 'archon_rejected',
       },
     });
+    this.resolvePendingApprovalRequest(taskId, stage.id, 'rejected', options.reviewerId, options.reason ?? '');
     this.publishGateDecisionBroadcast(rewound, {
       decision: 'rejected',
       reviewer: options.reviewerId,
@@ -1329,6 +1347,55 @@ export class TaskService {
             `Current Stage: ${task.current_stage ?? '-'}`,
             'Resume orchestration and drive the next stage.',
           ],
+    });
+  }
+
+  private ensureApprovalRequestForGate(
+    task: StoredTask,
+    stage: NonNullable<StoredTask['workflow']['stages']>[number],
+    requester: string,
+  ) {
+    const gateType = stage.gate?.type;
+    if (gateType !== 'approval' && gateType !== 'archon_review') {
+      return null;
+    }
+    const existing = this.approvalRequestRepository.getLatestPending(task.id, stage.id);
+    if (existing) {
+      return existing;
+    }
+    const brainBinding = this.taskBrainBindingService?.getActiveBinding(task.id) ?? null;
+    return this.approvalRequestRepository.insert({
+      task_id: task.id,
+      stage_id: stage.id,
+      gate_type: gateType,
+      requested_by: requester,
+      summary_path: brainBinding ? join(brainBinding.workspace_path, '00-current.md') : null,
+      metadata: {
+        controller_ref: resolveControllerRef(task.team.members),
+        current_stage: task.current_stage,
+      },
+    });
+  }
+
+  private resolvePendingApprovalRequest(
+    taskId: string,
+    stageId: string,
+    status: 'approved' | 'rejected',
+    resolvedBy: string,
+    resolutionComment: string,
+  ) {
+    const pending = this.approvalRequestRepository.getLatestPending(taskId, stageId);
+    if (!pending) {
+      return null;
+    }
+    return this.approvalRequestRepository.resolve(pending.id, {
+      status,
+      resolved_by: resolvedBy,
+      resolution_comment: resolutionComment,
+      metadata: {
+        ...(pending.metadata ?? {}),
+        resolution_source: 'task_action',
+      },
     });
   }
 

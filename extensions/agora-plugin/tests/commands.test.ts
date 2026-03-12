@@ -63,8 +63,8 @@ describe("registerTaskCommands", () => {
   it.each([
     ["status", "Usage: /task status <task_id>"],
     ["advance", "Usage: /task advance <task_id>"],
-    ["approve", "Usage: /task approve <task_id> [comment]"],
-    ["reject", "Usage: /task reject <task_id> [reason]"],
+    ["approve", "Usage: /task approve [task_id] [comment]"],
+    ["reject", "Usage: /task reject [task_id] [reason]"],
     ["archon-approve", "Usage: /task archon-approve <task_id> [comment]"],
     ["archon-reject", "Usage: /task archon-reject <task_id> [reason]"],
     ["confirm", "Usage: /task confirm <task_id> [approve|reject] [comment]"],
@@ -100,6 +100,8 @@ describe("registerTaskCommands", () => {
       cancel: vi.fn(async () => ({ id: "OC-101" })),
       unblock: vi.fn(async () => ({ id: "OC-101" })),
       cleanup: vi.fn(async () => ({ cleaned: 2 })),
+      approveCurrent: vi.fn(async () => ({ id: "OC-201" })),
+      rejectCurrent: vi.fn(async () => ({ id: "OC-202" })),
     } as any;
     const { api, getCommand } = buildApi();
     registerTaskCommands(api as any, bridge);
@@ -153,6 +155,79 @@ describe("registerTaskCommands", () => {
     expect(bridge.listTasks).toHaveBeenCalledWith("active");
     expect(bridge.confirm).toHaveBeenCalledWith("OC-101", "u1", "approve", "done");
     expect(bridge.cleanup).toHaveBeenCalledWith("OC-101");
+  });
+
+  it("uses current thread context for approve/reject when no task id is provided", async () => {
+    const bridge = {
+      approveCurrent: vi.fn(async () => ({ id: "OC-201" })),
+      rejectCurrent: vi.fn(async () => ({ id: "OC-202" })),
+    } as any;
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, bridge);
+
+    await expect(getCommand().handler({
+      args: "approve ship-it",
+      senderId: "u1",
+      provider: "discord",
+      threadId: "thread-7",
+      conversationId: "channel-1",
+    })).resolves.toEqual({ text: "OC-201 approved" });
+    await expect(getCommand().handler({
+      args: "reject needs-tests",
+      senderId: "u2",
+      provider: "discord",
+      threadId: "thread-8",
+    })).resolves.toEqual({ text: "OC-202 rejected" });
+
+    expect(bridge.approveCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "thread-7",
+      conversationRef: "channel-1",
+      actorId: "u1",
+      comment: "ship-it",
+    });
+    expect(bridge.rejectCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "thread-8",
+      conversationRef: undefined,
+      actorId: "u2",
+      reason: "needs-tests",
+    });
+  });
+
+  it("falls back to ctx.from and default provider for current-thread approve/reject", async () => {
+    const bridge = {
+      approveCurrent: vi.fn(async () => ({ id: "OC-301" })),
+      rejectCurrent: vi.fn(async () => ({ id: "OC-302" })),
+    } as any;
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, bridge);
+
+    await getCommand().handler({
+      args: "approve",
+      from: "legacy-user",
+      threadId: "thread-11",
+    });
+    await getCommand().handler({
+      args: "reject",
+      from: "legacy-user",
+      conversationId: "channel-11",
+    });
+
+    expect(bridge.approveCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "thread-11",
+      conversationRef: undefined,
+      actorId: "legacy-user",
+      comment: "",
+    });
+    expect(bridge.rejectCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: undefined,
+      conversationRef: "channel-11",
+      actorId: "legacy-user",
+      reason: "",
+    });
   });
 
   it("uses reject vote for confirm when provided", async () => {

@@ -248,6 +248,143 @@ describe('task routes', () => {
     });
   });
 
+  it('supports thread-scoped current approve/reject routes for IM users', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-current-approve-1',
+    });
+    const taskContextBindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: (() => {
+        const ids = ['OC-CURRENT-1', 'OC-CURRENT-2'];
+        return () => ids.shift() ?? 'OC-CURRENT-X';
+      })(),
+      archonUsers: ['alice'],
+      allowAgents: {
+        opus: { canCall: [], canAdvance: true },
+      },
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService,
+    });
+    const humanAccountService = new HumanAccountService(db);
+    humanAccountService.createUser({
+      username: 'alice',
+      password: 'secret-pass',
+      role: 'admin',
+    });
+    humanAccountService.bindIdentity({
+      username: 'alice',
+      provider: 'discord',
+      externalUserId: 'discord-user-123',
+    });
+
+    taskService.createTask({
+      title: 'current approve route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const app = buildApp({
+      taskService,
+      taskContextBindingService,
+      humanAccountService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const approveCurrent = await app.inject({
+      method: 'POST',
+      url: '/api/im/tasks/current/approve',
+      headers: {
+        'x-agora-human-provider': 'discord',
+        'x-agora-human-external-id': 'discord-user-123',
+      },
+      payload: {
+        provider: 'discord',
+        thread_ref: 'thread-current-approve-1',
+        comment: 'looks good',
+      },
+    });
+
+    expect(approveCurrent.statusCode).toBe(200);
+    expect(approveCurrent.json()).toMatchObject({
+      id: 'OC-CURRENT-1',
+      current_stage: 'develop',
+    });
+
+    const secondProvisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-current-reject-2',
+    });
+    const secondTaskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CURRENT-2',
+      archonUsers: ['alice'],
+      allowAgents: {
+        opus: { canCall: [], canAdvance: true },
+      },
+      imProvisioningPort: secondProvisioningPort,
+      taskContextBindingService,
+    });
+
+    secondTaskService.createTask({
+      title: 'current reject route',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    secondTaskService.archonApproveTask('OC-CURRENT-2', {
+      reviewerId: 'alice',
+      comment: 'outline ok',
+    });
+    const subtasks = new SubtaskRepository(db);
+    subtasks.insertSubtask({
+      id: 'write-current-2',
+      task_id: 'OC-CURRENT-2',
+      stage_id: 'write',
+      title: 'write body',
+      assignee: 'glm5',
+      status: 'done',
+    });
+    secondTaskService.advanceTask('OC-CURRENT-2', { callerId: 'opus' });
+
+    const rejectCurrent = await app.inject({
+      method: 'POST',
+      url: '/api/im/tasks/current/reject',
+      headers: {
+        'x-agora-human-provider': 'discord',
+        'x-agora-human-external-id': 'discord-user-123',
+      },
+      payload: {
+        provider: 'discord',
+        thread_ref: 'thread-current-reject-2',
+        reason: 'needs more detail',
+      },
+    });
+
+    expect(rejectCurrent.statusCode).toBe(200);
+    expect(rejectCurrent.json()).toMatchObject({
+      id: 'OC-CURRENT-2',
+      current_stage: 'write',
+    });
+  });
+
   it('serves task action routes for archon approve, subtask done, force advance, and approve', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

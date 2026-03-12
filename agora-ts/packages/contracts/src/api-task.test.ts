@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   approveTaskRequestSchema,
   createTaskRequestSchema,
+  currentImTaskApproveRequestSchema,
+  currentImTaskRejectRequestSchema,
   taskStatusSchema,
   workflowSchema,
   teamSchema,
@@ -167,6 +169,19 @@ describe('task api contracts', () => {
         comment: 'looks good',
       }).approver_id,
     ).toBe('glm5');
+  });
+
+  it('parses thread-scoped IM approval payloads', () => {
+    expect(currentImTaskApproveRequestSchema.parse({
+      thread_ref: 'thread-123',
+      actor_id: 'reviewer-1',
+      comment: 'ship it',
+    }).thread_ref).toBe('thread-123');
+    expect(currentImTaskRejectRequestSchema.parse({
+      conversation_ref: 'channel-1',
+      actor_id: 'reviewer-1',
+      reason: 'needs more tests',
+    }).conversation_ref).toBe('channel-1');
   });
 
   it('accepts team members with empty model_preference for legacy and quick tasks', () => {

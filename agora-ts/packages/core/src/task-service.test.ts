@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
@@ -250,6 +250,7 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-101',
     });
+    const approvalRequests = new ApprovalRequestRepository(db);
 
     service.createTask({
       title: '推进 discuss gate',
@@ -262,6 +263,13 @@ describe('task service', () => {
     expect(() => service.advanceTask('OC-101', { callerId: 'archon' })).toThrow(
       "Gate check failed for stage 'discuss'",
     );
+    expect(approvalRequests.getLatestPending('OC-101', 'discuss')).toMatchObject({
+      task_id: 'OC-101',
+      stage_id: 'discuss',
+      gate_type: 'archon_review',
+      requested_by: 'archon',
+      status: 'pending',
+    });
 
     db.prepare(
       'INSERT INTO archon_reviews (task_id, stage_id, decision, reviewer_id) VALUES (?, ?, ?, ?)',

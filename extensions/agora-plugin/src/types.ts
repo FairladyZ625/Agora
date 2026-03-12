@@ -2,6 +2,10 @@ export interface CommandContext {
   args?: string;
   senderId?: string;
   from?: string;
+  provider?: string;
+  channelId?: string;
+  conversationId?: string;
+  threadId?: string;
 }
 
 export interface CommandResult {
