@@ -258,33 +258,7 @@ export class TaskService {
 
       this.taskParticipationService?.seedParticipants(taskId, team);
       if (this.taskBrainWorkspacePort && this.taskBrainBindingService) {
-        brainWorkspaceBinding = this.taskBrainWorkspacePort.createWorkspace({
-          task_id: taskId,
-          title: input.title,
-          description: input.description,
-          type: input.type,
-          priority: input.priority,
-          creator: input.creator,
-          template_id: input.type,
-          controller_ref: resolveControllerRef(team.members),
-          current_stage: firstStageId,
-          workflow_stages: (workflow.stages ?? []).map((stage) => ({
-            id: stage.id,
-            ...(stage.name ? { name: stage.name } : {}),
-            ...(stage.mode ? { mode: stage.mode } : {}),
-            ...(stage.execution_kind ? { execution_kind: stage.execution_kind } : {}),
-            ...(stage.allowed_actions ? { allowed_actions: stage.allowed_actions } : {}),
-            ...(stage.gate ? { gate: { ...(stage.gate.type ? { type: stage.gate.type } : {}) } } : {}),
-          })),
-          team_members: team.members.map((member) => ({
-            role: member.role,
-            agentId: member.agentId,
-            ...(member.member_kind ? { member_kind: member.member_kind } : {}),
-            model_preference: member.model_preference,
-            ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
-            ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
-          })),
-        });
+        brainWorkspaceBinding = this.taskBrainWorkspacePort.createWorkspace(this.buildTaskBrainWorkspaceRequest(active, input.type));
         this.taskBrainBindingService.createBinding({
           task_id: taskId,
           brain_pack_ref: brainWorkspaceBinding.brain_pack_ref,
@@ -431,7 +405,14 @@ export class TaskService {
         gate_type: 'approval',
       },
     });
-    return this.advanceSatisfiedStage(task, options.approverId);
+    const advanced = this.advanceSatisfiedStage(task, options.approverId);
+    this.publishGateDecisionBroadcast(advanced, {
+      decision: 'approved',
+      reviewer: options.approverId,
+      comment: options.comment,
+      gateType: 'approval',
+    });
+    return advanced;
   }
 
   rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
@@ -466,6 +447,12 @@ export class TaskService {
       },
       actor: options.rejectorId,
     });
+    this.publishGateDecisionBroadcast(rewound, {
+      decision: 'rejected',
+      reviewer: options.rejectorId,
+      reason: options.reason,
+      gateType: 'approval',
+    });
     return rewound;
   }
 
@@ -497,7 +484,14 @@ export class TaskService {
         event: 'archon_approved',
       },
     });
-    return this.advanceSatisfiedStage(task, options.reviewerId);
+    const advanced = this.advanceSatisfiedStage(task, options.reviewerId);
+    this.publishGateDecisionBroadcast(advanced, {
+      decision: 'approved',
+      reviewer: options.reviewerId,
+      comment: options.comment ?? '',
+      gateType: 'archon_review',
+    });
+    return advanced;
   }
 
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
@@ -533,6 +527,12 @@ export class TaskService {
         event: 'archon_rejected',
       },
     });
+    this.publishGateDecisionBroadcast(rewound, {
+      decision: 'rejected',
+      reviewer: options.reviewerId,
+      reason: options.reason ?? '',
+      gateType: 'archon_review',
+    });
     return rewound;
   }
 
@@ -550,6 +550,7 @@ export class TaskService {
       const done = this.taskRepository.updateTask(task.id, task.version, {
         state: TaskState.DONE,
       });
+      this.refreshTaskBrainWorkspace(done);
       this.ensureArchiveJobForTask(task.id);
       this.flowLogRepository.insertFlowLog({
         task_id: task.id,
@@ -569,6 +570,10 @@ export class TaskService {
           to_state: TaskState.DONE,
         },
       });
+      this.publishTaskStatusBroadcast(done, {
+        kind: 'task_completed',
+        bodyLines: ['Task reached done state and has been queued for archive handling.'],
+      });
       return done;
     }
 
@@ -579,6 +584,7 @@ export class TaskService {
     if (nextStage) {
       this.enterStage(task.id, nextStage.id);
     }
+    this.refreshTaskBrainWorkspace(updated);
     this.flowLogRepository.insertFlowLog({
       task_id: task.id,
       kind: 'flow',
@@ -607,6 +613,13 @@ export class TaskService {
           from_stage: advance.currentStage.id,
           to_stage: nextStage.id,
         },
+      });
+      this.publishTaskStatusBroadcast(updated, {
+        kind: 'stage_entered',
+        bodyLines: [
+          `Advanced from ${advance.currentStage.id} to ${nextStage.id}.`,
+          ...this.describeGateState(nextStage),
+        ],
       });
     }
     return updated;
@@ -882,7 +895,14 @@ export class TaskService {
         this.failMissingCraftsmanSessionsOnResume(taskId);
       }
       this.db.exec('COMMIT');
-      this.syncImContextForTaskState(taskId, task.state as TaskState, newState as TaskState, options.reason);
+      this.refreshTaskBrainWorkspace(updated);
+      const broadcast = () => this.publishTaskStateBroadcast(updated, task.state as TaskState, newState as TaskState, options.reason);
+      if (task.state === TaskState.PAUSED && newState === TaskState.ACTIVE) {
+        this.syncImContextForTaskState(taskId, task.state as TaskState, newState as TaskState, options.reason, broadcast);
+      } else {
+        broadcast();
+        this.syncImContextForTaskState(taskId, task.state as TaskState, newState as TaskState, options.reason);
+      }
       return updated;
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -1089,6 +1109,53 @@ export class TaskService {
     return input.team_override ?? this.buildTeam(template);
   }
 
+  private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
+    return {
+      task_id: task.id,
+      title: task.title,
+      description: task.description ?? '',
+      type: task.type,
+      priority: task.priority,
+      creator: task.creator,
+      template_id: templateId,
+      state: task.state,
+      controller_ref: resolveControllerRef(task.team.members),
+      current_stage: task.current_stage,
+      workflow_stages: (task.workflow.stages ?? []).map((stage) => ({
+        id: stage.id,
+        ...(stage.name ? { name: stage.name } : {}),
+        ...(stage.mode ? { mode: stage.mode } : {}),
+        ...(stage.execution_kind ? { execution_kind: stage.execution_kind } : {}),
+        ...(stage.allowed_actions ? { allowed_actions: stage.allowed_actions } : {}),
+        ...(stage.gate ? { gate: { ...(stage.gate.type ? { type: stage.gate.type } : {}) } } : {}),
+      })),
+      team_members: task.team.members.map((member) => ({
+        role: member.role,
+        agentId: member.agentId,
+        ...(member.member_kind ? { member_kind: member.member_kind } : {}),
+        model_preference: member.model_preference,
+        ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
+        ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
+      })),
+    } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
+  }
+
+  private refreshTaskBrainWorkspace(task: StoredTask) {
+    if (!this.taskBrainWorkspacePort || !this.taskBrainBindingService) {
+      return;
+    }
+    const binding = this.taskBrainBindingService.getActiveBinding(task.id);
+    if (!binding) {
+      return;
+    }
+    this.taskBrainWorkspacePort.updateWorkspace({
+      brain_pack_ref: binding.brain_pack_ref,
+      brain_task_id: binding.brain_task_id,
+      workspace_path: binding.workspace_path,
+      metadata: binding.metadata,
+    }, this.buildTaskBrainWorkspaceRequest(task, task.type));
+  }
+
   private enrichTeam(team: StoredTask['team']): StoredTask['team'] {
     return {
       members: team.members.map((member) => {
@@ -1216,6 +1283,127 @@ export class TaskService {
     return messages;
   }
 
+  private publishGateDecisionBroadcast(
+    task: StoredTask,
+    input: {
+      decision: 'approved' | 'rejected';
+      reviewer: string;
+      gateType: 'approval' | 'archon_review';
+      comment?: string;
+      reason?: string;
+    },
+  ) {
+    const baseLines = [
+      `Gate ${input.decision}: ${input.gateType}`,
+      `Reviewer: ${input.reviewer}`,
+      ...(input.comment ? [`Comment: ${input.comment}`] : []),
+      ...(input.reason ? [`Reason: ${input.reason}`] : []),
+    ];
+    this.publishTaskStatusBroadcast(task, {
+      kind: `gate_${input.decision}`,
+      bodyLines: [
+        ...baseLines,
+        ...(input.decision === 'rejected'
+          ? [`Task rewound to ${task.current_stage ?? '-'}. Controller must reorganize work and resubmit.`]
+          : [`Task advanced to ${task.current_stage ?? '-'}.`]),
+      ],
+    });
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (!controllerRef) {
+      return;
+    }
+    this.publishTaskStatusBroadcast(task, {
+      kind: `controller_gate_${input.decision}`,
+      participantRefs: [controllerRef],
+      bodyLines: input.decision === 'rejected'
+        ? [
+            `Controller action required for ${task.id}.`,
+            `Human rejected the current handoff via ${input.gateType}.`,
+            `Reason: ${input.reason ?? '(no reason provided)'}`,
+            `Current Stage: ${task.current_stage ?? '-'}`,
+            'Re-plan with the roster, address the feedback, and resubmit when ready.',
+          ]
+        : [
+            `Controller update for ${task.id}.`,
+            `Human approved the current handoff via ${input.gateType}.`,
+            `Current Stage: ${task.current_stage ?? '-'}`,
+            'Resume orchestration and drive the next stage.',
+          ],
+    });
+  }
+
+  private publishTaskStateBroadcast(
+    task: StoredTask,
+    fromState: TaskState,
+    toState: TaskState,
+    reason?: string,
+  ) {
+    const bodyLines: string[] = [];
+    if (toState === TaskState.PAUSED) {
+      bodyLines.push('Task paused. Thread will be archived and locked.');
+    } else if (toState === TaskState.CANCELLED) {
+      bodyLines.push('Task cancelled. Thread will be archived and locked until archive finalization.');
+    } else if (toState === TaskState.ACTIVE && fromState === TaskState.PAUSED) {
+      bodyLines.push('Task resumed. Original thread has been reopened.');
+    } else if (toState === TaskState.ACTIVE && fromState === TaskState.BLOCKED) {
+      bodyLines.push('Task unblocked and returned to active execution.');
+    } else if (toState === TaskState.BLOCKED) {
+      bodyLines.push('Task blocked and requires intervention.');
+    } else {
+      return;
+    }
+    if (reason) {
+      bodyLines.push(`Reason: ${reason}`);
+    }
+    this.publishTaskStatusBroadcast(task, {
+      kind: `task_state_${toState}`,
+      bodyLines,
+    });
+  }
+
+  private publishTaskStatusBroadcast(
+    task: StoredTask,
+    input: {
+      kind: string;
+      bodyLines: string[];
+      participantRefs?: string[];
+    },
+  ) {
+    if (!this.imProvisioningPort || !this.taskContextBindingService) {
+      return;
+    }
+    const binding = this.taskContextBindingService.getLatestBinding(task.id);
+    if (!binding) {
+      return;
+    }
+    const stage = task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : null;
+    const brainBinding = this.taskBrainBindingService?.getActiveBinding(task.id) ?? null;
+    const lines = [
+      'Agora status update',
+      `Task: ${task.id} — ${task.title}`,
+      `Task State: ${task.state}`,
+      `Current Stage: ${task.current_stage ?? '-'}`,
+      `Execution Kind: ${resolveStageExecutionKind(stage) ?? '-'}`,
+      `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
+      `Controller: ${resolveControllerRef(task.team.members) ?? '-'}`,
+      ...input.bodyLines,
+      ...(brainBinding ? [`Task Workspace: ${brainBinding.workspace_path}`] : []),
+      ...(brainBinding ? [`Current Brief: ${join(brainBinding.workspace_path, '00-current.md')}`] : []),
+    ];
+    void this.imProvisioningPort.publishMessages({
+      binding_id: binding.id,
+      conversation_ref: binding.conversation_ref,
+      thread_ref: binding.thread_ref,
+      messages: [{
+        kind: input.kind,
+        ...(input.participantRefs ? { participant_refs: input.participantRefs } : {}),
+        body: lines.join('\n'),
+      }],
+    }).catch((error: unknown) => {
+      console.error(`[TaskService] Task status broadcast failed for task ${task.id}:`, error);
+    });
+  }
+
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
     if (!this.imMessagingPort) {
       return;
@@ -1288,6 +1476,7 @@ export class TaskService {
       },
       actor,
     });
+    this.refreshTaskBrainWorkspace(updated);
     return updated;
   }
 
@@ -1635,6 +1824,7 @@ export class TaskService {
     fromState: TaskState,
     toState: TaskState,
     reason?: string,
+    onSuccess?: () => void,
   ) {
     if (!this.imProvisioningPort || !this.taskContextBindingService) {
       return;
@@ -1658,6 +1848,7 @@ export class TaskService {
         binding.id,
         mode === 'archive' ? 'archived' : mode === 'unarchive' ? 'active' : 'destroyed',
       );
+      onSuccess?.();
     }).catch((err: unknown) => {
       console.error(`[TaskService] IM context transition failed for task ${taskId}:`, err);
       this.taskContextBindingService?.updateStatus(binding.id, 'failed');
@@ -1675,6 +1866,22 @@ export class TaskService {
       return 'unarchive';
     }
     return null;
+  }
+
+  private describeGateState(stage: WorkflowStageLike | null) {
+    if (!stage?.gate?.type) {
+      return [];
+    }
+    switch (stage.gate.type) {
+      case 'approval':
+        return ['Waiting human approval before further progress.'];
+      case 'archon_review':
+        return ['Waiting Archon review before further progress.'];
+      case 'quorum':
+        return ['Waiting quorum confirmation before further progress.'];
+      default:
+        return [`Gate: ${stage.gate.type}`];
+    }
   }
 
   private mirrorConversationEntry(taskId: string, input: {

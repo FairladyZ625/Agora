@@ -169,6 +169,7 @@ describe('task service', () => {
         createWorkspace: () => {
           throw new Error('brain workspace boom');
         },
+        updateWorkspace: () => {},
         destroyWorkspace: () => {},
       },
     });
@@ -1720,6 +1721,7 @@ describe('task service', () => {
   it('archives the bound IM context on pause/cancel and restores the same context on resume', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
     const provisioningPort = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
@@ -1731,6 +1733,12 @@ describe('task service', () => {
       taskIdGenerator: () => 'OC-CTX-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-ctx-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
     });
 
     service.createTask({
@@ -1762,6 +1770,9 @@ describe('task service', () => {
       ]),
     );
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.kind).toBe('task_state_paused');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('Task paused');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('Task State: paused');
 
     service.resumeTask('OC-CTX-1');
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1775,6 +1786,9 @@ describe('task service', () => {
       ]),
     );
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('active');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.kind).toBe('task_state_active');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('Task resumed');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('Task State: active');
 
     service.cancelTask('OC-CTX-1', { reason: 'manual stop' });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1788,6 +1802,86 @@ describe('task service', () => {
       ]),
     );
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.kind).toBe('task_state_cancelled');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('Task cancelled');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('Task State: cancelled');
+  });
+
+  it('broadcasts reject reasons to the controller and rewinds the thread stage state', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-reject-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REJECT-THREAD-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-reject-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Reject loop test',
+      type: 'coding',
+      creator: 'archon',
+      description: 'walk into review and reject',
+      priority: 'normal',
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    db.prepare(
+      'INSERT INTO archon_reviews (task_id, stage_id, decision, reviewer_id) VALUES (?, ?, ?, ?)',
+    ).run('OC-REJECT-THREAD-1', 'discuss', 'approved', 'lizeyu');
+    service.advanceTask('OC-REJECT-THREAD-1', { callerId: 'archon' });
+
+    const subtasks = new SubtaskRepository(db);
+    subtasks.insertSubtask({
+      id: 'sub-review-1',
+      task_id: 'OC-REJECT-THREAD-1',
+      stage_id: 'develop',
+      title: 'implementation done',
+      assignee: 'sonnet',
+      status: 'done',
+    });
+    service.advanceTask('OC-REJECT-THREAD-1', { callerId: 'archon' });
+
+    service.archonRejectTask('OC-REJECT-THREAD-1', {
+      reviewerId: 'archon',
+      reason: 'Need stronger rollback coverage before merge',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const latestMessages = provisioningPort.published.slice(-2).flatMap((entry) => entry.messages);
+    expect(latestMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'gate_rejected',
+        }),
+        expect.objectContaining({
+          kind: 'controller_gate_rejected',
+          participant_refs: ['opus'],
+        }),
+      ]),
+    );
+    const controllerMessage = latestMessages.find((message) => message.kind === 'controller_gate_rejected');
+    expect(controllerMessage?.body).toContain('Need stronger rollback coverage before merge');
+    expect(controllerMessage?.body).toContain('Re-plan with the roster');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-REJECT-THREAD-1', '03-stage-state.md'), 'utf8')).toContain('Current Stage: develop');
   });
 
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {

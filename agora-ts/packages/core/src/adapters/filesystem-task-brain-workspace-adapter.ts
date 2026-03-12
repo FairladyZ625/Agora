@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { TaskBrainWorkspacePort, TaskBrainWorkspaceRequest, TaskBrainWorkspaceResult } from '../task-brain-port.js';
+import type {
+  TaskBrainWorkspaceBindingRef,
+  TaskBrainWorkspacePort,
+  TaskBrainWorkspaceRequest,
+  TaskBrainWorkspaceResult,
+} from '../task-brain-port.js';
 
 export interface FilesystemTaskBrainWorkspaceAdapterOptions {
   brainPackRoot: string;
@@ -11,30 +16,54 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult {
     const workspacePath = resolve(this.options.brainPackRoot, 'tasks', input.task_id);
-    const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
     mkdirSync(workspacePath, { recursive: true });
     mkdirSync(join(workspacePath, '04-context'), { recursive: true });
     mkdirSync(join(workspacePath, '05-agents'), { recursive: true });
     mkdirSync(join(workspacePath, '06-artifacts'), { recursive: true });
     mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
 
-    writeFileSync(
-      join(workspacePath, 'task.meta.yaml'),
-      renderTaskMeta(input, {
-        brain_pack_ref: 'agora-ai-brain',
-        brain_task_id: input.task_id,
-        workspace_path: workspacePath,
-      }),
-      'utf8',
-    );
+    const binding = {
+      brain_pack_ref: 'agora-ai-brain',
+      brain_task_id: input.task_id,
+      workspace_path: workspacePath,
+      metadata: {
+        controller_ref: input.controller_ref,
+        current_stage: input.current_stage,
+      },
+    } satisfies TaskBrainWorkspaceResult;
+    this.writeWorkspace(binding, input, { seedEmptyAgentNotes: true, seedContextFiles: true });
+    return binding;
+  }
+
+  updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void {
+    this.writeWorkspace(binding, input, { seedEmptyAgentNotes: false, seedContextFiles: false });
+  }
+
+  destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void {
+    if (!binding.workspace_path) {
+      return;
+    }
+    rmSync(binding.workspace_path, { recursive: true, force: true });
+  }
+
+  private writeWorkspace(
+    binding: TaskBrainWorkspaceBindingRef,
+    input: TaskBrainWorkspaceRequest,
+    options: { seedEmptyAgentNotes: boolean; seedContextFiles: boolean },
+  ) {
+    const workspacePath = binding.workspace_path;
+    const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
+    writeFileSync(join(workspacePath, 'task.meta.yaml'), renderTaskMeta(input, binding), 'utf8');
     writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '00-bootstrap.md'), renderBootstrap(input, workspacePath, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '01-task-brief.md'), renderTaskBrief(input), 'utf8');
     writeFileSync(join(workspacePath, '02-roster.md'), renderRoster(input), 'utf8');
     writeFileSync(join(workspacePath, '03-stage-state.md'), renderStageState(input, currentStage), 'utf8');
-    writeFileSync(join(workspacePath, '04-context', 'user-input.md'), `${input.description.trim() || '(empty description)'}\n`, 'utf8');
-    writeFileSync(join(workspacePath, '04-context', 'references.md'), '', 'utf8');
-    writeFileSync(join(workspacePath, '04-context', 'linked-docs.md'), '', 'utf8');
+    if (options.seedContextFiles) {
+      writeFileSync(join(workspacePath, '04-context', 'user-input.md'), `${input.description.trim() || '(empty description)'}\n`, 'utf8');
+      writeFileSync(join(workspacePath, '04-context', 'references.md'), '', 'utf8');
+      writeFileSync(join(workspacePath, '04-context', 'linked-docs.md'), '', 'utf8');
+    }
     for (const member of input.team_members) {
       const agentDir = join(workspacePath, '05-agents', member.agentId);
       mkdirSync(agentDir, { recursive: true });
@@ -43,26 +72,11 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
         renderRoleBrief(input, workspacePath, member, currentStage),
         'utf8',
       );
-      writeFileSync(join(agentDir, '01-working-notes.md'), '', 'utf8');
-      writeFileSync(join(agentDir, '02-outputs.md'), '', 'utf8');
+      if (options.seedEmptyAgentNotes) {
+        writeFileSync(join(agentDir, '01-working-notes.md'), '', 'utf8');
+        writeFileSync(join(agentDir, '02-outputs.md'), '', 'utf8');
+      }
     }
-
-    return {
-      brain_pack_ref: 'agora-ai-brain',
-      brain_task_id: input.task_id,
-      workspace_path: workspacePath,
-      metadata: {
-        controller_ref: input.controller_ref,
-        current_stage: input.current_stage,
-      },
-    };
-  }
-
-  destroyWorkspace(binding: TaskBrainWorkspaceResult): void {
-    if (!binding.workspace_path) {
-      return;
-    }
-    rmSync(binding.workspace_path, { recursive: true, force: true });
   }
 }
 
@@ -75,6 +89,7 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
     `workspace_path: "${binding.workspace_path}"`,
     `template_id: "${input.template_id}"`,
     `controller_ref: "${input.controller_ref ?? ''}"`,
+    `task_state: "${input.state}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
     `execution_kind: "${resolveStageExecutionKind(currentStage) ?? ''}"`,
     '',
@@ -90,6 +105,7 @@ function renderCurrent(
     '',
     `- Task: ${input.task_id}`,
     `- Title: ${input.title}`,
+    `- Task State: ${input.state}`,
     `- Controller: ${input.controller_ref ?? '-'}`,
     `- Current Stage: ${input.current_stage ?? '-'}`,
     `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
@@ -107,6 +123,7 @@ function renderBootstrap(
     '# Bootstrap',
     '',
     `Task ID: ${input.task_id}`,
+    `Task State: ${input.state}`,
     `Controller: ${input.controller_ref ?? '-'}`,
     `Current Stage: ${input.current_stage ?? '-'}`,
     `Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
@@ -151,6 +168,7 @@ function renderStageState(
     '# Stage State',
     '',
     `- Current Stage: ${input.current_stage ?? '-'}`,
+    `- Task State: ${input.state}`,
     `- Stage Name: ${currentStage?.name ?? '-'}`,
     `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `- Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,

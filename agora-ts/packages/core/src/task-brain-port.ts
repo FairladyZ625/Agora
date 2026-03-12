@@ -6,6 +6,7 @@ export interface TaskBrainWorkspaceRequest {
   priority: string;
   creator: string;
   template_id: string;
+  state: string;
   controller_ref: string | null;
   current_stage: string | null;
   workflow_stages: Array<{
@@ -35,7 +36,15 @@ export interface TaskBrainWorkspaceResult {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface TaskBrainWorkspaceBindingRef {
+  brain_pack_ref: string;
+  brain_task_id: string;
+  workspace_path: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface TaskBrainWorkspacePort {
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult;
-  destroyWorkspace(binding: TaskBrainWorkspaceResult): void;
+  updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void;
+  destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void;
 }
