@@ -14,17 +14,20 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isMobile = useMediaQuery('(max-width: 767px)');
   const shellCopy = useShellCopy();
+  const shouldRenderSidebar = !isMobile || mobileNavOpen;
 
   return (
     <div className="app-shell app-shell-tone">
       <ExperienceNotice />
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-        mobileOpen={isMobile && mobileNavOpen}
-        onCloseMobile={() => setMobileNavOpen(false)}
-        isMobile={isMobile}
-      />
+      {shouldRenderSidebar ? (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          mobileOpen={isMobile && mobileNavOpen}
+          onCloseMobile={() => setMobileNavOpen(false)}
+          isMobile={isMobile}
+        />
+      ) : null}
 
       <div className="app-shell__main">
         <TopNav isMobile={isMobile} onOpenMobileNav={() => setMobileNavOpen(true)} />

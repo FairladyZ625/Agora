@@ -25,6 +25,11 @@ describe('dashboard browser audit guardrails', () => {
     expect(browserSmokeSource).toContain('/dashboard/login');
   });
 
+  it('covers an authenticated mobile viewport in the browser smoke audit', () => {
+    expect(browserSmokeSource).toContain('375');
+    expect(browserSmokeSource).toContain('812');
+  });
+
   it('captures real performance signals instead of only static CSS checks', () => {
     expect(perfSnapshotSource).toContain('Performance.getMetrics');
     expect(perfSnapshotSource).toContain('longtask');

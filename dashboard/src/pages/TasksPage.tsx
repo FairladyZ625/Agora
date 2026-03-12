@@ -12,6 +12,7 @@ import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { TaskAction, TaskBlueprint } from '@/types/task';
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
@@ -115,6 +116,7 @@ export function TasksPage() {
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [query, setQuery] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [stateFilter, setStateFilter] = useState<string[]>([]);
@@ -370,6 +372,10 @@ export function TasksPage() {
                     type="button"
                     onClick={() => {
                       setActionActor('');
+                      if (isMobile) {
+                        navigate(`/tasks/${task.id}`);
+                        return;
+                      }
                       void selectTask(task.id);
                     }}
                     className={task.id === activeTask?.id ? 'dense-row dense-row--active' : 'dense-row'}
@@ -401,6 +407,7 @@ export function TasksPage() {
           </div>
         </section>
 
+        {!isMobile ? (
         <aside className="workbench-pane workbench-pane--inspector task-pane task-pane--authority">
           {activeTask ? (
             <div className="task-authority__stack">
@@ -600,6 +607,7 @@ export function TasksPage() {
             </div>
           )}
         </aside>
+        ) : null}
       </div>
 
       {taskId && activeTask ? (

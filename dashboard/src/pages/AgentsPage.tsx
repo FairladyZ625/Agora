@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useAgentStore } from '@/stores/agentStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -78,6 +79,7 @@ function getPillClass(tone: 'danger' | 'warning' | 'success' | 'info' | 'neutral
 
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const summary = useAgentStore((state) => state.summary);
   const agents = useAgentStore((state) => state.agents);
   const craftsmen = useAgentStore((state) => state.craftsmen);
@@ -389,7 +391,7 @@ export function AgentsPage() {
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]" data-testid="agents-global-status">
+      <section className={isMobile ? 'space-y-6' : 'grid gap-6 xl:grid-cols-[1.2fr_0.8fr]'} data-testid="agents-global-status">
         <div className="surface-panel surface-panel--workspace space-y-5">
           <div className="section-title-row">
             <div>
@@ -416,45 +418,47 @@ export function AgentsPage() {
           </div>
         </div>
 
-        <div className="surface-panel surface-panel--workspace space-y-4">
-          <div className="section-title-row">
-            <div>
-              <p className="page-kicker">{copy.workspace.focusKicker}</p>
-              <h3 className="section-title">{copy.workspace.focusTitle}</h3>
+        {!isMobile ? (
+          <div className="surface-panel surface-panel--workspace space-y-4">
+            <div className="section-title-row">
+              <div>
+                <p className="page-kicker">{copy.workspace.focusKicker}</p>
+                <h3 className="section-title">{copy.workspace.focusTitle}</h3>
+              </div>
+              <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
             </div>
-            <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
+            <div className="space-y-3">
+                <div className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <p className="type-text-xs">{copy.workspace.channelFocusLabel}</p>
+                    <p className="type-body-sm mt-2">{degradedChannels.length > 0 ? copy.workspace.channelFocusMessage(degradedChannels[0].channel) : copy.workspace.channelFocusEmpty}</p>
+                  </div>
+                </div>
+                <div className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <p className="type-text-xs">{copy.workspace.agentFocusLabel}</p>
+                    <p className="type-body-sm mt-2">
+                      {criticalAgents.length > 0
+                        ? copy.workspace.agentCriticalMessage(criticalAgents[0].id)
+                        : staleAgents.length > 0
+                          ? copy.workspace.agentStaleMessage(staleAgents[0].id)
+                          : copy.workspace.agentFocusEmpty}
+                    </p>
+                  </div>
+                </div>
+                <div className="data-row">
+                  <div className="min-w-0 flex-1">
+                    <p className="type-text-xs">{copy.workspace.executionFocusLabel}</p>
+                    <p className="type-body-sm mt-2">
+                      {runtimeSummary.failedCraftsmen > 0
+                        ? copy.workspace.executionFailedMessage(runtimeSummary.failedCraftsmen)
+                        : copy.workspace.executionReadyMessage(runtimeSummary.readyPanes, runtimeSummary.totalPanes)}
+                    </p>
+                  </div>
+                </div>
+            </div>
           </div>
-          <div className="space-y-3">
-              <div className="data-row">
-                <div className="min-w-0 flex-1">
-                  <p className="type-text-xs">{copy.workspace.channelFocusLabel}</p>
-                  <p className="type-body-sm mt-2">{degradedChannels.length > 0 ? copy.workspace.channelFocusMessage(degradedChannels[0].channel) : copy.workspace.channelFocusEmpty}</p>
-                </div>
-              </div>
-              <div className="data-row">
-                <div className="min-w-0 flex-1">
-                  <p className="type-text-xs">{copy.workspace.agentFocusLabel}</p>
-                  <p className="type-body-sm mt-2">
-                    {criticalAgents.length > 0
-                      ? copy.workspace.agentCriticalMessage(criticalAgents[0].id)
-                      : staleAgents.length > 0
-                        ? copy.workspace.agentStaleMessage(staleAgents[0].id)
-                        : copy.workspace.agentFocusEmpty}
-                  </p>
-                </div>
-              </div>
-              <div className="data-row">
-                <div className="min-w-0 flex-1">
-                  <p className="type-text-xs">{copy.workspace.executionFocusLabel}</p>
-                  <p className="type-body-sm mt-2">
-                    {runtimeSummary.failedCraftsmen > 0
-                      ? copy.workspace.executionFailedMessage(runtimeSummary.failedCraftsmen)
-                      : copy.workspace.executionReadyMessage(runtimeSummary.readyPanes, runtimeSummary.totalPanes)}
-                  </p>
-                </div>
-              </div>
-          </div>
-        </div>
+        ) : null}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">

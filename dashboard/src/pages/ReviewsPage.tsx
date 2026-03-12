@@ -11,6 +11,7 @@ import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta } from '@/lib/taskMeta';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 type QueueScope = 'all' | 'high';
 
@@ -26,6 +27,7 @@ export function ReviewsPage() {
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { reviewId } = useParams<{ reviewId: string }>();
+  const isMobile = useMediaQuery('(max-width: 767px)');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scope, setScope] = useState<QueueScope>('all');
   const [note, setNote] = useState('');
@@ -272,7 +274,13 @@ export function ReviewsPage() {
                   <StaggeredItem key={item.id} index={index}>
                     <button
                       type="button"
-                      onClick={() => setSelectedId(item.id)}
+                      onClick={() => {
+                        if (isMobile) {
+                          navigate(`/reviews/${item.id}`);
+                          return;
+                        }
+                        setSelectedId(item.id);
+                      }}
                       className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
                     >
                       <div className="review-table__task">
@@ -298,6 +306,7 @@ export function ReviewsPage() {
           </div>
         </section>
 
+        {!isMobile ? (
         <aside className="workbench-pane workbench-pane--inspector review-pane review-pane--inspector">
           {selected ? (
             <div className="review-inspector__stack">
@@ -384,6 +393,7 @@ export function ReviewsPage() {
             </div>
           )}
         </aside>
+        ) : null}
       </div>
 
       {reviewId && selected && selectedStatus ? (

@@ -48,6 +48,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation();
   const shellCopy = useShellCopy();
+  const effectiveCollapsed = isMobile ? false : collapsed;
 
   return (
     <>
@@ -63,7 +64,7 @@ export function Sidebar({
       <aside
         className={cn(
           'app-sidebar fixed inset-y-3 left-3 z-40 flex transition-[transform,width,opacity] duration-300 md:static md:inset-auto md:translate-x-0',
-          collapsed ? 'app-sidebar--collapsed' : 'app-sidebar--expanded',
+          isMobile ? 'app-sidebar--mobile' : effectiveCollapsed ? 'app-sidebar--collapsed' : 'app-sidebar--expanded',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
         style={{
@@ -76,13 +77,13 @@ export function Sidebar({
           <div
             className={cn(
               'sidebar-brand-shell relative flex items-center border-b px-4 py-2',
-              collapsed ? 'justify-center' : 'justify-start',
+              effectiveCollapsed ? 'justify-center' : 'justify-start',
             )}
             style={{ borderColor: 'var(--color-border)' }}
           >
-            <BrandLogo collapsed={collapsed} />
+            <BrandLogo collapsed={effectiveCollapsed} />
 
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <div className="sidebar-brand-panel">
                 <h1 className="sidebar-brand-title">
                   {shellCopy.brandSystemName}
@@ -118,7 +119,7 @@ export function Sidebar({
                   }
                 >
                   <Icon size={18} className="shrink-0" />
-                  {!collapsed && (
+                  {!effectiveCollapsed && (
                     <div className="min-w-0">
                       <div className="sidebar-nav-title">{label}</div>
                       <div className="nav-meta">{hint}</div>
@@ -130,20 +131,22 @@ export function Sidebar({
             </nav>
           </div>
 
-          <div
-            className="border-t px-3 py-3"
-            style={{ borderColor: 'var(--color-border)' }}
-          >
-            <button
-              type="button"
-              onClick={onToggle}
-              className="sidebar-toggle-button"
+          {!isMobile ? (
+            <div
+              className="border-t px-3 py-3"
               style={{ borderColor: 'var(--color-border)' }}
-              aria-label={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')}
             >
-              {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={onToggle}
+                className="sidebar-toggle-button"
+                style={{ borderColor: 'var(--color-border)' }}
+                aria-label={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')}
+              >
+                {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+              </button>
+            </div>
+          ) : null}
         </div>
       </aside>
     </>

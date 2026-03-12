@@ -16,6 +16,10 @@ const browserEntries = [
   ['firefox', firefox],
   ['webkit', webkit],
 ];
+const viewportProfiles = [
+  ['desktop', { width: 1440, height: 960 }],
+  ['mobile', { width: 375, height: 812 }],
+];
 const unauthenticatedFallbackRoute = '/dashboard/login';
 
 async function run() {
@@ -26,58 +30,63 @@ async function run() {
 
   for (const [browserName, browserType] of browserEntries) {
     const browser = await browserType.launch({ headless: true });
-    const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
-    const page = await context.newPage();
-    const pageErrors = [];
-    const requestFailures = [];
-    const consoleErrors = [];
+    for (const [profileName, viewport] of viewportProfiles) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      const pageErrors = [];
+      const requestFailures = [];
+      const consoleErrors = [];
 
-    page.on('pageerror', (error) => {
-      pageErrors.push(error.message);
-    });
-    page.on('requestfailed', (request) => {
-      const errorText = request.failure()?.errorText ?? 'unknown';
-      if (isIgnorableRequestFailure(request.url(), errorText)) {
-        return;
-      }
-      requestFailures.push(`${request.method()} ${request.url()} :: ${errorText}`);
-    });
-    page.on('console', (message) => {
-      if (message.type() === 'error') {
-        consoleErrors.push(message.text());
-      }
-    });
-
-    const loggedIn = await loginIfNeeded(page, config);
-
-    for (const route of config.pages) {
-      const url = new URL(route, config.baseUrl).toString();
-      const startedAt = Date.now();
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(1000);
-
-      const currentPath = new URL(page.url()).pathname;
-      const screenshotPath = path.join(outputDir, `${browserName}-${sanitizePathForFile(currentPath)}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-
-      results.push({
-        browser: browserName,
-        targetPath: route,
-        resolvedPath: currentPath,
-        title: await page.title(),
-        durationMs: Date.now() - startedAt,
-        pageErrors: [...pageErrors],
-        requestFailures: [...requestFailures],
-        consoleErrors: [...consoleErrors],
-        loggedIn,
-        screenshotPath,
+      page.on('pageerror', (error) => {
+        pageErrors.push(error.message);
+      });
+      page.on('requestfailed', (request) => {
+        const errorText = request.failure()?.errorText ?? 'unknown';
+        if (isIgnorableRequestFailure(request.url(), errorText)) {
+          return;
+        }
+        requestFailures.push(`${request.method()} ${request.url()} :: ${errorText}`);
+      });
+      page.on('console', (message) => {
+        if (message.type() === 'error') {
+          consoleErrors.push(message.text());
+        }
       });
 
-      pageErrors.length = 0;
-      requestFailures.length = 0;
-      consoleErrors.length = 0;
-    }
+      const loggedIn = await loginIfNeeded(page, config);
 
+      for (const route of config.pages) {
+        const url = new URL(route, config.baseUrl).toString();
+        const startedAt = Date.now();
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(1000);
+
+        const currentPath = new URL(page.url()).pathname;
+        const screenshotPath = path.join(outputDir, `${browserName}-${profileName}-${sanitizePathForFile(currentPath)}.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+
+        results.push({
+          browser: browserName,
+          profile: profileName,
+          viewport,
+          targetPath: route,
+          resolvedPath: currentPath,
+          title: await page.title(),
+          durationMs: Date.now() - startedAt,
+          pageErrors: [...pageErrors],
+          requestFailures: [...requestFailures],
+          consoleErrors: [...consoleErrors],
+          loggedIn,
+          screenshotPath,
+        });
+
+        pageErrors.length = 0;
+        requestFailures.length = 0;
+        consoleErrors.length = 0;
+      }
+
+      await context.close();
+    }
     await browser.close();
   }
 

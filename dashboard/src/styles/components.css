@@ -287,6 +287,10 @@
   cursor: pointer;
 }
 
+.topbar-user-chip--compact {
+  padding: 0 10px;
+}
+
 
 .settings-form-grid {
   display: grid;

@@ -45,6 +45,11 @@
   width: var(--sidebar-width-expanded);
 }
 
+.app-sidebar--mobile {
+  width: min(320px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+}
+
 .nav-link {
   display: flex;
   align-items: flex-start;

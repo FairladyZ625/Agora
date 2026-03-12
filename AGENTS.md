@@ -183,6 +183,11 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
   - 禁止基础组件暴露自由尺寸字符串/数字 API
   - 禁止页面私有定义局部容器宽度与 split 比例
   - 移动端必须按独立布局规则设计，不接受“桌面堆叠即适配”
+  - 登录后的主工作台（AppShell、TopNav、Sidebar、workbench、detail sheet、toolbar、footer）必须先收敛共享移动端原语，再做页面级适配；禁止只在页面末端堆 `responsive.css` 补丁
+  - `375px` 宽度下不得出现主页面级横向滚动；若存在列表/看板等高密度模块，必须提供单列、分段或 drawer/detail 的移动降级路径
+  - Top bar、导航抽屉、filter popover、detail sheet、底部 action 区必须定义移动端单手操作和安全留白规则，不能直接沿用桌面命令条/双栏/右侧明细假设
+  - 新增或修改移动端布局原语、尺寸 token、sheet/popover/pane 宽度规则时，必须同步更新 `dashboard/scripts/check-visual-governance.mjs` 与 `docs/11-REFERENCE/dashboard-frontend-standard.md`
+  - Dashboard 页面在真实登录态下的移动端 Playwright 审计是强制项；至少覆盖 `375x812` 视口，并纳入浏览器兼容性审计脚本
   - 真实 API 对接必须先定义 `types/api.ts` DTO，再通过 mapper 转成 `types/task.ts` ViewModel
   - 页面和布局组件禁止直接消费后端 DTO
   - 运行时禁止 silent mock fallback；请求失败必须显示真实错误
