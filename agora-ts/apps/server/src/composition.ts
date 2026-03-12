@@ -80,8 +80,8 @@ export interface ServerCompositionFactories {
       taskParticipationService: TaskParticipationService;
     },
   ) => TaskService;
-  createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier;
-  createArchiveJobReceiptIngestor: (context: ServerCompositionContext) => FileArchiveJobReceiptIngestor;
+  createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier | undefined;
+  createArchiveJobReceiptIngestor: (context: ServerCompositionContext) => FileArchiveJobReceiptIngestor | undefined;
   createDashboardQueryService: (
     context: ServerCompositionContext,
     deps: {
@@ -89,8 +89,8 @@ export interface ServerCompositionFactories {
       agentRegistry: AgentInventorySource;
       presenceSource: PresenceSource;
       tmuxRuntimeService: TmuxRuntimeService;
-      archiveJobNotifier: FileArchiveJobNotifier;
-      archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;
+      archiveJobNotifier: FileArchiveJobNotifier | undefined;
+      archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor | undefined;
       imProvisioningPort: IMProvisioningPort | undefined;
       taskContextBindingService: TaskContextBindingService;
     },
@@ -167,16 +167,24 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
       });
     },
-    createArchiveJobNotifier: () => new FileArchiveJobNotifier({
-      outboxDir: process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR ?? 'archive-outbox',
-    }),
-    createArchiveJobReceiptIngestor: () => new FileArchiveJobReceiptIngestor({
-      receiptDir: process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR ?? 'archive-receipts',
-    }),
+    createArchiveJobNotifier: () => {
+      const outboxDir = process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR;
+      if (!outboxDir) {
+        return undefined;
+      }
+      return new FileArchiveJobNotifier({ outboxDir });
+    },
+    createArchiveJobReceiptIngestor: () => {
+      const receiptDir = process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR;
+      if (!receiptDir) {
+        return undefined;
+      }
+      return new FileArchiveJobReceiptIngestor({ receiptDir });
+    },
     createDashboardQueryService: (context, deps) => new DashboardQueryService(context.db, {
       templatesDir: context.templatesDir,
-      archiveJobNotifier: deps.archiveJobNotifier,
-      archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor,
+      ...(deps.archiveJobNotifier ? { archiveJobNotifier: deps.archiveJobNotifier } : {}),
+      ...(deps.archiveJobReceiptIngestor ? { archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor } : {}),
       taskContextBindingService: deps.taskContextBindingService,
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
       liveSessions: deps.liveSessionStore,

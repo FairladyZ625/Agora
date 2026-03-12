@@ -7,6 +7,7 @@ import {
   CodexCraftsmanAdapter,
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
+  DashboardQueryService,
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
@@ -40,6 +41,7 @@ export interface CliCompositionFactories {
   createTaskConversationService: (context: CliCompositionContext) => TaskConversationService;
   createTemplateAuthoringService: (context: CliCompositionContext) => TemplateAuthoringService;
   createRolePackService: (context: CliCompositionContext) => RolePackService;
+  createDashboardQueryService: (context: CliCompositionContext) => DashboardQueryService;
 }
 
 export interface CliComposition {
@@ -52,6 +54,7 @@ export interface CliComposition {
   taskConversationService: TaskConversationService;
   templateAuthoringService: TemplateAuthoringService;
   rolePackService: RolePackService;
+  dashboardQueryService: DashboardQueryService;
 }
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
@@ -98,6 +101,9 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       db: context.db,
       rolePacksDir: context.rolePackDir,
     }),
+    createDashboardQueryService: (context) => new DashboardQueryService(context.db, {
+      templatesDir: context.templatesDir,
+    }),
   };
 }
 
@@ -130,6 +136,7 @@ export function createCliComposition(
   const taskConversationService = factories.createTaskConversationService(context);
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const rolePackService = factories.createRolePackService(context);
+  const dashboardQueryService = factories.createDashboardQueryService(context);
 
   return {
     config,
@@ -141,5 +148,6 @@ export function createCliComposition(
     taskConversationService,
     templateAuthoringService,
     rolePackService,
+    dashboardQueryService,
   };
 }

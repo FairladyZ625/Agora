@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, ArchiveJobRepository } from '@agora-ts/db';
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
 import { LiveSessionStore, TaskService } from '@agora-ts/core';
 import type { TmuxRuntimeService } from '@agora-ts/core';
@@ -153,5 +153,62 @@ describe('server runtime', () => {
     expect(runtime.liveSessionStore).toBe(liveSessionStore);
     expect(runtime.tmuxRuntimeService).toBe(tmuxRuntimeService);
     runtime.db.close();
+  });
+
+  it('does not enable file archive outbox adapters unless env paths are configured', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    const previousOutbox = process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR;
+    const previousReceipt = process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR;
+    delete process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR;
+    delete process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR;
+
+    const bootstrapDb = createAgoraDatabase({ dbPath });
+    runMigrations(bootstrapDb);
+    const bootstrapTaskService = new TaskService(bootstrapDb, {
+      templatesDir: new URL('../../../templates', import.meta.url).pathname,
+      taskIdGenerator: () => 'OC-ARCHIVE',
+    });
+    bootstrapTaskService.createTask({
+      title: 'archive task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    const archives = new ArchiveJobRepository(bootstrapDb);
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-ARCHIVE',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/tasks/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+    bootstrapDb.close();
+
+    try {
+      const runtime = createServerRuntime({ configPath });
+      expect(() => runtime.dashboardQueryService.notifyArchiveJob(job.id)).toThrow('Archive job notifier is not configured');
+      runtime.db.close();
+    } finally {
+      if (previousOutbox === undefined) {
+        delete process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR;
+      } else {
+        process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR = previousOutbox;
+      }
+      if (previousReceipt === undefined) {
+        delete process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR;
+      } else {
+        process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR = previousReceipt;
+      }
+    }
   });
 });

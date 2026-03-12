@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { CraftsmanDispatcher, HumanAccountService, RolePackService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
+import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, RolePackService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -77,6 +77,22 @@ function createTmuxRuntimeServiceStub() {
     down: () => { throw new Error('unused'); },
     recordIdentity: () => { throw new Error('unused'); },
   };
+}
+
+function createDashboardQueryServiceStub(): DashboardQueryService {
+  return {
+    listArchiveJobs: () => [],
+    getArchiveJob: () => { throw new Error('unused'); },
+    retryArchiveJob: () => { throw new Error('unused'); },
+    notifyArchiveJob: () => { throw new Error('unused'); },
+    updateArchiveJob: () => { throw new Error('unused'); },
+    failStaleArchiveJobs: () => { throw new Error('unused'); },
+    ingestArchiveJobReceipts: () => { throw new Error('unused'); },
+  } as unknown as DashboardQueryService;
+}
+
+function createDashboardQueryServiceForDb(db: AgoraDatabase) {
+  return new DashboardQueryService(db, { templatesDir });
 }
 
 describe('agora-ts cli', () => {
@@ -165,6 +181,7 @@ describe('agora-ts cli', () => {
       taskService,
       templateAuthoringService,
       rolePackService,
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
       humanAccountService: new HumanAccountService(db),
@@ -202,6 +219,7 @@ describe('agora-ts cli', () => {
       taskService: new TaskService(db, { templatesDir }),
       templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
       rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
       humanAccountService: new HumanAccountService(db),
@@ -253,6 +271,7 @@ describe('agora-ts cli', () => {
       taskService,
       templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
       rolePackService,
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
       humanAccountService: new HumanAccountService(db),
@@ -282,6 +301,7 @@ describe('agora-ts cli', () => {
       taskService: new TaskService(db, { templatesDir }),
       templateAuthoringService,
       rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
       humanAccountService: new HumanAccountService(db),
@@ -325,6 +345,7 @@ describe('agora-ts cli', () => {
       taskService: new TaskService(db, { templatesDir }),
       templateAuthoringService,
       rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
       humanAccountService: new HumanAccountService(db),
@@ -344,6 +365,60 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('triage --> implement');
     expect(stdout.value).toContain('workflow graph 已应用到模板: coding');
     expect(template.stages?.map((stage) => stage.id)).toEqual(['triage', 'implement', 'review']);
+  });
+
+  it('manages archive jobs through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, { templatesDir });
+    const dashboardQueryService = createDashboardQueryServiceForDb(db);
+    const archives = new ArchiveJobRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      dashboardQueryService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    const task = taskService.createTask({
+      title: 'archive cli',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    const job = archives.insertArchiveJob({
+      task_id: task.id,
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/tasks/',
+      payload: {},
+      writer_agent: 'writer-agent',
+    });
+    expect(job).toBeDefined();
+
+    await program.parseAsync(['archive', 'jobs', 'list'], { from: 'user' });
+    await program.parseAsync(['archive', 'jobs', 'show', String(job?.id), '--json'], { from: 'user' });
+    await program.parseAsync(['archive', 'jobs', 'complete', String(job?.id), '--commit-hash', 'deadbeef'], { from: 'user' });
+    await program.parseAsync(['archive', 'jobs', 'retry', String(job?.id)], { from: 'user' });
+    await program.parseAsync(['archive', 'jobs', 'fail', String(job?.id), '--error-message', 'writer timeout'], { from: 'user' });
+
+    const finalJob = dashboardQueryService.getArchiveJob(job!.id);
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain(`\t${task.id}\tpending\t`);
+    expect(stdout.value).toContain(`"task_id": "${task.id}"`);
+    expect(stdout.value).toContain(`archive job 已完成: ${job?.id} -> synced`);
+    expect(stdout.value).toContain(`archive job 已重置: ${job?.id} -> pending`);
+    expect(stdout.value).toContain(`archive job 已失败: ${job?.id} -> failed`);
+    expect(finalJob.status).toBe('failed');
+    expect(finalJob.payload).toMatchObject({ error_message: 'writer timeout' });
   });
 
   it('runs task action commands through the cli', async () => {
@@ -475,6 +550,7 @@ describe('agora-ts cli', () => {
         },
       },
       dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
       stdout,
       stderr,
     }).exitOverride();
@@ -532,6 +608,7 @@ describe('agora-ts cli', () => {
         },
       } as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
       humanAccountService: {
         bootstrapAdmin: () => {
           throw new Error('unused');
@@ -599,6 +676,7 @@ describe('agora-ts cli', () => {
     const program = createCliProgram({
       taskService,
       taskConversationService: conversations,
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: {
         up: () => { throw new Error('unused'); },
         status: () => { throw new Error('unused'); },
@@ -667,6 +745,7 @@ describe('agora-ts cli', () => {
     const program = createCliProgram({
       taskService,
       taskConversationService: conversations,
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: {
         up: () => { throw new Error('unused'); },
         status: () => { throw new Error('unused'); },
@@ -740,6 +819,7 @@ describe('agora-ts cli', () => {
     const program = createCliProgram({
       taskService,
       taskConversationService: conversations,
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: {
         up: () => { throw new Error('unused'); },
         status: () => { throw new Error('unused'); },
@@ -823,6 +903,7 @@ describe('agora-ts cli', () => {
         },
       } as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
       humanAccountService,
       stdout,
       stderr,
@@ -1265,6 +1346,7 @@ describe('agora-ts cli', () => {
       stdout,
       stderr,
       tmuxRuntimeService,
+      dashboardQueryService: createDashboardQueryServiceStub(),
     }).exitOverride();
 
     await program.parseAsync(['craftsman', 'tmux', 'up'], { from: 'user' });

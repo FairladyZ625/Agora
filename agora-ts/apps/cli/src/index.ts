@@ -7,7 +7,7 @@ import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
-import type { RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
+import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
@@ -34,6 +34,7 @@ export interface CliDependencies {
   taskConversationService?: TaskConversationService;
   templateAuthoringService?: TemplateAuthoringService;
   rolePackService?: RolePackService;
+  dashboardQueryService?: DashboardQueryService;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
   configPath?: string;
@@ -228,6 +229,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     || !deps.taskConversationService
     || !deps.templateAuthoringService
     || !deps.rolePackService
+    || !deps.dashboardQueryService
     ? createCliComposition({
       ...(deps.configPath ? { configPath: deps.configPath } : {}),
       ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
@@ -240,7 +242,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const taskConversationService = deps.taskConversationService ?? composition?.taskConversationService;
   const templateAuthoringService = deps.templateAuthoringService ?? composition?.templateAuthoringService;
   const rolePackService = deps.rolePackService ?? composition?.rolePackService;
-  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService || !taskConversationService || !templateAuthoringService || !rolePackService) {
+  const dashboardQueryService = deps.dashboardQueryService ?? composition?.dashboardQueryService;
+  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService || !taskConversationService || !templateAuthoringService || !rolePackService || !dashboardQueryService) {
     throw new Error('CLI runtime composition is incomplete');
   }
   const program = new Command();
@@ -437,6 +440,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const graph = program
     .command('graph')
     .description('workflow graph commands');
+  const archive = program
+    .command('archive')
+    .description('archive control commands');
 
   templates
     .command('show')
@@ -603,6 +609,126 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
       writeLine(stdout, `模板阶段已重排: ${templateId} -> ${options.id}`);
       writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
+    });
+
+  const archiveJobs = archive
+    .command('jobs')
+    .description('archive job control commands');
+
+  archiveJobs
+    .command('list')
+    .description('列出 archive jobs')
+    .option('--status <status>', 'pending|notified|synced|failed')
+    .option('--task-id <taskId>', 'task id filter')
+    .option('--json', '输出 JSON', false)
+    .action((options: { status?: string; taskId?: string; json?: boolean }) => {
+      const items = dashboardQueryService.listArchiveJobs({
+        ...(options.status ? { status: options.status } : {}),
+        ...(options.taskId ? { taskId: options.taskId } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(items, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 archive jobs');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.id}\t${item.task_id}\t${item.status}\t${item.writer_agent}\t${item.target_path}`);
+      }
+    });
+
+  archiveJobs
+    .command('show')
+    .description('查看 archive job 详情')
+    .argument('<jobId>', 'archive job id')
+    .option('--json', '输出 JSON', false)
+    .action((jobId: string, options: { json?: boolean }) => {
+      const job = dashboardQueryService.getArchiveJob(Number(jobId));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(job, null, 2));
+        return;
+      }
+      writeLine(stdout, `${job.id} — ${job.task_id}`);
+      writeLine(stdout, `status: ${job.status}`);
+      writeLine(stdout, `writer: ${job.writer_agent}`);
+      writeLine(stdout, `target: ${job.target_path}`);
+      writeLine(stdout, `requested_at: ${job.requested_at}`);
+      writeLine(stdout, `completed_at: ${job.completed_at ?? '-'}`);
+    });
+
+  archiveJobs
+    .command('retry')
+    .description('重置 archive job 为 pending')
+    .argument('<jobId>', 'archive job id')
+    .action((jobId: string) => {
+      const job = dashboardQueryService.retryArchiveJob(Number(jobId));
+      writeLine(stdout, `archive job 已重置: ${job.id} -> ${job.status}`);
+    });
+
+  archiveJobs
+    .command('notify')
+    .description('通知 archive writer')
+    .argument('<jobId>', 'archive job id')
+    .action((jobId: string) => {
+      const job = dashboardQueryService.notifyArchiveJob(Number(jobId));
+      writeLine(stdout, `archive job 已通知: ${job.id} -> ${job.status}`);
+    });
+
+  archiveJobs
+    .command('complete')
+    .description('标记 archive job synced')
+    .argument('<jobId>', 'archive job id')
+    .requiredOption('--commit-hash <commitHash>', 'writer commit hash')
+    .action((jobId: string, options: { commitHash: string }) => {
+      const job = dashboardQueryService.updateArchiveJob(Number(jobId), {
+        status: 'synced',
+        commit_hash: options.commitHash,
+      });
+      writeLine(stdout, `archive job 已完成: ${job.id} -> ${job.status}`);
+    });
+
+  archiveJobs
+    .command('fail')
+    .description('标记 archive job failed')
+    .argument('<jobId>', 'archive job id')
+    .requiredOption('--error-message <message>', 'failure reason')
+    .action((jobId: string, options: { errorMessage: string }) => {
+      const job = dashboardQueryService.updateArchiveJob(Number(jobId), {
+        status: 'failed',
+        error_message: options.errorMessage,
+      });
+      writeLine(stdout, `archive job 已失败: ${job.id} -> ${job.status}`);
+    });
+
+  archiveJobs
+    .command('scan-stale')
+    .description('扫描超时 notified jobs 并标记 failed')
+    .requiredOption('--timeout-ms <timeoutMs>', 'timeout in ms')
+    .option('--json', '输出 JSON', false)
+    .action((options: { timeoutMs: string; json?: boolean }) => {
+      const result = dashboardQueryService.failStaleArchiveJobs({
+        timeoutMs: Number(options.timeoutMs),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `stale archive jobs failed: ${result.failed}`);
+    });
+
+  archiveJobs
+    .command('scan-receipts')
+    .description('摄取 archive writer receipts')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const result = dashboardQueryService.ingestArchiveJobReceipts();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `archive receipts processed=${result.processed} synced=${result.synced} failed=${result.failed}`);
     });
 
   program
