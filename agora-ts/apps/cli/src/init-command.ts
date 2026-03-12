@@ -1,9 +1,14 @@
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, resolve } from 'node:path';
 import { input, select, confirm } from '@inquirer/prompts';
 import { defaultAgoraDbPath, loadGlobalConfig, saveGlobalConfig } from '@agora-ts/config';
 import type { HumanAccountService } from '@agora-ts/core';
 
 export interface RunInitCommandOptions {
   humanAccountService?: HumanAccountService;
+  bundledSkillsDir?: string;
+  userSkillsDir?: string;
 }
 
 export async function runInitCommand(options: RunInitCommandOptions = {}): Promise<void> {
@@ -55,11 +60,13 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
       },
     };
     saveGlobalConfig(config);
+    installBundledAgoraSkills(options);
     options.humanAccountService?.bootstrapAdmin({
       username: adminUsername.trim(),
       password: adminPassword,
     });
     console.log('\n配置已保存（无 IM 集成）');
+    console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserSkillsDir(options)}`);
     return;
   }
 
@@ -110,6 +117,7 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   };
 
   saveGlobalConfig(config);
+  installBundledAgoraSkills(options);
   if (options.humanAccountService) {
     options.humanAccountService.bootstrapAdmin({
       username: adminUsername.trim(),
@@ -128,8 +136,30 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   console.log(`  默认频道: ${defaultChannelId.trim()}`);
   console.log(`  创建任务时建 thread: ${notifyOnTaskCreate ? '是' : '否'}`);
   console.log(`  Dashboard Session: 已启用`);
+  console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserSkillsDir(options)}`);
   console.log(`  管理员: ${adminUsername.trim()}`);
   if (discordHumanUserId.trim()) {
     console.log(`  管理员 Discord 用户 ID: ${discordHumanUserId.trim()}`);
   }
+}
+
+function resolveBundledSkillsDir(options: RunInitCommandOptions) {
+  return options.bundledSkillsDir ?? resolve(dirname(new URL(import.meta.url).pathname), '../../../../.skills');
+}
+
+function resolveUserSkillsDir(options: RunInitCommandOptions) {
+  return options.userSkillsDir ?? resolve(homedir(), '.agents/skills');
+}
+
+function installBundledAgoraSkills(options: RunInitCommandOptions) {
+  const sourceDir = resolve(resolveBundledSkillsDir(options), 'agora-bootstrap');
+  if (!existsSync(sourceDir)) {
+    return;
+  }
+  const userSkillsDir = resolveUserSkillsDir(options);
+  mkdirSync(userSkillsDir, { recursive: true });
+  cpSync(sourceDir, resolve(userSkillsDir, 'agora-bootstrap'), {
+    recursive: true,
+    force: true,
+  });
 }
