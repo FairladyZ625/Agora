@@ -39,6 +39,7 @@ describe('agora-ts testing scenarios', () => {
       'task-action-conversation-mirror',
       'task-conversation-read-cursor',
       'control-plane-loop',
+      'graph-driven-path',
     ]);
   });
 
@@ -101,6 +102,21 @@ describe('agora-ts testing scenarios', () => {
       'archon_rejected',
       'stage_rewound',
     ]));
+  });
+
+  it('runs a graph-driven path scenario and prefers graph advance/reject edges', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'graph-driven-path');
+
+    expect(result.name).toBe('graph-driven-path');
+    expect(result.currentStage).toBe('draft');
+    expect(result.events).toEqual(expect.arrayContaining([
+      'stage_advanced',
+      'archon_rejected',
+      'stage_rewound',
+    ]));
+    expect(result.templateChecks?.validated).toBe(true);
   });
 
   it('runs a quorum scenario and advances after the required votes are met', () => {

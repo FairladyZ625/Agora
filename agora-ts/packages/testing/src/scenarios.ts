@@ -33,6 +33,7 @@ export const scenarioNames = [
   'task-action-conversation-mirror',
   'task-conversation-read-cursor',
   'control-plane-loop',
+  'graph-driven-path',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -118,6 +119,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runTaskConversationReadCursorScenario(runtime);
     case 'control-plane-loop':
       return runControlPlaneLoopScenario(runtime);
+    case 'graph-driven-path':
+      return runGraphDrivenPathScenario(runtime);
   }
 }
 
@@ -1333,6 +1336,54 @@ function runControlPlaneLoopScenario(runtime: TestRuntime): ScenarioResult {
   });
 
   return buildScenarioResult(runtime, 'control-plane-loop', task.id, {}, taskService);
+}
+
+function runGraphDrivenPathScenario(runtime: TestRuntime): ScenarioResult {
+  const task = runtime.taskService.createTask({
+    title: 'Graph driven path scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'verify graph edge precedence over linear stage order',
+    priority: 'normal',
+    workflow_override: {
+      type: 'graph-driven',
+      stages: [
+        { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+        { id: 'develop', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+        { id: 'review', mode: 'discuss', gate: { type: 'archon_review' } },
+      ],
+      graph: {
+        graph_version: 1,
+        entry_nodes: ['draft'],
+        nodes: [
+          { id: 'draft', kind: 'stage', execution_kind: 'citizen_discuss', gate: { type: 'command' } },
+          { id: 'develop', kind: 'stage', execution_kind: 'citizen_execute', gate: { type: 'all_subtasks_done' } },
+          { id: 'review', kind: 'stage', execution_kind: 'human_approval', gate: { type: 'archon_review' } },
+        ],
+        edges: [
+          { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
+          { id: 'review__reject__draft', from: 'review', to: 'draft', kind: 'reject' },
+        ],
+      },
+    },
+  });
+
+  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
+  const statusAfterAdvance = runtime.taskService.getTaskStatus(task.id);
+  runtime.taskService.archonRejectTask(task.id, {
+    reviewerId: 'archon',
+    reason: 'return to draft',
+  });
+
+  return buildScenarioResult(runtime, 'graph-driven-path', task.id, {
+    currentStage: runtime.taskService.getTask(task.id)?.current_stage ?? null,
+    templateChecks: {
+      validated: statusAfterAdvance.task.current_stage === 'review',
+      saved: true,
+      duplicated: false,
+      workflowValidated: false,
+    },
+  });
 }
 
 function buildScenarioResult(

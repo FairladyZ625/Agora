@@ -442,6 +442,12 @@ describe('templates workbench layout', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
 
     expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      stages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'review',
+          rejectTarget: null,
+        }),
+      ]),
       graph: expect.objectContaining({
         nodes: expect.arrayContaining([
           expect.objectContaining({

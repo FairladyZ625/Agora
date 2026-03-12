@@ -36,6 +36,7 @@ describe('agora-ts scenario cli', () => {
     expect(stdout.value).toContain('inbox-promote');
     expect(stdout.value).toContain('authoring-smoke');
     expect(stdout.value).toContain('control-plane-loop');
+    expect(stdout.value).toContain('graph-driven-path');
   });
 
   it('runs a single scenario and prints json output', async () => {
@@ -78,6 +79,7 @@ describe('agora-ts scenario cli', () => {
         'craftsman-concurrency-limit',
         'craftsman-workdir-isolation',
         'control-plane-loop',
+        'graph-driven-path',
       ]),
     );
   });
