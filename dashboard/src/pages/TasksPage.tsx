@@ -664,6 +664,33 @@ export function TasksPage() {
                         {' / '}
                         {entry.provider}
                       </p>
+                      {entry.statusEvent ? (
+                        <div className="mt-2 rounded-[var(--radius-card)] border border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] px-3 py-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="status-pill status-pill--neutral">{entry.statusEvent.eventType}</span>
+                            <span className="type-text-xs">{entry.statusEvent.taskState}</span>
+                            {entry.statusEvent.currentStage ? (
+                              <span className="type-text-xs">stage: {entry.statusEvent.currentStage}</span>
+                            ) : null}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                            {entry.statusEvent.executionKind ? (
+                              <span className="type-text-xs">execution: {entry.statusEvent.executionKind}</span>
+                            ) : null}
+                            {entry.statusEvent.controllerRef ? (
+                              <span className="type-text-xs">controller: {entry.statusEvent.controllerRef}</span>
+                            ) : null}
+                            {entry.statusEvent.allowedActions.length > 0 ? (
+                              <span className="type-text-xs">actions: {entry.statusEvent.allowedActions.join(', ')}</span>
+                            ) : null}
+                          </div>
+                          {entry.statusEvent.workspacePath ? (
+                            <p className="type-text-xs mt-2 break-all">
+                              workspace: {entry.statusEvent.workspacePath}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <p className="type-body-sm mt-2 whitespace-pre-wrap">{entry.body}</p>
                     </div>
                     <span className="type-text-xs">{formatRelativeTimestamp(entry.occurred_at)}</span>

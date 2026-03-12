@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
 import {
   isTaskVisibleInWorkbench,
+  mapTaskConversationEntryDto,
   mapTaskDto,
   mapTaskStatusDto,
 } from '@/lib/taskMappers';
@@ -136,6 +137,48 @@ describe('task mappers', () => {
         { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
         { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
       ],
+    });
+  });
+
+  it('maps structured conversation status metadata into a status event view model', () => {
+    const entry = mapTaskConversationEntryDto({
+      id: 'entry-status-1',
+      task_id: 'OC-001',
+      binding_id: 'binding-1',
+      provider: 'discord',
+      provider_message_ref: 'msg-status-1',
+      parent_message_ref: null,
+      direction: 'system',
+      author_kind: 'system',
+      author_ref: 'agora-bot',
+      display_name: 'agora-bot',
+      body: 'Agora status update',
+      body_format: 'plain_text',
+      occurred_at: '2026-03-07T01:20:00.000Z',
+      ingested_at: '2026-03-07T01:20:01.000Z',
+      metadata: {
+        event_type: 'craftsman_completed',
+        task_id: 'OC-001',
+        task_state: 'active',
+        current_stage: 'develop',
+        execution_kind: 'craftsman_dispatch',
+        allowed_actions: ['dispatch_craftsman'],
+        controller_ref: 'opus',
+        workspace_path: '/tmp/agora-ai-brain/tasks/OC-001',
+        participant_refs: ['opus'],
+      },
+    });
+
+    expect(entry.statusEvent).toEqual({
+      eventType: 'craftsman_completed',
+      taskId: 'OC-001',
+      taskState: 'active',
+      currentStage: 'develop',
+      executionKind: 'craftsman_dispatch',
+      allowedActions: ['dispatch_craftsman'],
+      controllerRef: 'opus',
+      workspacePath: '/tmp/agora-ai-brain/tasks/OC-001',
+      participantRefs: ['opus'],
     });
   });
 

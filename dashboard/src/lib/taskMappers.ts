@@ -13,6 +13,7 @@ import type {
   Task,
   TaskBlueprint,
   TaskConversationEntry,
+  TaskConversationStatusEvent,
   TaskConversationSummary,
   TaskState,
   TaskStatus,
@@ -142,7 +143,10 @@ function mapTaskBlueprint(status: ApiTaskStatusDto): TaskBlueprint | undefined {
 }
 
 export function mapTaskConversationEntryDto(entry: ApiTaskConversationEntryDto): TaskConversationEntry {
-  return { ...entry };
+  return {
+    ...entry,
+    statusEvent: mapTaskConversationStatusEvent(entry.metadata),
+  };
 }
 
 export function mapTaskConversationSummaryDto(summary: ApiTaskConversationSummaryDto): TaskConversationSummary {
@@ -156,5 +160,26 @@ export function mapTaskStatusDto(status: ApiTaskStatusDto): TaskStatus {
     progress_log: status.progress_log.map(mapProgressLogEntry),
     subtasks: status.subtasks.map(mapSubtask),
     taskBlueprint: mapTaskBlueprint(status),
+  };
+}
+
+function mapTaskConversationStatusEvent(metadata: Record<string, unknown> | null): TaskConversationStatusEvent | null {
+  if (!metadata || typeof metadata.event_type !== 'string' || typeof metadata.task_id !== 'string' || typeof metadata.task_state !== 'string') {
+    return null;
+  }
+  return {
+    eventType: metadata.event_type,
+    taskId: metadata.task_id,
+    taskState: metadata.task_state,
+    currentStage: typeof metadata.current_stage === 'string' ? metadata.current_stage : null,
+    executionKind: typeof metadata.execution_kind === 'string' ? metadata.execution_kind : null,
+    allowedActions: Array.isArray(metadata.allowed_actions)
+      ? metadata.allowed_actions.filter((value): value is string => typeof value === 'string')
+      : [],
+    controllerRef: typeof metadata.controller_ref === 'string' ? metadata.controller_ref : null,
+    workspacePath: typeof metadata.workspace_path === 'string' ? metadata.workspace_path : null,
+    participantRefs: Array.isArray(metadata.participant_refs)
+      ? metadata.participant_refs.filter((value): value is string => typeof value === 'string')
+      : null,
   };
 }

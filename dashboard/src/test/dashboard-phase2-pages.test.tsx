@@ -202,7 +202,28 @@ describe('dashboard phase 2 routes', () => {
           body_format: 'plain_text',
           occurred_at: '2026-03-07T00:12:00.000Z',
           ingested_at: '2026-03-07T00:12:01.000Z',
-          metadata: null,
+          metadata: {
+            event_type: 'craftsman_completed',
+            task_id: 'OC-001',
+            task_state: 'active',
+            current_stage: 'develop',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            controller_ref: 'opus',
+            workspace_path: '/tmp/agora-ai-brain/tasks/OC-001',
+            participant_refs: ['opus'],
+          },
+          statusEvent: {
+            eventType: 'craftsman_completed',
+            taskId: 'OC-001',
+            taskState: 'active',
+            currentStage: 'develop',
+            executionKind: 'craftsman_dispatch',
+            allowedActions: ['dispatch_craftsman'],
+            controllerRef: 'opus',
+            workspacePath: '/tmp/agora-ai-brain/tasks/OC-001',
+            participantRefs: ['opus'],
+          },
         },
       ],
     };
@@ -218,6 +239,8 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '标记 dev-api 完成' })).toBeInTheDocument();
     expect(screen.getByText('会话消息内容')).toBeInTheDocument();
+    expect(screen.getByText('craftsman_completed')).toBeInTheDocument();
+    expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
   });
 
   it('exposes orphan cleanup from the settings surface', () => {

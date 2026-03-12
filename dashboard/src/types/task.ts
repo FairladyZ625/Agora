@@ -103,6 +103,19 @@ export interface TaskConversationEntry {
   occurred_at: string;
   ingested_at: string;
   metadata: Record<string, unknown> | null;
+  statusEvent?: TaskConversationStatusEvent | null;
+}
+
+export interface TaskConversationStatusEvent {
+  eventType: string;
+  taskId: string;
+  taskState: string;
+  currentStage: string | null;
+  executionKind: string | null;
+  allowedActions: string[];
+  controllerRef: string | null;
+  workspacePath: string | null;
+  participantRefs: string[] | null;
 }
 
 export interface TaskConversationSummary {
