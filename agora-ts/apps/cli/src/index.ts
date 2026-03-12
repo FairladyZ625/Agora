@@ -927,6 +927,28 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `已清理 orphaned 任务: ${cleaned}`);
     });
 
+  program
+    .command('probe-stuck')
+    .description('探测长时间未推进的 active 任务并触发 staged escalation')
+    .option('--controller-ms <ms>', 'controller ping threshold', '300000')
+    .option('--roster-ms <ms>', 'roster ping threshold', '900000')
+    .option('--inbox-ms <ms>', 'inbox threshold', '1800000')
+    .action((options: {
+      controllerMs: string;
+      rosterMs: string;
+      inboxMs: string;
+    }) => {
+      const result = taskService.probeInactiveTasks({
+        controllerAfterMs: Number(options.controllerMs),
+        rosterAfterMs: Number(options.rosterMs),
+        inboxAfterMs: Number(options.inboxMs),
+      });
+      writeLine(stdout, `scanned_tasks: ${result.scanned_tasks}`);
+      writeLine(stdout, `controller_pings: ${result.controller_pings}`);
+      writeLine(stdout, `roster_pings: ${result.roster_pings}`);
+      writeLine(stdout, `inbox_items: ${result.inbox_items}`);
+    });
+
   const task = program
     .command('task')
     .description('task read-model commands');

@@ -1893,6 +1893,74 @@ describe('task service', () => {
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-REJECT-THREAD-1', '03-stage-state.md'), 'utf8')).toContain('Current Stage: develop');
   });
 
+  it('probes inactive tasks in staged order: controller, roster, then inbox', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-probe-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Inactive probe test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-1');
+
+    const first = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-12T01:00:00.000Z'),
+    });
+    expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
+    expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
+      kind: 'thread_probe_controller',
+      participant_refs: ['opus'],
+    });
+
+    const second = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-12T01:05:00.000Z'),
+    });
+    expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 1, inbox_items: 0 });
+    expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
+      kind: 'thread_probe_roster',
+      participant_refs: ['opus', 'sonnet', 'glm5'],
+    });
+
+    const third = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-12T01:10:00.000Z'),
+    });
+    expect(third).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 0, inbox_items: 1 });
+    const inboxRows = db.prepare('SELECT text, source FROM inbox_items ORDER BY id DESC').all() as Array<{ text: string; source: string }>;
+    expect(inboxRows[0]).toMatchObject({
+      text: 'Task OC-PROBE-1 appears stuck',
+      source: 'thread_probe',
+    });
+  });
+
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

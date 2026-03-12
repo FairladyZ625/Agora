@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, RolePackService, StubCraftsmanAdapter, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -1108,6 +1108,42 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('已清理 orphaned 任务: 1');
     expect(taskService.getTask('OC-303')).toBeNull();
+  });
+
+  it('probes stuck tasks through the cli command', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      thread_ref: 'thread-cli-probe-1',
+    });
+    const taskContextBindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-303B',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    taskService.createTask({
+      title: 'probe stuck cli',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-303B');
+
+    await program.parseAsync(['probe-stuck', '--controller-ms', '1000', '--roster-ms', '2000', '--inbox-ms', '3000'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('scanned_tasks: 1');
+    expect(stdout.value).toContain('controller_pings: 1');
   });
 
   it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {

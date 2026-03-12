@@ -16,6 +16,7 @@ import {
   ArchiveJobRepository,
   CraftsmanExecutionRepository,
   FlowLogRepository,
+  InboxRepository,
   ProgressLogRepository,
   SubtaskRepository,
   TaskContextBindingRepository,
@@ -124,6 +125,20 @@ export interface StartupRecoveryScanResult {
   failed_executions: number;
 }
 
+export interface InactiveTaskProbeOptions {
+  controllerAfterMs: number;
+  rosterAfterMs: number;
+  inboxAfterMs: number;
+  now?: Date;
+}
+
+export interface InactiveTaskProbeResult {
+  scanned_tasks: number;
+  controller_pings: number;
+  roster_pings: number;
+  inbox_items: number;
+}
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../templates', import.meta.url));
 }
@@ -142,6 +157,7 @@ export class TaskService {
   private readonly todoRepository: TodoRepository;
   private readonly archiveJobRepository: ArchiveJobRepository;
   private readonly approvalRequestRepository: ApprovalRequestRepository;
+  private readonly inboxRepository: InboxRepository;
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
@@ -173,6 +189,7 @@ export class TaskService {
     this.todoRepository = new TodoRepository(db);
     this.archiveJobRepository = new ArchiveJobRepository(db);
     this.approvalRequestRepository = new ApprovalRequestRepository(db);
+    this.inboxRepository = new InboxRepository(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
     this.templateRepository = new TemplateRepository(db);
     this.stateMachine = new StateMachine();
@@ -1067,6 +1084,96 @@ export class TaskService {
       } catch (error) {
         this.db.exec('ROLLBACK');
         throw error;
+      }
+    }
+
+    return result;
+  }
+
+  probeInactiveTasks(options: InactiveTaskProbeOptions): InactiveTaskProbeResult {
+    const now = options.now ?? new Date();
+    const result: InactiveTaskProbeResult = {
+      scanned_tasks: 0,
+      controller_pings: 0,
+      roster_pings: 0,
+      inbox_items: 0,
+    };
+
+    for (const task of this.taskRepository.listTasks(TaskState.ACTIVE)) {
+      result.scanned_tasks += 1;
+      const latestActivityMs = this.resolveLatestBusinessActivityMs(task);
+      const idleMs = now.getTime() - latestActivityMs;
+      const controllerRef = resolveControllerRef(task.team.members);
+      const interactiveRefs = task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId);
+      if (idleMs < options.controllerAfterMs) {
+        continue;
+      }
+      const probeState = this.getProbeState(task.id, latestActivityMs);
+
+      if (!probeState.controllerNotified && controllerRef) {
+        this.publishTaskStatusBroadcast(task, {
+          kind: 'thread_probe_controller',
+          participantRefs: [controllerRef],
+          bodyLines: [
+            `Task appears inactive for ${Math.round(idleMs / 1000)} seconds.`,
+            'No meaningful progress has been detected. Please inspect the thread and continue orchestration.',
+          ],
+        });
+        this.flowLogRepository.insertFlowLog({
+          task_id: task.id,
+          kind: 'flow',
+          event: 'thread_probe_controller',
+          stage_id: task.current_stage,
+          detail: { idle_ms: idleMs, controller_ref: controllerRef },
+          actor: 'system',
+        });
+        result.controller_pings += 1;
+        continue;
+      }
+
+      if (idleMs >= options.rosterAfterMs && probeState.controllerNotified && !probeState.rosterNotified && interactiveRefs.length > 0) {
+        this.publishTaskStatusBroadcast(task, {
+          kind: 'thread_probe_roster',
+          participantRefs: interactiveRefs,
+          bodyLines: [
+            `Task remains inactive for ${Math.round(idleMs / 1000)} seconds after controller probe.`,
+            'Interactive roster should check the thread, unblock the current stage, and continue execution.',
+          ],
+        });
+        this.flowLogRepository.insertFlowLog({
+          task_id: task.id,
+          kind: 'flow',
+          event: 'thread_probe_roster',
+          stage_id: task.current_stage,
+          detail: { idle_ms: idleMs, participant_refs: interactiveRefs },
+          actor: 'system',
+        });
+        result.roster_pings += 1;
+        continue;
+      }
+
+      if (idleMs >= options.inboxAfterMs && probeState.rosterNotified && !probeState.inboxRaised) {
+        this.inboxRepository.insertInboxItem({
+          text: `Task ${task.id} appears stuck`,
+          source: 'thread_probe',
+          notes: `Task ${task.id} has remained inactive for ${Math.round(idleMs / 1000)} seconds at stage ${task.current_stage ?? '-'}.`,
+          tags: ['task', 'stuck'],
+          metadata: {
+            task_id: task.id,
+            kind: 'thread_probe_inbox',
+            current_stage: task.current_stage,
+            idle_ms: idleMs,
+          },
+        });
+        this.flowLogRepository.insertFlowLog({
+          task_id: task.id,
+          kind: 'flow',
+          event: 'thread_probe_inbox',
+          stage_id: task.current_stage,
+          detail: { idle_ms: idleMs },
+          actor: 'system',
+        });
+        result.inbox_items += 1;
       }
     }
 
@@ -2004,6 +2111,36 @@ export class TaskService {
         LIMIT 1
       )
     `).run(reason, taskId, stageId);
+  }
+
+  private resolveLatestBusinessActivityMs(task: StoredTask) {
+    const flowMs = this.flowLogRepository.listByTask(task.id)
+      .filter((entry) => !entry.event.startsWith('thread_probe_'))
+      .map((entry) => Date.parse(entry.created_at))
+      .filter((value) => Number.isFinite(value));
+    const progressMs = this.progressLogRepository.listByTask(task.id)
+      .map((entry) => Date.parse(entry.created_at))
+      .filter((value) => Number.isFinite(value));
+    const conversationMs = this.taskConversationRepository.listByTask(task.id)
+      .filter((entry) => entry.author_kind !== 'system')
+      .map((entry) => Date.parse(entry.occurred_at))
+      .filter((value) => Number.isFinite(value));
+    return Math.max(
+      Date.parse(task.updated_at),
+      ...flowMs,
+      ...progressMs,
+      ...conversationMs,
+    );
+  }
+
+  private getProbeState(taskId: string, latestActivityMs: number) {
+    const flows = this.flowLogRepository.listByTask(taskId);
+    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && Date.parse(entry.created_at) > latestActivityMs);
+    return {
+      controllerNotified: notifiedAfterActivity('thread_probe_controller'),
+      rosterNotified: notifiedAfterActivity('thread_probe_roster'),
+      inboxRaised: notifiedAfterActivity('thread_probe_inbox'),
+    };
   }
 }
 
