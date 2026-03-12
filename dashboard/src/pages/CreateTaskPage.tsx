@@ -176,7 +176,7 @@ export function CreateTaskPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
+      <section className="create-task-workbench-grid">
         <div className="surface-panel surface-panel--workspace" data-testid="create-task-composer">
           <form className="space-y-5" onSubmit={handleSubmit}>
             <label className="space-y-2">

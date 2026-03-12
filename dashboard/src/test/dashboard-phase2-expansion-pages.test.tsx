@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { MemoryRouter } from 'react-router';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
@@ -513,6 +513,14 @@ describe('dashboard expansion routes', () => {
   });
 
   afterEach(() => {
+    try {
+      vi.getTimerCount();
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+    } catch {
+      // Some cases in this suite use real timers; only flush when fake timers are active.
+    }
     vi.useRealTimers();
   });
 
@@ -711,13 +719,17 @@ describe('dashboard expansion routes', () => {
     );
 
     const initialCalls = agentStoreState.fetchStatus.mock.calls.length;
-    vi.advanceTimersByTime(5_000);
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
     expect(agentStoreState.fetchStatus.mock.calls.length).toBeGreaterThan(initialCalls);
 
     const hiddenDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     const beforeHiddenTick = agentStoreState.fetchStatus.mock.calls.length;
-    vi.advanceTimersByTime(5_000);
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
     expect(agentStoreState.fetchStatus.mock.calls.length).toBe(beforeHiddenTick);
 
     if (hiddenDescriptor) {
@@ -739,7 +751,9 @@ describe('dashboard expansion routes', () => {
     );
 
     const initialDetailCalls = agentStoreState.fetchChannelDetail.mock.calls.length;
-    vi.advanceTimersByTime(5_000);
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
 
     expect(agentStoreState.fetchStatus.mock.calls.length).toBeGreaterThan(0);
     expect(agentStoreState.fetchChannelDetail.mock.calls.length).toBe(initialDetailCalls);

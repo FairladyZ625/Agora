@@ -138,6 +138,14 @@ describe('dashboard home live metrics', () => {
   });
 
   afterEach(() => {
+    try {
+      vi.getTimerCount();
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+    } catch {
+      // Some cases in this suite use real timers; only flush when fake timers are active.
+    }
     vi.useRealTimers();
   });
 

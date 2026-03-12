@@ -328,7 +328,7 @@ export function TemplatesPage() {
                 <span className="detail-card__label">{copy.governanceLabel}</span>
                 <span className="type-body-sm">{draft.governance}</span>
               </div>
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+              <div className="template-actions-grid">
                 <label className="space-y-2">
                   <span className="field-label">{copy.duplicateIdLabel}</span>
                   <input

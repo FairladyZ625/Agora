@@ -23,6 +23,9 @@ export function LoginAsciiCanvas() {
     if (!ctx) {
       return;
     }
+    const containerStyles = window.getComputedStyle(container);
+    const pointerInk = containerStyles.getPropertyValue('--login-canvas-pointer-ink').trim() || 'currentColor';
+    const fieldInk = containerStyles.getPropertyValue('--login-canvas-field-ink').trim() || 'currentColor';
 
     const charSize = 12;
     let rafId = 0;
@@ -90,7 +93,7 @@ export function LoginAsciiCanvas() {
             const intensity = 1 - distance / 220;
             const driftX = (dx / distance) * 18 * intensity;
             const driftY = (dy / distance) * 18 * intensity;
-            ctx.fillStyle = `rgba(255, 255, 255, ${0.22 + intensity * 0.78})`;
+            ctx.fillStyle = `color-mix(in srgb, ${pointerInk} ${Math.round((0.22 + intensity * 0.78) * 100)}%, transparent)`;
             ctx.fillText(
               Math.random() > 0.62 ? (Math.random() > 0.5 ? '0' : '1') : char,
               posX + charSize / 2 - driftX,
@@ -99,7 +102,7 @@ export function LoginAsciiCanvas() {
             continue;
           }
 
-          ctx.fillStyle = `rgba(201, 225, 233, ${alpha * 0.78})`;
+          ctx.fillStyle = `color-mix(in srgb, ${fieldInk} ${Math.round(alpha * 78)}%, transparent)`;
           ctx.fillText(char, posX + charSize / 2, posY + charSize / 2);
         }
       }

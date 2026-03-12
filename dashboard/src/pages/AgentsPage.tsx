@@ -382,7 +382,7 @@ export function AgentsPage() {
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className={isMobile ? 'space-y-6' : 'grid gap-6 xl:grid-cols-[1.2fr_0.8fr]'} data-testid="agents-global-status">
+      <section className={isMobile ? 'space-y-6' : 'agents-global-grid'} data-testid="agents-global-status">
         <div className="surface-panel surface-panel--workspace space-y-5">
           <div className="section-title-row">
             <div>
@@ -452,7 +452,7 @@ export function AgentsPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="agents-workbench-grid">
         <div className="surface-panel surface-panel--workspace" data-testid="agents-issue-queue">
           <div className="section-title-row">
             <div>
