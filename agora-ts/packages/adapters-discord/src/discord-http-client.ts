@@ -96,6 +96,18 @@ export class DiscordHttpClient {
     }
   }
 
+  async removeThreadMember(threadId: string, userId: string): Promise<void> {
+    const res = await fetch(`${DISCORD_API}/channels/${threadId}/thread-members/${userId}`, {
+      method: 'DELETE',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord removeThreadMember failed: ${res.status} ${body}`);
+    }
+  }
+
   async listThreadMembers(threadId: string): Promise<DiscordThreadMember[]> {
     const res = await fetch(`${DISCORD_API}/channels/${threadId}/thread-members`, {
       method: 'GET',
@@ -120,6 +132,34 @@ export class DiscordHttpClient {
       throw new Error(`Discord getCurrentUser failed: ${res.status} ${body}`);
     }
     return (await res.json()) as DiscordCurrentUser;
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    const res = await fetch(`${DISCORD_API}/channels/${threadId}`, {
+      method: 'PATCH',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+      body: JSON.stringify({
+        archived: true,
+        locked: true,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord archiveThread failed: ${res.status} ${body}`);
+    }
+  }
+
+  async deleteChannel(channelId: string): Promise<void> {
+    const res = await fetch(`${DISCORD_API}/channels/${channelId}`, {
+      method: 'DELETE',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord deleteChannel failed: ${res.status} ${body}`);
+    }
   }
 }
 

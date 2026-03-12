@@ -109,6 +109,21 @@ describe('DiscordHttpClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('removeThreadMember calls Discord API for another user', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await client.removeThreadMember('thread-remove-1', 'user-42');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-remove-1/thread-members/user-42',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('getCurrentUser resolves the current bot user id', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -125,6 +140,39 @@ describe('DiscordHttpClient', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://discord.com/api/v10/users/@me',
       expect.objectContaining({ method: 'GET' }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('archiveThread patches the channel as archived and locked', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await client.archiveThread('thread-archive-1');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-archive-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ archived: true, locked: true }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('deleteChannel calls Discord delete API', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await client.deleteChannel('thread-delete-1');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-delete-1',
+      expect.objectContaining({ method: 'DELETE' }),
     );
 
     vi.unstubAllGlobals();
@@ -276,6 +324,131 @@ describe('DiscordIMProvisioningAdapter', () => {
       status: 'ignored',
       detail: 'primary provisioning account already owns the thread',
     });
+  });
+
+  it('joinParticipant accepts a raw discord user id for human participants', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: '530383608410800138' }]),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantTokens: {},
+    });
+
+    const result = await adapter.joinParticipant({
+      binding_id: 'bind-raw-1',
+      participant_ref: '530383608410800138',
+      thread_ref: 'thread-join-human',
+    });
+
+    expect(result).toEqual({ status: 'joined', detail: null });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/channels/thread-join-human/thread-members/530383608410800138',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('removeParticipant removes a joined participant through the Agora bot', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-sonnet', username: 'sonnet' }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'someone-else' }]),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      primaryAccountId: 'main',
+      participantTokens: {
+        sonnet: 'token-sonnet',
+      },
+    });
+
+    const result = await adapter.removeParticipant({
+      binding_id: 'bind-rm-1',
+      participant_ref: 'sonnet',
+      thread_ref: 'thread-rm-1',
+    });
+
+    expect(result).toEqual({ status: 'removed', detail: null });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://discord.com/api/v10/channels/thread-rm-1/thread-members/discord-user-sonnet',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('archiveContext archives the bound thread by default', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+    });
+
+    await adapter.archiveContext({
+      binding_id: 'bind-archive-1',
+      thread_ref: 'thread-archive-2',
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-archive-2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ archived: true, locked: true }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('archiveContext deletes the bound thread when mode=delete', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+    });
+
+    await adapter.archiveContext({
+      binding_id: 'bind-delete-1',
+      thread_ref: 'thread-delete-2',
+      mode: 'delete',
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-delete-2',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+
+    vi.unstubAllGlobals();
   });
 });
 

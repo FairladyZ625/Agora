@@ -2,6 +2,8 @@ import type {
   IMArchiveContextRequest,
   IMJoinParticipantRequest,
   IMJoinParticipantResult,
+  IMRemoveParticipantRequest,
+  IMRemoveParticipantResult,
   IMProvisionContextRequest,
   IMProvisionContextResult,
   IMProvisioningPort,
@@ -71,9 +73,6 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
       return { status: 'ignored', detail: 'primary provisioning account already owns the thread' };
     }
     const token = this.participantTokens[_input.participant_ref];
-    if (!token) {
-      return { status: 'failed', detail: `no discord token configured for participant ${_input.participant_ref}` };
-    }
     const userId = await this.resolveParticipantUserId(_input.participant_ref, token);
     await this.client.addThreadMember(threadRef, userId);
     const members = await this.client.listThreadMembers(threadRef);
@@ -87,14 +86,51 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     return { status: 'joined', detail: null };
   }
 
-  async archiveContext(_input: IMArchiveContextRequest): Promise<void> {
-    // Intentionally left as a no-op in Plan A. Archive semantics will be hardened in a later wave.
+  async removeParticipant(input: IMRemoveParticipantRequest): Promise<IMRemoveParticipantResult> {
+    const threadRef = input.thread_ref ?? null;
+    if (!threadRef) {
+      return { status: 'ignored', detail: 'missing thread_ref' };
+    }
+    if (this.primaryAccountId && input.participant_ref === this.primaryAccountId) {
+      return { status: 'ignored', detail: 'primary provisioning account owns the thread and is not removed' };
+    }
+    const token = this.participantTokens[input.participant_ref];
+    const userId = await this.resolveParticipantUserId(input.participant_ref, token);
+    await this.client.removeThreadMember(threadRef, userId);
+    const members = await this.client.listThreadMembers(threadRef);
+    const removed = members.every((member) => this.readThreadMemberUserId(member) !== userId);
+    if (!removed) {
+      return {
+        status: 'failed',
+        detail: `participant ${input.participant_ref} was still visible in thread member list after remove`,
+      };
+    }
+    return { status: 'removed', detail: null };
   }
 
-  private async resolveParticipantUserId(participantRef: string, token: string): Promise<string> {
+  async archiveContext(input: IMArchiveContextRequest): Promise<void> {
+    const targetRef = input.thread_ref ?? input.conversation_ref ?? null;
+    if (!targetRef) {
+      return;
+    }
+    if (input.mode === 'delete') {
+      await this.client.deleteChannel(targetRef);
+      return;
+    }
+    await this.client.archiveThread(targetRef);
+  }
+
+  private async resolveParticipantUserId(participantRef: string, token?: string): Promise<string> {
     const cached = this.participantUserIds.get(participantRef);
     if (cached) {
       return cached;
+    }
+    if (looksLikeDiscordUserId(participantRef)) {
+      this.participantUserIds.set(participantRef, participantRef);
+      return participantRef;
+    }
+    if (!token) {
+      throw new Error(`no discord token configured for participant ${participantRef}`);
     }
     const client = new DiscordHttpClient({ botToken: token });
     const user = await client.getCurrentUser();
@@ -105,4 +141,8 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
   private readThreadMemberUserId(member: { user_id?: string; id?: string; user?: { id?: string } }): string | null {
     return member.user_id ?? member.user?.id ?? member.id ?? null;
   }
+}
+
+function looksLikeDiscordUserId(value: string) {
+  return /^[0-9]{15,25}$/.test(value);
 }

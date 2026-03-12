@@ -58,6 +58,38 @@
   - 必要的 scenario / harness 覆盖
 - 轻量多用户账号体系可以落在 SQLite，但这只解决“谁能登录 / 谁能审批”；当前阶段**不默认引入任务隔离**，未来若做企业级多租户/多人员任务域隔离，必须作为独立能力设计与实施。
 
+### Entry Surface Matrix（强制）
+
+- **Agent -> CLI**
+  - 适用对象：本机运行的 controller / citizen / craftsman manager agent
+  - 默认职责：task orchestration、template/graph authoring、role/binding 查询与修改、运维与 scenario 回归
+  - 原因：Agent 已有本机 shell，不应绕行 IM slash command 或人类桥接层
+- **Human -> Dashboard**
+  - 适用对象：必须确认的人类审批、需要真实登录态的人类操作
+  - 默认职责：approve / reject / archon review / 未来更严格的人类确认动作
+- **Human -> Slash Command（IM）**
+  - 适用对象：不在电脑前的人类、移动端用户、轻量状态查询与手动触发
+  - 默认职责：只读查询、轻量 task create、非高风险 task action、thread/context 辅助动作
+  - 前提：必须由 REST/server facade 承接，不能要求人类直接依赖本机 CLI
+- **REST -> Service / Integration Facade**
+  - 默认职责：给 Dashboard、plugin、外部系统、人类 IM bridge 提供统一服务入口
+  - 禁止把 REST 误当成“Agent 必须经过的主入口”；本机 agent 仍优先直接调用 CLI
+
+### Slash Command 补齐规则（强制）
+
+- 新增 capability 时，必须先判断调用者：
+  - 如果主要调用者是本机 agent：先补 CLI
+  - 如果需要给人类在 IM 中使用：再补 REST + plugin/slash bridge
+- 当前建议的 slash command 能力分层：
+  - 只读 slash：`status/list/show/render/validate`
+  - 轻量执行 slash：`create/advance/unblock/pause/resume/cleanup`
+  - 人类确认动作：仍以 Dashboard 登录态为准；如需 IM 入口，必须通过 server 识别真实人类身份，不能伪造 `reviewer_id/approver_id`
+- plugin 的默认职责是：
+  - 人类 slash command bridge
+  - live status / conversation / receipt 回投
+  - 轻量查询与人类触发的 task action
+- plugin **不是**本机 agent 的主控制面；禁止为了让 agent 调用 Agora，而把核心编排逻辑复制进 plugin。
+
 ## 项目概述
 
 Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 Python 版本已迁入 `archive/agora-python-legacy/`，保留为迁移参考与 legacy 对照。

@@ -38,8 +38,23 @@ export interface IMJoinParticipantResult {
   detail?: string | null;
 }
 
+export interface IMRemoveParticipantRequest {
+  binding_id: string;
+  participant_ref: string;
+  conversation_ref?: string | null;
+  thread_ref?: string | null;
+}
+
+export interface IMRemoveParticipantResult {
+  status: 'removed' | 'ignored' | 'failed';
+  detail?: string | null;
+}
+
 export interface IMArchiveContextRequest {
   binding_id: string;
+  conversation_ref?: string | null;
+  thread_ref?: string | null;
+  mode?: 'archive' | 'delete';
   reason?: string | null;
 }
 
@@ -59,6 +74,7 @@ export interface IMProvisioningPort {
   /** Create/bind an IM context for a task and return provider-neutral refs. */
   provisionContext(input: IMProvisionContextRequest): Promise<IMProvisionContextResult>;
   joinParticipant(input: IMJoinParticipantRequest): Promise<IMJoinParticipantResult>;
+  removeParticipant(input: IMRemoveParticipantRequest): Promise<IMRemoveParticipantResult>;
   archiveContext(input: IMArchiveContextRequest): Promise<void>;
 }
 
@@ -66,6 +82,7 @@ export class StubIMProvisioningPort implements IMProvisioningPort {
   private readonly provisionedBinding: IMProvisionContextResult;
   readonly provisioned: IMProvisionContextRequest[] = [];
   readonly joined: IMJoinParticipantRequest[] = [];
+  readonly removed: IMRemoveParticipantRequest[] = [];
   readonly archived: IMArchiveContextRequest[] = [];
 
   constructor(binding: {
@@ -94,6 +111,11 @@ export class StubIMProvisioningPort implements IMProvisioningPort {
 
   async joinParticipant(input: IMJoinParticipantRequest): Promise<IMJoinParticipantResult> {
     this.joined.push(input);
+    return { status: 'ignored', detail: 'stub provisioning port does not manage participants' };
+  }
+
+  async removeParticipant(input: IMRemoveParticipantRequest): Promise<IMRemoveParticipantResult> {
+    this.removed.push(input);
     return { status: 'ignored', detail: 'stub provisioning port does not manage participants' };
   }
 
