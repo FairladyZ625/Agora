@@ -1,0 +1,31 @@
+# ZeYu Docs Retrieval Configuration
+
+obsidian:
+  api_url: http://localhost:27123
+  api_key: 72007890a6aa117a410fbb01a851c6238a9709667f6468b73cbe062e748842eb
+  timeout: 30
+
+vector_search:
+  model: TaylorAI/bge-micro-v2
+  smart_env_path: .smart-env/multi
+  default_top_k: 5
+  default_threshold: 0.7
+  max_vectors: 5000
+
+paths:
+  vault: /Users/lizeyu/Documents/ZeYu-AI-Brain
+  projects: 02-PROJECTS
+  context: 01-CONTEXT
+  tasks: 03-ACTIVE-TASKS
+
+doc_types:
+  CLAUDE.md: .hidden/CLAUDE.md
+  README: README.md
+  ARCHITECTURE: ARCHITECTURE*.md
+  TASKS: tasks.md
+  API: API*.md
+
+output:
+  default_format: markdown
+  color: true
+  verbose: false
