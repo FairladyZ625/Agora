@@ -204,6 +204,7 @@ export class TaskService {
     this.templateRepository.seedFromDir(this.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(this.templatesDir);
     this.templateRepository.repairStageSemanticsFromDir(this.templatesDir);
+    this.templateRepository.repairGraphsFromDir(this.templatesDir);
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
     this.imMessagingPort = options.imMessagingPort;

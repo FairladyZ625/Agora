@@ -79,7 +79,7 @@ export class TemplateRepository {
         continue;
       }
       const template = JSON.parse(readFileSync(resolve(dir, name), 'utf8')) as TemplateDetailDto;
-      this.saveTemplate(templateId, template, 'seed');
+      this.saveTemplate(templateId, normalizeTemplateGraphPayload(template), 'seed');
       inserted += 1;
     }
     return { inserted };
@@ -139,6 +139,31 @@ export class TemplateRepository {
     return { scanned, updated };
   }
 
+  repairGraphsFromDir(templatesDir: string): TemplateRepairResult {
+    const dir = resolve(templatesDir, 'tasks');
+    if (!existsSync(dir)) {
+      return { scanned: 0, updated: 0 };
+    }
+
+    let scanned = 0;
+    let updated = 0;
+    for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
+      const templateId = name.slice(0, -5);
+      const existing = this.getTemplate(templateId);
+      if (!existing) {
+        continue;
+      }
+      scanned += 1;
+      const normalized = normalizeTemplateGraphPayload(existing.template);
+      if (JSON.stringify(normalized.graph ?? null) === JSON.stringify(existing.template.graph ?? null)) {
+        continue;
+      }
+      this.saveTemplate(templateId, normalized, existing.source);
+      updated += 1;
+    }
+    return { scanned, updated };
+  }
+
   private parseTemplateRow(row: Record<string, unknown>): StoredTemplate {
     return {
       id: String(row.id),
@@ -149,6 +174,53 @@ export class TemplateRepository {
       updated_at: String(row.updated_at),
     };
   }
+}
+
+function normalizeTemplateGraphPayload(template: TemplateDetailDto): TemplateDetailDto {
+  if (template.graph) {
+    return template;
+  }
+  const stages = template.stages ?? [];
+  return {
+    ...template,
+    graph: {
+      graph_version: 1,
+      entry_nodes: stages[0] ? [stages[0].id] : ['entry'],
+      nodes: stages.map((stage, index) => ({
+        id: stage.id,
+        ...(stage.name ? { name: stage.name } : {}),
+        kind: 'stage',
+        ...(stage.execution_kind ? { execution_kind: stage.execution_kind } : {}),
+        ...(stage.allowed_actions ? { allowed_actions: stage.allowed_actions } : {}),
+        ...(stage.gate ? { gate: stage.gate } : {}),
+        layout: {
+          x: index * 280,
+          y: 0,
+        },
+      })),
+      edges: stages.flatMap((stage, index) => {
+        const edges: NonNullable<TemplateDetailDto['graph']>['edges'] = [];
+        const nextStage = stages[index + 1];
+        if (nextStage) {
+          edges.push({
+            id: `${stage.id}__advance__${nextStage.id}`,
+            from: stage.id,
+            to: nextStage.id,
+            kind: 'advance',
+          });
+        }
+        if (stage.reject_target) {
+          edges.push({
+            id: `${stage.id}__reject__${stage.reject_target}`,
+            from: stage.id,
+            to: stage.reject_target,
+            kind: 'reject',
+          });
+        }
+        return edges;
+      }),
+    },
+  };
 }
 
 function repairTemplateMemberKinds(

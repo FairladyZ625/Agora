@@ -12,6 +12,7 @@ import {
 } from '@agora-ts/contracts';
 import { TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
+import { normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
 
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
@@ -26,6 +27,7 @@ export class TemplateAuthoringService {
     this.templateRepository?.seedFromDir(options.templatesDir);
     this.templateRepository?.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository?.repairStageSemanticsFromDir(options.templatesDir);
+    this.templateRepository?.repairGraphsFromDir(options.templatesDir);
   }
 
   validateTemplate(template: TemplateDetailDto): TemplateValidationResponseDto {
@@ -39,11 +41,15 @@ export class TemplateAuthoringService {
     }
 
     const normalized = parsed.data;
-    const errors = this.validateStages(normalized.stages ?? []);
+    const graphNormalized = normalizeTemplateGraph(normalized);
+    const errors = [
+      ...this.validateStages(graphNormalized.stages ?? []),
+      ...validateTemplateGraph(graphNormalized.graph!),
+    ];
     return {
       valid: errors.length === 0,
       errors,
-      normalized,
+      normalized: graphNormalized,
     };
   }
 
@@ -106,7 +112,7 @@ export class TemplateAuthoringService {
   getTemplate(templateId: string): TemplateDetailDto {
     const stored = this.templateRepository?.getTemplate(templateId);
     if (stored) {
-      return stored.template;
+      return normalizeTemplateGraph(stored.template);
     }
     throw new NotFoundError(`Template ${templateId} not found`);
   }

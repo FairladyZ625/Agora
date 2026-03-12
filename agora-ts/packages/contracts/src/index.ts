@@ -11,4 +11,5 @@ export * from './notification-outbox.js';
 export * from './participant-binding.js';
 export * from './runtime-session-binding.js';
 export * from './task-conversation.js';
+export * from './template-graph.js';
 export * from './roles.js';

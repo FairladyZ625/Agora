@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { validateWorkflowStages } from './workflow-rules.js';
 import { taskSchema } from './task-api.js';
 import { taskPrioritySchema } from './task.js';
+import { templateGraphSchema } from './template-graph.js';
 
 const allowedGovernancePresets = ['lean', 'standard', 'strict', 'custom'] as const;
 const allowedTemplateRoles = ['architect', 'developer', 'reviewer', 'writer', 'researcher', 'analyst', 'executor', 'craftsman'] as const;
@@ -392,8 +393,16 @@ export const templateDetailSchema = z.object({
   governance: governancePresetSchema.optional(),
   defaultTeam: templateDefaultTeamSchema.optional(),
   stages: z.array(templateStageSchema).optional(),
+  graph: templateGraphSchema.optional(),
 }).superRefine((value, ctx) => {
   validateWorkflowStages(value.stages, ctx);
+  if (!value.graph && (!value.stages || value.stages.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'template must define stages or graph',
+      path: ['stages'],
+    });
+  }
   if (!value.defaultTeam) {
     return;
   }

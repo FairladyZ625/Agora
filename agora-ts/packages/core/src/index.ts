@@ -27,5 +27,6 @@ export * from './task-conversation-service.js';
 export * from './task-participation-service.js';
 export * from './task-service.js';
 export * from './template-authoring-service.js';
+export * from './template-graph-service.js';
 export * from './tmux-runtime-service.js';
 export * from './workdir-isolator.js';

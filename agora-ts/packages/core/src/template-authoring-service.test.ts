@@ -249,6 +249,77 @@ describe('template authoring service', () => {
 
     expect(result.valid).toBe(true);
     expect(result.normalized?.stages?.[1]?.reject_target).toBe('draft');
+    expect(result.normalized?.graph).toMatchObject({
+      entry_nodes: ['draft'],
+      edges: [
+        expect.objectContaining({ kind: 'advance', from: 'draft', to: 'review' }),
+        expect.objectContaining({ kind: 'reject', from: 'review', to: 'draft' }),
+      ],
+    });
+  });
+
+  it('normalizes templates to include canonical graph payloads even when authored from stages only', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const saved = service.saveTemplate('graph_ready', {
+      name: '图就绪模板',
+      type: 'graph_ready',
+      governance: 'lean',
+      defaultTeam: {
+        architect: { member_kind: 'controller', suggested: ['opus'] },
+      },
+      stages: [
+        { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+        { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'draft' },
+      ],
+    });
+
+    expect(saved.template.graph).toMatchObject({
+      graph_version: 1,
+      entry_nodes: ['draft'],
+      nodes: [
+        expect.objectContaining({ id: 'draft', kind: 'stage' }),
+        expect.objectContaining({ id: 'review', kind: 'stage' }),
+      ],
+      edges: [
+        expect.objectContaining({ kind: 'advance', from: 'draft', to: 'review' }),
+        expect.objectContaining({ kind: 'reject', from: 'review', to: 'draft' }),
+      ],
+    });
+    expect(service.getTemplate('graph_ready').graph).toBeTruthy();
+  });
+
+  it('rejects invalid canonical graph payloads with dangling entry nodes and edges', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const result = service.validateTemplate({
+      name: '坏图模板',
+      type: 'broken_graph',
+      governance: 'lean',
+      defaultTeam: {
+        architect: { member_kind: 'controller', suggested: ['opus'] },
+      },
+      graph: {
+        graph_version: 1,
+        entry_nodes: ['missing'],
+        nodes: [
+          { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+        ],
+        edges: [
+          { id: 'edge-1', from: 'draft', to: 'ghost', kind: 'advance' },
+        ],
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(' ')).toContain('unknown entry node');
+    expect(result.errors.join(' ')).toContain('unknown edge.to node');
   });
 
   it('rejects invalid gate semantics and duplicate stage ids during authoring validation', () => {
