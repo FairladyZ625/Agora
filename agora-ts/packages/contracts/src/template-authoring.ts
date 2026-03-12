@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { templateDetailSchema, templateStageSchema } from './dashboard.js';
+import { templateGraphSchema } from './template-graph.js';
 import { validateWorkflowStages } from './workflow-rules.js';
 
 export const templateValidationRequestSchema = templateDetailSchema;
@@ -34,3 +35,11 @@ export type UpdateTemplateWorkflowRequestDto = z.infer<typeof updateTemplateWork
 
 export const validateWorkflowRequestSchema = updateTemplateWorkflowRequestSchema;
 export type ValidateWorkflowRequestDto = z.infer<typeof validateWorkflowRequestSchema>;
+
+export const updateTemplateGraphRequestSchema = z.object({
+  graph: templateGraphSchema,
+});
+export type UpdateTemplateGraphRequestDto = z.infer<typeof updateTemplateGraphRequestSchema>;
+
+export const validateTemplateGraphRequestSchema = templateGraphSchema;
+export type ValidateTemplateGraphRequestDto = z.infer<typeof validateTemplateGraphRequestSchema>;

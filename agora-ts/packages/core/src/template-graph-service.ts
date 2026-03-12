@@ -103,11 +103,6 @@ export function validateTemplateGraph(graph: TemplateGraphDto): string[] {
       errors.push(`unknown graph edge.to node: ${edge.to}`);
     }
   }
-  for (const node of graph.nodes) {
-    if (node.kind === 'stage' && !graph.edges.some((edge) => edge.from === node.id) && !graph.entry_nodes.includes(node.id)) {
-      errors.push(`graph node has no outgoing edge: ${node.id}`);
-    }
-  }
   return errors;
 }
 

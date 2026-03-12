@@ -1,18 +1,22 @@
 import type {
   DuplicateTemplateRequestDto,
   TemplateDetailDto,
+  TemplateGraphDto,
   TemplateStageDto,
   TemplateValidationResponseDto,
+  UpdateTemplateGraphRequestDto,
   UpdateTemplateWorkflowRequestDto,
+  ValidateTemplateGraphRequestDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
 import {
   templateDetailSchema,
+  templateGraphSchema,
   validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
 import { TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
-import { normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
+import { deriveStagesFromGraph, normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
 
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
@@ -70,6 +74,23 @@ export class TemplateAuthoringService {
     });
   }
 
+  validateGraph(graph: ValidateTemplateGraphRequestDto): TemplateValidationResponseDto {
+    const parsed = templateGraphSchema.safeParse(graph);
+    if (!parsed.success) {
+      return {
+        valid: false,
+        errors: parsed.error.issues.map((issue) => issue.message),
+        normalized: null,
+      };
+    }
+    const errors = validateTemplateGraph(parsed.data);
+    return {
+      valid: errors.length === 0,
+      errors,
+      normalized: null,
+    };
+  }
+
   saveTemplate(templateId: string, template: TemplateDetailDto) {
     const normalizedTemplate = {
       ...template,
@@ -96,6 +117,15 @@ export class TemplateAuthoringService {
     });
   }
 
+  updateTemplateGraph(templateId: string, input: UpdateTemplateGraphRequestDto) {
+    const existing = this.getTemplate(templateId);
+    return this.saveTemplate(templateId, {
+      ...existing,
+      graph: input.graph,
+      stages: deriveStagesFromGraph(input.graph),
+    });
+  }
+
   duplicateTemplate(templateId: string, input: DuplicateTemplateRequestDto) {
     const existing = this.getTemplate(templateId);
     const duplicated = this.saveTemplate(input.new_id, {
@@ -115,6 +145,14 @@ export class TemplateAuthoringService {
       return normalizeTemplateGraph(stored.template);
     }
     throw new NotFoundError(`Template ${templateId} not found`);
+  }
+
+  getTemplateGraph(templateId: string): TemplateGraphDto {
+    const template = this.getTemplate(templateId);
+    if (!template.graph) {
+      throw new Error(`Template ${templateId} has no graph payload`);
+    }
+    return template.graph;
   }
 
   private validateStages(stages: TemplateStageDto[]): string[] {

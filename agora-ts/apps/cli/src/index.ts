@@ -8,6 +8,7 @@ import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
+import { deriveGraphFromStages } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
@@ -15,6 +16,7 @@ import type {
   CreateTaskRequestDto,
   TaskPriority,
   TemplateDetailDto,
+  TemplateGraphDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
 import { createTaskRequestSchema } from '@agora-ts/contracts';
@@ -131,38 +133,31 @@ function applyTaskCreateOverrides(
   });
 }
 
-function renderWorkflowMermaid(input: ValidateWorkflowRequestDto) {
-  const stages = input.stages ?? [];
+function renderTemplateGraphMermaid(graph: TemplateGraphDto) {
   const lines = ['flowchart TD'];
-  for (const stage of stages) {
-    lines.push(`  ${stage.id}["${stage.name ?? stage.id}"]`);
+  for (const node of graph.nodes) {
+    lines.push(`  ${node.id}["${node.name ?? node.id}"]`);
   }
-  for (let index = 0; index < stages.length; index += 1) {
-    const stage = stages[index]!;
-    const next = stages[index + 1];
-    if (next) {
-      lines.push(`  ${stage.id} --> ${next.id}`);
-    }
-    if (stage.reject_target) {
-      lines.push(`  ${stage.id} -. reject .-> ${stage.reject_target}`);
-    }
+  for (const edge of graph.edges) {
+    const arrow = edge.kind === 'reject' ? '-. reject .->' : '-->';
+    lines.push(`  ${edge.from} ${arrow} ${edge.to}`);
   }
   return lines.join('\n');
 }
 
-function loadWorkflowSource(
+function loadGraphSource(
   templateAuthoringService: TemplateAuthoringService,
   input: { template?: string; file?: string },
-): ValidateWorkflowRequestDto {
+): TemplateGraphDto {
   if (input.file) {
-    return JSON.parse(readFileSync(input.file, 'utf8')) as ValidateWorkflowRequestDto;
+    const parsed = JSON.parse(readFileSync(input.file, 'utf8')) as ValidateWorkflowRequestDto & { graph_version?: number };
+    if (typeof parsed.graph_version === 'number') {
+      return parsed as unknown as TemplateGraphDto;
+    }
+    return deriveGraphFromStages(parsed.stages ?? []);
   }
   if (input.template) {
-    const template = templateAuthoringService.getTemplate(input.template);
-    return {
-      defaultWorkflow: template.defaultWorkflow,
-      stages: template.stages ?? [],
-    };
+    return templateAuthoringService.getTemplateGraph(input.template);
   }
   throw new Error('graph command requires --template or --file');
 }
@@ -540,13 +535,30 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   graph
+    .command('show')
+    .description('查看 canonical graph')
+    .requiredOption('--template <templateId>', 'template id')
+    .option('--json', '输出 JSON', false)
+    .action((options: { template: string; json?: boolean }) => {
+      const graphPayload = templateAuthoringService.getTemplateGraph(options.template);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(graphPayload, null, 2));
+        return;
+      }
+      writeLine(stdout, `graph version: ${graphPayload.graph_version}`);
+      writeLine(stdout, `entry nodes: ${graphPayload.entry_nodes.join(', ')}`);
+      writeLine(stdout, `nodes: ${graphPayload.nodes.length}`);
+      writeLine(stdout, `edges: ${graphPayload.edges.length}`);
+    });
+
+  graph
     .command('validate')
     .description('校验 workflow graph')
     .option('--template <templateId>', 'template id')
     .option('--file <filePath>', 'workflow json file')
     .action((options: { template?: string; file?: string }) => {
-      const workflow = loadWorkflowSource(templateAuthoringService, options);
-      const result = templateAuthoringService.validateWorkflow(workflow);
+      const graphPayload = loadGraphSource(templateAuthoringService, options);
+      const result = templateAuthoringService.validateGraph(graphPayload);
       if (!result.valid) {
         throw new Error(result.errors.join('; '));
       }
@@ -563,8 +575,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (options.format !== 'mermaid') {
         throw new Error(`unsupported graph render format: ${options.format}`);
       }
-      const workflow = loadWorkflowSource(templateAuthoringService, options);
-      writeLine(stdout, renderWorkflowMermaid(workflow));
+      const graphPayload = loadGraphSource(templateAuthoringService, options);
+      writeLine(stdout, renderTemplateGraphMermaid(graphPayload));
     });
 
   graph
@@ -573,8 +585,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--template <templateId>', 'template id')
     .requiredOption('--file <filePath>', 'workflow json file')
     .action((options: { template: string; file: string }) => {
-      const workflow = loadWorkflowSource(templateAuthoringService, { file: options.file });
-      const saved = templateAuthoringService.updateTemplateWorkflow(options.template, workflow);
+      const graphPayload = loadGraphSource(templateAuthoringService, { file: options.file });
+      const saved = templateAuthoringService.updateTemplateGraph(options.template, { graph: graphPayload });
       writeLine(stdout, `workflow graph 已应用到模板: ${options.template}`);
       writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
     });

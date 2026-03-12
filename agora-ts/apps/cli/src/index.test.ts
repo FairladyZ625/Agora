@@ -369,6 +369,7 @@ describe('agora-ts cli', () => {
     await program.parseAsync(['graph', 'validate', '--file', workflowFile], { from: 'user' });
     await program.parseAsync(['graph', 'render', '--format', 'mermaid', '--file', workflowFile], { from: 'user' });
     await program.parseAsync(['graph', 'apply', '--template', 'coding', '--file', workflowFile], { from: 'user' });
+    await program.parseAsync(['graph', 'show', '--template', 'coding'], { from: 'user' });
 
     const template = templateAuthoringService.getTemplate('coding');
     expect(stderr.value).toBe('');
@@ -376,7 +377,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('flowchart TD');
     expect(stdout.value).toContain('triage --> implement');
     expect(stdout.value).toContain('workflow graph 已应用到模板: coding');
+    expect(stdout.value).toContain('graph version: 1');
     expect(template.stages?.map((stage) => stage.id)).toEqual(['triage', 'implement', 'review']);
+    expect(template.graph?.entry_nodes).toEqual(['triage']);
   });
 
   it('manages archive jobs through the cli', async () => {

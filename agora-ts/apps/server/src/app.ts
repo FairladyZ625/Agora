@@ -46,7 +46,9 @@ import {
   templateValidationRequestSchema,
   updateTodoRequestSchema,
   updateInboxRequestSchema,
+  updateTemplateGraphRequestSchema,
   updateTemplateWorkflowRequestSchema,
+  validateTemplateGraphRequestSchema,
   validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
 import {
@@ -1921,6 +1923,46 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { templateId: string };
       const payload = updateTemplateWorkflowRequestSchema.parse(request.body);
       return reply.send(templateAuthoringService.updateTemplateWorkflow(params.templateId, payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/templates/:templateId/graph', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const params = request.params as { templateId: string };
+      return reply.send(templateAuthoringService.getTemplateGraph(params.templateId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.put('/api/templates/:templateId/graph', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const params = request.params as { templateId: string };
+      const payload = updateTemplateGraphRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.updateTemplateGraph(params.templateId, payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/templates/:templateId/graph/validate', async (request, reply) => {
+    if (!templateAuthoringService) {
+      return reply.status(503).send({ message: 'Template authoring service is not configured' });
+    }
+    try {
+      const payload = validateTemplateGraphRequestSchema.parse(request.body);
+      return reply.send(templateAuthoringService.validateGraph(payload));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -132,6 +132,39 @@ describe('authoring routes', () => {
         stages: [{ id: 'draft', gate: { type: 'command' } }],
       },
     });
+    const getGraph = await app.inject({
+      method: 'GET',
+      url: '/api/templates/flow_editor/graph',
+    });
+    const updateGraph = await app.inject({
+      method: 'PUT',
+      url: '/api/templates/flow_editor/graph',
+      payload: {
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['draft'],
+          nodes: [
+            { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+            { id: 'publish', kind: 'stage', gate: { type: 'archon_review' } },
+          ],
+          edges: [
+            { id: 'draft__advance__publish', from: 'draft', to: 'publish', kind: 'advance' },
+          ],
+        },
+      },
+    });
+    const validateGraph = await app.inject({
+      method: 'POST',
+      url: '/api/templates/flow_editor/graph/validate',
+      payload: {
+        graph_version: 1,
+        entry_nodes: ['draft'],
+        nodes: [
+          { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+        ],
+        edges: [],
+      },
+    });
     const deleteInbox = await app.inject({
       method: 'DELETE',
       url: `/api/inbox/${createdInbox.id}`,
@@ -161,6 +194,18 @@ describe('authoring routes', () => {
     expect(duplicateTemplate.json()).toMatchObject({ id: 'flow_editor_copy' });
     expect(validateWorkflow.statusCode).toBe(200);
     expect(validateWorkflow.json()).toMatchObject({ valid: true });
+    expect(getGraph.statusCode).toBe(200);
+    expect(getGraph.json()).toMatchObject({ graph_version: 1, entry_nodes: ['draft'] });
+    expect(updateGraph.statusCode).toBe(200);
+    expect(updateGraph.json()).toMatchObject({
+      template: {
+        graph: {
+          nodes: [expect.objectContaining({ id: 'draft' }), expect.objectContaining({ id: 'publish' })],
+        },
+      },
+    });
+    expect(validateGraph.statusCode).toBe(200);
+    expect(validateGraph.json()).toMatchObject({ valid: true });
     expect(deleteInbox.statusCode).toBe(200);
   });
 
