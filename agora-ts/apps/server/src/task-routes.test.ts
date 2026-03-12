@@ -711,6 +711,55 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-204')).toBeNull();
   });
 
+  it('serves probe-stuck route for manual escalation scans', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      thread_ref: 'thread-probe-route-1',
+    });
+    const taskContextBindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-ROUTE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService,
+    });
+
+    taskService.createTask({
+      title: 'probe route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ROUTE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ROUTE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ROUTE-1');
+
+    const app = buildApp({ taskService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/probe-stuck',
+      payload: {
+        controller_after_ms: 1000,
+        roster_after_ms: 2000,
+        inbox_after_ms: 3000,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      scanned_tasks: 1,
+      controller_pings: 1,
+      roster_pings: 0,
+      inbox_items: 0,
+    });
+  });
+
   it('serves reject, archon-reject, and unblock routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

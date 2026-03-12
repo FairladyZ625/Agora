@@ -1555,6 +1555,7 @@ export class TaskService {
       kind: string;
       bodyLines: string[];
       participantRefs?: string[];
+      occurredAt?: string;
     },
   ) {
     if (!this.imProvisioningPort || !this.taskContextBindingService) {
@@ -1564,21 +1565,7 @@ export class TaskService {
     if (!binding) {
       return;
     }
-    const stage = task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : null;
-    const brainBinding = this.taskBrainBindingService?.getActiveBinding(task.id) ?? null;
-    const lines = [
-      'Agora status update',
-      `Event Type: ${input.kind}`,
-      `Task: ${task.id} — ${task.title}`,
-      `Task State: ${task.state}`,
-      `Current Stage: ${task.current_stage ?? '-'}`,
-      `Execution Kind: ${resolveStageExecutionKind(stage) ?? '-'}`,
-      `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
-      `Controller: ${resolveControllerRef(task.team.members) ?? '-'}`,
-      ...input.bodyLines,
-      ...(brainBinding ? [`Task Workspace: ${brainBinding.workspace_path}`] : []),
-      ...(brainBinding ? [`Current Brief: ${join(brainBinding.workspace_path, '00-current.md')}`] : []),
-    ];
+    const envelope = this.buildTaskStatusBroadcastEnvelope(task, input);
     void this.imProvisioningPort.publishMessages({
       binding_id: binding.id,
       conversation_ref: binding.conversation_ref,
@@ -1586,11 +1573,62 @@ export class TaskService {
       messages: [{
         kind: input.kind,
         ...(input.participantRefs ? { participant_refs: input.participantRefs } : {}),
-        body: lines.join('\n'),
+        body: envelope.lines.join('\n'),
       }],
     }).catch((error: unknown) => {
       console.error(`[TaskService] Task status broadcast failed for task ${task.id}:`, error);
     });
+    this.taskConversationRepository.insert({
+      id: randomUUID(),
+      task_id: task.id,
+      binding_id: binding.id,
+      provider: binding.im_provider,
+      direction: 'system',
+      author_kind: 'system',
+      author_ref: 'agora-bot',
+      display_name: 'agora-bot',
+      body: envelope.lines.join('\n'),
+      body_format: 'plain_text',
+      occurred_at: input.occurredAt ?? new Date().toISOString(),
+      metadata: envelope,
+    });
+  }
+
+  private buildTaskStatusBroadcastEnvelope(
+    task: StoredTask,
+    input: {
+      kind: string;
+      bodyLines: string[];
+      participantRefs?: string[];
+    },
+  ): TaskStatusBroadcastEnvelope {
+    const stage = task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : null;
+    const brainBinding = this.taskBrainBindingService?.getActiveBinding(task.id) ?? null;
+    return {
+      event_type: input.kind,
+      task_id: task.id,
+      title: task.title,
+      task_state: task.state,
+      current_stage: task.current_stage,
+      execution_kind: resolveStageExecutionKind(stage),
+      allowed_actions: resolveAllowedActions(stage),
+      controller_ref: resolveControllerRef(task.team.members),
+      workspace_path: brainBinding?.workspace_path ?? null,
+      participant_refs: input.participantRefs ?? null,
+      lines: [
+        'Agora status update',
+        `Event Type: ${input.kind}`,
+        `Task: ${task.id} — ${task.title}`,
+        `Task State: ${task.state}`,
+        `Current Stage: ${task.current_stage ?? '-'}`,
+        `Execution Kind: ${resolveStageExecutionKind(stage) ?? '-'}`,
+        `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
+        `Controller: ${resolveControllerRef(task.team.members) ?? '-'}`,
+        ...input.bodyLines,
+        ...(brainBinding ? [`Task Workspace: ${brainBinding.workspace_path}`] : []),
+        ...(brainBinding ? [`Current Brief: ${join(brainBinding.workspace_path, '00-current.md')}`] : []),
+      ],
+    };
   }
 
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
@@ -1613,6 +1651,7 @@ export class TaskService {
         `Status: ${execution.status}`,
         ...(subtask.output ? [`Output: ${subtask.output}`] : []),
       ],
+      ...(execution.finished_at ? { occurredAt: execution.finished_at } : {}),
     });
   }
 
@@ -2145,6 +2184,20 @@ export class TaskService {
 }
 
 type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
+
+type TaskStatusBroadcastEnvelope = {
+  event_type: string;
+  task_id: string;
+  title: string;
+  task_state: string;
+  current_stage: string | null;
+  execution_kind: string | null;
+  allowed_actions: string[];
+  controller_ref: string | null;
+  workspace_path: string | null;
+  participant_refs: string[] | null;
+  lines: string[];
+};
 
 function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) {
   if (!stage) {

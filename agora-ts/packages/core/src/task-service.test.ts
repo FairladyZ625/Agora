@@ -2264,5 +2264,13 @@ describe('task service', () => {
     expect(callbackMessage?.body).toContain('Event Type: craftsman_completed');
     expect(callbackMessage?.body).toContain('Execution: exec-notify-1');
     expect(callbackMessage?.body).toContain('implemented and ready');
+    const latestConversation = new TaskConversationRepository(db).getLatestByTask('OC-NOTIFY-1');
+    expect(latestConversation?.metadata).toMatchObject({
+      event_type: 'craftsman_completed',
+      task_id: 'OC-NOTIFY-1',
+      task_state: 'active',
+      current_stage: 'discuss',
+      controller_ref: 'opus',
+    });
   });
 });

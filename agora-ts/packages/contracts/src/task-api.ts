@@ -361,3 +361,10 @@ export const cleanupTasksRequestSchema = z.object({
   task_id: z.string().optional(),
 });
 export type CleanupTasksRequestDto = z.infer<typeof cleanupTasksRequestSchema>;
+
+export const probeInactiveTasksRequestSchema = z.object({
+  controller_after_ms: z.number().int().positive(),
+  roster_after_ms: z.number().int().positive(),
+  inbox_after_ms: z.number().int().positive(),
+});
+export type ProbeInactiveTasksRequestDto = z.infer<typeof probeInactiveTasksRequestSchema>;

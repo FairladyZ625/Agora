@@ -35,6 +35,7 @@ import {
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
   promoteTodoRequestSchema,
+  probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
   rejectTaskRequestSchema,
   saveTemplateRequestSchema,
@@ -1389,6 +1390,23 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const payload = cleanupTasksRequestSchema.parse(request.body ?? {});
       return reply.send({ cleaned: taskService.cleanupOrphaned(payload.task_id) });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/probe-stuck', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = probeInactiveTasksRequestSchema.parse(request.body);
+      return reply.send(taskService.probeInactiveTasks({
+        controllerAfterMs: payload.controller_after_ms,
+        rosterAfterMs: payload.roster_after_ms,
+        inboxAfterMs: payload.inbox_after_ms,
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

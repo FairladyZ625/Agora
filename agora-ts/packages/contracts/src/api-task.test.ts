@@ -4,6 +4,7 @@ import {
   createTaskRequestSchema,
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
+  probeInactiveTasksRequestSchema,
   taskStatusSchema,
   workflowSchema,
   teamSchema,
@@ -182,6 +183,14 @@ describe('task api contracts', () => {
       actor_id: 'reviewer-1',
       reason: 'needs more tests',
     }).conversation_ref).toBe('channel-1');
+  });
+
+  it('parses probe inactive tasks payloads', () => {
+    expect(probeInactiveTasksRequestSchema.parse({
+      controller_after_ms: 1000,
+      roster_after_ms: 2000,
+      inbox_after_ms: 3000,
+    }).inbox_after_ms).toBe(3000);
   });
 
   it('accepts team members with empty model_preference for legacy and quick tasks', () => {
