@@ -239,7 +239,7 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '标记 dev-api 完成' })).toBeInTheDocument();
     expect(screen.getByText('会话消息内容')).toBeInTheDocument();
-    expect(screen.getByText('craftsman_completed')).toBeInTheDocument();
+    expect(screen.getAllByText('craftsman_completed').length).toBeGreaterThan(0);
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
   });
 

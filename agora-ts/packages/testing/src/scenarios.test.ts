@@ -38,6 +38,7 @@ describe('agora-ts testing scenarios', () => {
       'task-conversation-ingest',
       'task-action-conversation-mirror',
       'task-conversation-read-cursor',
+      'control-plane-loop',
     ]);
   });
 
@@ -87,6 +88,19 @@ describe('agora-ts testing scenarios', () => {
     expect(result.unreadBefore).toBe(2);
     expect(result.unreadAfter).toBe(0);
     expect(result.conversationBodies).toEqual(['first unread', 'second unread']);
+  });
+
+  it('runs a control-plane loop scenario across approval, craftsman, and probe phases', () => {
+    runtime = createTestRuntime();
+
+    const result = runScenario(runtime, 'control-plane-loop');
+
+    expect(result.name).toBe('control-plane-loop');
+    expect(result.events).toEqual(expect.arrayContaining([
+      'thread_probe_controller',
+      'archon_rejected',
+      'stage_rewound',
+    ]));
   });
 
   it('runs a quorum scenario and advances after the required votes are met', () => {

@@ -13,10 +13,51 @@ import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { TaskAction, TaskBlueprint } from '@/types/task';
+import type { TaskAction, TaskBlueprint, TaskConversationEntry, TaskStatus } from '@/types/task';
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
 const TASK_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
+
+type TimelineItem = {
+  key: string;
+  label: string;
+  detail: string;
+  timestamp: string;
+};
+
+function mapStatusEventTimelineItem(entry: TaskConversationEntry): TimelineItem | null {
+  if (!entry.statusEvent) {
+    return null;
+  }
+  const detailParts = [
+    entry.statusEvent.taskState,
+    entry.statusEvent.currentStage ? `stage ${entry.statusEvent.currentStage}` : null,
+    entry.statusEvent.executionKind ? `execution ${entry.statusEvent.executionKind}` : null,
+    entry.statusEvent.controllerRef ? `controller ${entry.statusEvent.controllerRef}` : null,
+  ].filter((value): value is string => Boolean(value));
+  return {
+    key: `status-${entry.id}`,
+    label: entry.statusEvent.eventType,
+    detail: detailParts.join(' / ') || entry.body,
+    timestamp: entry.occurred_at,
+  };
+}
+
+function buildTaskTimeline(status: TaskStatus | null | undefined): TimelineItem[] {
+  if (!status) {
+    return [];
+  }
+  const flowItems = (status.flow_log ?? []).map((entry) => ({
+    key: `flow-${entry.id}`,
+    label: entry.event,
+    detail: entry.detail ?? '',
+    timestamp: entry.created_at,
+  }));
+  const statusItems = (status.conversation ?? [])
+    .map(mapStatusEventTimelineItem)
+    .filter((entry): entry is TimelineItem => entry !== null);
+  return [...flowItems, ...statusItems].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
+}
 
 function TaskBlueprintSection({
   blueprint,
@@ -183,6 +224,7 @@ export function TasksPage() {
   const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
   const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
   const activeBlueprint = activeStatus?.taskBlueprint;
+  const activeTimeline = useMemo(() => buildTaskTimeline(activeStatus), [activeStatus]);
   const preferredActorId =
     !activeTask
       ? ''
@@ -572,18 +614,18 @@ export function TasksPage() {
                 <div className="task-authority__section task-authority__section--meta">
                   <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>
                   <div className="mt-4 space-y-3">
-                    {(activeStatus?.flow_log ?? []).slice(0, 3).map((entry) => (
-                      <div key={entry.id} className="timeline-item">
+                    {activeTimeline.slice(0, 3).map((entry) => (
+                      <div key={entry.key} className="timeline-item">
                         <div className="timeline-item__rail" />
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="type-label-sm">{entry.event}</span>
+                            <span className="type-label-sm">{entry.label}</span>
                             <span className="type-text-xs">
-                              {formatRelativeTimestamp(entry.created_at)}
+                              {formatRelativeTimestamp(entry.timestamp)}
                             </span>
                           </div>
                           <p className="type-body-sm mt-2">
-                            {entry.detail ?? tasksPageCopy.timelineEmptyDetail}
+                            {entry.detail || tasksPageCopy.timelineEmptyDetail}
                           </p>
                         </div>
                       </div>
@@ -633,18 +675,18 @@ export function TasksPage() {
           <section className="sheet-section">
             <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>
             <div className="mt-4 space-y-3">
-              {(activeStatus?.flow_log ?? []).map((entry) => (
-                <div key={entry.id} className="timeline-item">
+              {activeTimeline.map((entry) => (
+                <div key={entry.key} className="timeline-item">
                   <div className="timeline-item__rail" />
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="type-label-sm">{entry.event}</span>
+                      <span className="type-label-sm">{entry.label}</span>
                       <span className="type-text-xs">
-                        {formatRelativeTimestamp(entry.created_at)}
+                        {formatRelativeTimestamp(entry.timestamp)}
                       </span>
                     </div>
                     <p className="type-body-sm mt-2">
-                      {entry.detail ?? tasksPageCopy.timelineEmptyDetail}
+                      {entry.detail || tasksPageCopy.timelineEmptyDetail}
                     </p>
                   </div>
                 </div>

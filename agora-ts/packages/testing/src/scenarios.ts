@@ -32,6 +32,7 @@ export const scenarioNames = [
   'task-conversation-ingest',
   'task-action-conversation-mirror',
   'task-conversation-read-cursor',
+  'control-plane-loop',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -115,6 +116,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runTaskActionConversationMirrorScenario(runtime);
     case 'task-conversation-read-cursor':
       return runTaskConversationReadCursorScenario(runtime);
+    case 'control-plane-loop':
+      return runControlPlaneLoopScenario(runtime);
   }
 }
 
@@ -1258,6 +1261,78 @@ function runTaskConversationReadCursorScenario(runtime: TestRuntime): ScenarioRe
     unreadBefore: before.unread_count,
     unreadAfter: after.unread_count,
   });
+}
+
+function runControlPlaneLoopScenario(runtime: TestRuntime): ScenarioResult {
+  const taskService = new TaskService(runtime.db, {
+    templatesDir: runtime.templatesDir,
+    taskIdGenerator: () => 'OC-CONTROL-LOOP-1',
+    craftsmanDispatcher: runtime.craftsmanDispatcher,
+  });
+  const subtasks = new SubtaskRepository(runtime.db);
+  const task = taskService.createTask({
+    title: 'Control plane loop scenario',
+    type: 'coding',
+    creator: 'archon',
+    description: 'exercise approval, controller loop, craftsman, and probe',
+    priority: 'normal',
+  });
+
+  try {
+    taskService.advanceTask(task.id, { callerId: 'archon' });
+  } catch {
+    // Gate waiting is expected; approval request should be created.
+  }
+
+  taskService.archonApproveTask(task.id, {
+    reviewerId: 'lizeyu',
+    comment: 'outline approved',
+  });
+  subtasks.insertSubtask({
+    id: 'control-dev-1',
+    task_id: task.id,
+    stage_id: 'develop',
+    title: 'Implement feature',
+    assignee: 'sonnet',
+    craftsman_type: 'codex',
+  });
+  taskService.dispatchCraftsman({
+    task_id: task.id,
+    subtask_id: 'control-dev-1',
+    caller_id: 'opus',
+    adapter: 'codex',
+    mode: 'task',
+    workdir: '/tmp/control-loop',
+  });
+  taskService.handleCraftsmanCallback({
+    execution_id: new CraftsmanExecutionRepository(runtime.db).listBySubtask(task.id, 'control-dev-1')[0]!.execution_id,
+    status: 'succeeded',
+    session_id: 'codex:control-loop',
+    payload: { output: { summary: 'control loop done', artifacts: [] } },
+    error: null,
+    finished_at: '2026-03-12T16:30:00.000Z',
+  });
+  taskService.completeSubtask(task.id, {
+    subtaskId: 'control-dev-1',
+    callerId: 'sonnet',
+    output: 'done',
+  });
+  taskService.advanceTask(task.id, { callerId: 'archon' });
+  taskService.archonRejectTask(task.id, {
+    reviewerId: 'lizeyu',
+    reason: 'need one more pass',
+  });
+  runtime.db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', task.id);
+  runtime.db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', task.id);
+  runtime.db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', task.id);
+  taskService.probeInactiveTasks({
+    controllerAfterMs: 1_000,
+    rosterAfterMs: 2_000,
+    inboxAfterMs: 3_000,
+    now: new Date('2026-03-12T01:00:00.000Z'),
+  });
+
+  return buildScenarioResult(runtime, 'control-plane-loop', task.id, {}, taskService);
 }
 
 function buildScenarioResult(
