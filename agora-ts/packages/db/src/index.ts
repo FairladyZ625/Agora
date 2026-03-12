@@ -11,6 +11,7 @@ export * from './repositories/template.repository.js';
 export * from './repositories/todo.repository.js';
 export * from './repositories/archive-job.repository.js';
 export * from './repositories/task-context-binding.repository.js';
+export * from './repositories/task-brain-binding.repository.js';
 export * from './repositories/notification-outbox.repository.js';
 export * from './repositories/participant-binding.repository.js';
 export * from './repositories/runtime-session-binding.repository.js';

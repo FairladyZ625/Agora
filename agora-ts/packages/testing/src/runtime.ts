@@ -7,12 +7,14 @@ import {
   CodexCraftsmanAdapter,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
   GeminiCraftsmanAdapter,
   InboxService,
   ShellCraftsmanAdapter,
   StubCraftsmanAdapter,
+  TaskBrainBindingService,
   TaskContextBindingService,
   TaskConversationService,
   TaskParticipationService,
@@ -44,6 +46,7 @@ export interface TestRuntime {
   templatesDir: string;
   archiveOutboxDir: string;
   archiveReceiptDir: string;
+  brainPackDir: string;
   taskService: TaskService;
   dashboardQueryService: DashboardQueryService;
   inboxService: InboxService;
@@ -65,12 +68,16 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const templatesDir = join(dir, 'templates');
   const archiveOutboxDir = join(dir, 'archive-outbox');
   const archiveReceiptDir = join(dir, 'archive-receipts');
+  const sourceBrainPackDir = resolve(process.cwd(), '../agora-ai-brain');
+  const brainPackDir = join(dir, 'agora-ai-brain');
   const tmuxRegistryDir = join(dir, 'tmux-registry');
   mkdirSync(templatesDir, { recursive: true });
   mkdirSync(archiveOutboxDir, { recursive: true });
   mkdirSync(archiveReceiptDir, { recursive: true });
+  mkdirSync(brainPackDir, { recursive: true });
   mkdirSync(tmuxRegistryDir, { recursive: true });
   cpSync(sourceTemplatesDir, templatesDir, { recursive: true });
+  cpSync(sourceBrainPackDir, brainPackDir, { recursive: true });
   const taskServiceOptions: { templatesDir: string; taskIdGenerator?: () => string } = {
     templatesDir,
   };
@@ -101,6 +108,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   }
   const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
   const taskContextBindingService = new TaskContextBindingService(db);
+  const taskBrainBindingService = new TaskBrainBindingService(db);
   const taskConversationService = new TaskConversationService(db);
   const taskParticipationService = new TaskParticipationService(db, {
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
@@ -108,6 +116,8 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[1] = {
     ...taskServiceOptions,
     craftsmanDispatcher,
+    taskBrainBindingService,
+    taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({ brainPackRoot: brainPackDir }),
     taskContextBindingService,
     taskParticipationService,
   };
@@ -142,6 +152,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     templatesDir,
     archiveOutboxDir,
     archiveReceiptDir,
+    brainPackDir,
     taskService,
     dashboardQueryService,
     inboxService,

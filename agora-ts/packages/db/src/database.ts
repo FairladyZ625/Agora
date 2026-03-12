@@ -62,6 +62,7 @@ export function runMigrations(db: AgoraDatabase): void {
     '008_task_conversation_read_cursors.sql',
     '009_templates.sql',
     '010_role_pack_bindings.sql',
+    '011_task_brain_bindings.sql',
   ];
   const migrationsDir = resolveMigrationsDir();
 

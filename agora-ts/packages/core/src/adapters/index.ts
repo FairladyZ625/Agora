@@ -6,3 +6,4 @@ export * from './codex-adapter.js';
 export * from './claude-adapter.js';
 export * from './gemini-adapter.js';
 export * from './gemini-session-discovery.js';
+export * from './filesystem-task-brain-workspace-adapter.js';

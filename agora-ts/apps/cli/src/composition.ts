@@ -8,10 +8,13 @@ import {
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemTaskBrainWorkspaceAdapter,
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   RolePackService,
+  TaskBrainBindingService,
+  type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskConversationService,
   TaskService,
@@ -30,11 +33,19 @@ export interface CliCompositionContext {
   db: AgoraDatabase;
   templatesDir: string;
   rolePackDir: string;
+  brainPackDir: string;
 }
 
 export interface CliCompositionFactories {
   createCraftsmanDispatcher: (context: CliCompositionContext) => CraftsmanDispatcher;
-  createTaskService: (context: CliCompositionContext, deps: { craftsmanDispatcher: CraftsmanDispatcher }) => TaskService;
+  createTaskService: (
+    context: CliCompositionContext,
+    deps: {
+      craftsmanDispatcher: CraftsmanDispatcher;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
+    },
+  ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
   createDashboardSessionClient: (context: CliCompositionContext) => DashboardSessionClient;
   createHumanAccountService: (context: CliCompositionContext) => HumanAccountService;
@@ -42,6 +53,8 @@ export interface CliCompositionFactories {
   createTemplateAuthoringService: (context: CliCompositionContext) => TemplateAuthoringService;
   createRolePackService: (context: CliCompositionContext) => RolePackService;
   createDashboardQueryService: (context: CliCompositionContext) => DashboardQueryService;
+  createTaskBrainBindingService: (context: CliCompositionContext) => TaskBrainBindingService;
+  createTaskBrainWorkspacePort: (context: CliCompositionContext) => TaskBrainWorkspacePort;
 }
 
 export interface CliComposition {
@@ -55,6 +68,7 @@ export interface CliComposition {
   templateAuthoringService: TemplateAuthoringService;
   rolePackService: RolePackService;
   dashboardQueryService: DashboardQueryService;
+  taskBrainBindingService: TaskBrainBindingService;
 }
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
@@ -79,6 +93,8 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       archonUsers: context.config.permissions.archonUsers,
       allowAgents: context.config.permissions.allowAgents,
       craftsmanDispatcher: deps.craftsmanDispatcher,
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
     }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({
       adapters: {
@@ -104,6 +120,10 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     createDashboardQueryService: (context) => new DashboardQueryService(context.db, {
       templatesDir: context.templatesDir,
     }),
+    createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
+    createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
+      brainPackRoot: context.brainPackDir,
+    }),
   };
 }
 
@@ -117,19 +137,27 @@ export function createCliComposition(
   runMigrations(db);
   const templatesDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/templates');
   const rolePackDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/role-packs/agora-default');
+  const brainPackDir = resolvePath(runtimeEnv.projectRoot, 'agora-ai-brain');
   const context: CliCompositionContext = {
     config,
     runtimeEnv,
     db,
     templatesDir,
     rolePackDir,
+    brainPackDir,
   };
   const factories = {
     ...createDefaultCliCompositionFactories(),
     ...overrides,
   };
   const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
-  const taskService = factories.createTaskService(context, { craftsmanDispatcher });
+  const taskBrainBindingService = factories.createTaskBrainBindingService(context);
+  const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
+  const taskService = factories.createTaskService(context, {
+    craftsmanDispatcher,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
+  });
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);
@@ -137,7 +165,6 @@ export function createCliComposition(
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const rolePackService = factories.createRolePackService(context);
   const dashboardQueryService = factories.createDashboardQueryService(context);
-
   return {
     config,
     db,
@@ -149,5 +176,6 @@ export function createCliComposition(
     templateAuthoringService,
     rolePackService,
     dashboardQueryService,
+    taskBrainBindingService,
   };
 }

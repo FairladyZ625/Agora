@@ -21,6 +21,8 @@ export * from './role-pack-service.js';
 export * from './runtime-ports.js';
 export * from './state-machine.js';
 export * from './task-context-binding-service.js';
+export * from './task-brain-binding-service.js';
+export * from './task-brain-port.js';
 export * from './task-conversation-service.js';
 export * from './task-participation-service.js';
 export * from './task-service.js';

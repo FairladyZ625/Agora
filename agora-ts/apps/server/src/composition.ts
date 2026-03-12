@@ -5,6 +5,7 @@ import {
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
   GeminiCraftsmanAdapter,
@@ -14,6 +15,8 @@ import {
   LiveSessionStore,
   NotificationDispatcher,
   HumanAccountService,
+  type TaskBrainWorkspacePort,
+  TaskBrainBindingService,
   StubIMMessagingPort,
   TaskConversationService,
   TaskContextBindingService,
@@ -35,6 +38,7 @@ import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
   apiBaseUrl: string;
+  projectRoot: string;
 };
 
 export interface ServerCompositionContext {
@@ -76,6 +80,8 @@ export interface ServerCompositionFactories {
       craftsmanDispatcher: CraftsmanDispatcher;
       tmuxRuntimeService: TmuxRuntimeService;
       imProvisioningPort: IMProvisioningPort | undefined;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
     },
@@ -100,6 +106,8 @@ export interface ServerCompositionFactories {
   createIMMessagingPort: (context: ServerCompositionContext) => IMMessagingPort;
   createIMProvisioningPort: (context: ServerCompositionContext) => IMProvisioningPort | undefined;
   createTaskContextBindingService: (context: ServerCompositionContext) => TaskContextBindingService;
+  createTaskBrainBindingService: (context: ServerCompositionContext) => TaskBrainBindingService;
+  createTaskBrainWorkspacePort: (context: ServerCompositionContext) => TaskBrainWorkspacePort;
   createTaskParticipationService: (
     context: ServerCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -162,6 +170,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         allowAgents: context.config.permissions.allowAgents,
         craftsmanDispatcher: deps.craftsmanDispatcher,
         isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.tmuxRuntimeService),
+        taskBrainBindingService: deps.taskBrainBindingService,
+        taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
@@ -223,6 +233,10 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       return undefined;
     },
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
+    createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
+      brainPackRoot: resolvePath(context.runtimeEnv.projectRoot, 'agora-ai-brain'),
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
     }),
@@ -248,6 +262,8 @@ export function buildServerComposition(
   const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const taskBrainBindingService = factories.createTaskBrainBindingService(context);
+  const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -255,6 +271,8 @@ export function buildServerComposition(
     craftsmanDispatcher,
     tmuxRuntimeService,
     imProvisioningPort,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
     taskContextBindingService,
     taskParticipationService,
   });

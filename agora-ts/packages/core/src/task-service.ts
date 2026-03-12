@@ -31,6 +31,8 @@ import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMProvisioningPort } from './im-ports.js';
+import type { TaskBrainWorkspacePort } from './task-brain-port.js';
+import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
@@ -60,6 +62,8 @@ export interface TaskServiceOptions {
   craftsmanDispatcher?: CraftsmanDispatcher;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   imProvisioningPort?: IMProvisioningPort;
+  taskBrainWorkspacePort?: TaskBrainWorkspacePort;
+  taskBrainBindingService?: TaskBrainBindingService;
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
 }
@@ -142,6 +146,8 @@ export class TaskService {
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly taskBrainWorkspacePort: TaskBrainWorkspacePort | undefined;
+  private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
 
@@ -172,6 +178,8 @@ export class TaskService {
     this.templateRepository.repairMemberKindsFromDir(this.templatesDir);
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
+    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
+    this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
   }
@@ -181,60 +189,104 @@ export class TaskService {
     const workflow = input.workflow_override ?? this.buildWorkflow(template);
     const team = input.team_override ?? this.buildTeam(template);
     const taskId = this.taskIdGenerator();
-
-    const draft = this.taskRepository.insertTask({
-      id: taskId,
-      title: input.title,
-      description: input.description,
-      type: input.type,
-      priority: input.priority,
-      creator: input.creator,
-      team,
-      workflow,
-    });
-
-    const created = this.taskRepository.updateTask(taskId, draft.version, {
-      state: TaskState.CREATED,
-    });
-
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'state_changed',
-      from_state: TaskState.DRAFT,
-      to_state: TaskState.CREATED,
-      detail: { template: template.name, task_type: input.type },
-      actor: 'system',
-    });
-
     const firstStageId = workflow.stages?.[0]?.id ?? null;
-    const active = this.taskRepository.updateTask(taskId, created.version, {
-      state: TaskState.ACTIVE,
-      current_stage: firstStageId,
-    });
+    let active: StoredTask;
+    let brainWorkspaceBinding: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null = null;
 
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'state_changed',
-      stage_id: firstStageId,
-      from_state: TaskState.CREATED,
-      to_state: TaskState.ACTIVE,
-      actor: 'system',
-    });
-    if (firstStageId) {
-      this.enterStage(taskId, firstStageId);
-      this.progressLogRepository.insertProgressLog({
+    this.db.exec('BEGIN');
+    try {
+      const draft = this.taskRepository.insertTask({
+        id: taskId,
+        title: input.title,
+        description: input.description,
+        type: input.type,
+        priority: input.priority,
+        creator: input.creator,
+        team,
+        workflow,
+      });
+
+      const created = this.taskRepository.updateTask(taskId, draft.version, {
+        state: TaskState.CREATED,
+      });
+
+      this.flowLogRepository.insertFlowLog({
         task_id: taskId,
-        kind: 'progress',
-        stage_id: firstStageId,
-        content: `Entered stage ${firstStageId}`,
-        artifacts: { stage_id: firstStageId },
+        kind: 'flow',
+        event: 'state_changed',
+        from_state: TaskState.DRAFT,
+        to_state: TaskState.CREATED,
+        detail: { template: template.name, task_type: input.type },
         actor: 'system',
       });
+
+      active = this.taskRepository.updateTask(taskId, created.version, {
+        state: TaskState.ACTIVE,
+        current_stage: firstStageId,
+      });
+
+      this.flowLogRepository.insertFlowLog({
+        task_id: taskId,
+        kind: 'flow',
+        event: 'state_changed',
+        stage_id: firstStageId,
+        from_state: TaskState.CREATED,
+        to_state: TaskState.ACTIVE,
+        actor: 'system',
+      });
+      if (firstStageId) {
+        this.enterStage(taskId, firstStageId);
+        this.progressLogRepository.insertProgressLog({
+          task_id: taskId,
+          kind: 'progress',
+          stage_id: firstStageId,
+          content: `Entered stage ${firstStageId}`,
+          artifacts: { stage_id: firstStageId },
+          actor: 'system',
+        });
+      }
+
+      this.taskParticipationService?.seedParticipants(taskId, team);
+      if (this.taskBrainWorkspacePort && this.taskBrainBindingService) {
+        brainWorkspaceBinding = this.taskBrainWorkspacePort.createWorkspace({
+          task_id: taskId,
+          title: input.title,
+          description: input.description,
+          type: input.type,
+          priority: input.priority,
+          creator: input.creator,
+          template_id: input.type,
+          controller_ref: resolveControllerRef(team.members),
+          current_stage: firstStageId,
+          team_members: team.members.map((member) => ({
+            role: member.role,
+            agentId: member.agentId,
+            ...(member.member_kind ? { member_kind: member.member_kind } : {}),
+            model_preference: member.model_preference,
+          })),
+        });
+        this.taskBrainBindingService.createBinding({
+          task_id: taskId,
+          brain_pack_ref: brainWorkspaceBinding.brain_pack_ref,
+          brain_task_id: brainWorkspaceBinding.brain_task_id,
+          workspace_path: brainWorkspaceBinding.workspace_path,
+          metadata: brainWorkspaceBinding.metadata ?? null,
+        });
+      }
+
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      if (brainWorkspaceBinding && this.taskBrainWorkspacePort) {
+        try {
+          this.taskBrainWorkspacePort.destroyWorkspace(brainWorkspaceBinding);
+        } catch {
+          // Ignore cleanup errors on rollback; DB remains canonical.
+        }
+      }
+      throw error;
     }
 
-    this.taskParticipationService?.seedParticipants(taskId, team);
     const interactiveMembers = team.members.filter(isInteractiveParticipant);
     const imParticipantRefs = this.collectImParticipantRefs(team, input.im_target?.participant_refs);
 
@@ -282,7 +334,7 @@ export class TaskService {
       });
     }
 
-    return active;
+    return active!;
   }
 
   getTask(taskId: string): StoredTask | null {

@@ -1,11 +1,13 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
+import { ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
+import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { TaskService } from './task-service.js';
+import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskParticipationService } from './task-participation-service.js';
 import { StubIMProvisioningPort } from './im-ports.js';
@@ -22,6 +24,14 @@ function makeDbPath() {
 function makeEmptyTemplatesDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-empty-templates-'));
   tempPaths.push(dir);
+  mkdirSync(join(dir, 'tasks'), { recursive: true });
+  return dir;
+}
+
+function makeBrainPackDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-brain-pack-'));
+  tempPaths.push(dir);
+  mkdirSync(join(dir, 'templates'), { recursive: true });
   mkdirSync(join(dir, 'tasks'), { recursive: true });
   return dir;
 }
@@ -105,6 +115,73 @@ describe('task service', () => {
       type: 'coding',
       current_stage: 'discuss',
     });
+  });
+
+  it('creates a brain binding and materialized workspace when task brain services are configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BRAIN-100',
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    const task = service.createTask({
+      title: 'Brain pack materialization',
+      type: 'coding',
+      creator: 'archon',
+      description: 'materialize task workspace',
+      priority: 'high',
+    });
+
+    const bindings = new TaskBrainBindingRepository(db);
+    const binding = bindings.getActiveByTask(task.id);
+    expect(binding).toMatchObject({
+      id: 'brain-binding-1',
+      task_id: 'OC-BRAIN-100',
+      brain_pack_ref: 'agora-ai-brain',
+      brain_task_id: 'OC-BRAIN-100',
+      status: 'active',
+    });
+    expect(binding?.workspace_path).toBe(join(brainPackDir, 'tasks', 'OC-BRAIN-100'));
+    expect(existsSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', 'task.meta.yaml'))).toBe(true);
+    expect(existsSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '00-role-brief.md'))).toBe(true);
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '02-roster.md'), 'utf8')).toContain('opus | architect | controller');
+  });
+
+  it('rolls back task creation when brain workspace materialization fails', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BRAIN-FAIL',
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-fail',
+      }),
+      taskBrainWorkspacePort: {
+        createWorkspace: () => {
+          throw new Error('brain workspace boom');
+        },
+        destroyWorkspace: () => {},
+      },
+    });
+
+    expect(() => service.createTask({
+      title: 'Brain failure',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    })).toThrow('brain workspace boom');
+    expect(tasks.getTask('OC-BRAIN-FAIL')).toBeNull();
+    expect(new TaskBrainBindingRepository(db).getActiveByTask('OC-BRAIN-FAIL')).toBeNull();
   });
 
   it('repairs stale database-backed templates with missing member_kind before building the task team', () => {
