@@ -91,6 +91,56 @@ describe('task service', () => {
     expect(status.subtasks).toEqual([]);
   });
 
+  it('builds task blueprint from workflow.graph when present', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GRAPH-BLUEPRINT',
+    });
+
+    const task = service.createTask({
+      title: 'Graph blueprint',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['draft'],
+          nodes: [
+            { id: 'draft', kind: 'stage', execution_kind: 'citizen_discuss', gate: { type: 'command' } },
+            { id: 'review', kind: 'stage', execution_kind: 'human_approval', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          edges: [
+            { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
+            { id: 'review__reject__draft', from: 'review', to: 'draft', kind: 'reject' },
+          ],
+        },
+      },
+    });
+
+    const status = service.getTaskStatus(task.id);
+    expect(status.task_blueprint).toMatchObject({
+      graph_version: 1,
+      entry_nodes: ['draft'],
+      nodes: [
+        { id: 'draft', execution_kind: 'citizen_discuss' },
+        { id: 'review', execution_kind: 'human_approval', gate_type: 'approval' },
+      ],
+      edges: [
+        { from: 'draft', to: 'review', kind: 'advance' },
+        { from: 'review', to: 'draft', kind: 'reject' },
+      ],
+    });
+  });
+
   it('creates tasks from the database-backed template catalog even when the legacy templates directory is empty', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -2264,8 +2314,10 @@ describe('task service', () => {
     expect(callbackMessage?.body).toContain('Event Type: craftsman_completed');
     expect(callbackMessage?.body).toContain('Execution: exec-notify-1');
     expect(callbackMessage?.body).toContain('implemented and ready');
-    const latestConversation = new TaskConversationRepository(db).getLatestByTask('OC-NOTIFY-1');
-    expect(latestConversation?.metadata).toMatchObject({
+    const statusConversation = new TaskConversationRepository(db)
+      .listByTask('OC-NOTIFY-1')
+      .find((entry) => entry.metadata?.event_type === 'craftsman_completed' && entry.author_ref === 'agora-bot');
+    expect(statusConversation?.metadata).toMatchObject({
       event_type: 'craftsman_completed',
       task_id: 'OC-NOTIFY-1',
       task_state: 'active',

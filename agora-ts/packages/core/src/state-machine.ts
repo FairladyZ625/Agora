@@ -13,6 +13,12 @@ type WorkflowStage = {
 
 type WorkflowDefinition = {
   stages?: WorkflowStage[] | undefined;
+  graph?: {
+    graph_version?: number;
+    entry_nodes: string[];
+    nodes: Array<{ id: string }>;
+    edges: Array<{ from: string; to: string; kind: string }>;
+  } | undefined;
 };
 
 type TaskShape = {
@@ -50,6 +56,10 @@ export class StateMachine {
     if (currentIndex === -1) {
       throw new Error(`Stage '${currentStageId}' not found in workflow`);
     }
+    const graphNextId = resolveGraphNextStageId(workflow, currentStageId, 'advance');
+    if (graphNextId) {
+      return stages.find((item) => item.id === graphNextId) ?? null;
+    }
     const current = stages[currentIndex]!;
     if (current.next && current.next.length > 0) {
       return stages.find((item) => item.id === current.next?.[0]) ?? null;
@@ -62,6 +72,10 @@ export class StateMachine {
     const currentIndex = stages.findIndex((item) => item.id === currentStageId);
     if (currentIndex === -1) {
       throw new Error(`Stage '${currentStageId}' not found in workflow`);
+    }
+    const graphRejectId = resolveGraphNextStageId(workflow, currentStageId, 'reject');
+    if (graphRejectId) {
+      return stages.find((item) => item.id === graphRejectId) ?? null;
     }
     const current = stages[currentIndex]!;
     const rejectTarget = current.reject_target;
@@ -170,4 +184,17 @@ export class StateMachine {
 
     return false;
   }
+}
+
+function resolveGraphNextStageId(
+  workflow: WorkflowDefinition,
+  currentStageId: string,
+  kind: 'advance' | 'reject',
+) {
+  const graph = workflow.graph;
+  if (!graph) {
+    return null;
+  }
+  const edge = graph.edges.find((candidate) => candidate.from === currentStageId && candidate.kind === kind);
+  return edge?.to ?? null;
 }

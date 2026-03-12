@@ -65,6 +65,53 @@ describe('agora-ts state machine', () => {
         'a',
       )?.id,
     ).toBe('c');
+    expect(
+      sm.getNextStage(
+        {
+          stages: [
+            { id: 'a' },
+            { id: 'b' },
+            { id: 'c' },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['a'],
+            nodes: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+            edges: [
+              { from: 'a', to: 'c', kind: 'advance' },
+            ],
+          },
+        },
+        'a',
+      )?.id,
+    ).toBe('c');
+  });
+
+  it('resolves reject stage from graph edges when workflow graph is present', () => {
+    const sm = new StateMachine();
+
+    expect(
+      sm.getRejectStage(
+        {
+          stages: [
+            { id: 'draft' },
+            { id: 'develop' },
+            { id: 'review' },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['draft'],
+            nodes: [{ id: 'draft' }, { id: 'develop' }, { id: 'review' }],
+            edges: [
+              { from: 'draft', to: 'develop', kind: 'advance' },
+              { from: 'develop', to: 'review', kind: 'advance' },
+              { from: 'review', to: 'draft', kind: 'reject' },
+            ],
+          },
+        },
+        'review',
+      )?.id,
+    ).toBe('draft');
   });
 
   it('computes advance results for in-progress and terminal stages', () => {

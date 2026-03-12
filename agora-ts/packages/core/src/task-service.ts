@@ -57,6 +57,7 @@ type TaskTemplate = {
     }
   >;
   stages?: WorkflowDto['stages'];
+  graph?: WorkflowDto['graph'];
 };
 
 export interface TaskServiceOptions {
@@ -1185,10 +1186,41 @@ export class TaskService {
     return {
       type: template.defaultWorkflow ?? 'linear',
       stages: template.stages ?? [],
+      ...(template.graph ? { graph: template.graph } : {}),
     };
   }
 
   private buildTaskBlueprint(task: StoredTask): TaskBlueprintDto {
+    if (task.workflow.graph) {
+      const graph = task.workflow.graph;
+      return {
+        graph_version: graph.graph_version,
+        entry_nodes: [...graph.entry_nodes],
+        controller_ref: resolveControllerRef(task.team.members),
+        nodes: graph.nodes.map((node) => ({
+          id: node.id,
+          name: node.name ?? null,
+          mode: resolveStageModeFromExecutionKind(node.execution_kind ?? null),
+          execution_kind: node.execution_kind ?? null,
+          ...(node.allowed_actions?.length ? { allowed_actions: node.allowed_actions } : {}),
+          gate_type: node.gate?.type ?? null,
+        })),
+        edges: graph.edges
+          .filter((edge): edge is typeof edge & { kind: 'advance' | 'reject' } => edge.kind === 'advance' || edge.kind === 'reject')
+          .map((edge) => ({
+            from: edge.from,
+            to: edge.to,
+            kind: edge.kind,
+          })),
+        artifact_contracts: graph.nodes
+          .filter((node) => node.execution_kind === 'citizen_execute' || node.execution_kind === 'craftsman_dispatch')
+          .map((node) => ({
+            node_id: node.id,
+            artifact_type: 'stage_output',
+          })),
+        role_bindings: task.team.members,
+      };
+    }
     const stages = task.workflow.stages ?? [];
     const nodes: TaskBlueprintDto['nodes'] = stages.map((stage) => ({
       id: stage.id,
@@ -2212,6 +2244,16 @@ function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) 
   }
   if (stage.mode === 'discuss') {
     return 'citizen_discuss';
+  }
+  return null;
+}
+
+function resolveStageModeFromExecutionKind(executionKind: string | null) {
+  if (executionKind === 'citizen_execute' || executionKind === 'craftsman_dispatch') {
+    return 'execute';
+  }
+  if (executionKind === 'citizen_discuss' || executionKind === 'human_approval') {
+    return 'discuss';
   }
   return null;
 }
