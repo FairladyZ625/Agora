@@ -51,6 +51,7 @@ export type CraftsmanExecutionDto = z.infer<typeof craftsmanExecutionSchema>;
 export const craftsmanDispatchRequestSchema = z.object({
   task_id: z.string().min(1),
   subtask_id: z.string().min(1),
+  caller_id: z.string().min(1),
   adapter: craftsmanAdapterSchema,
   mode: craftsmanModeSchema.default('task'),
   brief_path: z.string().nullable().optional(),

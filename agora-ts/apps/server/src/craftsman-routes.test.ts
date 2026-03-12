@@ -74,6 +74,7 @@ describe('craftsman routes', () => {
       payload: {
         task_id: 'OC-980',
         subtask_id: 'sub-codex',
+        caller_id: 'opus',
         adapter: 'codex',
         mode: 'task',
         workdir: '/tmp/codex',
@@ -181,6 +182,7 @@ describe('craftsman routes', () => {
       payload: {
         task_id: 'OC-981',
         subtask_id: 'sub-codex-paused',
+        caller_id: 'opus',
         adapter: 'codex',
         mode: 'task',
         workdir: '/tmp/codex',
@@ -190,6 +192,68 @@ describe('craftsman routes', () => {
     expect(dispatchResponse.statusCode).toBe(400);
     expect(dispatchResponse.json()).toEqual({
       message: "Task OC-981 is in state 'paused', expected 'active'",
+    });
+  });
+
+  it('rejects craftsmen dispatch through the route when caller is not the controller', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-route-owner-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T16:10:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-OWNER-ROUTE-1',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const app = buildApp({ taskService });
+
+    taskService.createTask({
+      title: 'route dispatch owner guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'craftsman_dispatch',
+          allowed_actions: ['dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-owner-route',
+      task_id: 'OC-OWNER-ROUTE-1',
+      stage_id: 'develop',
+      title: 'run codex owner guard',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/dispatch',
+      payload: {
+        task_id: 'OC-OWNER-ROUTE-1',
+        subtask_id: 'sub-owner-route',
+        caller_id: 'sonnet',
+        adapter: 'codex',
+        mode: 'task',
+        workdir: '/tmp/codex-owner',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      message: "Craftsman dispatch requires controller ownership: expected 'opus', received 'sonnet'",
     });
   });
 
@@ -251,6 +315,7 @@ describe('craftsman routes', () => {
       payload: {
         task_id: 'OC-982',
         subtask_id: 'sub-codex-1',
+        caller_id: 'opus',
         adapter: 'codex',
         mode: 'task',
         workdir: '/tmp/codex-1',
@@ -262,6 +327,7 @@ describe('craftsman routes', () => {
       payload: {
         task_id: 'OC-982',
         subtask_id: 'sub-codex-2',
+        caller_id: 'opus',
         adapter: 'codex',
         mode: 'task',
         workdir: '/tmp/codex-2',

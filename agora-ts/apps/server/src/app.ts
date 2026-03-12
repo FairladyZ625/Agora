@@ -1408,6 +1408,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         msg: 'craftsman_dispatch',
         task_id: payload.task_id,
         subtask_id: payload.subtask_id,
+        caller_id: payload.caller_id,
         adapter: payload.adapter,
         mode: payload.mode,
         execution_id: dispatched.execution.execution_id,

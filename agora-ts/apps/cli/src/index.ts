@@ -1013,11 +1013,13 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('派发 craftsmen 子任务')
     .argument('<taskId>', '任务 ID')
     .argument('<subtaskId>', '子任务 ID')
+    .requiredOption('--caller-id <callerId>', '调用者 agent id（默认要求 controller）')
     .requiredOption('--adapter <adapter>', 'adapter 名称')
     .option('--mode <mode>', '执行模式', 'task')
     .option('--workdir <workdir>', '工作目录')
     .option('--brief-path <briefPath>', 'brief 路径')
     .action((taskId: string, subtaskId: string, options: {
+      callerId: string;
       adapter: string;
       mode: 'task' | 'continuous';
       workdir?: string;
@@ -1026,6 +1028,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const result = taskService.dispatchCraftsman({
         task_id: taskId,
         subtask_id: subtaskId,
+        caller_id: options.callerId,
         adapter: options.adapter,
         mode: options.mode,
         workdir: options.workdir ?? null,

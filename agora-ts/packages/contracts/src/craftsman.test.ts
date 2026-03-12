@@ -36,6 +36,7 @@ describe('craftsman contracts', () => {
       craftsmanDispatchRequestSchema.parse({
         task_id: 'OC-500',
         subtask_id: 'build-runtime',
+        caller_id: 'opus',
         adapter: 'shell',
         mode: 'continuous',
         brief_path: null,
@@ -64,6 +65,7 @@ describe('craftsman contracts', () => {
     expect(() => craftsmanDispatchRequestSchema.parse({
       task_id: 'OC-500',
       subtask_id: 'build-runtime',
+      caller_id: 'opus',
       adapter: 'codex',
       mode: 'stream',
     })).toThrow();

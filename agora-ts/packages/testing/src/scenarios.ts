@@ -543,6 +543,7 @@ function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioR
       });
       return 'resume-subtask';
     })(),
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -695,6 +696,7 @@ function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
   const dispatch = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'run-codex',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -806,6 +808,7 @@ function runCraftsmanHappyPathScenario(runtime: TestRuntime): ScenarioResult {
   const dispatch = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-1',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -842,6 +845,7 @@ function runCraftsmanCallbackFailureScenario(runtime: TestRuntime): ScenarioResu
   const dispatch = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-fail',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -886,6 +890,7 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
   const first = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-limit-1',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/craft-limit-1',
@@ -895,6 +900,7 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
     runtime.taskService.dispatchCraftsman({
       task_id: task.id,
       subtask_id: 'craft-limit-2',
+      caller_id: 'opus',
       adapter: 'codex',
       mode: 'task',
       workdir: '/tmp/craft-limit-2',
@@ -932,6 +938,7 @@ function runCraftsmanWorkdirIsolationScenario(runtime: TestRuntime): ScenarioRes
   const dispatch = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-isolated',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/repo/root',
@@ -966,6 +973,7 @@ function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
   const first = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-retry',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -981,6 +989,7 @@ function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
   const second = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-retry',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -1017,6 +1026,7 @@ function runCraftsmanTimeoutScenario(runtime: TestRuntime): ScenarioResult {
   const dispatch = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-timeout',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',
@@ -1064,6 +1074,7 @@ function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): Scenari
   const dispatch = runtime.taskService.dispatchCraftsman({
     task_id: task.id,
     subtask_id: 'craft-notify',
+    caller_id: 'opus',
     adapter: 'codex',
     mode: 'task',
     workdir: '/tmp/codex',

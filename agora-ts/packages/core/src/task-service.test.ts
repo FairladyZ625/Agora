@@ -10,7 +10,7 @@ import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskParticipationService } from './task-participation-service.js';
-import { StubIMMessagingPort, StubIMProvisioningPort } from './im-ports.js';
+import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -1145,6 +1145,7 @@ describe('task service', () => {
     expect(() => service.dispatchCraftsman({
       task_id: 'OC-107',
       subtask_id: 'paused-subtask',
+      caller_id: 'opus',
       adapter: 'codex',
       mode: 'task',
       workdir: '/tmp/codex',
@@ -1929,6 +1930,7 @@ describe('task service', () => {
     expect(() => service.dispatchCraftsman({
       task_id: 'OC-DISPATCH-GUARD-1',
       subtask_id: 'sub-disallowed-1',
+      caller_id: 'opus',
       adapter: 'codex',
       mode: 'task',
       workdir: '/tmp/codex',
@@ -1984,6 +1986,7 @@ describe('task service', () => {
     const result = service.dispatchCraftsman({
       task_id: 'OC-DISPATCH-GUARD-2',
       subtask_id: 'sub-allowed-1',
+      caller_id: 'opus',
       adapter: 'codex',
       mode: 'task',
       workdir: '/tmp/codex',
@@ -1994,6 +1997,61 @@ describe('task service', () => {
       subtask_id: 'sub-allowed-1',
       adapter: 'codex',
     });
+  });
+
+  it('rejects craftsman dispatch when the caller is not the controller', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-owner-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T16:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-OWNER-1',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Dispatch ownership guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-owner-1',
+      task_id: 'OC-DISPATCH-OWNER-1',
+      stage_id: 'implement',
+      title: 'Only controller can dispatch',
+      assignee: 'codex',
+      status: 'not_started',
+      craftsman_type: 'codex',
+    });
+
+    expect(() => service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-OWNER-1',
+      subtask_id: 'sub-owner-1',
+      caller_id: 'sonnet',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex',
+    })).toThrow(/controller ownership/i);
   });
 
   it('applies team/workflow overrides when creating a task', () => {
@@ -2064,10 +2122,9 @@ describe('task service', () => {
     });
   });
 
-  it('sends an immediate IM notification when a craftsman callback settles against an active context binding', async () => {
+  it('broadcasts an immediate thread status update when a craftsman callback settles against an active context binding', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const messagingPort = new StubIMMessagingPort();
     const provisioningPort = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
@@ -2078,7 +2135,6 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-NOTIFY-1',
       imProvisioningPort: provisioningPort,
-      imMessagingPort: messagingPort,
       taskContextBindingService: bindingService,
     });
     const subtasks = new SubtaskRepository(db);
@@ -2129,16 +2185,16 @@ describe('task service', () => {
       finished_at: '2026-03-12T16:01:00.000Z',
     });
 
-    expect(messagingPort.sent).toEqual(
+    expect(provisioningPort.published.flatMap((entry) => entry.messages)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          targetRef: 'discord-thread-notify-1',
-          payload: expect.objectContaining({
-            task_id: 'OC-NOTIFY-1',
-            event_type: 'craftsman_completed',
-          }),
+          kind: 'craftsman_completed',
         }),
       ]),
     );
+    const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_completed');
+    expect(callbackMessage?.body).toContain('Event Type: craftsman_completed');
+    expect(callbackMessage?.body).toContain('Execution: exec-notify-1');
+    expect(callbackMessage?.body).toContain('implemented and ready');
   });
 });

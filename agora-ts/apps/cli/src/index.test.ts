@@ -160,8 +160,20 @@ describe('agora-ts cli', () => {
     expect(created?.current_stage).toBe('kickoff');
     expect(created?.team).toEqual({
       members: [
-        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
-        { role: 'developer', agentId: 'codex', model_preference: 'fast_coding' },
+        {
+          role: 'architect',
+          agentId: 'opus',
+          model_preference: 'strong_reasoning',
+          agent_origin: 'user_managed',
+          briefing_mode: 'overlay_full',
+        },
+        {
+          role: 'developer',
+          agentId: 'codex',
+          model_preference: 'fast_coding',
+          agent_origin: 'user_managed',
+          briefing_mode: 'overlay_full',
+        },
       ],
     });
   });
@@ -1147,6 +1159,7 @@ describe('agora-ts cli', () => {
       'craftsman', 'dispatch',
       'OC-304',
       'sub-codex',
+      '--caller-id', 'opus',
       '--adapter', 'codex',
       '--workdir', '/tmp/codex',
     ], { from: 'user' });
@@ -1204,6 +1217,7 @@ describe('agora-ts cli', () => {
       'craftsman', 'dispatch',
       'OC-305',
       'sub-codex-paused',
+      '--caller-id', 'opus',
       '--adapter', 'codex',
       '--workdir', '/tmp/codex',
     ], { from: 'user' })).rejects.toThrow("Task OC-305 is in state 'paused', expected 'active'");
@@ -1269,6 +1283,7 @@ describe('agora-ts cli', () => {
       'craftsman', 'dispatch',
       'OC-306',
       'sub-codex-1',
+      '--caller-id', 'opus',
       '--adapter', 'codex',
       '--workdir', '/tmp/codex-1',
     ], { from: 'user' });
@@ -1277,6 +1292,7 @@ describe('agora-ts cli', () => {
       'craftsman', 'dispatch',
       'OC-306',
       'sub-codex-2',
+      '--caller-id', 'opus',
       '--adapter', 'codex',
       '--workdir', '/tmp/codex-2',
     ], { from: 'user' })).rejects.toThrow('craftsman concurrency limit exceeded: max 1 active executions');

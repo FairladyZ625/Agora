@@ -696,6 +696,10 @@ export class TaskService {
     if (!subtask) {
       throw new NotFoundError(`Subtask ${input.subtask_id} not found in task ${input.task_id}`);
     }
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (controllerRef && input.caller_id !== controllerRef) {
+      throw new Error(`Craftsman dispatch requires controller ownership: expected '${controllerRef}', received '${input.caller_id}'`);
+    }
     if (task.current_stage !== subtask.stage_id) {
       throw new Error(
         `Craftsman dispatch requires the active stage '${task.current_stage ?? 'null'}' to match subtask stage '${subtask.stage_id}'`,
@@ -705,7 +709,7 @@ export class TaskService {
     if (!stageAllowsCraftsmanDispatch(stage)) {
       throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
     }
-    return this.craftsmanDispatcher.dispatchSubtask({
+    const dispatched = this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
       stage_id: subtask.stage_id,
       subtask_id: input.subtask_id,
@@ -715,6 +719,16 @@ export class TaskService {
       prompt: subtask.craftsman_prompt,
       brief_path: input.brief_path ?? null,
     });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'craftsman_started',
+      bodyLines: [
+        `Craftsman dispatch started for subtask ${subtask.id}.`,
+        `Caller: ${input.caller_id}`,
+        `Adapter: ${input.adapter}`,
+        `Execution: ${dispatched.execution.execution_id}`,
+      ],
+    });
+    return dispatched;
   }
 
   getCraftsmanExecution(executionId: string) {
@@ -1447,6 +1461,7 @@ export class TaskService {
     const brainBinding = this.taskBrainBindingService?.getActiveBinding(task.id) ?? null;
     const lines = [
       'Agora status update',
+      `Event Type: ${input.kind}`,
       `Task: ${task.id} — ${task.title}`,
       `Task State: ${task.state}`,
       `Current Stage: ${task.current_stage ?? '-'}`,
@@ -1472,12 +1487,8 @@ export class TaskService {
   }
 
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
-    if (!this.imMessagingPort) {
-      return;
-    }
-    const binding = this.taskContextBindingRepository.getActiveByTask(taskId);
-    const targetRef = binding?.thread_ref ?? binding?.conversation_ref ?? null;
-    if (!binding || !targetRef) {
+    const task = this.getTask(taskId);
+    if (!task) {
       return;
     }
     const execution = this.craftsmanExecutions.getExecution(executionId);
@@ -1486,18 +1497,15 @@ export class TaskService {
       return;
     }
     const eventType = execution.status === 'succeeded' ? 'craftsman_completed' : 'craftsman_failed';
-    void this.imMessagingPort.sendNotification(targetRef, {
-      task_id: taskId,
-      event_type: eventType,
-      data: {
-        execution_id: execution.execution_id,
-        subtask_id: subtask.id,
-        adapter: execution.adapter,
-        status: execution.status,
-        output: subtask.output,
-      },
-    }).catch((error: unknown) => {
-      console.error(`[TaskService] Immediate craftsman notify failed for task ${taskId}:`, error);
+    this.publishTaskStatusBroadcast(task, {
+      kind: eventType,
+      bodyLines: [
+        `Craftsman callback settled for subtask ${subtask.id}.`,
+        `Adapter: ${execution.adapter}`,
+        `Execution: ${execution.execution_id}`,
+        `Status: ${execution.status}`,
+        ...(subtask.output ? [`Output: ${subtask.output}`] : []),
+      ],
     });
   }
 
