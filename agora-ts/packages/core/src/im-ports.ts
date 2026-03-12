@@ -58,6 +58,19 @@ export interface IMArchiveContextRequest {
   reason?: string | null;
 }
 
+export interface IMPublishMessageInput {
+  kind?: string | null;
+  participant_refs?: string[] | null;
+  body: string;
+}
+
+export interface IMPublishMessagesRequest {
+  binding_id: string;
+  conversation_ref?: string | null;
+  thread_ref?: string | null;
+  messages: IMPublishMessageInput[];
+}
+
 export interface IMMessagingPort {
   sendNotification(targetRef: string, payload: NotificationPayload): Promise<void>;
 }
@@ -75,6 +88,7 @@ export interface IMProvisioningPort {
   provisionContext(input: IMProvisionContextRequest): Promise<IMProvisionContextResult>;
   joinParticipant(input: IMJoinParticipantRequest): Promise<IMJoinParticipantResult>;
   removeParticipant(input: IMRemoveParticipantRequest): Promise<IMRemoveParticipantResult>;
+  publishMessages(input: IMPublishMessagesRequest): Promise<void>;
   archiveContext(input: IMArchiveContextRequest): Promise<void>;
 }
 
@@ -83,6 +97,7 @@ export class StubIMProvisioningPort implements IMProvisioningPort {
   readonly provisioned: IMProvisionContextRequest[] = [];
   readonly joined: IMJoinParticipantRequest[] = [];
   readonly removed: IMRemoveParticipantRequest[] = [];
+  readonly published: IMPublishMessagesRequest[] = [];
   readonly archived: IMArchiveContextRequest[] = [];
 
   constructor(binding: {
@@ -117,6 +132,10 @@ export class StubIMProvisioningPort implements IMProvisioningPort {
   async removeParticipant(input: IMRemoveParticipantRequest): Promise<IMRemoveParticipantResult> {
     this.removed.push(input);
     return { status: 'ignored', detail: 'stub provisioning port does not manage participants' };
+  }
+
+  async publishMessages(input: IMPublishMessagesRequest): Promise<void> {
+    this.published.push(input);
   }
 
   async archiveContext(input: IMArchiveContextRequest): Promise<void> {

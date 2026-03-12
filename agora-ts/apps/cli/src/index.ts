@@ -135,7 +135,7 @@ function renderWorkflowMermaid(input: ValidateWorkflowRequestDto) {
   const stages = input.stages ?? [];
   const lines = ['flowchart TD'];
   for (const stage of stages) {
-    lines.push(`  ${stage.id}[\"${stage.name ?? stage.id}\"]`);
+    lines.push(`  ${stage.id}["${stage.name ?? stage.id}"]`);
   }
   for (let index = 0; index < stages.length; index += 1) {
     const stage = stages[index]!;

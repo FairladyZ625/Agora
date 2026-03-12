@@ -8,6 +8,16 @@ export interface TaskBrainWorkspaceRequest {
   template_id: string;
   controller_ref: string | null;
   current_stage: string | null;
+  workflow_stages: Array<{
+    id: string;
+    name?: string;
+    mode?: string;
+    execution_kind?: string;
+    allowed_actions?: string[];
+    gate?: {
+      type?: string;
+    } | null;
+  }>;
   team_members: Array<{
     role: string;
     agentId: string;

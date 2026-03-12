@@ -10,8 +10,8 @@
     "writer": { "member_kind": "citizen", "suggested": ["glm5"] }
   },
   "stages": [
-    { "id": "collect", "name": "资料收集", "mode": "execute", "gate": { "type": "all_subtasks_done" } },
-    { "id": "analyze", "name": "协作分析", "mode": "discuss", "gate": { "type": "archon_review" } },
-    { "id": "report", "name": "报告撰写", "mode": "execute", "gate": { "type": "approval", "approver": "analyst" } }
+    { "id": "collect", "name": "资料收集", "mode": "execute", "execution_kind": "citizen_execute", "gate": { "type": "all_subtasks_done" } },
+    { "id": "analyze", "name": "协作分析", "mode": "discuss", "execution_kind": "citizen_discuss", "gate": { "type": "archon_review" } },
+    { "id": "report", "name": "报告撰写", "mode": "execute", "execution_kind": "citizen_execute", "gate": { "type": "approval", "approver": "analyst" } }
   ]
 }

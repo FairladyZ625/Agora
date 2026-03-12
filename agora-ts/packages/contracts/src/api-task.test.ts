@@ -259,4 +259,24 @@ describe('task api contracts', () => {
       }),
     ).toThrow(/must reference an earlier stage/i);
   });
+
+  it('accepts explicit workflow execution semantics and allowed actions', () => {
+    expect(
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      }).stages?.[0],
+    ).toMatchObject({
+      execution_kind: 'craftsman_dispatch',
+      allowed_actions: ['dispatch_craftsman'],
+    });
+  });
 });

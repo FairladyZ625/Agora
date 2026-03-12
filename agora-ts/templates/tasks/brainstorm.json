@@ -9,7 +9,7 @@
     "analyst": { "member_kind": "citizen", "suggested": ["gpt52", "gemini31pro"] }
   },
   "stages": [
-    { "id": "brainstorm", "name": "自由讨论", "mode": "discuss", "gate": { "type": "command" } },
-    { "id": "summarize", "name": "结论收敛", "mode": "discuss", "gate": { "type": "approval", "approver": "analyst" } }
+    { "id": "brainstorm", "name": "自由讨论", "mode": "discuss", "execution_kind": "citizen_discuss", "gate": { "type": "command" } },
+    { "id": "summarize", "name": "结论收敛", "mode": "discuss", "execution_kind": "citizen_discuss", "gate": { "type": "approval", "approver": "analyst" } }
   ]
 }

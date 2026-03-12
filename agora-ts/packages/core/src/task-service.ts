@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   CraftsmanCallbackRequestDto,
@@ -30,7 +32,7 @@ import { GateService } from './gate-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
-import type { IMProvisioningPort } from './im-ports.js';
+import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
@@ -62,6 +64,7 @@ export interface TaskServiceOptions {
   craftsmanDispatcher?: CraftsmanDispatcher;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   imProvisioningPort?: IMProvisioningPort;
+  imMessagingPort?: IMMessagingPort;
   taskBrainWorkspacePort?: TaskBrainWorkspacePort;
   taskBrainBindingService?: TaskBrainBindingService;
   taskContextBindingService?: TaskContextBindingService;
@@ -146,6 +149,7 @@ export class TaskService {
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly imMessagingPort: IMMessagingPort | undefined;
   private readonly taskBrainWorkspacePort: TaskBrainWorkspacePort | undefined;
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
@@ -176,8 +180,10 @@ export class TaskService {
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.templateRepository.seedFromDir(this.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(this.templatesDir);
+    this.templateRepository.repairStageSemanticsFromDir(this.templatesDir);
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
+    this.imMessagingPort = options.imMessagingPort;
     this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
@@ -258,6 +264,14 @@ export class TaskService {
           template_id: input.type,
           controller_ref: resolveControllerRef(team.members),
           current_stage: firstStageId,
+          workflow_stages: (workflow.stages ?? []).map((stage) => ({
+            id: stage.id,
+            ...(stage.name ? { name: stage.name } : {}),
+            ...(stage.mode ? { mode: stage.mode } : {}),
+            ...(stage.execution_kind ? { execution_kind: stage.execution_kind } : {}),
+            ...(stage.allowed_actions ? { allowed_actions: stage.allowed_actions } : {}),
+            ...(stage.gate ? { gate: { ...(stage.gate.type ? { type: stage.gate.type } : {}) } } : {}),
+          })),
           team_members: team.members.map((member) => ({
             role: member.role,
             agentId: member.agentId,
@@ -287,8 +301,9 @@ export class TaskService {
       throw error;
     }
 
-    const interactiveMembers = team.members.filter(isInteractiveParticipant);
     const imParticipantRefs = this.collectImParticipantRefs(team, input.im_target?.participant_refs);
+    const createdTask = active!;
+    const brainWorkspace = brainWorkspaceBinding;
 
     // Fire-and-forget: provision IM thread (non-blocking, failure doesn't block task creation)
     if (this.imProvisioningPort && this.taskContextBindingService) {
@@ -307,7 +322,7 @@ export class TaskService {
             }
           : null,
         participant_refs: imParticipantRefs,
-      }).then((provisioned) => {
+      }).then(async (provisioned) => {
         const binding = bindingService.createBinding({
           task_id: taskId,
           im_provider: provisioned.im_provider,
@@ -316,17 +331,28 @@ export class TaskService {
           ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
         this.taskParticipationService?.attachContextBinding(taskId, binding.id);
-        for (const participantRef of imParticipantRefs) {
-          void provisioningPort.joinParticipant({
-            binding_id: binding.id,
-            participant_ref: participantRef,
-            ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
-            ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
-          }).catch((err: unknown) => {
+        await Promise.all(imParticipantRefs.map(async (participantRef) => {
+          try {
+            await provisioningPort.joinParticipant({
+              binding_id: binding.id,
+              participant_ref: participantRef,
+              ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
+              ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
+            });
+          } catch (err: unknown) {
             console.error(
               `[TaskService] IM participant join failed for task ${taskId} participant ${participantRef}:`,
               err,
             );
+          }
+        }));
+        const bootstrapMessages = this.buildBootstrapMessages(createdTask, brainWorkspace, imParticipantRefs);
+        if (bootstrapMessages.length > 0) {
+          await provisioningPort.publishMessages({
+            binding_id: binding.id,
+            ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
+            ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
+            messages: bootstrapMessages,
           });
         }
       }).catch((err: unknown) => {
@@ -334,7 +360,7 @@ export class TaskService {
       });
     }
 
-    return active!;
+    return createdTask;
   }
 
   getTask(taskId: string): StoredTask | null {
@@ -614,7 +640,11 @@ export class TaskService {
   }
 
   handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {
-    return this.craftsmanCallbacks.handleCallback(input);
+    const result = this.craftsmanCallbacks.handleCallback(input);
+    if (result.task.state !== TaskState.PAUSED && (result.subtask.status === 'done' || result.subtask.status === 'failed')) {
+      this.sendImmediateCraftsmanNotification(result.task.id, result.execution.execution_id, result.subtask.id);
+    }
+    return result;
   }
 
   dispatchCraftsman(input: CraftsmanDispatchRequestDto) {
@@ -628,6 +658,15 @@ export class TaskService {
     const subtask = this.subtaskRepository.listByTask(input.task_id).find((item) => item.id === input.subtask_id);
     if (!subtask) {
       throw new NotFoundError(`Subtask ${input.subtask_id} not found in task ${input.task_id}`);
+    }
+    if (task.current_stage !== subtask.stage_id) {
+      throw new Error(
+        `Craftsman dispatch requires the active stage '${task.current_stage ?? 'null'}' to match subtask stage '${subtask.stage_id}'`,
+      );
+    }
+    const stage = this.getStageByIdOrThrow(task, subtask.stage_id);
+    if (!stageAllowsCraftsmanDispatch(stage)) {
+      throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
     }
     return this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
@@ -989,6 +1028,8 @@ export class TaskService {
       id: stage.id,
       name: stage.name ?? null,
       mode: stage.mode ?? null,
+      execution_kind: resolveStageExecutionKind(stage),
+      ...(resolveAllowedActions(stage).length > 0 ? { allowed_actions: resolveAllowedActions(stage) } : {}),
       gate_type: stage.gate?.type ?? null,
     }));
 
@@ -1066,6 +1107,107 @@ export class TaskService {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
     return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+  }
+
+  private getStageByIdOrThrow(task: StoredTask, stageId: string) {
+    const stage = (task.workflow.stages ?? []).find((item) => item.id === stageId);
+    if (!stage) {
+      throw new Error(`Task ${task.id} is missing workflow stage '${stageId}'`);
+    }
+    return stage;
+  }
+
+  private buildBootstrapMessages(
+    task: StoredTask,
+    brainWorkspace: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null,
+    imParticipantRefs: string[],
+  ): IMPublishMessageInput[] {
+    if (!task.current_stage) {
+      return [];
+    }
+    const stage = this.getStageByIdOrThrow(task, task.current_stage);
+    const controllerRef = resolveControllerRef(task.team.members);
+    const workspacePath = brainWorkspace?.workspace_path ?? null;
+    const messages: IMPublishMessageInput[] = [
+      {
+        kind: 'bootstrap_root',
+        participant_refs: imParticipantRefs,
+        body: [
+          'Agora task bootstrap',
+          `Task: ${task.id} — ${task.title}`,
+          `Task Goal: ${task.description?.trim() || task.title}`,
+          `Controller: ${controllerRef ?? '-'}`,
+          `Current Stage: ${task.current_stage}`,
+          `Execution Kind: ${resolveStageExecutionKind(stage) ?? '-'}`,
+          `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
+          '',
+          'Roster:',
+          ...task.team.members.map((member) => `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'}`),
+          '',
+          'Read first:',
+          `- ${join(homedir(), '.agents', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
+          ...(workspacePath
+            ? [
+                `- ${join(workspacePath, '00-bootstrap.md')}`,
+                `- ${join(workspacePath, '01-task-brief.md')}`,
+                `- ${join(workspacePath, '02-roster.md')}`,
+                `- ${join(workspacePath, '03-stage-state.md')}`,
+              ]
+            : []),
+        ].join('\n'),
+      },
+    ];
+
+    for (const member of task.team.members.filter(isInteractiveParticipant)) {
+      const roleBriefPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '00-role-brief.md') : null;
+      const roleDocPath = workspacePath ? resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`) : null;
+      messages.push({
+        kind: 'role_brief',
+        participant_refs: [member.agentId],
+        body: [
+          `Role briefing for ${member.agentId}`,
+          `Agora Role: ${member.role}`,
+          `Member Kind: ${member.member_kind ?? 'citizen'}`,
+          `Controller: ${controllerRef ?? '-'}`,
+          `Current Stage: ${task.current_stage}`,
+          `Task Goal: ${task.description?.trim() || task.title}`,
+          ...(roleDocPath ? [`Read role doc: ${roleDocPath}`] : []),
+          ...(roleBriefPath ? [`Read role brief: ${roleBriefPath}`] : []),
+        ].join('\n'),
+      });
+    }
+
+    return messages;
+  }
+
+  private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
+    if (!this.imMessagingPort) {
+      return;
+    }
+    const binding = this.taskContextBindingRepository.getActiveByTask(taskId);
+    const targetRef = binding?.thread_ref ?? binding?.conversation_ref ?? null;
+    if (!binding || !targetRef) {
+      return;
+    }
+    const execution = this.craftsmanExecutions.getExecution(executionId);
+    const subtask = this.subtaskRepository.listByTask(taskId).find((item) => item.id === subtaskId);
+    if (!execution || !subtask) {
+      return;
+    }
+    const eventType = execution.status === 'succeeded' ? 'craftsman_completed' : 'craftsman_failed';
+    void this.imMessagingPort.sendNotification(targetRef, {
+      task_id: taskId,
+      event_type: eventType,
+      data: {
+        execution_id: execution.execution_id,
+        subtask_id: subtask.id,
+        adapter: execution.adapter,
+        status: execution.status,
+        output: subtask.output,
+      },
+    }).catch((error: unknown) => {
+      console.error(`[TaskService] Immediate craftsman notify failed for task ${taskId}:`, error);
+    });
   }
 
   private rewindRejectedStage(
@@ -1545,6 +1687,53 @@ export class TaskService {
       )
     `).run(reason, taskId, stageId);
   }
+}
+
+type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
+
+function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) {
+  if (!stage) {
+    return null;
+  }
+  if (stage.execution_kind) {
+    return stage.execution_kind;
+  }
+  if (stage.mode === 'execute') {
+    return 'citizen_execute';
+  }
+  if (stage.mode === 'discuss') {
+    return 'citizen_discuss';
+  }
+  return null;
+}
+
+function resolveAllowedActions(stage: WorkflowStageLike | null | undefined) {
+  if (!stage) {
+    return [];
+  }
+  if (stage.allowed_actions?.length) {
+    return stage.allowed_actions;
+  }
+  switch (resolveStageExecutionKind(stage)) {
+    case 'craftsman_dispatch':
+      return ['dispatch_craftsman'];
+    case 'citizen_execute':
+      return ['execute'];
+    case 'human_approval':
+      return ['approve', 'reject'];
+    case 'citizen_discuss':
+      return ['discuss'];
+    default:
+      return [];
+  }
+}
+
+function stageAllowsCraftsmanDispatch(stage: WorkflowStageLike | null | undefined) {
+  if (!stage) {
+    return false;
+  }
+  return resolveStageExecutionKind(stage) === 'craftsman_dispatch'
+    || resolveAllowedActions(stage).includes('dispatch_craftsman');
 }
 
 function slugify(value: string) {

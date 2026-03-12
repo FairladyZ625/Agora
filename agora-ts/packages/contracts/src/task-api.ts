@@ -18,6 +18,22 @@ const allowedWorkflowModes = [
   'execute',
 ] as const;
 
+const allowedWorkflowExecutionKinds = [
+  'citizen_discuss',
+  'citizen_execute',
+  'craftsman_dispatch',
+  'human_approval',
+] as const;
+
+const allowedWorkflowActions = [
+  'discuss',
+  'execute',
+  'dispatch_craftsman',
+  'approve',
+  'reject',
+  'advance',
+] as const;
+
 const allowedWorkflowGateTypes = [
   'archon_review',
   'command',
@@ -33,6 +49,14 @@ const agentRoleSchema = z.string().refine((value) => allowedAgentRoles.includes(
 
 const workflowModeSchema = z.string().refine((value) => allowedWorkflowModes.includes(value as (typeof allowedWorkflowModes)[number]), {
   message: 'Unsupported workflow mode',
+});
+
+const workflowExecutionKindSchema = z.string().refine((value) => allowedWorkflowExecutionKinds.includes(value as (typeof allowedWorkflowExecutionKinds)[number]), {
+  message: 'Unsupported workflow execution kind',
+});
+
+const workflowActionSchema = z.string().refine((value) => allowedWorkflowActions.includes(value as (typeof allowedWorkflowActions)[number]), {
+  message: 'Unsupported workflow action',
 });
 
 const workflowGateTypeSchema = z.string().refine((value) => allowedWorkflowGateTypes.includes(value as (typeof allowedWorkflowGateTypes)[number]), {
@@ -80,6 +104,8 @@ export const workflowStageSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
   mode: workflowModeSchema.optional(),
+  execution_kind: workflowExecutionKindSchema.optional(),
+  allowed_actions: z.array(workflowActionSchema).optional(),
   gate: workflowGateSchema.nullish(),
   reject_target: z.string().min(1).optional(),
 });
@@ -97,6 +123,8 @@ export const taskBlueprintNodeSchema = z.object({
   id: z.string().min(1),
   name: z.string().nullable(),
   mode: workflowModeSchema.nullable(),
+  execution_kind: workflowExecutionKindSchema.nullable().optional(),
+  allowed_actions: z.array(workflowActionSchema).optional(),
   gate_type: workflowGateTypeSchema.nullable(),
 });
 export type TaskBlueprintNodeDto = z.infer<typeof taskBlueprintNodeSchema>;

@@ -2,6 +2,7 @@ import type {
   IMArchiveContextRequest,
   IMJoinParticipantRequest,
   IMJoinParticipantResult,
+  IMPublishMessagesRequest,
   IMRemoveParticipantRequest,
   IMRemoveParticipantResult,
   IMProvisionContextRequest,
@@ -106,6 +107,23 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
       };
     }
     return { status: 'removed', detail: null };
+  }
+
+  async publishMessages(input: IMPublishMessagesRequest): Promise<void> {
+    const targetRef = input.thread_ref ?? input.conversation_ref ?? null;
+    if (!targetRef) {
+      return;
+    }
+    for (const message of input.messages) {
+      const mentionRefs = Array.from(new Set(message.participant_refs ?? []));
+      const mentions = await Promise.all(mentionRefs.map(async (participantRef) => {
+        const token = this.participantTokens[participantRef];
+        const userId = await this.resolveParticipantUserId(participantRef, token);
+        return `<@${userId}>`;
+      }));
+      const content = [mentions.join(' '), message.body.trim()].filter((part) => part.length > 0).join('\n\n');
+      await this.client.sendMessage(targetRef, content);
+    }
   }
 
   async archiveContext(input: IMArchiveContextRequest): Promise<void> {

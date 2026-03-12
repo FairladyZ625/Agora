@@ -10,7 +10,7 @@ import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskParticipationService } from './task-participation-service.js';
-import { StubIMProvisioningPort } from './im-ports.js';
+import { StubIMMessagingPort, StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -1553,6 +1553,92 @@ describe('task service', () => {
     );
   });
 
+  it('publishes bootstrap root and per-agent directed briefs when IM and brain services are configured', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-bootstrap-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-bootstrap-1', 'pb-bootstrap-2', 'pb-bootstrap-3', 'pb-bootstrap-4'];
+        return () => ids.shift() ?? 'pb-bootstrap-x';
+      })(),
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BOOTSTRAP-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-bootstrap-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Bootstrap Task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'bootstrap everyone into context',
+      priority: 'normal',
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(provisioningPort.published).toHaveLength(1);
+    expect(provisioningPort.published[0]).toMatchObject({
+      binding_id: expect.any(String),
+      thread_ref: 'discord-thread-bootstrap-1',
+    });
+    expect(provisioningPort.published[0]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'bootstrap_root',
+          participant_refs: ['opus', 'sonnet', 'glm5'],
+        }),
+        expect.objectContaining({
+          kind: 'role_brief',
+          participant_refs: ['opus'],
+        }),
+        expect.objectContaining({
+          kind: 'role_brief',
+          participant_refs: ['sonnet'],
+        }),
+        expect.objectContaining({
+          kind: 'role_brief',
+          participant_refs: ['glm5'],
+        }),
+      ]),
+    );
+    const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
+    expect(rootBrief?.body).toContain('Controller: opus');
+    expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
+    const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
+    expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
+    expect(opusBrief?.body).toContain('architect');
+  });
+
   it('joins explicit im_target participant refs in addition to interactive team members', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1669,6 +1755,110 @@ describe('task service', () => {
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
   });
 
+  it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-disallowed-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T15:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-GUARD-1',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Guard discuss stage',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-disallowed-1',
+      task_id: 'OC-DISPATCH-GUARD-1',
+      stage_id: 'discuss',
+      title: 'Should not dispatch from discuss',
+      assignee: 'codex',
+      status: 'not_started',
+      craftsman_type: 'codex',
+    });
+
+    expect(() => service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-GUARD-1',
+      subtask_id: 'sub-disallowed-1',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex',
+    })).toThrow(/does not allow craftsman dispatch/i);
+    expect(executions.listBySubtask('OC-DISPATCH-GUARD-1', 'sub-disallowed-1')).toEqual([]);
+  });
+
+  it('allows craftsman dispatch when the active stage explicitly opts into craftsman execution', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-allowed-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T15:30:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-GUARD-2',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Guard execute stage',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-allowed-1',
+      task_id: 'OC-DISPATCH-GUARD-2',
+      stage_id: 'implement',
+      title: 'Should dispatch in craftsman stage',
+      assignee: 'codex',
+      status: 'not_started',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-GUARD-2',
+      subtask_id: 'sub-allowed-1',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex',
+    });
+
+    expect(result.execution).toMatchObject({
+      task_id: 'OC-DISPATCH-GUARD-2',
+      subtask_id: 'sub-allowed-1',
+      adapter: 'codex',
+    });
+  });
+
   it('applies team/workflow overrides when creating a task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1714,5 +1904,83 @@ describe('task service', () => {
         { id: 'deliver', mode: 'execute', gate: { type: 'all_subtasks_done' } },
       ],
     });
+  });
+
+  it('sends an immediate IM notification when a craftsman callback settles against an active context binding', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const messagingPort = new StubIMMessagingPort();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-notify-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOTIFY-1',
+      imProvisioningPort: provisioningPort,
+      imMessagingPort: messagingPort,
+      taskContextBindingService: bindingService,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Immediate callback notify',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    subtasks.insertSubtask({
+      id: 'notify-subtask-1',
+      task_id: 'OC-NOTIFY-1',
+      stage_id: 'develop',
+      title: 'notify me',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+      craftsman_session: 'tmux:notify-1',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-notify-1',
+      task_id: 'OC-NOTIFY-1',
+      subtask_id: 'notify-subtask-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:notify-1',
+      status: 'running',
+      started_at: '2026-03-12T16:00:00.000Z',
+    });
+
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-notify-1',
+      status: 'succeeded',
+      session_id: 'tmux:notify-1',
+      payload: {
+        output: {
+          summary: 'implemented and ready',
+          artifacts: [],
+        },
+      },
+      error: null,
+      finished_at: '2026-03-12T16:01:00.000Z',
+    });
+
+    expect(messagingPort.sent).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetRef: 'discord-thread-notify-1',
+          payload: expect.objectContaining({
+            task_id: 'OC-NOTIFY-1',
+            event_type: 'craftsman_completed',
+          }),
+        }),
+      ]),
+    );
   });
 });

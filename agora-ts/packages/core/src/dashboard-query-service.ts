@@ -68,6 +68,7 @@ export class DashboardQueryService {
     this.templateRepository = new TemplateRepository(db);
     this.templateRepository.seedFromDir(options.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(options.templatesDir);
+    this.templateRepository.repairStageSemanticsFromDir(options.templatesDir);
     this.archiveJobNotifier = options.archiveJobNotifier;
     this.archiveJobReceiptIngestor = options.archiveJobReceiptIngestor;
     this.imProvisioningPort = options.imProvisioningPort;

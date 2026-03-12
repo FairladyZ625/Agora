@@ -48,11 +48,21 @@ describe('craftsman routes', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'citizen_execute',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
     });
     subtasks.insertSubtask({
       id: 'sub-codex',
       task_id: 'OC-980',
-      stage_id: 'discuss',
+      stage_id: 'develop',
       title: 'run codex',
       assignee: 'sonnet',
       craftsman_type: 'codex',
@@ -207,11 +217,21 @@ describe('craftsman routes', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'citizen_execute',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
     });
     subtasks.insertSubtask({
       id: 'sub-codex-1',
       task_id: 'OC-982',
-      stage_id: 'discuss',
+      stage_id: 'develop',
       title: 'run codex 1',
       assignee: 'sonnet',
       craftsman_type: 'codex',
@@ -219,7 +239,7 @@ describe('craftsman routes', () => {
     subtasks.insertSubtask({
       id: 'sub-codex-2',
       task_id: 'OC-982',
-      stage_id: 'discuss',
+      stage_id: 'develop',
       title: 'run codex 2',
       assignee: 'sonnet',
       craftsman_type: 'codex',

@@ -80,6 +80,7 @@ export interface ServerCompositionFactories {
       craftsmanDispatcher: CraftsmanDispatcher;
       tmuxRuntimeService: TmuxRuntimeService;
       imProvisioningPort: IMProvisioningPort | undefined;
+      messagingPort: IMMessagingPort;
       taskBrainBindingService: TaskBrainBindingService;
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
@@ -170,6 +171,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         allowAgents: context.config.permissions.allowAgents,
         craftsmanDispatcher: deps.craftsmanDispatcher,
         isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.tmuxRuntimeService),
+        imMessagingPort: deps.messagingPort,
         taskBrainBindingService: deps.taskBrainBindingService,
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
@@ -267,10 +269,12 @@ export function buildServerComposition(
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
+  const messagingPort = factories.createIMMessagingPort(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     tmuxRuntimeService,
     imProvisioningPort,
+    messagingPort,
     taskBrainBindingService,
     taskBrainWorkspacePort,
     taskContextBindingService,
@@ -290,7 +294,6 @@ export function buildServerComposition(
   });
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const inboxService = factories.createInboxService(context, { taskService });
-  const messagingPort = factories.createIMMessagingPort(context);
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
   const taskConversationService = factories.createTaskConversationService(context);
 

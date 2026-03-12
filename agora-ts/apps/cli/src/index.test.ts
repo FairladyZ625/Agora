@@ -1117,11 +1117,27 @@ describe('agora-ts cli', () => {
     const stderr = createBuffer();
     const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
 
-    await program.parseAsync(['create', '实现 craftsmen cli', '--type', 'coding'], { from: 'user' });
+    taskService.createTask({
+      title: '实现 craftsmen cli',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'citizen_execute',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
+    });
     subtasks.insertSubtask({
       id: 'sub-codex',
       task_id: 'OC-304',
-      stage_id: 'discuss',
+      stage_id: 'develop',
       title: 'run codex',
       assignee: 'sonnet',
       craftsman_type: 'codex',
@@ -1215,11 +1231,27 @@ describe('agora-ts cli', () => {
     const stderr = createBuffer();
     const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
 
-    await program.parseAsync(['create', 'craftsman cli limit', '--type', 'coding'], { from: 'user' });
+    taskService.createTask({
+      title: 'craftsman cli limit',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'citizen_execute',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
+    });
     subtasks.insertSubtask({
       id: 'sub-codex-1',
       task_id: 'OC-306',
-      stage_id: 'discuss',
+      stage_id: 'develop',
       title: 'run codex 1',
       assignee: 'sonnet',
       craftsman_type: 'codex',
@@ -1227,7 +1259,7 @@ describe('agora-ts cli', () => {
     subtasks.insertSubtask({
       id: 'sub-codex-2',
       task_id: 'OC-306',
-      stage_id: 'discuss',
+      stage_id: 'develop',
       title: 'run codex 2',
       assignee: 'sonnet',
       craftsman_type: 'codex',

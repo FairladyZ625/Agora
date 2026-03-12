@@ -112,6 +112,33 @@ export class TemplateRepository {
     return { scanned, updated };
   }
 
+  repairStageSemanticsFromDir(templatesDir: string): TemplateRepairResult {
+    const dir = resolve(templatesDir, 'tasks');
+    if (!existsSync(dir)) {
+      return { scanned: 0, updated: 0 };
+    }
+
+    let scanned = 0;
+    let updated = 0;
+    for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
+      const templateId = name.slice(0, -5);
+      const existing = this.getTemplate(templateId);
+      if (!existing) {
+        continue;
+      }
+      scanned += 1;
+      const seedTemplate = JSON.parse(readFileSync(resolve(dir, name), 'utf8')) as TemplateDetailDto;
+      const repaired = repairTemplateStageSemantics(existing.template, seedTemplate);
+      if (!repaired.changed) {
+        continue;
+      }
+      this.saveTemplate(templateId, repaired.template, existing.source);
+      updated += 1;
+    }
+
+    return { scanned, updated };
+  }
+
   private parseTemplateRow(row: Record<string, unknown>): StoredTemplate {
     return {
       id: String(row.id),
@@ -159,6 +186,46 @@ function repairTemplateMemberKinds(
     template: {
       ...existing,
       defaultTeam: repairedTeam,
+    },
+  };
+}
+
+function repairTemplateStageSemantics(
+  existing: TemplateDetailDto,
+  seedTemplate: TemplateDetailDto,
+): { changed: boolean; template: TemplateDetailDto } {
+  const existingStages = existing.stages ?? [];
+  const seedStagesById = new Map((seedTemplate.stages ?? []).map((stage) => [stage.id, stage]));
+  let changed = false;
+
+  const repairedStages = existingStages.map((stage) => {
+    const seedStage = seedStagesById.get(stage.id);
+    if (!seedStage) {
+      return stage;
+    }
+    const nextStage = {
+      ...stage,
+      ...(stage.execution_kind ? {} : (seedStage.execution_kind ? { execution_kind: seedStage.execution_kind } : {})),
+      ...(stage.allowed_actions?.length ? {} : (seedStage.allowed_actions?.length ? { allowed_actions: seedStage.allowed_actions } : {})),
+    };
+    if (nextStage !== stage && (
+      nextStage.execution_kind !== stage.execution_kind
+      || JSON.stringify(nextStage.allowed_actions ?? []) !== JSON.stringify(stage.allowed_actions ?? [])
+    )) {
+      changed = true;
+    }
+    return nextStage;
+  });
+
+  if (!changed) {
+    return { changed: false, template: existing };
+  }
+
+  return {
+    changed: true,
+    template: {
+      ...existing,
+      stages: repairedStages,
     },
   };
 }

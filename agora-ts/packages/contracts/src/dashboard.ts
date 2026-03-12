@@ -6,6 +6,8 @@ import { taskPrioritySchema } from './task.js';
 const allowedGovernancePresets = ['lean', 'standard', 'strict', 'custom'] as const;
 const allowedTemplateRoles = ['architect', 'developer', 'reviewer', 'writer', 'researcher', 'analyst', 'executor', 'craftsman'] as const;
 const allowedTemplateStageModes = ['discuss', 'execute'] as const;
+const allowedTemplateExecutionKinds = ['citizen_discuss', 'citizen_execute', 'craftsman_dispatch', 'human_approval'] as const;
+const allowedTemplateActions = ['discuss', 'execute', 'dispatch_craftsman', 'approve', 'reject', 'advance'] as const;
 const allowedTemplateGateTypes = ['archon_review', 'command', 'all_subtasks_done', 'approval', 'auto_timeout', 'quorum'] as const;
 
 const governancePresetSchema = z.string().refine((value) => allowedGovernancePresets.includes(value as (typeof allowedGovernancePresets)[number]), {
@@ -16,6 +18,12 @@ const templateRoleSchema = z.string().refine((value) => allowedTemplateRoles.inc
 });
 const templateStageModeSchema = z.string().refine((value) => allowedTemplateStageModes.includes(value as (typeof allowedTemplateStageModes)[number]), {
   message: 'Unsupported template stage mode',
+});
+const templateExecutionKindSchema = z.string().refine((value) => allowedTemplateExecutionKinds.includes(value as (typeof allowedTemplateExecutionKinds)[number]), {
+  message: 'Unsupported template execution kind',
+});
+const templateActionSchema = z.string().refine((value) => allowedTemplateActions.includes(value as (typeof allowedTemplateActions)[number]), {
+  message: 'Unsupported template action',
 });
 const templateGateTypeSchema = z.string().refine((value) => allowedTemplateGateTypes.includes(value as (typeof allowedTemplateGateTypes)[number]), {
   message: 'Unsupported template gate type',
@@ -364,6 +372,8 @@ export const templateStageSchema = z.object({
   id: z.string().min(1),
   name: z.string().optional(),
   mode: templateStageModeSchema.optional(),
+  execution_kind: templateExecutionKindSchema.optional(),
+  allowed_actions: z.array(templateActionSchema).optional(),
   reject_target: z.string().min(1).optional(),
   gate: z.object({
     type: templateGateTypeSchema.optional(),

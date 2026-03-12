@@ -8,6 +8,6 @@
     "executor": { "member_kind": "controller", "suggested": ["haiku", "sonnet"] }
   },
   "stages": [
-    { "id": "execute", "name": "执行", "mode": "execute", "gate": { "type": "command" } }
+    { "id": "execute", "name": "执行", "mode": "execute", "execution_kind": "citizen_execute", "gate": { "type": "command" } }
   ]
 }

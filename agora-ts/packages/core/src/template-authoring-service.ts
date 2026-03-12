@@ -25,6 +25,7 @@ export class TemplateAuthoringService {
     this.templateRepository = options.db ? new TemplateRepository(options.db) : null;
     this.templateRepository?.seedFromDir(options.templatesDir);
     this.templateRepository?.repairMemberKindsFromDir(options.templatesDir);
+    this.templateRepository?.repairStageSemanticsFromDir(options.templatesDir);
   }
 
   validateTemplate(template: TemplateDetailDto): TemplateValidationResponseDto {

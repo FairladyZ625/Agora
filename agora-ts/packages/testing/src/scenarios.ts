@@ -500,13 +500,33 @@ function runUnblockReassignScenario(runtime: TestRuntime): ScenarioResult {
   return buildScenarioResult(runtime, 'unblock-reassign', task.id);
 }
 
-function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
-    title: 'Pause resume deferred callback scenario',
+function createCraftsmanReadyTask(
+  taskService: TestRuntime['taskService'],
+  input: { title: string; description: string; priority?: 'low' | 'normal' | 'high' },
+) {
+  return taskService.createTask({
+    title: input.title,
     type: 'coding',
     creator: 'archon',
+    description: input.description,
+    priority: input.priority ?? 'normal',
+    workflow_override: {
+      type: 'craftsman-ready',
+      stages: [{
+        id: 'develop',
+        mode: 'execute',
+        execution_kind: 'citizen_execute',
+        allowed_actions: ['execute', 'dispatch_craftsman'],
+        gate: { type: 'all_subtasks_done' },
+      }],
+    },
+  });
+}
+
+function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioResult {
+  const task = createCraftsmanReadyTask(runtime.taskService, {
+    title: 'Pause resume deferred callback scenario',
     description: 'exercise deferred callback settlement',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   const dispatch = runtime.taskService.dispatchCraftsman({
@@ -515,7 +535,7 @@ function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioR
       subtasks.insertSubtask({
         id: 'resume-subtask',
         task_id: task.id,
-        stage_id: task.current_stage ?? 'discuss',
+        stage_id: task.current_stage ?? 'develop',
         title: 'Resume after paused callback',
         assignee: 'codex',
         status: 'in_progress',
@@ -638,10 +658,8 @@ function runStartupRecoveryMissingSessionScenario(runtime: TestRuntime): Scenari
 }
 
 function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Cancel active task scenario',
-    type: 'coding',
-    creator: 'archon',
     description: 'exercise cancel side effects',
     priority: 'high',
   });
@@ -649,7 +667,7 @@ function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
   subtasks.insertSubtask({
     id: 'draft-plan',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Draft the plan',
     assignee: 'opus',
     status: 'not_started',
@@ -657,7 +675,7 @@ function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
   subtasks.insertSubtask({
     id: 'run-codex',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Run codex',
     assignee: 'sonnet',
     status: 'in_progress',
@@ -666,7 +684,7 @@ function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
   subtasks.insertSubtask({
     id: 'keep-done',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Already done',
     assignee: 'gpt52',
     status: 'done',
@@ -771,18 +789,15 @@ function runAuthoringSmokeScenario(runtime: TestRuntime): ScenarioResult {
 }
 
 function runCraftsmanHappyPathScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman happy path',
-    type: 'coding',
-    creator: 'archon',
     description: 'dispatch and callback success',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
     id: 'craft-1',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Run codex',
     assignee: 'sonnet',
     craftsman_type: 'codex',
@@ -810,18 +825,15 @@ function runCraftsmanHappyPathScenario(runtime: TestRuntime): ScenarioResult {
 }
 
 function runCraftsmanCallbackFailureScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman callback failure',
-    type: 'coding',
-    creator: 'archon',
     description: 'dispatch then fail callback',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
     id: 'craft-fail',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Run codex',
     assignee: 'sonnet',
     craftsman_type: 'codex',
@@ -849,18 +861,15 @@ function runCraftsmanCallbackFailureScenario(runtime: TestRuntime): ScenarioResu
 }
 
 function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman concurrency limit scenario',
-    type: 'coding',
-    creator: 'archon',
     description: 'dispatch once and reject the second execution when limit is reached',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
     id: 'craft-limit-1',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Craftsman slot 1',
     assignee: 'codex',
     craftsman_type: 'codex',
@@ -868,7 +877,7 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
   subtasks.insertSubtask({
     id: 'craft-limit-2',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Craftsman slot 2',
     assignee: 'codex',
     craftsman_type: 'codex',
@@ -906,18 +915,15 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
 }
 
 function runCraftsmanWorkdirIsolationScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman workdir isolation scenario',
-    type: 'coding',
-    creator: 'archon',
     description: 'dispatch with isolated git workdir policy',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
     id: 'craft-isolated',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Craftsman isolated workdir',
     assignee: 'codex',
     craftsman_type: 'codex',
@@ -943,18 +949,15 @@ function runCraftsmanWorkdirIsolationScenario(runtime: TestRuntime): ScenarioRes
 }
 
 function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman retry',
-    type: 'coding',
-    creator: 'archon',
     description: 'fail once then redispatch',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
     id: 'craft-retry',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Run codex',
     assignee: 'sonnet',
     craftsman_type: 'codex',
@@ -997,18 +1000,15 @@ function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
 }
 
 function runCraftsmanTimeoutScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman timeout',
-    type: 'coding',
-    creator: 'archon',
     description: 'timeout failure path',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   subtasks.insertSubtask({
     id: 'craft-timeout',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Run codex',
     assignee: 'sonnet',
     craftsman_type: 'codex',
@@ -1036,12 +1036,9 @@ function runCraftsmanTimeoutScenario(runtime: TestRuntime): ScenarioResult {
 }
 
 function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): ScenarioResult {
-  const task = runtime.taskService.createTask({
+  const task = createCraftsmanReadyTask(runtime.taskService, {
     title: 'Craftsman callback notify outbox',
-    type: 'coding',
-    creator: 'archon',
     description: 'dispatch with binding, callback, scan outbox',
-    priority: 'normal',
   });
   const subtasks = new SubtaskRepository(runtime.db);
   const bindingService = new TaskContextBindingService(runtime.db, {
@@ -1058,7 +1055,7 @@ function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): Scenari
   subtasks.insertSubtask({
     id: 'craft-notify',
     task_id: task.id,
-    stage_id: task.current_stage ?? 'discuss',
+    stage_id: task.current_stage ?? 'develop',
     title: 'Run codex with notification',
     assignee: 'sonnet',
     craftsman_type: 'codex',

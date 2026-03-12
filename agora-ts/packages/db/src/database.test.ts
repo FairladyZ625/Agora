@@ -43,6 +43,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '008_task_conversation_read_cursors.sql',
       '009_templates.sql',
       '010_role_pack_bindings.sql',
+      '011_task_brain_bindings.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -171,6 +172,43 @@ describe('agora-ts sqlite bootstrap', () => {
     });
 
     expect(templates.repairMemberKindsFromDir(resolve(process.cwd(), 'templates')).updated).toBe(0);
+  });
+
+  it('repairs existing sqlite templates with missing stage semantics from the seed directory without overwriting stage names', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+
+    templates.saveTemplate('coding', {
+      name: '自定义编码模板',
+      type: 'coding',
+      description: 'db customized',
+      governance: 'standard',
+      defaultTeam: {
+        architect: { member_kind: 'controller', suggested: ['custom-opus'] },
+        developer: { member_kind: 'citizen', suggested: ['custom-sonnet'] },
+        craftsman: { member_kind: 'craftsman', suggested: ['codex'] },
+      },
+      stages: [
+        { id: 'discuss', name: '我的讨论阶段', mode: 'discuss', gate: { type: 'archon_review' } },
+        { id: 'develop', name: '我的开发阶段', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+      ],
+    }, 'user');
+
+    const repaired = templates.repairStageSemanticsFromDir(resolve(process.cwd(), 'templates'));
+
+    expect(repaired.updated).toBe(1);
+    expect(templates.getTemplate('coding')).toMatchObject({
+      source: 'user',
+      template: {
+        stages: [
+          { id: 'discuss', name: '我的讨论阶段', execution_kind: 'citizen_discuss' },
+          { id: 'develop', name: '我的开发阶段', execution_kind: 'citizen_execute', allowed_actions: ['execute', 'dispatch_craftsman'] },
+        ],
+      },
+    });
+
+    expect(templates.repairStageSemanticsFromDir(resolve(process.cwd(), 'templates')).updated).toBe(0);
   });
 
   it('stores and reads task JSON fields via the task repository', () => {

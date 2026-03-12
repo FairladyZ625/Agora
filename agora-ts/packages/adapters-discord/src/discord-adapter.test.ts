@@ -494,6 +494,73 @@ describe('DiscordIMProvisioningAdapter', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('publishes bootstrap messages into the thread and resolves participant mentions', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-opus', username: 'opus' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-sonnet', username: 'sonnet' }),
+      })
+      .mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantTokens: {
+        opus: 'token-opus',
+        sonnet: 'token-sonnet',
+      },
+    });
+
+    await adapter.publishMessages({
+      binding_id: 'bind-bootstrap-1',
+      thread_ref: 'thread-bootstrap-1',
+      messages: [
+        {
+          kind: 'bootstrap_root',
+          participant_refs: ['opus', 'sonnet'],
+          body: 'Task bootstrap root',
+        },
+        {
+          kind: 'role_brief',
+          participant_refs: ['opus'],
+          body: 'Controller brief',
+        },
+      ],
+    });
+
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/users/@me',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bot token-opus' }),
+      }),
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://discord.com/api/v10/users/@me',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bot token-sonnet' }),
+      }),
+    );
+    const firstBody = JSON.parse((mockFetch.mock.calls[2] as [string, { body: string }])[1].body) as { content: string };
+    expect(firstBody.content).toContain('<@discord-user-opus>');
+    expect(firstBody.content).toContain('<@discord-user-sonnet>');
+    expect(firstBody.content).toContain('Task bootstrap root');
+    const secondBody = JSON.parse((mockFetch.mock.calls[3] as [string, { body: string }])[1].body) as { content: string };
+    expect(secondBody.content).toContain('<@discord-user-opus>');
+    expect(secondBody.content).toContain('Controller brief');
+
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('DiscordIMMessagingAdapter', () => {

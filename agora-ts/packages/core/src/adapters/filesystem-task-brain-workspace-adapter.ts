@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import type { TaskBrainWorkspacePort, TaskBrainWorkspaceRequest, TaskBrainWorkspaceResult } from '../task-brain-port.js';
 
 export interface FilesystemTaskBrainWorkspaceAdapterOptions {
@@ -11,6 +11,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult {
     const workspacePath = resolve(this.options.brainPackRoot, 'tasks', input.task_id);
+    const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
     mkdirSync(workspacePath, { recursive: true });
     mkdirSync(join(workspacePath, '04-context'), { recursive: true });
     mkdirSync(join(workspacePath, '05-agents'), { recursive: true });
@@ -26,24 +27,22 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
       }),
       'utf8',
     );
-    writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input), 'utf8');
-    writeFileSync(join(workspacePath, '00-bootstrap.md'), renderBootstrap(input), 'utf8');
+    writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input, currentStage), 'utf8');
+    writeFileSync(join(workspacePath, '00-bootstrap.md'), renderBootstrap(input, workspacePath, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '01-task-brief.md'), renderTaskBrief(input), 'utf8');
     writeFileSync(join(workspacePath, '02-roster.md'), renderRoster(input), 'utf8');
-    writeFileSync(join(workspacePath, '03-stage-state.md'), renderStageState(input), 'utf8');
+    writeFileSync(join(workspacePath, '03-stage-state.md'), renderStageState(input, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '04-context', 'user-input.md'), `${input.description.trim() || '(empty description)'}\n`, 'utf8');
     writeFileSync(join(workspacePath, '04-context', 'references.md'), '', 'utf8');
     writeFileSync(join(workspacePath, '04-context', 'linked-docs.md'), '', 'utf8');
-
-    const roleBriefTemplate = resolve(this.options.brainPackRoot, 'templates', '00-role-brief.md');
     for (const member of input.team_members) {
       const agentDir = join(workspacePath, '05-agents', member.agentId);
       mkdirSync(agentDir, { recursive: true });
-      if (existsSync(roleBriefTemplate)) {
-        copyFileSync(roleBriefTemplate, join(agentDir, '00-role-brief.md'));
-      } else {
-        writeFileSync(join(agentDir, '00-role-brief.md'), renderFallbackRoleBrief(input, member), 'utf8');
-      }
+      writeFileSync(
+        join(agentDir, '00-role-brief.md'),
+        renderRoleBrief(input, workspacePath, member, currentStage),
+        'utf8',
+      );
       writeFileSync(join(agentDir, '01-working-notes.md'), '', 'utf8');
       writeFileSync(join(agentDir, '02-outputs.md'), '', 'utf8');
     }
@@ -68,6 +67,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 }
 
 function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWorkspaceResult) {
+  const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
   return [
     `task_id: "${input.task_id}"`,
     `brain_task_id: "${binding.brain_task_id}"`,
@@ -76,12 +76,15 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
     `template_id: "${input.template_id}"`,
     `controller_ref: "${input.controller_ref ?? ''}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
-    `execution_kind: ""`,
+    `execution_kind: "${resolveStageExecutionKind(currentStage) ?? ''}"`,
     '',
   ].join('\n');
 }
 
-function renderCurrent(input: TaskBrainWorkspaceRequest) {
+function renderCurrent(
+  input: TaskBrainWorkspaceRequest,
+  currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
+) {
   return [
     `# Current`,
     '',
@@ -89,19 +92,31 @@ function renderCurrent(input: TaskBrainWorkspaceRequest) {
     `- Title: ${input.title}`,
     `- Controller: ${input.controller_ref ?? '-'}`,
     `- Current Stage: ${input.current_stage ?? '-'}`,
+    `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    `- Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     '',
   ].join('\n');
 }
 
-function renderBootstrap(input: TaskBrainWorkspaceRequest) {
+function renderBootstrap(
+  input: TaskBrainWorkspaceRequest,
+  workspacePath: string,
+  currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
+) {
   return [
     '# Bootstrap',
     '',
     `Task ID: ${input.task_id}`,
     `Controller: ${input.controller_ref ?? '-'}`,
     `Current Stage: ${input.current_stage ?? '-'}`,
+    `Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    `Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     '',
-    'Use the Agora bootstrap skill and this workspace before acting.',
+    'Read these files before acting:',
+    `- ~/.agents/skills/agora-bootstrap/SKILL.md`,
+    `- ${join(workspacePath, '01-task-brief.md')}`,
+    `- ${join(workspacePath, '02-roster.md')}`,
+    `- ${join(workspacePath, '03-stage-state.md')}`,
     '',
   ].join('\n');
 }
@@ -126,36 +141,137 @@ function renderRoster(input: TaskBrainWorkspaceRequest) {
   return ['# Roster', '', ...rows, ''].join('\n');
 }
 
-function renderStageState(input: TaskBrainWorkspaceRequest) {
+function renderStageState(
+  input: TaskBrainWorkspaceRequest,
+  currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
+) {
   return [
     '# Stage State',
     '',
     `- Current Stage: ${input.current_stage ?? '-'}`,
-    `- Execution Kind: (pending)`,
+    `- Stage Name: ${currentStage?.name ?? '-'}`,
+    `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    `- Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
+    `- Gate: ${currentStage?.gate?.type ?? '-'}`,
     '',
   ].join('\n');
 }
 
-function renderFallbackRoleBrief(
+function renderRoleBrief(
   input: TaskBrainWorkspaceRequest,
+  workspacePath: string,
   member: TaskBrainWorkspaceRequest['team_members'][number],
+  currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
+  const roleDocPath = resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`);
+  const roleDoc = readRoleDocSummary(roleDocPath);
   return [
     '---',
     `role_id: "${member.role}"`,
     `agent_id: "${member.agentId}"`,
     `member_kind: "${member.member_kind ?? 'citizen'}"`,
-    `summary: ""`,
-    `mission: ""`,
-    'allowed_actions: []',
-    'forbidden_actions: []',
+    `summary: "${escapeYaml(roleDoc.summary)}"`,
+    `mission: "${escapeYaml(roleDoc.mission)}"`,
+    `allowed_actions: [${resolveStageAllowedActions(currentStage).map((action) => `"${action}"`).join(', ')}]`,
+    `forbidden_actions: []`,
     `escalate_to: "${input.controller_ref ?? ''}"`,
     `task_id: "${input.task_id}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
-    'execution_kind: ""',
+    `execution_kind: "${resolveStageExecutionKind(currentStage) ?? ''}"`,
+    `role_doc_path: "${roleDocPath}"`,
     '---',
     '',
     '# Role Brief',
     '',
+    `You are \`${member.agentId}\` and your Agora role is \`${member.role}\`.`,
+    '',
+    `Read first: ${roleDocPath}`,
+    `Task workspace: ${workspacePath}`,
+    `Task brief: ${join(workspacePath, '01-task-brief.md')}`,
+    `Stage state: ${join(workspacePath, '03-stage-state.md')}`,
+    '',
+    `Controller: ${input.controller_ref ?? '-'}`,
+    `Current Stage: ${input.current_stage ?? '-'}`,
+    '',
   ].join('\n');
+}
+
+function resolveStageExecutionKind(stage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null) {
+  if (!stage) {
+    return null;
+  }
+  if (stage.execution_kind) {
+    return stage.execution_kind;
+  }
+  if (stage.mode === 'execute') {
+    return 'citizen_execute';
+  }
+  if (stage.mode === 'discuss') {
+    return 'citizen_discuss';
+  }
+  return null;
+}
+
+function resolveStageAllowedActions(stage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null) {
+  if (!stage) {
+    return [];
+  }
+  if (stage.allowed_actions?.length) {
+    return stage.allowed_actions;
+  }
+  const executionKind = resolveStageExecutionKind(stage);
+  switch (executionKind) {
+    case 'craftsman_dispatch':
+      return ['dispatch_craftsman'];
+    case 'citizen_execute':
+      return ['execute'];
+    case 'human_approval':
+      return ['approve', 'reject'];
+    case 'citizen_discuss':
+      return ['discuss'];
+    default:
+      return [];
+  }
+}
+
+function readRoleDocSummary(roleDocPath: string): { summary: string; mission: string } {
+  if (!existsSync(roleDocPath)) {
+    return { summary: '', mission: '' };
+  }
+  const content = readFileSync(roleDocPath, 'utf8');
+  const frontmatter = extractFrontmatter(content);
+  const mission = extractSection(content, 'Mission');
+  return {
+    summary: frontmatter.summary ?? '',
+    mission,
+  };
+}
+
+function extractFrontmatter(content: string): Record<string, string> {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) {
+    return {};
+  }
+  const lines = (match[1] ?? '').split('\n');
+  const result: Record<string, string> = {};
+  for (const line of lines) {
+    const separator = line.indexOf(':');
+    if (separator === -1) {
+      continue;
+    }
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim().replace(/^"|"$/g, '');
+    result[key] = value;
+  }
+  return result;
+}
+
+function extractSection(content: string, heading: string) {
+  const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(\\n## |$)`);
+  const match = content.match(pattern);
+  return match?.[1]?.trim().replace(/\n+/g, ' ') ?? '';
+}
+
+function escapeYaml(value: string) {
+  return value.replaceAll('"', '\\"');
 }
