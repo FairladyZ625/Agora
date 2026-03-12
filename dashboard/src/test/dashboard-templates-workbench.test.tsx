@@ -1,7 +1,8 @@
-import { MemoryRouter } from 'react-router';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TemplatesPage } from '@/pages/TemplatesPage';
+import { TemplateGraphEditorPage } from '@/pages/TemplateGraphEditorPage';
 
 const fetchTemplates = vi.fn(async () => 'live');
 const selectTemplate = vi.fn(async () => undefined);
@@ -21,15 +22,6 @@ const templateStoreState = {
       stageCount: 4,
       stageCountLabel: '4 stages',
     },
-    {
-      id: 'research',
-      name: 'Research Task',
-      type: 'research',
-      description: '调研任务',
-      governance: 'lean',
-      stageCount: 3,
-      stageCountLabel: '3 stages',
-    },
   ],
   selectedTemplateId: 'coding',
   selectedTemplate: {
@@ -44,6 +36,20 @@ const templateStoreState = {
       { id: 'develop', name: '开发', mode: 'execute', gateType: null },
       { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
     ],
+    graph: {
+      graphVersion: 1,
+      entryNodes: ['discuss'],
+      nodes: [
+        { id: 'discuss', name: '讨论', kind: 'stage', executionKind: 'citizen_discuss', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 0, y: 0 } },
+        { id: 'develop', name: '开发', kind: 'stage', executionKind: 'citizen_execute', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 260, y: 0 } },
+        { id: 'review', name: '审查', kind: 'stage', executionKind: 'human_approval', allowedActions: [], gateType: 'approval', gateApprover: 'reviewer', gateRequired: null, gateTimeoutSec: null, layout: { x: 520, y: 0 } },
+      ],
+      edges: [
+        { id: 'discuss__advance__develop', from: 'discuss', to: 'develop', kind: 'advance' },
+        { id: 'develop__advance__review', from: 'develop', to: 'review', kind: 'advance' },
+        { id: 'review__reject__develop', from: 'review', to: 'develop', kind: 'reject' },
+      ],
+    },
     defaultTeamRoles: ['architect', 'craftsman'],
     defaultTeam: [
       { role: 'architect', memberKind: 'controller', modelPreference: null, suggested: ['opus'] },
@@ -62,122 +68,9 @@ const templateStoreState = {
 };
 
 const agentStoreState = {
-  agents: [
-    {
-      id: 'opus',
-      role: null,
-      status: 'idle',
-      presence: 'online' as const,
-      presenceReason: null,
-      channelProviders: ['discord'],
-      hostFramework: 'openclaw',
-      inventorySources: ['discord', 'openclaw'],
-      primaryModel: null,
-      workspaceDir: null,
-      accountId: 'opus',
-      activeTaskIds: [],
-      activeSubtaskIds: [],
-      taskCount: 0,
-      subtaskCount: 0,
-      load: 0,
-      lastActiveAt: null,
-      lastSeenAt: null,
-    },
-    {
-      id: 'codex',
-      role: null,
-      status: 'idle',
-      presence: 'offline' as const,
-      presenceReason: null,
-      channelProviders: ['discord'],
-      hostFramework: 'openclaw',
-      inventorySources: ['discord', 'openclaw'],
-      primaryModel: null,
-      workspaceDir: null,
-      accountId: 'codex',
-      activeTaskIds: [],
-      activeSubtaskIds: [],
-      taskCount: 0,
-      subtaskCount: 0,
-      load: 0,
-      lastActiveAt: null,
-      lastSeenAt: null,
-    },
-    {
-      id: 'sonnet',
-      role: null,
-      status: 'idle',
-      presence: 'online' as const,
-      presenceReason: null,
-      channelProviders: ['discord'],
-      hostFramework: 'openclaw',
-      inventorySources: ['discord', 'openclaw'],
-      primaryModel: null,
-      workspaceDir: null,
-      accountId: 'sonnet',
-      activeTaskIds: [],
-      activeSubtaskIds: [],
-      taskCount: 0,
-      subtaskCount: 0,
-      load: 0,
-      lastActiveAt: null,
-      lastSeenAt: null,
-    },
-  ],
+  agents: [],
   fetchStatus,
-  tmuxRuntime: {
-    session: 'agora-craftsmen',
-    panes: [
-      {
-        agent: 'claude',
-        paneId: '%0',
-        currentCommand: 'claude',
-        active: true,
-        ready: true,
-        tailPreview: null,
-        continuityBackend: 'claude_session_id' as const,
-        resumeCapability: 'native_resume' as const,
-        sessionReference: 'claude-session-1',
-        identitySource: 'session_file' as const,
-        identityPath: null,
-        sessionObservedAt: null,
-        lastRecoveryMode: 'resume_exact' as const,
-        transportSessionId: 'tmux:agora-craftsmen:claude',
-      },
-      {
-        agent: 'codex',
-        paneId: '%1',
-        currentCommand: 'codex',
-        active: true,
-        ready: true,
-        tailPreview: null,
-        continuityBackend: 'codex_session_file' as const,
-        resumeCapability: 'native_resume' as const,
-        sessionReference: 'codex-session-1',
-        identitySource: 'session_file' as const,
-        identityPath: null,
-        sessionObservedAt: null,
-        lastRecoveryMode: 'resume_exact' as const,
-        transportSessionId: 'tmux:agora-craftsmen:codex',
-      },
-      {
-        agent: 'gemini',
-        paneId: '%2',
-        currentCommand: 'gemini',
-        active: true,
-        ready: true,
-        tailPreview: null,
-        continuityBackend: 'gemini_session_id' as const,
-        resumeCapability: 'resume_last' as const,
-        sessionReference: 'gemini-session-1',
-        identitySource: 'session_file' as const,
-        identityPath: null,
-        sessionObservedAt: null,
-        lastRecoveryMode: 'resume_last' as const,
-        transportSessionId: 'tmux:agora-craftsmen:gemini',
-      },
-    ],
-  },
+  tmuxRuntime: { session: null, panes: [] },
 };
 
 vi.mock('@/stores/templateStore', () => ({
@@ -190,7 +83,7 @@ vi.mock('@/stores/agentStore', () => ({
     selector ? selector(agentStoreState) : agentStoreState,
 }));
 
-function renderPage() {
+function renderTemplatesOverview() {
   return render(
     <MemoryRouter>
       <TemplatesPage />
@@ -198,7 +91,17 @@ function renderPage() {
   );
 }
 
-describe('templates workbench layout', () => {
+function renderGraphEditor() {
+  return render(
+    <MemoryRouter initialEntries={['/templates/coding/graph']}>
+      <Routes>
+        <Route path="/templates/:templateId/graph" element={<TemplateGraphEditorPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe('templates workflow surfaces', () => {
   beforeEach(() => {
     fetchTemplates.mockClear();
     selectTemplate.mockClear();
@@ -208,246 +111,32 @@ describe('templates workbench layout', () => {
     fetchStatus.mockClear();
   });
 
-  it('uses a unified masthead and split template library/detail modules', () => {
-    renderPage();
+  it('renders the templates overview as a library + summary page with an edit workflow entry', () => {
+    renderTemplatesOverview();
 
     expect(screen.getByTestId('templates-library')).toBeInTheDocument();
     expect(screen.getByTestId('templates-detail-panel')).toBeInTheDocument();
-    expect(screen.getAllByText('Coding Task').length).toBeGreaterThan(0);
-    expect(screen.getByText('architect')).toBeInTheDocument();
     expect(screen.getByText('流程图预览')).toBeInTheDocument();
-    expect(screen.getByText('review -> develop')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '编辑流程' })).toBeInTheDocument();
   });
 
-  it('edits team preset and stage labels before saving the selected template', async () => {
-    renderPage();
+  it('edits graph node and edge properties through the dedicated workflow editor page', () => {
+    renderGraphEditor();
 
-    fireEvent.change(screen.getByLabelText('模板描述'), {
-      target: { value: '更新后的说明' },
-    });
-    fireEvent.change(screen.getByLabelText('architect 成员类型'), {
-      target: { value: 'controller' },
-    });
-    fireEvent.change(screen.getByLabelText('architect 模型偏好'), {
-      target: { value: 'strong_reasoning_v2' },
-    });
-    const architectCard = screen.getByText('architect').closest('.detail-card');
-    expect(architectCard).not.toBeNull();
-    fireEvent.click(within(architectCard as HTMLElement).getByRole('button', { name: 'sonnet' }));
-    fireEvent.change(screen.getByLabelText('阶段 develop 名称'), {
-      target: { value: '实施' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      description: '更新后的说明',
-      defaultTeam: [
-        {
-          role: 'architect',
-          memberKind: 'controller',
-          modelPreference: 'strong_reasoning_v2',
-          suggested: ['opus', 'sonnet'],
-        },
-        {
-          role: 'craftsman',
-          memberKind: 'craftsman',
-          modelPreference: 'coding_cli',
-          suggested: ['claude_code'],
-        },
-      ],
-      stages: [
-        { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
-        { id: 'develop', name: '实施', mode: 'execute', gateType: null },
-        { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
-      ],
-    }));
-  });
-
-  it('edits stage graph semantics before saving the selected template', async () => {
-    renderPage();
-
-    fireEvent.change(screen.getByLabelText('阶段 develop 模式'), {
-      target: { value: 'discuss' },
-    });
-    fireEvent.change(screen.getByLabelText('阶段 review Gate'), {
-      target: { value: 'archon_review' },
-    });
-    fireEvent.change(screen.getByLabelText('阶段 review 回退目标'), {
-      target: { value: 'discuss' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      stages: [
-        expect.objectContaining({ id: 'discuss', name: '讨论', mode: 'discuss', gateType: null }),
-        expect.objectContaining({ id: 'develop', name: '开发', mode: 'discuss', gateType: null }),
-        expect.objectContaining({ id: 'review', name: '审查', mode: 'discuss', gateType: 'archon_review', gateApprover: null, rejectTarget: 'discuss' }),
-      ],
-    }));
-    expect(screen.getByText('review -> discuss')).toBeInTheDocument();
-  });
-
-  it('edits gate parameters before saving the selected template', async () => {
-    renderPage();
-
-    fireEvent.change(screen.getByLabelText('阶段 review 审批人'), {
-      target: { value: 'archon' },
-    });
-    fireEvent.change(screen.getByLabelText('阶段 review Gate'), {
-      target: { value: 'quorum' },
-    });
-    fireEvent.change(screen.getByLabelText('阶段 review 通过票数'), {
-      target: { value: '3' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      stages: [
-        expect.objectContaining({ id: 'discuss', name: '讨论', mode: 'discuss', gateType: null }),
-        expect.objectContaining({ id: 'develop', name: '开发', mode: 'execute', gateType: null }),
-        expect.objectContaining({ id: 'review', name: '审查', mode: 'discuss', gateType: 'quorum', gateApprover: null, gateRequired: 3, rejectTarget: 'develop' }),
-      ],
-    }));
-  });
-
-  it('validates the current workflow draft and duplicates the template with a new id', async () => {
-    renderPage();
-
-    fireEvent.change(screen.getByLabelText('副本 ID'), {
-      target: { value: 'coding_copy' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '校验工作流' }));
-    fireEvent.click(screen.getByRole('button', { name: '复制模板' }));
-
-    expect(validateSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'coding',
-      stages: [
-        { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
-        { id: 'develop', name: '开发', mode: 'execute', gateType: null },
-        { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
-      ],
-    }));
-    expect(duplicateSelectedTemplate).toHaveBeenCalledWith({
-      templateId: 'coding',
-      newId: 'coding_copy',
-      name: 'Coding Task Copy',
-    });
-  });
-
-  it('shows runtime compatibility warnings for missing or unavailable suggested agents', () => {
-    renderPage();
-
-    const architectCard = screen.getByText('architect').closest('.detail-card');
-    expect(architectCard).not.toBeNull();
-    fireEvent.click(within(architectCard as HTMLElement).getByRole('button', { name: 'codex' }));
-
-    expect(screen.getByText(/运行时兼容性/i)).toBeInTheDocument();
-    expect(screen.getByText(/当前不可用: codex/i)).toBeInTheDocument();
-  });
-
-  it('blocks save when runtime compatibility issues still exist', () => {
-    renderPage();
-
-    const architectCard = screen.getByText('architect').closest('.detail-card');
-    expect(architectCard).not.toBeNull();
-    fireEvent.click(within(architectCard as HTMLElement).getByRole('button', { name: 'codex' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).not.toHaveBeenCalled();
-    expect(screen.getByText(/请先修复 runtime compatibility 问题/i)).toBeInTheDocument();
-  });
-
-  it('blocks save when the template no longer has exactly one controller', () => {
-    renderPage();
-
-    fireEvent.change(screen.getByLabelText('architect 成员类型'), {
-      target: { value: 'citizen' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).not.toHaveBeenCalled();
-    expect(screen.getByText(/请先修复 controller 配置问题/i)).toBeInTheDocument();
-    expect(screen.getByText(/必须恰好声明一个 controller/i)).toBeInTheDocument();
-  });
-
-  it('blocks save when more than one controller is selected', () => {
-    renderPage();
-
-    fireEvent.change(screen.getByLabelText('craftsman 成员类型'), {
-      target: { value: 'controller' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).not.toHaveBeenCalled();
-    expect(screen.getByText(/当前存在多个 controller/i)).toBeInTheDocument();
-  });
-
-  it('renders craftsman suggestions from tmux runtime catalog and normalizes legacy ids', () => {
-    renderPage();
-
-    const craftsmanHeading = screen.getAllByText('craftsman').find((node) => node.tagName === 'STRONG');
-    const craftsmanCard = craftsmanHeading?.closest('.detail-card') ?? null;
-    expect(craftsmanCard).not.toBeNull();
-    expect(screen.queryByText(/缺失于当前 runtime: claude_code/i)).not.toBeInTheDocument();
-    expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'claude' })).toBeInTheDocument();
-    expect(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' })).toBeInTheDocument();
-    expect(within(craftsmanCard as HTMLElement).queryByRole('button', { name: 'sonnet' })).not.toBeInTheDocument();
-  });
-
-  it('supports adding and deleting stages before saving the selected template', () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole('button', { name: '新增阶段' }));
-    fireEvent.change(screen.getByLabelText('阶段 stage_4 名称'), {
-      target: { value: '发布' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '删除阶段 develop' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      stages: [
-        expect.objectContaining({ id: 'discuss', name: '讨论' }),
-        expect.objectContaining({ id: 'review', name: '审查', rejectTarget: null }),
-        expect.objectContaining({ id: 'stage_4', name: '发布', mode: 'discuss', gateType: null }),
-      ],
-    }));
-  });
-
-  it('supports reordering stages and refreshes graph preview', () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole('button', { name: '上移阶段 review' }));
-
-    const graphPanel = screen.getByText('边').closest('.detail-card');
-    expect(graphPanel).not.toBeNull();
-    expect(within(graphPanel as HTMLElement).getByText('discuss -> review')).toBeInTheDocument();
-    expect(within(graphPanel as HTMLElement).getAllByText('review -> develop').length).toBeGreaterThanOrEqual(2);
-    expect(within(graphPanel as HTMLElement).queryByText('discuss -> develop')).not.toBeInTheDocument();
-  });
-
-  it('edits graph node and edge properties through the inspector before saving', () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole('button', { name: '讨论 discuss / stage' }));
+    fireEvent.click(screen.getByLabelText('graph node discuss'));
     fireEvent.change(screen.getByLabelText('graph node discuss name'), {
       target: { value: '讨论 v2' },
     });
     fireEvent.change(screen.getByLabelText('graph node discuss execution kind'), {
       target: { value: 'citizen_discuss' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'graph edge review develop' }));
+    fireEvent.click(screen.getByLabelText('graph edge review develop'));
     fireEvent.change(screen.getByLabelText('graph edge review__reject__develop kind'), {
       target: { value: 'advance' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
 
     expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      stages: expect.arrayContaining([
-        expect.objectContaining({
-          id: 'review',
-          rejectTarget: null,
-        }),
-      ]),
       graph: expect.objectContaining({
         nodes: expect.arrayContaining([
           expect.objectContaining({
@@ -466,14 +155,14 @@ describe('templates workbench layout', () => {
     }));
   });
 
-  it('updates entry nodes and deletes graph nodes through the inspector before saving', () => {
-    renderPage();
+  it('updates entry nodes and deletes graph nodes through the dedicated workflow editor page', () => {
+    renderGraphEditor();
 
-    fireEvent.click(screen.getByRole('button', { name: '开发 develop / stage' }));
+    fireEvent.click(screen.getByLabelText('graph node develop'));
     fireEvent.click(screen.getByLabelText('graph node develop entry'));
-    fireEvent.click(screen.getByRole('button', { name: '审查 review / stage approval' }));
+    fireEvent.click(screen.getByLabelText('graph node review'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
 
     expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
       graph: expect.objectContaining({
@@ -489,35 +178,14 @@ describe('templates workbench layout', () => {
   });
 
   it('blocks save when graph validation still reports missing entry nodes', () => {
-    renderPage();
+    renderGraphEditor();
 
-    fireEvent.click(screen.getByRole('button', { name: '讨论 discuss / stage' }));
+    fireEvent.click(screen.getByLabelText('graph node discuss'));
     fireEvent.click(screen.getByLabelText('graph node discuss entry'));
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
 
     expect(saveSelectedTemplate).not.toHaveBeenCalled();
     expect(screen.getByText(/请先修复 graph 配置问题/i)).toBeInTheDocument();
     expect(screen.getByText(/Graph must include at least one entry node/i)).toBeInTheDocument();
-  });
-
-  it('supports adding and removing team roles before saving the selected template', () => {
-    renderPage();
-
-    fireEvent.change(screen.getByLabelText('新增团队角色'), {
-      target: { value: 'reviewer' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '新增角色' }));
-    fireEvent.change(screen.getByLabelText('reviewer 成员类型'), {
-      target: { value: 'citizen' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '删除角色 craftsman' }));
-    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
-
-    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
-      defaultTeam: [
-        expect.objectContaining({ role: 'architect', memberKind: 'controller' }),
-        expect.objectContaining({ role: 'reviewer', memberKind: 'citizen', suggested: [] }),
-      ],
-    }));
   });
 });

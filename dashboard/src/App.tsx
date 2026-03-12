@@ -11,6 +11,7 @@ import { AgentsPage } from '@/pages/AgentsPage';
 import { TodosPage } from '@/pages/TodosPage';
 import { ArchivePage } from '@/pages/ArchivePage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
+import { TemplateGraphEditorPage } from '@/pages/TemplateGraphEditorPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="/todos" element={<TodosPage />} />
         <Route path="/archive" element={<ArchivePage />} />
         <Route path="/templates" element={<TemplatesPage />} />
+        <Route path="/templates/:templateId/graph" element={<TemplateGraphEditorPage />} />
         <Route path="/tasks/new" element={<CreateTaskPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/tasks/:taskId" element={<TasksPage />} />
