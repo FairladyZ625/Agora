@@ -785,6 +785,7 @@ export class TaskService {
         this.failMissingCraftsmanSessionsOnResume(taskId);
       }
       this.db.exec('COMMIT');
+      this.syncImContextForTaskState(taskId, task.state as TaskState, newState as TaskState, options.reason);
       return updated;
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -1395,6 +1396,53 @@ export class TaskService {
     }
     if (toState === TaskState.ACTIVE && fromState === TaskState.BLOCKED) {
       return options.reason ? `Task unblocked: ${options.reason}` : 'Task unblocked';
+    }
+    return null;
+  }
+
+  private syncImContextForTaskState(
+    taskId: string,
+    fromState: TaskState,
+    toState: TaskState,
+    reason?: string,
+  ) {
+    if (!this.imProvisioningPort || !this.taskContextBindingService) {
+      return;
+    }
+    const binding = this.taskContextBindingService.getLatestBinding(taskId);
+    if (!binding) {
+      return;
+    }
+    const mode = this.resolveImContextModeForStateTransition(fromState, toState);
+    if (!mode) {
+      return;
+    }
+    void this.imProvisioningPort.archiveContext({
+      binding_id: binding.id,
+      conversation_ref: binding.conversation_ref,
+      thread_ref: binding.thread_ref,
+      mode,
+      reason: reason ?? null,
+    }).then(() => {
+      this.taskContextBindingService?.updateStatus(
+        binding.id,
+        mode === 'archive' ? 'archived' : mode === 'unarchive' ? 'active' : 'destroyed',
+      );
+    }).catch((err: unknown) => {
+      console.error(`[TaskService] IM context transition failed for task ${taskId}:`, err);
+      this.taskContextBindingService?.updateStatus(binding.id, 'failed');
+    });
+  }
+
+  private resolveImContextModeForStateTransition(
+    fromState: TaskState,
+    toState: TaskState,
+  ): 'archive' | 'unarchive' | null {
+    if (toState === TaskState.PAUSED || toState === TaskState.CANCELLED) {
+      return 'archive';
+    }
+    if (fromState === TaskState.PAUSED && toState === TaskState.ACTIVE) {
+      return 'unarchive';
     }
     return null;
   }

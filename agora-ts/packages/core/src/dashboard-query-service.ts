@@ -12,6 +12,7 @@ import type {
 import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TemplateRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
+import type { IMProvisioningPort } from './im-ports.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type {
   AgentInventorySource,
@@ -19,12 +20,15 @@ import type {
   AgentProviderSignalEvent,
   PresenceSource,
 } from './runtime-ports.js';
+import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TmuxRuntimeService } from './tmux-runtime-service.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
   archiveJobNotifier?: ArchiveJobNotifier;
   archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
+  imProvisioningPort?: IMProvisioningPort;
+  taskContextBindingService?: TaskContextBindingService;
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
@@ -42,6 +46,8 @@ export class DashboardQueryService {
   private readonly templateRepository: TemplateRepository;
   private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
   private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
+  private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
@@ -64,6 +70,8 @@ export class DashboardQueryService {
     this.templateRepository.repairMemberKindsFromDir(options.templatesDir);
     this.archiveJobNotifier = options.archiveJobNotifier;
     this.archiveJobReceiptIngestor = options.archiveJobReceiptIngestor;
+    this.imProvisioningPort = options.imProvisioningPort;
+    this.taskContextBindingService = options.taskContextBindingService;
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
     this.presenceSource = options.presenceSource;
@@ -419,11 +427,15 @@ export class DashboardQueryService {
   }
 
   updateArchiveJob(jobId: number, updates: ArchiveJobStatusUpdateRequestDto): ArchiveJobDto {
-    return this.archives.updateArchiveJob(jobId, {
+    const updated = this.archives.updateArchiveJob(jobId, {
       status: updates.status,
       ...(updates.commit_hash ? { commit_hash: updates.commit_hash } : {}),
       ...(updates.error_message ? { error_message: updates.error_message } : {}),
     });
+    if (updates.status === 'synced') {
+      this.finalizeImContextForArchivedTask(updated.task_id);
+    }
+    return updated;
   }
 
   failStaleArchiveJobs(options: { timeoutMs: number; now?: Date }): ArchiveJobScanResponseDto {
@@ -458,6 +470,7 @@ export class DashboardQueryService {
       });
       processed += 1;
       if (receipt.status === 'synced') {
+        this.finalizeImContextForArchivedTask(job.task_id);
         synced += 1;
       } else {
         failed += 1;
@@ -517,6 +530,28 @@ export class DashboardQueryService {
       throw new NotFoundError(`Template ${templateId} not found`);
     }
     return stored.template;
+  }
+
+  private finalizeImContextForArchivedTask(taskId: string) {
+    if (!this.imProvisioningPort || !this.taskContextBindingService) {
+      return;
+    }
+    const binding = this.taskContextBindingService.getLatestBinding(taskId);
+    if (!binding || binding.status === 'destroyed') {
+      return;
+    }
+    void this.imProvisioningPort.archiveContext({
+      binding_id: binding.id,
+      conversation_ref: binding.conversation_ref,
+      thread_ref: binding.thread_ref,
+      mode: 'delete',
+      reason: 'archive job synced',
+    }).then(() => {
+      this.taskContextBindingService?.updateStatus(binding.id, 'destroyed');
+    }).catch((err: unknown) => {
+      console.error(`[DashboardQueryService] IM context destroy failed for task ${taskId}:`, err);
+      this.taskContextBindingService?.updateStatus(binding.id, 'failed');
+    });
   }
 }
 

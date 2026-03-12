@@ -6,7 +6,9 @@ import { createAgoraDatabase, runMigrations, ArchiveJobRepository, CraftsmanExec
 import { FileArchiveJobNotifier, FileArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
+import { StubIMProvisioningPort } from './im-ports.js';
 import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
+import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
@@ -189,6 +191,65 @@ describe('dashboard query service', () => {
       status: 'synced',
       commit_hash: 'abc123',
     });
+  });
+
+  it('destroys the archived IM context when an archive job becomes synced', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent',
+      thread_ref: 'discord-thread-destroy-1',
+    });
+    const bindings = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-ARCHIVE-CTX',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindings,
+    });
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioningPort,
+    });
+
+    taskService.createTask({
+      title: 'archive sync deletes thread',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const binding = bindings.listBindings('OC-ARCHIVE-CTX')[0];
+    expect(binding?.status).toBe('active');
+
+    taskService.cancelTask('OC-ARCHIVE-CTX', { reason: 'archive me' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(bindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('archived');
+
+    const job = queries.listArchiveJobs({ taskId: 'OC-ARCHIVE-CTX' })[0];
+    expect(job?.status).toBe('pending');
+
+    queries.updateArchiveJob(job!.id, { status: 'synced', commit_hash: 'commit-1' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(provisioningPort.archived).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          binding_id: binding?.id,
+          thread_ref: 'discord-thread-destroy-1',
+          mode: 'delete',
+        }),
+      ]),
+    );
+    expect(bindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('destroyed');
   });
 
   it('fails stale notified archive jobs through the dashboard query service scan', () => {

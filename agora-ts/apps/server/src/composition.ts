@@ -91,6 +91,8 @@ export interface ServerCompositionFactories {
       tmuxRuntimeService: TmuxRuntimeService;
       archiveJobNotifier: FileArchiveJobNotifier;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;
+      imProvisioningPort: IMProvisioningPort | undefined;
+      taskContextBindingService: TaskContextBindingService;
     },
   ) => DashboardQueryService;
   createTemplateAuthoringService: (context: ServerCompositionContext) => TemplateAuthoringService;
@@ -175,6 +177,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       templatesDir: context.templatesDir,
       archiveJobNotifier: deps.archiveJobNotifier,
       archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor,
+      taskContextBindingService: deps.taskContextBindingService,
+      ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
       liveSessions: deps.liveSessionStore,
       agentRegistry: deps.agentRegistry,
       presenceSource: deps.presenceSource,
@@ -255,6 +259,8 @@ export function buildServerComposition(
     tmuxRuntimeService,
     archiveJobNotifier,
     archiveJobReceiptIngestor,
+    imProvisioningPort,
+    taskContextBindingService,
   });
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const inboxService = factories.createInboxService(context, { taskService });

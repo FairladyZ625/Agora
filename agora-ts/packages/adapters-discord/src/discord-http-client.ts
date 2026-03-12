@@ -150,6 +150,22 @@ export class DiscordHttpClient {
     }
   }
 
+  async unarchiveThread(threadId: string): Promise<void> {
+    const res = await fetch(`${DISCORD_API}/channels/${threadId}`, {
+      method: 'PATCH',
+      headers: this.headers,
+      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+      body: JSON.stringify({
+        archived: false,
+        locked: false,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Discord unarchiveThread failed: ${res.status} ${body}`);
+    }
+  }
+
   async deleteChannel(channelId: string): Promise<void> {
     const res = await fetch(`${DISCORD_API}/channels/${channelId}`, {
       method: 'DELETE',

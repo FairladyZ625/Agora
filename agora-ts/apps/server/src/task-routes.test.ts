@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { HumanAccountService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, HumanAccountService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -403,6 +403,142 @@ describe('task routes', () => {
     expect(resume.json()).toMatchObject({ state: 'active' });
     expect(cancel.statusCode).toBe(200);
     expect(cancel.json()).toMatchObject({ state: 'cancelled' });
+  });
+
+  it('drives IM context archive/unarchive through pause, resume, and cancel routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'stub-thread-OC-CTX-ROUTE',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CTX-ROUTE',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+    const app = buildApp({ taskService });
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'route lifecycle',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'normal',
+        im_target: {
+          provider: 'discord',
+          visibility: 'private',
+          participant_refs: ['530383608410800138'],
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const pause = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-CTX-ROUTE/pause',
+      payload: { reason: 'hold' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const resume = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-CTX-ROUTE/resume',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const cancel = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-CTX-ROUTE/cancel',
+      payload: { reason: 'closed' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(create.statusCode).toBe(200);
+    expect(pause.statusCode).toBe(200);
+    expect(resume.statusCode).toBe(200);
+    expect(cancel.statusCode).toBe(200);
+    expect(provisioningPort.archived).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ mode: 'archive', thread_ref: 'stub-thread-OC-CTX-ROUTE' }),
+        expect.objectContaining({ mode: 'unarchive', thread_ref: 'stub-thread-OC-CTX-ROUTE' }),
+      ]),
+    );
+    expect(bindingService.listBindings('OC-CTX-ROUTE')[0]?.status).toBe('archived');
+  });
+
+  it('deletes the IM context when the archive job is marked synced through the route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'stub-thread-OC-CTX-DELETE',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CTX-DELETE',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+    const dashboardQueries = new DashboardQueryService(db, {
+      templatesDir,
+      taskContextBindingService: bindingService,
+      imProvisioningPort: provisioningPort,
+    });
+    const app = buildApp({ taskService, dashboardQueryService: dashboardQueries });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'route archive delete',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'normal',
+        im_target: {
+          provider: 'discord',
+          visibility: 'private',
+          participant_refs: ['530383608410800138'],
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-CTX-DELETE/cancel',
+      payload: { reason: 'closed' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const archiveJob = await app.inject({
+      method: 'GET',
+      url: '/api/archive/jobs?task_id=OC-CTX-DELETE',
+    });
+    const jobId = archiveJob.json()[0].id;
+    const synced = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${jobId}/status`,
+      payload: { status: 'synced', commit_hash: 'route-sync' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(synced.statusCode).toBe(200);
+    expect(provisioningPort.archived).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ mode: 'delete', thread_ref: 'stub-thread-OC-CTX-DELETE' }),
+      ]),
+    );
+    expect(bindingService.listBindings('OC-CTX-DELETE')[0]?.status).toBe('destroyed');
   });
 
   it('serves cleanup route for orphaned tasks', async () => {

@@ -54,7 +54,7 @@ export interface IMArchiveContextRequest {
   binding_id: string;
   conversation_ref?: string | null;
   thread_ref?: string | null;
-  mode?: 'archive' | 'delete';
+  mode?: 'archive' | 'unarchive' | 'delete';
   reason?: string | null;
 }
 

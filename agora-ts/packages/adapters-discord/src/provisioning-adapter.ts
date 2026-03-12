@@ -117,6 +117,10 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
       await this.client.deleteChannel(targetRef);
       return;
     }
+    if (input.mode === 'unarchive') {
+      await this.client.unarchiveThread(targetRef);
+      return;
+    }
     await this.client.archiveThread(targetRef);
   }
 

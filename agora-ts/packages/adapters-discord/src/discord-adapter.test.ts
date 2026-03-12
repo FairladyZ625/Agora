@@ -163,6 +163,24 @@ describe('DiscordHttpClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('unarchiveThread patches the channel as active and unlocked', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const client = new DiscordHttpClient({ botToken: 'tok' });
+    await client.unarchiveThread('thread-unarchive-1');
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-unarchive-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ archived: false, locked: false }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('deleteChannel calls Discord delete API', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
     vi.stubGlobal('fetch', mockFetch);
@@ -446,6 +464,32 @@ describe('DiscordIMProvisioningAdapter', () => {
     expect(mockFetch).toHaveBeenCalledWith(
       'https://discord.com/api/v10/channels/thread-delete-2',
       expect.objectContaining({ method: 'DELETE' }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('archiveContext unarchives the bound thread when mode=unarchive', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+    });
+
+    await adapter.archiveContext({
+      binding_id: 'bind-unarchive-1',
+      thread_ref: 'thread-unarchive-2',
+      mode: 'unarchive',
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://discord.com/api/v10/channels/thread-unarchive-2',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ archived: false, locked: false }),
+      }),
     );
 
     vi.unstubAllGlobals();

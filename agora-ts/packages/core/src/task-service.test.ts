@@ -1519,6 +1519,79 @@ describe('task service', () => {
     );
   });
 
+  it('archives the bound IM context on pause/cancel and restores the same context on resume', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-ctx-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CTX-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Context lifecycle test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const createdBinding = bindingService.listBindings('OC-CTX-1')[0];
+    expect(createdBinding?.thread_ref).toBe('discord-thread-ctx-1');
+
+    service.pauseTask('OC-CTX-1', { reason: 'hold for review' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(provisioningPort.archived).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          binding_id: createdBinding?.id,
+          thread_ref: 'discord-thread-ctx-1',
+          mode: 'archive',
+        }),
+      ]),
+    );
+    expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
+
+    service.resumeTask('OC-CTX-1');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(provisioningPort.archived).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          binding_id: createdBinding?.id,
+          thread_ref: 'discord-thread-ctx-1',
+          mode: 'unarchive',
+        }),
+      ]),
+    );
+    expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('active');
+
+    service.cancelTask('OC-CTX-1', { reason: 'manual stop' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(provisioningPort.archived).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          binding_id: createdBinding?.id,
+          thread_ref: 'discord-thread-ctx-1',
+          mode: 'archive',
+        }),
+      ]),
+    );
+    expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
+  });
+
   it('applies team/workflow overrides when creating a task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
