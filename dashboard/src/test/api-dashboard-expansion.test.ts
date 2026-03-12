@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+function expectFetchCall(path: string, init: Record<string, unknown>) {
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    expect.stringContaining(path),
+    expect.objectContaining(init),
+  );
+}
+
 function buildTaskResponse() {
   return {
     id: 'OC-001',
@@ -298,6 +305,12 @@ describe('dashboard expansion api client', () => {
               type: 'coding_copy',
               description: 'template copy',
               defaultWorkflow: 'linear',
+              defaultTeam: {
+                architect: {
+                  member_kind: 'controller',
+                  suggested: ['opus'],
+                },
+              },
               stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
             },
           };
@@ -310,6 +323,12 @@ describe('dashboard expansion api client', () => {
               name: 'workflow',
               type: 'workflow',
               defaultWorkflow: 'linear',
+              defaultTeam: {
+                architect: {
+                  member_kind: 'controller',
+                  suggested: ['opus'],
+                },
+              },
               stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
             },
           };
@@ -320,7 +339,13 @@ describe('dashboard expansion api client', () => {
             type: 'coding',
             description: 'template',
             defaultWorkflow: 'linear',
-            stages: [{ id: 'draft' }],
+            defaultTeam: {
+              architect: {
+                member_kind: 'controller',
+                suggested: ['opus'],
+              },
+            },
+            stages: [{ id: 'draft', name: 'Draft', mode: 'discuss' }],
           };
         }
         return {};
@@ -345,77 +370,34 @@ describe('dashboard expansion api client', () => {
     await api.scanStaleArchiveJobs(60_000);
     await api.scanArchiveJobReceipts();
 
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/agents/status',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/agents/channels/discord',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/craftsmen/tmux/tail/codex?lines=20',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs?status=failed&task_id=OC-001',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/7',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/7/retry',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ reason: 'manual retry' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/7/notify',
-      expect.objectContaining({
-        method: 'POST',
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/7/status',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ status: 'notified' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/7/status',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ status: 'failed', error_message: 'writer timeout' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/7/status',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ status: 'synced', commit_hash: 'abc123' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/scan-stale',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ timeout_ms: 60000 }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/archive/jobs/scan-receipts',
-      expect.objectContaining({
-        method: 'POST',
-      }),
-    );
+    expectFetchCall('/api/agents/status', { method: 'GET' });
+    expectFetchCall('/api/agents/channels/discord', { method: 'GET' });
+    expectFetchCall('/api/craftsmen/tmux/tail/codex?lines=20', { method: 'GET' });
+    expectFetchCall('/api/archive/jobs', { method: 'GET' });
+    expectFetchCall('/api/archive/jobs?status=failed&task_id=OC-001', { method: 'GET' });
+    expectFetchCall('/api/archive/jobs/7', { method: 'GET' });
+    expectFetchCall('/api/archive/jobs/7/retry', {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'manual retry' }),
+    });
+    expectFetchCall('/api/archive/jobs/7/notify', { method: 'POST' });
+    expectFetchCall('/api/archive/jobs/7/status', {
+      method: 'POST',
+      body: JSON.stringify({ status: 'notified' }),
+    });
+    expectFetchCall('/api/archive/jobs/7/status', {
+      method: 'POST',
+      body: JSON.stringify({ status: 'failed', error_message: 'writer timeout' }),
+    });
+    expectFetchCall('/api/archive/jobs/7/status', {
+      method: 'POST',
+      body: JSON.stringify({ status: 'synced', commit_hash: 'abc123' }),
+    });
+    expectFetchCall('/api/archive/jobs/scan-stale', {
+      method: 'POST',
+      body: JSON.stringify({ timeout_ms: 60000 }),
+    });
+    expectFetchCall('/api/archive/jobs/scan-receipts', { method: 'POST' });
   });
 
   it('targets todo CRUD and promote routes with the expected payloads', async () => {
@@ -428,39 +410,21 @@ describe('dashboard expansion api client', () => {
     await api.deleteTodo(3);
     await api.promoteTodo(3, { type: 'quick', creator: 'archon', priority: 'high' });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/todos',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/todos?status=done',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/todos',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ text: '补前端页面', due: '2026-03-09', tags: ['dashboard'] }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/todos/3',
-      expect.objectContaining({
-        method: 'PATCH',
-        body: JSON.stringify({ text: '补前端页面 v2', status: 'done' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/todos/3',
-      expect.objectContaining({ method: 'DELETE' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/todos/3/promote',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ type: 'quick', creator: 'archon', priority: 'high' }),
-      }),
-    );
+    expectFetchCall('/api/todos', { method: 'GET' });
+    expectFetchCall('/api/todos?status=done', { method: 'GET' });
+    expectFetchCall('/api/todos', {
+      method: 'POST',
+      body: JSON.stringify({ text: '补前端页面', due: '2026-03-09', tags: ['dashboard'] }),
+    });
+    expectFetchCall('/api/todos/3', {
+      method: 'PATCH',
+      body: JSON.stringify({ text: '补前端页面 v2', status: 'done' }),
+    });
+    expectFetchCall('/api/todos/3', { method: 'DELETE' });
+    expectFetchCall('/api/todos/3/promote', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'quick', creator: 'archon', priority: 'high' }),
+    });
   });
 
   it('loads template summaries and full template details from the real backend routes', async () => {
@@ -476,6 +440,7 @@ describe('dashboard expansion api client', () => {
       defaultWorkflow: 'linear',
       defaultTeam: {
         architect: {
+          member_kind: 'controller',
           model_preference: 'strong_reasoning',
           suggested: ['opus', 'codex'],
         },
@@ -484,15 +449,15 @@ describe('dashboard expansion api client', () => {
     });
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/templates',
+      expect.stringMatching(/\/api\/templates$/),
       expect.objectContaining({ method: 'GET' }),
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/templates/coding',
+      expect.stringMatching(/\/api\/templates\/coding$/),
       expect.objectContaining({ method: 'GET' }),
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/templates/coding',
+      expect.stringMatching(/\/api\/templates\/coding$/),
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({
@@ -503,6 +468,7 @@ describe('dashboard expansion api client', () => {
           defaultWorkflow: 'linear',
           defaultTeam: {
             architect: {
+              member_kind: 'controller',
               model_preference: 'strong_reasoning',
               suggested: ['opus', 'codex'],
             },
@@ -526,7 +492,7 @@ describe('dashboard expansion api client', () => {
     });
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/templates/coding/duplicate',
+      expect.stringMatching(/\/api\/templates\/coding\/duplicate$/),
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -536,7 +502,7 @@ describe('dashboard expansion api client', () => {
       }),
     );
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/workflows/validate',
+      expect.stringMatching(/\/api\/workflows\/validate$/),
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({

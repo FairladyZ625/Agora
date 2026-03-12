@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, RefreshCcw, UserCog, UserPlus } from 'lucide-react';
 import type { ApiDashboardUserListDto } from '@/types/api';
 import * as api from '@/lib/api';
@@ -30,7 +30,7 @@ export function HumanAccountsPanel({
   const [identityDrafts, setIdentityDrafts] = useState<Record<string, { provider: string; external_user_id: string }>>({});
   const [pendingAction, setPendingAction] = useState<string | null>(null);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     if (!isAdmin) {
       setUsers([]);
       setLoadError(null);
@@ -50,11 +50,11 @@ export function HumanAccountsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin, settingsPageCopy.operationMessages.loadFailedTitle, showMessage]);
 
   useEffect(() => {
     void loadUsers();
-  }, [isAdmin]);
+  }, [loadUsers]);
 
   const handleCreateUser = async () => {
     setPendingAction('create');

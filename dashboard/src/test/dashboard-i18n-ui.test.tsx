@@ -77,6 +77,29 @@ vi.mock('@/stores/feedbackStore', () => ({
   }),
 }));
 
+vi.mock('@/stores/sessionStore', () => ({
+  useSessionStore: (selector?: (state: {
+    authenticated: boolean;
+    status: string;
+    username: string;
+    role: string;
+    refresh: () => Promise<string>;
+    logout: () => Promise<void>;
+    error: string | null;
+  }) => unknown) => {
+    const state = {
+      authenticated: true,
+      status: 'ready',
+      username: 'admin',
+      role: 'admin',
+      refresh: vi.fn(async () => 'live'),
+      logout: vi.fn(async () => undefined),
+      error: null,
+    };
+    return selector ? selector(state) : state;
+  },
+}));
+
 describe('dashboard English UI', () => {
   beforeEach(async () => {
     await setLocale('en-US');

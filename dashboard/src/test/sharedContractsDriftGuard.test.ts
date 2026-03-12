@@ -35,6 +35,7 @@ describe('shared contracts drift guard', () => {
         priority: 'normal',
         creator: 'archon',
         state: 'active',
+        archive_status: null,
         current_stage: 'execute',
         team: { members: [] },
         workflow: { stages: [] },

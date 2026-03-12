@@ -8,6 +8,8 @@ import type { HumanAccountService } from '@agora-ts/core';
 export interface RunInitCommandOptions {
   humanAccountService?: HumanAccountService;
   bundledSkillsDir?: string;
+  bundledBrainPackDir?: string;
+  userAgoraDir?: string;
   userSkillsDir?: string;
 }
 
@@ -60,13 +62,15 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
       },
     };
     saveGlobalConfig(config);
-    installBundledAgoraSkills(options);
+    installBundledAgoraAssets(options);
     options.humanAccountService?.bootstrapAdmin({
       username: adminUsername.trim(),
       password: adminPassword,
     });
     console.log('\n配置已保存（无 IM 集成）');
-    console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserSkillsDir(options)}`);
+    console.log(`  Agora Home: ${resolveUserAgoraDir(options)}`);
+    console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserAgoraSkillDir(options)}`);
+    console.log(`  Agent Auto-Scan Skill: 已同步到 ${resolveUserSkillsDir(options)}`);
     return;
   }
 
@@ -117,7 +121,7 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   };
 
   saveGlobalConfig(config);
-  installBundledAgoraSkills(options);
+  installBundledAgoraAssets(options);
   if (options.humanAccountService) {
     options.humanAccountService.bootstrapAdmin({
       username: adminUsername.trim(),
@@ -136,7 +140,9 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   console.log(`  默认频道: ${defaultChannelId.trim()}`);
   console.log(`  创建任务时建 thread: ${notifyOnTaskCreate ? '是' : '否'}`);
   console.log(`  Dashboard Session: 已启用`);
-  console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserSkillsDir(options)}`);
+  console.log(`  Agora Home: ${resolveUserAgoraDir(options)}`);
+  console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserAgoraSkillDir(options)}`);
+  console.log(`  Agent Auto-Scan Skill: 已同步到 ${resolveUserSkillsDir(options)}`);
   console.log(`  管理员: ${adminUsername.trim()}`);
   if (discordHumanUserId.trim()) {
     console.log(`  管理员 Discord 用户 ID: ${discordHumanUserId.trim()}`);
@@ -147,19 +153,48 @@ function resolveBundledSkillsDir(options: RunInitCommandOptions) {
   return options.bundledSkillsDir ?? resolve(dirname(new URL(import.meta.url).pathname), '../../../../.skills');
 }
 
+function resolveBundledBrainPackDir(options: RunInitCommandOptions) {
+  return options.bundledBrainPackDir ?? resolve(dirname(new URL(import.meta.url).pathname), '../../../../agora-ai-brain');
+}
+
+function resolveUserAgoraDir(options: RunInitCommandOptions) {
+  return options.userAgoraDir ?? resolve(homedir(), '.agora');
+}
+
+function resolveUserAgoraSkillDir(options: RunInitCommandOptions) {
+  return resolve(resolveUserAgoraDir(options), 'skills', 'agora-bootstrap');
+}
+
 function resolveUserSkillsDir(options: RunInitCommandOptions) {
   return options.userSkillsDir ?? resolve(homedir(), '.agents/skills');
 }
 
-function installBundledAgoraSkills(options: RunInitCommandOptions) {
+function installBundledAgoraAssets(options: RunInitCommandOptions) {
   const sourceDir = resolve(resolveBundledSkillsDir(options), 'agora-bootstrap');
-  if (!existsSync(sourceDir)) {
-    return;
+  const userAgoraDir = resolveUserAgoraDir(options);
+  mkdirSync(userAgoraDir, { recursive: true });
+
+  if (existsSync(sourceDir)) {
+    const agoraSkillDir = resolveUserAgoraSkillDir(options);
+    mkdirSync(resolve(userAgoraDir, 'skills'), { recursive: true });
+    cpSync(sourceDir, agoraSkillDir, {
+      recursive: true,
+      force: true,
+    });
+
+    const userSkillsDir = resolveUserSkillsDir(options);
+    mkdirSync(userSkillsDir, { recursive: true });
+    cpSync(sourceDir, resolve(userSkillsDir, 'agora-bootstrap'), {
+      recursive: true,
+      force: true,
+    });
   }
-  const userSkillsDir = resolveUserSkillsDir(options);
-  mkdirSync(userSkillsDir, { recursive: true });
-  cpSync(sourceDir, resolve(userSkillsDir, 'agora-bootstrap'), {
-    recursive: true,
-    force: true,
-  });
+
+  const bundledBrainPackDir = resolveBundledBrainPackDir(options);
+  if (existsSync(bundledBrainPackDir)) {
+    cpSync(bundledBrainPackDir, resolve(userAgoraDir, 'agora-ai-brain'), {
+      recursive: true,
+      force: true,
+    });
+  }
 }

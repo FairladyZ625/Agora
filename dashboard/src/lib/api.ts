@@ -90,7 +90,8 @@ async function request<T>(path: string, schema: ZodType<T>, init?: RequestInit):
     headers['Authorization'] = `Bearer ${apiToken}`;
   }
 
-  const res = await fetch(`${apiBase}${path}`, {
+  const url = resolveRequestUrl(`${apiBase}${path}`);
+  const res = await fetch(url, {
     method: init?.method ?? 'GET',
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
@@ -103,6 +104,16 @@ async function request<T>(path: string, schema: ZodType<T>, init?: RequestInit):
 
   const json = await res.json();
   return schema.parse(json);
+}
+
+function resolveRequestUrl(input: string) {
+  if (/^https?:\/\//i.test(input)) {
+    return input;
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return new URL(input, window.location.origin).toString();
+  }
+  return input;
 }
 
 // ── Task APIs ────────────────────────────────────

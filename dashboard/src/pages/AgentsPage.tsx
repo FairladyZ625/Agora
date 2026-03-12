@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
@@ -109,10 +109,11 @@ export function AgentsPage() {
 
   const [activeDrawer, setActiveDrawer] = useState<DrawerAxis>(null);
   const [channelTab, setChannelTab] = useState<ChannelDetailTab>('summary');
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(() => channelFilter ?? channelSummaries[0]?.channel ?? null);
+  const [manualSelectedChannelId, setManualSelectedChannelId] = useState<string | null>(null);
+  const selectedChannelId = channelFilter ?? manualSelectedChannelId ?? channelSummaries[0]?.channel ?? null;
 
   const channelDetailStaleAfterMs = Math.max(refreshInterval * 3_000, MIN_CHANNEL_DETAIL_STALE_AFTER_MS);
-  const isChannelDetailStale = useEffectEvent((channel: string | null) => {
+  const isChannelDetailStale = useCallback((channel: string | null) => {
     if (!channel) {
       return false;
     }
@@ -121,17 +122,7 @@ export function AgentsPage() {
       return true;
     }
     return Date.now() - fetchedAt >= channelDetailStaleAfterMs;
-  });
-
-  useEffect(() => {
-    if (channelFilter) {
-      setSelectedChannelId(channelFilter);
-      return;
-    }
-    if (!selectedChannelId && channelSummaries[0]?.channel) {
-      setSelectedChannelId(channelSummaries[0].channel);
-    }
-  }, [channelFilter, channelSummaries, selectedChannelId]);
+  }, [channelDetailFetchedAt, channelDetailStaleAfterMs, channelDetails]);
 
   useEffect(() => {
     void fetchStatus();
@@ -170,10 +161,10 @@ export function AgentsPage() {
     void fetchChannelDetail(selectedChannelId);
   }, [fetchChannelDetail, isChannelDetailStale, selectedChannelId]);
 
-  const selectChannel = (channel: string) => {
-    setSelectedChannelId(channel);
+  const selectChannel = useCallback((channel: string) => {
+    setManualSelectedChannelId(channel);
     setChannelFilter(channel);
-  };
+  }, [setChannelFilter]);
 
   const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
   const selectedChannel = useMemo(
@@ -302,7 +293,7 @@ export function AgentsPage() {
       });
     }
     return groups;
-  }, [copy.workspace.issueGroups, criticalAgents, degradedChannels, failedCraftsmen, setCraftsmenFilter, setPresenceFilter, staleAgents, unhealthyPanes]);
+  }, [copy.workspace.issueGroups, criticalAgents, degradedChannels, failedCraftsmen, selectChannel, setCraftsmenFilter, setPresenceFilter, staleAgents, unhealthyPanes]);
 
   const globalSignals = [
     {

@@ -57,16 +57,23 @@ describe('runInitCommand', () => {
     promptState.inputs = ['admin', 'secret-pass'];
     const bootstrapAdmin = vi.fn();
     const bundledSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-src-'));
+    const bundledBrainPackDir = mkdtempSync(join(tmpdir(), 'agora-init-brain-src-'));
+    const userAgoraDir = mkdtempSync(join(tmpdir(), 'agora-init-home-'));
     const userSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-dst-'));
-    tempPaths.push(bundledSkillsDir, userSkillsDir);
+    tempPaths.push(bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userSkillsDir);
     mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
     writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
+    mkdirSync(join(bundledBrainPackDir, 'roles'), { recursive: true });
+    writeFileSync(join(bundledBrainPackDir, 'README.md'), '# brain\n');
+    writeFileSync(join(bundledBrainPackDir, 'roles', 'controller.md'), '# controller\n');
 
     await runInitCommand({
       humanAccountService: {
         bootstrapAdmin,
       } as never,
       bundledSkillsDir,
+      bundledBrainPackDir,
+      userAgoraDir,
       userSkillsDir,
     });
 
@@ -81,6 +88,8 @@ describe('runInitCommand', () => {
       username: 'admin',
       password: 'secret-pass',
     });
+    expect(existsSync(join(userAgoraDir, 'skills', 'agora-bootstrap', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'roles', 'controller.md'))).toBe(true);
     expect(existsSync(join(userSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
     expect(readFileSync(join(userSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
   });

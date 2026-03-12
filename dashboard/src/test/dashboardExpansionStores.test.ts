@@ -514,6 +514,7 @@ describe('dashboard expansion stores', () => {
         defaultWorkflow: 'linear',
         defaultTeam: {
           architect: {
+            member_kind: 'controller',
             model_preference: 'strong_reasoning',
             suggested: ['opus', 'codex'],
           },
@@ -531,7 +532,7 @@ describe('dashboard expansion stores', () => {
       stageCount: 1,
       stages: [{ id: 'develop', name: '实现', mode: 'execute', gateType: null }],
       defaultTeamRoles: ['architect'],
-      defaultTeam: [{ role: 'architect', modelPreference: 'strong_reasoning', suggested: ['opus', 'codex'] }],
+      defaultTeam: [{ role: 'architect', memberKind: 'controller', modelPreference: 'strong_reasoning', suggested: ['opus', 'codex'] }],
       raw: {},
     });
 
@@ -540,12 +541,13 @@ describe('dashboard expansion stores', () => {
       name: 'Coding Task v2',
       description: '更新后的模板',
       governance: 'standard',
-      defaultTeam: {
-        architect: {
-          model_preference: 'strong_reasoning',
-          suggested: ['opus', 'codex'],
+        defaultTeam: {
+          architect: {
+            member_kind: 'controller',
+            model_preference: 'strong_reasoning',
+            suggested: ['opus', 'codex'],
+          },
         },
-      },
       stages: [{ id: 'develop', name: '实现', mode: 'execute' }],
     });
     expect(useTemplateStore.getState().selectedTemplate?.name).toBe('Coding Task v2');
@@ -573,7 +575,7 @@ describe('dashboard expansion stores', () => {
       stageCount: 1,
       stages: [{ id: 'develop', name: '实现', mode: 'execute', gateType: null }],
       defaultTeamRoles: [],
-      defaultTeam: [],
+      defaultTeam: [{ role: 'architect', memberKind: 'controller', modelPreference: null, suggested: ['opus'] }],
       raw: {},
     });
 

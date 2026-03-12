@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+function expectFetchCall(path: string, init: Record<string, unknown>) {
+  expect(globalThis.fetch).toHaveBeenCalledWith(
+    expect.stringContaining(path),
+    expect.objectContaining(init),
+  );
+}
+
 describe('dashboard session and user api client', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -51,34 +58,19 @@ describe('dashboard session and user api client', () => {
     await api.createDashboardUser({ username: 'alice', password: 'alice-pass' });
     await api.bindDashboardUserIdentity('alice', { provider: 'discord', external_user_id: 'discord-user-123' });
 
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/dashboard/session',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/dashboard/session/login',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ username: 'lizeyu', password: 'secret-pass' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/dashboard/users',
-      expect.objectContaining({ method: 'GET' }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/dashboard/users',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ username: 'alice', password: 'alice-pass' }),
-      }),
-    );
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      '/api/dashboard/users/alice/identities',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ provider: 'discord', external_user_id: 'discord-user-123' }),
-      }),
-    );
+    expectFetchCall('/api/dashboard/session', { method: 'GET' });
+    expectFetchCall('/api/dashboard/session/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: 'lizeyu', password: 'secret-pass' }),
+    });
+    expectFetchCall('/api/dashboard/users', { method: 'GET' });
+    expectFetchCall('/api/dashboard/users', {
+      method: 'POST',
+      body: JSON.stringify({ username: 'alice', password: 'alice-pass' }),
+    });
+    expectFetchCall('/api/dashboard/users/alice/identities', {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'discord', external_user_id: 'discord-user-123' }),
+    });
   });
 });

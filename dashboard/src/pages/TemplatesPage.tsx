@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
 import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 import { evaluateTemplateControllerTopology, evaluateTemplateRuntimeCompatibility } from '@/lib/templateRuntimeCompatibility';
@@ -98,11 +98,12 @@ export function TemplatesPage() {
   const agents = useAgentStore((state) => state.agents);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
-  const [draft, setDraft] = useState<TemplateDetail | null>(null);
-  const [duplicateId, setDuplicateId] = useState('');
-  const [roleToAdd, setRoleToAdd] = useState('');
-  const [showCompatibilitySaveError, setShowCompatibilitySaveError] = useState(false);
-  const [showControllerSaveError, setShowControllerSaveError] = useState(false);
+  const [draftState, setDraftState] = useState<TemplateDetail | null>(null);
+  const [duplicateDraft, setDuplicateDraft] = useState<{ templateId: string | null; value: string }>({ templateId: null, value: '' });
+  const [roleSelection, setRoleSelection] = useState<{ templateId: string | null; value: string }>({ templateId: null, value: '' });
+  const [compatibilitySaveErrorState, setCompatibilitySaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
+  const [controllerSaveErrorState, setControllerSaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
+  const currentTemplateId = selectedTemplate?.id ?? null;
 
   useEffect(() => {
     void fetchTemplates();
@@ -115,13 +116,48 @@ export function TemplatesPage() {
     }
   }, [selectedTemplateId, selectTemplate, templates]);
 
-  useEffect(() => {
-    setDraft(selectedTemplate ? cloneTemplateDetail(selectedTemplate) : null);
-    setDuplicateId(selectedTemplate ? `${selectedTemplate.id}_copy` : '');
-    setRoleToAdd('');
-    setShowCompatibilitySaveError(false);
-    setShowControllerSaveError(false);
-  }, [selectedTemplate]);
+  const draft = useMemo(
+    () => {
+      if (draftState && draftState.id === currentTemplateId) {
+        return draftState;
+      }
+      return selectedTemplate ? cloneTemplateDetail(selectedTemplate) : null;
+    },
+    [currentTemplateId, draftState, selectedTemplate],
+  );
+  const duplicateId = duplicateDraft.templateId === currentTemplateId
+    ? duplicateDraft.value
+    : (selectedTemplate ? `${selectedTemplate.id}_copy` : '');
+  const roleToAdd = roleSelection.templateId === currentTemplateId ? roleSelection.value : '';
+  const showCompatibilitySaveError = compatibilitySaveErrorState.templateId === currentTemplateId
+    ? compatibilitySaveErrorState.value
+    : false;
+  const showControllerSaveError = controllerSaveErrorState.templateId === currentTemplateId
+    ? controllerSaveErrorState.value
+    : false;
+
+  const updateDraft = (transform: (current: TemplateDetail) => TemplateDetail) => {
+    if (!draft || !currentTemplateId) {
+      return;
+    }
+    setDraftState(transform(draft));
+  };
+
+  const setDuplicateId = (value: string) => {
+    setDuplicateDraft({ templateId: currentTemplateId, value });
+  };
+
+  const setRoleToAdd = (value: string) => {
+    setRoleSelection({ templateId: currentTemplateId, value });
+  };
+
+  const setShowCompatibilitySaveError = (value: boolean) => {
+    setCompatibilitySaveErrorState({ templateId: currentTemplateId, value });
+  };
+
+  const setShowControllerSaveError = (value: boolean) => {
+    setControllerSaveErrorState({ templateId: currentTemplateId, value });
+  };
 
   const handleSave = async () => {
     if (!draft) {
@@ -171,47 +207,37 @@ export function TemplatesPage() {
     : TEAM_ROLE_OPTIONS;
 
   const toggleSuggestedAgent = (role: string, agentId: string) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      return {
-        ...current,
-        defaultTeam: current.defaultTeam.map((item) => {
-          if (item.role !== role) {
-            return item;
-          }
-          const alreadySelected = item.suggested.some((value) => (
-            normalizeRoleBindingId(item.role, value, item.memberKind) === normalizeRoleBindingId(item.role, agentId, item.memberKind)
-          ));
-          return {
-            ...item,
-            suggested: alreadySelected
-              ? item.suggested.filter((value) => normalizeRoleBindingId(item.role, value, item.memberKind) !== normalizeRoleBindingId(item.role, agentId, item.memberKind))
-              : [...item.suggested, normalizeRoleBindingId(item.role, agentId, item.memberKind)],
-          };
-        }),
-      };
-    });
+    updateDraft((current) => ({
+      ...current,
+      defaultTeam: current.defaultTeam.map((item) => {
+        if (item.role !== role) {
+          return item;
+        }
+        const alreadySelected = item.suggested.some((value) => (
+          normalizeRoleBindingId(item.role, value, item.memberKind) === normalizeRoleBindingId(item.role, agentId, item.memberKind)
+        ));
+        return {
+          ...item,
+          suggested: alreadySelected
+            ? item.suggested.filter((value) => normalizeRoleBindingId(item.role, value, item.memberKind) !== normalizeRoleBindingId(item.role, agentId, item.memberKind))
+            : [...item.suggested, normalizeRoleBindingId(item.role, agentId, item.memberKind)],
+        };
+      }),
+    }));
   };
 
   const removeMissingSuggestedAgent = (role: string, agentId: string) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      return {
-        ...current,
-        defaultTeam: current.defaultTeam.map((item) => (
-          item.role === role
-            ? {
-                ...item,
-                suggested: item.suggested.filter((value) => value !== agentId),
-              }
-            : item
-        )),
-      };
-    });
+    updateDraft((current) => ({
+      ...current,
+      defaultTeam: current.defaultTeam.map((item) => (
+        item.role === role
+          ? {
+              ...item,
+              suggested: item.suggested.filter((value) => value !== agentId),
+            }
+          : item
+      )),
+    }));
   };
 
   return (
@@ -291,14 +317,10 @@ export function TemplatesPage() {
                     aria-label={copy.descriptionLabel}
                     className="textarea-shell"
                     value={draft.description}
-                    onChange={(event) => setDraft((current) => (
-                      current
-                        ? {
-                            ...current,
-                            description: event.target.value,
-                          }
-                        : current
-                    ))}
+                    onChange={(event) => updateDraft((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))}
                   />
                 </label>
               </div>
@@ -362,8 +384,8 @@ export function TemplatesPage() {
                       className="button-secondary"
                       disabled={!draft || roleToAdd.length === 0}
                       onClick={() => {
-                        setDraft((current) => {
-                          if (!current || roleToAdd.length === 0 || current.defaultTeam.some((member) => member.role === roleToAdd)) {
+                        updateDraft((current) => {
+                          if (roleToAdd.length === 0 || current.defaultTeam.some((member) => member.role === roleToAdd)) {
                             return current;
                           }
                           const hasController = current.defaultTeam.some((member) => member.memberKind === 'controller');
@@ -405,15 +427,11 @@ export function TemplatesPage() {
                         type="button"
                         className="button-secondary"
                         aria-label={copy.removeRoleAria(member.role)}
-                        onClick={() => setDraft((current) => (
-                          current
-                            ? {
-                                ...current,
-                                defaultTeamRoles: current.defaultTeamRoles.filter((role) => role !== member.role),
-                                defaultTeam: current.defaultTeam.filter((item) => item.role !== member.role),
-                              }
-                            : current
-                        ))}
+                        onClick={() => updateDraft((current) => ({
+                          ...current,
+                          defaultTeamRoles: current.defaultTeamRoles.filter((role) => role !== member.role),
+                          defaultTeam: current.defaultTeam.filter((item) => item.role !== member.role),
+                        }))}
                       >
                         {copy.deleteRoleAction}
                       </button>
@@ -424,21 +442,17 @@ export function TemplatesPage() {
                         aria-label={`${member.role} ${copy.memberKindLabel}`}
                         className="input-shell"
                         value={member.memberKind ?? 'citizen'}
-                        onChange={(event) => setDraft((current) => (
-                          current
-                            ? {
-                                ...current,
-                                defaultTeam: current.defaultTeam.map((item) => (
-                                  item.role === member.role
-                                    ? {
-                                        ...item,
-                                        memberKind: event.target.value as TemplateDetail['defaultTeam'][number]['memberKind'],
-                                      }
-                                    : item
-                                )),
-                              }
-                            : current
-                        ))}
+                        onChange={(event) => updateDraft((current) => ({
+                          ...current,
+                          defaultTeam: current.defaultTeam.map((item) => (
+                            item.role === member.role
+                              ? {
+                                  ...item,
+                                  memberKind: event.target.value as TemplateDetail['defaultTeam'][number]['memberKind'],
+                                }
+                              : item
+                          )),
+                        }))}
                       >
                         {TEAM_MEMBER_KIND_OPTIONS.map((option) => (
                           <option key={`${member.role}-member-kind-${option}`} value={option}>{option}</option>
@@ -452,21 +466,17 @@ export function TemplatesPage() {
                         className="input-shell"
                         type="text"
                         value={member.modelPreference ?? ''}
-                        onChange={(event) => setDraft((current) => (
-                          current
-                            ? {
-                                ...current,
-                                defaultTeam: current.defaultTeam.map((item) => (
-                                  item.role === member.role
-                                    ? {
-                                        ...item,
-                                        modelPreference: event.target.value.trim().length > 0 ? event.target.value : null,
-                                      }
-                                    : item
-                                )),
-                              }
-                            : current
-                        ))}
+                        onChange={(event) => updateDraft((current) => ({
+                          ...current,
+                          defaultTeam: current.defaultTeam.map((item) => (
+                            item.role === member.role
+                              ? {
+                                  ...item,
+                                  modelPreference: event.target.value.trim().length > 0 ? event.target.value : null,
+                                }
+                              : item
+                          )),
+                        }))}
                       />
                     </label>
                     <label className="space-y-2">
@@ -533,26 +543,22 @@ export function TemplatesPage() {
                   <button
                     type="button"
                     className="button-secondary"
-                    onClick={() => setDraft((current) => (
-                      current
-                        ? {
-                            ...current,
-                            stages: [
-                              ...current.stages,
-                              {
-                                id: createNextStageId(current.stages),
-                                name: '新阶段',
-                                mode: 'discuss',
-                                gateType: null,
-                                gateApprover: null,
-                                gateRequired: null,
-                                gateTimeoutSec: null,
-                                rejectTarget: null,
-                              },
-                            ],
-                          }
-                        : current
-                    ))}
+                    onClick={() => updateDraft((current) => ({
+                      ...current,
+                      stages: [
+                        ...current.stages,
+                        {
+                          id: createNextStageId(current.stages),
+                          name: '新阶段',
+                          mode: 'discuss',
+                          gateType: null,
+                          gateApprover: null,
+                          gateRequired: null,
+                          gateTimeoutSec: null,
+                          rejectTarget: null,
+                        },
+                      ],
+                    }))}
                   >
                     {copy.addStageAction}
                   </button>
@@ -567,14 +573,10 @@ export function TemplatesPage() {
                             className="button-secondary"
                             aria-label={copy.stageMoveUpAria(stage.id)}
                             disabled={stageIndex === 0}
-                            onClick={() => setDraft((current) => (
-                              current
-                                ? {
-                                    ...current,
-                                    stages: moveStage(current.stages, stageIndex, -1),
-                                  }
-                                : current
-                            ))}
+                            onClick={() => updateDraft((current) => ({
+                              ...current,
+                              stages: moveStage(current.stages, stageIndex, -1),
+                            }))}
                           >
                             {copy.moveStageUpAction}
                           </button>
@@ -583,14 +585,10 @@ export function TemplatesPage() {
                             className="button-secondary"
                             aria-label={copy.stageMoveDownAria(stage.id)}
                             disabled={stageIndex === draft.stages.length - 1}
-                            onClick={() => setDraft((current) => (
-                              current
-                                ? {
-                                    ...current,
-                                    stages: moveStage(current.stages, stageIndex, 1),
-                                  }
-                                : current
-                            ))}
+                            onClick={() => updateDraft((current) => ({
+                              ...current,
+                              stages: moveStage(current.stages, stageIndex, 1),
+                            }))}
                           >
                             {copy.moveStageDownAction}
                           </button>
@@ -599,14 +597,10 @@ export function TemplatesPage() {
                             className="button-secondary"
                             aria-label={copy.stageDeleteAria(stage.id)}
                             disabled={draft.stages.length === 1}
-                            onClick={() => setDraft((current) => (
-                              current
-                                ? {
-                                    ...current,
-                                    stages: removeStage(current.stages, stage.id),
-                                  }
-                                : current
-                            ))}
+                            onClick={() => updateDraft((current) => ({
+                              ...current,
+                              stages: removeStage(current.stages, stage.id),
+                            }))}
                           >
                             {copy.deleteStageAction}
                           </button>
@@ -618,21 +612,17 @@ export function TemplatesPage() {
                             className="input-shell"
                             type="text"
                             value={stage.name}
-                            onChange={(event) => setDraft((current) => (
-                              current
-                                ? {
-                                    ...current,
-                                    stages: current.stages.map((item) => (
-                                      item.id === stage.id
-                                        ? {
-                                            ...item,
-                                            name: event.target.value,
-                                          }
-                                        : item
-                                    )),
-                                  }
-                                : current
-                            ))}
+                            onChange={(event) => updateDraft((current) => ({
+                              ...current,
+                              stages: current.stages.map((item) => (
+                                item.id === stage.id
+                                  ? {
+                                      ...item,
+                                      name: event.target.value,
+                                    }
+                                  : item
+                              )),
+                            }))}
                           />
                         </label>
                         <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -642,21 +632,17 @@ export function TemplatesPage() {
                               aria-label={`阶段 ${stage.id} ${copy.stageModeLabel}`}
                               className="input-shell"
                               value={stage.mode}
-                              onChange={(event) => setDraft((current) => (
-                                current
-                                  ? {
-                                      ...current,
-                                      stages: current.stages.map((item) => (
-                                        item.id === stage.id
-                                          ? {
-                                              ...item,
-                                              mode: event.target.value,
-                                            }
-                                          : item
-                                      )),
-                                    }
-                                  : current
-                              ))}
+                              onChange={(event) => updateDraft((current) => ({
+                                ...current,
+                                stages: current.stages.map((item) => (
+                                  item.id === stage.id
+                                    ? {
+                                        ...item,
+                                        mode: event.target.value,
+                                      }
+                                    : item
+                                )),
+                              }))}
                             >
                               {STAGE_MODE_OPTIONS.map((option) => (
                                 <option key={`${stage.id}-mode-${option}`} value={option}>{option}</option>
@@ -669,24 +655,20 @@ export function TemplatesPage() {
                               aria-label={`阶段 ${stage.id} ${copy.stageGateLabel}`}
                               className="input-shell"
                               value={stage.gateType ?? 'none'}
-                              onChange={(event) => setDraft((current) => (
-                                current
-                                  ? {
-                                      ...current,
-                                      stages: current.stages.map((item) => (
-                                        item.id === stage.id
-                                          ? {
-                                              ...item,
-                                              ...normalizeStageForGateType(
-                                                item,
-                                                event.target.value === 'none' ? null : event.target.value,
-                                              ),
-                                            }
-                                          : item
-                                      )),
-                                    }
-                                  : current
-                              ))}
+                              onChange={(event) => updateDraft((current) => ({
+                                ...current,
+                                stages: current.stages.map((item) => (
+                                  item.id === stage.id
+                                    ? {
+                                        ...item,
+                                        ...normalizeStageForGateType(
+                                          item,
+                                          event.target.value === 'none' ? null : event.target.value,
+                                        ),
+                                      }
+                                    : item
+                                )),
+                              }))}
                             >
                               {STAGE_GATE_OPTIONS.map((option) => (
                                 <option key={`${stage.id}-gate-${option}`} value={option}>{option}</option>
@@ -699,21 +681,17 @@ export function TemplatesPage() {
                               aria-label={`阶段 ${stage.id} ${copy.stageRejectTargetLabel}`}
                               className="input-shell"
                               value={stage.rejectTarget ?? ''}
-                              onChange={(event) => setDraft((current) => (
-                                current
-                                  ? {
-                                      ...current,
-                                      stages: current.stages.map((item) => (
-                                        item.id === stage.id
-                                          ? {
-                                              ...item,
-                                              rejectTarget: event.target.value.length > 0 ? event.target.value : null,
-                                            }
-                                          : item
-                                      )),
-                                    }
-                                  : current
-                              ))}
+                              onChange={(event) => updateDraft((current) => ({
+                                ...current,
+                                stages: current.stages.map((item) => (
+                                  item.id === stage.id
+                                    ? {
+                                        ...item,
+                                        rejectTarget: event.target.value.length > 0 ? event.target.value : null,
+                                      }
+                                    : item
+                                )),
+                              }))}
                             >
                               <option value="">{copy.stageNoRejectTargetLabel}</option>
                               {draft.stages
@@ -733,21 +711,17 @@ export function TemplatesPage() {
                                 className="input-shell"
                                 type="text"
                                 value={stage.gateApprover ?? ''}
-                                onChange={(event) => setDraft((current) => (
-                                  current
-                                    ? {
-                                        ...current,
-                                        stages: current.stages.map((item) => (
-                                          item.id === stage.id
-                                            ? {
-                                                ...item,
-                                                gateApprover: event.target.value.trim().length > 0 ? event.target.value : null,
-                                              }
-                                            : item
-                                        )),
-                                      }
-                                    : current
-                                ))}
+                                onChange={(event) => updateDraft((current) => ({
+                                  ...current,
+                                  stages: current.stages.map((item) => (
+                                    item.id === stage.id
+                                      ? {
+                                          ...item,
+                                          gateApprover: event.target.value.trim().length > 0 ? event.target.value : null,
+                                        }
+                                      : item
+                                  )),
+                                }))}
                               />
                             </label>
                           </div>
@@ -762,21 +736,17 @@ export function TemplatesPage() {
                                 type="number"
                                 min={1}
                                 value={stage.gateRequired ?? ''}
-                                onChange={(event) => setDraft((current) => (
-                                  current
-                                    ? {
-                                        ...current,
-                                        stages: current.stages.map((item) => (
-                                          item.id === stage.id
-                                            ? {
-                                                ...item,
-                                                gateRequired: event.target.value.length > 0 ? Number(event.target.value) : null,
-                                              }
-                                            : item
-                                        )),
-                                      }
-                                    : current
-                                ))}
+                                onChange={(event) => updateDraft((current) => ({
+                                  ...current,
+                                  stages: current.stages.map((item) => (
+                                    item.id === stage.id
+                                      ? {
+                                          ...item,
+                                          gateRequired: event.target.value.length > 0 ? Number(event.target.value) : null,
+                                        }
+                                      : item
+                                  )),
+                                }))}
                               />
                             </label>
                           </div>
@@ -791,21 +761,17 @@ export function TemplatesPage() {
                                 type="number"
                                 min={1}
                                 value={stage.gateTimeoutSec ?? ''}
-                                onChange={(event) => setDraft((current) => (
-                                  current
-                                    ? {
-                                        ...current,
-                                        stages: current.stages.map((item) => (
-                                          item.id === stage.id
-                                            ? {
-                                                ...item,
-                                                gateTimeoutSec: event.target.value.length > 0 ? Number(event.target.value) : null,
-                                              }
-                                            : item
-                                        )),
-                                      }
-                                    : current
-                                ))}
+                                onChange={(event) => updateDraft((current) => ({
+                                  ...current,
+                                  stages: current.stages.map((item) => (
+                                    item.id === stage.id
+                                      ? {
+                                          ...item,
+                                          gateTimeoutSec: event.target.value.length > 0 ? Number(event.target.value) : null,
+                                        }
+                                      : item
+                                  )),
+                                }))}
                               />
                             </label>
                           </div>

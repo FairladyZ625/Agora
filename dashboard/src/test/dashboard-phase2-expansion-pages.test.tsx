@@ -4,6 +4,29 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 
+vi.mock('@/stores/sessionStore', () => ({
+  useSessionStore: (selector?: (state: {
+    authenticated: boolean;
+    status: string;
+    username: string;
+    role: string;
+    refresh: () => Promise<string>;
+    logout: () => Promise<void>;
+    error: string | null;
+  }) => unknown) => {
+    const state = {
+      authenticated: true,
+      status: 'ready',
+      username: 'admin',
+      role: 'admin',
+      refresh: vi.fn(async () => 'live'),
+      logout: vi.fn(async () => undefined),
+      error: null,
+    };
+    return selector ? selector(state) : state;
+  },
+}));
+
 const agentStoreState = {
   summary: { activeTasks: 1, activeAgents: 1, totalAgents: 2, onlineAgents: 1, staleAgents: 1, disconnectedAgents: 0, busyCraftsmen: 1 },
   channelSummaries: [
@@ -500,28 +523,12 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: 'Agent 状态' })).toBeInTheDocument();
-    expect(screen.getByText('sonnet')).toBeInTheDocument();
-    expect(screen.getAllByText(/Agent 总数/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('online').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/在线 Agent/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Channel 摘要/i)).toBeInTheDocument();
-    expect(screen.getByText(/Host \/ Framework 摘要/i)).toBeInTheDocument();
-    expect(screen.getByText(/Craftsman Runtime 摘要/i)).toBeInTheDocument();
-    expect(screen.getByText(/Channel 健康详情/i)).toBeInTheDocument();
-    expect(screen.getByText(/Channel 历史趋势/i)).toBeInTheDocument();
-    expect(screen.getByText(/Channel 最近事件/i)).toBeInTheDocument();
-    expect(screen.getByText(/tmux runtime/i)).toBeInTheDocument();
-    expect(screen.getAllByText('agora-craftsmen').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Runtime 会话/i)).toBeInTheDocument();
-    expect(screen.getByText(/Pane 总数/i)).toBeInTheDocument();
-    expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
-    expect(screen.getByText(/身份来源: session_file/i)).toBeInTheDocument();
-    expect(screen.getByText(/会话引用: codex-session-123/i)).toBeInTheDocument();
-    expect(screen.getByText(/\/tmp\/codex\/session\.json/i)).toBeInTheDocument();
-    expect(screen.getByText(/2026-03-08T23:01:00.000Z/i)).toBeInTheDocument();
-    expect(screen.getByText(/exec-dashboard-1/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'failures' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '运行态' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Agent Agent 列表/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Channel Channel 健康/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Execution 执行运行态/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/agora-craftsmen/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/discord/i).length).toBeGreaterThan(0);
   });
 
   it('filters craftsmen cards by failure-focused view', () => {
@@ -551,6 +558,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
     fireEvent.click(screen.getByRole('button', { name: 'failures' }));
 
     expect(screen.getByText(/exec-failed-1/i)).toBeInTheDocument();
@@ -584,6 +592,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
     const executionRows = screen.getAllByText(/exec-(dashboard|failed)-1/i);
     expect(executionRows[0]).toHaveTextContent('exec-failed-1');
     expect(executionRows[1]).toHaveTextContent('exec-dashboard-1');
@@ -619,6 +628,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
     const executionRows = screen.getAllByText(/exec-(running|failed)-2/i);
     expect(executionRows[0]).toHaveTextContent('exec-failed-2');
     expect(executionRows[1]).toHaveTextContent('exec-running-2');
@@ -652,6 +662,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /Agent Agent 列表/i }));
     fireEvent.click(screen.getByRole('button', { name: 'stale' }));
 
     expect(screen.getAllByText('review').length).toBeGreaterThan(0);
@@ -665,13 +676,17 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /discord/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Channel Channel 健康/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /discord/i })[1]);
 
-    expect(screen.getByRole('heading', { name: 'discord' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Channel 健康' })).toBeInTheDocument();
     expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/review/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Channel 历史趋势/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/摘要/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '信号' }));
     expect(screen.getAllByText(/transport_error/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '历史' }));
+    expect(screen.getAllByText(/stale_gateway_log/i).length).toBeGreaterThan(0);
   });
 
   it('loads tmux tail on demand from the pane card', () => {
@@ -681,6 +696,7 @@ describe('dashboard expansion routes', () => {
       </MemoryRouter>,
     );
 
+    fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
     fireEvent.click(screen.getByRole('button', { name: /加载输出/i }));
 
     expect(agentStoreState.fetchTmuxTail).toHaveBeenCalledWith('codex');

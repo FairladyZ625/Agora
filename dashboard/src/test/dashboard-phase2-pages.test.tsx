@@ -98,6 +98,29 @@ vi.mock('@/stores/feedbackStore', () => ({
   }),
 }));
 
+vi.mock('@/stores/sessionStore', () => ({
+  useSessionStore: (selector?: (state: {
+    authenticated: boolean;
+    status: string;
+    username: string;
+    role: string;
+    refresh: () => Promise<string>;
+    logout: () => Promise<void>;
+    error: string | null;
+  }) => unknown) => {
+    const state = {
+      authenticated: true,
+      status: 'ready',
+      username: 'admin',
+      role: 'admin',
+      refresh: vi.fn(async () => 'live'),
+      logout: vi.fn(async () => undefined),
+      error: null,
+    };
+    return selector ? selector(state) : state;
+  },
+}));
+
 describe('dashboard phase 2 routes', () => {
   it('adds board and create-task routes to the main app shell', () => {
     taskStoreState.tasks = [
@@ -118,8 +141,8 @@ describe('dashboard phase 2 routes', () => {
 
     expect(screen.getByRole('heading', { name: '任务看板' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /创建 任务入口/i })).toBeInTheDocument();
-    expect(screen.getByText('中断 / 停滞')).toBeInTheDocument();
-    expect(screen.getByText('暂停中的任务')).toBeInTheDocument();
+    expect(screen.getAllByText('中断 / 停滞').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('暂停中的任务').length).toBeGreaterThan(0);
   });
 
   it('renders the create task workspace on the dedicated route', () => {
