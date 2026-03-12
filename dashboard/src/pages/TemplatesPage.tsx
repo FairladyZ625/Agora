@@ -149,6 +149,9 @@ function validateTemplateGraphDraft(graph: TemplateGraph) {
       errors.push(`Unknown edge target: ${edge.to}`);
     }
   }
+  if (graph.nodes.length === 0) {
+    errors.push('Graph must include at least one node.');
+  }
   return errors;
 }
 
@@ -221,6 +224,7 @@ export function TemplatesPage() {
   const [roleSelection, setRoleSelection] = useState<{ templateId: string | null; value: string }>({ templateId: null, value: '' });
   const [compatibilitySaveErrorState, setCompatibilitySaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
   const [controllerSaveErrorState, setControllerSaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
+  const [graphSaveErrorState, setGraphSaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
   const [selectedGraphEdgeId, setSelectedGraphEdgeId] = useState<string | null>(null);
   const currentTemplateId = selectedTemplate?.id ?? null;
@@ -254,6 +258,9 @@ export function TemplatesPage() {
     : false;
   const showControllerSaveError = controllerSaveErrorState.templateId === currentTemplateId
     ? controllerSaveErrorState.value
+    : false;
+  const showGraphSaveError = graphSaveErrorState.templateId === currentTemplateId
+    ? graphSaveErrorState.value
     : false;
 
   const updateDraft = (transform: (current: TemplateDetail) => TemplateDetail) => {
@@ -300,6 +307,10 @@ export function TemplatesPage() {
     setControllerSaveErrorState({ templateId: currentTemplateId, value });
   };
 
+  const setShowGraphSaveError = (value: boolean) => {
+    setGraphSaveErrorState({ templateId: currentTemplateId, value });
+  };
+
   const handleSave = async () => {
     if (!draft) {
       return;
@@ -312,8 +323,13 @@ export function TemplatesPage() {
       setShowCompatibilitySaveError(true);
       return;
     }
+    if (graphValidationErrors.length > 0) {
+      setShowGraphSaveError(true);
+      return;
+    }
     setShowCompatibilitySaveError(false);
     setShowControllerSaveError(false);
+    setShowGraphSaveError(false);
     await saveSelectedTemplate(draft);
   };
 
@@ -572,6 +588,11 @@ export function TemplatesPage() {
               {showControllerSaveError ? (
                 <div className="inline-alert inline-alert--danger">
                   {copy.controllerSaveBlocked}
+                </div>
+              ) : null}
+              {showGraphSaveError ? (
+                <div className="inline-alert inline-alert--danger">
+                  请先修复 graph 配置问题。
                 </div>
               ) : null}
               <div className="space-y-3">
@@ -1004,7 +1025,7 @@ export function TemplatesPage() {
                 <p className="page-kicker">{copy.graphTitle}</p>
                 <div className="mt-3 space-y-4">
                   <div className="detail-card">
-                    <div style={{ height: 420 }}>
+                    <div style={{ width: '100%', height: 420 }}>
                       <ReactFlow
                         fitView
                         nodes={graphNodes}
@@ -1036,6 +1057,20 @@ export function TemplatesPage() {
                     {selectedGraphNode ? (
                       <div className="space-y-3">
                         <p className="type-heading-xs">{selectedGraphNode.id}</p>
+                        <label className="space-y-2">
+                          <span className="field-label">Entry node</span>
+                          <input
+                            aria-label={`graph node ${selectedGraphNode.id} entry`}
+                            type="checkbox"
+                            checked={draftGraph?.entryNodes.includes(selectedGraphNode.id) ?? false}
+                            onChange={(event) => updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              entryNodes: event.target.checked
+                                ? Array.from(new Set([...currentGraph.entryNodes, selectedGraphNode.id]))
+                                : currentGraph.entryNodes.filter((entryId) => entryId !== selectedGraphNode.id),
+                            }))}
+                          />
+                        </label>
                         <label className="space-y-2">
                           <span className="field-label">Node name</span>
                           <input
@@ -1096,6 +1131,21 @@ export function TemplatesPage() {
                             ))}
                           </select>
                         </label>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => {
+                            updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              entryNodes: currentGraph.entryNodes.filter((entryId) => entryId !== selectedGraphNode.id),
+                              nodes: currentGraph.nodes.filter((node) => node.id !== selectedGraphNode.id),
+                              edges: currentGraph.edges.filter((edge) => edge.from !== selectedGraphNode.id && edge.to !== selectedGraphNode.id),
+                            }));
+                            setSelectedGraphNodeId(null);
+                          }}
+                        >
+                          Delete node
+                        </button>
                       </div>
                     ) : null}
                     {selectedGraphEdge ? (

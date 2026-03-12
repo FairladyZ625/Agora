@@ -466,6 +466,40 @@ describe('templates workbench layout', () => {
     }));
   });
 
+  it('updates entry nodes and deletes graph nodes through the inspector before saving', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '开发 develop / stage' }));
+    fireEvent.click(screen.getByLabelText('graph node develop entry'));
+    fireEvent.click(screen.getByRole('button', { name: '审查 review / stage approval' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
+        entryNodes: expect.arrayContaining(['develop']),
+        nodes: expect.not.arrayContaining([
+          expect.objectContaining({ id: 'review' }),
+        ]),
+      }),
+      stages: expect.not.arrayContaining([
+        expect.objectContaining({ id: 'review' }),
+      ]),
+    }));
+  });
+
+  it('blocks save when graph validation still reports missing entry nodes', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '讨论 discuss / stage' }));
+    fireEvent.click(screen.getByLabelText('graph node discuss entry'));
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).not.toHaveBeenCalled();
+    expect(screen.getByText(/请先修复 graph 配置问题/i)).toBeInTheDocument();
+    expect(screen.getByText(/Graph must include at least one entry node/i)).toBeInTheDocument();
+  });
+
   it('supports adding and removing team roles before saving the selected template', () => {
     renderPage();
 
