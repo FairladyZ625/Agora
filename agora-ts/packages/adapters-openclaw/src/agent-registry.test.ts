@@ -37,6 +37,9 @@ describe('OpenClawAgentRegistry', () => {
             id: 'sonnet',
             workspace: '/tmp/sonnet',
             model: { primary: 'gac/claude-sonnet-4-6' },
+            agora: {
+              managed: true,
+            },
           },
         ],
       },
@@ -78,6 +81,8 @@ describe('OpenClawAgentRegistry', () => {
         inventory_sources: ['openclaw'],
         primary_model: 'gac/claude-sonnet-4-6',
         workspace_dir: '/tmp/sonnet',
+        agent_origin: 'agora_managed',
+        briefing_mode: 'overlay_delta',
       },
       {
         id: 'writer',

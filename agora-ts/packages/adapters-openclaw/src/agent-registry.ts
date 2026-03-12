@@ -14,6 +14,8 @@ type RegistryAccumulator = {
   inventory_sources: Set<string>;
   primary_model: string | null;
   workspace_dir: string | null;
+  agent_origin: 'agora_managed' | 'user_managed' | null;
+  briefing_mode: 'overlay_full' | 'overlay_delta' | null;
 };
 
 export class OpenClawAgentRegistry implements AgentInventorySource {
@@ -40,7 +42,8 @@ export class OpenClawAgentRegistry implements AgentInventorySource {
         ? item.model.primary
         : null;
       const workspace = typeof item.workspace === 'string' ? item.workspace : null;
-      upsertRegistryEntry(registry, id, 'openclaw', model, workspace);
+      const agoraMetadata = readAgoraMetadata(item);
+      upsertRegistryEntry(registry, id, 'openclaw', model, workspace, agoraMetadata);
     }
 
     for (const item of getChannelAccounts(raw)) {
@@ -58,6 +61,8 @@ export class OpenClawAgentRegistry implements AgentInventorySource {
         inventory_sources: Array.from(item.inventory_sources).sort(),
         primary_model: item.primary_model,
         workspace_dir: item.workspace_dir,
+        ...(item.agent_origin ? { agent_origin: item.agent_origin } : {}),
+        ...(item.briefing_mode ? { briefing_mode: item.briefing_mode } : {}),
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   }
@@ -97,6 +102,10 @@ function upsertRegistryEntry(
   source: string,
   primaryModel: string | null,
   workspaceDir: string | null,
+  agoraMetadata?: {
+    agent_origin: 'agora_managed' | 'user_managed' | null;
+    briefing_mode: 'overlay_full' | 'overlay_delta' | null;
+  } | null,
 ) {
   const current = registry.get(id) ?? {
     id,
@@ -105,6 +114,8 @@ function upsertRegistryEntry(
     inventory_sources: new Set<string>(),
     primary_model: null,
     workspace_dir: null,
+    agent_origin: null,
+    briefing_mode: null,
   };
   current.inventory_sources.add(source);
   if (source === 'openclaw' && !current.host_framework) {
@@ -115,6 +126,8 @@ function upsertRegistryEntry(
   }
   current.primary_model = current.primary_model ?? primaryModel;
   current.workspace_dir = current.workspace_dir ?? workspaceDir;
+  current.agent_origin = current.agent_origin ?? agoraMetadata?.agent_origin ?? null;
+  current.briefing_mode = current.briefing_mode ?? agoraMetadata?.briefing_mode ?? null;
   registry.set(id, current);
 }
 
@@ -127,4 +140,26 @@ function resolveTilde(path: string) {
     return path;
   }
   return resolve(homedir(), path.slice(2));
+}
+
+function readAgoraMetadata(agent: Record<string, unknown>) {
+  const agora = isObjectRecord(agent.agora) ? agent.agora : null;
+  const metadata = isObjectRecord(agent.metadata) ? agent.metadata : null;
+  const agoraMetadata = metadata && isObjectRecord(metadata.agora) ? metadata.agora : null;
+  const candidate = agora ?? agoraMetadata;
+  if (!candidate) {
+    return null;
+  }
+  const managed: 'agora_managed' | 'user_managed' | null = candidate.managed === true
+    ? 'agora_managed'
+    : (candidate.agent_origin === 'agora_managed' || candidate.agent_origin === 'user_managed'
+        ? candidate.agent_origin
+        : null);
+  const briefingMode: 'overlay_full' | 'overlay_delta' | null = candidate.briefing_mode === 'overlay_full' || candidate.briefing_mode === 'overlay_delta'
+    ? candidate.briefing_mode
+    : (managed === 'agora_managed' ? 'overlay_delta' : null);
+  return {
+    agent_origin: managed,
+    briefing_mode: briefingMode,
+  };
 }

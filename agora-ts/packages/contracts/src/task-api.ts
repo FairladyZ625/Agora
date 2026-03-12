@@ -34,6 +34,16 @@ const allowedWorkflowActions = [
   'advance',
 ] as const;
 
+const allowedAgentOrigins = [
+  'agora_managed',
+  'user_managed',
+] as const;
+
+const allowedBriefingModes = [
+  'overlay_full',
+  'overlay_delta',
+] as const;
+
 const allowedWorkflowGateTypes = [
   'archon_review',
   'command',
@@ -59,6 +69,9 @@ const workflowActionSchema = z.string().refine((value) => allowedWorkflowActions
   message: 'Unsupported workflow action',
 });
 
+const agentOriginSchema = z.enum(allowedAgentOrigins);
+const briefingModeSchema = z.enum(allowedBriefingModes);
+
 const workflowGateTypeSchema = z.string().refine((value) => allowedWorkflowGateTypes.includes(value as (typeof allowedWorkflowGateTypes)[number]), {
   message: 'Unsupported workflow gate type',
 });
@@ -74,6 +87,8 @@ export const teamMemberSchema = z.object({
   agentId: z.string().min(1),
   member_kind: z.enum(['controller', 'citizen', 'craftsman']).optional(),
   model_preference: z.string(),
+  agent_origin: agentOriginSchema.optional(),
+  briefing_mode: briefingModeSchema.optional(),
 });
 export type TeamMemberDto = z.infer<typeof teamMemberSchema>;
 

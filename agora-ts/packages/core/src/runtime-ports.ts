@@ -1,4 +1,6 @@
 export type AgentPresenceState = 'online' | 'offline' | 'disconnected' | 'stale';
+export type RuntimeAgentOrigin = 'agora_managed' | 'user_managed';
+export type RuntimeBriefingMode = 'overlay_full' | 'overlay_delta';
 
 export interface RegisteredAgent {
   id: string;
@@ -7,6 +9,8 @@ export interface RegisteredAgent {
   inventory_sources: string[];
   primary_model: string | null;
   workspace_dir: string | null;
+  agent_origin?: RuntimeAgentOrigin;
+  briefing_mode?: RuntimeBriefingMode;
 }
 
 export interface AgentInventorySource {
@@ -57,6 +61,8 @@ export interface RuntimeParticipantResolution {
   agent_ref: string;
   runtime_provider: string | null;
   runtime_actor_ref: string | null;
+  agent_origin?: RuntimeAgentOrigin;
+  briefing_mode?: RuntimeBriefingMode;
 }
 
 export interface AgentRuntimePort {
@@ -75,6 +81,8 @@ export class InventoryBackedAgentRuntimePort implements AgentRuntimePort {
       agent_ref: agent.id,
       runtime_provider: agent.host_framework ?? null,
       runtime_actor_ref: agent.host_framework ? agent.id : null,
+      ...(agent.agent_origin ? { agent_origin: agent.agent_origin } : {}),
+      ...(agent.briefing_mode ? { briefing_mode: agent.briefing_mode } : {}),
     };
   }
 }

@@ -214,9 +214,30 @@ describe('task service', () => {
     });
 
     expect(task.team.members).toEqual([
-      { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: '' },
-      { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: '' },
-      { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: '' },
+      {
+        role: 'architect',
+        agentId: 'opus',
+        member_kind: 'controller',
+        model_preference: '',
+        agent_origin: 'user_managed',
+        briefing_mode: 'overlay_full',
+      },
+      {
+        role: 'developer',
+        agentId: 'sonnet',
+        member_kind: 'citizen',
+        model_preference: '',
+        agent_origin: 'user_managed',
+        briefing_mode: 'overlay_full',
+      },
+      {
+        role: 'craftsman',
+        agentId: 'codex',
+        member_kind: 'craftsman',
+        model_preference: '',
+        agent_origin: 'user_managed',
+        briefing_mode: 'overlay_full',
+      },
     ]);
     expect(service.getTaskStatus('OC-REPAIRED-TEMPLATE').task.controller_ref).toBe('opus');
   });
@@ -1563,20 +1584,27 @@ describe('task service', () => {
       thread_ref: 'discord-thread-bootstrap-1',
     });
     const bindingService = new TaskContextBindingService(db);
+    const runtimePort = {
+      resolveAgent(agentRef: string) {
+        return {
+          agent_ref: agentRef,
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: agentRef,
+          ...(agentRef === 'opus'
+            ? {
+                agent_origin: 'agora_managed' as const,
+                briefing_mode: 'overlay_delta' as const,
+              }
+            : {}),
+        };
+      },
+    };
     const taskParticipation = new TaskParticipationService(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-bootstrap-1', 'pb-bootstrap-2', 'pb-bootstrap-3', 'pb-bootstrap-4'];
         return () => ids.shift() ?? 'pb-bootstrap-x';
       })(),
-      agentRuntimePort: {
-        resolveAgent(agentRef) {
-          return {
-            agent_ref: agentRef,
-            runtime_provider: 'openclaw',
-            runtime_actor_ref: agentRef,
-          };
-        },
-      },
+      agentRuntimePort: runtimePort,
     });
     const service = new TaskService(db, {
       templatesDir,
@@ -1584,6 +1612,7 @@ describe('task service', () => {
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
       taskParticipationService: taskParticipation,
+      agentRuntimePort: runtimePort,
       taskBrainBindingService: new TaskBrainBindingService(db, {
         idGenerator: () => 'brain-bootstrap-1',
       }),
@@ -1634,9 +1663,15 @@ describe('task service', () => {
     const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
     expect(rootBrief?.body).toContain('Controller: opus');
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
+    expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
     expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
     expect(opusBrief?.body).toContain('architect');
+    expect(opusBrief?.body).toContain('Briefing Mode: overlay_delta');
+    expect(opusBrief?.body).not.toContain('Read role doc:');
+    const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
+    expect(sonnetBrief?.body).toContain('Briefing Mode: overlay_full');
+    expect(sonnetBrief?.body).toContain('Read role doc:');
   });
 
   it('joins explicit im_target participant refs in addition to interactive team members', async () => {
@@ -1892,9 +1927,30 @@ describe('task service', () => {
     expect(created.current_stage).toBe('triage');
     expect(created.team).toEqual({
       members: [
-        { role: 'architect', agentId: 'claude-opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
-        { role: 'developer', agentId: 'codex', member_kind: 'citizen', model_preference: 'fast_coding' },
-        { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
+        {
+          role: 'architect',
+          agentId: 'claude-opus',
+          member_kind: 'controller',
+          model_preference: 'strong_reasoning',
+          agent_origin: 'user_managed',
+          briefing_mode: 'overlay_full',
+        },
+        {
+          role: 'developer',
+          agentId: 'codex',
+          member_kind: 'citizen',
+          model_preference: 'fast_coding',
+          agent_origin: 'user_managed',
+          briefing_mode: 'overlay_full',
+        },
+        {
+          role: 'craftsman',
+          agentId: 'claude',
+          member_kind: 'craftsman',
+          model_preference: 'coding_cli',
+          agent_origin: 'user_managed',
+          briefing_mode: 'overlay_full',
+        },
       ],
     });
     expect(created.workflow).toMatchObject({

@@ -68,10 +68,10 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
 function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWorkspaceResult) {
   const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
-  return [
-    `task_id: "${input.task_id}"`,
-    `brain_task_id: "${binding.brain_task_id}"`,
-    `brain_pack_ref: "${binding.brain_pack_ref}"`,
+    return [
+      `task_id: "${input.task_id}"`,
+      `brain_task_id: "${binding.brain_task_id}"`,
+      `brain_pack_ref: "${binding.brain_pack_ref}"`,
     `workspace_path: "${binding.workspace_path}"`,
     `template_id: "${input.template_id}"`,
     `controller_ref: "${input.controller_ref ?? ''}"`,
@@ -113,7 +113,7 @@ function renderBootstrap(
     `Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     '',
     'Read these files before acting:',
-    `- ~/.agents/skills/agora-bootstrap/SKILL.md`,
+    `- ~/.agora/skills/agora-bootstrap/SKILL.md`,
     `- ${join(workspacePath, '01-task-brief.md')}`,
     `- ${join(workspacePath, '02-roster.md')}`,
     `- ${join(workspacePath, '03-stage-state.md')}`,
@@ -137,7 +137,9 @@ function renderTaskBrief(input: TaskBrainWorkspaceRequest) {
 }
 
 function renderRoster(input: TaskBrainWorkspaceRequest) {
-  const rows = input.team_members.map((member) => `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'}`);
+  const rows = input.team_members.map((member) => (
+    `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'} | ${member.agent_origin ?? 'user_managed'} | ${member.briefing_mode ?? 'overlay_full'}`
+  ));
   return ['# Roster', '', ...rows, ''].join('\n');
 }
 
@@ -170,6 +172,8 @@ function renderRoleBrief(
     `role_id: "${member.role}"`,
     `agent_id: "${member.agentId}"`,
     `member_kind: "${member.member_kind ?? 'citizen'}"`,
+    `agent_origin: "${member.agent_origin ?? 'user_managed'}"`,
+    `briefing_mode: "${member.briefing_mode ?? 'overlay_full'}"`,
     `summary: "${escapeYaml(roleDoc.summary)}"`,
     `mission: "${escapeYaml(roleDoc.mission)}"`,
     `allowed_actions: [${resolveStageAllowedActions(currentStage).map((action) => `"${action}"`).join(', ')}]`,
@@ -184,6 +188,9 @@ function renderRoleBrief(
     '# Role Brief',
     '',
     `You are \`${member.agentId}\` and your Agora role is \`${member.role}\`.`,
+    member.briefing_mode === 'overlay_delta'
+      ? 'This agent already carries Agora-managed base role context; this brief contains task-specific delta only.'
+      : 'This agent needs the full Agora role overlay for this task context.',
     '',
     `Read first: ${roleDocPath}`,
     `Task workspace: ${workspacePath}`,

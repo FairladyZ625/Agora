@@ -23,6 +23,8 @@ export interface TaskBrainWorkspaceRequest {
     agentId: string;
     member_kind?: 'controller' | 'citizen' | 'craftsman';
     model_preference: string;
+    agent_origin?: 'agora_managed' | 'user_managed';
+    briefing_mode?: 'overlay_full' | 'overlay_delta';
   }>;
 }
 

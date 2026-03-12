@@ -120,6 +120,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({ brainPackRoot: brainPackDir }),
     taskContextBindingService,
     taskParticipationService,
+    ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
   };
   if (options.isCraftsmanSessionAlive !== undefined) {
     taskServiceOptionsWithRecovery.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;

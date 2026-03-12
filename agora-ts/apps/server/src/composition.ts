@@ -85,6 +85,7 @@ export interface ServerCompositionFactories {
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      agentRuntimePort: AgentRuntimePort;
     },
   ) => TaskService;
   createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier | undefined;
@@ -176,6 +177,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
+        agentRuntimePort: deps.agentRuntimePort,
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
       });
     },
@@ -279,6 +281,7 @@ export function buildServerComposition(
     taskBrainWorkspacePort,
     taskContextBindingService,
     taskParticipationService,
+    agentRuntimePort,
   });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);

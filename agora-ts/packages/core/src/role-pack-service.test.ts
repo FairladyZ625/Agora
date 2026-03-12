@@ -147,4 +147,45 @@ describe('role pack service', () => {
       ]),
     );
   });
+
+  it('marks generated bindings as agora-managed delta briefing members', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new RolePackService({
+      db,
+      rolePacksDir: makeRolePackDir(),
+    });
+
+    service.saveBinding({
+      id: 'binding-generated-1',
+      role_id: 'architect',
+      scope: 'workspace',
+      scope_ref: 'default',
+      target_kind: 'runtime_agent',
+      target_adapter: 'openclaw',
+      target_ref: 'architect-managed',
+      binding_mode: 'generated',
+    });
+
+    const members = service.resolveTemplateTeam('coding', {
+      name: 'Coding',
+      type: 'coding',
+      defaultTeam: {
+        architect: {
+          member_kind: 'citizen',
+          suggested: ['fallback-architect'],
+        },
+      },
+      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+    }, [{ scope: 'workspace', scope_ref: 'default' }]);
+
+    expect(members).toEqual([
+      expect.objectContaining({
+        role: 'architect',
+        agentId: 'architect-managed',
+        agent_origin: 'agora_managed',
+        briefing_mode: 'overlay_delta',
+      }),
+    ]);
+  });
 });

@@ -30,7 +30,14 @@ describe('task api contracts', () => {
         priority: 'high',
         team_override: {
           members: [
-            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+            {
+              role: 'architect',
+              agentId: 'opus',
+              member_kind: 'controller',
+              model_preference: 'strong_reasoning',
+              agent_origin: 'agora_managed',
+              briefing_mode: 'overlay_delta',
+            },
             { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
             { role: 'craftsman', agentId: 'codex', member_kind: 'craftsman', model_preference: 'coding_cli' },
           ],
@@ -50,6 +57,27 @@ describe('task api contracts', () => {
         },
       }).team_override?.members[2]?.member_kind,
     ).toBe('craftsman');
+    expect(
+      createTaskRequestSchema.parse({
+        title: '定向拉起 coding 任务',
+        type: 'coding',
+        creator: 'archon',
+        description: '覆盖模板默认 team',
+        priority: 'high',
+        team_override: {
+          members: [
+            {
+              role: 'architect',
+              agentId: 'opus',
+              member_kind: 'controller',
+              model_preference: 'strong_reasoning',
+              agent_origin: 'agora_managed',
+              briefing_mode: 'overlay_delta',
+            },
+          ],
+        },
+      }).team_override?.members[0]?.briefing_mode,
+    ).toBe('overlay_delta');
   });
 
   it('parses create task payloads with member kind hints for orchestration control', () => {

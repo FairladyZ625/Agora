@@ -33,6 +33,7 @@ import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
+import type { AgentRuntimePort } from './runtime-ports.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
@@ -69,6 +70,7 @@ export interface TaskServiceOptions {
   taskBrainBindingService?: TaskBrainBindingService;
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
+  agentRuntimePort?: AgentRuntimePort;
 }
 
 export interface AdvanceTaskOptions {
@@ -154,6 +156,7 @@ export class TaskService {
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly agentRuntimePort: AgentRuntimePort | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -188,12 +191,13 @@ export class TaskService {
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
+    this.agentRuntimePort = options.agentRuntimePort;
   }
 
   createTask(input: CreateTaskRequestDto): StoredTask {
     const template = this.loadTemplate(input.type);
     const workflow = input.workflow_override ?? this.buildWorkflow(template);
-    const team = input.team_override ?? this.buildTeam(template);
+    const team = this.enrichTeam(this.resolveRequestedTeam(input, template));
     const taskId = this.taskIdGenerator();
     const firstStageId = workflow.stages?.[0]?.id ?? null;
     let active: StoredTask;
@@ -277,6 +281,8 @@ export class TaskService {
             agentId: member.agentId,
             ...(member.member_kind ? { member_kind: member.member_kind } : {}),
             model_preference: member.model_preference,
+            ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
+            ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
           })),
         });
         this.taskBrainBindingService.createBinding({
@@ -1079,6 +1085,29 @@ export class TaskService {
     return { members };
   }
 
+  private resolveRequestedTeam(input: CreateTaskRequestDto, template: TaskTemplate): StoredTask['team'] {
+    return input.team_override ?? this.buildTeam(template);
+  }
+
+  private enrichTeam(team: StoredTask['team']): StoredTask['team'] {
+    return {
+      members: team.members.map((member) => {
+        const resolved = this.agentRuntimePort?.resolveAgent(member.agentId);
+        const agentOrigin: 'agora_managed' | 'user_managed' = member.agent_origin
+          ?? resolved?.agent_origin
+          ?? 'user_managed';
+        const briefingMode: 'overlay_full' | 'overlay_delta' = member.briefing_mode
+          ?? resolved?.briefing_mode
+          ?? (agentOrigin === 'agora_managed' ? 'overlay_delta' : 'overlay_full');
+        return {
+          ...member,
+          agent_origin: agentOrigin,
+          briefing_mode: briefingMode,
+        };
+      }),
+    };
+  }
+
   private loadTemplate(taskType: string): TaskTemplate {
     const stored = this.templateRepository.getTemplate(taskType);
     if (!stored) {
@@ -1142,10 +1171,12 @@ export class TaskService {
           `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
           '',
           'Roster:',
-          ...task.team.members.map((member) => `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'}`),
+          ...task.team.members.map((member) => (
+            `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'} | ${member.agent_origin ?? 'user_managed'} | ${member.briefing_mode ?? 'overlay_full'}`
+          )),
           '',
           'Read first:',
-          `- ${join(homedir(), '.agents', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
+          `- ${join(homedir(), '.agora', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
           ...(workspacePath
             ? [
                 `- ${join(workspacePath, '00-bootstrap.md')}`,
@@ -1168,10 +1199,15 @@ export class TaskService {
           `Role briefing for ${member.agentId}`,
           `Agora Role: ${member.role}`,
           `Member Kind: ${member.member_kind ?? 'citizen'}`,
+          `Agent Origin: ${member.agent_origin ?? 'user_managed'}`,
+          `Briefing Mode: ${member.briefing_mode ?? 'overlay_full'}`,
           `Controller: ${controllerRef ?? '-'}`,
           `Current Stage: ${task.current_stage}`,
           `Task Goal: ${task.description?.trim() || task.title}`,
-          ...(roleDocPath ? [`Read role doc: ${roleDocPath}`] : []),
+          ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`Read role doc: ${roleDocPath}`] : []),
+          ...(member.briefing_mode === 'overlay_delta'
+            ? ['This agent already carries Agora-managed base role context; use the role brief below as task delta.']
+            : ['This agent should load the full Agora role overlay before acting.']),
           ...(roleBriefPath ? [`Read role brief: ${roleBriefPath}`] : []),
         ].join('\n'),
       });
