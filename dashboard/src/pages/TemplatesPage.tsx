@@ -87,6 +87,71 @@ function deriveTemplateGraphFromStages(stages: TemplateDetail['stages'], existin
   };
 }
 
+function deriveStagesFromTemplateGraph(graph: TemplateGraph): TemplateDetail['stages'] {
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const advanceEdgesByFrom = new Map<string, string>();
+  const rejectEdgesByFrom = new Map<string, string>();
+  for (const edge of graph.edges) {
+    if (edge.kind === 'advance' && !advanceEdgesByFrom.has(edge.from)) {
+      advanceEdgesByFrom.set(edge.from, edge.to);
+    }
+    if (edge.kind === 'reject' && !rejectEdgesByFrom.has(edge.from)) {
+      rejectEdgesByFrom.set(edge.from, edge.to);
+    }
+  }
+  const ordered: string[] = [];
+  const visited = new Set<string>();
+  const walk = (nodeId: string) => {
+    if (visited.has(nodeId)) {
+      return;
+    }
+    visited.add(nodeId);
+    ordered.push(nodeId);
+    const next = advanceEdgesByFrom.get(nodeId);
+    if (next) {
+      walk(next);
+    }
+  };
+  graph.entryNodes.forEach(walk);
+  graph.nodes.forEach((node) => walk(node.id));
+  return ordered
+    .map((id) => nodeById.get(id))
+    .filter((node): node is NonNullable<typeof nodeById extends Map<string, infer V> ? V : never> => Boolean(node))
+    .filter((node) => node.kind === 'stage')
+    .map((node) => ({
+      id: node.id,
+      name: node.name,
+      mode: node.executionKind === 'citizen_execute' || node.executionKind === 'craftsman_dispatch' ? 'execute' : 'discuss',
+      gateType: node.gateType ?? null,
+      gateApprover: node.gateApprover ?? null,
+      gateRequired: node.gateRequired ?? null,
+      gateTimeoutSec: node.gateTimeoutSec ?? null,
+      rejectTarget: rejectEdgesByFrom.get(node.id) ?? null,
+    }));
+}
+
+function validateTemplateGraphDraft(graph: TemplateGraph) {
+  const errors: string[] = [];
+  const nodeIds = new Set(graph.nodes.map((node) => node.id));
+  if (graph.entryNodes.length === 0) {
+    errors.push('Graph must include at least one entry node.');
+  }
+  for (const entryId of graph.entryNodes) {
+    if (!nodeIds.has(entryId)) {
+      errors.push(`Unknown entry node: ${entryId}`);
+    }
+  }
+  for (const edge of graph.edges) {
+    if (!nodeIds.has(edge.from)) {
+      errors.push(`Unknown edge source: ${edge.from}`);
+    }
+    if (!nodeIds.has(edge.to)) {
+      errors.push(`Unknown edge target: ${edge.to}`);
+    }
+  }
+  return errors;
+}
+
 function normalizeStageForGateType(stage: TemplateDetail['stages'][number], gateType: string | null) {
   return {
     ...stage,
@@ -209,10 +274,14 @@ export function TemplatesPage() {
   };
 
   const updateDraftGraph = (transform: (graph: NonNullable<TemplateDetail['graph']>) => NonNullable<TemplateDetail['graph']>) => {
-    updateDraft((current) => ({
-      ...current,
-      graph: transform(current.graph ?? deriveTemplateGraphFromStages(current.stages)),
-    }));
+    updateDraft((current) => {
+      const nextGraph = transform(current.graph ?? deriveTemplateGraphFromStages(current.stages));
+      return {
+        ...current,
+        graph: nextGraph,
+        stages: deriveStagesFromTemplateGraph(nextGraph),
+      };
+    });
   };
 
   const setDuplicateId = (value: string) => {
@@ -297,6 +366,7 @@ export function TemplatesPage() {
     : TEAM_ROLE_OPTIONS;
   const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
   const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
+  const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
 
   const handleGraphNodesChange = (changes: NodeChange[]) => {
     updateDraftGraph((currentGraph) => {
@@ -958,19 +1028,112 @@ export function TemplatesPage() {
                   </div>
                   <div className="detail-card space-y-3">
                     <span className="detail-card__label">Graph inspector</span>
+                    {graphValidationErrors.length > 0 ? (
+                      <div className="inline-alert inline-alert--warning">
+                        {graphValidationErrors.join(' / ')}
+                      </div>
+                    ) : null}
                     {selectedGraphNode ? (
-                      <div className="space-y-2">
-                        <p className="type-heading-xs">{selectedGraphNode.name}</p>
-                        <p className="type-text-xs">{selectedGraphNode.id}</p>
-                        <p className="type-text-xs">kind: {selectedGraphNode.kind}</p>
-                        {selectedGraphNode.executionKind ? <p className="type-text-xs">execution: {selectedGraphNode.executionKind}</p> : null}
+                      <div className="space-y-3">
+                        <p className="type-heading-xs">{selectedGraphNode.id}</p>
+                        <label className="space-y-2">
+                          <span className="field-label">Node name</span>
+                          <input
+                            aria-label={`graph node ${selectedGraphNode.id} name`}
+                            className="input-shell"
+                            type="text"
+                            value={selectedGraphNode.name}
+                            onChange={(event) => updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              nodes: currentGraph.nodes.map((node) => (
+                                node.id === selectedGraphNode.id
+                                  ? { ...node, name: event.target.value }
+                                  : node
+                              )),
+                            }))}
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="field-label">Execution kind</span>
+                          <select
+                            aria-label={`graph node ${selectedGraphNode.id} execution kind`}
+                            className="input-shell"
+                            value={selectedGraphNode.executionKind ?? ''}
+                            onChange={(event) => updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              nodes: currentGraph.nodes.map((node) => (
+                                node.id === selectedGraphNode.id
+                                  ? { ...node, executionKind: event.target.value.length > 0 ? event.target.value : null }
+                                  : node
+                              )),
+                            }))}
+                          >
+                            <option value="">discuss(default)</option>
+                            <option value="citizen_discuss">citizen_discuss</option>
+                            <option value="citizen_execute">citizen_execute</option>
+                            <option value="craftsman_dispatch">craftsman_dispatch</option>
+                            <option value="human_approval">human_approval</option>
+                          </select>
+                        </label>
+                        <label className="space-y-2">
+                          <span className="field-label">Gate type</span>
+                          <select
+                            aria-label={`graph node ${selectedGraphNode.id} gate type`}
+                            className="input-shell"
+                            value={selectedGraphNode.gateType ?? ''}
+                            onChange={(event) => updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              nodes: currentGraph.nodes.map((node) => (
+                                node.id === selectedGraphNode.id
+                                  ? { ...node, gateType: event.target.value.length > 0 ? event.target.value : null }
+                                  : node
+                              )),
+                            }))}
+                          >
+                            <option value="">none</option>
+                            {STAGE_GATE_OPTIONS.filter((option) => option !== 'none').map((option) => (
+                              <option key={`graph-node-gate-${option}`} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                     ) : null}
                     {selectedGraphEdge ? (
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <p className="type-heading-xs">{selectedGraphEdge.id}</p>
                         <p className="type-text-xs">{selectedGraphEdge.from} {'->'} {selectedGraphEdge.to}</p>
-                        <p className="type-text-xs">kind: {selectedGraphEdge.kind}</p>
+                        <label className="space-y-2">
+                          <span className="field-label">Edge kind</span>
+                          <select
+                            aria-label={`graph edge ${selectedGraphEdge.id} kind`}
+                            className="input-shell"
+                            value={selectedGraphEdge.kind}
+                            onChange={(event) => updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              edges: currentGraph.edges.map((edge) => (
+                                edge.id === selectedGraphEdge.id
+                                  ? { ...edge, kind: event.target.value as TemplateGraph['edges'][number]['kind'] }
+                                  : edge
+                              )),
+                            }))}
+                          >
+                            <option value="advance">advance</option>
+                            <option value="reject">reject</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => {
+                            updateDraftGraph((currentGraph) => ({
+                              ...currentGraph,
+                              edges: currentGraph.edges.filter((edge) => edge.id !== selectedGraphEdge.id),
+                            }));
+                            setSelectedGraphEdgeId(null);
+                          }}
+                        >
+                          Delete edge
+                        </button>
                       </div>
                     ) : null}
                     {!selectedGraphNode && !selectedGraphEdge ? (
@@ -983,7 +1146,15 @@ export function TemplatesPage() {
                     <span className="detail-card__label">{copy.graphNodesLabel}</span>
                     <div className="space-y-2">
                       {(draftGraph?.nodes ?? []).map((node) => (
-                        <div key={`graph-node-${node.id}`} className="data-row">
+                        <button
+                          key={`graph-node-${node.id}`}
+                          type="button"
+                          className="data-row w-full text-left"
+                          onClick={() => {
+                            setSelectedGraphNodeId(node.id);
+                            setSelectedGraphEdgeId(null);
+                          }}
+                        >
                           <div className="min-w-0 flex-1">
                             <p className="type-heading-xs">{node.name}</p>
                             <p className="type-text-xs mt-1">
@@ -993,7 +1164,7 @@ export function TemplatesPage() {
                             </p>
                           </div>
                           {node.gateType ? <span className="status-pill status-pill--neutral">{node.gateType}</span> : null}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -1001,12 +1172,21 @@ export function TemplatesPage() {
                     <span className="detail-card__label">{copy.graphEdgesLabel}</span>
                     <div className="space-y-2">
                       {(draftGraph?.edges ?? []).map((edge) => (
-                        <div key={`graph-edge-${edge.id}`} className="data-row">
+                        <button
+                          key={`graph-edge-${edge.id}`}
+                          type="button"
+                          aria-label={`graph edge ${edge.from} ${edge.to}`}
+                          className="data-row w-full text-left"
+                          onClick={() => {
+                            setSelectedGraphEdgeId(edge.id);
+                            setSelectedGraphNodeId(null);
+                          }}
+                        >
                           <span className="type-mono-xs">{`${edge.from} -> ${edge.to}`}</span>
                           <span className={edge.kind === 'reject' ? 'status-pill status-pill--warning' : 'status-pill status-pill--info'}>
                             {edge.kind}
                           </span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>

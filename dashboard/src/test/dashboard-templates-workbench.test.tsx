@@ -425,6 +425,41 @@ describe('templates workbench layout', () => {
     expect(within(graphPanel as HTMLElement).queryByText('discuss -> develop')).not.toBeInTheDocument();
   });
 
+  it('edits graph node and edge properties through the inspector before saving', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: '讨论 discuss / stage' }));
+    fireEvent.change(screen.getByLabelText('graph node discuss name'), {
+      target: { value: '讨论 v2' },
+    });
+    fireEvent.change(screen.getByLabelText('graph node discuss execution kind'), {
+      target: { value: 'citizen_discuss' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'graph edge review develop' }));
+    fireEvent.change(screen.getByLabelText('graph edge review__reject__develop kind'), {
+      target: { value: 'advance' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存模板' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'discuss',
+            name: '讨论 v2',
+            executionKind: 'citizen_discuss',
+          }),
+        ]),
+        edges: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'review__reject__develop',
+            kind: 'advance',
+          }),
+        ]),
+      }),
+    }));
+  });
+
   it('supports adding and removing team roles before saving the selected template', () => {
     renderPage();
 

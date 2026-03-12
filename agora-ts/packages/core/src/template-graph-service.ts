@@ -71,9 +71,9 @@ export function deriveStagesFromGraph(graph: TemplateGraphDto): TemplateStageDto
 
 export function normalizeTemplateGraph(template: TemplateDetailDto): TemplateDetailDto {
   const graph = template.graph ?? deriveGraphFromStages(template.stages ?? []);
-  const stages = (template.stages?.length ?? 0) > 0
-    ? template.stages!
-    : deriveStagesFromGraph(graph);
+  const stages = template.graph
+    ? deriveStagesFromGraph(graph)
+    : (template.stages ?? deriveStagesFromGraph(graph));
   return {
     ...template,
     stages,
