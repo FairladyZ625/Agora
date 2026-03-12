@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
+import ReactFlow, {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  Controls,
+  MarkerType,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
 import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 import { evaluateTemplateControllerTopology, evaluateTemplateRuntimeCompatibility } from '@/lib/templateRuntimeCompatibility';
 import { useAgentStore } from '@/stores/agentStore';
 import { useTemplateStore } from '@/stores/templateStore';
-import type { TemplateDetail } from '@/types/dashboard';
+import type { TemplateDetail, TemplateGraph } from '@/types/dashboard';
 
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
+  const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
   return {
     ...template,
     defaultTeamRoles: [...template.defaultTeamRoles],
@@ -15,23 +30,61 @@ function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
       suggested: [...member.suggested],
     })),
     stages: template.stages.map((stage) => ({ ...stage })),
+    graph: {
+      ...graph,
+      entryNodes: [...graph.entryNodes],
+      nodes: graph.nodes.map((node) => ({
+        ...node,
+        allowedActions: [...node.allowedActions],
+        layout: node.layout ? { ...node.layout } : null,
+      })),
+      edges: graph.edges.map((edge) => ({ ...edge })),
+    },
   };
 }
 
-function buildTemplateEdges(template: TemplateDetail) {
-  const edges: Array<{ from: string; to: string; kind: 'advance' | 'reject' }> = [];
-
-  template.stages.forEach((stage, index) => {
-    const nextStage = template.stages[index + 1];
-    if (nextStage) {
-      edges.push({ from: stage.id, to: nextStage.id, kind: 'advance' });
-    }
-    if (stage.rejectTarget) {
-      edges.push({ from: stage.id, to: stage.rejectTarget, kind: 'reject' });
-    }
-  });
-
-  return edges;
+function deriveTemplateGraphFromStages(stages: TemplateDetail['stages'], existingGraph?: TemplateGraph | null): TemplateGraph {
+  const existingNodeById = new Map((existingGraph?.nodes ?? []).map((node) => [node.id, node]));
+  return {
+    graphVersion: existingGraph?.graphVersion ?? 1,
+    entryNodes: stages[0] ? [stages[0].id] : [],
+    nodes: stages.map((stage, index) => {
+      const existing = existingNodeById.get(stage.id);
+      return {
+        id: stage.id,
+        name: stage.name,
+        kind: 'stage' as const,
+        executionKind: existing?.executionKind ?? null,
+        allowedActions: existing?.allowedActions ?? [],
+        gateType: stage.gateType ?? null,
+        gateApprover: stage.gateApprover ?? null,
+        gateRequired: stage.gateRequired ?? null,
+        gateTimeoutSec: stage.gateTimeoutSec ?? null,
+        layout: existing?.layout ?? { x: index * 260, y: 0 },
+      };
+    }),
+    edges: stages.flatMap((stage, index) => {
+      const edges: TemplateGraph['edges'] = [];
+      const nextStage = stages[index + 1];
+      if (nextStage) {
+        edges.push({
+          id: `${stage.id}__advance__${nextStage.id}`,
+          from: stage.id,
+          to: nextStage.id,
+          kind: 'advance',
+        });
+      }
+      if (stage.rejectTarget) {
+        edges.push({
+          id: `${stage.id}__reject__${stage.rejectTarget}`,
+          from: stage.id,
+          to: stage.rejectTarget,
+          kind: 'reject',
+        });
+      }
+      return edges;
+    }),
+  };
 }
 
 function normalizeStageForGateType(stage: TemplateDetail['stages'][number], gateType: string | null) {
@@ -103,6 +156,8 @@ export function TemplatesPage() {
   const [roleSelection, setRoleSelection] = useState<{ templateId: string | null; value: string }>({ templateId: null, value: '' });
   const [compatibilitySaveErrorState, setCompatibilitySaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
   const [controllerSaveErrorState, setControllerSaveErrorState] = useState<{ templateId: string | null; value: boolean }>({ templateId: null, value: false });
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
+  const [selectedGraphEdgeId, setSelectedGraphEdgeId] = useState<string | null>(null);
   const currentTemplateId = selectedTemplate?.id ?? null;
 
   useEffect(() => {
@@ -141,6 +196,23 @@ export function TemplatesPage() {
       return;
     }
     setDraftState(transform(draft));
+  };
+
+  const updateDraftFromStages = (transform: (current: TemplateDetail) => TemplateDetail) => {
+    updateDraft((current) => {
+      const next = transform(current);
+      return {
+        ...next,
+        graph: deriveTemplateGraphFromStages(next.stages, next.graph),
+      };
+    });
+  };
+
+  const updateDraftGraph = (transform: (graph: NonNullable<TemplateDetail['graph']>) => NonNullable<TemplateDetail['graph']>) => {
+    updateDraft((current) => ({
+      ...current,
+      graph: transform(current.graph ?? deriveTemplateGraphFromStages(current.stages)),
+    }));
   };
 
   const setDuplicateId = (value: string) => {
@@ -201,10 +273,81 @@ export function TemplatesPage() {
     : { controllerRoles: [], isMissingController: false, hasDuplicateControllers: false };
   const compatibilityByRole = new Map(compatibility.map((item) => [item.role, item]));
   const knownAgentIds = new Set(agents.map((agent) => agent.id));
-  const graphEdges = draft ? buildTemplateEdges(draft) : [];
+  const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
+  const graphNodes = useMemo<Node[]>(() => (
+    draftGraph?.nodes.map((node) => ({
+      id: node.id,
+      position: node.layout ?? { x: 0, y: 0 },
+      data: { label: node.name },
+      type: 'default',
+    })) ?? []
+  ), [draftGraph]);
+  const graphCanvasEdges = useMemo<Edge[]>(() => (
+    draftGraph?.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      label: edge.kind,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      animated: edge.kind === 'reject',
+    })) ?? []
+  ), [draftGraph]);
   const availableRoleOptions = draft
     ? TEAM_ROLE_OPTIONS.filter((role) => !draft.defaultTeam.some((member) => member.role === role))
     : TEAM_ROLE_OPTIONS;
+  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
+  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
+
+  const handleGraphNodesChange = (changes: NodeChange[]) => {
+    updateDraftGraph((currentGraph) => {
+      const nextNodes = applyNodeChanges(changes, graphNodes);
+      return {
+        ...currentGraph,
+        nodes: currentGraph.nodes.map((node) => {
+          const nextNode = nextNodes.find((candidate) => candidate.id === node.id);
+          return nextNode
+            ? {
+                ...node,
+                layout: { x: nextNode.position.x, y: nextNode.position.y },
+              }
+            : node;
+        }),
+      };
+    });
+  };
+
+  const handleGraphEdgesChange = (changes: EdgeChange[]) => {
+    updateDraftGraph((currentGraph) => {
+      const nextEdges = applyEdgeChanges(changes, graphCanvasEdges);
+      return {
+        ...currentGraph,
+        edges: currentGraph.edges.filter((edge) => nextEdges.some((candidate) => candidate.id === edge.id)),
+      };
+    });
+  };
+
+  const handleGraphConnect = (connection: Connection) => {
+    if (!connection.source || !connection.target) {
+      return;
+    }
+    const source = connection.source;
+    const target = connection.target;
+    updateDraftGraph((currentGraph) => ({
+      ...currentGraph,
+      edges: addEdge({
+        id: `${source}__advance__${target}`,
+        source,
+        target,
+        label: 'advance',
+      }, graphCanvasEdges).map((edge) => ({
+        id: edge.id,
+        from: edge.source,
+        to: edge.target,
+        kind: edge.label === 'reject' ? 'reject' : 'advance',
+      })) as TemplateGraph['edges'],
+    }));
+    setSelectedGraphEdgeId(`${source}__advance__${target}`);
+  };
 
   const toggleSuggestedAgent = (role: string, agentId: string) => {
     updateDraft((current) => ({
@@ -543,7 +686,7 @@ export function TemplatesPage() {
                   <button
                     type="button"
                     className="button-secondary"
-                    onClick={() => updateDraft((current) => ({
+                    onClick={() => updateDraftFromStages((current) => ({
                       ...current,
                       stages: [
                         ...current.stages,
@@ -573,7 +716,7 @@ export function TemplatesPage() {
                             className="button-secondary"
                             aria-label={copy.stageMoveUpAria(stage.id)}
                             disabled={stageIndex === 0}
-                            onClick={() => updateDraft((current) => ({
+                            onClick={() => updateDraftFromStages((current) => ({
                               ...current,
                               stages: moveStage(current.stages, stageIndex, -1),
                             }))}
@@ -585,7 +728,7 @@ export function TemplatesPage() {
                             className="button-secondary"
                             aria-label={copy.stageMoveDownAria(stage.id)}
                             disabled={stageIndex === draft.stages.length - 1}
-                            onClick={() => updateDraft((current) => ({
+                            onClick={() => updateDraftFromStages((current) => ({
                               ...current,
                               stages: moveStage(current.stages, stageIndex, 1),
                             }))}
@@ -597,7 +740,7 @@ export function TemplatesPage() {
                             className="button-secondary"
                             aria-label={copy.stageDeleteAria(stage.id)}
                             disabled={draft.stages.length === 1}
-                            onClick={() => updateDraft((current) => ({
+                            onClick={() => updateDraftFromStages((current) => ({
                               ...current,
                               stages: removeStage(current.stages, stage.id),
                             }))}
@@ -612,7 +755,7 @@ export function TemplatesPage() {
                             className="input-shell"
                             type="text"
                             value={stage.name}
-                            onChange={(event) => updateDraft((current) => ({
+                            onChange={(event) => updateDraftFromStages((current) => ({
                               ...current,
                               stages: current.stages.map((item) => (
                                 item.id === stage.id
@@ -632,9 +775,9 @@ export function TemplatesPage() {
                               aria-label={`阶段 ${stage.id} ${copy.stageModeLabel}`}
                               className="input-shell"
                               value={stage.mode}
-                              onChange={(event) => updateDraft((current) => ({
-                                ...current,
-                                stages: current.stages.map((item) => (
+                            onChange={(event) => updateDraftFromStages((current) => ({
+                              ...current,
+                              stages: current.stages.map((item) => (
                                   item.id === stage.id
                                     ? {
                                         ...item,
@@ -655,9 +798,9 @@ export function TemplatesPage() {
                               aria-label={`阶段 ${stage.id} ${copy.stageGateLabel}`}
                               className="input-shell"
                               value={stage.gateType ?? 'none'}
-                              onChange={(event) => updateDraft((current) => ({
-                                ...current,
-                                stages: current.stages.map((item) => (
+                            onChange={(event) => updateDraftFromStages((current) => ({
+                              ...current,
+                              stages: current.stages.map((item) => (
                                   item.id === stage.id
                                     ? {
                                         ...item,
@@ -681,9 +824,9 @@ export function TemplatesPage() {
                               aria-label={`阶段 ${stage.id} ${copy.stageRejectTargetLabel}`}
                               className="input-shell"
                               value={stage.rejectTarget ?? ''}
-                              onChange={(event) => updateDraft((current) => ({
-                                ...current,
-                                stages: current.stages.map((item) => (
+                            onChange={(event) => updateDraftFromStages((current) => ({
+                              ...current,
+                              stages: current.stages.map((item) => (
                                   item.id === stage.id
                                     ? {
                                         ...item,
@@ -711,7 +854,7 @@ export function TemplatesPage() {
                                 className="input-shell"
                                 type="text"
                                 value={stage.gateApprover ?? ''}
-                                onChange={(event) => updateDraft((current) => ({
+                                onChange={(event) => updateDraftFromStages((current) => ({
                                   ...current,
                                   stages: current.stages.map((item) => (
                                     item.id === stage.id
@@ -736,7 +879,7 @@ export function TemplatesPage() {
                                 type="number"
                                 min={1}
                                 value={stage.gateRequired ?? ''}
-                                onChange={(event) => updateDraft((current) => ({
+                                onChange={(event) => updateDraftFromStages((current) => ({
                                   ...current,
                                   stages: current.stages.map((item) => (
                                     item.id === stage.id
@@ -761,7 +904,7 @@ export function TemplatesPage() {
                                 type="number"
                                 min={1}
                                 value={stage.gateTimeoutSec ?? ''}
-                                onChange={(event) => updateDraft((current) => ({
+                                onChange={(event) => updateDraftFromStages((current) => ({
                                   ...current,
                                   stages: current.stages.map((item) => (
                                     item.id === stage.id
@@ -789,21 +932,67 @@ export function TemplatesPage() {
               </div>
               <div>
                 <p className="page-kicker">{copy.graphTitle}</p>
-                <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                <div className="mt-3 space-y-4">
+                  <div className="detail-card">
+                    <div style={{ height: 420 }}>
+                      <ReactFlow
+                        fitView
+                        nodes={graphNodes}
+                        edges={graphCanvasEdges}
+                        onNodesChange={handleGraphNodesChange}
+                        onEdgesChange={handleGraphEdgesChange}
+                        onConnect={handleGraphConnect}
+                        onNodeClick={(_, node) => {
+                          setSelectedGraphNodeId(node.id);
+                          setSelectedGraphEdgeId(null);
+                        }}
+                        onEdgeClick={(_, edge) => {
+                          setSelectedGraphEdgeId(edge.id);
+                          setSelectedGraphNodeId(null);
+                        }}
+                      >
+                        <Background />
+                        <Controls />
+                      </ReactFlow>
+                    </div>
+                  </div>
+                  <div className="detail-card space-y-3">
+                    <span className="detail-card__label">Graph inspector</span>
+                    {selectedGraphNode ? (
+                      <div className="space-y-2">
+                        <p className="type-heading-xs">{selectedGraphNode.name}</p>
+                        <p className="type-text-xs">{selectedGraphNode.id}</p>
+                        <p className="type-text-xs">kind: {selectedGraphNode.kind}</p>
+                        {selectedGraphNode.executionKind ? <p className="type-text-xs">execution: {selectedGraphNode.executionKind}</p> : null}
+                      </div>
+                    ) : null}
+                    {selectedGraphEdge ? (
+                      <div className="space-y-2">
+                        <p className="type-heading-xs">{selectedGraphEdge.id}</p>
+                        <p className="type-text-xs">{selectedGraphEdge.from} {'->'} {selectedGraphEdge.to}</p>
+                        <p className="type-text-xs">kind: {selectedGraphEdge.kind}</p>
+                      </div>
+                    ) : null}
+                    {!selectedGraphNode && !selectedGraphEdge ? (
+                      <p className="type-body-sm">Select a node or edge on the canvas.</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <div className="detail-card space-y-3">
                     <span className="detail-card__label">{copy.graphNodesLabel}</span>
                     <div className="space-y-2">
-                      {draft.stages.map((stage) => (
-                        <div key={`graph-node-${stage.id}`} className="data-row">
+                      {(draftGraph?.nodes ?? []).map((node) => (
+                        <div key={`graph-node-${node.id}`} className="data-row">
                           <div className="min-w-0 flex-1">
-                            <p className="type-heading-xs">{stage.name}</p>
+                            <p className="type-heading-xs">{node.name}</p>
                             <p className="type-text-xs mt-1">
-                              {stage.id}
+                              {node.id}
                               {' / '}
-                              {stage.mode}
+                              {node.kind}
                             </p>
                           </div>
-                          {stage.gateType ? <span className="status-pill status-pill--neutral">{stage.gateType}</span> : null}
+                          {node.gateType ? <span className="status-pill status-pill--neutral">{node.gateType}</span> : null}
                         </div>
                       ))}
                     </div>
@@ -811,8 +1000,8 @@ export function TemplatesPage() {
                   <div className="detail-card space-y-3">
                     <span className="detail-card__label">{copy.graphEdgesLabel}</span>
                     <div className="space-y-2">
-                      {graphEdges.map((edge, index) => (
-                        <div key={`graph-edge-${edge.from}-${edge.to}-${index}`} className="data-row">
+                      {(draftGraph?.edges ?? []).map((edge) => (
+                        <div key={`graph-edge-${edge.id}`} className="data-row">
                           <span className="type-mono-xs">{`${edge.from} -> ${edge.to}`}</span>
                           <span className={edge.kind === 'reject' ? 'status-pill status-pill--warning' : 'status-pill status-pill--info'}>
                             {edge.kind}

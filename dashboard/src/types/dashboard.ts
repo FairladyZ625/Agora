@@ -208,6 +208,33 @@ export interface TemplateStage {
   rejectTarget?: string | null;
 }
 
+export interface TemplateGraphNode {
+  id: string;
+  name: string;
+  kind: 'stage' | 'terminal';
+  executionKind: string | null;
+  allowedActions: string[];
+  gateType: string | null;
+  gateApprover: string | null;
+  gateRequired: number | null;
+  gateTimeoutSec: number | null;
+  layout: { x: number; y: number } | null;
+}
+
+export interface TemplateGraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  kind: 'advance' | 'reject' | 'timeout' | 'branch' | 'complete';
+}
+
+export interface TemplateGraph {
+  graphVersion: number;
+  entryNodes: string[];
+  nodes: TemplateGraphNode[];
+  edges: TemplateGraphEdge[];
+}
+
 export interface TemplateTeamPresetMember {
   role: string;
   memberKind?: 'controller' | 'citizen' | 'craftsman' | null;
@@ -223,6 +250,7 @@ export interface TemplateDetail {
   governance: string;
   stageCount: number;
   stages: TemplateStage[];
+  graph?: TemplateGraph;
   defaultTeamRoles: string[];
   defaultTeam: TemplateTeamPresetMember[];
   raw: Record<string, unknown>;

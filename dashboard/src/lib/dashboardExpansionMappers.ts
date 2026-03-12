@@ -18,6 +18,9 @@ import type {
   CraftsmanStatusItem,
   PromoteTodoResult,
   TemplateDetail,
+  TemplateGraph,
+  TemplateGraphEdge,
+  TemplateGraphNode,
   TemplateStage,
   TemplateSummary,
   TmuxRuntimeStatus,
@@ -282,6 +285,74 @@ function mapTemplateStage(stage: NonNullable<ApiTemplateDetailDto['stages']>[num
   };
 }
 
+function deriveTemplateGraphFromStages(stages: TemplateStage[]): TemplateGraph {
+  return {
+    graphVersion: 1,
+    entryNodes: stages[0] ? [stages[0].id] : [],
+    nodes: stages.map((stage, index): TemplateGraphNode => ({
+      id: stage.id,
+      name: stage.name,
+      kind: 'stage',
+      executionKind: null,
+      allowedActions: [],
+      gateType: stage.gateType ?? null,
+      gateApprover: stage.gateApprover ?? null,
+      gateRequired: stage.gateRequired ?? null,
+      gateTimeoutSec: stage.gateTimeoutSec ?? null,
+      layout: { x: index * 280, y: 0 },
+    })),
+    edges: stages.flatMap((stage, index) => {
+      const edges: TemplateGraphEdge[] = [];
+      const nextStage = stages[index + 1];
+      if (nextStage) {
+        edges.push({
+          id: `${stage.id}__advance__${nextStage.id}`,
+          from: stage.id,
+          to: nextStage.id,
+          kind: 'advance',
+        });
+      }
+      if (stage.rejectTarget) {
+        edges.push({
+          id: `${stage.id}__reject__${stage.rejectTarget}`,
+          from: stage.id,
+          to: stage.rejectTarget,
+          kind: 'reject',
+        });
+      }
+      return edges;
+    }),
+  };
+}
+
+function mapTemplateGraph(dto: ApiTemplateDetailDto, stages: TemplateStage[]): TemplateGraph {
+  if (!dto.graph) {
+    return deriveTemplateGraphFromStages(stages);
+  }
+  return {
+    graphVersion: dto.graph.graph_version,
+    entryNodes: [...dto.graph.entry_nodes],
+    nodes: dto.graph.nodes.map((node): TemplateGraphNode => ({
+      id: node.id,
+      name: node.name ?? node.id,
+      kind: node.kind,
+      executionKind: node.execution_kind ?? null,
+      allowedActions: node.allowed_actions ?? [],
+      gateType: node.gate?.type ?? null,
+      gateApprover: node.gate?.approver ?? node.gate?.approver_role ?? null,
+      gateRequired: node.gate?.required ?? null,
+      gateTimeoutSec: node.gate?.timeout_sec ?? null,
+      layout: node.layout ? { x: node.layout.x, y: node.layout.y } : null,
+    })),
+    edges: dto.graph.edges.map((edge) => ({
+      id: edge.id,
+      from: edge.from,
+      to: edge.to,
+      kind: edge.kind,
+    })),
+  };
+}
+
 function mapTemplateTeamPreset(dto: ApiTemplateDetailDto): TemplateDetail['defaultTeam'] {
   return Object.entries(dto.defaultTeam ?? {}).map(([role, member]) => ({
     role,
@@ -302,6 +373,7 @@ export function mapTemplateDetailDto(id: string, dto: ApiTemplateDetailDto): Tem
     governance: formatGovernance(dto.governance),
     stageCount: stages.length,
     stages,
+    graph: mapTemplateGraph(dto, stages),
     defaultTeamRoles: defaultTeam.map((member) => member.role),
     defaultTeam,
     raw: dto,
@@ -311,6 +383,7 @@ export function mapTemplateDetailDto(id: string, dto: ApiTemplateDetailDto): Tem
 export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetailDto {
   const raw = detail.raw as Partial<ApiTemplateDetailDto>;
   const rawGovernance = typeof raw.governance === 'string' ? raw.governance : undefined;
+  const graph = detail.graph ?? deriveTemplateGraphFromStages(detail.stages);
 
   return templateDetailSchema.parse({
     ...raw,
@@ -363,5 +436,33 @@ export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetai
         ...(stage.rejectTarget ? { reject_target: stage.rejectTarget } : {}),
       };
     }),
+    graph: {
+      graph_version: graph.graphVersion,
+      entry_nodes: graph.entryNodes,
+      nodes: graph.nodes.map((node) => ({
+        id: node.id,
+        ...(node.name ? { name: node.name } : {}),
+        kind: node.kind,
+        ...(node.executionKind ? { execution_kind: node.executionKind } : {}),
+        ...(node.allowedActions.length > 0 ? { allowed_actions: node.allowedActions } : {}),
+        ...((node.gateType || node.gateApprover || typeof node.gateRequired === 'number' || typeof node.gateTimeoutSec === 'number')
+          ? {
+              gate: {
+                ...(node.gateType ? { type: node.gateType } : {}),
+                ...(node.gateApprover ? { approver: node.gateApprover } : {}),
+                ...(typeof node.gateRequired === 'number' ? { required: node.gateRequired } : {}),
+                ...(typeof node.gateTimeoutSec === 'number' ? { timeout_sec: node.gateTimeoutSec } : {}),
+              },
+            }
+          : {}),
+        ...(node.layout ? { layout: node.layout } : {}),
+      })),
+      edges: graph.edges.map((edge) => ({
+        id: edge.id,
+        from: edge.from,
+        to: edge.to,
+        kind: edge.kind,
+      })),
+    },
   });
 }

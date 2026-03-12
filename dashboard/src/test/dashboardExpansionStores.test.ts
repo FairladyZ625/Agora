@@ -541,14 +541,15 @@ describe('dashboard expansion stores', () => {
       name: 'Coding Task v2',
       description: '更新后的模板',
       governance: 'standard',
-        defaultTeam: {
-          architect: {
-            member_kind: 'controller',
-            model_preference: 'strong_reasoning',
-            suggested: ['opus', 'codex'],
-          },
+      defaultTeam: {
+        architect: {
+          member_kind: 'controller',
+          model_preference: 'strong_reasoning',
+          suggested: ['opus', 'codex'],
         },
+      },
       stages: [{ id: 'develop', name: '实现', mode: 'execute' }],
+      graph: expect.any(Object),
     });
     expect(useTemplateStore.getState().selectedTemplate?.name).toBe('Coding Task v2');
   });
