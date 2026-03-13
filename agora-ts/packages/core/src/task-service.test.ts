@@ -2559,6 +2559,146 @@ describe('task service', () => {
     })).toThrow(/controller ownership/i);
   });
 
+  it('rejects craftsman dispatch when per-agent concurrency exceeds the configured limit', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-governance-limit-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T14:00:00.000Z'),
+      },
+    });
+    const executions = new CraftsmanExecutionRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-GOV-1',
+      craftsmanDispatcher: dispatcher,
+      craftsmanGovernance: {
+        maxConcurrentPerAgent: 1,
+      },
+    });
+
+    service.createTask({
+      title: 'Per-agent concurrency guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-governance-limit-1',
+      task_id: 'OC-DISPATCH-GOV-1',
+      stage_id: 'implement',
+      title: 'Already running elsewhere',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-existing-1',
+      task_id: 'OC-DISPATCH-GOV-1',
+      subtask_id: 'sub-governance-limit-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:existing',
+      status: 'running',
+      started_at: '2026-03-13T13:59:00.000Z',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-governance-limit-2',
+      task_id: 'OC-DISPATCH-GOV-1',
+      stage_id: 'implement',
+      title: 'Should be rejected by limit',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    expect(() => service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-GOV-1',
+      subtask_id: 'sub-governance-limit-2',
+      caller_id: 'opus',
+      adapter: 'codex',
+      mode: 'task',
+      workdir: '/tmp/codex',
+    })).toThrow(/per-agent concurrency limit exceeded/i);
+  });
+
+  it('rejects subtask creation when host resource limits are exceeded', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-GOV-2',
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-13T14:10:00.000Z',
+          cpu_count: 8,
+          load_1m: 2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 95,
+          memory_utilization: 0.95,
+          swap_total_bytes: 10,
+          swap_used_bytes: 1,
+          swap_utilization: 0.1,
+        }),
+      },
+      craftsmanGovernance: {
+        maxConcurrentPerAgent: 3,
+        hostMemoryUtilizationLimit: 0.9,
+      },
+    });
+
+    service.createTask({
+      title: 'Host resource guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-DISPATCH-GOV-2', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-host-limit-1',
+          title: 'Should be blocked by host limit',
+          assignee: 'codex',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'task',
+          },
+        },
+      ],
+    })).toThrow(/memory utilization/i);
+  });
+
   it('creates execute-mode subtasks through the formal service surface and auto-dispatches craftsmen specs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
