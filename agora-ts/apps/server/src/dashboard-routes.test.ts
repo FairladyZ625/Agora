@@ -144,6 +144,7 @@ describe('dashboard routes', () => {
         {
           occurred_at: '2026-03-08T07:30:25.241Z',
           agent_id: 'main',
+          provider: 'discord',
           account_id: 'main',
           presence: 'online',
           reason: 'provider_start',
