@@ -395,6 +395,46 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('serves craftsman governance snapshot route', async () => {
+    const app = buildApp({
+      taskService: {
+        getCraftsmanGovernanceSnapshot: () => ({
+          limits: {
+            max_concurrent_running: 8,
+            max_concurrent_per_agent: 3,
+            host_memory_utilization_limit: 0.9,
+            host_swap_utilization_limit: 0.9,
+            host_load_per_cpu_limit: 1.5,
+          },
+          active_executions: 1,
+          active_by_assignee: [{ assignee: 'opus', count: 1 }],
+          host: {
+            observed_at: '2026-03-13T12:00:00.000Z',
+            cpu_count: 8,
+            load_1m: 2,
+            memory_total_bytes: 100,
+            memory_used_bytes: 40,
+            memory_utilization: 0.4,
+            swap_total_bytes: 10,
+            swap_used_bytes: 1,
+            swap_utilization: 0.1,
+          },
+        }),
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/governance',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      active_executions: 1,
+      active_by_assignee: [{ assignee: 'opus', count: 1 }],
+    });
+  });
+
   it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

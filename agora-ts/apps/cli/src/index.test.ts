@@ -1752,4 +1752,45 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('craftsman probe 已执行: exec-123');
     expect(stdout.value).toContain('status: running');
   });
+
+  it('shows craftsman governance snapshot through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      taskService: {
+        getCraftsmanGovernanceSnapshot: () => ({
+          limits: {
+            max_concurrent_running: 8,
+            max_concurrent_per_agent: 3,
+            host_memory_utilization_limit: 0.9,
+            host_swap_utilization_limit: 0.9,
+            host_load_per_cpu_limit: 1.5,
+          },
+          active_executions: 2,
+          active_by_assignee: [{ assignee: 'opus', count: 2 }],
+          host: {
+            observed_at: '2026-03-13T12:00:00.000Z',
+            cpu_count: 8,
+            load_1m: 4,
+            memory_total_bytes: 100,
+            memory_used_bytes: 50,
+            memory_utilization: 0.5,
+            swap_total_bytes: 10,
+            swap_used_bytes: 1,
+            swap_utilization: 0.1,
+          },
+        }),
+      } as unknown as TaskService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'governance'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('active executions: 2');
+    expect(stdout.value).toContain('opus\t2');
+  });
 });
