@@ -559,7 +559,7 @@ describe('craftsman callback service', () => {
     });
     expect(result.subtask).toMatchObject({
       id: 'sub-codex',
-      status: 'in_progress',
+      status: 'waiting_input',
       dispatch_status: 'needs_input',
       done_at: null,
     });

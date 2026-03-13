@@ -50,7 +50,7 @@ import type { TaskContextBindingService } from './task-context-binding-service.j
 import type { TaskParticipationService } from './task-participation-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 
-const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed']);
+const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 
 type TaskTemplate = {
@@ -611,6 +611,7 @@ export class TaskService {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
     const advance = this.stateMachine.advance(task.workflow, task.current_stage);
+    this.reconcileStageExitSubtasks(task.id, advance.currentStage.id, 'archived', 'stage_advanced');
     this.exitStage(task.id, advance.currentStage.id, 'advance');
 
     if (advance.completesTask) {
@@ -811,7 +812,7 @@ export class TaskService {
     const result = this.craftsmanCallbacks.handleCallback(input);
     if (
       result.task.state !== TaskState.PAUSED
-      && ['done', 'failed', 'in_progress'].includes(result.subtask.status)
+      && ['done', 'failed', 'in_progress', 'waiting_input'].includes(result.subtask.status)
       && ['running', 'succeeded', 'failed', 'cancelled', 'needs_input', 'awaiting_choice'].includes(result.execution.status)
     ) {
       this.sendImmediateCraftsmanNotification(result.task.id, result.execution.execution_id, result.subtask.id);
@@ -932,6 +933,7 @@ export class TaskService {
       throw new Error(`Task ${taskId} has no current_stage set`);
     }
     const advance = this.stateMachine.advance(task.workflow, task.current_stage);
+    this.reconcileStageExitSubtasks(taskId, advance.currentStage.id, 'archived', 'force_advanced');
     this.exitStage(taskId, advance.currentStage.id, 'force_advance');
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
@@ -2059,6 +2061,7 @@ export class TaskService {
       return task;
     }
 
+    this.reconcileStageExitSubtasks(task.id, currentStageId, 'archived', decisionEvent);
     this.exitStage(task.id, currentStageId, decisionEvent);
     const updated = this.taskRepository.updateTask(task.id, task.version, {
       current_stage: rejectStage.id,
@@ -2141,6 +2144,18 @@ export class TaskService {
   }
 
   private applyStateTransitionSideEffects(task: StoredTask, newState: TaskState, options: UpdateTaskStateOptions) {
+    if (task.state === TaskState.PAUSED && newState === TaskState.ACTIVE) {
+      return {
+        action: 'resume',
+        resumed_subtasks: this.resumeArchivedSubtasks(task),
+      };
+    }
+    if (newState === TaskState.PAUSED) {
+      return {
+        action: 'pause',
+        archived_subtasks: this.archiveOpenSubtasks(task.id, 'task_paused'),
+      };
+    }
     if (task.state === TaskState.BLOCKED && newState === TaskState.ACTIVE) {
       if (options.action === 'retry') {
         return {
@@ -2180,7 +2195,11 @@ export class TaskService {
   }
 
   private isSubtaskRunning(status: string, dispatchStatus: string | null) {
-    return status === 'in_progress' || dispatchStatus === 'running';
+    return status === 'in_progress'
+      || status === 'waiting_input'
+      || dispatchStatus === 'running'
+      || dispatchStatus === 'needs_input'
+      || dispatchStatus === 'awaiting_choice';
   }
 
   private failMissingCraftsmanSessions(
@@ -2265,7 +2284,7 @@ export class TaskService {
         continue;
       }
       this.subtaskRepository.updateSubtask(taskId, subtask.id, {
-        status: 'failed',
+        status: 'cancelled',
         output: message,
         dispatch_status: subtask.dispatch_status && !TERMINAL_EXECUTION_STATUSES.has(subtask.dispatch_status)
           ? 'failed'
@@ -2288,6 +2307,73 @@ export class TaskService {
     }
   }
 
+  private archiveOpenSubtasks(taskId: string, reason: string) {
+    const now = new Date().toISOString();
+    const archived: string[] = [];
+    for (const subtask of this.subtaskRepository.listByTask(taskId)) {
+      if (TERMINAL_SUBTASK_STATES.has(subtask.status)) {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(taskId, subtask.id, {
+        status: 'archived',
+        output: subtask.output ?? `Subtask archived: ${reason}`,
+        done_at: now,
+      });
+      archived.push(subtask.id);
+    }
+    return archived;
+  }
+
+  private resumeArchivedSubtasks(task: StoredTask) {
+    const resumed: string[] = [];
+    if (!task.current_stage) {
+      return resumed;
+    }
+    for (const subtask of this.subtaskRepository.listByTask(task.id)) {
+      if (subtask.stage_id !== task.current_stage || subtask.status !== 'archived') {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(task.id, subtask.id, {
+        status: this.restoreSubtaskStatus(subtask.dispatch_status),
+        done_at: null,
+      });
+      resumed.push(subtask.id);
+    }
+    return resumed;
+  }
+
+  private reconcileStageExitSubtasks(
+    taskId: string,
+    stageId: string,
+    targetStatus: 'archived' | 'cancelled',
+    reason: string,
+  ) {
+    const now = new Date().toISOString();
+    const impacted: string[] = [];
+    for (const subtask of this.subtaskRepository.listByTask(taskId)) {
+      if (subtask.stage_id !== stageId || TERMINAL_SUBTASK_STATES.has(subtask.status)) {
+        continue;
+      }
+      this.subtaskRepository.updateSubtask(taskId, subtask.id, {
+        status: targetStatus,
+        output: subtask.output ?? `Subtask ${targetStatus}: ${reason}`,
+        done_at: now,
+      });
+      impacted.push(subtask.id);
+    }
+    return impacted;
+  }
+
+  private restoreSubtaskStatus(dispatchStatus: string | null) {
+    if (dispatchStatus === 'needs_input' || dispatchStatus === 'awaiting_choice') {
+      return 'waiting_input';
+    }
+    if (dispatchStatus === 'running' || dispatchStatus === 'queued') {
+      return 'in_progress';
+    }
+    return 'pending';
+  }
+
   private retryFailedSubtasks(task: StoredTask) {
     if (!task.current_stage) {
       return [] as string[];
@@ -2299,7 +2385,7 @@ export class TaskService {
         continue;
       }
       this.subtaskRepository.updateSubtask(task.id, subtask.id, {
-        status: 'not_started',
+        status: 'pending',
         output: null,
         craftsman_session: null,
         dispatch_status: null,
@@ -2347,7 +2433,7 @@ export class TaskService {
         continue;
       }
       this.subtaskRepository.updateSubtask(task.id, subtask.id, {
-        status: 'not_started',
+        status: 'pending',
         output: null,
         craftsman_type: craftsmanType ?? subtask.craftsman_type,
         craftsman_session: null,

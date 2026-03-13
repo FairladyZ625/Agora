@@ -75,6 +75,7 @@ export class CraftsmanDispatcher {
       craftsman_session: null,
       craftsman_workdir: isolatedWorkdir,
       craftsman_prompt: input.prompt ?? null,
+      status: 'pending',
       dispatch_status: 'queued',
       dispatched_at: new Date().toISOString(),
     });
@@ -102,7 +103,9 @@ export class CraftsmanDispatcher {
       });
       const subtask = this.subtasks.updateSubtask(input.task_id, input.subtask_id, {
         craftsman_session: result.session_id,
+        status: result.status === 'failed' ? 'failed' : 'in_progress',
         dispatch_status: result.status,
+        ...(result.status === 'failed' ? { done_at: result.started_at ?? new Date().toISOString() } : {}),
       });
       return { execution, subtask };
     } catch (error) {
@@ -113,7 +116,9 @@ export class CraftsmanDispatcher {
         finished_at: new Date().toISOString(),
       });
       this.subtasks.updateSubtask(input.task_id, input.subtask_id, {
+        status: 'failed',
         dispatch_status: 'failed',
+        done_at: new Date().toISOString(),
       });
       throw error;
     }

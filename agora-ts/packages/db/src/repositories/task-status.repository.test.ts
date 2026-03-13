@@ -71,7 +71,7 @@ describe('task status repositories', () => {
       stage_id: 'discuss',
       title: '整理计划',
       assignee: 'architect',
-      status: 'not_started',
+      status: 'pending',
     });
 
     expect(flowLogs.listByTask('OC-003')).toMatchObject([
@@ -92,7 +92,7 @@ describe('task status repositories', () => {
       {
         id: 'draft-plan',
         assignee: 'architect',
-        status: 'not_started',
+        status: 'pending',
       },
     ]);
   });

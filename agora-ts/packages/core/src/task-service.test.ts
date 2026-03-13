@@ -873,7 +873,7 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'retry-me',
-          status: 'not_started',
+          status: 'pending',
           output: null,
           craftsman_session: null,
           dispatch_status: null,
@@ -1014,7 +1014,7 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'reassign-me',
-          status: 'not_started',
+          status: 'pending',
           assignee: 'claude',
           craftsman_type: 'claude',
           output: null,
@@ -1061,7 +1061,7 @@ describe('task service', () => {
       stage_id: 'discuss',
       title: 'Draft the plan',
       assignee: 'opus',
-      status: 'not_started',
+      status: 'pending',
     });
     subtasks.insertSubtask({
       id: 'run-codex',
@@ -1129,12 +1129,12 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'draft-plan',
-          status: 'failed',
+          status: 'cancelled',
           output: 'Task cancelled: scope dropped',
         }),
         expect.objectContaining({
           id: 'run-codex',
-          status: 'failed',
+          status: 'cancelled',
           output: 'Task cancelled: scope dropped',
         }),
         expect.objectContaining({
@@ -1245,7 +1245,7 @@ describe('task service', () => {
       stage_id: 'discuss',
       title: 'Dispatch should fail',
       assignee: 'codex',
-      status: 'not_started',
+      status: 'pending',
       craftsman_type: 'codex',
     });
     service.pauseTask('OC-107', { reason: 'hold' });
@@ -1320,7 +1320,7 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'resume-me',
-          status: 'in_progress',
+          status: 'archived',
           dispatch_status: 'running',
         }),
       ]),
@@ -2428,7 +2428,7 @@ describe('task service', () => {
       stage_id: 'discuss',
       title: 'Should not dispatch from discuss',
       assignee: 'codex',
-      status: 'not_started',
+      status: 'pending',
       craftsman_type: 'codex',
     });
 
@@ -2484,7 +2484,7 @@ describe('task service', () => {
       stage_id: 'implement',
       title: 'Should dispatch in craftsman stage',
       assignee: 'codex',
-      status: 'not_started',
+      status: 'pending',
       craftsman_type: 'codex',
     });
 
@@ -2545,7 +2545,7 @@ describe('task service', () => {
       stage_id: 'implement',
       title: 'Only controller can dispatch',
       assignee: 'codex',
-      status: 'not_started',
+      status: 'pending',
       craftsman_type: 'codex',
     });
 

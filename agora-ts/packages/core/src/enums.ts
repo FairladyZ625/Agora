@@ -23,13 +23,13 @@ export const GateType = {
 export type GateType = (typeof GateType)[keyof typeof GateType];
 
 export const SubtaskState = {
-  NOT_STARTED: 'not_started',
-  DISPATCHED: 'dispatched',
+  PENDING: 'pending',
   IN_PROGRESS: 'in_progress',
+  WAITING_INPUT: 'waiting_input',
   DONE: 'done',
   FAILED: 'failed',
-  RETRYING: 'retrying',
-  ESCALATED: 'escalated',
+  CANCELLED: 'cancelled',
+  ARCHIVED: 'archived',
 } as const;
 
 export type SubtaskState = (typeof SubtaskState)[keyof typeof SubtaskState];

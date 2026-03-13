@@ -245,13 +245,25 @@ export const progressLogSchema = z.object({
 });
 export type ProgressLogDto = z.infer<typeof progressLogSchema>;
 
+export const supportedSubtaskStates = [
+  'pending',
+  'in_progress',
+  'waiting_input',
+  'done',
+  'failed',
+  'cancelled',
+  'archived',
+] as const;
+export const subtaskStatusSchema = z.enum(supportedSubtaskStates);
+export type SubtaskStatusDto = z.infer<typeof subtaskStatusSchema>;
+
 export const subtaskSchema = z.object({
   id: z.string(),
   task_id: z.string(),
   stage_id: z.string(),
   title: z.string(),
   assignee: z.string(),
-  status: z.string(),
+  status: subtaskStatusSchema,
   output: z.string().nullable(),
   craftsman_type: z.string().nullable(),
   craftsman_session: z.string().nullable().optional(),

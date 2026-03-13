@@ -106,7 +106,7 @@ export class CraftsmanCallbackService {
 
     const results: Array<{ execution_id: string; subtask_id: string }> = [];
     for (const subtask of this.subtasks.listByTask(taskId)) {
-      if (subtask.status === 'done' || subtask.status === 'failed') {
+      if (subtask.status === 'done' || subtask.status === 'failed' || subtask.status === 'cancelled' || subtask.status === 'archived') {
         continue;
       }
       const execution = this.executions.listBySubtask(taskId, subtask.id).find((item) => TERMINAL_STATUSES.has(item.status));
@@ -210,7 +210,7 @@ export class CraftsmanCallbackService {
       ?? inputRequest?.hint
       ?? `${execution.adapter} requires follow-up input`;
     const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
-      status: 'in_progress',
+      status: 'waiting_input',
       output,
       dispatch_status: execution.status,
       done_at: null,

@@ -1,3 +1,4 @@
+import type { SubtaskStatusDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredSubtask {
@@ -6,7 +7,7 @@ export interface StoredSubtask {
   stage_id: string;
   title: string;
   assignee: string;
-  status: string;
+  status: SubtaskStatusDto;
   output: string | null;
   craftsman_type: string | null;
   craftsman_session: string | null;
@@ -17,13 +18,22 @@ export interface StoredSubtask {
   done_at: string | null;
 }
 
+function normalizeSubtaskStatus(status: string): SubtaskStatusDto {
+  switch (status) {
+    case 'not_started':
+      return 'pending';
+    default:
+      return status as SubtaskStatusDto;
+  }
+}
+
 export interface InsertSubtaskInput {
   id: string;
   task_id: string;
   stage_id: string;
   title: string;
   assignee: string;
-  status?: string;
+  status?: SubtaskStatusDto;
   output?: string | null;
   craftsman_type?: string | null;
   craftsman_session?: string | null;
@@ -50,7 +60,7 @@ export class SubtaskRepository {
       input.stage_id,
       input.title,
       input.assignee,
-      input.status ?? 'not_started',
+      input.status ?? 'pending',
       input.output ?? null,
       input.craftsman_type ?? null,
       input.craftsman_session ?? null,
@@ -88,7 +98,7 @@ export class SubtaskRepository {
   }
 
   updateSubtask(taskId: string, subtaskId: string, updates: {
-    status?: string;
+    status?: SubtaskStatusDto;
     output?: string | null;
     craftsman_type?: string | null;
     craftsman_session?: string | null;
@@ -141,7 +151,7 @@ export class SubtaskRepository {
       stage_id: String(row.stage_id),
       title: String(row.title),
       assignee: String(row.assignee),
-      status: String(row.status),
+      status: normalizeSubtaskStatus(String(row.status)),
       output: row.output === null ? null : String(row.output),
       craftsman_type: row.craftsman_type === null ? null : String(row.craftsman_type),
       craftsman_session: row.craftsman_session === null ? null : String(row.craftsman_session),

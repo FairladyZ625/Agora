@@ -17,7 +17,7 @@ import {
 describe('canonical enums', () => {
   it('matches the TS migration canonical values', () => {
     expect(TaskState.ORPHANED).toBe('orphaned');
-    expect(SubtaskState.RETRYING).toBe('retrying');
+    expect(SubtaskState.WAITING_INPUT).toBe('waiting_input');
     expect(CollaborationMode.INDEPENDENT_EXECUTE).toBe('execute');
     expect(GateType.QUORUM).toBe('quorum');
     expect(AgentRole.CRAFTSMAN).toBe('craftsman');
