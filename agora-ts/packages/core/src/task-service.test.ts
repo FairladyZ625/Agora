@@ -1951,6 +1951,114 @@ describe('task service', () => {
 
   });
 
+  it('adds concrete craftsman loop commands to smoke-mode subtask and input broadcasts', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-smoke-craftsman-loop-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-smoke-loop-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T10:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SMOKE-CRAFTSMAN-1',
+      craftsmanDispatcher: dispatcher,
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-smoke-craftsman-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Smoke craftsman loop',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      control: {
+        mode: 'smoke_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+
+    service.createSubtasks('OC-SMOKE-CRAFTSMAN-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'build-loop',
+          title: 'Build loop',
+          assignee: 'sonnet',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'task',
+            workdir: '/tmp/smoke-loop',
+            prompt: 'Implement the smoke loop',
+          },
+        },
+      ],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const subtaskMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'subtasks_created');
+    expect(subtaskMessage?.body).toContain('Smoke Next Step:');
+    expect(subtaskMessage?.body).toContain('agora subtasks list OC-SMOKE-CRAFTSMAN-1');
+    expect(subtaskMessage?.body).toContain('agora craftsman input-text exec-smoke-loop-1');
+
+    provisioningPort.published.length = 0;
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-smoke-loop-1',
+      status: 'needs_input',
+      session_id: 'codex:exec-smoke-loop-1',
+      payload: {
+        input_request: {
+          hint: 'Choose continue',
+          choice_options: [
+            { id: 'continue', label: 'Continue' },
+            { id: 'abort', label: 'Abort' },
+          ],
+        },
+      },
+      error: null,
+      finished_at: '2026-03-13T10:05:00.000Z',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_needs_input');
+    expect(callbackMessage?.body).toContain('Smoke Next Step:');
+    expect(callbackMessage?.body).toContain('agora craftsman input-text exec-smoke-loop-1');
+    expect(callbackMessage?.body).toContain('agora craftsman input-keys exec-smoke-loop-1 Down Enter');
+  });
+
   it('adds smoke-mode guidance to probe broadcasts only in smoke mode', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

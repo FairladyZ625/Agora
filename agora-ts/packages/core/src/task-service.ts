@@ -676,6 +676,7 @@ export class TaskService {
         bodyLines: [
           `Advanced from ${advance.currentStage.id} to ${nextStage.id}.`,
           ...this.describeGateState(nextStage),
+          ...this.buildSmokeStageEntryCommands(updated, nextStage),
         ],
       });
     }
@@ -780,6 +781,7 @@ export class TaskService {
         ...(dispatchedExecutions.length > 0
           ? [`Auto-dispatched executions: ${dispatchedExecutions.map((execution) => `${execution.subtask_id}:${execution.execution_id}`).join(', ')}`]
           : []),
+        ...this.buildSmokeSubtaskCommands(task, options.caller_id, createdSubtasks, dispatchedExecutions),
       ],
     });
 
@@ -849,6 +851,7 @@ export class TaskService {
         `Caller: ${input.caller_id}`,
         `Adapter: ${input.adapter}`,
         `Execution: ${dispatched.execution.execution_id}`,
+        ...this.buildSmokeExecutionCommands(task, dispatched.execution.execution_id, dispatched.execution.status),
       ],
     });
     return dispatched;
@@ -1871,7 +1874,7 @@ export class TaskService {
         return [
           '',
           'Smoke Guidance:',
-          '- Validate the structured input loop now using tmux send-text / send-keys / submit-choice.',
+          '- Validate the structured input loop now using the execution-scoped Agora CLI commands.',
           '- Confirm the callback metadata includes the input_request payload and appears in conversation/Dashboard.',
         ];
       case 'thread_probe_controller':
@@ -1886,6 +1889,69 @@ export class TaskService {
       default:
         return [];
     }
+  }
+
+  private buildSmokeStageEntryCommands(task: StoredTask, stage: StoredTask['workflow']['stages'][number]): string[] {
+    if (task.control?.mode !== 'smoke_test') {
+      return [];
+    }
+    const executionKind = resolveStageExecutionKind(stage);
+    const controllerRef = resolveControllerRef(task.team.members) ?? 'controller';
+    if (executionKind !== 'citizen_execute' && executionKind !== 'craftsman_dispatch') {
+      return [];
+    }
+    return [
+      '',
+      'Smoke Next Step:',
+      `- Controller should create execute-mode subtasks now: \`agora subtasks create ${task.id} --caller-id ${controllerRef} --file subtasks.json\``,
+      '- Put the craftsman spec inside `subtasks.json` if this stage should auto-dispatch a craftsman.',
+    ];
+  }
+
+  private buildSmokeSubtaskCommands(
+    task: StoredTask,
+    callerId: string,
+    createdSubtasks: Array<{ id: string }>,
+    dispatchedExecutions: Array<{ execution_id: string }>,
+  ): string[] {
+    if (task.control?.mode !== 'smoke_test') {
+      return [];
+    }
+    const lines = [
+      '',
+      'Smoke Next Step:',
+      `- If no execution was auto-dispatched, dispatch from a subtask explicitly: \`agora craftsman dispatch ${task.id} <subtaskId> <adapter> --caller-id ${callerId}\``,
+      `- Inspect subtasks now: \`agora subtasks list ${task.id}\``,
+    ];
+    if (dispatchedExecutions.length > 0) {
+      const first = dispatchedExecutions[0]!;
+      lines.push(`- First execution ready: \`${first.execution_id}\``);
+      lines.push(`- If it pauses for input, continue with: \`agora craftsman input-text ${first.execution_id} "<text>"\``);
+    } else if (createdSubtasks.length > 0) {
+      lines.push('- After dispatch, watch the thread for `craftsman_started` and later callback events.');
+    }
+    return lines;
+  }
+
+  private buildSmokeExecutionCommands(task: StoredTask, executionId: string, status: string): string[] {
+    if (task.control?.mode !== 'smoke_test') {
+      return [];
+    }
+    const lines = [
+      '',
+      'Smoke Next Step:',
+      `- Inspect task conversation: \`agora task conversation ${task.id} --json\``,
+    ];
+    if (status === 'needs_input') {
+      lines.push(`- Continue this execution with text: \`agora craftsman input-text ${executionId} "<text>"\``);
+      lines.push(`- Or send structured keys: \`agora craftsman input-keys ${executionId} Down Enter\``);
+    } else if (status === 'awaiting_choice') {
+      lines.push(`- Continue this choice flow: \`agora craftsman submit-choice ${executionId} Down\``);
+      lines.push(`- If needed, fall back to explicit keys: \`agora craftsman input-keys ${executionId} Down Enter\``);
+    } else if (status === 'running') {
+      lines.push('- Wait for the callback before dispatching another craftsman into the same slot.');
+    }
+    return lines;
   }
 
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
@@ -1918,6 +1984,7 @@ export class TaskService {
         ...((payload?.input_request?.choice_options?.length ?? 0) > 0
           ? [`Choices: ${payload?.input_request?.choice_options?.map((option) => `${option.id}:${option.label}`).join(', ')}`]
           : []),
+        ...this.buildSmokeExecutionCommands(task, execution.execution_id, execution.status),
       ],
       ...(execution.finished_at ? { occurredAt: execution.finished_at } : {}),
     });
