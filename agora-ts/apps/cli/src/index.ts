@@ -1215,6 +1215,16 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   craftsman
+    .command('probe')
+    .description('探测某个 craftsmen execution 的运行态并同步 callback 状态')
+    .argument('<executionId>', 'execution ID')
+    .action((executionId: string) => {
+      const result = taskService.probeCraftsmanExecution(executionId);
+      writeLine(stdout, `craftsman probe 已执行: ${executionId}`);
+      writeLine(stdout, `status: ${result.execution.status}`);
+    });
+
+  craftsman
     .command('input-text')
     .description('向 waiting craftsman execution 发送文本输入')
     .argument('<executionId>', 'execution ID')

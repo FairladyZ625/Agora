@@ -96,8 +96,9 @@ export class TmuxPaneRegistry {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [id, title, currentCommand, active] = line.split('|');
-        if (!id || !title || !currentCommand || !active) {
+        const parts = line.split('|');
+        const [id, title = '', currentCommand = '', active = ''] = parts;
+        if (parts.length < 4 || !id || !currentCommand || !active) {
           throw new Error(`invalid tmux pane line: ${line}`);
         }
         return {
@@ -207,8 +208,9 @@ export class TmuxPaneRegistry {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [id, title] = line.split('|');
-        if (!id || !title) {
+        const parts = line.split('|');
+        const [id, title = ''] = parts;
+        if (parts.length < 2 || !id) {
           throw new Error(`invalid tmux pane line: ${line}`);
         }
         return { id, title };

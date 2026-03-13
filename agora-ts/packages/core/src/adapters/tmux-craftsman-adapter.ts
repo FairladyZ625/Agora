@@ -23,13 +23,19 @@ export class TmuxCraftsmanAdapter implements CraftsmanAdapter {
       throw new Error(`${this.name} adapter requires a prompt`);
     }
     const paneTarget = this.registry.getPaneTarget(this.name);
-    const spec = this.inner.createCommandSpec(request);
+    const spec = request.mode === 'continuous'
+      ? this.inner.createInteractiveStartSpec()
+      : this.inner.createCommandSpec(request);
     const shellCommand = renderShellCommand({
       cwd: request.workdir,
       command: spec.command,
       args: spec.args,
+      executionId: request.execution_id,
     });
     this.registry.sendText(paneTarget, shellCommand, true);
+    if (request.mode === 'continuous' && request.prompt.trim().length > 0) {
+      this.registry.sendText(paneTarget, request.prompt, true);
+    }
     const transportSessionId = `tmux:${this.registry.getSessionName()}:${this.name}`;
     this.registry.updatePaneState(this.name, {
       transportSessionId,
@@ -55,12 +61,13 @@ function renderShellCommand(spec: {
   cwd: string | null;
   command: string;
   args: string[];
+  executionId: string;
 }) {
   const commandPart = [spec.command, ...spec.args.map(quoteShellArg)].join(' ');
-  if (!spec.cwd) {
-    return commandPart;
-  }
-  return `cd ${quoteShellArg(spec.cwd)} && ${commandPart}`;
+  const baseCommand = spec.cwd
+    ? `cd ${quoteShellArg(spec.cwd)} && ${commandPart}`
+    : commandPart;
+  return `${baseCommand}; status=$?; printf '__AGORA_EXIT__:${spec.executionId}:%s\\n' "$status"`;
 }
 
 function quoteShellArg(value: string) {

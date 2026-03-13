@@ -366,6 +366,35 @@ describe('craftsman routes', () => {
     ]);
   });
 
+  it('supports execution-scoped craftsman probe route', async () => {
+    const calls: string[] = [];
+    const app = buildApp({
+      taskService: {
+        probeCraftsmanExecution: (executionId: string) => {
+          calls.push(executionId);
+          return {
+            execution: { execution_id: executionId, status: 'running' },
+            probed: true,
+          };
+        },
+      } as unknown as TaskService,
+    });
+
+    const probe = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-123/probe',
+    });
+
+    expect(probe.statusCode).toBe(200);
+    expect(calls).toEqual(['exec-123']);
+    expect(probe.json()).toMatchObject({
+      ok: true,
+      execution_id: 'exec-123',
+      status: 'running',
+      probed: true,
+    });
+  });
+
   it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

@@ -42,6 +42,7 @@ import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import type { CraftsmanInputPort } from './craftsman-input-port.js';
+import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
@@ -81,6 +82,7 @@ export interface TaskServiceOptions {
   taskParticipationService?: TaskParticipationService;
   agentRuntimePort?: AgentRuntimePort;
   craftsmanInputPort?: CraftsmanInputPort;
+  craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;
 }
 
 export interface AdvanceTaskOptions {
@@ -184,6 +186,7 @@ export class TaskService {
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
+  private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -223,6 +226,7 @@ export class TaskService {
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
     this.agentRuntimePort = options.agentRuntimePort;
+    this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
   }
 
   createTask(input: CreateTaskRequestDto): StoredTask {
@@ -802,7 +806,7 @@ export class TaskService {
     if (
       result.task.state !== TaskState.PAUSED
       && ['done', 'failed', 'in_progress'].includes(result.subtask.status)
-      && ['succeeded', 'failed', 'cancelled', 'needs_input', 'awaiting_choice'].includes(result.execution.status)
+      && ['running', 'succeeded', 'failed', 'cancelled', 'needs_input', 'awaiting_choice'].includes(result.execution.status)
     ) {
       this.sendImmediateCraftsmanNotification(result.task.id, result.execution.execution_id, result.subtask.id);
     }
@@ -873,6 +877,7 @@ export class TaskService {
     const execution = this.requireInteractiveExecution(executionId);
     this.craftsmanInputPort?.sendText(execution, text, submit);
     this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'text', text);
+    this.probeCraftsmanExecution(execution.executionId);
     return execution;
   }
 
@@ -880,6 +885,7 @@ export class TaskService {
     const execution = this.requireInteractiveExecution(executionId);
     this.craftsmanInputPort?.sendKeys(execution, keys);
     this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'keys', keys.join(','));
+    this.probeCraftsmanExecution(execution.executionId);
     return execution;
   }
 
@@ -887,7 +893,28 @@ export class TaskService {
     const execution = this.requireInteractiveExecution(executionId);
     this.craftsmanInputPort?.submitChoice(execution, keys);
     this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'choice', keys.join(','));
+    this.probeCraftsmanExecution(execution.executionId);
     return execution;
+  }
+
+  probeCraftsmanExecution(executionId: string) {
+    const execution = this.getCraftsmanExecution(executionId);
+    if (!this.craftsmanExecutionProbePort) {
+      return { execution, probed: false as const };
+    }
+    const callback = this.craftsmanExecutionProbePort.probe({
+      executionId: execution.execution_id,
+      adapter: execution.adapter,
+      sessionId: execution.session_id,
+      status: execution.status,
+    });
+    if (!callback) {
+      return { execution, probed: false as const };
+    }
+    return {
+      ...this.handleCraftsmanCallback(callback),
+      probed: true as const,
+    };
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
@@ -1559,6 +1586,7 @@ export class TaskService {
           '- Use subtasks as the formal execution binding object inside this task thread.',
           '- Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.',
           '- If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.',
+          '- After a continued execution, sync the latest state with `agora craftsman probe <executionId>`; only fall back to `agora craftsman callback ...` if probe cannot infer the result.',
           '- Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.',
           '',
           'Discord mention rule:',
@@ -1594,6 +1622,7 @@ export class TaskService {
           `Current Stage: ${task.current_stage}`,
           `Task Goal: ${task.description?.trim() || task.title}`,
           'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.',
+          'Continuation Rule: after continuing a craftsman execution, sync it with `agora craftsman probe <executionId>`; use `agora craftsman callback ...` only as a fallback.',
           'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.',
           ...(task.control?.mode === 'smoke_test'
             ? ['Smoke Test Mode: this thread is being used for validation, not for the default product UX.']
@@ -1855,6 +1884,7 @@ export class TaskService {
           `- Controller ${controllerRef} should continue the orchestration loop and drive the next allowed action.`,
         ];
       case 'craftsman_started':
+      case 'craftsman_running':
         return [
           '',
           'Smoke Guidance:',
@@ -1891,7 +1921,7 @@ export class TaskService {
     }
   }
 
-  private buildSmokeStageEntryCommands(task: StoredTask, stage: StoredTask['workflow']['stages'][number]): string[] {
+  private buildSmokeStageEntryCommands(task: StoredTask, stage: WorkflowStageLike): string[] {
     if (task.control?.mode !== 'smoke_test') {
       return [];
     }
@@ -1945,13 +1975,29 @@ export class TaskService {
     if (status === 'needs_input') {
       lines.push(`- Continue this execution with text: \`agora craftsman input-text ${executionId} "<text>"\``);
       lines.push(`- Or send structured keys: \`agora craftsman input-keys ${executionId} Down Enter\``);
+      lines.push(`- Then sync the latest state: \`agora craftsman probe ${executionId}\``);
     } else if (status === 'awaiting_choice') {
       lines.push(`- Continue this choice flow: \`agora craftsman submit-choice ${executionId} Down\``);
       lines.push(`- If needed, fall back to explicit keys: \`agora craftsman input-keys ${executionId} Down Enter\``);
+      lines.push(`- Then sync the latest state: \`agora craftsman probe ${executionId}\``);
     } else if (status === 'running') {
-      lines.push('- Wait for the callback before dispatching another craftsman into the same slot.');
+      lines.push(`- If the pane looks finished, sync it now: \`agora craftsman probe ${executionId}\``);
+      lines.push('- Do not dispatch another craftsman into the same slot until this execution settles.');
     }
     return lines;
+  }
+
+  private buildSmokePostInputCommands(task: StoredTask, executionId: string): string[] {
+    if (task.control?.mode !== 'smoke_test') {
+      return [];
+    }
+    return [
+      '',
+      'Smoke Next Step:',
+      '- Inspect the craftsman pane or session output now.',
+      `- Sync the latest execution state: \`agora craftsman probe ${executionId}\``,
+      '- If it still needs input after probing, continue through the same execution_id.',
+    ];
   }
 
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
@@ -1966,6 +2012,8 @@ export class TaskService {
     }
     const eventType = execution.status === 'succeeded'
       ? 'craftsman_completed'
+      : execution.status === 'running'
+        ? 'craftsman_running'
       : execution.status === 'needs_input'
         ? 'craftsman_needs_input'
         : execution.status === 'awaiting_choice'
@@ -2585,8 +2633,12 @@ export class TaskService {
       throw new Error('Craftsman input port is not configured');
     }
     const execution = this.getCraftsmanExecution(executionId);
-    if (!['needs_input', 'awaiting_choice'].includes(execution.status)) {
-      throw new Error(`Craftsman execution ${executionId} is not waiting for input (status=${execution.status})`);
+    const isWaiting = ['needs_input', 'awaiting_choice'].includes(execution.status);
+    const isContinuousInteractive = execution.status === 'running'
+      && execution.mode === 'continuous'
+      && execution.session_id?.startsWith('tmux:');
+    if (!isWaiting && !isContinuousInteractive) {
+      throw new Error(`Craftsman execution ${executionId} is not waiting for input or running as a continuous interactive session (status=${execution.status})`);
     }
     return {
       executionId: execution.execution_id,
@@ -2636,6 +2688,7 @@ export class TaskService {
         `Execution: ${executionId}`,
         `Input Type: ${inputType}`,
         ...(detail ? [`Detail: ${detail}`] : []),
+        ...this.buildSmokePostInputCommands(task, executionId),
       ],
     });
   }

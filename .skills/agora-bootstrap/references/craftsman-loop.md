@@ -9,7 +9,9 @@ Agora treats craftsmen as execution engines controlled by the task thread, not a
 3. Dispatch a craftsman against a specific subtask.
 4. Track the resulting `execution`.
 5. If the execution requests more input, continue it through the same `execution_id`.
-6. Let Agora Server and Agora Bot mirror the callback and status back into the task thread.
+6. After the craftsman continues, sync the latest state through the formal execution probe surface.
+7. If probe cannot infer the next state, fall back to the formal callback surface.
+8. Let Agora Server and Agora Bot mirror the callback and status back into the task thread.
 
 ## Core objects
 
@@ -38,6 +40,25 @@ agora craftsman input-text <executionId> "<text>"
 agora craftsman input-keys <executionId> Down Enter
 agora craftsman submit-choice <executionId> Down
 ```
+
+After the execution continues, sync the resulting state through the same `execution_id`:
+
+```bash
+agora craftsman probe <executionId>
+```
+
+If probe still cannot determine the next state cleanly, fall back to an explicit callback:
+
+```bash
+agora craftsman callback <executionId> --status succeeded --payload '{"output":{"summary":"done"}}'
+agora craftsman callback <executionId> --status failed --error "describe the failure"
+```
+
+If the craftsman still needs another round of input after probing, continue the same execution again:
+
+- `agora craftsman input-text <executionId> "<text>"`
+- `agora craftsman input-keys <executionId> Down Enter`
+- `agora craftsman submit-choice <executionId> Down`
 
 This keeps the loop aligned with Agora's data model and lets the execution be traced back to:
 

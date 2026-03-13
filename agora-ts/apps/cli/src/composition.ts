@@ -18,6 +18,7 @@ import {
   RolePackService,
   TaskBrainBindingService,
   TmuxCraftsmanInputPort,
+  TmuxCraftsmanProbePort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -69,6 +70,7 @@ export interface CliCompositionFactories {
       taskParticipationService: TaskParticipationService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
+      craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -180,6 +182,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       taskParticipationService: deps.taskParticipationService,
       agentRuntimePort: deps.agentRuntimePort,
       craftsmanInputPort: deps.craftsmanInputPort,
+      craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
     }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({
@@ -250,6 +253,7 @@ export function createCliComposition(
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
+    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
     taskBrainBindingService,
     taskBrainWorkspacePort,
     imProvisioningPort,

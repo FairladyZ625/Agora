@@ -1784,6 +1784,7 @@ describe('task service', () => {
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
     expect(rootBrief?.body).toContain('Craftsman loop:');
     expect(rootBrief?.body).toContain('continue the same execution through its `execution_id`');
+    expect(rootBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(rootBrief?.body).toContain('Discord mention rule:');
     expect(rootBrief?.body).toContain('`<@USER_ID>`');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
@@ -1791,6 +1792,7 @@ describe('task service', () => {
     expect(opusBrief?.body).toContain('architect');
     expect(opusBrief?.body).toContain('Briefing Mode: overlay_delta');
     expect(opusBrief?.body).toContain('Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`');
+    expect(opusBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(opusBrief?.body).toContain('Discord Mention Rule: use real `<@USER_ID>` mentions');
     expect(opusBrief?.body).not.toContain('Read role doc:');
     const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
@@ -1971,6 +1973,11 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-SMOKE-CRAFTSMAN-1',
       craftsmanDispatcher: dispatcher,
+      craftsmanInputPort: {
+        sendText: () => {},
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
       taskBrainBindingService: new TaskBrainBindingService(db, {
@@ -2057,6 +2064,15 @@ describe('task service', () => {
     expect(callbackMessage?.body).toContain('Smoke Next Step:');
     expect(callbackMessage?.body).toContain('agora craftsman input-text exec-smoke-loop-1');
     expect(callbackMessage?.body).toContain('agora craftsman input-keys exec-smoke-loop-1 Down Enter');
+    expect(callbackMessage?.body).toContain('agora craftsman probe exec-smoke-loop-1');
+
+    provisioningPort.published.length = 0;
+    service.sendCraftsmanInputText('exec-smoke-loop-1', 'Continue');
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const inputSentMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_input_sent');
+    expect(inputSentMessage?.body).toContain('Smoke Next Step:');
+    expect(inputSentMessage?.body).toContain('agora craftsman probe exec-smoke-loop-1');
   });
 
   it('adds smoke-mode guidance to probe broadcasts only in smoke mode', async () => {
@@ -2893,5 +2909,141 @@ describe('task service', () => {
     const inputEvents = conversation.filter((entry) => entry.metadata?.event_type === 'craftsman_input_sent');
     expect(inputEvents.filter((entry) => entry.author_ref === 'archon')).toHaveLength(3);
     expect(inputEvents.filter((entry) => entry.author_ref === 'agora-bot').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('probes tmux executions after operator input and resumes the execution status loop', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-probe-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      craftsmanInputPort: {
+        sendText: () => {},
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
+      craftsmanExecutionProbePort: {
+        probe: () => ({
+          execution_id: 'exec-probe-1',
+          status: 'running',
+          session_id: 'tmux:agora-craftsmen:codex',
+          payload: {
+            output: {
+              summary: 'codex resumed after input',
+              text: null,
+              stderr: null,
+              artifacts: [],
+              structured: null,
+            },
+          },
+          error: null,
+          finished_at: null,
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Craftsman probe route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    subtasks.insertSubtask({
+      id: 'probe-subtask-1',
+      task_id: 'OC-PROBE-1',
+      stage_id: 'develop',
+      title: 'wait for input then resume',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'needs_input',
+      craftsman_session: 'tmux:agora-craftsmen:codex',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-probe-1',
+      task_id: 'OC-PROBE-1',
+      subtask_id: 'probe-subtask-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:agora-craftsmen:codex',
+      status: 'needs_input',
+      started_at: '2026-03-13T16:00:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-probe-1', 'Continue');
+
+    expect(service.getCraftsmanExecution('exec-probe-1').status).toBe('running');
+    const subtask = new SubtaskRepository(db).listByTask('OC-PROBE-1').find((entry) => entry.id === 'probe-subtask-1');
+    expect(subtask?.dispatch_status).toBe('running');
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const runningMessage = broadcasts.find((message) => message.kind === 'craftsman_running');
+    expect(runningMessage?.body).toContain('Status: running');
+  });
+
+  it('allows execution-scoped input for running continuous tmux executions', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const calls: Array<{ kind: string; executionId: string; payload: unknown }> = [];
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-1',
+      craftsmanInputPort: {
+        sendText: (execution, text, submit = true) => {
+          calls.push({ kind: 'text', executionId: execution.executionId, payload: { text, submit } });
+        },
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Continuous craftsman input route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    subtasks.insertSubtask({
+      id: 'continuous-subtask-1',
+      task_id: 'OC-CONTINUOUS-INPUT-1',
+      stage_id: 'develop',
+      title: 'interactive loop',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'tmux:agora-craftsmen:claude',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-continuous-1',
+      task_id: 'OC-CONTINUOUS-INPUT-1',
+      subtask_id: 'continuous-subtask-1',
+      adapter: 'claude',
+      mode: 'continuous',
+      session_id: 'tmux:agora-craftsmen:claude',
+      status: 'running',
+      started_at: '2026-03-13T16:30:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-continuous-1', 'Continue');
+
+    expect(calls).toEqual([
+      { kind: 'text', executionId: 'exec-continuous-1', payload: { text: 'Continue', submit: true } },
+    ]);
   });
 });

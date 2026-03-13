@@ -117,7 +117,7 @@ describe('tmux runtime service', () => {
       brief_path: null,
     });
 
-    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%0', '-l', '--', "cd /tmp/codex && codex exec 'Implement via tmux'"]);
+    expect(exec).toHaveBeenCalledWith(['send-keys', '-t', '%0', '-l', '--', "cd /tmp/codex && codex exec 'Implement via tmux'; status=$?; printf '__AGORA_EXIT__:exec-tmux-svc-1:%s\\n' \"$status\""]);
     expect(result.session_id).toBe('tmux:agora-craftsmen:codex');
     expect(service.status().panes.find((pane) => pane.title === 'codex')).toMatchObject({
       transportSessionId: 'tmux:agora-craftsmen:codex',

@@ -148,4 +148,27 @@ describe('tmux pane registry', () => {
       currentCommand: 'node',
     });
   });
+
+  it('tolerates empty pane titles and still resolves persisted pane mappings', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|node|0', '%1||bash|0', '%2|gemini|bash|1'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const registry = new TmuxPaneRegistry({ exec, registryDir: makeRegistryDir() });
+
+    registry.updatePaneState('claude', { paneId: '%1' });
+
+    expect(registry.getPaneTarget('claude')).toBe('%1');
+    expect(registry.listPanes()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: '%1', title: '', currentCommand: 'bash' }),
+      ]),
+    );
+  });
 });

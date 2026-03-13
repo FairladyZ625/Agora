@@ -91,6 +91,10 @@ export class CraftsmanCallbackService {
       return this.recordInputRequired(task, subtask, nextExecution);
     }
 
+    if (nextExecution.status === 'running') {
+      return this.recordRunningProgress(task, subtask, nextExecution);
+    }
+
     return this.settleExecutionResult(task, subtask, nextExecution);
   }
 
@@ -236,6 +240,45 @@ export class CraftsmanCallbackService {
       actor: execution.adapter,
     });
     this.enqueueNotification(task, execution, nextSubtask, eventType);
+    return { execution, subtask: nextSubtask, task };
+  }
+
+  private recordRunningProgress(
+    task: StoredTask,
+    subtask: StoredSubtask,
+    execution: StoredCraftsmanExecution,
+  ) {
+    const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
+    const output = formatCraftsmanOutput(payload) ?? `${execution.adapter} resumed and is running`;
+    const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
+      status: 'in_progress',
+      output,
+      dispatch_status: execution.status,
+      done_at: null,
+    });
+    this.flowLogs.insertFlowLog({
+      task_id: execution.task_id,
+      kind: 'system',
+      event: 'subtask_running',
+      stage_id: nextSubtask.stage_id,
+      detail: {
+        subtask_id: nextSubtask.id,
+        execution_id: execution.execution_id,
+        adapter: execution.adapter,
+        status: execution.status,
+      },
+      actor: execution.adapter,
+    });
+    this.progressLogs.insertProgressLog({
+      task_id: execution.task_id,
+      kind: 'progress',
+      stage_id: nextSubtask.stage_id,
+      subtask_id: nextSubtask.id,
+      content: output,
+      artifacts: payload ?? null,
+      actor: execution.adapter,
+    });
+    this.enqueueNotification(task, execution, nextSubtask, 'craftsman_running');
     return { execution, subtask: nextSubtask, task };
   }
 

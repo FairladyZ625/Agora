@@ -1724,4 +1724,32 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('craftsman keys 已发送: exec-123');
     expect(stdout.value).toContain('craftsman choice 已提交: exec-123');
   });
+
+  it('supports execution-scoped craftsman probe through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const calls: string[] = [];
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      taskService: {
+        probeCraftsmanExecution: (executionId: string) => {
+          calls.push(executionId);
+          return {
+            execution: { execution_id: executionId, status: 'running' },
+            probed: true,
+          };
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'probe', 'exec-123'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(calls).toEqual(['exec-123']);
+    expect(stdout.value).toContain('craftsman probe 已执行: exec-123');
+    expect(stdout.value).toContain('status: running');
+  });
 });
