@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository } from '@agora-ts/db';
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
 import { LiveSessionStore, TaskService } from '@agora-ts/core';
@@ -14,6 +14,76 @@ function makeTempDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-runtime-'));
   tempPaths.push(dir);
   return dir;
+}
+
+function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
+  vi.doMock('node:fs', () => ({
+    existsSync: vi.fn(existsSyncImpl),
+  }));
+  vi.doMock('@agora-ts/config', () => ({
+    loadAgoraConfig: vi.fn(() => ({
+      db_path: ':memory:',
+      permissions: {
+        archonUsers: ['archon'],
+        allowAgents: {
+          '*': { canCall: [], canAdvance: false },
+        },
+      },
+      api_auth: { enabled: false, token: '' },
+      dashboard_auth: {
+        enabled: false,
+        method: 'session',
+        allowed_users: [],
+        session_ttl_hours: 24,
+      },
+      rate_limit: {
+        enabled: false,
+        window_ms: 60_000,
+        max_requests: 100,
+        write_max_requests: 20,
+      },
+      observability: {},
+      scheduler: {
+        enabled: false,
+        scan_interval_sec: 60,
+        startup_recovery_on_boot: false,
+      },
+    })),
+    resolveAgoraRuntimeEnvironmentFromConfigPackage: vi.fn(() => ({})),
+  }));
+  vi.doMock('@agora-ts/db', () => ({
+    createAgoraDatabase: vi.fn(() => ({ close: vi.fn() })),
+    runMigrations: vi.fn(),
+    ArchiveJobRepository: class ArchiveJobRepository {},
+    CraftsmanExecutionRepository: class CraftsmanExecutionRepository {},
+    SubtaskRepository: class SubtaskRepository {},
+  }));
+  vi.doMock('@agora-ts/core', () => ({
+    DashboardQueryService: class DashboardQueryService {},
+    InboxService: class InboxService {},
+    LiveSessionStore: class LiveSessionStore {},
+    TaskService: class TaskService {
+      startupRecoveryScan() {}
+    },
+    TaskConversationService: class TaskConversationService {},
+    TaskContextBindingService: class TaskContextBindingService {},
+    TaskParticipationService: class TaskParticipationService {},
+    NotificationDispatcher: class NotificationDispatcher {},
+    HumanAccountService: class HumanAccountService {},
+  }));
+  vi.doMock('./composition.js', () => ({
+    buildServerComposition: vi.fn(() => ({
+      taskService: { startupRecoveryScan: vi.fn() },
+      dashboardQueryService: {},
+      inboxService: {},
+      liveSessionStore: {},
+      taskConversationService: {},
+      taskContextBindingService: {},
+      taskParticipationService: {},
+      notificationDispatcher: {},
+      humanAccountService: {},
+    })),
+  }));
 }
 
 afterEach(() => {
@@ -231,5 +301,25 @@ describe('server runtime', () => {
         process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR = previousReceipt;
       }
     }
+  });
+
+  it('does not mount dashboard source files when no built dist directory exists', async () => {
+    vi.resetModules();
+    mockRuntimeModules((path) => path === '/tmp/custom-dashboard-dist');
+
+    process.env.AGORA_DASHBOARD_DIR = '/tmp/custom-dashboard-dist';
+    const { createServerRuntime: createServerRuntimeWithMocks } = await import('./runtime.js');
+    const runtime = createServerRuntimeWithMocks({ configPath: '/tmp/agora.json' });
+
+    expect(runtime.dashboardDir).toBe('/tmp/custom-dashboard-dist');
+
+    delete process.env.AGORA_DASHBOARD_DIR;
+    vi.resetModules();
+    mockRuntimeModules(() => false);
+
+    const { createServerRuntime: createServerRuntimeWithoutDist } = await import('./runtime.js');
+    const noDistRuntime = createServerRuntimeWithoutDist({ configPath: '/tmp/agora.json' });
+
+    expect(noDistRuntime.dashboardDir).toBeUndefined();
   });
 });

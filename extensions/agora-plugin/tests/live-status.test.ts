@@ -623,4 +623,32 @@ describe("registerLiveStatusBridge", () => {
     );
     expect(bridge.ingestRuntimeIdentity).not.toHaveBeenCalled();
   });
+
+  it("uses the message hook session context for non-default agents", async () => {
+    const bridge = { upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }) };
+    const { api, hooks } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const messageReceived = hooks.get("message_received");
+    await messageReceived?.(
+      {
+        content: "hello",
+        metadata: {},
+      },
+      {
+        channelId: "discord",
+        conversationId: "alerts",
+        sessionKey: "agent:reviewer:discord:channel:alerts",
+        agentId: "reviewer",
+      },
+    );
+
+    expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_id: "reviewer",
+        session_key: "agent:reviewer:discord:channel:alerts",
+      }),
+    );
+  });
 });

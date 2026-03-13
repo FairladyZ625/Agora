@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   craftsmanCallbackRequestSchema,
@@ -768,12 +768,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       }
       const wildcard = (request.params as { '*': string })['*'];
       if (wildcard && wildcard.length > 0) {
-        const requested = resolve(dashboardDir, wildcard);
-        if (
-          requested.startsWith(resolve(dashboardDir))
-          && existsSync(requested)
-          && statSync(requested).isFile()
-        ) {
+        const requested = resolvePathWithinDirectory(dashboardDir, wildcard);
+        if (requested && existsSync(requested) && statSync(requested).isFile()) {
           return reply
             .type(contentTypeForPath(requested))
             .send(readFileSync(requested));
@@ -2278,4 +2274,13 @@ function contentTypeForPath(path: string) {
   if (path.endsWith('.json')) return 'application/json; charset=utf-8';
   if (path.endsWith('.html')) return 'text/html; charset=utf-8';
   return 'application/octet-stream';
+}
+
+function resolvePathWithinDirectory(baseDir: string, relativePath: string) {
+  const normalizedBaseDir = resolve(baseDir);
+  const resolvedPath = resolve(normalizedBaseDir, relativePath);
+  if (resolvedPath === normalizedBaseDir || resolvedPath.startsWith(`${normalizedBaseDir}${sep}`)) {
+    return resolvedPath;
+  }
+  return null;
 }

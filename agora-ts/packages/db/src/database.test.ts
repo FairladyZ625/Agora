@@ -128,6 +128,15 @@ describe('agora-ts sqlite bootstrap', () => {
     });
   });
 
+  it('rejects empty todo updates before issuing SQL', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const todos = new TodoRepository(db);
+    const created = todos.insertTodo({ text: 'empty update' });
+
+    expect(() => todos.updateTodo(created.id, {})).toThrow();
+  });
+
   it('seeds templates from disk into the single sqlite database and persists later edits there', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

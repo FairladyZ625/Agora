@@ -149,8 +149,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
   });
 
   api.on?.("message_received", (event, ctx) => {
-    const sessionKey = inferSessionKeyFromMessage(api, ctx);
-    const agentId = parseAgentId(sessionKey);
+    const { sessionKey, agentId } = inferSessionContextFromMessage(api, ctx);
     if (!sessionKey || !agentId) {
       return;
     }
@@ -187,8 +186,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
   });
 
   api.on?.("message_sent", (event, ctx) => {
-    const sessionKey = inferSessionKeyFromMessage(api, ctx);
-    const agentId = parseAgentId(sessionKey);
+    const { sessionKey, agentId } = inferSessionContextFromMessage(api, ctx);
     if (!sessionKey || !agentId) {
       return;
     }
@@ -333,6 +331,29 @@ function inferSessionKeyFromMessage(api: OpenClawPluginApi, ctx: { channelId?: s
     return undefined;
   }
   return `agent:${agentId}:${channel}:channel:${conversation}`;
+}
+
+function inferSessionContextFromMessage(
+  api: OpenClawPluginApi,
+  ctx: { channelId?: string; conversationId?: string; sessionKey?: string; agentId?: string },
+) {
+  const sessionKey = ctx.sessionKey;
+  if (sessionKey) {
+    return {
+      sessionKey,
+      agentId: ctx.agentId ?? parseAgentId(sessionKey),
+    };
+  }
+  const agentId = ctx.agentId ?? inferDefaultAgentId(api);
+  const channel = ctx.channelId;
+  const conversation = ctx.conversationId;
+  if (!agentId || !channel || !conversation) {
+    return { sessionKey: undefined, agentId: undefined };
+  }
+  return {
+    sessionKey: `agent:${agentId}:${channel}:channel:${conversation}`,
+    agentId,
+  };
 }
 
 function inferDefaultAgentId(api: OpenClawPluginApi) {

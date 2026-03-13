@@ -52,6 +52,10 @@ export class TodoRepository {
       }
     }
 
+    if (assignments.length === 0) {
+      throw new Error('Todo update requires at least one field');
+    }
+
     this.db.prepare(`UPDATE todos SET ${assignments.join(', ')} WHERE id = ?`).run(...values, todoId);
     return this.getTodo(todoId)!;
   }

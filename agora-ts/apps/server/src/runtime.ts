@@ -18,10 +18,6 @@ function resolveDashboardDir() {
   if (existsSync(distDir)) {
     return distDir;
   }
-  const dashboardRoot = new URL('../../../../dashboard', import.meta.url).pathname;
-  if (existsSync(dashboardRoot)) {
-    return dashboardRoot;
-  }
   return undefined;
 }
 
