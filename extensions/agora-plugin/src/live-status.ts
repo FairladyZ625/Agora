@@ -175,8 +175,8 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
         provider_message_ref: messageIdFromMetadata(event.metadata),
         direction: "inbound",
         author_kind: "human",
-        author_ref: ctx.accountId ?? null,
-        display_name: ctx.accountId ?? null,
+        author_ref: senderIdFromMetadata(event.metadata) ?? ctx.accountId ?? null,
+        display_name: senderDisplayNameFromMetadata(event.metadata) ?? ctx.accountId ?? null,
         body: event.content,
         occurred_at: isoNow(event.timestamp),
         metadata: event.metadata ?? {},
@@ -382,6 +382,22 @@ function messageIdFromMetadata(metadata?: Record<string, unknown>) {
   const value = metadata?.messageId ?? metadata?.message_id ?? metadata?.id;
   if (typeof value === "number" || typeof value === "string") {
     return String(value);
+  }
+  return null;
+}
+
+function senderIdFromMetadata(metadata?: Record<string, unknown>) {
+  const value = metadata?.senderId ?? metadata?.sender_id ?? metadata?.authorId;
+  if (typeof value === "number" || typeof value === "string") {
+    return String(value);
+  }
+  return null;
+}
+
+function senderDisplayNameFromMetadata(metadata?: Record<string, unknown>) {
+  const value = metadata?.senderName ?? metadata?.sender_name ?? metadata?.senderUsername ?? metadata?.sender_username;
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
   }
   return null;
 }

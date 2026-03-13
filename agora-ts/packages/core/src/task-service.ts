@@ -333,14 +333,18 @@ export class TaskService {
           ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
         this.taskParticipationService?.attachContextBinding(taskId, binding.id);
+        this.mirrorProvisioningConversationEntry(taskId, binding, `Task **${taskId}** created: ${input.title}`);
         await Promise.all(imParticipantRefs.map(async (participantRef) => {
           try {
-            await provisioningPort.joinParticipant({
+            const result = await provisioningPort.joinParticipant({
               binding_id: binding.id,
               participant_ref: participantRef,
               ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
               ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
             });
+            if (result.status === 'joined' || result.status === 'ignored') {
+              this.markParticipantBindingJoined(taskId, participantRef);
+            }
           } catch (err: unknown) {
             console.error(
               `[TaskService] IM participant join failed for task ${taskId} participant ${participantRef}:`,
@@ -356,6 +360,7 @@ export class TaskService {
             ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
             messages: bootstrapMessages,
           });
+          this.mirrorPublishedMessagesToConversation(taskId, binding, bootstrapMessages);
         }
       }).catch((err: unknown) => {
         console.error(`[TaskService] IM provisioning failed for task ${taskId}:`, err);
@@ -2161,6 +2166,69 @@ export class TaskService {
       body_format: 'plain_text',
       occurred_at: input.occurredAt ?? new Date().toISOString(),
       metadata: input.metadata ?? null,
+    });
+  }
+
+  private mirrorProvisioningConversationEntry(
+    taskId: string,
+    binding: {
+      id: string;
+      im_provider: string;
+    },
+    body: string,
+  ) {
+    this.taskConversationRepository.insert({
+      id: randomUUID(),
+      task_id: taskId,
+      binding_id: binding.id,
+      provider: binding.im_provider,
+      direction: 'system',
+      author_kind: 'system',
+      author_ref: 'agora-bot',
+      display_name: 'agora-bot',
+      body,
+      body_format: 'plain_text',
+      occurred_at: new Date().toISOString(),
+      metadata: {
+        event_type: 'context_created',
+      },
+    });
+  }
+
+  private mirrorPublishedMessagesToConversation(
+    taskId: string,
+    binding: {
+      id: string;
+      im_provider: string;
+    },
+    messages: IMPublishMessageInput[],
+  ) {
+    const occurredAt = new Date().toISOString();
+    for (const message of messages) {
+      this.taskConversationRepository.insert({
+        id: randomUUID(),
+        task_id: taskId,
+        binding_id: binding.id,
+        provider: binding.im_provider,
+        direction: 'system',
+        author_kind: 'system',
+        author_ref: 'agora-bot',
+        display_name: 'agora-bot',
+        body: message.body,
+        body_format: 'plain_text',
+        occurred_at: occurredAt,
+        metadata: {
+          event_type: message.kind ?? 'message',
+          ...(message.participant_refs ? { participant_refs: message.participant_refs } : {}),
+        },
+      });
+    }
+  }
+
+  private markParticipantBindingJoined(taskId: string, participantRef: string) {
+    this.taskParticipationService?.markParticipantJoinState(taskId, participantRef, 'joined', {
+      joined_at: new Date().toISOString(),
+      left_at: null,
     });
   }
 

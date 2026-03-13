@@ -277,7 +277,7 @@ describe("registerLiveStatusBridge", () => {
       {
         content: "hello",
         timestamp: Date.parse("2026-03-08T07:05:00.000Z"),
-        metadata: { threadId: "thread-7" },
+        metadata: { threadId: "thread-7", senderId: "sender-1", senderName: "Sender One" },
       },
       {
         channelId: "discord",
@@ -339,8 +339,8 @@ describe("registerLiveStatusBridge", () => {
         thread_ref: "thread-7",
         direction: "inbound",
         author_kind: "human",
-        author_ref: "default",
-        display_name: "default",
+        author_ref: "sender-1",
+        display_name: "Sender One",
         body: "hello",
       }),
     );

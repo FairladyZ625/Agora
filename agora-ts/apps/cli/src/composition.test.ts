@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskService } from '@agora-ts/core';
+import { StubIMProvisioningPort } from '@agora-ts/core';
 import type { TmuxRuntimeService } from '@agora-ts/core';
 import { createCliComposition } from './composition.js';
 
@@ -61,6 +62,52 @@ describe('cli composition', () => {
 
     expect(composition.taskService).toBe(overriddenTaskService);
     expect(composition.tmuxRuntimeService).toBe(overriddenTmuxRuntimeService);
+    composition.db.close();
+  });
+
+  it('threads IM/runtime composition dependencies into the cli task service', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'test-token',
+          default_channel_id: 'discord-parent',
+        },
+      },
+    }));
+
+    const captured: Record<string, unknown> = {};
+    const stubProvisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent',
+    });
+
+    const composition = createCliComposition(
+      { configPath },
+      {
+        createIMProvisioningPort: () => stubProvisioning,
+        createTaskService: (_context, deps) => {
+          captured.imProvisioningPort = deps.imProvisioningPort;
+          captured.messagingPort = deps.messagingPort;
+          captured.taskContextBindingService = deps.taskContextBindingService;
+          captured.taskParticipationService = deps.taskParticipationService;
+          captured.agentRuntimePort = deps.agentRuntimePort;
+          return {
+            listTasks: () => [],
+          } as unknown as TaskService;
+        },
+      },
+    );
+
+    expect(captured.imProvisioningPort).toBe(stubProvisioning);
+    expect(captured.messagingPort).toBeDefined();
+    expect(captured.taskContextBindingService).toBeDefined();
+    expect(captured.taskParticipationService).toBeDefined();
+    expect(captured.agentRuntimePort).toBeDefined();
     composition.db.close();
   });
 });

@@ -1599,7 +1599,7 @@ describe('task service', () => {
         expect.objectContaining({
           agent_ref: 'opus',
           binding_id: binding?.id,
-          join_status: 'pending',
+          join_status: 'joined',
           runtime_provider: 'openclaw',
         }),
       ]),
@@ -1732,6 +1732,17 @@ describe('task service', () => {
     const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
     expect(sonnetBrief?.body).toContain('Briefing Mode: overlay_full');
     expect(sonnetBrief?.body).toContain('Read role doc:');
+    const conversations = new TaskConversationRepository(db);
+    const entries = conversations.listByTask('OC-BOOTSTRAP-1');
+    expect(entries.map((entry) => entry.body)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Task **OC-BOOTSTRAP-1** created: Bootstrap Task'),
+        expect.stringContaining('Agora task bootstrap'),
+        expect.stringContaining('Role briefing for opus'),
+        expect.stringContaining('Role briefing for sonnet'),
+        expect.stringContaining('Role briefing for glm5'),
+      ]),
+    );
   });
 
   it('joins explicit im_target participant refs in addition to interactive team members', async () => {

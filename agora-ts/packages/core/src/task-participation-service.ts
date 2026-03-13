@@ -70,6 +70,19 @@ export class TaskParticipationService {
     return this.runtimeSessions.listByTask(taskId);
   }
 
+  markParticipantJoinState(
+    taskId: string,
+    agentRef: string,
+    joinStatus: 'joined' | 'left' | 'failed',
+    timestamps: { joined_at?: string | null; left_at?: string | null } = {},
+  ): void {
+    const participant = this.participants.getByTaskAndAgent(taskId, agentRef);
+    if (!participant) {
+      return;
+    }
+    this.participants.updateJoinState(participant.id, joinStatus, timestamps);
+  }
+
   syncLiveSession(session: LiveSessionDto): { matched_participant_ids: string[]; matched_task_ids: string[] } {
     const matchedBindings = this.findMatchingTaskBindings(session);
     const matchedParticipantIds: string[] = [];

@@ -12,15 +12,24 @@ import {
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
+  InventoryBackedAgentRuntimePort,
+  StubIMMessagingPort,
   RolePackService,
   TaskBrainBindingService,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
+  TaskContextBindingService,
   TaskConversationService,
+  TaskParticipationService,
   TaskService,
   TemplateAuthoringService,
   TmuxRuntimeService,
+  type AgentRuntimePort,
+  type IMMessagingPort,
+  type IMProvisioningPort,
 } from '@agora-ts/core';
+import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry } from '@agora-ts/adapters-openclaw';
+import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 
 export interface CreateCliCompositionOptions {
   configPath?: string;
@@ -38,12 +47,25 @@ export interface CliCompositionContext {
 
 export interface CliCompositionFactories {
   createCraftsmanDispatcher: (context: CliCompositionContext) => CraftsmanDispatcher;
+  createAgentRuntimePort: (context: CliCompositionContext) => AgentRuntimePort;
+  createIMMessagingPort: (context: CliCompositionContext) => IMMessagingPort;
+  createIMProvisioningPort: (context: CliCompositionContext) => IMProvisioningPort | undefined;
+  createTaskContextBindingService: (context: CliCompositionContext) => TaskContextBindingService;
+  createTaskParticipationService: (
+    context: CliCompositionContext,
+    deps: { agentRuntimePort: AgentRuntimePort },
+  ) => TaskParticipationService;
   createTaskService: (
     context: CliCompositionContext,
     deps: {
       craftsmanDispatcher: CraftsmanDispatcher;
       taskBrainBindingService: TaskBrainBindingService;
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
+      imProvisioningPort: IMProvisioningPort | undefined;
+      messagingPort: IMMessagingPort;
+      taskContextBindingService: TaskContextBindingService;
+      taskParticipationService: TaskParticipationService;
+      agentRuntimePort: AgentRuntimePort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -89,12 +111,54 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       }
       return new CraftsmanDispatcher(context.db, dispatcherOptions);
     },
+    createAgentRuntimePort: () => {
+      const registry = new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      );
+      return new InventoryBackedAgentRuntimePort(registry);
+    },
+    createIMMessagingPort: (context) => {
+      const { im } = context.config;
+      if (im.provider === 'discord' && im.discord?.bot_token) {
+        return new DiscordIMMessagingAdapter({ botToken: im.discord.bot_token });
+      }
+      return new StubIMMessagingPort();
+    },
+    createIMProvisioningPort: (context) => {
+      const { im } = context.config;
+      if (im.provider === 'discord' && im.discord?.bot_token && im.discord?.default_channel_id) {
+        const accountTokens = loadOpenClawDiscordAccountTokens(
+          process.env.AGORA_OPENCLAW_CONFIG_PATH
+            ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+            : {},
+        );
+        const primaryAccountId = Object.entries(accountTokens).find(([, token]) => token === im.discord?.bot_token)?.[0] ?? null;
+        return new DiscordIMProvisioningAdapter({
+          botToken: im.discord.bot_token,
+          defaultChannelId: im.discord.default_channel_id,
+          participantTokens: accountTokens,
+          primaryAccountId,
+        });
+      }
+      return undefined;
+    },
+    createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
+      agentRuntimePort: deps.agentRuntimePort,
+    }),
     createTaskService: (context, deps) => new TaskService(context.db, {
       archonUsers: context.config.permissions.archonUsers,
       allowAgents: context.config.permissions.allowAgents,
       craftsmanDispatcher: deps.craftsmanDispatcher,
       taskBrainBindingService: deps.taskBrainBindingService,
       taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
+      imMessagingPort: deps.messagingPort,
+      taskContextBindingService: deps.taskContextBindingService,
+      taskParticipationService: deps.taskParticipationService,
+      agentRuntimePort: deps.agentRuntimePort,
+      ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
     }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({
       adapters: {
@@ -151,12 +215,24 @@ export function createCliComposition(
     ...overrides,
   };
   const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
+  const agentRuntimePort = factories.createAgentRuntimePort(context);
+  const messagingPort = factories.createIMMessagingPort(context);
+  const imProvisioningPort = factories.createIMProvisioningPort(context);
+  const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const taskParticipationService = factories.createTaskParticipationService(context, {
+    agentRuntimePort,
+  });
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     taskBrainBindingService,
     taskBrainWorkspacePort,
+    imProvisioningPort,
+    messagingPort,
+    taskContextBindingService,
+    taskParticipationService,
+    agentRuntimePort,
   });
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const dashboardSessionClient = factories.createDashboardSessionClient(context);

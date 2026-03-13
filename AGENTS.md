@@ -471,6 +471,10 @@ TypeScript 默认规范：
   - `cd agora-ts && npm run scenario:list`
   - `cd agora-ts && npm run scenario -- <scenario> --json`
   - `cd agora-ts && npm run scenario:all`
+- 当 IM / thread / bootstrap / approval / callback / plugin conversation 相关链路变更且本地 Discord/OpenClaw 已配置可用时，必须追加至少一轮真实 Discord 冒烟回归：
+  - 优先用 `agora` CLI 或 server facade 创建真实 task
+  - 在真实 thread 中核对 bootstrap、role brief、approval/reject、craftsman/status、conversation 回投
+  - 不能只用单测声称“链路已通”
 
 Python legacy 参考规范：
 
