@@ -321,6 +321,51 @@ describe('craftsman routes', () => {
     ]);
   });
 
+  it('supports execution-scoped craftsman input routes', async () => {
+    const calls: Array<{ kind: string; executionId: string; payload: unknown }> = [];
+    const app = buildApp({
+      taskService: {
+        sendCraftsmanInputText: (executionId: string, text: string, submit = true) => {
+          calls.push({ kind: 'text', executionId, payload: { text, submit } });
+          return { executionId } as ReturnType<TaskService['sendCraftsmanInputText']>;
+        },
+        sendCraftsmanInputKeys: (executionId: string, keys: string[]) => {
+          calls.push({ kind: 'keys', executionId, payload: keys });
+          return { executionId } as ReturnType<TaskService['sendCraftsmanInputKeys']>;
+        },
+        submitCraftsmanChoice: (executionId: string, keys: string[]) => {
+          calls.push({ kind: 'choice', executionId, payload: keys });
+          return { executionId } as ReturnType<TaskService['submitCraftsmanChoice']>;
+        },
+      } as unknown as TaskService,
+    });
+
+    const sendText = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-123/input-text',
+      payload: { text: 'Continue', submit: false },
+    });
+    const sendKeys = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-123/input-keys',
+      payload: { keys: ['Down'] },
+    });
+    const submitChoice = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-123/submit-choice',
+      payload: { keys: ['Down'] },
+    });
+
+    expect(sendText.statusCode).toBe(200);
+    expect(sendKeys.statusCode).toBe(200);
+    expect(submitChoice.statusCode).toBe(200);
+    expect(calls).toEqual([
+      { kind: 'text', executionId: 'exec-123', payload: { text: 'Continue', submit: false } },
+      { kind: 'keys', executionId: 'exec-123', payload: ['Down'] },
+      { kind: 'choice', executionId: 'exec-123', payload: ['Down'] },
+    ]);
+  });
+
   it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

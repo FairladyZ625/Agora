@@ -1630,4 +1630,44 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('tmux keys 已发送: codex');
     expect(stdout.value).toContain('tmux choice 已提交: codex');
   });
+
+  it('supports execution-scoped craftsman input commands through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const calls: Array<{ kind: string; executionId: string; payload: unknown }> = [];
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      taskService: {
+        sendCraftsmanInputText: (executionId: string, text: string, submit = true) => {
+          calls.push({ kind: 'text', executionId, payload: { text, submit } });
+          return { executionId };
+        },
+        sendCraftsmanInputKeys: (executionId: string, keys: string[]) => {
+          calls.push({ kind: 'keys', executionId, payload: keys });
+          return { executionId };
+        },
+        submitCraftsmanChoice: (executionId: string, keys: string[]) => {
+          calls.push({ kind: 'choice', executionId, payload: keys });
+          return { executionId };
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'input-text', 'exec-123', 'Continue', '--no-submit'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'input-keys', 'exec-123', 'Down'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'submit-choice', 'exec-123', 'Down'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(calls).toEqual([
+      { kind: 'text', executionId: 'exec-123', payload: { text: 'Continue', submit: false } },
+      { kind: 'keys', executionId: 'exec-123', payload: ['Down'] },
+      { kind: 'choice', executionId: 'exec-123', payload: ['Down'] },
+    ]);
+    expect(stdout.value).toContain('craftsman input 已发送: exec-123');
+    expect(stdout.value).toContain('craftsman keys 已发送: exec-123');
+    expect(stdout.value).toContain('craftsman choice 已提交: exec-123');
+  });
 });

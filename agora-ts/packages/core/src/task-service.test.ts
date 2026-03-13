@@ -2649,4 +2649,80 @@ describe('task service', () => {
       controller_ref: 'opus',
     });
   });
+
+  it('routes craftsman input by execution id and records the input event', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const inputCalls: Array<{ kind: string; executionId: string; payload: unknown }> = [];
+    const provisioningPort = new StubIMProvisioningPort({
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-input-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-INPUT-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      craftsmanInputPort: {
+        sendText: (execution, text, submit = true) => {
+          inputCalls.push({ kind: 'text', executionId: execution.executionId, payload: { text, submit } });
+        },
+        sendKeys: (execution, keys) => {
+          inputCalls.push({ kind: 'keys', executionId: execution.executionId, payload: keys });
+        },
+        submitChoice: (execution, keys) => {
+          inputCalls.push({ kind: 'choice', executionId: execution.executionId, payload: keys });
+        },
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Craftsman input route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    subtasks.insertSubtask({
+      id: 'input-subtask-1',
+      task_id: 'OC-INPUT-1',
+      stage_id: 'develop',
+      title: 'wait for input',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'needs_input',
+      craftsman_session: 'tmux:agora-craftsmen:codex',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-input-1',
+      task_id: 'OC-INPUT-1',
+      subtask_id: 'input-subtask-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:agora-craftsmen:codex',
+      status: 'needs_input',
+      started_at: '2026-03-13T15:00:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-input-1', 'Continue');
+    service.sendCraftsmanInputKeys('exec-input-1', ['Down']);
+    service.submitCraftsmanChoice('exec-input-1', ['Down']);
+
+    expect(inputCalls).toEqual([
+      { kind: 'text', executionId: 'exec-input-1', payload: { text: 'Continue', submit: true } },
+      { kind: 'keys', executionId: 'exec-input-1', payload: ['Down'] },
+      { kind: 'choice', executionId: 'exec-input-1', payload: ['Down'] },
+    ]);
+
+    const conversation = new TaskConversationRepository(db).listByTask('OC-INPUT-1');
+    const inputEvents = conversation.filter((entry) => entry.metadata?.event_type === 'craftsman_input_sent');
+    expect(inputEvents.filter((entry) => entry.author_ref === 'archon')).toHaveLength(3);
+    expect(inputEvents.filter((entry) => entry.author_ref === 'agora-bot').length).toBeGreaterThanOrEqual(3);
+  });
 });

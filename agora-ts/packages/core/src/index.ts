@@ -1,5 +1,6 @@
 export * from './craftsman-adapter.js';
 export * from './craftsman-dispatcher.js';
+export * from './craftsman-input-port.js';
 export * from './craftsman-output.js';
 export * from './craftsman-runtime-mode.js';
 export * from './adapters/index.js';

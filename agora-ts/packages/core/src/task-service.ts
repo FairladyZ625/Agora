@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanDispatchRequestDto,
+  CraftsmanInputKeyDto,
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
@@ -40,6 +41,7 @@ import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
+import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
@@ -78,6 +80,7 @@ export interface TaskServiceOptions {
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
   agentRuntimePort?: AgentRuntimePort;
+  craftsmanInputPort?: CraftsmanInputPort;
 }
 
 export interface AdvanceTaskOptions {
@@ -169,6 +172,7 @@ export class TaskService {
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
+  private readonly craftsmanInputPort: CraftsmanInputPort | undefined;
   private readonly isCraftsmanSessionAlive: ((sessionId: string) => boolean) | undefined;
   private readonly templateRepository: TemplateRepository;
   private readonly templatesDir: string;
@@ -204,6 +208,7 @@ export class TaskService {
     this.gateService = new GateService(db, this.permissions);
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
+    this.craftsmanInputPort = options.craftsmanInputPort;
     this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
     this.templatesDir = options.templatesDir ?? defaultTemplatesDir();
     this.templateRepository.seedFromDir(this.templatesDir);
@@ -854,6 +859,27 @@ export class TaskService {
 
   listCraftsmanExecutions(taskId: string, subtaskId: string) {
     return this.craftsmanExecutions.listBySubtask(taskId, subtaskId);
+  }
+
+  sendCraftsmanInputText(executionId: string, text: string, submit = true) {
+    const execution = this.requireInteractiveExecution(executionId);
+    this.craftsmanInputPort?.sendText(execution, text, submit);
+    this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'text', text);
+    return execution;
+  }
+
+  sendCraftsmanInputKeys(executionId: string, keys: CraftsmanInputKeyDto[]) {
+    const execution = this.requireInteractiveExecution(executionId);
+    this.craftsmanInputPort?.sendKeys(execution, keys);
+    this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'keys', keys.join(','));
+    return execution;
+  }
+
+  submitCraftsmanChoice(executionId: string, keys: CraftsmanInputKeyDto[] = []) {
+    const execution = this.requireInteractiveExecution(executionId);
+    this.craftsmanInputPort?.submitChoice(execution, keys);
+    this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'choice', keys.join(','));
+    return execution;
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
@@ -2472,6 +2498,66 @@ export class TaskService {
       rosterNotified: notifiedAfterActivity('thread_probe_roster'),
       inboxRaised: notifiedAfterActivity('thread_probe_inbox'),
     };
+  }
+
+  private requireInteractiveExecution(executionId: string) {
+    if (!this.craftsmanInputPort) {
+      throw new Error('Craftsman input port is not configured');
+    }
+    const execution = this.getCraftsmanExecution(executionId);
+    if (!['needs_input', 'awaiting_choice'].includes(execution.status)) {
+      throw new Error(`Craftsman execution ${executionId} is not waiting for input (status=${execution.status})`);
+    }
+    return {
+      executionId: execution.execution_id,
+      adapter: execution.adapter,
+      sessionId: execution.session_id,
+      taskId: execution.task_id,
+      subtaskId: execution.subtask_id,
+    };
+  }
+
+  private recordCraftsmanInput(
+    taskId: string,
+    subtaskId: string,
+    executionId: string,
+    inputType: 'text' | 'keys' | 'choice',
+    detail: string,
+  ) {
+    const task = this.getTaskOrThrow(taskId);
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'craftsman_input_sent',
+      stage_id: task.current_stage,
+      detail: {
+        subtask_id: subtaskId,
+        execution_id: executionId,
+        input_type: inputType,
+        detail,
+      },
+      actor: 'archon',
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: 'archon',
+      body: `Craftsman input sent for ${subtaskId}`,
+      metadata: {
+        event_type: 'craftsman_input_sent',
+        execution_id: executionId,
+        subtask_id: subtaskId,
+        input_type: inputType,
+        detail,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'craftsman_input_sent',
+      bodyLines: [
+        `Craftsman input submitted for subtask ${subtaskId}.`,
+        `Execution: ${executionId}`,
+        `Input Type: ${inputType}`,
+        ...(detail ? [`Detail: ${detail}`] : []),
+      ],
+    });
   }
 }
 

@@ -17,6 +17,7 @@ import {
   StubIMMessagingPort,
   RolePackService,
   TaskBrainBindingService,
+  TmuxCraftsmanInputPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -67,6 +68,7 @@ export interface CliCompositionFactories {
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
       agentRuntimePort: AgentRuntimePort;
+      craftsmanInputPort: TmuxCraftsmanInputPort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -177,6 +179,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
       agentRuntimePort: deps.agentRuntimePort,
+      craftsmanInputPort: deps.craftsmanInputPort,
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
     }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({
@@ -241,10 +244,12 @@ export function createCliComposition(
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
+  const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
+    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
     taskBrainBindingService,
     taskBrainWorkspacePort,
     imProvisioningPort,
@@ -253,7 +258,6 @@ export function createCliComposition(
     taskParticipationService,
     agentRuntimePort,
   });
-  const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);
   const taskConversationService = factories.createTaskConversationService(context);

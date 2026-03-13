@@ -22,6 +22,9 @@ import type {
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
 import {
+  craftsmanExecutionSendKeysRequestSchema,
+  craftsmanExecutionSendTextRequestSchema,
+  craftsmanExecutionSubmitChoiceRequestSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
   tmuxSendKeysRequestSchema,
@@ -1193,6 +1196,50 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `craftsman callback 已处理: ${result.execution.execution_id}`);
       writeLine(stdout, `status: ${result.execution.status}`);
       writeLine(stdout, `${result.subtask.output ?? ''}`);
+    });
+
+  craftsman
+    .command('input-text')
+    .description('向 waiting craftsman execution 发送文本输入')
+    .argument('<executionId>', 'execution ID')
+    .argument('<text>', 'text input')
+    .option('--no-submit', '发送后不自动回车')
+    .action((executionId: string, text: string, options: { submit?: boolean }) => {
+      const payload = craftsmanExecutionSendTextRequestSchema.parse({
+        execution_id: executionId,
+        text,
+        submit: options.submit ?? true,
+      });
+      const execution = taskService.sendCraftsmanInputText(payload.execution_id, payload.text, payload.submit);
+      writeLine(stdout, `craftsman input 已发送: ${execution.executionId}`);
+    });
+
+  craftsman
+    .command('input-keys')
+    .description('向 waiting craftsman execution 发送结构化按键')
+    .argument('<executionId>', 'execution ID')
+    .argument('<keys...>', 'keys like Down Tab Enter')
+    .action((executionId: string, keys: CraftsmanInputKeyDto[]) => {
+      const payload = craftsmanExecutionSendKeysRequestSchema.parse({
+        execution_id: executionId,
+        keys,
+      });
+      const execution = taskService.sendCraftsmanInputKeys(payload.execution_id, payload.keys);
+      writeLine(stdout, `craftsman keys 已发送: ${execution.executionId}`);
+    });
+
+  craftsman
+    .command('submit-choice')
+    .description('向 waiting craftsman execution 提交 choice，自动补 Enter')
+    .argument('<executionId>', 'execution ID')
+    .argument('[keys...]', 'optional navigation keys before submit')
+    .action((executionId: string, keys: CraftsmanInputKeyDto[] = []) => {
+      const payload = craftsmanExecutionSubmitChoiceRequestSchema.parse({
+        execution_id: executionId,
+        keys,
+      });
+      const execution = taskService.submitCraftsmanChoice(payload.execution_id, payload.keys);
+      writeLine(stdout, `craftsman choice 已提交: ${execution.executionId}`);
     });
 
   const tmux = craftsman

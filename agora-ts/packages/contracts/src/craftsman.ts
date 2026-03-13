@@ -152,3 +152,22 @@ export const tmuxSubmitChoiceRequestSchema = z.object({
   keys: z.array(craftsmanInputKeySchema).optional().default([]),
 }).strict();
 export type TmuxSubmitChoiceRequestDto = z.infer<typeof tmuxSubmitChoiceRequestSchema>;
+
+export const craftsmanExecutionSendTextRequestSchema = z.object({
+  execution_id: z.string().min(1),
+  text: z.string(),
+  submit: z.boolean().optional().default(true),
+}).strict();
+export type CraftsmanExecutionSendTextRequestDto = z.infer<typeof craftsmanExecutionSendTextRequestSchema>;
+
+export const craftsmanExecutionSendKeysRequestSchema = z.object({
+  execution_id: z.string().min(1),
+  keys: z.array(craftsmanInputKeySchema).min(1),
+}).strict();
+export type CraftsmanExecutionSendKeysRequestDto = z.infer<typeof craftsmanExecutionSendKeysRequestSchema>;
+
+export const craftsmanExecutionSubmitChoiceRequestSchema = z.object({
+  execution_id: z.string().min(1),
+  keys: z.array(craftsmanInputKeySchema).optional().default([]),
+}).strict();
+export type CraftsmanExecutionSubmitChoiceRequestDto = z.infer<typeof craftsmanExecutionSubmitChoiceRequestSchema>;

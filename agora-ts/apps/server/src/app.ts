@@ -5,6 +5,9 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
+  craftsmanExecutionSendKeysRequestSchema,
+  craftsmanExecutionSendTextRequestSchema,
+  craftsmanExecutionSubmitChoiceRequestSchema,
   craftsmanRuntimeIdentityRequestSchema,
   tmuxSendKeysRequestSchema,
   tmuxSendTextRequestSchema,
@@ -1514,6 +1517,60 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { executionId: string };
       return reply.send(taskService.getCraftsmanExecution(params.executionId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/executions/:executionId/input-text', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { executionId: string };
+      const payload = craftsmanExecutionSendTextRequestSchema.parse({
+        execution_id: params.executionId,
+        ...((request.body ?? {}) as Record<string, unknown>),
+      });
+      const execution = taskService.sendCraftsmanInputText(payload.execution_id, payload.text, payload.submit);
+      return reply.send({ ok: true, execution_id: execution.executionId });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/executions/:executionId/input-keys', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { executionId: string };
+      const payload = craftsmanExecutionSendKeysRequestSchema.parse({
+        execution_id: params.executionId,
+        ...((request.body ?? {}) as Record<string, unknown>),
+      });
+      const execution = taskService.sendCraftsmanInputKeys(payload.execution_id, payload.keys);
+      return reply.send({ ok: true, execution_id: execution.executionId });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/executions/:executionId/submit-choice', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { executionId: string };
+      const payload = craftsmanExecutionSubmitChoiceRequestSchema.parse({
+        execution_id: params.executionId,
+        ...((request.body ?? {}) as Record<string, unknown>),
+      });
+      const execution = taskService.submitCraftsmanChoice(payload.execution_id, payload.keys);
+      return reply.send({ ok: true, execution_id: execution.executionId });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

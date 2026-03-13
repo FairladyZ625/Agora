@@ -16,6 +16,7 @@ import {
   LiveSessionStore,
   NotificationDispatcher,
   HumanAccountService,
+  TmuxCraftsmanInputPort,
   type TaskBrainWorkspacePort,
   TaskBrainBindingService,
   StubIMMessagingPort,
@@ -87,6 +88,7 @@ export interface ServerCompositionFactories {
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
       agentRuntimePort: AgentRuntimePort;
+      craftsmanInputPort: TmuxCraftsmanInputPort;
     },
   ) => TaskService;
   createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier | undefined;
@@ -197,6 +199,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
         agentRuntimePort: deps.agentRuntimePort,
+        craftsmanInputPort: deps.craftsmanInputPort,
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
       });
     },
@@ -301,6 +304,7 @@ export function buildServerComposition(
     taskContextBindingService,
     taskParticipationService,
     agentRuntimePort,
+    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
   });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
