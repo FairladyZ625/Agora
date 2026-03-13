@@ -1793,4 +1793,28 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('active executions: 2');
     expect(stdout.value).toContain('opus\t2');
   });
+
+  it('supports craftsman observation through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const calls: Array<{ runningAfterMs: number; waitingAfterMs: number }> = [];
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      taskService: {
+        observeCraftsmanExecutions: (input: { runningAfterMs: number; waitingAfterMs: number }) => {
+          calls.push(input);
+          return { scanned: 2, probed: 1, progressed: 1 };
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'observe', '--running-after-ms', '60000', '--waiting-after-ms', '15000'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(calls).toEqual([{ runningAfterMs: 60000, waitingAfterMs: 15000 }]);
+    expect(stdout.value).toContain('"probed": 1');
+  });
 });

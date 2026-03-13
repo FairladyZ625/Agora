@@ -2699,6 +2699,89 @@ describe('task service', () => {
     })).toThrow(/memory utilization/i);
   });
 
+  it('observes stale craftsman executions and probes them forward', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-GOV-3',
+      craftsmanExecutionProbePort: {
+        probe: ({ executionId }) => ({
+          execution_id: executionId,
+          status: 'running',
+          session_id: 'tmux:observed',
+          payload: { summary: 'still running' },
+          error: null,
+          finished_at: null,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'Observe stale executions',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-observe-1',
+      task_id: 'OC-DISPATCH-GOV-3',
+      stage_id: 'implement',
+      title: 'Observe me',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:observed',
+      dispatch_status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-observe-1',
+      task_id: 'OC-DISPATCH-GOV-3',
+      subtask_id: 'sub-observe-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:observed',
+      status: 'running',
+      started_at: '2026-03-13T13:00:00.000Z',
+      finished_at: null,
+    });
+
+    db.prepare(`
+      UPDATE craftsman_executions
+      SET updated_at = ?
+      WHERE execution_id = 'exec-observe-1'
+    `).run('2026-03-13T13:00:00.000Z');
+
+    const result = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date('2026-03-13T13:05:00.000Z'),
+    });
+
+    expect(result).toMatchObject({
+      scanned: 1,
+      probed: 1,
+      progressed: 0,
+    });
+    expect(service.getCraftsmanExecution('exec-observe-1').status).toBe('running');
+    expect(service.getTaskStatus('OC-DISPATCH-GOV-3').flow_log.map((entry) => entry.event)).toContain('craftsman_auto_probe');
+  });
+
   it('creates execute-mode subtasks through the formal service surface and auto-dispatches craftsmen specs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

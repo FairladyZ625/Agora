@@ -9,6 +9,8 @@ import {
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
   craftsmanGovernanceSnapshotSchema,
+  observeCraftsmanExecutionsRequestSchema,
+  observeCraftsmanExecutionsResponseSchema,
   craftsmanRuntimeIdentityRequestSchema,
   tmuxSendKeysRequestSchema,
   tmuxSendTextRequestSchema,
@@ -1526,6 +1528,26 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       return reply.send(craftsmanGovernanceSnapshotSchema.parse(taskService.getCraftsmanGovernanceSnapshot()));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/observe', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = observeCraftsmanExecutionsRequestSchema.parse(request.body ?? {});
+      return reply.send(
+        observeCraftsmanExecutionsResponseSchema.parse(
+          taskService.observeCraftsmanExecutions({
+            runningAfterMs: payload.running_after_ms,
+            waitingAfterMs: payload.waiting_after_ms,
+          }),
+        ),
+      );
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

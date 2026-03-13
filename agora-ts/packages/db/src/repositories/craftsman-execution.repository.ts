@@ -121,6 +121,16 @@ export class CraftsmanExecutionRepository {
     return rows.map((row) => this.parseRow(row));
   }
 
+  listActiveExecutions() {
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM craftsman_executions
+      WHERE status IN ('queued', 'running', 'needs_input', 'awaiting_choice')
+      ORDER BY updated_at ASC, execution_id ASC
+    `).all() as Record<string, unknown>[];
+    return rows.map((row) => this.parseRow(row));
+  }
+
   countActiveExecutions() {
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count

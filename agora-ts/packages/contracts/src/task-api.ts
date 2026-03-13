@@ -376,6 +376,19 @@ export const rejectTaskRequestSchema = z.object({
 });
 export type RejectTaskRequestDto = z.infer<typeof rejectTaskRequestSchema>;
 
+export const observeCraftsmanExecutionsRequestSchema = z.object({
+  running_after_ms: z.number().int().positive().default(300_000),
+  waiting_after_ms: z.number().int().positive().default(120_000),
+}).strict();
+export type ObserveCraftsmanExecutionsRequestDto = z.infer<typeof observeCraftsmanExecutionsRequestSchema>;
+
+export const observeCraftsmanExecutionsResponseSchema = z.object({
+  scanned: z.number().int().nonnegative(),
+  probed: z.number().int().nonnegative(),
+  progressed: z.number().int().nonnegative(),
+});
+export type ObserveCraftsmanExecutionsResponseDto = z.infer<typeof observeCraftsmanExecutionsResponseSchema>;
+
 export const archonApproveTaskRequestSchema = z.object({
   reviewer_id: z.string().min(1),
   comment: z.string().default(''),

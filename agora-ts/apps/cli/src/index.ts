@@ -1229,6 +1229,19 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   craftsman
+    .command('observe')
+    .description('探测超时的 craftsman executions，并尽量推进状态')
+    .option('--running-after-ms <ms>', 'probe running/queued executions after this idle time', '300000')
+    .option('--waiting-after-ms <ms>', 'probe waiting-input executions after this idle time', '120000')
+    .action((options: { runningAfterMs: string; waitingAfterMs: string }) => {
+      const result = taskService.observeCraftsmanExecutions({
+        runningAfterMs: Number(options.runningAfterMs),
+        waitingAfterMs: Number(options.waitingAfterMs),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  craftsman
     .command('callback')
     .description('提交 craftsmen callback')
     .argument('<executionId>', 'execution ID')

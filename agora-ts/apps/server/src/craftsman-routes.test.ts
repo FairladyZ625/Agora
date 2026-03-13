@@ -435,6 +435,28 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('serves craftsman observe route', async () => {
+    const calls: Array<{ runningAfterMs: number; waitingAfterMs: number }> = [];
+    const app = buildApp({
+      taskService: {
+        observeCraftsmanExecutions: (input: { runningAfterMs: number; waitingAfterMs: number }) => {
+          calls.push(input);
+          return { scanned: 3, probed: 2, progressed: 1 };
+        },
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/observe',
+      payload: { running_after_ms: 60000, waiting_after_ms: 15000 },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(calls).toEqual([{ runningAfterMs: 60000, waitingAfterMs: 15000 }]);
+    expect(response.json()).toMatchObject({ scanned: 3, probed: 2, progressed: 1 });
+  });
+
   it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

@@ -171,6 +171,18 @@ export interface InactiveTaskProbeResult {
   inbox_items: number;
 }
 
+export interface ObserveCraftsmanExecutionsOptions {
+  runningAfterMs: number;
+  waitingAfterMs: number;
+  now?: Date;
+}
+
+export interface ObserveCraftsmanExecutionsResult {
+  scanned: number;
+  probed: number;
+  progressed: number;
+}
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../templates', import.meta.url));
 }
@@ -966,6 +978,47 @@ export class TaskService {
       ...this.handleCraftsmanCallback(callback),
       probed: true as const,
     };
+  }
+
+  observeCraftsmanExecutions(options: ObserveCraftsmanExecutionsOptions): ObserveCraftsmanExecutionsResult {
+    const nowMs = (options.now ?? new Date()).getTime();
+    const result: ObserveCraftsmanExecutionsResult = {
+      scanned: 0,
+      probed: 0,
+      progressed: 0,
+    };
+    for (const execution of this.craftsmanExecutions.listActiveExecutions()) {
+      result.scanned += 1;
+      const lastActivityMs = Date.parse(execution.updated_at ?? execution.started_at ?? execution.created_at);
+      if (!Number.isFinite(lastActivityMs)) {
+        continue;
+      }
+      const thresholdMs = execution.status === 'needs_input' || execution.status === 'awaiting_choice'
+        ? options.waitingAfterMs
+        : options.runningAfterMs;
+      if (nowMs - lastActivityMs < thresholdMs) {
+        continue;
+      }
+      this.flowLogRepository.insertFlowLog({
+        task_id: execution.task_id,
+        kind: 'system',
+        event: 'craftsman_auto_probe',
+        stage_id: this.subtaskRepository.listByTask(execution.task_id).find((item) => item.id === execution.subtask_id)?.stage_id ?? null,
+        detail: {
+          execution_id: execution.execution_id,
+          status: execution.status,
+        },
+        actor: 'system',
+      });
+      const probeResult = this.probeCraftsmanExecution(execution.execution_id);
+      if (probeResult.probed) {
+        result.probed += 1;
+        if (probeResult.execution.status !== execution.status) {
+          result.progressed += 1;
+        }
+      }
+    }
+    return result;
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
