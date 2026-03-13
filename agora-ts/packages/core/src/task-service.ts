@@ -1429,6 +1429,11 @@ export class TaskService {
                 `- ${join(workspacePath, '03-stage-state.md')}`,
               ]
             : []),
+          '',
+          'Discord mention rule:',
+          '- To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.',
+          '- Do not type display names like `@Opus` or `@Sonnet`.',
+          '- Reuse the real mentions already shown in this thread whenever possible.',
         ].join('\n'),
       },
     ];
@@ -1448,6 +1453,7 @@ export class TaskService {
           `Controller: ${controllerRef ?? '-'}`,
           `Current Stage: ${task.current_stage}`,
           `Task Goal: ${task.description?.trim() || task.title}`,
+          'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.',
           ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`Read role doc: ${roleDocPath}`] : []),
           ...(member.briefing_mode === 'overlay_delta'
             ? ['This agent already carries Agora-managed base role context; use the role brief below as task delta.']

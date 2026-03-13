@@ -1724,10 +1724,13 @@ describe('task service', () => {
     expect(rootBrief?.body).toContain('Controller: opus');
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
+    expect(rootBrief?.body).toContain('Discord mention rule:');
+    expect(rootBrief?.body).toContain('`<@USER_ID>`');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
     expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
     expect(opusBrief?.body).toContain('architect');
     expect(opusBrief?.body).toContain('Briefing Mode: overlay_delta');
+    expect(opusBrief?.body).toContain('Discord Mention Rule: use real `<@USER_ID>` mentions');
     expect(opusBrief?.body).not.toContain('Read role doc:');
     const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
     expect(sonnetBrief?.body).toContain('Briefing Mode: overlay_full');
