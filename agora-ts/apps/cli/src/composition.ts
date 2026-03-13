@@ -14,6 +14,7 @@ import {
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
+  OsHostResourcePort,
   StubIMMessagingPort,
   RolePackService,
   TaskBrainBindingService,
@@ -183,6 +184,13 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       agentRuntimePort: deps.agentRuntimePort,
       craftsmanInputPort: deps.craftsmanInputPort,
       craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
+      hostResourcePort: new OsHostResourcePort(),
+      craftsmanGovernance: {
+        maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
+        hostMemoryUtilizationLimit: context.config.craftsmen.host_memory_utilization_limit,
+        hostSwapUtilizationLimit: context.config.craftsmen.host_swap_utilization_limit,
+        hostLoadPerCpuLimit: context.config.craftsmen.host_load_per_cpu_limit,
+      },
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
     }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({

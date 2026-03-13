@@ -30,6 +30,10 @@ describe('agora-ts config contracts', () => {
     expect(parsed.rate_limit.enabled).toBe(false);
     expect(parsed.dashboard_auth.enabled).toBe(false);
     expect(parsed.craftsmen.max_concurrent_running).toBe(8);
+    expect(parsed.craftsmen.max_concurrent_per_agent).toBe(3);
+    expect(parsed.craftsmen.host_memory_utilization_limit).toBe(0.9);
+    expect(parsed.craftsmen.host_swap_utilization_limit).toBe(0.9);
+    expect(parsed.craftsmen.host_load_per_cpu_limit).toBe(1.5);
     expect(parsed.craftsmen.isolate_git_worktrees).toBe(false);
     expect(parsed.observability.ready_path).toBe('/ready');
   });
@@ -56,6 +60,10 @@ describe('agora-ts config contracts', () => {
       },
       craftsmen: {
         max_concurrent_running: 3,
+        max_concurrent_per_agent: 2,
+        host_memory_utilization_limit: 0.85,
+        host_swap_utilization_limit: 0.8,
+        host_load_per_cpu_limit: 1.2,
         isolate_git_worktrees: true,
         isolated_root: '/tmp/agora-isolated',
       },
@@ -71,6 +79,10 @@ describe('agora-ts config contracts', () => {
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');
     expect(parsed.craftsmen.max_concurrent_running).toBe(3);
+    expect(parsed.craftsmen.max_concurrent_per_agent).toBe(2);
+    expect(parsed.craftsmen.host_memory_utilization_limit).toBe(0.85);
+    expect(parsed.craftsmen.host_swap_utilization_limit).toBe(0.8);
+    expect(parsed.craftsmen.host_load_per_cpu_limit).toBe(1.2);
     expect(parsed.craftsmen.isolate_git_worktrees).toBe(true);
     expect(parsed.craftsmen.isolated_root).toBe('/tmp/agora-isolated');
     expect(parsed.observability.metrics_enabled).toBe(true);

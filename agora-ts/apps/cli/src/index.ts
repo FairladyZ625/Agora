@@ -1193,6 +1193,42 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   craftsman
+    .command('governance')
+    .description('查看 craftsman 治理与主机资源快照')
+    .option('--json', 'emit JSON')
+    .action((options: { json?: boolean }) => {
+      const snapshot = taskService.getCraftsmanGovernanceSnapshot();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      writeLine(stdout, `active executions: ${snapshot.active_executions}`);
+      writeLine(
+        stdout,
+        `limits: global=${snapshot.limits.max_concurrent_running ?? '-'} per_agent=${snapshot.limits.max_concurrent_per_agent ?? '-'}`,
+      );
+      writeLine(
+        stdout,
+        `host limits: memory=${snapshot.limits.host_memory_utilization_limit ?? '-'} swap=${snapshot.limits.host_swap_utilization_limit ?? '-'} load_per_cpu=${snapshot.limits.host_load_per_cpu_limit ?? '-'}`,
+      );
+      if (snapshot.host) {
+        writeLine(
+          stdout,
+          `host: memory=${snapshot.host.memory_utilization ?? '-'} swap=${snapshot.host.swap_utilization ?? '-'} load_1m=${snapshot.host.load_1m ?? '-'} cpu_count=${snapshot.host.cpu_count ?? '-'}`,
+        );
+      } else {
+        writeLine(stdout, 'host: unavailable');
+      }
+      if (snapshot.active_by_assignee.length === 0) {
+        writeLine(stdout, 'active by assignee: none');
+        return;
+      }
+      for (const item of snapshot.active_by_assignee) {
+        writeLine(stdout, `${item.assignee}\t${item.count}`);
+      }
+    });
+
+  craftsman
     .command('callback')
     .description('提交 craftsmen callback')
     .argument('<executionId>', 'execution ID')

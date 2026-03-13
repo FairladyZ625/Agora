@@ -1079,7 +1079,7 @@ describe('agora-ts cli', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'retry-cli',
-          status: 'not_started',
+          status: 'pending',
           output: null,
           craftsman_session: null,
           dispatch_status: null,
@@ -1178,7 +1178,7 @@ describe('agora-ts cli', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'reassign-cli',
-          status: 'not_started',
+          status: 'pending',
           assignee: 'claude',
           craftsman_type: 'claude',
           output: null,
@@ -1516,8 +1516,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('任务 OC-307 已创建 2 个 subtasks');
     expect(stdout.value).toContain('auto-dispatched executions: exec-cli-subtask-1');
-    expect(stdout.value).toContain('build-api\tdevelop\tsonnet\tnot_started\tcodex');
-    expect(stdout.value).toContain('write-tests\tdevelop\tgpt52\tnot_started\t-');
+    expect(stdout.value).toContain('build-api\tdevelop\tsonnet\tin_progress\tcodex');
+    expect(stdout.value).toContain('write-tests\tdevelop\tgpt52\tpending\t-');
   });
 
   it('supports tmux runtime management commands through the cli', async () => {

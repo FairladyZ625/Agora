@@ -314,6 +314,36 @@ export const taskStatusSchema = z.object({
 });
 export type TaskStatusDto = z.infer<typeof taskStatusSchema>;
 
+export const hostResourceSnapshotSchema = z.object({
+  observed_at: z.string(),
+  cpu_count: z.number().int().nullable(),
+  load_1m: z.number().nullable(),
+  memory_total_bytes: z.number().nullable(),
+  memory_used_bytes: z.number().nullable(),
+  memory_utilization: z.number().nullable(),
+  swap_total_bytes: z.number().nullable(),
+  swap_used_bytes: z.number().nullable(),
+  swap_utilization: z.number().nullable(),
+});
+export type HostResourceSnapshotDto = z.infer<typeof hostResourceSnapshotSchema>;
+
+export const craftsmanGovernanceSnapshotSchema = z.object({
+  limits: z.object({
+    max_concurrent_running: z.number().int().positive().nullable(),
+    max_concurrent_per_agent: z.number().int().positive().nullable(),
+    host_memory_utilization_limit: z.number().nullable(),
+    host_swap_utilization_limit: z.number().nullable(),
+    host_load_per_cpu_limit: z.number().nullable(),
+  }),
+  active_executions: z.number().int().nonnegative(),
+  active_by_assignee: z.array(z.object({
+    assignee: z.string(),
+    count: z.number().int().nonnegative(),
+  })),
+  host: hostResourceSnapshotSchema.nullable(),
+});
+export type CraftsmanGovernanceSnapshotDto = z.infer<typeof craftsmanGovernanceSnapshotSchema>;
+
 export const createTaskRequestSchema = z.object({
   title: z.string().min(1),
   type: z.string().min(1),

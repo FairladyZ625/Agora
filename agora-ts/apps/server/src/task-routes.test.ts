@@ -1059,7 +1059,7 @@ describe('task routes', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'retry-route',
-          status: 'not_started',
+          status: 'pending',
           output: null,
           craftsman_session: null,
           dispatch_status: null,
@@ -1185,7 +1185,7 @@ describe('task routes', () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: 'reassign-route',
-          status: 'not_started',
+          status: 'pending',
           assignee: 'claude',
           craftsman_type: 'claude',
           output: null,

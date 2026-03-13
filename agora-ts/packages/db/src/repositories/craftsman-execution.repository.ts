@@ -125,9 +125,39 @@ export class CraftsmanExecutionRepository {
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count
       FROM craftsman_executions
-      WHERE status IN ('queued', 'running')
+      WHERE status IN ('queued', 'running', 'needs_input', 'awaiting_choice')
     `).get() as { count: number };
     return Number(row.count ?? 0);
+  }
+
+  countActiveExecutionsByAssignee(assignee: string) {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM craftsman_executions ce
+      INNER JOIN subtasks s
+        ON s.task_id = ce.task_id
+       AND s.id = ce.subtask_id
+      WHERE s.assignee = ?
+        AND ce.status IN ('queued', 'running', 'needs_input', 'awaiting_choice')
+    `).get(assignee) as { count: number };
+    return Number(row.count ?? 0);
+  }
+
+  listActiveExecutionCountsByAssignee() {
+    const rows = this.db.prepare(`
+      SELECT s.assignee AS assignee, COUNT(*) AS count
+      FROM craftsman_executions ce
+      INNER JOIN subtasks s
+        ON s.task_id = ce.task_id
+       AND s.id = ce.subtask_id
+      WHERE ce.status IN ('queued', 'running', 'needs_input', 'awaiting_choice')
+      GROUP BY s.assignee
+      ORDER BY count DESC, assignee ASC
+    `).all() as Array<{ assignee: string; count: number }>;
+    return rows.map((row) => ({
+      assignee: String(row.assignee),
+      count: Number(row.count ?? 0),
+    }));
   }
 
   updateExecution(executionId: string, updates: UpdateCraftsmanExecutionInput): StoredCraftsmanExecution {

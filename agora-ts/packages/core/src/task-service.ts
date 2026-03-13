@@ -44,6 +44,7 @@ import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from 
 import type { AgentRuntimePort } from './runtime-ports.js';
 import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
+import type { HostResourcePort } from './host-resource-port.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
@@ -72,6 +73,14 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
   locale?: TaskLocaleDto;
 };
 
+type CraftsmanGovernanceLimits = {
+  maxConcurrentRunning: number | null;
+  maxConcurrentPerAgent: number | null;
+  hostMemoryUtilizationLimit: number | null;
+  hostSwapUtilizationLimit: number | null;
+  hostLoadPerCpuLimit: number | null;
+};
+
 export interface TaskServiceOptions {
   templatesDir?: string;
   taskIdGenerator?: () => string;
@@ -88,6 +97,14 @@ export interface TaskServiceOptions {
   agentRuntimePort?: AgentRuntimePort;
   craftsmanInputPort?: CraftsmanInputPort;
   craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;
+  hostResourcePort?: HostResourcePort;
+  craftsmanGovernance?: {
+    maxConcurrentRunning?: number | null;
+    maxConcurrentPerAgent?: number | null;
+    hostMemoryUtilizationLimit?: number | null;
+    hostSwapUtilizationLimit?: number | null;
+    hostLoadPerCpuLimit?: number | null;
+  };
 }
 
 export interface AdvanceTaskOptions {
@@ -192,6 +209,8 @@ export class TaskService {
   private readonly taskParticipationService: TaskParticipationService | undefined;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
+  private readonly hostResourcePort: HostResourcePort | undefined;
+  private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -232,6 +251,14 @@ export class TaskService {
     this.taskParticipationService = options.taskParticipationService;
     this.agentRuntimePort = options.agentRuntimePort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
+    this.hostResourcePort = options.hostResourcePort;
+    this.craftsmanGovernance = {
+      maxConcurrentRunning: options.craftsmanGovernance?.maxConcurrentRunning ?? null,
+      maxConcurrentPerAgent: options.craftsmanGovernance?.maxConcurrentPerAgent ?? null,
+      hostMemoryUtilizationLimit: options.craftsmanGovernance?.hostMemoryUtilizationLimit ?? null,
+      hostSwapUtilizationLimit: options.craftsmanGovernance?.hostSwapUtilizationLimit ?? null,
+      hostLoadPerCpuLimit: options.craftsmanGovernance?.hostLoadPerCpuLimit ?? null,
+    };
   }
 
   createTask(input: CreateTaskInputLike): StoredTask {
@@ -755,6 +782,7 @@ export class TaskService {
         throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
       }
     }
+    this.assertCraftsmanGovernanceForSubtasks(options.subtasks);
 
     const executeDefs = options.subtasks.map((subtask) => ({
       id: subtask.id,
@@ -845,6 +873,7 @@ export class TaskService {
     if (!stageAllowsCraftsmanDispatch(stage)) {
       throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
     }
+    this.assertCraftsmanDispatchAllowed(subtask.assignee);
     const dispatched = this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
       stage_id: subtask.stage_id,
@@ -878,6 +907,21 @@ export class TaskService {
 
   listCraftsmanExecutions(taskId: string, subtaskId: string) {
     return this.craftsmanExecutions.listBySubtask(taskId, subtaskId);
+  }
+
+  getCraftsmanGovernanceSnapshot() {
+    return {
+      limits: {
+        max_concurrent_running: this.craftsmanGovernance.maxConcurrentRunning,
+        max_concurrent_per_agent: this.craftsmanGovernance.maxConcurrentPerAgent,
+        host_memory_utilization_limit: this.craftsmanGovernance.hostMemoryUtilizationLimit,
+        host_swap_utilization_limit: this.craftsmanGovernance.hostSwapUtilizationLimit,
+        host_load_per_cpu_limit: this.craftsmanGovernance.hostLoadPerCpuLimit,
+      },
+      active_executions: this.craftsmanExecutions.countActiveExecutions(),
+      active_by_assignee: this.craftsmanExecutions.listActiveExecutionCountsByAssignee(),
+      host: this.hostResourcePort?.readSnapshot() ?? null,
+    };
   }
 
   sendCraftsmanInputText(executionId: string, text: string, submit = true) {
@@ -2182,6 +2226,76 @@ export class TaskService {
       }
     }
     return options.action ? { action: options.action } : undefined;
+  }
+
+  private assertCraftsmanGovernanceForSubtasks(subtasks: CreateSubtasksRequestDto['subtasks']) {
+    const plannedByAssignee = new Map<string, number>();
+    for (const subtask of subtasks) {
+      if (!subtask.craftsman) {
+        continue;
+      }
+      plannedByAssignee.set(subtask.assignee, (plannedByAssignee.get(subtask.assignee) ?? 0) + 1);
+    }
+    for (const [assignee, planned] of plannedByAssignee) {
+      this.assertCraftsmanDispatchAllowed(assignee, planned);
+    }
+  }
+
+  private assertCraftsmanDispatchAllowed(assignee: string, additionalPlanned = 1) {
+    this.assertHostResourcesAllowDispatch();
+    const limit = this.craftsmanGovernance.maxConcurrentPerAgent;
+    if (limit === null) {
+      return;
+    }
+    const active = this.craftsmanExecutions.countActiveExecutionsByAssignee(assignee);
+    if (active + additionalPlanned > limit) {
+      throw new Error(
+        `Craftsman per-agent concurrency limit exceeded for ${assignee}: ${active + additionalPlanned}/${limit}`,
+      );
+    }
+  }
+
+  private assertHostResourcesAllowDispatch() {
+    if (!this.hostResourcePort) {
+      return;
+    }
+    const snapshot = this.hostResourcePort.readSnapshot();
+    if (!snapshot) {
+      return;
+    }
+    const memoryLimit = this.craftsmanGovernance.hostMemoryUtilizationLimit;
+    if (
+      memoryLimit !== null
+      && snapshot.memory_utilization !== null
+      && snapshot.memory_utilization > memoryLimit
+    ) {
+      throw new Error(
+        `Host memory utilization ${snapshot.memory_utilization.toFixed(2)} exceeds limit ${memoryLimit.toFixed(2)}`,
+      );
+    }
+    const swapLimit = this.craftsmanGovernance.hostSwapUtilizationLimit;
+    if (
+      swapLimit !== null
+      && snapshot.swap_utilization !== null
+      && snapshot.swap_utilization > swapLimit
+    ) {
+      throw new Error(
+        `Host swap utilization ${snapshot.swap_utilization.toFixed(2)} exceeds limit ${swapLimit.toFixed(2)}`,
+      );
+    }
+    const loadLimit = this.craftsmanGovernance.hostLoadPerCpuLimit;
+    const normalizedLoad = snapshot.load_1m !== null && snapshot.cpu_count !== null && snapshot.cpu_count > 0
+      ? snapshot.load_1m / snapshot.cpu_count
+      : null;
+    if (
+      loadLimit !== null
+      && normalizedLoad !== null
+      && normalizedLoad > loadLimit
+    ) {
+      throw new Error(
+        `Host load-per-cpu ${normalizedLoad.toFixed(2)} exceeds limit ${loadLimit.toFixed(2)}`,
+      );
+    }
   }
 
   private failMissingCraftsmanSessionsOnResume(taskId: string) {

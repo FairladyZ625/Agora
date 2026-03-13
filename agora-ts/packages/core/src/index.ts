@@ -12,6 +12,7 @@ export * from './errors.js';
 export * from './enums.js';
 export * from './gate-service.js';
 export * from './human-account-service.js';
+export * from './host-resource-port.js';
 export * from './im-ports.js';
 export * from './inbox-service.js';
 export * from './live-session-store.js';
