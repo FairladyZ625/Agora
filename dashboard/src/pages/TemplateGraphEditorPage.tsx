@@ -1,20 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
-import ReactFlow, {
+import {
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
   Background,
   Controls,
   MarkerType,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useUpdateNodeInternals,
   type Connection,
   type Edge,
   type EdgeChange,
   type Node,
   type NodeChange,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { TemplateDetail, TemplateGraph } from '@/types/dashboard';
@@ -154,7 +158,28 @@ function validateTemplateGraphDraft(graph: TemplateGraph) {
   return errors;
 }
 
-export function TemplateGraphEditorPage() {
+function GraphCanvasInternalsSync({ nodeIds }: { nodeIds: string[] }) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  const nodeSignature = nodeIds.join('|');
+
+  useEffect(() => {
+    if (nodeIds.length === 0) {
+      return undefined;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      for (const nodeId of nodeIds) {
+        updateNodeInternals(nodeId);
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [nodeIds, nodeSignature, updateNodeInternals]);
+
+  return null;
+}
+
+function TemplateGraphEditorContent() {
   const copy = useTemplatesPageCopy();
   const navigate = useNavigate();
   const { templateId } = useParams<{ templateId: string }>();
@@ -206,21 +231,25 @@ export function TemplateGraphEditorPage() {
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
   const graphNodes: Node[] = (
     draftGraph?.nodes.map((node) => ({
-      id: node.id,
-      position: node.layout ?? { x: 0, y: 0 },
-      data: { label: node.name },
-      type: 'default',
-    })) ?? []
+    id: node.id,
+    position: node.layout ?? { x: 0, y: 0 },
+    data: { label: node.name },
+    type: 'default',
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    width: 188,
+    height: 50,
+  })) ?? []
   );
   const graphCanvasEdges: Edge[] = (
     draftGraph?.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.from,
-      target: edge.to,
-      label: edge.kind,
-      markerEnd: { type: MarkerType.ArrowClosed },
-      animated: edge.kind === 'reject',
-    })) ?? []
+    id: edge.id,
+    source: edge.from,
+    target: edge.to,
+    label: edge.kind,
+    markerEnd: { type: MarkerType.ArrowClosed },
+    animated: edge.kind === 'reject',
+  })) ?? []
   );
   const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
   const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
@@ -394,30 +423,30 @@ export function TemplateGraphEditorPage() {
           <p className="type-text-xs">拖动节点、连边、选中节点或边后在右侧 inspector 编辑。</p>
         </aside>
 
-        <div className="surface-panel surface-panel--workspace">
-          <div className="template-graph-editor-canvas">
-            <ReactFlow
-              fitView
-              nodes={graphNodes}
-              edges={graphCanvasEdges}
-              onNodesChange={handleGraphNodesChange}
-              onEdgesChange={handleGraphEdgesChange}
-              onConnect={handleGraphConnect}
-              onNodeClick={(_, node) => {
-                setSelectedGraphNodeId(node.id);
-                setSelectedGraphEdgeId(null);
-              }}
-              onEdgeClick={(_, edge) => {
-                setSelectedGraphEdgeId(edge.id);
-                setSelectedGraphNodeId(null);
-              }}
-            >
-              <Background />
-              <Controls />
-            </ReactFlow>
+          <div className="surface-panel surface-panel--workspace">
+            <div className="template-graph-editor-canvas">
+              <ReactFlow
+                fitView
+                nodes={graphNodes}
+                edges={graphCanvasEdges}
+                onNodesChange={handleGraphNodesChange}
+                onEdgesChange={handleGraphEdgesChange}
+                onConnect={handleGraphConnect}
+                onNodeClick={(_, node) => {
+                  setSelectedGraphNodeId(node.id);
+                  setSelectedGraphEdgeId(null);
+                }}
+                onEdgeClick={(_, edge) => {
+                  setSelectedGraphEdgeId(edge.id);
+                  setSelectedGraphNodeId(null);
+                }}
+              >
+                <GraphCanvasInternalsSync nodeIds={draftGraph.nodes.map((node) => node.id)} />
+                <Background />
+                <Controls />
+              </ReactFlow>
+            </div>
           </div>
-        </div>
-
         <aside className="surface-panel surface-panel--workspace space-y-3">
           <h3 className="section-title">Graph inspector</h3>
           {graphValidationErrors.length > 0 ? (
@@ -566,5 +595,13 @@ export function TemplateGraphEditorPage() {
         </aside>
       </section>
     </div>
+  );
+}
+
+export function TemplateGraphEditorPage() {
+  return (
+    <ReactFlowProvider>
+      <TemplateGraphEditorContent />
+    </ReactFlowProvider>
   );
 }
