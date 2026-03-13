@@ -1,6 +1,8 @@
 import type {
   AgentsStatusDto,
   ArchiveJobDto,
+  CraftsmanExecutionDto,
+  CraftsmanGovernanceSnapshotDto,
   DashboardSessionLoginResponseDto,
   DashboardSessionLogoutResponseDto,
   DashboardSessionStatusResponseDto,
@@ -22,6 +24,7 @@ import type {
   TemplateDetailDto,
   TemplateSummaryDto,
   TodoItemDto,
+  ObserveCraftsmanExecutionsResponseDto,
   WorkflowDto,
   WorkflowGateDto,
   WorkflowStageDto,
@@ -48,6 +51,9 @@ export type ApiAgentsStatusDto = AgentsStatusDto;
 export type ApiAgentSummaryDto = ApiAgentsStatusDto['summary'];
 export type ApiAgentDto = ApiAgentsStatusDto['agents'][number];
 export type ApiCraftsmanDto = ApiAgentsStatusDto['craftsmen'][number];
+export type ApiCraftsmanExecutionDto = CraftsmanExecutionDto;
+export type ApiCraftsmanGovernanceSnapshotDto = CraftsmanGovernanceSnapshotDto;
+export type ApiObserveCraftsmanExecutionsResponseDto = ObserveCraftsmanExecutionsResponseDto;
 export type ApiAgentChannelSummaryDto = ApiAgentsStatusDto['channel_summaries'][number];
 export type ApiArchiveJobDto = ArchiveJobDto;
 export type ApiDashboardSessionStatusDto = DashboardSessionStatusResponseDto;

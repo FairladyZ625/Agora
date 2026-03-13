@@ -10,6 +10,8 @@ vi.mock('@/lib/api', () => ({
   getTaskConversationSummary: vi.fn(),
   getTaskConversation: vi.fn(),
   markTaskConversationRead: vi.fn(),
+  listSubtaskExecutions: vi.fn(),
+  getCraftsmanGovernance: vi.fn(),
   createTask: vi.fn(),
   advanceTask: vi.fn(),
   approveTask: vi.fn(),
@@ -76,7 +78,7 @@ function buildTaskStatusDto(overrides: Partial<ApiTaskStatusDto> = {}): ApiTaskS
         stage_id: 'develop',
         title: '后端 API',
         assignee: 'sonnet',
-        status: 'running',
+        status: 'in_progress',
         output: null,
         craftsman_type: 'backend',
         dispatch_status: 'running',
@@ -119,6 +121,19 @@ describe('task store phase 2 actions', () => {
     vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummary());
     vi.mocked(api.getTaskConversation).mockResolvedValue(buildConversationList());
     vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummary());
+    vi.mocked(api.listSubtaskExecutions).mockResolvedValue([]);
+    vi.mocked(api.getCraftsmanGovernance).mockResolvedValue({
+      limits: {
+        max_concurrent_running: 4,
+        max_concurrent_per_agent: 2,
+        host_memory_utilization_limit: 0.8,
+        host_swap_utilization_limit: 0.2,
+        host_load_per_cpu_limit: 1.5,
+      },
+      active_executions: 0,
+      active_by_assignee: [],
+      host: null,
+    });
     useTaskStore.setState({
       tasks: [],
       selectedTaskId: 'OC-001',

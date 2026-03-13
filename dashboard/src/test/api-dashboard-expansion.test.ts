@@ -16,6 +16,7 @@ function buildTaskResponse() {
     type: 'quick',
     priority: 'high',
     creator: 'archon',
+    locale: 'zh-CN',
     state: 'active',
     archive_status: null,
     current_stage: 'execute',

@@ -88,6 +88,73 @@ export interface Subtask {
   done_at: string | null;
 }
 
+export interface CraftsmanInputRequest {
+  transport: 'text' | 'keys' | 'choice';
+  hint: string | null;
+  textPlaceholder: string | null;
+  keys: string[];
+  choiceOptions: Array<{
+    id: string;
+    label: string;
+    description: string | null;
+    keys: string[];
+    submit: boolean;
+  }>;
+}
+
+export interface CraftsmanExecution {
+  executionId: string;
+  taskId: string;
+  subtaskId: string;
+  adapter: string;
+  mode: string;
+  sessionId: string | null;
+  status: string;
+  briefPath: string | null;
+  workdir: string | null;
+  callbackPayload: {
+    output?: {
+      summary?: string | null;
+      text?: string | null;
+      stderr?: string | null;
+      artifacts?: string[];
+      structured?: Record<string, unknown> | null;
+    };
+    inputRequest?: CraftsmanInputRequest | null;
+  } | null;
+  error: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CraftsmanGovernanceSnapshot {
+  limits: {
+    maxConcurrentRunning: number | null;
+    maxConcurrentPerAgent: number | null;
+    hostMemoryUtilizationLimit: number | null;
+    hostSwapUtilizationLimit: number | null;
+    hostLoadPerCpuLimit: number | null;
+  };
+  activeExecutions: number;
+  activeByAssignee: Array<{
+    assignee: string;
+    count: number;
+  }>;
+  host: {
+    observedAt: string;
+    cpuCount: number | null;
+    load1m: number | null;
+    memoryTotalBytes: number | null;
+    memoryUsedBytes: number | null;
+    memoryUtilization: number | null;
+    swapTotalBytes: number | null;
+    swapUsedBytes: number | null;
+    swapUtilization: number | null;
+  } | null;
+}
+
 export interface TaskConversationEntry {
   id: string;
   task_id: string;
@@ -171,6 +238,8 @@ export interface TaskStatus {
   flow_log: FlowLogEntry[];
   progress_log: ProgressLogEntry[];
   subtasks: Subtask[];
+  subtaskExecutions?: Record<string, CraftsmanExecution[]>;
+  governanceSnapshot?: CraftsmanGovernanceSnapshot | null;
   taskBlueprint?: TaskBlueprint;
   conversationSummary?: TaskConversationSummary;
   conversation?: TaskConversationEntry[];

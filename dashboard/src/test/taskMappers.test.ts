@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
 import {
+  mapCraftsmanExecutionDto,
+  mapCraftsmanGovernanceSnapshotDto,
   isTaskVisibleInWorkbench,
   mapTaskConversationEntryDto,
   mapTaskDto,
@@ -181,6 +183,62 @@ describe('task mappers', () => {
       workspacePath: '/tmp/agora-ai-brain/tasks/OC-001',
       participantRefs: ['opus'],
     });
+  });
+
+  it('maps craftsman execution and governance DTOs into operator view models', () => {
+    const execution = mapCraftsmanExecutionDto({
+      execution_id: 'exec-1',
+      task_id: 'OC-001',
+      subtask_id: 'subtask-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:1',
+      status: 'awaiting_choice',
+      brief_path: '/tmp/brief.md',
+      workdir: '/tmp/agora',
+      callback_payload: {
+        input_request: {
+          transport: 'choice',
+          hint: 'Choose one',
+          choice_options: [
+            { id: 'continue', label: 'Continue', keys: ['Down'], submit: true },
+            { id: 'abort', label: 'Abort', keys: ['Up'], submit: true },
+          ],
+        },
+      },
+      error: null,
+      started_at: '2026-03-07T02:00:00.000Z',
+      finished_at: null,
+      created_at: '2026-03-07T02:00:00.000Z',
+      updated_at: '2026-03-07T02:00:00.000Z',
+    });
+    const governance = mapCraftsmanGovernanceSnapshotDto({
+      limits: {
+        max_concurrent_running: 4,
+        max_concurrent_per_agent: 2,
+        host_memory_utilization_limit: 0.8,
+        host_swap_utilization_limit: 0.2,
+        host_load_per_cpu_limit: 1.5,
+      },
+      active_executions: 2,
+      active_by_assignee: [{ assignee: 'opus', count: 2 }],
+      host: {
+        observed_at: '2026-03-07T02:00:00.000Z',
+        cpu_count: 8,
+        load_1m: 0.75,
+        memory_total_bytes: 1000,
+        memory_used_bytes: 500,
+        memory_utilization: 0.5,
+        swap_total_bytes: 1000,
+        swap_used_bytes: 0,
+        swap_utilization: 0,
+      },
+    });
+
+    expect(execution.executionId).toBe('exec-1');
+    expect(execution.callbackPayload?.inputRequest?.choiceOptions).toHaveLength(2);
+    expect(governance.activeExecutions).toBe(2);
+    expect(governance.host?.load1m).toBe(0.75);
   });
 
   it('hides draft, created, and orphaned tasks from the workbench list', () => {

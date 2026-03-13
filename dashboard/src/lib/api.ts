@@ -2,11 +2,14 @@ import type {
   ApiAgentChannelSummaryDto,
   ApiAgentsStatusDto,
   ApiArchiveJobDto,
+  ApiCraftsmanExecutionDto,
+  ApiCraftsmanGovernanceSnapshotDto,
   ApiDashboardSessionLoginDto,
   ApiDashboardSessionLogoutDto,
   ApiDashboardSessionStatusDto,
   ApiDashboardUserListDto,
   ApiHealthDto,
+  ApiObserveCraftsmanExecutionsResponseDto,
   ApiPromoteTodoResultDto,
   ApiTaskDto,
   ApiTaskConversationListResponseDto,
@@ -23,6 +26,8 @@ import {
   agentsStatusSchema,
   archiveJobSchema,
   archiveJobReceiptScanResponseSchema,
+  craftsmanExecutionSchema,
+  craftsmanGovernanceSnapshotSchema,
   dashboardSessionLoginResponseSchema,
   dashboardSessionLogoutResponseSchema,
   dashboardSessionStatusResponseSchema,
@@ -32,6 +37,7 @@ import {
   dashboardUserUpdatePasswordRequestSchema,
   duplicateTemplateRequestSchema,
   healthResponseSchema,
+  observeCraftsmanExecutionsResponseSchema,
   promoteTodoResultSchema,
   taskSchema,
   taskConversationListResponseSchema,
@@ -141,6 +147,34 @@ export function getTaskConversation(taskId: string): Promise<ApiTaskConversation
   return request<ApiTaskConversationListResponseDto>(
     `/tasks/${taskId}/conversation`,
     taskConversationListResponseSchema,
+  );
+}
+
+export function listSubtaskExecutions(taskId: string, subtaskId: string): Promise<ApiCraftsmanExecutionDto[]> {
+  return request<ApiCraftsmanExecutionDto[]>(
+    `/craftsmen/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}/executions`,
+    z.array(craftsmanExecutionSchema),
+  );
+}
+
+export function getCraftsmanGovernance(): Promise<ApiCraftsmanGovernanceSnapshotDto> {
+  return request<ApiCraftsmanGovernanceSnapshotDto>(
+    '/craftsmen/governance',
+    craftsmanGovernanceSnapshotSchema,
+  );
+}
+
+export function observeCraftsmanExecutions(input?: {
+  running_after_ms?: number;
+  waiting_after_ms?: number;
+}): Promise<ApiObserveCraftsmanExecutionsResponseDto> {
+  return request<ApiObserveCraftsmanExecutionsResponseDto>(
+    '/craftsmen/observe',
+    observeCraftsmanExecutionsResponseSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input ?? {}),
+    },
   );
 }
 

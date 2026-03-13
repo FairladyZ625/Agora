@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ApiTaskConversationSummaryDto, ApiTaskDto, ApiTaskStatusDto } from '@/types/api';
+import type {
+  ApiCraftsmanExecutionDto,
+  ApiCraftsmanGovernanceSnapshotDto,
+  ApiTaskConversationSummaryDto,
+  ApiTaskDto,
+  ApiTaskStatusDto,
+} from '@/types/api';
 import { useTaskStore } from '@/stores/taskStore';
 import * as api from '@/lib/api';
 
@@ -10,6 +16,8 @@ vi.mock('@/lib/api', () => ({
   getTaskConversationSummary: vi.fn(),
   getTaskConversation: vi.fn(),
   markTaskConversationRead: vi.fn(),
+  listSubtaskExecutions: vi.fn(),
+  getCraftsmanGovernance: vi.fn(),
   archonApprove: vi.fn(),
   archonReject: vi.fn(),
 }));
@@ -80,9 +88,60 @@ function buildConversationSummaryDto(overrides: Partial<ApiTaskConversationSumma
   };
 }
 
+function buildCraftsmanExecutionDto(overrides: Partial<ApiCraftsmanExecutionDto> = {}): ApiCraftsmanExecutionDto {
+  return {
+    execution_id: 'exec-1',
+    task_id: 'OC-001',
+    subtask_id: 'subtask-1',
+    adapter: 'codex',
+    mode: 'task',
+    session_id: 'tmux:1',
+    status: 'running',
+    brief_path: null,
+    workdir: '/tmp/agora',
+    callback_payload: null,
+    error: null,
+    started_at: '2026-03-07T02:00:00.000Z',
+    finished_at: null,
+    created_at: '2026-03-07T02:00:00.000Z',
+    updated_at: '2026-03-07T02:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function buildGovernanceSnapshotDto(
+  overrides: Partial<ApiCraftsmanGovernanceSnapshotDto> = {},
+): ApiCraftsmanGovernanceSnapshotDto {
+  return {
+    limits: {
+      max_concurrent_running: 4,
+      max_concurrent_per_agent: 2,
+      host_memory_utilization_limit: 0.8,
+      host_swap_utilization_limit: 0.2,
+      host_load_per_cpu_limit: 1.5,
+    },
+    active_executions: 1,
+    active_by_assignee: [{ assignee: 'opus', count: 1 }],
+    host: {
+      observed_at: '2026-03-07T02:00:00.000Z',
+      cpu_count: 8,
+      load_1m: 0.72,
+      memory_total_bytes: 1000,
+      memory_used_bytes: 250,
+      memory_utilization: 0.25,
+      swap_total_bytes: 1000,
+      swap_used_bytes: 0,
+      swap_utilization: 0,
+    },
+    ...overrides,
+  };
+}
+
 describe('task store live API mode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.listSubtaskExecutions).mockResolvedValue([]);
+    vi.mocked(api.getCraftsmanGovernance).mockResolvedValue(buildGovernanceSnapshotDto());
     useTaskStore.setState({
       tasks: [],
       selectedTaskId: null,
@@ -236,6 +295,7 @@ describe('task store live API mode', () => {
         last_read_at: '2026-03-07T02:10:00.000Z',
       }),
     );
+    vi.mocked(api.listSubtaskExecutions).mockResolvedValue([buildCraftsmanExecutionDto()]);
 
     await useTaskStore.getState().selectTask('OC-001');
     const state = useTaskStore.getState();
@@ -245,10 +305,13 @@ describe('task store live API mode', () => {
     expect(api.getTaskConversationSummary).toHaveBeenCalledWith('OC-001');
     expect(api.getTaskConversation).toHaveBeenCalledWith('OC-001');
     expect(api.markTaskConversationRead).toHaveBeenCalledWith('OC-001', {});
+    expect(api.getCraftsmanGovernance).toHaveBeenCalled();
     expect(state.selectedTaskStatus?.task.title).toBe('来自 getTask 的标题');
     expect(state.selectedTaskStatus?.task.current_stage).toBe('review');
     expect(state.selectedTaskStatus?.conversation?.[0]?.body).toBe('来自会话的消息');
     expect(state.selectedTaskStatus?.conversationSummary?.unread_count).toBe(0);
+    expect(state.selectedTaskStatus?.governanceSnapshot?.activeExecutions).toBe(1);
+    expect(state.selectedTaskStatus?.subtaskExecutions).toEqual({});
   });
 
   it('surfaces conversation read sync failures without dropping loaded task detail', async () => {

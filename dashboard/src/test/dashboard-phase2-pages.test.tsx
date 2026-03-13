@@ -19,6 +19,7 @@ interface TaskStoreMockState {
   resolveReview: ReturnType<typeof vi.fn>;
   createTask: typeof createTask;
   runTaskAction: ReturnType<typeof vi.fn>;
+  observeCraftsmen: ReturnType<typeof vi.fn>;
   cleanupTasks: ReturnType<typeof vi.fn>;
   setFilters: ReturnType<typeof vi.fn>;
   clearError: ReturnType<typeof vi.fn>;
@@ -62,6 +63,7 @@ const taskStoreState: TaskStoreMockState = {
   resolveReview: vi.fn(async () => 'live'),
   createTask,
   runTaskAction: vi.fn(async () => 'live'),
+  observeCraftsmen: vi.fn(async () => 'live'),
   cleanupTasks: vi.fn(async () => 0),
   setFilters: vi.fn(),
   clearError: vi.fn(),
@@ -186,6 +188,57 @@ describe('dashboard phase 2 routes', () => {
           done_at: null,
         },
       ],
+      subtaskExecutions: {
+        'dev-api': [
+          {
+            executionId: 'exec-1',
+            taskId: 'OC-001',
+            subtaskId: 'dev-api',
+            adapter: 'codex',
+            mode: 'task',
+            sessionId: 'tmux:1',
+            status: 'needs_input',
+            briefPath: null,
+            workdir: '/tmp/agora',
+            callbackPayload: {
+              inputRequest: {
+                transport: 'text',
+                hint: 'Please provide the next coding instruction.',
+                textPlaceholder: null,
+                keys: [],
+                choiceOptions: [],
+              },
+            },
+            error: null,
+            startedAt: '2026-03-07T00:10:00.000Z',
+            finishedAt: null,
+            createdAt: '2026-03-07T00:10:00.000Z',
+            updatedAt: '2026-03-07T00:10:00.000Z',
+          },
+        ],
+      },
+      governanceSnapshot: {
+        limits: {
+          maxConcurrentRunning: 4,
+          maxConcurrentPerAgent: 2,
+          hostMemoryUtilizationLimit: 0.8,
+          hostSwapUtilizationLimit: 0.2,
+          hostLoadPerCpuLimit: 1.5,
+        },
+        activeExecutions: 1,
+        activeByAssignee: [{ assignee: 'opus', count: 1 }],
+        host: {
+          observedAt: '2026-03-07T00:12:00.000Z',
+          cpuCount: 8,
+          load1m: 0.72,
+          memoryTotalBytes: 1000,
+          memoryUsedBytes: 320,
+          memoryUtilization: 0.32,
+          swapTotalBytes: 1000,
+          swapUsedBytes: 0,
+          swapUtilization: 0,
+        },
+      },
       conversation: [
         {
           id: 'entry-1',
@@ -238,9 +291,12 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('button', { name: 'Reviewer 打回' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '标记 dev-api 完成' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '运行观察' })).toBeInTheDocument();
     expect(screen.getByText('会话消息内容')).toBeInTheDocument();
     expect(screen.getAllByText('craftsman_completed').length).toBeGreaterThan(0);
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
+    expect(screen.getByText('执行控制面')).toBeInTheDocument();
+    expect(screen.getByText('Please provide the next coding instruction.')).toBeInTheDocument();
   });
 
   it('exposes orphan cleanup from the settings surface', () => {

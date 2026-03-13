@@ -13,7 +13,7 @@ import { StaggeredItem } from '@/components/ui/StaggeredItem';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { TaskAction, TaskBlueprint, TaskConversationEntry, TaskStatus } from '@/types/task';
+import type { CraftsmanExecution, Subtask, TaskAction, TaskBlueprint, TaskConversationEntry, TaskStatus } from '@/types/task';
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
 const TASK_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
@@ -155,6 +155,7 @@ export function TasksPage() {
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const selectTask = useTaskStore((state) => state.selectTask);
   const runTaskAction = useTaskStore((state) => state.runTaskAction);
+  const observeCraftsmen = useTaskStore((state) => state.observeCraftsmen);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
@@ -167,6 +168,7 @@ export function TasksPage() {
   const [workflowFilter, setWorkflowFilter] = useState<string[]>([]);
   const [actionActor, setActionActor] = useState('');
   const [actionNote, setActionNote] = useState('');
+  const [selectedSubtaskId, setSelectedSubtaskId] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
@@ -237,6 +239,21 @@ export function TasksPage() {
   const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
   const activeBlueprint = activeStatus?.taskBlueprint;
   const activeTimeline = useMemo(() => buildTaskTimeline(activeStatus), [activeStatus]);
+  const activeSubtasks = activeStatus?.subtasks ?? [];
+  const activeSubtaskExecutions = activeStatus?.subtaskExecutions ?? {};
+  const activeGovernanceSnapshot = activeStatus?.governanceSnapshot ?? null;
+
+  const resolvedSelectedSubtaskId =
+    selectedSubtaskId && activeSubtasks.some((subtask) => subtask.id === selectedSubtaskId)
+      ? selectedSubtaskId
+      : activeSubtasks[0]?.id ?? null;
+
+  const selectedSubtask =
+    activeSubtasks.find((subtask) => subtask.id === resolvedSelectedSubtaskId) ??
+    activeSubtasks[0] ??
+    null;
+  const selectedSubtaskExecutions =
+    (selectedSubtask ? activeSubtaskExecutions[selectedSubtask.id] : undefined) ?? [];
   const preferredActorId =
     !activeTask
       ? ''
@@ -326,6 +343,72 @@ export function TasksPage() {
       );
     }
   };
+
+  const runObserve = async () => {
+    try {
+      await observeCraftsmen();
+      showMessage(
+        t('feedback.syncSuccessTitle'),
+        tasksPageCopy.executionObserveSuccess,
+        'success',
+      );
+    } catch (observeError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        observeError instanceof Error ? observeError.message : String(observeError),
+        'warning',
+      );
+    }
+  };
+
+  function renderExecutionStatus(execution: CraftsmanExecution) {
+    const inputRequest = execution.callbackPayload?.inputRequest;
+    return (
+      <div key={execution.executionId} className="data-row">
+        <div className="min-w-0 flex-1">
+          <p className="type-heading-xs">{execution.executionId}</p>
+          <p className="type-text-xs mt-1">
+            {execution.adapter}
+            {' / '}
+            {execution.status}
+            {execution.workdir ? ` / ${execution.workdir}` : ''}
+          </p>
+          {inputRequest?.hint ? <p className="type-text-xs mt-1">{inputRequest.hint}</p> : null}
+          {inputRequest?.choiceOptions?.length ? (
+            <p className="type-text-xs mt-1">
+              {tasksPageCopy.executionChoiceLabel}: {inputRequest.choiceOptions.map((option) => option.label).join(' / ')}
+            </p>
+          ) : null}
+        </div>
+        <span className="status-pill status-pill--neutral">{execution.status}</span>
+      </div>
+    );
+  }
+
+  function renderSubtaskCard(subtask: Subtask) {
+    const executionCount = activeSubtaskExecutions[subtask.id]?.length ?? 0;
+    return (
+      <button
+        key={subtask.id}
+        type="button"
+        onClick={() => setSelectedSubtaskId(subtask.id)}
+        className={selectedSubtask?.id === subtask.id ? 'dense-row dense-row--active' : 'dense-row'}
+      >
+        <div className="dense-row__main">
+          <div className="dense-row__titleblock">
+            <span className="type-mono-xs">{subtask.id}</span>
+            <strong className="dense-row__title">{subtask.title}</strong>
+          </div>
+          <div className="dense-row__meta">
+            <span>{subtask.assignee}</span>
+            <span>{subtask.stage_id}</span>
+            <span>{executionCount} {tasksPageCopy.executionCountUnit}</span>
+          </div>
+        </div>
+        <span className="dense-row__time">{subtask.status}</span>
+      </button>
+    );
+  }
 
   return (
     <div className="workspace-page workspace-page--locked">
@@ -514,6 +597,96 @@ export function TasksPage() {
                 </div>
 
                 <TaskBlueprintSection blueprint={activeBlueprint} copy={tasksPageCopy} />
+
+                <div className="task-authority__section">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="section-title">{tasksPageCopy.executionTitle}</h4>
+                    <button type="button" className="button-secondary" onClick={() => void runObserve()}>
+                      {tasksPageCopy.executionObserveAction}
+                    </button>
+                  </div>
+
+                  <div className="task-authority__facts mt-4">
+                    <div className="detail-card">
+                      <PanelRightOpen size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{tasksPageCopy.governanceActiveLabel}</span>
+                      <strong className="detail-card__value">{activeGovernanceSnapshot?.activeExecutions ?? 0}</strong>
+                    </div>
+                    <div className="detail-card">
+                      <PanelRightOpen size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{tasksPageCopy.governancePerAgentLabel}</span>
+                      <strong className="detail-card__value">
+                        {activeGovernanceSnapshot?.limits.maxConcurrentPerAgent ?? tasksPageCopy.stageFallback}
+                      </strong>
+                    </div>
+                    <div className="detail-card">
+                      <Clock3 size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{tasksPageCopy.governanceMemoryLabel}</span>
+                      <strong className="detail-card__value">
+                        {activeGovernanceSnapshot?.host?.memoryUtilization != null
+                          ? `${Math.round(activeGovernanceSnapshot.host.memoryUtilization * 100)}%`
+                          : tasksPageCopy.stageFallback}
+                      </strong>
+                    </div>
+                    <div className="detail-card">
+                      <Clock3 size={16} className="detail-card__icon" />
+                      <span className="detail-card__label">{tasksPageCopy.governanceLoadLabel}</span>
+                      <strong className="detail-card__value">
+                        {activeGovernanceSnapshot?.host?.load1m != null
+                          ? activeGovernanceSnapshot.host.load1m.toFixed(2)
+                          : tasksPageCopy.stageFallback}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {activeSubtasks.length > 0 ? (
+                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                      <div className="dense-list">
+                        {activeSubtasks.map(renderSubtaskCard)}
+                      </div>
+                      <div className="space-y-3">
+                        {selectedSubtask ? (
+                          <div className="inspector-hero">
+                            <span className="type-mono-sm">{selectedSubtask.id}</span>
+                            <h4 className="type-heading-md mt-3">{selectedSubtask.title}</h4>
+                            <p className="type-body-sm mt-3">
+                              {selectedSubtask.assignee}
+                              {' / '}
+                              {selectedSubtask.stage_id}
+                              {' / '}
+                              {selectedSubtask.status}
+                            </p>
+                          </div>
+                        ) : null}
+                        <div className="space-y-2">
+                          <p className="field-label">{tasksPageCopy.executionListLabel}</p>
+                          {selectedSubtaskExecutions.length > 0 ? (
+                            <div className="space-y-2">
+                              {selectedSubtaskExecutions.map(renderExecutionStatus)}
+                            </div>
+                          ) : (
+                            <p className="type-body-sm">{tasksPageCopy.executionEmpty}</p>
+                          )}
+                        </div>
+                        {activeGovernanceSnapshot?.activeByAssignee.length ? (
+                          <div className="space-y-2">
+                            <p className="field-label">{tasksPageCopy.governanceAssigneeLabel}</p>
+                            <div className="space-y-2">
+                              {activeGovernanceSnapshot.activeByAssignee.map((item) => (
+                                <div key={item.assignee} className="data-row">
+                                  <span className="type-mono-xs">{item.assignee}</span>
+                                  <span className="status-pill status-pill--neutral">{item.count}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="type-body-sm mt-4">{tasksPageCopy.executionEmpty}</p>
+                  )}
+                </div>
 
                 <div className="task-authority__section">
                   <h4 className="section-title">{tasksPageCopy.actionsTitle}</h4>

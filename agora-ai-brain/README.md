@@ -15,3 +15,19 @@ Planned top-level usage:
 - `tasks/<task-id>/` for task-specific materialized workspaces
 - `templates/` for task/bootstrap/role brief templates
 - `indexes/` for lightweight navigation
+
+Task workspace numbering:
+
+- top-level canonical files occupy the first slots:
+  - `00-bootstrap.md`
+  - `00-current.md`
+  - `01-task-brief.md`
+  - `02-roster.md`
+  - `03-stage-state.md`
+- task subdirectories therefore continue from `04-...`:
+  - `04-context/`
+  - `05-agents/`
+  - `06-artifacts/`
+  - `07-outputs/`
+
+This keeps file and directory ordering in one continuous sequence instead of creating two separate numbering systems.

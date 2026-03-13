@@ -1,4 +1,6 @@
 import type {
+  ApiCraftsmanExecutionDto,
+  ApiCraftsmanGovernanceSnapshotDto,
   ApiFlowLogDto,
   ApiProgressLogDto,
   ApiSubtaskDto,
@@ -11,6 +13,8 @@ import type {
 } from '@/types/api';
 import type {
   Task,
+  CraftsmanExecution,
+  CraftsmanGovernanceSnapshot,
   TaskBlueprint,
   TaskConversationEntry,
   TaskConversationStatusEvent,
@@ -113,6 +117,86 @@ function mapProgressLogEntry(entry: ApiProgressLogDto) {
 
 function mapSubtask(entry: ApiSubtaskDto) {
   return { ...entry };
+}
+
+export function mapCraftsmanExecutionDto(entry: ApiCraftsmanExecutionDto): CraftsmanExecution {
+  return {
+    executionId: entry.execution_id,
+    taskId: entry.task_id,
+    subtaskId: entry.subtask_id,
+    adapter: entry.adapter,
+    mode: entry.mode,
+    sessionId: entry.session_id,
+    status: entry.status,
+    briefPath: entry.brief_path,
+    workdir: entry.workdir,
+    callbackPayload: entry.callback_payload
+      ? {
+          ...(entry.callback_payload.output
+            ? {
+                output: {
+                  summary: entry.callback_payload.output.summary ?? null,
+                  text: entry.callback_payload.output.text ?? null,
+                  stderr: entry.callback_payload.output.stderr ?? null,
+                  artifacts: entry.callback_payload.output.artifacts ?? [],
+                  structured: entry.callback_payload.output.structured ?? null,
+                },
+              }
+            : {}),
+          ...(entry.callback_payload.input_request
+            ? {
+                inputRequest: {
+                  transport: entry.callback_payload.input_request.transport,
+                  hint: entry.callback_payload.input_request.hint ?? null,
+                  textPlaceholder: entry.callback_payload.input_request.text_placeholder ?? null,
+                  keys: entry.callback_payload.input_request.keys ?? [],
+                  choiceOptions: (entry.callback_payload.input_request.choice_options ?? []).map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                    description: option.description ?? null,
+                    keys: option.keys ?? [],
+                    submit: option.submit,
+                  })),
+                },
+              }
+            : {}),
+        }
+      : null,
+    error: entry.error,
+    startedAt: entry.started_at,
+    finishedAt: entry.finished_at,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+  };
+}
+
+export function mapCraftsmanGovernanceSnapshotDto(
+  snapshot: ApiCraftsmanGovernanceSnapshotDto,
+): CraftsmanGovernanceSnapshot {
+  return {
+    limits: {
+      maxConcurrentRunning: snapshot.limits.max_concurrent_running,
+      maxConcurrentPerAgent: snapshot.limits.max_concurrent_per_agent,
+      hostMemoryUtilizationLimit: snapshot.limits.host_memory_utilization_limit,
+      hostSwapUtilizationLimit: snapshot.limits.host_swap_utilization_limit,
+      hostLoadPerCpuLimit: snapshot.limits.host_load_per_cpu_limit,
+    },
+    activeExecutions: snapshot.active_executions,
+    activeByAssignee: snapshot.active_by_assignee.map((item) => ({ ...item })),
+    host: snapshot.host
+      ? {
+          observedAt: snapshot.host.observed_at,
+          cpuCount: snapshot.host.cpu_count,
+          load1m: snapshot.host.load_1m,
+          memoryTotalBytes: snapshot.host.memory_total_bytes,
+          memoryUsedBytes: snapshot.host.memory_used_bytes,
+          memoryUtilization: snapshot.host.memory_utilization,
+          swapTotalBytes: snapshot.host.swap_total_bytes,
+          swapUsedBytes: snapshot.host.swap_used_bytes,
+          swapUtilization: snapshot.host.swap_utilization,
+        }
+      : null,
+  };
 }
 
 function mapRoleBinding(member: ApiTeamMemberDto) {
