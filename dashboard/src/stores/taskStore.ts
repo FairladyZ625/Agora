@@ -31,6 +31,10 @@ interface TaskStore {
   createTask: (input: CreateTaskInput) => Promise<Task>;
   runTaskAction: (action: TaskAction, payload: TaskActionPayload) => Promise<'live'>;
   observeCraftsmen: (input?: { running_after_ms?: number; waiting_after_ms?: number }) => Promise<'live'>;
+  probeCraftsmanExecution: (executionId: string) => Promise<'live'>;
+  sendCraftsmanInputText: (executionId: string, text: string, submit?: boolean) => Promise<'live'>;
+  sendCraftsmanInputKeys: (executionId: string, keys: string[]) => Promise<'live'>;
+  submitCraftsmanChoice: (executionId: string, keys?: string[]) => Promise<'live'>;
   cleanupTasks: (taskId?: string) => Promise<number>;
   resolveReview: (id: string, decision: 'approve' | 'reject', note: string) => Promise<'live'>;
   setFilters: (filters: Partial<TaskFilters>) => void;
@@ -213,6 +217,46 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       await get().selectTask(selectedTaskId);
     } else {
       await get().fetchTasks();
+    }
+    return 'live';
+  },
+
+  probeCraftsmanExecution: async (executionId) => {
+    set({ error: null });
+    await api.probeCraftsmanExecution(executionId);
+    const { selectedTaskId } = get();
+    if (selectedTaskId) {
+      await get().selectTask(selectedTaskId);
+    }
+    return 'live';
+  },
+
+  sendCraftsmanInputText: async (executionId, text, submit = true) => {
+    set({ error: null });
+    await api.sendCraftsmanExecutionInputText(executionId, { text, submit });
+    const { selectedTaskId } = get();
+    if (selectedTaskId) {
+      await get().selectTask(selectedTaskId);
+    }
+    return 'live';
+  },
+
+  sendCraftsmanInputKeys: async (executionId, keys) => {
+    set({ error: null });
+    await api.sendCraftsmanExecutionInputKeys(executionId, { keys });
+    const { selectedTaskId } = get();
+    if (selectedTaskId) {
+      await get().selectTask(selectedTaskId);
+    }
+    return 'live';
+  },
+
+  submitCraftsmanChoice: async (executionId, keys = []) => {
+    set({ error: null });
+    await api.submitCraftsmanExecutionChoice(executionId, { keys });
+    const { selectedTaskId } = get();
+    if (selectedTaskId) {
+      await get().selectTask(selectedTaskId);
     }
     return 'live';
   },

@@ -182,6 +182,54 @@ describe('dashboard expansion api client', () => {
         if (url.includes('/craftsmen/tmux/tail/')) {
           return { output: 'tail:codex' };
         }
+        if (url.includes('/craftsmen/governance')) {
+          return {
+            limits: {
+              max_concurrent_running: 4,
+              max_concurrent_per_agent: 2,
+              host_memory_utilization_limit: 0.8,
+              host_swap_utilization_limit: 0.2,
+              host_load_per_cpu_limit: 1.5,
+            },
+            active_executions: 1,
+            active_by_assignee: [{ assignee: 'opus', count: 1 }],
+            host: null,
+          };
+        }
+        if (url.includes('/craftsmen/observe')) {
+          return { scanned: 1, probed: 1, progressed: 0 };
+        }
+        if (/\/craftsmen\/executions\/[^/]+\/probe$/.test(url)) {
+          return { ok: true, execution_id: 'exec-1', status: 'running', probed: true };
+        }
+        if (/\/craftsmen\/executions\/[^/]+\/input-text$/.test(url)) {
+          return { ok: true, execution_id: 'exec-1' };
+        }
+        if (/\/craftsmen\/executions\/[^/]+\/input-keys$/.test(url)) {
+          return { ok: true, execution_id: 'exec-1' };
+        }
+        if (/\/craftsmen\/executions\/[^/]+\/submit-choice$/.test(url)) {
+          return { ok: true, execution_id: 'exec-1' };
+        }
+        if (/\/craftsmen\/tasks\/[^/]+\/subtasks\/[^/]+\/executions$/.test(url)) {
+          return [{
+            execution_id: 'exec-1',
+            task_id: 'OC-001',
+            subtask_id: 'sub-1',
+            adapter: 'codex',
+            mode: 'task',
+            session_id: 'tmux:1',
+            status: 'needs_input',
+            brief_path: null,
+            workdir: '/tmp/agora',
+            callback_payload: null,
+            error: null,
+            started_at: '2026-03-08T00:00:00.000Z',
+            finished_at: null,
+            created_at: '2026-03-08T00:00:00.000Z',
+            updated_at: '2026-03-08T00:00:00.000Z',
+          }];
+        }
         if (url.includes('/archive/jobs')) {
           if (url.endsWith('/scan-stale')) {
             return { failed: 1 };
@@ -370,6 +418,13 @@ describe('dashboard expansion api client', () => {
     await api.updateArchiveJobStatus(7, 'synced', { commitHash: 'abc123' });
     await api.scanStaleArchiveJobs(60_000);
     await api.scanArchiveJobReceipts();
+    await api.getCraftsmanGovernance();
+    await api.observeCraftsmanExecutions({ running_after_ms: 120000, waiting_after_ms: 60000 });
+    await api.listSubtaskExecutions('OC-001', 'sub-1');
+    await api.probeCraftsmanExecution('exec-1');
+    await api.sendCraftsmanExecutionInputText('exec-1', { text: 'Continue' });
+    await api.sendCraftsmanExecutionInputKeys('exec-1', { keys: ['Down'] });
+    await api.submitCraftsmanExecutionChoice('exec-1', { keys: ['Enter'] });
 
     expectFetchCall('/api/agents/status', { method: 'GET' });
     expectFetchCall('/api/agents/channels/discord', { method: 'GET' });
@@ -399,6 +454,28 @@ describe('dashboard expansion api client', () => {
       body: JSON.stringify({ timeout_ms: 60000 }),
     });
     expectFetchCall('/api/archive/jobs/scan-receipts', { method: 'POST' });
+    expectFetchCall('/api/craftsmen/governance', { method: 'GET' });
+    expectFetchCall('/api/craftsmen/observe', {
+      method: 'POST',
+      body: JSON.stringify({ running_after_ms: 120000, waiting_after_ms: 60000 }),
+    });
+    expectFetchCall('/api/craftsmen/tasks/OC-001/subtasks/sub-1/executions', { method: 'GET' });
+    expectFetchCall('/api/craftsmen/executions/exec-1/probe', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    expectFetchCall('/api/craftsmen/executions/exec-1/input-text', {
+      method: 'POST',
+      body: JSON.stringify({ text: 'Continue' }),
+    });
+    expectFetchCall('/api/craftsmen/executions/exec-1/input-keys', {
+      method: 'POST',
+      body: JSON.stringify({ keys: ['Down'] }),
+    });
+    expectFetchCall('/api/craftsmen/executions/exec-1/submit-choice', {
+      method: 'POST',
+      body: JSON.stringify({ keys: ['Enter'] }),
+    });
   });
 
   it('targets todo CRUD and promote routes with the expected payloads', async () => {

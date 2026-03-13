@@ -20,6 +20,10 @@ interface TaskStoreMockState {
   createTask: typeof createTask;
   runTaskAction: ReturnType<typeof vi.fn>;
   observeCraftsmen: ReturnType<typeof vi.fn>;
+  probeCraftsmanExecution: ReturnType<typeof vi.fn>;
+  sendCraftsmanInputText: ReturnType<typeof vi.fn>;
+  sendCraftsmanInputKeys: ReturnType<typeof vi.fn>;
+  submitCraftsmanChoice: ReturnType<typeof vi.fn>;
   cleanupTasks: ReturnType<typeof vi.fn>;
   setFilters: ReturnType<typeof vi.fn>;
   clearError: ReturnType<typeof vi.fn>;
@@ -64,6 +68,10 @@ const taskStoreState: TaskStoreMockState = {
   createTask,
   runTaskAction: vi.fn(async () => 'live'),
   observeCraftsmen: vi.fn(async () => 'live'),
+  probeCraftsmanExecution: vi.fn(async () => 'live'),
+  sendCraftsmanInputText: vi.fn(async () => 'live'),
+  sendCraftsmanInputKeys: vi.fn(async () => 'live'),
+  submitCraftsmanChoice: vi.fn(async () => 'live'),
   cleanupTasks: vi.fn(async () => 0),
   setFilters: vi.fn(),
   clearError: vi.fn(),
@@ -292,11 +300,13 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '标记 dev-api 完成' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '运行观察' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '探测执行' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '发送输入' })).toBeInTheDocument();
     expect(screen.getByText('会话消息内容')).toBeInTheDocument();
     expect(screen.getAllByText('craftsman_completed').length).toBeGreaterThan(0);
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
     expect(screen.getByText('执行控制面')).toBeInTheDocument();
-    expect(screen.getByText('Please provide the next coding instruction.')).toBeInTheDocument();
+    expect(screen.getAllByText('Please provide the next coding instruction.').length).toBeGreaterThan(0);
   });
 
   it('exposes orphan cleanup from the settings surface', () => {

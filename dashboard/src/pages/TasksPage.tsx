@@ -156,6 +156,10 @@ export function TasksPage() {
   const selectTask = useTaskStore((state) => state.selectTask);
   const runTaskAction = useTaskStore((state) => state.runTaskAction);
   const observeCraftsmen = useTaskStore((state) => state.observeCraftsmen);
+  const probeCraftsmanExecution = useTaskStore((state) => state.probeCraftsmanExecution);
+  const sendCraftsmanInputText = useTaskStore((state) => state.sendCraftsmanInputText);
+  const sendCraftsmanInputKeys = useTaskStore((state) => state.sendCraftsmanInputKeys);
+  const submitCraftsmanChoice = useTaskStore((state) => state.submitCraftsmanChoice);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
@@ -169,6 +173,8 @@ export function TasksPage() {
   const [actionActor, setActionActor] = useState('');
   const [actionNote, setActionNote] = useState('');
   const [selectedSubtaskId, setSelectedSubtaskId] = useState<string | null>(null);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [executionInputText, setExecutionInputText] = useState('');
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
@@ -254,6 +260,14 @@ export function TasksPage() {
     null;
   const selectedSubtaskExecutions =
     (selectedSubtask ? activeSubtaskExecutions[selectedSubtask.id] : undefined) ?? [];
+  const resolvedSelectedExecutionId =
+    selectedExecutionId && selectedSubtaskExecutions.some((execution) => execution.executionId === selectedExecutionId)
+      ? selectedExecutionId
+      : selectedSubtaskExecutions[0]?.executionId ?? null;
+  const selectedExecution =
+    selectedSubtaskExecutions.find((execution) => execution.executionId === resolvedSelectedExecutionId) ??
+    selectedSubtaskExecutions[0] ??
+    null;
   const preferredActorId =
     !activeTask
       ? ''
@@ -361,10 +375,62 @@ export function TasksPage() {
     }
   };
 
+  const runProbe = async (executionId: string) => {
+    try {
+      await probeCraftsmanExecution(executionId);
+      showMessage(t('feedback.syncSuccessTitle'), tasksPageCopy.executionProbeSuccess, 'success');
+    } catch (probeError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        probeError instanceof Error ? probeError.message : String(probeError),
+        'warning',
+      );
+    }
+  };
+
+  const runExecutionTextInput = async (executionId: string) => {
+    if (!executionInputText.trim()) {
+      return;
+    }
+    try {
+      await sendCraftsmanInputText(executionId, executionInputText.trim(), true);
+      showMessage(t('feedback.taskActionSuccessTitle'), tasksPageCopy.executionInputSuccess, 'success');
+      setExecutionInputText('');
+    } catch (inputError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        inputError instanceof Error ? inputError.message : String(inputError),
+        'warning',
+      );
+    }
+  };
+
+  const runExecutionKeysInput = async (executionId: string, keys: string[], submitChoice = false) => {
+    try {
+      if (submitChoice) {
+        await submitCraftsmanChoice(executionId, keys);
+      } else {
+        await sendCraftsmanInputKeys(executionId, keys);
+      }
+      showMessage(t('feedback.taskActionSuccessTitle'), tasksPageCopy.executionInputSuccess, 'success');
+    } catch (inputError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        inputError instanceof Error ? inputError.message : String(inputError),
+        'warning',
+      );
+    }
+  };
+
   function renderExecutionStatus(execution: CraftsmanExecution) {
     const inputRequest = execution.callbackPayload?.inputRequest;
     return (
-      <div key={execution.executionId} className="data-row">
+      <button
+        key={execution.executionId}
+        type="button"
+        onClick={() => setSelectedExecutionId(execution.executionId)}
+        className={selectedExecution?.executionId === execution.executionId ? 'dense-row dense-row--active' : 'dense-row'}
+      >
         <div className="min-w-0 flex-1">
           <p className="type-heading-xs">{execution.executionId}</p>
           <p className="type-text-xs mt-1">
@@ -381,7 +447,7 @@ export function TasksPage() {
           ) : null}
         </div>
         <span className="status-pill status-pill--neutral">{execution.status}</span>
-      </div>
+      </button>
     );
   }
 
@@ -668,6 +734,88 @@ export function TasksPage() {
                             <p className="type-body-sm">{tasksPageCopy.executionEmpty}</p>
                           )}
                         </div>
+                        {selectedExecution ? (
+                          <div className="space-y-3">
+                            <div className="inspector-hero">
+                              <span className="type-mono-sm">{selectedExecution.executionId}</span>
+                              <h4 className="type-heading-md mt-3">{selectedExecution.adapter}</h4>
+                              <p className="type-body-sm mt-3">
+                                {selectedExecution.status}
+                                {selectedExecution.sessionId ? ` / ${selectedExecution.sessionId}` : ''}
+                                {selectedExecution.workdir ? ` / ${selectedExecution.workdir}` : ''}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => void runProbe(selectedExecution.executionId)}
+                              >
+                                {tasksPageCopy.executionProbeAction}
+                              </button>
+                            </div>
+                            {selectedExecution.callbackPayload?.inputRequest?.hint ? (
+                              <p className="type-body-sm">{selectedExecution.callbackPayload.inputRequest.hint}</p>
+                            ) : null}
+                            {selectedExecution.callbackPayload?.inputRequest?.transport === 'text' ? (
+                              <div className="space-y-2">
+                                <label className="field-label" htmlFor="execution-input-text">
+                                  {tasksPageCopy.executionTextLabel}
+                                </label>
+                                <textarea
+                                  id="execution-input-text"
+                                  value={executionInputText}
+                                  onChange={(event) => setExecutionInputText(event.target.value)}
+                                  className="textarea-shell"
+                                  placeholder={selectedExecution.callbackPayload.inputRequest.textPlaceholder ?? tasksPageCopy.executionTextPlaceholder}
+                                />
+                                <button
+                                  type="button"
+                                  className="button-primary"
+                                  onClick={() => void runExecutionTextInput(selectedExecution.executionId)}
+                                >
+                                  {tasksPageCopy.executionTextAction}
+                                </button>
+                              </div>
+                            ) : null}
+                            {selectedExecution.callbackPayload?.inputRequest?.transport === 'choice' &&
+                            selectedExecution.callbackPayload.inputRequest.choiceOptions.length > 0 ? (
+                              <div className="space-y-2">
+                                <p className="field-label">{tasksPageCopy.executionChoiceLabel}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {selectedExecution.callbackPayload.inputRequest.choiceOptions.map((option) => (
+                                    <button
+                                      key={option.id}
+                                      type="button"
+                                      className="button-secondary"
+                                      onClick={() => void runExecutionKeysInput(selectedExecution.executionId, option.keys, true)}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                            {selectedExecution.callbackPayload?.inputRequest?.transport === 'keys' &&
+                            selectedExecution.callbackPayload.inputRequest.keys.length > 0 ? (
+                              <div className="space-y-2">
+                                <p className="field-label">{tasksPageCopy.executionKeysLabel}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {selectedExecution.callbackPayload.inputRequest.keys.map((key) => (
+                                    <button
+                                      key={key}
+                                      type="button"
+                                      className="button-secondary"
+                                      onClick={() => void runExecutionKeysInput(selectedExecution.executionId, [key])}
+                                    >
+                                      {key}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {activeGovernanceSnapshot?.activeByAssignee.length ? (
                           <div className="space-y-2">
                             <p className="field-label">{tasksPageCopy.governanceAssigneeLabel}</p>

@@ -178,6 +178,78 @@ export function observeCraftsmanExecutions(input?: {
   );
 }
 
+export function probeCraftsmanExecution(executionId: string): Promise<{
+  ok: boolean;
+  execution_id: string;
+  status: string;
+  probed: boolean;
+}> {
+  return request(
+    `/craftsmen/executions/${encodeURIComponent(executionId)}/probe`,
+    z.object({
+      ok: z.boolean(),
+      execution_id: z.string(),
+      status: z.string(),
+      probed: z.boolean(),
+    }),
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function sendCraftsmanExecutionInputText(
+  executionId: string,
+  input: { text: string; submit?: boolean },
+): Promise<{ ok: boolean; execution_id: string }> {
+  return request(
+    `/craftsmen/executions/${encodeURIComponent(executionId)}/input-text`,
+    z.object({
+      ok: z.boolean(),
+      execution_id: z.string(),
+    }),
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function sendCraftsmanExecutionInputKeys(
+  executionId: string,
+  input: { keys: string[] },
+): Promise<{ ok: boolean; execution_id: string }> {
+  return request(
+    `/craftsmen/executions/${encodeURIComponent(executionId)}/input-keys`,
+    z.object({
+      ok: z.boolean(),
+      execution_id: z.string(),
+    }),
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function submitCraftsmanExecutionChoice(
+  executionId: string,
+  input: { keys?: string[] } = {},
+): Promise<{ ok: boolean; execution_id: string }> {
+  return request(
+    `/craftsmen/executions/${encodeURIComponent(executionId)}/submit-choice`,
+    z.object({
+      ok: z.boolean(),
+      execution_id: z.string(),
+    }),
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export function getTaskConversationSummary(taskId: string): Promise<ApiTaskConversationSummaryDto> {
   return request<ApiTaskConversationSummaryDto>(
     `/tasks/${taskId}/conversation/summary`,
