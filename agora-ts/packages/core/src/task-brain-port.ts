@@ -6,6 +6,7 @@ export interface TaskBrainWorkspaceRequest {
   priority: string;
   creator: string;
   template_id: string;
+  control_mode: 'normal' | 'smoke_test';
   state: string;
   controller_ref: string | null;
   current_stage: string | null;

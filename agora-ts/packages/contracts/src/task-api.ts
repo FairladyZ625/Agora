@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { taskPrioritySchema, taskStateSchema } from './task.js';
+import { taskControlModeSchema, taskPrioritySchema, taskStateSchema } from './task.js';
 import { validateWorkflowStages } from './workflow-rules.js';
 import { templateGraphSchema } from './template-graph.js';
 
@@ -179,6 +179,11 @@ export const createTaskImTargetSchema = z.object({
 }).strict();
 export type CreateTaskImTargetDto = z.infer<typeof createTaskImTargetSchema>;
 
+export const taskControlSchema = z.object({
+  mode: taskControlModeSchema.default('normal'),
+}).strict();
+export type TaskControlDto = z.infer<typeof taskControlSchema>;
+
 export const taskSchema = z.object({
   id: z.string(),
   version: z.number().int().positive(),
@@ -193,6 +198,7 @@ export const taskSchema = z.object({
   current_stage: z.string().nullable(),
   team: teamSchema.nullable(),
   workflow: workflowSchema.nullable(),
+  control: taskControlSchema.nullable().optional(),
   scheduler: jsonValueSchema,
   scheduler_snapshot: jsonValueSchema,
   discord: jsonValueSchema,
@@ -266,6 +272,7 @@ export const createTaskRequestSchema = z.object({
   team_override: teamSchema.optional(),
   workflow_override: workflowSchema.optional(),
   im_target: createTaskImTargetSchema.optional(),
+  control: taskControlSchema.optional(),
 });
 export type CreateTaskRequestDto = z.infer<typeof createTaskRequestSchema>;
 

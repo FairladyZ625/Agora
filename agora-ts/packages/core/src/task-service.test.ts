@@ -1748,6 +1748,57 @@ describe('task service', () => {
     );
   });
 
+  it('adds smoke-mode guidance only when task control mode is smoke_test', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-smoke-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SMOKE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-smoke-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Smoke Bootstrap',
+      type: 'coding',
+      creator: 'archon',
+      description: 'validate smoke control mode',
+      priority: 'normal',
+      control: {
+        mode: 'smoke_test',
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
+    expect(rootBrief?.body).toContain('Smoke Test Mode:');
+    const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
+    expect(opusBrief?.body).toContain('Smoke Test Mode: this thread is being used for validation');
+
+    const task = new TaskRepository(db).getTask('OC-SMOKE-1');
+    expect(task?.control?.mode).toBe('smoke_test');
+    const meta = readFileSync(join(brainPackDir, 'tasks', 'OC-SMOKE-1', 'task.meta.yaml'), 'utf8');
+    expect(meta).toContain('control_mode: "smoke_test"');
+  });
+
   it('joins explicit im_target participant refs in addition to interactive team members', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

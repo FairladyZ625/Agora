@@ -236,6 +236,7 @@ export class TaskService {
         creator: input.creator,
         team,
         workflow,
+        control: input.control ?? { mode: 'normal' },
       });
 
       const created = this.taskRepository.updateTask(taskId, draft.version, {
@@ -1295,6 +1296,7 @@ export class TaskService {
       priority: task.priority,
       creator: task.creator,
       template_id: templateId,
+      control_mode: task.control?.mode ?? 'normal',
       state: task.state,
       controller_ref: resolveControllerRef(task.team.members),
       current_stage: task.current_stage,
@@ -1434,6 +1436,15 @@ export class TaskService {
           '- To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.',
           '- Do not type display names like `@Opus` or `@Sonnet`.',
           '- Reuse the real mentions already shown in this thread whenever possible.',
+          ...(task.control?.mode === 'smoke_test'
+            ? [
+                '',
+                'Smoke Test Mode:',
+                '- This task is running in smoke/test mode.',
+                '- Extra testing guidance may appear for validation only.',
+                '- This is not the default end-user product flow.',
+              ]
+            : []),
         ].join('\n'),
       },
     ];
@@ -1454,6 +1465,9 @@ export class TaskService {
           `Current Stage: ${task.current_stage}`,
           `Task Goal: ${task.description?.trim() || task.title}`,
           'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.',
+          ...(task.control?.mode === 'smoke_test'
+            ? ['Smoke Test Mode: this thread is being used for validation, not for the default product UX.']
+            : []),
           ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`Read role doc: ${roleDocPath}`] : []),
           ...(member.briefing_mode === 'overlay_delta'
             ? ['This agent already carries Agora-managed base role context; use the role brief below as task delta.']

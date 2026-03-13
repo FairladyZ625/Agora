@@ -29,6 +29,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
       metadata: {
         controller_ref: input.controller_ref,
         current_stage: input.current_stage,
+        control_mode: input.control_mode,
       },
     } satisfies TaskBrainWorkspaceResult;
     this.writeWorkspace(binding, input, { seedEmptyAgentNotes: true, seedContextFiles: true });
@@ -88,6 +89,7 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
       `brain_pack_ref: "${binding.brain_pack_ref}"`,
     `workspace_path: "${binding.workspace_path}"`,
     `template_id: "${input.template_id}"`,
+    `control_mode: "${input.control_mode}"`,
     `controller_ref: "${input.controller_ref ?? ''}"`,
     `task_state: "${input.state}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
@@ -106,6 +108,7 @@ function renderCurrent(
     `- Task: ${input.task_id}`,
     `- Title: ${input.title}`,
     `- Task State: ${input.state}`,
+    `- Control Mode: ${input.control_mode}`,
     `- Controller: ${input.controller_ref ?? '-'}`,
     `- Current Stage: ${input.current_stage ?? '-'}`,
     `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
@@ -124,6 +127,7 @@ function renderBootstrap(
     '',
     `Task ID: ${input.task_id}`,
     `Task State: ${input.state}`,
+    `Control Mode: ${input.control_mode}`,
     `Controller: ${input.controller_ref ?? '-'}`,
     `Current Stage: ${input.current_stage ?? '-'}`,
     `Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
@@ -169,6 +173,7 @@ function renderStageState(
     '',
     `- Current Stage: ${input.current_stage ?? '-'}`,
     `- Task State: ${input.state}`,
+    `- Control Mode: ${input.control_mode}`,
     `- Stage Name: ${currentStage?.name ?? '-'}`,
     `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `- Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
@@ -217,6 +222,7 @@ function renderRoleBrief(
     '',
     `Controller: ${input.controller_ref ?? '-'}`,
     `Current Stage: ${input.current_stage ?? '-'}`,
+    `Control Mode: ${input.control_mode}`,
     '',
   ].join('\n');
 }

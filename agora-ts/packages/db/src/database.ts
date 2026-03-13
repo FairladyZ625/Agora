@@ -64,6 +64,7 @@ export function runMigrations(db: AgoraDatabase): void {
     '010_role_pack_bindings.sql',
     '011_task_brain_bindings.sql',
     '012_approval_requests.sql',
+    '013_task_control.sql',
   ];
   const migrationsDir = resolveMigrationsDir();
 

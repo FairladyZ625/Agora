@@ -45,6 +45,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '010_role_pack_bindings.sql',
       '011_task_brain_bindings.sql',
       '012_approval_requests.sql',
+      '013_task_control.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -235,6 +236,9 @@ describe('agora-ts sqlite bootstrap', () => {
         type: 'discuss-execute-review',
         stages: [{ id: 'discuss', gate: { type: 'archon_review' } }],
       },
+      control: {
+        mode: 'smoke_test',
+      },
     });
 
     const task = tasks.getTask('OC-001');
@@ -243,6 +247,7 @@ describe('agora-ts sqlite bootstrap', () => {
     expect(task?.state).toBe('draft');
     expect(task?.team.members[0]?.agentId).toBe('opus');
     expect(task?.workflow.stages?.[0]?.id).toBe('discuss');
+    expect(task?.control?.mode).toBe('smoke_test');
   });
 
   it('supports todo CRUD and tag deserialization', () => {

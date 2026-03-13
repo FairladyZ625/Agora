@@ -222,6 +222,29 @@ describe('agora-ts cli', () => {
     );
   });
 
+  it('creates smoke-test tasks through the cli flag', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-300SMOKE',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync([
+      'create',
+      'smoke create',
+      '--type', 'coding',
+      '--smoke-test',
+    ], { from: 'user' });
+
+    const created = taskService.getTask('OC-300SMOKE');
+    expect(stderr.value).toBe('');
+    expect(created?.control?.mode).toBe('smoke_test');
+  });
+
   it('lists roles and stores scoped bindings through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

@@ -16,7 +16,7 @@ import {
 } from '@agora-ts/contracts';
 import { TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
-import { deriveStagesFromGraph, normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
+import { deriveGraphFromStages, deriveStagesFromGraph, normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
 
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
@@ -114,6 +114,7 @@ export class TemplateAuthoringService {
       ...existing,
       defaultWorkflow: workflow.defaultWorkflow ?? existing.defaultWorkflow,
       stages: workflow.stages,
+      graph: deriveGraphFromStages(workflow.stages),
     });
   }
 

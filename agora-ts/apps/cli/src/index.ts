@@ -6,9 +6,9 @@ import { Command } from 'commander';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
+import { deriveGraphFromStages } from '@agora-ts/core';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
-import { deriveGraphFromStages } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
@@ -270,6 +270,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--team-json <json>', 'team override JSON')
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
+    .option('--smoke-test', 'mark this task as smoke/test mode', false)
     .option('--controller <agentId>', 'controller agent override')
     .option('--bind <binding>', 'role binding override (role=agent)', collectOption, [])
     .action((title: string, options: {
@@ -279,6 +280,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       teamJson?: string;
       workflowJson?: string;
       imTargetJson?: string;
+      smokeTest?: boolean;
       controller?: string;
       bind?: string[];
     }) => {
@@ -291,6 +293,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson) } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson) } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson) } : {}),
+        ...(options.smokeTest ? { control: { mode: 'smoke_test' } } : {}),
       });
       const template = (() => {
         try {
@@ -529,6 +532,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
           ...(options.name ? { name: options.name } : {}),
           mode: options.mode,
         }),
+        graph: deriveGraphFromStages(insertStage(stages, {
+          id: options.id,
+          ...(options.name ? { name: options.name } : {}),
+          mode: options.mode,
+        })),
       });
       writeLine(stdout, `模板阶段已新增: ${templateId} -> ${options.id}`);
       writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
@@ -598,9 +606,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--id <stageId>', 'stage id')
     .action((templateId: string, options: { id: string }) => {
       const template = templateAuthoringService.getTemplate(templateId);
+      const nextStages = removeStage(template.stages ?? [], options.id);
       const saved = templateAuthoringService.saveTemplate(templateId, {
         ...template,
-        stages: removeStage(template.stages ?? [], options.id),
+        stages: nextStages,
+        graph: deriveGraphFromStages(nextStages),
       });
       writeLine(stdout, `模板阶段已删除: ${templateId} -> ${options.id}`);
       writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);
@@ -615,9 +625,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--after <targetStageId>', 'move after target stage')
     .action((templateId: string, options: { id: string; before?: string; after?: string }) => {
       const template = templateAuthoringService.getTemplate(templateId);
+      const nextStages = moveStage(template.stages ?? [], options.id, options.before, options.after);
       const saved = templateAuthoringService.saveTemplate(templateId, {
         ...template,
-        stages: moveStage(template.stages ?? [], options.id, options.before, options.after),
+        stages: nextStages,
+        graph: deriveGraphFromStages(nextStages),
       });
       writeLine(stdout, `模板阶段已重排: ${templateId} -> ${options.id}`);
       writeLine(stdout, `当前阶段: ${(saved.template.stages ?? []).map((stage) => stage.id).join(' -> ')}`);

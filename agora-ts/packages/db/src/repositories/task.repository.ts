@@ -1,5 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
-import type { TeamDto, WorkflowDto } from '@agora-ts/contracts';
+import type { TaskControlDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -16,6 +16,7 @@ export interface StoredTask {
   current_stage: string | null;
   team: TeamDto;
   workflow: WorkflowDto;
+  control: TaskControlDto | null;
   scheduler: unknown;
   scheduler_snapshot: unknown;
   discord: unknown;
@@ -34,6 +35,7 @@ export interface InsertTaskInput {
   creator: string;
   team: TeamDto;
   workflow: WorkflowDto;
+  control?: TaskControlDto | null;
 }
 
 export interface UpdateTaskInput {
@@ -44,6 +46,7 @@ export interface UpdateTaskInput {
   current_stage?: string | null;
   team?: TeamDto;
   workflow?: WorkflowDto;
+  control?: TaskControlDto | null;
   scheduler?: unknown;
   scheduler_snapshot?: unknown;
   discord?: unknown;
@@ -70,8 +73,8 @@ export class TaskRepository {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO tasks (
-        id, title, description, type, priority, creator, state, team, workflow, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
+        id, title, description, type, priority, creator, state, team, workflow, created_at, updated_at, control
+      ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.title,
@@ -83,6 +86,7 @@ export class TaskRepository {
       stringifyJsonValue(input.workflow),
       now,
       now,
+      stringifyJsonValue(input.control ?? { mode: 'normal' }),
     );
     return this.getTask(input.id)!;
   }
@@ -108,6 +112,7 @@ export class TaskRepository {
     if (updates.current_stage !== undefined) push('current_stage', updates.current_stage);
     if (updates.team !== undefined) push('team', stringifyJsonValue(updates.team));
     if (updates.workflow !== undefined) push('workflow', stringifyJsonValue(updates.workflow));
+    if (updates.control !== undefined) push('control', stringifyJsonValue(updates.control));
     if (updates.scheduler !== undefined) push('scheduler', stringifyJsonValue(updates.scheduler));
     if (updates.scheduler_snapshot !== undefined) {
       push('scheduler_snapshot', stringifyJsonValue(updates.scheduler_snapshot));
@@ -155,6 +160,7 @@ export class TaskRepository {
       current_stage: row.current_stage === null ? null : String(row.current_stage),
       team: parseJsonValue<TeamDto>(row.team, { members: [] }),
       workflow: parseJsonValue<WorkflowDto>(row.workflow, {}),
+      control: row.control ? parseJsonValue<TaskControlDto>(row.control, { mode: 'normal' }) : null,
       scheduler: row.scheduler ? parseJsonValue(row.scheduler, null) : null,
       scheduler_snapshot: row.scheduler_snapshot ? parseJsonValue(row.scheduler_snapshot, null) : null,
       discord: row.discord ? parseJsonValue(row.discord, null) : null,
