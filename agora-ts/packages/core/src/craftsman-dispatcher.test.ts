@@ -72,7 +72,7 @@ describe('craftsman dispatcher', () => {
       stage_id: 'develop',
       subtask_id: 'sub-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
       prompt: 'Implement the feature',
     });
@@ -142,7 +142,7 @@ describe('craftsman dispatcher', () => {
       stage_id: 'develop',
       subtask_id: 'sub-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
       prompt: 'Implement the feature',
     })).toThrow('cli unavailable');
@@ -208,7 +208,7 @@ describe('craftsman dispatcher', () => {
       stage_id: 'develop',
       subtask_id: 'sub-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
       prompt: 'Implement the feature',
     });
@@ -280,7 +280,7 @@ describe('craftsman dispatcher', () => {
       stage_id: 'develop',
       subtask_id: 'sub-codex-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex-1',
       prompt: 'Implement feature 1',
     });
@@ -290,7 +290,7 @@ describe('craftsman dispatcher', () => {
       stage_id: 'develop',
       subtask_id: 'sub-codex-2',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex-2',
       prompt: 'Implement feature 2',
     })).toThrow('craftsman concurrency limit exceeded: max 1 active executions');
@@ -351,7 +351,7 @@ describe('craftsman dispatcher', () => {
       stage_id: 'develop',
       subtask_id: 'sub-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/repo/root',
       prompt: 'Implement feature',
     });

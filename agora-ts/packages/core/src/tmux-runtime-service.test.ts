@@ -111,7 +111,7 @@ describe('tmux runtime service', () => {
       stage_id: 'develop',
       subtask_id: 'sub-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
       prompt: 'Implement via tmux',
       brief_path: null,

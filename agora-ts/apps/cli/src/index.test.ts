@@ -1489,7 +1489,7 @@ describe('agora-ts cli', () => {
           assignee: 'sonnet',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             workdir: '/tmp/cli-subtask-build-api',
           },
         },

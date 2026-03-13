@@ -69,7 +69,7 @@ describe('dashboard routes', () => {
       task_id: 'OC-500',
       subtask_id: 'api',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:agora-craftsmen:codex',
       status: 'running',
       callback_payload: {

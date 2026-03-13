@@ -58,7 +58,7 @@ describe('craftsman execution repository', () => {
       task_id: 'OC-700',
       subtask_id: 'dispatch-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: null,
       status: 'queued',
       brief_path: '/tmp/brief.md',
@@ -80,7 +80,7 @@ describe('craftsman execution repository', () => {
     expect(created).toMatchObject({
       execution_id: 'exec-700',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'queued',
       callback_payload: null,
     });
@@ -133,14 +133,14 @@ describe('craftsman execution repository', () => {
       task_id: 'OC-710',
       subtask_id: 'dispatch-a',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
     });
     executions.insertExecution({
       execution_id: 'exec-711',
       task_id: 'OC-711',
       subtask_id: 'dispatch-b',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
     });
 
     expect(executions.listByTaskIds(['OC-710', 'OC-711'])).toMatchObject([

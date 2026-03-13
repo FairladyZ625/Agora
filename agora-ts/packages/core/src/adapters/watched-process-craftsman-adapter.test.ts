@@ -29,7 +29,7 @@ describe('watched process craftsman adapter', () => {
       stage_id: 'develop',
       subtask_id: 'sub-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
       prompt: 'Implement the feature',
       brief_path: '/tmp/brief.md',

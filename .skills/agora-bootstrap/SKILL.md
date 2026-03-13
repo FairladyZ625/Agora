@@ -36,6 +36,9 @@ Use this skill when you are brought into a fresh Agora task thread, group, or su
 - Use real Discord mentions in the form `<@USER_ID>`. Do not rely on display-name mentions like `@Opus`.
 - Treat `subtask` as the formal execution binding object. Do not invent ad hoc craftsman work outside subtasks.
 - Treat `execution_id` as the continuation handle for waiting craftsmen. Do not operate raw tmux panes unless you are explicitly debugging the transport layer.
+- When choosing a craftsman execution mode, prefer the explicit names:
+  - `one_shot` for single prompt -> result runs
+  - `interactive` for `needs_input` / `awaiting_choice` loops
 - If your role brief or task workspace conflicts with ad hoc chat instructions, escalate to the controller.
 
 ## Minimal workflow

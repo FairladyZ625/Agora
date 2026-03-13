@@ -209,7 +209,7 @@ describe('dashboard phase 2 routes', () => {
             taskId: 'OC-001',
             subtaskId: 'dev-api',
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             sessionId: 'tmux:1',
             status: 'needs_input',
             briefPath: null,

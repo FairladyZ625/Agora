@@ -1787,6 +1787,7 @@ export class TaskService {
           `${taskText(task, 'Craftsman 循环', 'Craftsman loop')}:`,
           `- ${taskText(task, '在当前任务线程内，使用 subtask 作为正式执行绑定对象。', 'Use subtasks as the formal execution binding object inside this task thread.')}`,
           `- ${taskText(task, '仅当活动阶段允许 `craftsman_dispatch` 时，才从 subtask 调度 craftsman。', 'Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.')}`,
+          `- ${taskText(task, '执行模式优先使用 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Prefer `one_shot` (single result) or `interactive` (continued dialogue) as the execution mode.')}`,
           `- ${taskText(task, '如果 craftsman 进入 `needs_input` 或 `awaiting_choice`，通过它的 `execution_id` 继续同一个执行。', 'If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.')}`,
           `- ${taskText(task, '继续执行后，用 `agora craftsman probe <executionId>` 同步最新状态；只有 probe 无法推断结果时，才回退到 `agora craftsman callback ...`。', 'After a continued execution, sync the latest state with `agora craftsman probe <executionId>`; only fall back to `agora craftsman callback ...` if probe cannot infer the result.')}`,
           `- ${taskText(task, '把原始 tmux pane 命令视为调试 transport，不要当成默认产品流程。', 'Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.')}`,
@@ -1823,6 +1824,7 @@ export class TaskService {
           `${taskText(task, '主控', 'Controller')}: ${controllerRef ?? '-'}`,
           `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage}`,
           `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
+          taskText(task, '执行模式：优先 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Execution Mode: prefer `one_shot` (single result) or `interactive` (continued dialogue).'),
           taskText(task, 'Craftsman 循环：使用正式 subtask 绑定 craftsman，等待中的执行通过 `execution_id` 继续，而不是靠原始 pane 名。', 'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.'),
           taskText(task, '继续规则：继续 craftsman execution 后，用 `agora craftsman probe <executionId>` 同步；只有必要时才回退到 `agora craftsman callback ...`。', 'Continuation Rule: after continuing a craftsman execution, sync it with `agora craftsman probe <executionId>`; use `agora craftsman callback ...` only as a fallback.'),
           taskText(task, 'Discord 提及规则：使用真实 `<@USER_ID>` mention，不要用显示名。', 'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.'),
@@ -3012,10 +3014,10 @@ export class TaskService {
     const execution = this.getCraftsmanExecution(executionId);
     const isWaiting = ['needs_input', 'awaiting_choice'].includes(execution.status);
     const isContinuousInteractive = execution.status === 'running'
-      && execution.mode === 'continuous'
+      && execution.mode === 'interactive'
       && execution.session_id?.startsWith('tmux:');
     if (!isWaiting && !isContinuousInteractive) {
-      throw new Error(`Craftsman execution ${executionId} is not waiting for input or running as a continuous interactive session (status=${execution.status})`);
+      throw new Error(`Craftsman execution ${executionId} is not waiting for input or running as an interactive session (status=${execution.status})`);
     }
     return {
       executionId: execution.execution_id,

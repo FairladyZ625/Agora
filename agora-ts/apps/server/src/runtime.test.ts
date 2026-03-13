@@ -174,7 +174,7 @@ describe('server runtime', () => {
       task_id: 'OC-BOOT',
       subtask_id: 'boot-dead',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:dead',
       status: 'running',
       started_at: '2026-03-09T15:00:00.000Z',

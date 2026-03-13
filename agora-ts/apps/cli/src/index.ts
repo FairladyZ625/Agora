@@ -11,6 +11,7 @@ import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
+  CraftsmanModeDto,
   CraftsmanExecutionStatusDto,
   CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
@@ -1181,18 +1182,18 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   craftsman
     .command('dispatch')
-    .description('派发 craftsmen 子任务')
+    .description('派发 craftsmen 子任务（execution mode: one_shot|interactive）')
     .argument('<taskId>', '任务 ID')
     .argument('<subtaskId>', '子任务 ID')
     .requiredOption('--caller-id <callerId>', '调用者 agent id（默认要求 controller）')
     .requiredOption('--adapter <adapter>', 'adapter 名称')
-    .option('--mode <mode>', '执行模式', 'task')
+    .option('--mode <mode>', '执行模式（one_shot|interactive）', 'one_shot')
     .option('--workdir <workdir>', '工作目录')
     .option('--brief-path <briefPath>', 'brief 路径')
     .action((taskId: string, subtaskId: string, options: {
       callerId: string;
       adapter: string;
-      mode: 'task' | 'continuous';
+      mode: CraftsmanModeDto;
       workdir?: string;
       briefPath?: string;
     }) => {
@@ -1207,6 +1208,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
       writeLine(stdout, `craftsman execution 已派发: ${result.execution.execution_id}`);
       writeLine(stdout, `adapter: ${result.execution.adapter}`);
+      writeLine(stdout, `execution mode: ${result.execution.mode}`);
       writeLine(stdout, `status: ${result.execution.status}`);
     });
 
@@ -1502,7 +1504,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         stage_id: 'dispatch',
         subtask_id: `${agent}-tmux-task`,
         adapter: agent,
-        mode: 'task',
+        mode: 'one_shot',
         workdir: options.workdir ?? process.cwd(),
         prompt,
         brief_path: null,

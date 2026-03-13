@@ -20,7 +20,7 @@ describe('tmux craftsman adapter', () => {
       stage_id: 'develop',
       subtask_id: 'sub-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
       prompt: 'Implement the feature',
       brief_path: null,
@@ -42,7 +42,7 @@ describe('tmux craftsman adapter', () => {
     });
   });
 
-  it('uses the interactive start spec for continuous mode and sends the initial prompt separately', () => {
+  it('uses the interactive start spec for interactive mode and sends the initial prompt separately', () => {
     const exec = vi.fn((args: string[]) => {
       if (args[0] === 'has-session') return '';
       if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
@@ -59,7 +59,7 @@ describe('tmux craftsman adapter', () => {
       stage_id: 'develop',
       subtask_id: 'sub-2',
       adapter: 'codex',
-      mode: 'continuous',
+      mode: 'interactive',
       workdir: '/tmp/codex',
       prompt: 'Continue this plan interactively',
       brief_path: null,

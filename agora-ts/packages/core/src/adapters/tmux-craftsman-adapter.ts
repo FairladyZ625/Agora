@@ -23,7 +23,7 @@ export class TmuxCraftsmanAdapter implements CraftsmanAdapter {
       throw new Error(`${this.name} adapter requires a prompt`);
     }
     const paneTarget = this.registry.getPaneTarget(this.name);
-    const spec = request.mode === 'continuous'
+    const spec = request.mode === 'interactive'
       ? this.inner.createInteractiveStartSpec()
       : this.inner.createCommandSpec(request);
     const shellCommand = renderShellCommand({
@@ -33,7 +33,7 @@ export class TmuxCraftsmanAdapter implements CraftsmanAdapter {
       executionId: request.execution_id,
     });
     this.registry.sendText(paneTarget, shellCommand, true);
-    if (request.mode === 'continuous' && request.prompt.trim().length > 0) {
+    if (request.mode === 'interactive' && request.prompt.trim().length > 0) {
       this.registry.sendText(paneTarget, request.prompt, true);
     }
     const transportSessionId = `tmux:${this.registry.getSessionName()}:${this.name}`;

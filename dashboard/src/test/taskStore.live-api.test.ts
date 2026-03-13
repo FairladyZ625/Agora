@@ -97,7 +97,7 @@ function buildCraftsmanExecutionDto(overrides: Partial<ApiCraftsmanExecutionDto>
     task_id: 'OC-001',
     subtask_id: 'subtask-1',
     adapter: 'codex',
-    mode: 'task',
+    mode: 'one_shot',
     session_id: 'tmux:1',
     status: 'running',
     brief_path: null,

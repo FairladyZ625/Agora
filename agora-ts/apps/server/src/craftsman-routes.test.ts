@@ -76,7 +76,7 @@ describe('craftsman routes', () => {
         subtask_id: 'sub-codex',
         caller_id: 'opus',
         adapter: 'codex',
-        mode: 'task',
+        mode: 'one_shot',
         workdir: '/tmp/codex',
       },
     });
@@ -184,7 +184,7 @@ describe('craftsman routes', () => {
         subtask_id: 'sub-codex-paused',
         caller_id: 'opus',
         adapter: 'codex',
-        mode: 'task',
+        mode: 'one_shot',
         workdir: '/tmp/codex',
       },
     });
@@ -246,7 +246,7 @@ describe('craftsman routes', () => {
         subtask_id: 'sub-owner-route',
         caller_id: 'sonnet',
         adapter: 'codex',
-        mode: 'task',
+        mode: 'one_shot',
         workdir: '/tmp/codex-owner',
       },
     });
@@ -517,7 +517,7 @@ describe('craftsman routes', () => {
         subtask_id: 'sub-codex-1',
         caller_id: 'opus',
         adapter: 'codex',
-        mode: 'task',
+        mode: 'one_shot',
         workdir: '/tmp/codex-1',
       },
     });
@@ -529,7 +529,7 @@ describe('craftsman routes', () => {
         subtask_id: 'sub-codex-2',
         caller_id: 'opus',
         adapter: 'codex',
-        mode: 'task',
+        mode: 'one_shot',
         workdir: '/tmp/codex-2',
       },
     });

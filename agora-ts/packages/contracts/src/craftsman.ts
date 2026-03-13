@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const craftsmanModeSchema = z.enum(['task', 'continuous']);
+export const craftsmanModeSchema = z.enum(['one_shot', 'interactive']);
 export type CraftsmanModeDto = z.infer<typeof craftsmanModeSchema>;
 
 export const craftsmanExecutionStatusSchema = z.enum([
@@ -90,7 +90,7 @@ export const craftsmanDispatchRequestSchema = z.object({
   subtask_id: z.string().min(1),
   caller_id: z.string().min(1),
   adapter: craftsmanAdapterSchema,
-  mode: craftsmanModeSchema.default('task'),
+  mode: craftsmanModeSchema.default('one_shot'),
   brief_path: z.string().nullable().optional(),
   workdir: z.string().nullable().optional(),
 });

@@ -1090,7 +1090,7 @@ describe('task service', () => {
       task_id: 'OC-105',
       subtask_id: 'run-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'queued',
       session_id: 'tmux:queued',
     });
@@ -1099,7 +1099,7 @@ describe('task service', () => {
       task_id: 'OC-105',
       subtask_id: 'run-codex',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'running',
       session_id: 'tmux:running',
       started_at: '2026-03-09T10:01:00.000Z',
@@ -1109,7 +1109,7 @@ describe('task service', () => {
       task_id: 'OC-105',
       subtask_id: 'keep-done',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'succeeded',
       session_id: 'tmux:done',
       finished_at: '2026-03-09T10:02:00.000Z',
@@ -1202,7 +1202,7 @@ describe('task service', () => {
       task_id: 'OC-106',
       subtask_id: 'cleanup-subtask',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'failed',
       session_id: 'tmux:orphaned',
       finished_at: '2026-03-09T10:03:00.000Z',
@@ -1255,7 +1255,7 @@ describe('task service', () => {
       subtask_id: 'paused-subtask',
       caller_id: 'opus',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow("Task OC-107 is in state 'paused', expected 'active'");
     expect(executions.listBySubtask('OC-107', 'paused-subtask')).toEqual([]);
@@ -1294,7 +1294,7 @@ describe('task service', () => {
       task_id: 'OC-113',
       subtask_id: 'resume-me',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:resume-me',
       status: 'running',
       started_at: '2026-03-09T12:00:00.000Z',
@@ -1434,7 +1434,7 @@ describe('task service', () => {
       task_id: 'OC-115',
       subtask_id: 'dead-subtask',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:dead',
       status: 'running',
       started_at: '2026-03-09T13:00:00.000Z',
@@ -1500,7 +1500,7 @@ describe('task service', () => {
       task_id: 'OC-116',
       subtask_id: 'startup-dead',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:dead',
       status: 'running',
       started_at: '2026-03-09T14:00:00.000Z',
@@ -1581,7 +1581,7 @@ describe('task service', () => {
       task_id: 'OC-116B',
       subtask_id: 'startup-dead',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:dead',
       status: 'running',
       started_at: '2026-03-09T14:00:00.000Z',
@@ -1783,6 +1783,7 @@ describe('task service', () => {
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
     expect(rootBrief?.body).toContain('Craftsman 循环:');
+    expect(rootBrief?.body).toContain('`one_shot`（单次结果）或 `interactive`（持续交互）');
     expect(rootBrief?.body).toContain('通过它的 `execution_id` 继续同一个执行');
     expect(rootBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(rootBrief?.body).toContain('Discord 提及规则:');
@@ -1791,6 +1792,7 @@ describe('task service', () => {
     expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
     expect(opusBrief?.body).toContain('architect');
     expect(opusBrief?.body).toContain('简报模式: overlay_delta');
+    expect(opusBrief?.body).toContain('执行模式：优先 `one_shot`（单次结果）或 `interactive`（持续交互）。');
     expect(opusBrief?.body).toContain('Craftsman 循环：使用正式 subtask 绑定 craftsman');
     expect(opusBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(opusBrief?.body).toContain('Discord 提及规则：使用真实 `<@USER_ID>` mention');
@@ -1928,7 +1930,7 @@ describe('task service', () => {
       task_id: 'OC-SMOKE-STATUS-1',
       subtask_id: 'smoke-subtask-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:smoke-status-1',
       status: 'running',
       started_at: '2026-03-13T11:00:00.000Z',
@@ -2027,7 +2029,7 @@ describe('task service', () => {
           assignee: 'sonnet',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             workdir: '/tmp/smoke-loop',
             prompt: 'Implement the smoke loop',
           },
@@ -2437,7 +2439,7 @@ describe('task service', () => {
       subtask_id: 'sub-disallowed-1',
       caller_id: 'opus',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow(/does not allow craftsman dispatch/i);
     expect(executions.listBySubtask('OC-DISPATCH-GUARD-1', 'sub-disallowed-1')).toEqual([]);
@@ -2493,7 +2495,7 @@ describe('task service', () => {
       subtask_id: 'sub-allowed-1',
       caller_id: 'opus',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
     });
 
@@ -2554,7 +2556,7 @@ describe('task service', () => {
       subtask_id: 'sub-owner-1',
       caller_id: 'sonnet',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow(/controller ownership/i);
   });
@@ -2613,7 +2615,7 @@ describe('task service', () => {
       task_id: 'OC-DISPATCH-GOV-1',
       subtask_id: 'sub-governance-limit-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:existing',
       status: 'running',
       started_at: '2026-03-13T13:59:00.000Z',
@@ -2633,7 +2635,7 @@ describe('task service', () => {
       subtask_id: 'sub-governance-limit-2',
       caller_id: 'opus',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow(/per-agent concurrency limit exceeded/i);
   });
@@ -2692,7 +2694,7 @@ describe('task service', () => {
           assignee: 'codex',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
           },
         },
       ],
@@ -2754,7 +2756,7 @@ describe('task service', () => {
       task_id: 'OC-DISPATCH-GOV-3',
       subtask_id: 'sub-observe-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:observed',
       status: 'running',
       started_at: '2026-03-13T13:00:00.000Z',
@@ -2826,7 +2828,7 @@ describe('task service', () => {
           assignee: 'sonnet',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             workdir: '/tmp/subtask-build-api',
             prompt: 'Implement the API',
           },
@@ -2952,7 +2954,7 @@ describe('task service', () => {
       task_id: 'OC-SUBTASK-LIMIT-1',
       subtask_id: 'existing-runner',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'running',
       started_at: '2026-03-13T14:00:00.000Z',
     });
@@ -2966,7 +2968,7 @@ describe('task service', () => {
           assignee: 'sonnet',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             prompt: 'do work',
           },
         },
@@ -3027,7 +3029,7 @@ describe('task service', () => {
           assignee: 'sonnet',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             prompt: 'do work',
           },
         },
@@ -3146,7 +3148,7 @@ describe('task service', () => {
       task_id: 'OC-NOTIFY-1',
       subtask_id: 'notify-subtask-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:notify-1',
       status: 'running',
       started_at: '2026-03-12T16:00:00.000Z',
@@ -3243,7 +3245,7 @@ describe('task service', () => {
       task_id: 'OC-INPUT-1',
       subtask_id: 'input-subtask-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:agora-craftsmen:codex',
       status: 'needs_input',
       started_at: '2026-03-13T15:00:00.000Z',
@@ -3330,7 +3332,7 @@ describe('task service', () => {
       task_id: 'OC-PROBE-1',
       subtask_id: 'probe-subtask-1',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:agora-craftsmen:codex',
       status: 'needs_input',
       started_at: '2026-03-13T16:00:00.000Z',
@@ -3388,7 +3390,7 @@ describe('task service', () => {
       task_id: 'OC-CONTINUOUS-INPUT-1',
       subtask_id: 'continuous-subtask-1',
       adapter: 'claude',
-      mode: 'continuous',
+      mode: 'interactive',
       session_id: 'tmux:agora-craftsmen:claude',
       status: 'running',
       started_at: '2026-03-13T16:30:00.000Z',

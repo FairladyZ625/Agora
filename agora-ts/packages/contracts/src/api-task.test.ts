@@ -206,7 +206,7 @@ describe('task api contracts', () => {
           assignee: 'sonnet',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
             workdir: '/tmp/build-api',
           },
         },
@@ -218,7 +218,7 @@ describe('task api contracts', () => {
           id: 'build-api',
           craftsman: {
             adapter: 'codex',
-            mode: 'task',
+            mode: 'one_shot',
           },
         },
       ],
@@ -272,7 +272,7 @@ describe('task api contracts', () => {
           task_id: 'OC-SUBTASK-1',
           subtask_id: 'build-api',
           adapter: 'codex',
-          mode: 'task',
+          mode: 'one_shot',
           session_id: 'tmux:codex-1',
           status: 'running',
           brief_path: null,

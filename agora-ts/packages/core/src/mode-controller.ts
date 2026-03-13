@@ -72,7 +72,7 @@ export class ModeController {
           stage_id: stageId,
           subtask_id: subtask.id,
           adapter: subtask.craftsman.adapter,
-          mode: subtask.craftsman.mode ?? 'task',
+          mode: subtask.craftsman.mode ?? 'one_shot',
           workdir: subtask.craftsman.workdir ?? null,
           prompt: subtask.craftsman.prompt ?? null,
           brief_path: subtask.craftsman.brief_path ?? null,

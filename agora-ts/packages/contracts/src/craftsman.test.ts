@@ -16,7 +16,7 @@ describe('craftsman contracts', () => {
       task_id: 'OC-500',
       subtask_id: 'build-runtime',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'session-42',
       status: 'running',
       brief_path: '/tmp/brief.md',
@@ -41,11 +41,11 @@ describe('craftsman contracts', () => {
         subtask_id: 'build-runtime',
         caller_id: 'opus',
         adapter: 'shell',
-        mode: 'continuous',
+        mode: 'interactive',
         brief_path: null,
         workdir: '/tmp/worktree',
       }).mode,
-    ).toBe('continuous');
+    ).toBe('interactive');
     expect(
       craftsmanCallbackRequestSchema.parse({
         execution_id: 'exec-001',
@@ -85,7 +85,7 @@ describe('craftsman contracts', () => {
       task_id: 'OC-500',
       subtask_id: 'build-runtime',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: null,
       status: 'done',
       brief_path: null,

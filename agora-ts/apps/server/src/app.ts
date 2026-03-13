@@ -1805,7 +1805,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         stage_id: 'dispatch',
         subtask_id: `${payload.agent}-tmux-task`,
         adapter: payload.agent,
-        mode: 'task',
+        mode: 'one_shot',
         workdir: payload.workdir ?? process.cwd(),
         prompt: payload.prompt,
         brief_path: null,

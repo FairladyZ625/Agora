@@ -99,7 +99,7 @@ describe('mode controller', () => {
         assignee: 'sonnet',
         craftsman: {
           adapter: 'codex',
-          mode: 'task',
+          mode: 'one_shot',
           workdir: '/tmp/mode-codex',
           prompt: 'Implement the API',
         },

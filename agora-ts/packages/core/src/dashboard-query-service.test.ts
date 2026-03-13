@@ -67,7 +67,7 @@ describe('dashboard query service', () => {
       task_id: 'OC-400',
       subtask_id: 'dev-api',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:agora-craftsmen:codex',
       status: 'running',
       callback_payload: {
@@ -930,7 +930,7 @@ describe('dashboard query service', () => {
       task_id: 'OC-410',
       subtask_id: 'dev-api',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       session_id: 'tmux:agora-craftsmen:codex',
       status: 'running',
       callback_payload: {
@@ -1015,7 +1015,7 @@ describe('dashboard query service', () => {
       task_id: 'OC-420',
       subtask_id: 'dev-a',
       adapter: 'codex',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'running',
     });
     executions.insertExecution({
@@ -1023,7 +1023,7 @@ describe('dashboard query service', () => {
       task_id: 'OC-421',
       subtask_id: 'dev-b',
       adapter: 'claude',
-      mode: 'task',
+      mode: 'one_shot',
       status: 'running',
     });
 

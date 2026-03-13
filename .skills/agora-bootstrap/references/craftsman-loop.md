@@ -13,6 +13,20 @@ Agora treats craftsmen as execution engines controlled by the task thread, not a
 7. If probe cannot infer the next state, fall back to the formal callback surface.
 8. Let Agora Server and Agora Bot mirror the callback and status back into the task thread.
 
+## Execution mode choice
+
+Choose the craftsman execution mode explicitly when you create the subtask:
+
+- `one_shot`
+  - Use when you expect a single prompt -> result run.
+  - Good for direct implementation, analysis, or one-pass generation.
+- `interactive`
+  - Use when you expect `needs_input`, `awaiting_choice`, plan-mode menus, or iterative pair work.
+  - Good for Claude/Codex/Gemini sessions that must pause and continue.
+
+- `one_shot` is the only valid one-pass execution mode
+- `interactive` is the only valid continued dialogue mode
+
 ## Core objects
 
 - `task`: the main collaborative object and the source thread/workspace owner.
@@ -25,6 +39,7 @@ Agora treats craftsmen as execution engines controlled by the task thread, not a
 - Do not open a new Discord thread for every subtask by default.
 - Do not dispatch craftsmen directly from free-form chat without a subtask binding.
 - Do not continue a waiting craftsman by guessing a tmux pane name if the product surface already gives you an `execution_id`.
+- Do not design an interactive smoke or pair-programming loop on top of `one_shot` mode.
 
 ## Continuation model
 
@@ -67,3 +82,12 @@ This keeps the loop aligned with Agora's data model and lets the execution be tr
 - the active stage
 - the main thread
 - the task workspace
+
+## Quick decision table
+
+| Situation | Choose | Why |
+| --- | --- | --- |
+| “Run this prompt and give me the result” | `one_shot` | Minimal one-pass execution |
+| “You may need to ask me more input later” | `interactive` | Supports `needs_input` continuation |
+| “This may show choices / menus / plan mode” | `interactive` | Supports key/choice continuation |
+| “I only need a simple batch smoke” | `one_shot` | Easier to observe and close |

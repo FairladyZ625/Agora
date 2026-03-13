@@ -235,6 +235,26 @@ cp .env.example .env
 ./docs/02-PRODUCT/scripts/dev-start.sh
 ```
 
+### 开发阶段兼容性策略（强制）
+
+- 当前项目仍处于**高频重构和语义收口阶段**，默认优先级是：
+  - 先把模型做对
+  - 再考虑兼容
+- 对于核心语义、contracts、状态机、adapter 接口、skill 路径、控制面命名的重构：
+  - **默认不为旧开发数据、旧字段名、旧 smoke payload、旧本地 SQLite 状态保留前向兼容**
+  - 应直接修改到正确语义，并同步更新 tests / fixtures / scripts / docs
+- 除非用户明确要求“必须保留兼容”或存在真实线上依赖，否则禁止：
+  - 为开发阶段历史数据保留长期 alias
+  - 引入双写字段
+  - 把错误命名或过渡口径固化到主代码
+- 开发阶段允许的默认动作包括：
+  - 清空或重建 `~/.agora/agora.db`
+  - 重建 `~/.agora/agora-ai-brain`
+  - 更新 smoke task / scenario fixtures
+- 原则：
+  - **兼容是显式决策，不是默认义务**
+  - **不要为了迁就旧开发数据而拖慢正确模型收敛**
+
 ### 本地数据库路径治理（强制）
 
 - **Agora TS 的统一运行时数据库默认路径固定为**：`~/.agora/agora.db`

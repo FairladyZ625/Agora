@@ -277,7 +277,7 @@ export type SubtaskDto = z.infer<typeof subtaskSchema>;
 
 export const createSubtaskCraftsmanSpecSchema = z.object({
   adapter: z.string().min(1),
-  mode: craftsmanModeSchema.default('task'),
+  mode: craftsmanModeSchema.default('one_shot'),
   workdir: z.string().nullable().optional(),
   prompt: z.string().nullable().optional(),
   brief_path: z.string().nullable().optional(),
