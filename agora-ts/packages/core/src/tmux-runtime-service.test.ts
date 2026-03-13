@@ -310,6 +310,38 @@ describe('tmux runtime service', () => {
       lastRecoveryMode: 'resume_exact',
     });
   });
+
+  it('keeps doctor ready when runtime pane titles drift from logical agent names', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|bash|1', '%1|✳ Claude Code|node|0', '%2|gemini|bash|0'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|✳ Claude Code', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const service = new TmuxRuntimeService({
+      exec,
+      registryDir: createRegistryDir(),
+      adapters: {
+        codex: new CodexCraftsmanAdapter(),
+        claude: new ClaudeCraftsmanAdapter(),
+        gemini: new GeminiCraftsmanAdapter(),
+      },
+    });
+
+    service.up();
+    service.recordIdentity('claude', { identitySource: 'manual', sessionReference: 'claude-session', workspaceRoot: '/tmp/agora' });
+
+    expect(service.doctor().panes.find((pane) => pane.agent === 'claude')).toMatchObject({
+      pane: '%1',
+      command: 'node',
+      ready: true,
+      sessionReference: 'claude-session',
+    });
+  });
 });
 
 function createRegistryDir() {

@@ -203,12 +203,10 @@ export class TmuxRuntimeService {
   }
 
   doctor(): { session: string; panes: TmuxDoctorPane[] } {
-    const panes = this.registry.listPanes();
-    const byTitle = new Map(panes.map((pane) => [pane.title, pane]));
     const titles = ['codex', 'claude', 'gemini'];
     return {
       session: this.registry.getSessionName(),
-      panes: titles.map((title) => toDoctorPane(title, byTitle.get(title) ?? null)),
+      panes: titles.map((title) => toDoctorPane(title, this.registry.getPaneInfo(title))),
     };
   }
 

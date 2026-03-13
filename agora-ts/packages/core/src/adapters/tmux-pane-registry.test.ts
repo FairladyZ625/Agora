@@ -125,4 +125,27 @@ describe('tmux pane registry', () => {
     expect(persisted.session_reference).toBe('3d479f8c-ec0a-4b7f-9f92-123456789abc');
     expect(persisted.identity_source).toBe('chat_file');
   });
+
+  it('resolves pane target by persisted pane id when runtime title drifts', () => {
+    const exec = vi.fn((args: string[]) => {
+      if (args[0] === 'has-session') return '';
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}|#{pane_current_command}|#{pane_active}')) {
+        return ['%0|codex|node|1', '%1|✳ Claude Code|node|0', '%2|gemini|bash|0'].join('\n');
+      }
+      if (args[0] === 'list-panes' && args.includes('#{pane_id}|#{pane_title}')) {
+        return ['%0|codex', '%1|✳ Claude Code', '%2|gemini'].join('\n');
+      }
+      return '';
+    });
+    const registry = new TmuxPaneRegistry({ exec, registryDir: makeRegistryDir() });
+
+    registry.updatePaneState('claude', { paneId: '%1' });
+
+    expect(registry.getPaneTarget('claude')).toBe('%1');
+    expect(registry.getPaneInfo('claude')).toMatchObject({
+      id: '%1',
+      title: '✳ Claude Code',
+      currentCommand: 'node',
+    });
+  });
 });

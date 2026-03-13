@@ -8,6 +8,7 @@ export type TmuxIdentitySource = 'registry_default' | 'runtime_gateway' | 'plugi
 export type TmuxRecoveryMode = 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last';
 
 export interface TmuxPaneState {
+  paneId?: string | null;
   continuityBackend: TmuxContinuityBackend;
   resumeCapability: TmuxResumeCapability;
   sessionReference: string | null;
@@ -69,8 +70,13 @@ export class TmuxPaneRegistry {
           throw new Error(`tmux session ${this.sessionName} did not provision enough panes`);
         }
         this.execTmux(['select-pane', '-t', paneId, '-T', title]);
+        this.writePaneState(title, {
+          ...this.readPaneState(title),
+          paneId,
+        });
       }
     }
+    this.ensureKnownPaneMappings();
     for (const pane of this.listPaneTitles()) {
       this.ensurePaneState(pane.title);
     }
@@ -106,29 +112,45 @@ export class TmuxPaneRegistry {
 
   getPaneTarget(agent: string): string {
     this.ensureSession();
-    const output = this.execTmux([
-      'list-panes',
-      '-t',
-      `${this.sessionName}:${this.windowName}`,
-      '-F',
-      '#{pane_id}|#{pane_title}',
-    ]);
-    const match = output
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [id, title] = line.split('|');
-        if (!id || !title) {
-          throw new Error(`invalid tmux pane line: ${line}`);
-        }
-        return { id, title };
-      })
-      .find((pane) => pane.title === agent);
+    const panes = this.listPaneTitles();
+    const state = this.readPaneState(agent);
+    if (state.paneId && panes.some((pane) => pane.id === state.paneId)) {
+      return state.paneId;
+    }
+    const match = panes.find((pane) => pane.title === agent);
     if (!match) {
       throw new Error(`tmux pane not found for agent: ${agent}`);
     }
+    this.writePaneState(agent, {
+      ...state,
+      paneId: match.id,
+    });
     return match.id;
+  }
+
+  getPaneInfo(agent: string): TmuxPaneInfo | null {
+    this.ensureSession();
+    const state = this.readPaneState(agent);
+    const pane = this.listPanes().find((candidate) => (
+      (state.paneId && candidate.id === state.paneId) || candidate.title === agent
+    ));
+    if (!pane) {
+      return null;
+    }
+    if (state.paneId !== pane.id) {
+      this.writePaneState(agent, {
+        ...state,
+        paneId: pane.id,
+      });
+    }
+    return {
+      ...pane,
+      ...this.readPaneState(agent),
+      id: pane.id,
+      title: pane.title,
+      currentCommand: pane.currentCommand,
+      active: pane.active,
+    };
   }
 
   sendText(target: string, text: string, submit = true) {
@@ -207,6 +229,26 @@ export class TmuxPaneRegistry {
       .filter(Boolean);
   }
 
+  private ensureKnownPaneMappings() {
+    const panes = this.listPaneTitles();
+    const expectedAgents = ['codex', 'claude', 'gemini'];
+    for (const [index, agent] of expectedAgents.entries()) {
+      const state = this.readPaneState(agent);
+      if (state.paneId && panes.some((pane) => pane.id === state.paneId)) {
+        continue;
+      }
+      const exactMatch = panes.find((pane) => pane.title === agent);
+      const fallback = panes[index];
+      const target = exactMatch ?? fallback;
+      if (target) {
+        this.writePaneState(agent, {
+          ...state,
+          paneId: target.id,
+        });
+      }
+    }
+  }
+
   private ensureRegistryDir() {
     mkdirSync(this.registryDir, { recursive: true });
   }
@@ -222,6 +264,7 @@ export class TmuxPaneRegistry {
     this.ensurePaneState(agent);
     const raw = JSON.parse(readFileSync(this.registryFile(agent), 'utf8')) as Record<string, string | null>;
     return {
+      paneId: raw.pane_id ?? null,
       continuityBackend: (raw.continuity_backend as TmuxContinuityBackend | null) ?? 'unknown',
       resumeCapability: (raw.resume_capability as TmuxResumeCapability | null) ?? 'none',
       sessionReference: raw.session_reference ?? null,
@@ -244,6 +287,7 @@ export class TmuxPaneRegistry {
       this.registryFile(agent),
       JSON.stringify(
         {
+          pane_id: state.paneId ?? null,
           continuity_backend: state.continuityBackend,
           resume_capability: state.resumeCapability,
           session_reference: state.sessionReference,
@@ -275,6 +319,7 @@ function defaultPaneState(agent: string): TmuxPaneState {
   switch (agent) {
     case 'claude':
       return {
+        paneId: null,
         continuityBackend: 'claude_session_id',
         resumeCapability: 'native_resume',
         sessionReference: null,
@@ -292,6 +337,7 @@ function defaultPaneState(agent: string): TmuxPaneState {
       };
     case 'codex':
       return {
+        paneId: null,
         continuityBackend: 'codex_session_file',
         resumeCapability: 'native_resume',
         sessionReference: null,
@@ -309,6 +355,7 @@ function defaultPaneState(agent: string): TmuxPaneState {
       };
     case 'gemini':
       return {
+        paneId: null,
         continuityBackend: 'gemini_session_id',
         resumeCapability: 'native_resume',
         sessionReference: null,
@@ -326,6 +373,7 @@ function defaultPaneState(agent: string): TmuxPaneState {
       };
     default:
       return {
+        paneId: null,
         continuityBackend: 'unknown',
         resumeCapability: 'none',
         sessionReference: null,
