@@ -14,6 +14,7 @@ import type {
   TaskStatusDto,
   TaskNoteRequestDto,
 } from "@agora-ts/contracts";
+import { parseJsonResponse } from "./json";
 
 export class AgoraBridge {
   constructor(
@@ -74,13 +75,13 @@ export class AgoraBridge {
     return this.request("/api/im/tasks/current/approve", {
       method: "POST",
       body: {
-        provider: input.provider ?? "discord",
+        ...(input.provider ? { provider: input.provider } : {}),
         ...(input.threadRef ? { thread_ref: input.threadRef } : {}),
         ...(input.conversationRef ? { conversation_ref: input.conversationRef } : {}),
         ...(input.actorId ? { actor_id: input.actorId } : {}),
         comment: input.comment ?? "",
       },
-      headers: input.actorId ? this.humanIdentityHeaders(input.provider ?? "discord", input.actorId) : {},
+      headers: input.actorId && input.provider ? this.humanIdentityHeaders(input.provider, input.actorId) : {},
     });
   }
 
@@ -102,31 +103,31 @@ export class AgoraBridge {
     return this.request("/api/im/tasks/current/reject", {
       method: "POST",
       body: {
-        provider: input.provider ?? "discord",
+        ...(input.provider ? { provider: input.provider } : {}),
         ...(input.threadRef ? { thread_ref: input.threadRef } : {}),
         ...(input.conversationRef ? { conversation_ref: input.conversationRef } : {}),
         ...(input.actorId ? { actor_id: input.actorId } : {}),
         reason: input.reason ?? "",
       },
-      headers: input.actorId ? this.humanIdentityHeaders(input.provider ?? "discord", input.actorId) : {},
+      headers: input.actorId && input.provider ? this.humanIdentityHeaders(input.provider, input.actorId) : {},
     });
   }
 
-  async archonApprove(taskId: string, reviewerId: string, comment = ""): Promise<TaskDto> {
+  async archonApprove(taskId: string, reviewerId: string, provider: string, comment = ""): Promise<TaskDto> {
     const body: ArchonApproveTaskRequestDto = { reviewer_id: reviewerId, comment };
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/archon-approve`, {
       method: "POST",
       body,
-      headers: this.humanIdentityHeaders('discord', reviewerId),
+      headers: this.humanIdentityHeaders(provider, reviewerId),
     });
   }
 
-  async archonReject(taskId: string, reviewerId: string, reason = ""): Promise<TaskDto> {
+  async archonReject(taskId: string, reviewerId: string, provider: string, reason = ""): Promise<TaskDto> {
     const body: ArchonRejectTaskRequestDto = { reviewer_id: reviewerId, reason };
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/archon-reject`, {
       method: "POST",
       body,
-      headers: this.humanIdentityHeaders('discord', reviewerId),
+      headers: this.humanIdentityHeaders(provider, reviewerId),
     });
   }
 
@@ -237,7 +238,9 @@ export class AgoraBridge {
     });
 
     const text = await res.text();
-    const payload = text ? safeJson(text) : {};
+    const payload = text
+      ? (res.ok ? parseJsonResponse(text, `JSON response from ${path}`) : safeJsonErrorPayload(text))
+      : {};
 
     if (!res.ok) {
       const detail = typeof payload === "object" && payload !== null && "detail" in payload
@@ -257,9 +260,9 @@ export class AgoraBridge {
   }
 }
 
-function safeJson(value: string): unknown {
+function safeJsonErrorPayload(value: string): unknown {
   try {
-    return JSON.parse(value);
+    return parseJsonResponse(value, 'error JSON response');
   } catch {
     return { raw: value };
   }

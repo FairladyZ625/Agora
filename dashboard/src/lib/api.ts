@@ -45,6 +45,7 @@ import {
   validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
 import { z, type ZodType } from 'zod';
+import { parseJsonWithContext } from '@/utils/json';
 
 class ApiError extends Error {
   status: number;
@@ -62,20 +63,25 @@ class ApiError extends Error {
 
 function getConfig() {
   // Read from localStorage directly — stores may not be hydrated yet
+  if (typeof localStorage?.getItem !== 'function') {
+    return { apiBase: '/api', apiToken: '' };
+  }
+  let raw: string | null = null;
   try {
-    if (typeof localStorage?.getItem !== 'function') {
-      return { apiBase: '/api', apiToken: '' };
-    }
-    const raw = localStorage.getItem('agora-settings');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        apiBase: parsed?.state?.apiBase ?? '/api',
-        apiToken: parsed?.state?.apiToken ?? '',
-      };
-    }
-  } catch {
-    // ignore
+    raw = localStorage.getItem('agora-settings');
+  } catch (error) {
+    throw new Error(`Failed to read dashboard settings: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (raw) {
+    const parsed = parseJsonWithContext<{ state?: { apiBase?: unknown; apiToken?: unknown } }>(raw, 'dashboard settings');
+    return {
+      apiBase: typeof parsed?.state?.apiBase === 'string'
+        ? parsed.state?.apiBase ?? '/api'
+        : '/api',
+      apiToken: typeof parsed?.state?.apiToken === 'string'
+        ? parsed.state?.apiToken ?? ''
+        : '',
+    };
   }
   return { apiBase: '/api', apiToken: '' };
 }

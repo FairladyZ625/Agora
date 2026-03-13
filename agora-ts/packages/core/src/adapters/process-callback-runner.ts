@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { parseJsonWithContext } from '../json-utils.js';
 
 type RunnerPayload = {
   executionId: string;
@@ -15,12 +16,16 @@ export async function runCallbackProcess(payload: RunnerPayload) {
   await postCallback(payload, result);
 }
 
+export function parseRunnerPayloadArg(payloadArg: string): RunnerPayload {
+  return parseJsonWithContext<RunnerPayload>(payloadArg, 'process callback runner payload');
+}
+
 async function main() {
   const payloadArg = process.argv[2];
   if (!payloadArg) {
     throw new Error('missing runner payload');
   }
-  const payload = JSON.parse(payloadArg) as RunnerPayload;
+  const payload = parseRunnerPayloadArg(payloadArg);
   await runCallbackProcess(payload);
 }
 

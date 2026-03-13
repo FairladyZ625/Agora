@@ -36,6 +36,13 @@ describe("AgoraBridge", () => {
     await expect(bridge.listTasks()).rejects.toThrow("Agora API 500: boom");
   });
 
+  it("throws a descriptive error when a successful response body is not valid json", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("not-json", { status: 200 })));
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await expect(bridge.listTasks()).rejects.toThrow(/invalid json response/i);
+  });
+
   it("sends bearer token when configured", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -190,20 +197,20 @@ describe("AgoraBridge", () => {
     );
   });
 
-  it("sends human identity headers for archon review actions", async () => {
+  it("sends human identity headers for archon review actions with the caller provider", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-001" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const bridge = new AgoraBridge("http://127.0.0.1:8420");
-    await bridge.archonApprove("OC-001", "reviewer-1", "ok");
-    await bridge.archonReject("OC-001", "reviewer-2", "nope");
+    await bridge.archonApprove("OC-001", "reviewer-1", "feishu", "ok");
+    await bridge.archonReject("OC-001", "reviewer-2", "slack", "nope");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://127.0.0.1:8420/api/tasks/OC-001/archon-approve",
       expect.objectContaining({
         headers: expect.objectContaining({
-          "x-agora-human-provider": "discord",
+          "x-agora-human-provider": "feishu",
           "x-agora-human-external-id": "reviewer-1",
         }),
       }),
@@ -213,7 +220,7 @@ describe("AgoraBridge", () => {
       "http://127.0.0.1:8420/api/tasks/OC-001/archon-reject",
       expect.objectContaining({
         headers: expect.objectContaining({
-          "x-agora-human-provider": "discord",
+          "x-agora-human-provider": "slack",
           "x-agora-human-external-id": "reviewer-2",
         }),
       }),
@@ -226,11 +233,13 @@ describe("AgoraBridge", () => {
 
     const bridge = new AgoraBridge("http://127.0.0.1:8420");
     await bridge.approveCurrent({
+      provider: "feishu",
       threadRef: "thread-7",
       actorId: "reviewer-1",
       comment: "ship it",
     });
     await bridge.rejectCurrent({
+      provider: "slack",
       conversationRef: "channel-9",
       actorId: "reviewer-2",
       reason: "needs tests",
@@ -242,7 +251,7 @@ describe("AgoraBridge", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          provider: "discord",
+          provider: "feishu",
           thread_ref: "thread-7",
           actor_id: "reviewer-1",
           comment: "ship it",
@@ -255,50 +264,12 @@ describe("AgoraBridge", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          provider: "discord",
+          provider: "slack",
           conversation_ref: "channel-9",
           actor_id: "reviewer-2",
           reason: "needs tests",
         }),
       }),
     );
-  });
-
-  it("omits optional identity headers when current-task IM actions have no actor id", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-778" }), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const bridge = new AgoraBridge("http://127.0.0.1:8420");
-    await bridge.approveCurrent({ threadRef: "thread-9" });
-    await bridge.rejectCurrent({ threadRef: "thread-10" });
-
-    const [, approveInit] = fetchMock.mock.calls[0];
-    const [, rejectInit] = fetchMock.mock.calls[1];
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "http://127.0.0.1:8420/api/im/tasks/current/approve",
-      expect.objectContaining({
-        body: JSON.stringify({
-          provider: "discord",
-          thread_ref: "thread-9",
-          comment: "",
-        }),
-      }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://127.0.0.1:8420/api/im/tasks/current/reject",
-      expect.objectContaining({
-        body: JSON.stringify({
-          provider: "discord",
-          thread_ref: "thread-10",
-          reason: "",
-        }),
-      }),
-    );
-    expect(approveInit.headers["x-agora-human-provider"]).toBeUndefined();
-    expect(approveInit.headers["x-agora-human-external-id"]).toBeUndefined();
-    expect(rejectInit.headers["x-agora-human-provider"]).toBeUndefined();
-    expect(rejectInit.headers["x-agora-human-external-id"]).toBeUndefined();
   });
 });

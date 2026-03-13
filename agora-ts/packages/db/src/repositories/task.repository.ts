@@ -88,7 +88,7 @@ export class TaskRepository {
       now,
       stringifyJsonValue(input.control ?? { mode: 'normal' }),
     );
-    return this.getTask(input.id)!;
+    return this.requireTask(input.id, 'insert');
   }
 
   getTask(taskId: string): StoredTask | null {
@@ -136,7 +136,7 @@ export class TaskRepository {
       throw new Error(`Task ${taskId} update failed due to missing row or version mismatch`);
     }
 
-    return this.getTask(taskId)!;
+    return this.requireTask(taskId, 'update');
   }
 
   listTasks(state?: string): StoredTask[] {
@@ -144,6 +144,14 @@ export class TaskRepository {
       ? (this.db.prepare(`${this.baseSelect} WHERE t.state = ? ORDER BY t.created_at DESC`).all(state) as Record<string, unknown>[])
       : (this.db.prepare(`${this.baseSelect} WHERE t.state != 'draft' ORDER BY t.created_at DESC`).all() as Record<string, unknown>[]);
     return rows.map((row) => this.parseTaskRow(row));
+  }
+
+  private requireTask(taskId: string, action: 'insert' | 'update'): StoredTask {
+    const task = this.getTask(taskId);
+    if (!task) {
+      throw new Error(`Failed to retrieve task ${taskId} after ${action}`);
+    }
+    return task;
   }
 
   private parseTaskRow(row: Record<string, unknown>): StoredTask {

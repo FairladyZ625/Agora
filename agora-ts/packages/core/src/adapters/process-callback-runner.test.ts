@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { runCallbackProcess } from './process-callback-runner.js';
+import { parseRunnerPayloadArg, runCallbackProcess } from './process-callback-runner.js';
 
 type CallbackRecord = {
   headers: Record<string, string | string[] | undefined>;
@@ -17,6 +17,10 @@ afterEach(async () => {
 });
 
 describe('process callback runner', () => {
+  it('throws a descriptive error when the runner payload is invalid json', () => {
+    expect(() => parseRunnerPayloadArg('{invalid-json')).toThrow(/invalid process callback runner payload/i);
+  });
+
   it('runs a command and posts a success callback payload', async () => {
     let record: CallbackRecord = null;
     const { url, stop } = await startCaptureServer((headers, body) => {

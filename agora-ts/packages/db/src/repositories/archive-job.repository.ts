@@ -35,7 +35,7 @@ export class ArchiveJobRepository {
       stringifyJsonValue(input.payload),
       input.writer_agent,
     );
-    return this.getArchiveJob(Number(info.lastInsertRowid))!;
+    return this.requireArchiveJob(Number(info.lastInsertRowid), 'insert');
   }
 
   getArchiveJob(jobId: number): StoredArchiveJob | null {
@@ -80,7 +80,7 @@ export class ArchiveJobRepository {
       SET status = 'pending', commit_hash = NULL, completed_at = NULL
       WHERE id = ?
     `).run(jobId);
-    return this.getArchiveJob(jobId)!;
+    return this.requireArchiveJob(jobId, 'retry');
   }
 
   updateArchiveJob(jobId: number, updates: {
@@ -121,7 +121,7 @@ export class ArchiveJobRepository {
       jobId,
     );
 
-    return this.getArchiveJob(jobId)!;
+    return this.requireArchiveJob(jobId, 'update');
   }
 
   failStaleNotifiedJobs(options: { timeoutMs: number; now?: Date }): number {
@@ -142,6 +142,14 @@ export class ArchiveJobRepository {
       count += 1;
     }
     return count;
+  }
+
+  private requireArchiveJob(jobId: number, action: 'insert' | 'retry' | 'update'): StoredArchiveJob {
+    const job = this.getArchiveJob(jobId);
+    if (!job) {
+      throw new Error(`Failed to retrieve archive job ${jobId} after ${action}`);
+    }
+    return job;
   }
 
   private parseArchiveRow(row: Record<string, unknown>): StoredArchiveJob {
