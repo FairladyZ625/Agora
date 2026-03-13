@@ -16,6 +16,8 @@ dashboard/.artifacts/
 
 # TypeScript build cache
 *.tsbuildinfo
+/.worktrees/
+/worktrees/
 
 # Process notes must live under docs/plans/<task-folder>/, never at repo root
 /task_plan.md
