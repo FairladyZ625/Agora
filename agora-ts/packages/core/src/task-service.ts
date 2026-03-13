@@ -1546,6 +1546,12 @@ export class TaskService {
               ]
             : []),
           '',
+          'Craftsman loop:',
+          '- Use subtasks as the formal execution binding object inside this task thread.',
+          '- Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.',
+          '- If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.',
+          '- Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.',
+          '',
           'Discord mention rule:',
           '- To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.',
           '- Do not type display names like `@Opus` or `@Sonnet`.',
@@ -1578,6 +1584,7 @@ export class TaskService {
           `Controller: ${controllerRef ?? '-'}`,
           `Current Stage: ${task.current_stage}`,
           `Task Goal: ${task.description?.trim() || task.title}`,
+          'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.',
           'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.',
           ...(task.control?.mode === 'smoke_test'
             ? ['Smoke Test Mode: this thread is being used for validation, not for the default product UX.']
