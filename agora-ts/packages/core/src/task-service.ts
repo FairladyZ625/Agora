@@ -1755,7 +1755,10 @@ export class TaskService {
     const stage = this.getStageByIdOrThrow(task, task.current_stage);
     const controllerRef = resolveControllerRef(task.team.members);
     const workspacePath = brainWorkspace?.workspace_path ?? null;
-    const messages: IMPublishMessageInput[] = [
+    const mentionMapLines = task.team.members
+      .filter(isInteractiveParticipant)
+      .map((member) => `- ${member.agentId}: {{participant:${member.agentId}}}`);
+    const rootMessages: IMPublishMessageInput[] = [
       {
         kind: 'bootstrap_root',
         participant_refs: imParticipantRefs,
@@ -1783,6 +1786,24 @@ export class TaskService {
                 `- ${join(workspacePath, '03-stage-state.md')}`,
               ]
             : []),
+        ].join('\n'),
+      },
+      {
+        kind: 'bootstrap_runbook',
+        participant_refs: imParticipantRefs,
+        body: [
+          `${taskText(task, '快速决策表', 'Quick decision table')}:`,
+          `- ${taskText(task, '只想一轮给出结果 -> `one_shot`', 'Need a single prompt -> result run -> `one_shot`')}`,
+          `- ${taskText(task, '预计会 `needs_input` / `awaiting_choice` -> `interactive`', 'Expect `needs_input` / `awaiting_choice` -> `interactive`')}`,
+          `- ${taskText(task, '可能出现 plan mode / 菜单选择 -> `interactive`', 'Expect plan mode / menu choices -> `interactive`')}`,
+          '',
+          `${taskText(task, '常用命令', 'Common commands')}:`,
+          `- agora subtasks list ${task.id}`,
+          `- agora subtasks create ${task.id} --caller-id ${controllerRef ?? '<controller>'} --file subtasks.json`,
+          `- agora craftsman input-text <executionId> "<text>"`,
+          `- agora craftsman input-keys <executionId> Down Enter`,
+          `- agora craftsman submit-choice <executionId> Down`,
+          `- agora craftsman probe <executionId>`,
           '',
           `${taskText(task, 'Craftsman 循环', 'Craftsman loop')}:`,
           `- ${taskText(task, '在当前任务线程内，使用 subtask 作为正式执行绑定对象。', 'Use subtasks as the formal execution binding object inside this task thread.')}`,
@@ -1791,11 +1812,22 @@ export class TaskService {
           `- ${taskText(task, '如果 craftsman 进入 `needs_input` 或 `awaiting_choice`，通过它的 `execution_id` 继续同一个执行。', 'If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.')}`,
           `- ${taskText(task, '继续执行后，用 `agora craftsman probe <executionId>` 同步最新状态；只有 probe 无法推断结果时，才回退到 `agora craftsman callback ...`。', 'After a continued execution, sync the latest state with `agora craftsman probe <executionId>`; only fall back to `agora craftsman callback ...` if probe cannot infer the result.')}`,
           `- ${taskText(task, '把原始 tmux pane 命令视为调试 transport，不要当成默认产品流程。', 'Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.')}`,
-          '',
+        ].join('\n'),
+      },
+      {
+        kind: 'bootstrap_mentions',
+        participant_refs: imParticipantRefs,
+        body: [
           `${taskText(task, 'Discord 提及规则', 'Discord mention rule')}:`,
           `- ${taskText(task, '要可靠唤醒 bot 或人类，请使用真实的 Discord mention 语法 `<@USER_ID>`。', 'To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.')}`,
           `- ${taskText(task, '不要输入显示名，例如 `@Opus` 或 `@Sonnet`。', 'Do not type display names like `@Opus` or `@Sonnet`.')}`,
           `- ${taskText(task, '尽量复用本线程里已经出现过的真实 mention。', 'Reuse the real mentions already shown in this thread whenever possible.')}`,
+          ...(mentionMapLines.length > 0
+            ? [
+                `${taskText(task, '成员 mention 对照表', 'Roster mention map')}:`,
+                ...mentionMapLines,
+              ]
+            : []),
           ...(task.control?.mode === 'smoke_test'
             ? [
                 '',
@@ -1808,6 +1840,7 @@ export class TaskService {
         ].join('\n'),
       },
     ];
+    const messages: IMPublishMessageInput[] = [...rootMessages];
 
     for (const member of task.team.members.filter(isInteractiveParticipant)) {
       const roleBriefPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '00-role-brief.md') : null;
@@ -1825,9 +1858,16 @@ export class TaskService {
           `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage}`,
           `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
           taskText(task, '执行模式：优先 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Execution Mode: prefer `one_shot` (single result) or `interactive` (continued dialogue).'),
+          taskText(task, '快速决策：一次性结果用 `one_shot`；需要后续输入或菜单选择用 `interactive`。', 'Quick decision: use `one_shot` for one-pass results; use `interactive` when you expect more input or menu choices.'),
+          `agora subtasks create ${task.id} --caller-id ${controllerRef ?? '<controller>'} --file subtasks.json`,
+          `agora subtasks list ${task.id}`,
           taskText(task, 'Craftsman 循环：使用正式 subtask 绑定 craftsman，等待中的执行通过 `execution_id` 继续，而不是靠原始 pane 名。', 'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.'),
+          'agora craftsman input-text <executionId> "<text>"',
+          'agora craftsman input-keys <executionId> Down Enter',
+          'agora craftsman submit-choice <executionId> Down',
           taskText(task, '继续规则：继续 craftsman execution 后，用 `agora craftsman probe <executionId>` 同步；只有必要时才回退到 `agora craftsman callback ...`。', 'Continuation Rule: after continuing a craftsman execution, sync it with `agora craftsman probe <executionId>`; use `agora craftsman callback ...` only as a fallback.'),
           taskText(task, 'Discord 提及规则：使用真实 `<@USER_ID>` mention，不要用显示名。', 'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.'),
+          `${taskText(task, '成员 mention', 'Roster mention')}: {{participant:${member.agentId}}}`,
           ...(task.control?.mode === 'smoke_test'
             ? [taskText(task, '冒烟测试模式：当前线程仅用于验证，不代表默认产品体验。', 'Smoke Test Mode: this thread is being used for validation, not for the default product UX.')]
             : []),

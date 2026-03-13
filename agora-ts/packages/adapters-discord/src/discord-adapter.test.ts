@@ -593,12 +593,12 @@ describe('DiscordIMProvisioningAdapter', () => {
         {
           kind: 'bootstrap_root',
           participant_refs: ['opus', 'sonnet'],
-          body: 'Task bootstrap root',
+          body: 'Task bootstrap root\n- opus: {{participant:opus}}\n- sonnet: {{participant:sonnet}}',
         },
         {
           kind: 'role_brief',
           participant_refs: ['opus'],
-          body: 'Controller brief',
+          body: 'Controller brief\nRoster mention: {{participant:opus}}',
         },
       ],
     });
@@ -623,9 +623,12 @@ describe('DiscordIMProvisioningAdapter', () => {
     expect(firstBody.content).toContain('<@discord-user-opus>');
     expect(firstBody.content).toContain('<@discord-user-sonnet>');
     expect(firstBody.content).toContain('Task bootstrap root');
+    expect(firstBody.content).toContain('- opus: <@discord-user-opus>');
+    expect(firstBody.content).toContain('- sonnet: <@discord-user-sonnet>');
     const secondBody = JSON.parse((mockFetch.mock.calls[3] as [string, { body: string }])[1].body) as { content: string };
     expect(secondBody.content).toContain('<@discord-user-opus>');
     expect(secondBody.content).toContain('Controller brief');
+    expect(secondBody.content).toContain('Roster mention: <@discord-user-opus>');
 
     vi.unstubAllGlobals();
   });

@@ -54,6 +54,22 @@ Use this skill when you are brought into a fresh Agora task thread, group, or su
 6. If needed, inspect the task workspace and use Agora CLI instead of guessing.
 7. Only then discuss, execute, dispatch, or escalate.
 
+## Quick runbook
+
+| Situation | Do this |
+| --- | --- |
+| Need a simple one-pass craftsman run | Create a subtask with `one_shot` |
+| Expect more input or menu choices later | Create a subtask with `interactive` |
+| Execution pauses with `needs_input` | `agora craftsman input-text <executionId> "<text>"` |
+| Execution pauses with `awaiting_choice` | `agora craftsman input-keys <executionId> Down Enter` or `agora craftsman submit-choice <executionId> Down` |
+| Need the freshest execution state | `agora craftsman probe <executionId>` |
+
+## Mention runbook
+
+- The task roster mention map is part of the root bootstrap.
+- Copy the real mention from that map or from the first line of an agent's directed brief.
+- Do not invent display-name mentions such as `@Opus` or `@Sonnet`.
+
 ## Agent-side operating model
 
 - `task` is the main unit of collaboration and normally has one primary IM thread.

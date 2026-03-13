@@ -91,3 +91,20 @@ This keeps the loop aligned with Agora's data model and lets the execution be tr
 | “You may need to ask me more input later” | `interactive` | Supports `needs_input` continuation |
 | “This may show choices / menus / plan mode” | `interactive` | Supports key/choice continuation |
 | “I only need a simple batch smoke” | `one_shot` | Easier to observe and close |
+
+## Command cookbook
+
+| Goal | Command |
+| --- | --- |
+| Inspect existing subtasks | `agora subtasks list <taskId>` |
+| Create craftsman-bound subtasks | `agora subtasks create <taskId> --caller-id <controllerId> --file subtasks.json` |
+| Continue a waiting execution with text | `agora craftsman input-text <executionId> "<text>"` |
+| Continue a waiting execution with keys | `agora craftsman input-keys <executionId> Down Enter` |
+| Submit a compact choice | `agora craftsman submit-choice <executionId> Down` |
+| Refresh the inferred status | `agora craftsman probe <executionId>` |
+
+## Mention cookbook
+
+- Root bootstrap includes a roster mention map.
+- Each directed role brief starts with the real platform mention for that agent.
+- Reuse those exact mentions when you need to wake the controller or another citizen.

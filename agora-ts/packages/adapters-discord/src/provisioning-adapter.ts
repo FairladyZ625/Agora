@@ -132,12 +132,16 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     }
     for (const message of input.messages) {
       const mentionRefs = Array.from(new Set(message.participant_refs ?? []));
-      const mentions = await Promise.all(mentionRefs.map(async (participantRef) => {
+      const mentionPairs = await Promise.all(mentionRefs.map(async (participantRef) => {
         const token = this.participantTokens[participantRef];
         const userId = await this.resolveParticipantUserId(participantRef, token);
-        return `<@${userId}>`;
+        return [participantRef, `<@${userId}>`] as const;
       }));
-      const content = [mentions.join(' '), message.body.trim()].filter((part) => part.length > 0).join('\n\n');
+      const mentionMap = new Map<string, string>(mentionPairs);
+      const content = [
+        mentionPairs.map(([, mention]) => mention).join(' '),
+        this.renderParticipantMentions(message.body.trim(), mentionMap),
+      ].filter((part) => part.length > 0).join('\n\n');
       await this.client.sendMessage(targetRef, content);
     }
   }
@@ -178,6 +182,13 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
 
   private readThreadMemberUserId(member: { user_id?: string; id?: string; user?: { id?: string } }): string | null {
     return member.user_id ?? member.user?.id ?? member.id ?? null;
+  }
+
+  private renderParticipantMentions(body: string, mentionMap: Map<string, string>) {
+    return body.replace(/\{\{participant:([^}]+)\}\}/g, (_match, participantRef: string) => {
+      const ref = participantRef.trim();
+      return mentionMap.get(ref) ?? `@${ref}`;
+    });
   }
 }
 

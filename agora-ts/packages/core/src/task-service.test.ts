@@ -1765,6 +1765,14 @@ describe('task service', () => {
           participant_refs: ['opus', 'sonnet', 'glm5'],
         }),
         expect.objectContaining({
+          kind: 'bootstrap_runbook',
+          participant_refs: ['opus', 'sonnet', 'glm5'],
+        }),
+        expect.objectContaining({
+          kind: 'bootstrap_mentions',
+          participant_refs: ['opus', 'sonnet', 'glm5'],
+        }),
+        expect.objectContaining({
           kind: 'role_brief',
           participant_refs: ['opus'],
         }),
@@ -1779,23 +1787,33 @@ describe('task service', () => {
       ]),
     );
     const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
+    const runbookBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_runbook');
+    const mentionBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_mentions');
     expect(rootBrief?.body).toContain('主控: opus');
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
-    expect(rootBrief?.body).toContain('Craftsman 循环:');
-    expect(rootBrief?.body).toContain('`one_shot`（单次结果）或 `interactive`（持续交互）');
-    expect(rootBrief?.body).toContain('通过它的 `execution_id` 继续同一个执行');
-    expect(rootBrief?.body).toContain('agora craftsman probe <executionId>');
-    expect(rootBrief?.body).toContain('Discord 提及规则:');
-    expect(rootBrief?.body).toContain('`<@USER_ID>`');
+    expect(runbookBrief?.body).toContain('Craftsman 循环:');
+    expect(runbookBrief?.body).toContain('快速决策表:');
+    expect(runbookBrief?.body).toContain('常用命令:');
+    expect(runbookBrief?.body).toContain('`one_shot`（单次结果）或 `interactive`（持续交互）');
+    expect(runbookBrief?.body).toContain('通过它的 `execution_id` 继续同一个执行');
+    expect(runbookBrief?.body).toContain('agora craftsman probe <executionId>');
+    expect(mentionBrief?.body).toContain('Discord 提及规则:');
+    expect(mentionBrief?.body).toContain('成员 mention 对照表:');
+    expect(mentionBrief?.body).toContain('{{participant:opus}}');
+    expect(mentionBrief?.body).toContain('`<@USER_ID>`');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
     expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
     expect(opusBrief?.body).toContain('architect');
     expect(opusBrief?.body).toContain('简报模式: overlay_delta');
+    expect(opusBrief?.body).toContain('快速决策：一次性结果用 `one_shot`；需要后续输入或菜单选择用 `interactive`。');
+    expect(opusBrief?.body).toContain(`agora subtasks create OC-BOOTSTRAP-1 --caller-id opus --file subtasks.json`);
     expect(opusBrief?.body).toContain('执行模式：优先 `one_shot`（单次结果）或 `interactive`（持续交互）。');
     expect(opusBrief?.body).toContain('Craftsman 循环：使用正式 subtask 绑定 craftsman');
+    expect(opusBrief?.body).toContain('agora craftsman input-text <executionId> "<text>"');
     expect(opusBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(opusBrief?.body).toContain('Discord 提及规则：使用真实 `<@USER_ID>` mention');
+    expect(opusBrief?.body).toContain('成员 mention: {{participant:opus}}');
     expect(opusBrief?.body).not.toContain('Read role doc:');
     const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
     expect(sonnetBrief?.body).toContain('简报模式: overlay_full');
@@ -1853,8 +1871,8 @@ describe('task service', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
-    expect(rootBrief?.body).toContain('冒烟测试模式:');
+    const mentionBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_mentions');
+    expect(mentionBrief?.body).toContain('冒烟测试模式:');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
     expect(opusBrief?.body).toContain('冒烟测试模式：当前线程仅用于验证');
 
