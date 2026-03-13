@@ -162,6 +162,13 @@ export function useDashboardHomeCopy() {
     topologyHashValue: t('home.topologyHashValue'),
     topologyNodes: t('home.topologyNodes', { returnObjects: true }) as string[],
     loadEstimateNote: t('home.loadEstimateNote'),
+    governance: {
+      kicker: t('home.governance.kicker'),
+      title: t('home.governance.title'),
+      hostMemory: t('home.governance.hostMemory'),
+      assigneeTitle: t('home.governance.assigneeTitle'),
+      emptyAssignee: t('home.governance.emptyAssignee'),
+    },
     taskRailLabels: {
       selectedTask: t('home.taskRailLabels.selectedTask'),
       executionLoop: t('home.taskRailLabels.executionLoop'),

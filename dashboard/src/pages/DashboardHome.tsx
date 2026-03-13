@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Network, ScrollText } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Clock3, Network, PanelRightOpen, ScrollText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
@@ -621,11 +621,60 @@ export function DashboardHome() {
             )}
 
             {summaryReady ? (
-              <div className="home-os__telemetry-strip page-transition">
-                <div className="home-os__telemetry-readout">
-                  <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
-                  <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+              <div className="space-y-4 page-transition">
+                <div className="home-os__telemetry-strip">
+                  <div className="home-os__telemetry-readout">
+                    <span className="home-os__telemetry-label">{homeCopy.metricLabels.participants}</span>
+                    <strong className="home-os__telemetry-value">{homeMetrics.participantCount}</strong>
+                  </div>
                 </div>
+                {governanceSnapshot ? (
+                  <section className="surface-panel surface-panel--muted">
+                    <div className="home-os__module-head">
+                      <div>
+                        <p className="home-os__section-index">{homeCopy.governance.kicker}</p>
+                        <p className="page-kicker">{homeCopy.governance.title}</p>
+                      </div>
+                      <span className="status-pill status-pill--info">{homeMetrics.activeExecutions}</span>
+                    </div>
+                    <div className="task-authority__facts mt-4">
+                      <div className="detail-card">
+                        <PanelRightOpen size={16} className="detail-card__icon" />
+                        <span className="detail-card__label">{homeCopy.metricLabels.activeExecutions}</span>
+                        <strong className="detail-card__value">{homeMetrics.activeExecutions}</strong>
+                      </div>
+                      <div className="detail-card">
+                        <Clock3 size={16} className="detail-card__icon" />
+                        <span className="detail-card__label">{homeCopy.metricLabels.hostLoad}</span>
+                        <strong className="detail-card__value">{homeMetrics.hostLoadLabel}</strong>
+                      </div>
+                      <div className="detail-card">
+                        <Clock3 size={16} className="detail-card__icon" />
+                        <span className="detail-card__label">{homeCopy.governance.hostMemory}</span>
+                        <strong className="detail-card__value">
+                          {governanceSnapshot.host?.memoryUtilization != null
+                            ? `${Math.round(governanceSnapshot.host.memoryUtilization * 100)}%`
+                            : '—'}
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <p className="field-label">{homeCopy.governance.assigneeTitle}</p>
+                      {governanceSnapshot.activeByAssignee.length > 0 ? (
+                        <div className="space-y-2">
+                          {governanceSnapshot.activeByAssignee.map((item) => (
+                            <div key={item.assignee} className="data-row">
+                              <span className="type-mono-xs">{item.assignee}</span>
+                              <span className="status-pill status-pill--neutral">{item.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="type-body-sm">{homeCopy.governance.emptyAssignee}</p>
+                      )}
+                    </div>
+                  </section>
+                ) : null}
               </div>
             ) : null}
           </article>

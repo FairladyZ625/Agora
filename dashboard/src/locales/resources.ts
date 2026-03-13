@@ -223,6 +223,13 @@ export const resources = {
         topologyHashValue: 'H-8f92a.c4',
         topologyNodes: ['LGS', 'ETH', 'PTH'],
         loadEstimateNote: '由活跃任务、待裁决任务与参与 Agent 数量推算，用于展示编排压力，不代表主机 CPU 或 session 实测值。',
+        governance: {
+          kicker: '运行治理',
+          title: '执行与资源快照',
+          hostMemory: '主机内存',
+          assigneeTitle: '按调度者分布',
+          emptyAssignee: '当前没有活跃执行分布。',
+        },
         taskRailLabels: {
           selectedTask: '当前任务',
           executionLoop: '执行回路',
@@ -1044,6 +1051,13 @@ export const resources = {
         topologyHashValue: 'H-8f92a.c4',
         topologyNodes: ['LGS', 'ETH', 'PTH'],
         loadEstimateNote: 'Derived from active tasks, pending decisions, and known active agents. It visualizes orchestration pressure, not host CPU or exact runtime session utilization.',
+        governance: {
+          kicker: 'Runtime governance',
+          title: 'Execution and resource snapshot',
+          hostMemory: 'Host memory',
+          assigneeTitle: 'By assignee',
+          emptyAssignee: 'No active execution distribution is currently available.',
+        },
         taskRailLabels: {
           selectedTask: 'Focused task',
           executionLoop: 'Execution loop',
