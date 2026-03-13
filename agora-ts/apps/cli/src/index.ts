@@ -39,6 +39,10 @@ type Writable = {
   write: (chunk: string) => void;
 };
 
+type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
+  locale?: 'zh-CN' | 'en-US';
+};
+
 export interface CliDependencies {
   taskService?: TaskService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
@@ -89,7 +93,7 @@ function buildTemplateMembers(
   templateId: string,
   template: TemplateDetailDto,
   rolePackService: RolePackService,
-): NonNullable<CreateTaskRequestDto['team_override']>['members'] {
+): NonNullable<CreateTaskInputLike['team_override']>['members'] {
   return rolePackService.resolveTemplateTeam(templateId, template, [{ scope: 'workspace', scope_ref: 'default' }]).map((member) => {
     if (!member.agentId) {
       throw new Error(`template role ${member.role} has no resolved agent; use --bind ${member.role}=<agent>`);
@@ -99,7 +103,7 @@ function buildTemplateMembers(
 }
 
 function applyTaskCreateOverrides(
-  input: CreateTaskRequestDto,
+  input: CreateTaskInputLike,
   templateId: string,
   template: TemplateDetailDto | null,
   rolePackService: RolePackService,
@@ -294,6 +298,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('-t, --type <type>', '任务类型', 'coding')
     .option('-p, --priority <priority>', '优先级', 'normal')
     .option('-c, --creator <creator>', '创建者', 'archon')
+    .option('--locale <locale>', '任务语言 (zh-CN|en-US)', 'zh-CN')
     .option('--team-json <json>', 'team override JSON')
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
@@ -304,6 +309,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       type: string;
       priority: TaskPriority;
       creator: string;
+      locale: 'zh-CN' | 'en-US';
       teamJson?: string;
       workflowJson?: string;
       imTargetJson?: string;
@@ -317,6 +323,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         creator: options.creator,
         description: '',
         priority: options.priority,
+        locale: options.locale,
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),

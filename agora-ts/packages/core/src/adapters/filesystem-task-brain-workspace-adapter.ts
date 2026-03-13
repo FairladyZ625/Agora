@@ -83,11 +83,12 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
 function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWorkspaceResult) {
   const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
-    return [
+  return [
       `task_id: "${input.task_id}"`,
       `brain_task_id: "${binding.brain_task_id}"`,
       `brain_pack_ref: "${binding.brain_pack_ref}"`,
-    `workspace_path: "${binding.workspace_path}"`,
+      `workspace_path: "${binding.workspace_path}"`,
+      `locale: "${input.locale}"`,
     `template_id: "${input.template_id}"`,
     `control_mode: "${input.control_mode}"`,
     `controller_ref: "${input.controller_ref ?? ''}"`,
@@ -103,16 +104,16 @@ function renderCurrent(
   currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
   return [
-    `# Current`,
+    `# ${brainText(input.locale, '当前状态', 'Current')}`,
     '',
-    `- Task: ${input.task_id}`,
-    `- Title: ${input.title}`,
-    `- Task State: ${input.state}`,
-    `- Control Mode: ${input.control_mode}`,
-    `- Controller: ${input.controller_ref ?? '-'}`,
-    `- Current Stage: ${input.current_stage ?? '-'}`,
-    `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
-    `- Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
+    `- ${brainText(input.locale, '任务', 'Task')}: ${input.task_id}`,
+    `- ${brainText(input.locale, '标题', 'Title')}: ${input.title}`,
+    `- ${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
+    `- ${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
+    `- ${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
+    `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    `- ${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     '',
   ].join('\n');
 }
@@ -123,17 +124,17 @@ function renderBootstrap(
   currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
   return [
-    '# Bootstrap',
+    `# ${brainText(input.locale, '启动上下文', 'Bootstrap')}`,
     '',
-    `Task ID: ${input.task_id}`,
-    `Task State: ${input.state}`,
-    `Control Mode: ${input.control_mode}`,
-    `Controller: ${input.controller_ref ?? '-'}`,
-    `Current Stage: ${input.current_stage ?? '-'}`,
-    `Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
-    `Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
+    `${brainText(input.locale, '任务 ID', 'Task ID')}: ${input.task_id}`,
+    `${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
+    `${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
+    `${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
+    `${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    `${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     '',
-    'Read these files before acting:',
+    `${brainText(input.locale, '执行前请先阅读以下文件', 'Read these files before acting')}:`,
     `- ~/.agora/skills/agora-bootstrap/SKILL.md`,
     `- ${join(workspacePath, '01-task-brief.md')}`,
     `- ${join(workspacePath, '02-roster.md')}`,
@@ -144,15 +145,15 @@ function renderBootstrap(
 
 function renderTaskBrief(input: TaskBrainWorkspaceRequest) {
   return [
-    '# Task Brief',
+    `# ${brainText(input.locale, '任务简报', 'Task Brief')}`,
     '',
-    `## Title`,
+    `## ${brainText(input.locale, '标题', 'Title')}`,
     '',
     input.title,
     '',
-    `## Description`,
+    `## ${brainText(input.locale, '描述', 'Description')}`,
     '',
-    input.description.trim() || '(empty description)',
+    input.description.trim() || brainText(input.locale, '(空描述)', '(empty description)'),
     '',
   ].join('\n');
 }
@@ -161,7 +162,7 @@ function renderRoster(input: TaskBrainWorkspaceRequest) {
   const rows = input.team_members.map((member) => (
     `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'} | ${member.agent_origin ?? 'user_managed'} | ${member.briefing_mode ?? 'overlay_full'}`
   ));
-  return ['# Roster', '', ...rows, ''].join('\n');
+  return [`# ${brainText(input.locale, '成员清单', 'Roster')}`, '', ...rows, ''].join('\n');
 }
 
 function renderStageState(
@@ -169,15 +170,15 @@ function renderStageState(
   currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
   return [
-    '# Stage State',
+    `# ${brainText(input.locale, '阶段状态', 'Stage State')}`,
     '',
-    `- Current Stage: ${input.current_stage ?? '-'}`,
-    `- Task State: ${input.state}`,
-    `- Control Mode: ${input.control_mode}`,
-    `- Stage Name: ${currentStage?.name ?? '-'}`,
-    `- Execution Kind: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
-    `- Allowed Actions: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
-    `- Gate: ${currentStage?.gate?.type ?? '-'}`,
+    `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `- ${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
+    `- ${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
+    `- ${brainText(input.locale, '阶段名称', 'Stage Name')}: ${currentStage?.name ?? '-'}`,
+    `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    `- ${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
+    `- ${brainText(input.locale, '门禁', 'Gate')}: ${currentStage?.gate?.type ?? '-'}`,
     '',
   ].join('\n');
 }
@@ -208,23 +209,31 @@ function renderRoleBrief(
     `role_doc_path: "${roleDocPath}"`,
     '---',
     '',
-    '# Role Brief',
+    `# ${brainText(input.locale, '角色简报', 'Role Brief')}`,
     '',
-    `You are \`${member.agentId}\` and your Agora role is \`${member.role}\`.`,
+    brainText(
+      input.locale,
+      `你是 \`${member.agentId}\`，当前在 Agora 中承担 \`${member.role}\` 角色。`,
+      `You are \`${member.agentId}\` and your Agora role is \`${member.role}\`.`,
+    ),
     member.briefing_mode === 'overlay_delta'
-      ? 'This agent already carries Agora-managed base role context; this brief contains task-specific delta only.'
-      : 'This agent needs the full Agora role overlay for this task context.',
+      ? brainText(input.locale, '该 Agent 已带有 Agora 托管的基础角色上下文；本简报仅补充本任务的增量信息。', 'This agent already carries Agora-managed base role context; this brief contains task-specific delta only.')
+      : brainText(input.locale, '该 Agent 需要为本任务加载完整的 Agora 角色覆盖上下文。', 'This agent needs the full Agora role overlay for this task context.'),
     '',
-    `Read first: ${roleDocPath}`,
-    `Task workspace: ${workspacePath}`,
-    `Task brief: ${join(workspacePath, '01-task-brief.md')}`,
-    `Stage state: ${join(workspacePath, '03-stage-state.md')}`,
+    `${brainText(input.locale, '首先阅读', 'Read first')}: ${roleDocPath}`,
+    `${brainText(input.locale, '任务工作区', 'Task workspace')}: ${workspacePath}`,
+    `${brainText(input.locale, '任务简报', 'Task brief')}: ${join(workspacePath, '01-task-brief.md')}`,
+    `${brainText(input.locale, '阶段状态', 'Stage state')}: ${join(workspacePath, '03-stage-state.md')}`,
     '',
-    `Controller: ${input.controller_ref ?? '-'}`,
-    `Current Stage: ${input.current_stage ?? '-'}`,
-    `Control Mode: ${input.control_mode}`,
+    `${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
+    `${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
     '',
   ].join('\n');
+}
+
+function brainText(locale: TaskBrainWorkspaceRequest['locale'], zh: string, en: string) {
+  return locale === 'en-US' ? en : zh;
 }
 
 function resolveStageExecutionKind(stage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null) {

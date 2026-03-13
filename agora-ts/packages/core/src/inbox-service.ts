@@ -75,6 +75,7 @@ export class InboxService {
       creator: options.creator,
       description: item.notes ?? '',
       priority: options.priority as TaskPriority,
+      locale: 'zh-CN',
     });
     const inbox = this.inboxRepository.updateInboxItem(inboxId, {
       status: 'promoted',

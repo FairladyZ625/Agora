@@ -16,6 +16,7 @@ function buildTaskDto(overrides: Partial<ApiTaskDto> = {}): ApiTaskDto {
     type: 'coding',
     priority: 'high',
     creator: 'archon',
+    locale: 'zh-CN',
     state: 'active',
     archive_status: null,
     controller_ref: 'opus',

@@ -1,5 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
-import type { TaskControlDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
+import type { TaskControlDto, TaskLocaleDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -11,6 +11,7 @@ export interface StoredTask {
   type: string;
   priority: string;
   creator: string;
+  locale: TaskLocaleDto;
   state: string;
   archive_status: string | null;
   current_stage: string | null;
@@ -33,6 +34,7 @@ export interface InsertTaskInput {
   type: string;
   priority: string;
   creator: string;
+  locale?: TaskLocaleDto;
   team: TeamDto;
   workflow: WorkflowDto;
   control?: TaskControlDto | null;
@@ -42,6 +44,7 @@ export interface UpdateTaskInput {
   title?: string;
   description?: string | null;
   priority?: string;
+  locale?: TaskLocaleDto;
   state?: string;
   current_stage?: string | null;
   team?: TeamDto;
@@ -73,8 +76,8 @@ export class TaskRepository {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO tasks (
-        id, title, description, type, priority, creator, state, team, workflow, created_at, updated_at, control
-      ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+        id, title, description, type, priority, creator, locale, state, team, workflow, created_at, updated_at, control
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.title,
@@ -82,6 +85,7 @@ export class TaskRepository {
       input.type,
       input.priority,
       input.creator,
+      input.locale ?? 'zh-CN',
       stringifyJsonValue(input.team),
       stringifyJsonValue(input.workflow),
       now,
@@ -108,6 +112,7 @@ export class TaskRepository {
     if (updates.title !== undefined) push('title', updates.title);
     if (updates.description !== undefined) push('description', updates.description);
     if (updates.priority !== undefined) push('priority', updates.priority);
+    if (updates.locale !== undefined) push('locale', updates.locale);
     if (updates.state !== undefined) push('state', updates.state);
     if (updates.current_stage !== undefined) push('current_stage', updates.current_stage);
     if (updates.team !== undefined) push('team', stringifyJsonValue(updates.team));
@@ -163,6 +168,7 @@ export class TaskRepository {
       type: String(row.type),
       priority: String(row.priority),
       creator: String(row.creator),
+      locale: String(row.locale ?? 'zh-CN') as TaskLocaleDto,
       state: String(row.state),
       archive_status: row.archive_status === null || row.archive_status === undefined ? null : String(row.archive_status),
       current_stage: row.current_stage === null ? null : String(row.current_stage),

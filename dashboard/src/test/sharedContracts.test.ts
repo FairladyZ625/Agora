@@ -11,6 +11,7 @@ describe('shared contracts', () => {
       type: 'coding',
       priority: 'high',
       creator: 'archon',
+      locale: 'zh-CN',
       state: 'active',
       archive_status: null,
       current_stage: 'develop',

@@ -46,6 +46,11 @@ const allowedBriefingModes = [
   'overlay_delta',
 ] as const;
 
+const supportedTaskLocales = [
+  'zh-CN',
+  'en-US',
+] as const;
+
 const allowedWorkflowGateTypes = [
   'archon_review',
   'command',
@@ -73,6 +78,8 @@ const workflowActionSchema = z.string().refine((value) => allowedWorkflowActions
 
 const agentOriginSchema = z.enum(allowedAgentOrigins);
 const briefingModeSchema = z.enum(allowedBriefingModes);
+export const taskLocaleSchema = z.enum(supportedTaskLocales);
+export type TaskLocaleDto = z.infer<typeof taskLocaleSchema>;
 
 const workflowGateTypeSchema = z.string().refine((value) => allowedWorkflowGateTypes.includes(value as (typeof allowedWorkflowGateTypes)[number]), {
   message: 'Unsupported workflow gate type',
@@ -193,6 +200,7 @@ export const taskSchema = z.object({
   type: z.string().min(1),
   priority: taskPrioritySchema,
   creator: z.string().min(1),
+  locale: taskLocaleSchema,
   state: taskStateSchema,
   archive_status: z.string().nullable(),
   controller_ref: z.string().nullable().optional(),
@@ -300,11 +308,13 @@ export const createTaskRequestSchema = z.object({
   creator: z.string().min(1),
   description: z.string(),
   priority: taskPrioritySchema,
+  locale: taskLocaleSchema.default('zh-CN'),
   team_override: teamSchema.optional(),
   workflow_override: workflowSchema.optional(),
   im_target: createTaskImTargetSchema.optional(),
   control: taskControlSchema.optional(),
 });
+export type CreateTaskRequestInputDto = z.input<typeof createTaskRequestSchema>;
 export type CreateTaskRequestDto = z.infer<typeof createTaskRequestSchema>;
 
 export const advanceTaskRequestSchema = z.object({

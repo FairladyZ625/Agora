@@ -80,6 +80,7 @@ export function mapTaskDto(task: ApiTaskDto): Task {
     type: task.type,
     priority: task.priority,
     creator: task.creator,
+    locale: task.locale,
     state: mapTaskState(task),
     archiveStatus: task.archive_status,
     controllerRef: task.controller_ref ?? null,

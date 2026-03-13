@@ -1,5 +1,6 @@
 export interface TaskBrainWorkspaceRequest {
   task_id: string;
+  locale: 'zh-CN' | 'en-US';
   title: string;
   description: string;
   type: string;

@@ -1779,34 +1779,34 @@ describe('task service', () => {
       ]),
     );
     const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
-    expect(rootBrief?.body).toContain('Controller: opus');
+    expect(rootBrief?.body).toContain('主控: opus');
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
-    expect(rootBrief?.body).toContain('Craftsman loop:');
-    expect(rootBrief?.body).toContain('continue the same execution through its `execution_id`');
+    expect(rootBrief?.body).toContain('Craftsman 循环:');
+    expect(rootBrief?.body).toContain('通过它的 `execution_id` 继续同一个执行');
     expect(rootBrief?.body).toContain('agora craftsman probe <executionId>');
-    expect(rootBrief?.body).toContain('Discord mention rule:');
+    expect(rootBrief?.body).toContain('Discord 提及规则:');
     expect(rootBrief?.body).toContain('`<@USER_ID>`');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
     expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
     expect(opusBrief?.body).toContain('architect');
-    expect(opusBrief?.body).toContain('Briefing Mode: overlay_delta');
-    expect(opusBrief?.body).toContain('Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`');
+    expect(opusBrief?.body).toContain('简报模式: overlay_delta');
+    expect(opusBrief?.body).toContain('Craftsman 循环：使用正式 subtask 绑定 craftsman');
     expect(opusBrief?.body).toContain('agora craftsman probe <executionId>');
-    expect(opusBrief?.body).toContain('Discord Mention Rule: use real `<@USER_ID>` mentions');
+    expect(opusBrief?.body).toContain('Discord 提及规则：使用真实 `<@USER_ID>` mention');
     expect(opusBrief?.body).not.toContain('Read role doc:');
     const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
-    expect(sonnetBrief?.body).toContain('Briefing Mode: overlay_full');
-    expect(sonnetBrief?.body).toContain('Read role doc:');
+    expect(sonnetBrief?.body).toContain('简报模式: overlay_full');
+    expect(sonnetBrief?.body).toContain('阅读角色文档:');
     const conversations = new TaskConversationRepository(db);
     const entries = conversations.listByTask('OC-BOOTSTRAP-1');
     expect(entries.map((entry) => entry.body)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('Task **OC-BOOTSTRAP-1** created: Bootstrap Task'),
-        expect.stringContaining('Agora task bootstrap'),
-        expect.stringContaining('Role briefing for opus'),
-        expect.stringContaining('Role briefing for sonnet'),
-        expect.stringContaining('Role briefing for glm5'),
+        expect.stringContaining('Agora 任务启动简报'),
+        expect.stringContaining('角色简报 opus'),
+        expect.stringContaining('角色简报 sonnet'),
+        expect.stringContaining('角色简报 glm5'),
       ]),
     );
   });
@@ -1852,9 +1852,9 @@ describe('task service', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
-    expect(rootBrief?.body).toContain('Smoke Test Mode:');
+    expect(rootBrief?.body).toContain('冒烟测试模式:');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
-    expect(opusBrief?.body).toContain('Smoke Test Mode: this thread is being used for validation');
+    expect(opusBrief?.body).toContain('冒烟测试模式：当前线程仅用于验证');
 
     const task = new TaskRepository(db).getTask('OC-SMOKE-1');
     expect(task?.control?.mode).toBe('smoke_test');
@@ -1908,8 +1908,8 @@ describe('task service', () => {
     expect(() => service.advanceTask('OC-SMOKE-STATUS-1', { callerId: 'archon' })).toThrow();
     await new Promise((resolve) => setTimeout(resolve, 20));
     const gateWaitingMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'gate_waiting');
-    expect(gateWaitingMessage?.body).toContain('Smoke Guidance:');
-    expect(gateWaitingMessage?.body).toContain('Validate the human approval path now.');
+    expect(gateWaitingMessage?.body).toContain('冒烟引导:');
+    expect(gateWaitingMessage?.body).toContain('现在验证人工审批链路。');
 
     provisioningPort.published.length = 0;
     subtasks.insertSubtask({
@@ -1948,8 +1948,8 @@ describe('task service', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_completed');
-    expect(callbackMessage?.body).toContain('Smoke Guidance:');
-    expect(callbackMessage?.body).toContain('Confirm this callback also appears in Agora conversation and Dashboard timeline.');
+    expect(callbackMessage?.body).toContain('冒烟引导:');
+    expect(callbackMessage?.body).toContain('确认这个 callback 也出现在 Agora conversation 和 Dashboard timeline。');
 
   });
 
@@ -2048,10 +2048,11 @@ describe('task service', () => {
       session_id: 'codex:exec-smoke-loop-1',
       payload: {
         input_request: {
+          transport: 'choice',
           hint: 'Choose continue',
           choice_options: [
-            { id: 'continue', label: 'Continue' },
-            { id: 'abort', label: 'Abort' },
+            { id: 'continue', label: 'Continue', keys: ['Enter'], submit: true },
+            { id: 'abort', label: 'Abort', keys: ['Down', 'Enter'], submit: true },
           ],
         },
       },
@@ -2116,7 +2117,7 @@ describe('task service', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     const probeMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'thread_probe_controller');
-    expect(probeMessage?.body).toContain('Smoke Guidance:');
+    expect(probeMessage?.body).toContain('冒烟引导:');
     expect(probeMessage?.body).toContain('controller -> roster -> inbox');
   });
 
@@ -2216,8 +2217,8 @@ describe('task service', () => {
     );
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
     expect(provisioningPort.published.at(-1)?.messages[0]?.kind).toBe('task_state_paused');
-    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('Task paused');
-    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('Task State: paused');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('任务已暂停');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('任务状态: paused');
 
     service.resumeTask('OC-CTX-1');
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -2232,8 +2233,8 @@ describe('task service', () => {
     );
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('active');
     expect(provisioningPort.published.at(-1)?.messages[0]?.kind).toBe('task_state_active');
-    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('Task resumed');
-    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('Task State: active');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('任务已恢复');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('任务状态: active');
 
     service.cancelTask('OC-CTX-1', { reason: 'manual stop' });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -2248,8 +2249,8 @@ describe('task service', () => {
     );
     expect(bindingService.listBindings('OC-CTX-1')[0]?.status).toBe('archived');
     expect(provisioningPort.published.at(-1)?.messages[0]?.kind).toBe('task_state_cancelled');
-    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('Task cancelled');
-    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('Task State: cancelled');
+    expect(provisioningPort.published.at(-1)?.messages[0]?.body).toContain('任务已取消');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-CTX-1', '00-current.md'), 'utf8')).toContain('任务状态: cancelled');
   });
 
   it('broadcasts reject reasons to the controller and rewinds the thread stage state', async () => {
@@ -2325,8 +2326,8 @@ describe('task service', () => {
     );
     const controllerMessage = latestMessages.find((message) => message.kind === 'controller_gate_rejected');
     expect(controllerMessage?.body).toContain('Need stronger rollback coverage before merge');
-    expect(controllerMessage?.body).toContain('Re-plan with the roster');
-    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-REJECT-THREAD-1', '03-stage-state.md'), 'utf8')).toContain('Current Stage: develop');
+    expect(controllerMessage?.body).toContain('请与成员重新规划');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-REJECT-THREAD-1', '03-stage-state.md'), 'utf8')).toContain('当前阶段: develop');
   });
 
   it('probes inactive tasks in staged order: controller, roster, then inbox', async () => {
@@ -2820,7 +2821,7 @@ describe('task service', () => {
       ]),
     );
     const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_completed');
-    expect(callbackMessage?.body).toContain('Event Type: craftsman_completed');
+    expect(callbackMessage?.body).toContain('事件类型: craftsman_completed');
     expect(callbackMessage?.body).toContain('Execution: exec-notify-1');
     expect(callbackMessage?.body).toContain('implemented and ready');
     const statusConversation = new TaskConversationRepository(db)

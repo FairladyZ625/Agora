@@ -17,6 +17,7 @@ interface BuildCreateTaskInputParams {
   title: string;
   description: string;
   priority: TaskPriority | string;
+  locale: 'zh-CN' | 'en-US';
   template: TemplateDetail;
   type: string;
   visibility: 'public' | 'private';
@@ -67,6 +68,7 @@ export function buildCreateTaskInput({
   title,
   description,
   priority,
+  locale,
   template,
   type,
   visibility,
@@ -85,6 +87,7 @@ export function buildCreateTaskInput({
     creator: 'archon',
     description: description.trim(),
     priority,
+    locale,
     ...(members.length > 0
       ? {
           team_override: {

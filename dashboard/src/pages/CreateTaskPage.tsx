@@ -5,6 +5,7 @@ import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createT
 import { buildCraftsmanInventory, isCraftsmanRole } from '@/lib/orchestrationRoles';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
+import { useLocale } from '@/lib/i18n';
 import { useAgentStore } from '@/stores/agentStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
@@ -41,6 +42,7 @@ function reconcileAssignments(
 
 export function CreateTaskPage() {
   const { t } = useTranslation();
+  const { locale } = useLocale();
   const createTaskCopy = useCreateTaskPageCopy();
   const createTask = useTaskStore((state) => state.createTask);
   const templates = useTemplateStore((state) => state.templates);
@@ -121,6 +123,7 @@ export function CreateTaskPage() {
             title,
             description,
             priority,
+            locale,
             template: selectedTemplate,
             type,
             visibility,

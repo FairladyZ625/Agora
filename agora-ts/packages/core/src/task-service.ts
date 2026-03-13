@@ -11,6 +11,7 @@ import type {
   CreateTaskRequestDto,
   PromoteTodoRequestDto,
   TaskBlueprintDto,
+  TaskLocaleDto,
   TaskStatusDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
@@ -65,6 +66,10 @@ type TaskTemplate = {
   >;
   stages?: WorkflowDto['stages'];
   graph?: WorkflowDto['graph'];
+};
+
+type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
+  locale?: TaskLocaleDto;
 };
 
 export interface TaskServiceOptions {
@@ -229,7 +234,7 @@ export class TaskService {
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
   }
 
-  createTask(input: CreateTaskRequestDto): StoredTask {
+  createTask(input: CreateTaskInputLike): StoredTask {
     const template = this.tryLoadTemplate(input.type);
     const workflow = input.workflow_override ?? (template ? this.buildWorkflow(template) : null);
     const requestedTeam = input.team_override ?? (template ? this.buildTeam(template) : null);
@@ -252,6 +257,7 @@ export class TaskService {
         type: input.type,
         priority: input.priority,
         creator: input.creator,
+        locale: resolveTaskLocale(input.locale),
         team,
         workflow,
         control: input.control ?? { mode: 'normal' },
@@ -1130,6 +1136,7 @@ export class TaskService {
       creator: options.creator,
       description: '',
       priority: options.priority,
+      locale: 'zh-CN',
     });
     const updatedTodo = this.todoRepository.updateTodo(todoId, {
       promoted_to: task.id,
@@ -1435,6 +1442,7 @@ export class TaskService {
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
     return {
       task_id: task.id,
+      locale: task.locale,
       title: task.title,
       description: task.description ?? '',
       type: task.type,
@@ -1558,20 +1566,20 @@ export class TaskService {
         kind: 'bootstrap_root',
         participant_refs: imParticipantRefs,
         body: [
-          'Agora task bootstrap',
-          `Task: ${task.id} — ${task.title}`,
-          `Task Goal: ${task.description?.trim() || task.title}`,
-          `Controller: ${controllerRef ?? '-'}`,
-          `Current Stage: ${task.current_stage}`,
-          `Execution Kind: ${resolveStageExecutionKind(stage) ?? '-'}`,
-          `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
+          taskText(task, 'Agora 任务启动简报', 'Agora task bootstrap'),
+          `${taskText(task, '任务', 'Task')}: ${task.id} — ${task.title}`,
+          `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
+          `${taskText(task, '主控', 'Controller')}: ${controllerRef ?? '-'}`,
+          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage}`,
+          `${taskText(task, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(stage) ?? '-'}`,
+          `${taskText(task, '允许动作', 'Allowed Actions')}: ${resolveAllowedActions(stage).join(', ') || '-'}`,
           '',
-          'Roster:',
+          `${taskText(task, '成员清单', 'Roster')}:`,
           ...task.team.members.map((member) => (
             `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'} | ${member.agent_origin ?? 'user_managed'} | ${member.briefing_mode ?? 'overlay_full'}`
           )),
           '',
-          'Read first:',
+          `${taskText(task, '首先阅读', 'Read first')}:`,
           `- ${join(homedir(), '.agora', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
           ...(workspacePath
             ? [
@@ -1582,24 +1590,24 @@ export class TaskService {
               ]
             : []),
           '',
-          'Craftsman loop:',
-          '- Use subtasks as the formal execution binding object inside this task thread.',
-          '- Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.',
-          '- If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.',
-          '- After a continued execution, sync the latest state with `agora craftsman probe <executionId>`; only fall back to `agora craftsman callback ...` if probe cannot infer the result.',
-          '- Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.',
+          `${taskText(task, 'Craftsman 循环', 'Craftsman loop')}:`,
+          `- ${taskText(task, '在当前任务线程内，使用 subtask 作为正式执行绑定对象。', 'Use subtasks as the formal execution binding object inside this task thread.')}`,
+          `- ${taskText(task, '仅当活动阶段允许 `craftsman_dispatch` 时，才从 subtask 调度 craftsman。', 'Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.')}`,
+          `- ${taskText(task, '如果 craftsman 进入 `needs_input` 或 `awaiting_choice`，通过它的 `execution_id` 继续同一个执行。', 'If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.')}`,
+          `- ${taskText(task, '继续执行后，用 `agora craftsman probe <executionId>` 同步最新状态；只有 probe 无法推断结果时，才回退到 `agora craftsman callback ...`。', 'After a continued execution, sync the latest state with `agora craftsman probe <executionId>`; only fall back to `agora craftsman callback ...` if probe cannot infer the result.')}`,
+          `- ${taskText(task, '把原始 tmux pane 命令视为调试 transport，不要当成默认产品流程。', 'Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.')}`,
           '',
-          'Discord mention rule:',
-          '- To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.',
-          '- Do not type display names like `@Opus` or `@Sonnet`.',
-          '- Reuse the real mentions already shown in this thread whenever possible.',
+          `${taskText(task, 'Discord 提及规则', 'Discord mention rule')}:`,
+          `- ${taskText(task, '要可靠唤醒 bot 或人类，请使用真实的 Discord mention 语法 `<@USER_ID>`。', 'To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.')}`,
+          `- ${taskText(task, '不要输入显示名，例如 `@Opus` 或 `@Sonnet`。', 'Do not type display names like `@Opus` or `@Sonnet`.')}`,
+          `- ${taskText(task, '尽量复用本线程里已经出现过的真实 mention。', 'Reuse the real mentions already shown in this thread whenever possible.')}`,
           ...(task.control?.mode === 'smoke_test'
             ? [
                 '',
-                'Smoke Test Mode:',
-                '- This task is running in smoke/test mode.',
-                '- Extra testing guidance may appear for validation only.',
-                '- This is not the default end-user product flow.',
+                `${taskText(task, '冒烟测试模式', 'Smoke Test Mode')}:`,
+                `- ${taskText(task, '当前任务运行在 smoke/test 模式下。', 'This task is running in smoke/test mode.')}`,
+                `- ${taskText(task, '额外测试引导仅用于验证。', 'Extra testing guidance may appear for validation only.')}`,
+                `- ${taskText(task, '这不是默认的终端用户产品流程。', 'This is not the default end-user product flow.')}`,
               ]
             : []),
         ].join('\n'),
@@ -1613,25 +1621,25 @@ export class TaskService {
         kind: 'role_brief',
         participant_refs: [member.agentId],
         body: [
-          `Role briefing for ${member.agentId}`,
-          `Agora Role: ${member.role}`,
-          `Member Kind: ${member.member_kind ?? 'citizen'}`,
-          `Agent Origin: ${member.agent_origin ?? 'user_managed'}`,
-          `Briefing Mode: ${member.briefing_mode ?? 'overlay_full'}`,
-          `Controller: ${controllerRef ?? '-'}`,
-          `Current Stage: ${task.current_stage}`,
-          `Task Goal: ${task.description?.trim() || task.title}`,
-          'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.',
-          'Continuation Rule: after continuing a craftsman execution, sync it with `agora craftsman probe <executionId>`; use `agora craftsman callback ...` only as a fallback.',
-          'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.',
+          `${taskText(task, '角色简报', 'Role briefing')} ${member.agentId}`,
+          `${taskText(task, 'Agora 角色', 'Agora Role')}: ${member.role}`,
+          `${taskText(task, '成员类型', 'Member Kind')}: ${member.member_kind ?? 'citizen'}`,
+          `${taskText(task, 'Agent 来源', 'Agent Origin')}: ${member.agent_origin ?? 'user_managed'}`,
+          `${taskText(task, '简报模式', 'Briefing Mode')}: ${member.briefing_mode ?? 'overlay_full'}`,
+          `${taskText(task, '主控', 'Controller')}: ${controllerRef ?? '-'}`,
+          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage}`,
+          `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
+          taskText(task, 'Craftsman 循环：使用正式 subtask 绑定 craftsman，等待中的执行通过 `execution_id` 继续，而不是靠原始 pane 名。', 'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.'),
+          taskText(task, '继续规则：继续 craftsman execution 后，用 `agora craftsman probe <executionId>` 同步；只有必要时才回退到 `agora craftsman callback ...`。', 'Continuation Rule: after continuing a craftsman execution, sync it with `agora craftsman probe <executionId>`; use `agora craftsman callback ...` only as a fallback.'),
+          taskText(task, 'Discord 提及规则：使用真实 `<@USER_ID>` mention，不要用显示名。', 'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.'),
           ...(task.control?.mode === 'smoke_test'
-            ? ['Smoke Test Mode: this thread is being used for validation, not for the default product UX.']
+            ? [taskText(task, '冒烟测试模式：当前线程仅用于验证，不代表默认产品体验。', 'Smoke Test Mode: this thread is being used for validation, not for the default product UX.')]
             : []),
-          ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`Read role doc: ${roleDocPath}`] : []),
+          ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`${taskText(task, '阅读角色文档', 'Read role doc')}: ${roleDocPath}`] : []),
           ...(member.briefing_mode === 'overlay_delta'
-            ? ['This agent already carries Agora-managed base role context; use the role brief below as task delta.']
-            : ['This agent should load the full Agora role overlay before acting.']),
-          ...(roleBriefPath ? [`Read role brief: ${roleBriefPath}`] : []),
+            ? [taskText(task, '该 Agent 已自带 Agora 托管的基础角色上下文；以下 role brief 只提供本任务增量。', 'This agent already carries Agora-managed base role context; use the role brief below as task delta.')]
+            : [taskText(task, '该 Agent 应在行动前加载完整的 Agora 角色覆盖上下文。', 'This agent should load the full Agora role overlay before acting.')]),
+          ...(roleBriefPath ? [`${taskText(task, '阅读角色简报', 'Read role brief')}: ${roleBriefPath}`] : []),
         ].join('\n'),
       });
     }
@@ -1673,17 +1681,17 @@ export class TaskService {
       participantRefs: [controllerRef],
       bodyLines: input.decision === 'rejected'
         ? [
-            `Controller action required for ${task.id}.`,
-            `Human rejected the current handoff via ${input.gateType}.`,
-            `Reason: ${input.reason ?? '(no reason provided)'}`,
-            `Current Stage: ${task.current_stage ?? '-'}`,
-            'Re-plan with the roster, address the feedback, and resubmit when ready.',
+            taskText(task, `${task.id} 需要主控处理。`, `Controller action required for ${task.id}.`),
+            taskText(task, `人类通过 ${input.gateType} 拒绝了当前交接。`, `Human rejected the current handoff via ${input.gateType}.`),
+            `${taskText(task, '原因', 'Reason')}: ${input.reason ?? taskText(task, '(未提供原因)', '(no reason provided)')}`,
+            `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+            taskText(task, '请与成员重新规划、处理反馈，并在准备好后重新送审。', 'Re-plan with the roster, address the feedback, and resubmit when ready.'),
           ]
         : [
-            `Controller update for ${task.id}.`,
-            `Human approved the current handoff via ${input.gateType}.`,
-            `Current Stage: ${task.current_stage ?? '-'}`,
-            'Resume orchestration and drive the next stage.',
+            taskText(task, `${task.id} 的主控更新。`, `Controller update for ${task.id}.`),
+            taskText(task, `人类已通过 ${input.gateType} 批准当前交接。`, `Human approved the current handoff via ${input.gateType}.`),
+            `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+            taskText(task, '请继续编排并推进到下一个阶段。', 'Resume orchestration and drive the next stage.'),
           ],
     });
   }
@@ -1745,20 +1753,20 @@ export class TaskService {
   ) {
     const bodyLines: string[] = [];
     if (toState === TaskState.PAUSED) {
-      bodyLines.push('Task paused. Thread will be archived and locked.');
+      bodyLines.push(taskText(task, '任务已暂停。线程将被归档并锁定。', 'Task paused. Thread will be archived and locked.'));
     } else if (toState === TaskState.CANCELLED) {
-      bodyLines.push('Task cancelled. Thread will be archived and locked until archive finalization.');
+      bodyLines.push(taskText(task, '任务已取消。线程将被归档并锁定，直到归档流程完成。', 'Task cancelled. Thread will be archived and locked until archive finalization.'));
     } else if (toState === TaskState.ACTIVE && fromState === TaskState.PAUSED) {
-      bodyLines.push('Task resumed. Original thread has been reopened.');
+      bodyLines.push(taskText(task, '任务已恢复。原线程已重新打开。', 'Task resumed. Original thread has been reopened.'));
     } else if (toState === TaskState.ACTIVE && fromState === TaskState.BLOCKED) {
-      bodyLines.push('Task unblocked and returned to active execution.');
+      bodyLines.push(taskText(task, '任务已解除阻塞并恢复为活跃执行。', 'Task unblocked and returned to active execution.'));
     } else if (toState === TaskState.BLOCKED) {
-      bodyLines.push('Task blocked and requires intervention.');
+      bodyLines.push(taskText(task, '任务已阻塞，需要介入处理。', 'Task blocked and requires intervention.'));
     } else {
       return;
     }
     if (reason) {
-      bodyLines.push(`Reason: ${reason}`);
+      bodyLines.push(`${taskText(task, '原因', 'Reason')}: ${reason}`);
     }
     this.publishTaskStatusBroadcast(task, {
       kind: `task_state_${toState}`,
@@ -1833,19 +1841,20 @@ export class TaskService {
       control_mode: task.control?.mode ?? 'normal',
       workspace_path: brainBinding?.workspace_path ?? null,
       participant_refs: input.participantRefs ?? null,
+      locale: task.locale,
       lines: [
-        'Agora status update',
-        `Event Type: ${input.kind}`,
-        `Task: ${task.id} — ${task.title}`,
-        `Task State: ${task.state}`,
-        `Current Stage: ${task.current_stage ?? '-'}`,
-        `Execution Kind: ${resolveStageExecutionKind(stage) ?? '-'}`,
-        `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
-        `Controller: ${resolveControllerRef(task.team.members) ?? '-'}`,
+        taskText(task, 'Agora 状态更新', 'Agora status update'),
+        `${taskText(task, '事件类型', 'Event Type')}: ${input.kind}`,
+        `${taskText(task, '任务', 'Task')}: ${task.id} — ${task.title}`,
+        `${taskText(task, '任务状态', 'Task State')}: ${task.state}`,
+        `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+        `${taskText(task, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(stage) ?? '-'}`,
+        `${taskText(task, '允许动作', 'Allowed Actions')}: ${resolveAllowedActions(stage).join(', ') || '-'}`,
+        `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
         ...input.bodyLines,
         ...this.buildSmokeStatusGuidance(task, input.kind),
-        ...(brainBinding ? [`Task Workspace: ${brainBinding.workspace_path}`] : []),
-        ...(brainBinding ? [`Current Brief: ${join(brainBinding.workspace_path, '00-current.md')}`] : []),
+        ...(brainBinding ? [`${taskText(task, '任务工作区', 'Task Workspace')}: ${brainBinding.workspace_path}`] : []),
+        ...(brainBinding ? [`${taskText(task, '当前简报', 'Current Brief')}: ${join(brainBinding.workspace_path, '00-current.md')}`] : []),
       ],
     };
   }
@@ -1861,60 +1870,60 @@ export class TaskService {
       case 'gate_waiting':
         return [
           '',
-          'Smoke Guidance:',
-          '- Validate the human approval path now.',
-          '- In this task thread, use the IM command or Dashboard to approve/reject without typing the task id.',
-          `- After a decision, confirm the controller (${controllerRef}) receives the next-step status update.`,
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, '现在验证人工审批链路。', 'Validate the human approval path now.')}`,
+          `- ${taskText(task, '在这个任务线程里，用 IM 命令或 Dashboard 直接 approve/reject，不需要手输 task id。', 'In this task thread, use the IM command or Dashboard to approve/reject without typing the task id.')}`,
+          `- ${taskText(task, `决策后确认主控 (${controllerRef}) 收到了下一步状态更新。`, `After a decision, confirm the controller (${controllerRef}) receives the next-step status update.`)}`,
         ];
       case 'gate_rejected':
       case 'controller_gate_rejected':
         return [
           '',
-          'Smoke Guidance:',
-          `- This is the reject/rework loop for stage ${currentStage}.`,
-          `- Controller ${controllerRef} should reorganize the roster work, reply in-thread with the fix plan, and resubmit for approval.`,
-          '- Validate that the reject reason is preserved in both Discord and Agora conversation.',
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, `当前是阶段 ${currentStage} 的 reject/rework 回环。`, `This is the reject/rework loop for stage ${currentStage}.`)}`,
+          `- ${taskText(task, `主控 ${controllerRef} 应重新组织成员工作，在子线程回复修复计划，并重新送审。`, `Controller ${controllerRef} should reorganize the roster work, reply in-thread with the fix plan, and resubmit for approval.`)}`,
+          `- ${taskText(task, '确认 reject 原因同时保留在 Discord 和 Agora conversation 中。', 'Validate that the reject reason is preserved in both Discord and Agora conversation.')}`,
         ];
       case 'gate_approved':
       case 'controller_gate_approved':
         return [
           '',
-          'Smoke Guidance:',
-          `- Approval passed for stage ${currentStage}.`,
-          `- Controller ${controllerRef} should continue the orchestration loop and drive the next allowed action.`,
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, `阶段 ${currentStage} 已通过审批。`, `Approval passed for stage ${currentStage}.`)}`,
+          `- ${taskText(task, `主控 ${controllerRef} 应继续编排循环并推动下一步允许动作。`, `Controller ${controllerRef} should continue the orchestration loop and drive the next allowed action.`)}`,
         ];
       case 'craftsman_started':
       case 'craftsman_running':
         return [
           '',
-          'Smoke Guidance:',
-          '- Validate the automatic loop now: wait for the craftsman callback and confirm the status returns to this thread.',
-          '- Do not trigger a second craftsman dispatch until the current callback completes.',
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, '现在验证自动循环：等待 craftsman callback，并确认状态回到这个线程。', 'Validate the automatic loop now: wait for the craftsman callback and confirm the status returns to this thread.')}`,
+          `- ${taskText(task, '当前 callback 完成前，不要触发第二个 craftsman dispatch。', 'Do not trigger a second craftsman dispatch until the current callback completes.')}`,
         ];
       case 'craftsman_completed':
       case 'craftsman_failed':
         return [
           '',
-          'Smoke Guidance:',
-          '- Confirm this callback also appears in Agora conversation and Dashboard timeline.',
-          `- Controller ${controllerRef} should decide whether to continue, retry, or resubmit based on the callback result.`,
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, '确认这个 callback 也出现在 Agora conversation 和 Dashboard timeline。', 'Confirm this callback also appears in Agora conversation and Dashboard timeline.')}`,
+          `- ${taskText(task, `主控 ${controllerRef} 应根据 callback 结果决定继续、重试还是重新送审。`, `Controller ${controllerRef} should decide whether to continue, retry, or resubmit based on the callback result.`)}`,
         ];
       case 'craftsman_needs_input':
       case 'craftsman_awaiting_choice':
         return [
           '',
-          'Smoke Guidance:',
-          '- Validate the structured input loop now using the execution-scoped Agora CLI commands.',
-          '- Confirm the callback metadata includes the input_request payload and appears in conversation/Dashboard.',
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, '现在用 execution-scoped Agora CLI 命令验证结构化输入回环。', 'Validate the structured input loop now using the execution-scoped Agora CLI commands.')}`,
+          `- ${taskText(task, '确认 callback metadata 包含 input_request，并且出现在 conversation/Dashboard。', 'Confirm the callback metadata includes the input_request payload and appears in conversation/Dashboard.')}`,
         ];
       case 'thread_probe_controller':
       case 'thread_probe_roster':
       case 'thread_probe_inbox':
         return [
           '',
-          'Smoke Guidance:',
-          '- This is a stuck-task escalation probe.',
-          '- Confirm the escalation order is controller -> roster -> inbox and that each step appears only once after real inactivity.',
+          `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
+          `- ${taskText(task, '这是卡住任务的升级探测。', 'This is a stuck-task escalation probe.')}`,
+          `- ${taskText(task, '确认升级顺序是 controller -> roster -> inbox，并且每一步只在真实无活动后触发一次。', 'Confirm the escalation order is controller -> roster -> inbox and that each step appears only once after real inactivity.')}`,
         ];
       default:
         return [];
@@ -2700,6 +2709,7 @@ type TaskStatusBroadcastEnvelope = {
   event_type: string;
   task_id: string;
   title: string;
+  locale: TaskLocaleDto;
   task_state: string;
   current_stage: string | null;
   execution_kind: string | null;
@@ -2710,6 +2720,15 @@ type TaskStatusBroadcastEnvelope = {
   participant_refs: string[] | null;
   lines: string[];
 };
+
+function resolveTaskLocale(locale: string | null | undefined): TaskLocaleDto {
+  return locale === 'en-US' ? 'en-US' : 'zh-CN';
+}
+
+function taskText(task: Pick<StoredTask, 'locale'> | TaskLocaleDto, zh: string, en: string) {
+  const locale = typeof task === 'string' ? task : task.locale;
+  return locale === 'en-US' ? en : zh;
+}
 
 function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) {
   if (!stage) {

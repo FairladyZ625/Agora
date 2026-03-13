@@ -57,6 +57,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '011_task_brain_bindings.sql',
       '012_approval_requests.sql',
       '013_task_control.sql',
+      '014_task_locale.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")

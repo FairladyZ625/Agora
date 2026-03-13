@@ -23,6 +23,7 @@ export interface Task {
   type: string;
   priority: TaskPriority | string;
   creator: string;
+  locale?: 'zh-CN' | 'en-US';
   state: TaskState;
   archiveStatus: string | null;
   controllerRef?: string | null;
@@ -185,6 +186,7 @@ export interface CreateTaskInput {
   creator: string;
   description: string;
   priority: TaskPriority | string;
+  locale?: 'zh-CN' | 'en-US';
   team_override?: {
     members: Array<{
       role: string;
