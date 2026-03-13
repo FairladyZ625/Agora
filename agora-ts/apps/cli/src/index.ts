@@ -62,11 +62,11 @@ function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
 }
 
-function parseJsonOption(raw?: string): Record<string, unknown> | null {
+function parseJsonOption(raw: string | undefined, context: string): Record<string, unknown> | null {
   if (!raw) {
     return null;
   }
-  return JSON.parse(raw) as Record<string, unknown>;
+  return parseJsonString(raw, context);
 }
 
 function collectOption(value: string, previous: string[] = []) {
@@ -161,7 +161,7 @@ function loadGraphSource(
   input: { template?: string; file?: string },
 ): TemplateGraphDto {
   if (input.file) {
-    const parsed = JSON.parse(readFileSync(input.file, 'utf8')) as ValidateWorkflowRequestDto & { graph_version?: number };
+    const parsed = parseJsonFile(input.file, 'workflow file') as ValidateWorkflowRequestDto & { graph_version?: number };
     if (typeof parsed.graph_version === 'number') {
       return parsed as unknown as TemplateGraphDto;
     }
@@ -171,6 +171,22 @@ function loadGraphSource(
     return templateAuthoringService.getTemplateGraph(input.template);
   }
   throw new Error('graph command requires --template or --file');
+}
+
+function parseJsonString(raw: string, context: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`Invalid JSON for ${context}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function parseJsonFile(path: string, context: string): Record<string, unknown> {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`Invalid JSON in ${context} ${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function insertStage(
@@ -301,9 +317,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
         creator: options.creator,
         description: '',
         priority: options.priority,
-        ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson) } : {}),
-        ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson) } : {}),
-        ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson) } : {}),
+        ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
+        ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
+        ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
         ...(options.smokeTest ? { control: { mode: 'smoke_test' } } : {}),
       });
       const template = (() => {
@@ -1189,7 +1205,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         execution_id: executionId,
         status: options.status as CraftsmanCallbackRequestDto['status'],
         session_id: options.sessionId ?? null,
-        payload: parseJsonOption(options.payload),
+        payload: parseJsonOption(options.payload, '--payload'),
         error: options.error ?? null,
         finished_at: options.finishedAt ?? null,
       });

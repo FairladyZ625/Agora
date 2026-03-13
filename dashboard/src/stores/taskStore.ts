@@ -34,12 +34,17 @@ interface TaskStore {
   clearError: () => void;
 }
 
+interface LoadedTaskStatusResult {
+  taskStatus: TaskStatus;
+  syncError: string | null;
+}
+
 async function refreshTaskContext(get: () => TaskStore, taskId: string) {
   await get().fetchTasks();
   await get().selectTask(taskId);
 }
 
-async function loadTaskStatus(taskId: string): Promise<TaskStatus> {
+async function loadTaskStatus(taskId: string): Promise<LoadedTaskStatusResult> {
   const [task, status, conversationSummary, conversation] = await Promise.all([
     api.getTask(taskId),
     api.getTaskStatus(taskId),
@@ -47,15 +52,20 @@ async function loadTaskStatus(taskId: string): Promise<TaskStatus> {
     api.getTaskConversation(taskId),
   ]);
   let resolvedSummary = conversationSummary;
+  let syncError: string | null = null;
   try {
     resolvedSummary = await api.markTaskConversationRead(taskId, {});
-  } catch {
+  } catch (error) {
     resolvedSummary = conversationSummary;
+    syncError = error instanceof Error ? error.message : String(error);
   }
   return {
-    ...mapTaskStatusDto({ ...status, task }),
-    conversationSummary: mapTaskConversationSummaryDto(resolvedSummary),
-    conversation: conversation.entries.map(mapTaskConversationEntryDto),
+    taskStatus: {
+      ...mapTaskStatusDto({ ...status, task }),
+      conversationSummary: mapTaskConversationSummaryDto(resolvedSummary),
+      conversation: conversation.entries.map(mapTaskConversationEntryDto),
+    },
+    syncError,
   };
 }
 
@@ -88,8 +98,11 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       // Refresh detail if a task is selected
       const { selectedTaskId: refreshedSelectedTaskId } = get();
       if (refreshedSelectedTaskId) {
-        const taskStatus = await loadTaskStatus(refreshedSelectedTaskId);
-        set({ selectedTaskStatus: taskStatus });
+        const { taskStatus, syncError } = await loadTaskStatus(refreshedSelectedTaskId);
+        set({
+          selectedTaskStatus: taskStatus,
+          ...(syncError ? { error: syncError } : {}),
+        });
       }
       return 'live';
     } catch (err) {
@@ -110,8 +123,12 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     }
     set({ selectedTaskId: id, detailLoading: true, error: null });
     try {
-      const taskStatus = await loadTaskStatus(id);
-      set({ selectedTaskStatus: taskStatus, detailLoading: false });
+      const { taskStatus, syncError } = await loadTaskStatus(id);
+      set({
+        selectedTaskStatus: taskStatus,
+        detailLoading: false,
+        ...(syncError ? { error: syncError } : {}),
+      });
     } catch (err) {
       set({
         selectedTaskStatus: null,

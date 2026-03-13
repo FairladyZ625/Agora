@@ -250,6 +250,21 @@ describe('task store live API mode', () => {
     expect(state.selectedTaskStatus?.conversationSummary?.unread_count).toBe(0);
   });
 
+  it('surfaces conversation read sync failures without dropping loaded task detail', async () => {
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.getTaskStatus).mockResolvedValue(buildTaskStatusDto());
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto());
+    vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
+    vi.mocked(api.markTaskConversationRead).mockRejectedValue(new Error('conversation read unavailable'));
+
+    await useTaskStore.getState().selectTask('OC-001');
+    const state = useTaskStore.getState();
+
+    expect(state.selectedTaskStatus?.task.id).toBe('OC-001');
+    expect(state.selectedTaskStatus?.conversationSummary?.unread_count).toBe(1);
+    expect(state.error).toContain('conversation read unavailable');
+  });
+
   it('refreshes the selected task after a successful approval', async () => {
     vi.mocked(api.archonApprove).mockResolvedValue(buildTaskDto({ current_stage: 'review' }));
     vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto({ current_stage: 'review' })]);
@@ -258,6 +273,7 @@ describe('task store live API mode', () => {
         task: buildTaskDto({ current_stage: 'review' }),
       }),
     );
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto({ current_stage: 'review' }));
     vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto({
       unread_count: 0,
       has_unread: false,

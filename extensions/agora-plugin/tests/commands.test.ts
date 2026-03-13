@@ -121,10 +121,10 @@ describe("registerTaskCommands", () => {
     await expect(getCommand().handler({ args: "reject OC-101 needs-work", senderId: "u1" })).resolves.toEqual({
       text: "OC-101 rejected",
     });
-    await expect(getCommand().handler({ args: "archon-approve OC-101 ok", senderId: "u1" })).resolves.toEqual({
+    await expect(getCommand().handler({ args: "archon-approve OC-101 ok", senderId: "u1", provider: "feishu" })).resolves.toEqual({
       text: "OC-101 archon-approved",
     });
-    await expect(getCommand().handler({ args: "archon-reject OC-101 no", senderId: "u1" })).resolves.toEqual({
+    await expect(getCommand().handler({ args: "archon-reject OC-101 no", senderId: "u1", provider: "feishu" })).resolves.toEqual({
       text: "OC-101 archon-rejected",
     });
     await expect(getCommand().handler({ args: "confirm OC-101 approve done", senderId: "u1" })).resolves.toEqual({
@@ -195,7 +195,7 @@ describe("registerTaskCommands", () => {
     });
   });
 
-  it("falls back to ctx.from and default provider for current-thread approve/reject", async () => {
+  it("requires provider context for current-thread approve/reject", async () => {
     const bridge = {
       approveCurrent: vi.fn(async () => ({ id: "OC-301" })),
       rejectCurrent: vi.fn(async () => ({ id: "OC-302" })),
@@ -203,30 +203,37 @@ describe("registerTaskCommands", () => {
     const { api, getCommand } = buildApi();
     registerTaskCommands(api as any, bridge);
 
-    await getCommand().handler({
+    await expect(getCommand().handler({
       args: "approve",
       from: "legacy-user",
       threadId: "thread-11",
+    })).resolves.toEqual({
+      text: "Provider context is required for current-thread /task approve",
     });
-    await getCommand().handler({
+    await expect(getCommand().handler({
       args: "reject",
       from: "legacy-user",
       conversationId: "channel-11",
+    })).resolves.toEqual({
+      text: "Provider context is required for current-thread /task reject",
     });
 
-    expect(bridge.approveCurrent).toHaveBeenCalledWith({
-      provider: "discord",
-      threadRef: "thread-11",
-      conversationRef: undefined,
-      actorId: "legacy-user",
-      comment: "",
+    expect(bridge.approveCurrent).not.toHaveBeenCalled();
+    expect(bridge.rejectCurrent).not.toHaveBeenCalled();
+  });
+
+  it("requires provider context for archon review actions", async () => {
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, {
+      archonApprove: vi.fn(async () => ({ id: "OC-500" })),
+      archonReject: vi.fn(async () => ({ id: "OC-500" })),
+    } as any);
+
+    await expect(getCommand().handler({ args: "archon-approve OC-500 ok", senderId: "u1" })).resolves.toEqual({
+      text: "Provider context is required for /task archon-approve",
     });
-    expect(bridge.rejectCurrent).toHaveBeenCalledWith({
-      provider: "discord",
-      threadRef: undefined,
-      conversationRef: "channel-11",
-      actorId: "legacy-user",
-      reason: "",
+    await expect(getCommand().handler({ args: "archon-reject OC-500 no", senderId: "u1" })).resolves.toEqual({
+      text: "Provider context is required for /task archon-reject",
     });
   });
 

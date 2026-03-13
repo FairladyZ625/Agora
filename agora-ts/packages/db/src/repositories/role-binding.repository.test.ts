@@ -111,4 +111,37 @@ describe('role repositories', () => {
       metadata: { source: 'manual-updated' },
     });
   });
+
+  it('preserves the original binding identity when an existing scoped binding is updated', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const roleDefinitions = new RoleDefinitionRepository(db);
+    roleDefinitions.seedFromPackDir(makeRolePackDir());
+    const bindings = new RoleBindingRepository(db);
+
+    const created = bindings.saveBinding({
+      id: 'binding-1',
+      role_id: 'controller',
+      scope: 'workspace',
+      scope_ref: 'default',
+      target_kind: 'runtime_agent',
+      target_adapter: 'openclaw',
+      target_ref: 'opus',
+      binding_mode: 'overlay',
+    });
+    const updated = bindings.saveBinding({
+      id: 'binding-2',
+      role_id: 'controller',
+      scope: 'workspace',
+      scope_ref: 'default',
+      target_kind: 'runtime_agent',
+      target_adapter: 'openclaw',
+      target_ref: 'sonnet',
+      binding_mode: 'overlay',
+    });
+
+    expect(created.id).toBe('binding-1');
+    expect(updated.id).toBe('binding-1');
+    expect(bindings.listBindingsByScope('workspace', 'default')).toHaveLength(1);
+  });
 });

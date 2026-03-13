@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { TasksPage } from '@/pages/TasksPage';
 import { ReviewsPage } from '@/pages/ReviewsPage';
@@ -13,7 +13,7 @@ const taskStoreState = {
   tasks: mockTasks,
   loading: false,
   detailLoading: false,
-  error: null,
+  error: null as string | null,
   selectedTaskId: 'TSK-001',
   selectedTaskStatus: getMockTaskStatus('TSK-001'),
   filters: { state: null, search: '' },
@@ -55,6 +55,8 @@ describe('dashboard mobile workbench routes', () => {
     fetchTasks.mockClear();
     resolveReview.mockClear();
     taskStoreState.tasks = createMockTasks();
+    taskStoreState.detailLoading = false;
+    taskStoreState.error = null;
     taskStoreState.selectedTaskId = 'TSK-001';
     taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-001');
   });
@@ -75,6 +77,66 @@ describe('dashboard mobile workbench routes', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: '任务详情面板' })).toBeInTheDocument();
     });
+  });
+
+  it('shows an explicit loading state while the task detail sheet is still hydrating', async () => {
+    taskStoreState.detailLoading = true;
+    taskStoreState.selectedTaskStatus = null;
+
+    renderWithRoutes(
+      ['/tasks/TSK-001'],
+      <>
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:taskId" element={<TasksPage />} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '任务详情面板' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('正在加载任务详情')).toBeInTheDocument();
+  });
+
+  it('shows an explicit error state when task detail loading fails', async () => {
+    taskStoreState.tasks = [];
+    taskStoreState.selectedTaskId = 'TSK-404';
+    taskStoreState.selectedTaskStatus = null;
+    taskStoreState.error = 'detail load failed';
+
+    renderWithRoutes(
+      ['/tasks/TSK-404'],
+      <>
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:taskId" element={<TasksPage />} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '任务详情面板' })).toBeInTheDocument();
+    });
+    const detailSheet = screen.getByRole('dialog', { name: '任务详情面板' });
+    expect(within(detailSheet).getByText('任务详情暂时不可用')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('detail load failed')).toBeInTheDocument();
+  });
+
+  it('shows an empty state when the requested task detail no longer exists', async () => {
+    taskStoreState.tasks = [];
+    taskStoreState.selectedTaskId = 'TSK-404';
+    taskStoreState.selectedTaskStatus = null;
+    taskStoreState.error = null;
+
+    renderWithRoutes(
+      ['/tasks/TSK-404'],
+      <>
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:taskId" element={<TasksPage />} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '任务详情面板' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('当前任务详情不可用')).toBeInTheDocument();
   });
 
   it('opens review detail as a sheet on mobile instead of keeping the inspector mounted inline', async () => {

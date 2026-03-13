@@ -533,6 +533,11 @@ export const resources = {
         detailAction: '打开任务详情',
         detailDialogLabel: '任务详情面板',
         detailDialogTitle: '执行全过程',
+        detailLoadingTitle: '正在加载任务详情',
+        detailLoadingSummary: '系统正在同步该任务的最新状态、会话与执行记录。',
+        detailErrorTitle: '任务详情暂时不可用',
+        detailEmptyTitle: '当前任务详情不可用',
+        detailEmptySummary: '该任务可能已被移除，或当前筛选下已不再可见。',
         quickViewTitle: '任务详情',
         filterSectionLabels: {
           state: '任务状态',
@@ -1323,6 +1328,11 @@ export const resources = {
         detailAction: 'Open task details',
         detailDialogLabel: 'Task details panel',
         detailDialogTitle: 'Full execution flow',
+        detailLoadingTitle: 'Loading task details',
+        detailLoadingSummary: 'The system is syncing the latest status, conversation, and execution logs for this task.',
+        detailErrorTitle: 'Task details are temporarily unavailable',
+        detailEmptyTitle: 'Task details are unavailable',
+        detailEmptySummary: 'This task may have been removed or is no longer visible under the current filter.',
         quickViewTitle: 'Task detail',
         filterSectionLabels: {
           state: 'Task state',

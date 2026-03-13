@@ -17,30 +17,17 @@ export class RoleBindingRepository {
     metadata?: Record<string, unknown> | null;
   }): RoleBindingDto {
     const now = new Date().toISOString();
-    const existing = this.getBinding(input.scope, input.scope_ref, input.role_id);
-    if (existing) {
-      this.db.prepare(`
-        UPDATE role_bindings
-        SET target_kind = ?, target_adapter = ?, target_ref = ?, binding_mode = ?, metadata = ?, updated_at = ?
-        WHERE scope = ? AND scope_ref = ? AND role_id = ?
-      `).run(
-        input.target_kind,
-        input.target_adapter,
-        input.target_ref,
-        input.binding_mode,
-        input.metadata ? stringifyJsonValue(input.metadata) : null,
-        now,
-        input.scope,
-        input.scope_ref,
-        input.role_id,
-      );
-      return this.getBinding(input.scope, input.scope_ref, input.role_id)!;
-    }
-
     this.db.prepare(`
       INSERT INTO role_bindings (
         id, role_id, scope, scope_ref, target_kind, target_adapter, target_ref, binding_mode, metadata, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(scope, scope_ref, role_id) DO UPDATE SET
+        target_kind = excluded.target_kind,
+        target_adapter = excluded.target_adapter,
+        target_ref = excluded.target_ref,
+        binding_mode = excluded.binding_mode,
+        metadata = excluded.metadata,
+        updated_at = excluded.updated_at
     `).run(
       input.id,
       input.role_id,
@@ -55,7 +42,7 @@ export class RoleBindingRepository {
       now,
     );
 
-    return this.getBinding(input.scope, input.scope_ref, input.role_id)!;
+    return this.requireBinding(input.scope, input.scope_ref, input.role_id);
   }
 
   getBinding(scope: RoleBindingDto['scope'], scopeRef: string, roleId: string): RoleBindingDto | null {
@@ -86,5 +73,13 @@ export class RoleBindingRepository {
       created_at: String(row.created_at),
       updated_at: String(row.updated_at),
     };
+  }
+
+  private requireBinding(scope: RoleBindingDto['scope'], scopeRef: string, roleId: string): RoleBindingDto {
+    const binding = this.getBinding(scope, scopeRef, roleId);
+    if (!binding) {
+      throw new Error(`Failed to retrieve role binding ${scope}/${scopeRef}/${roleId} after save`);
+    }
+    return binding;
   }
 }

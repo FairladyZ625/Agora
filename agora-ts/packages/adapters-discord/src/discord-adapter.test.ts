@@ -379,6 +379,40 @@ describe('DiscordIMProvisioningAdapter', () => {
     vi.unstubAllGlobals();
   });
 
+  it('joinParticipant treats member-list verification failures as joined with detail', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-sonnet', username: 'sonnet' }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'missing access' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      primaryAccountId: 'main',
+      participantTokens: {
+        sonnet: 'token-sonnet',
+      },
+    });
+
+    const result = await adapter.joinParticipant({
+      binding_id: 'bind-verify-1',
+      participant_ref: 'sonnet',
+      thread_ref: 'thread-join-verify',
+    });
+
+    expect(result).toEqual({
+      status: 'joined',
+      detail: 'participant sonnet added, but thread member verification was unavailable: Discord listThreadMembers failed: 403 missing access',
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it('removeParticipant removes a joined participant through the Agora bot', async () => {
     const mockFetch = vi
       .fn()
@@ -417,6 +451,40 @@ describe('DiscordIMProvisioningAdapter', () => {
         headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
       }),
     );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('removeParticipant treats member-list verification failures as removed with detail', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-sonnet', username: 'sonnet' }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'missing access' });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      primaryAccountId: 'main',
+      participantTokens: {
+        sonnet: 'token-sonnet',
+      },
+    });
+
+    const result = await adapter.removeParticipant({
+      binding_id: 'bind-rm-verify-1',
+      participant_ref: 'sonnet',
+      thread_ref: 'thread-rm-verify',
+    });
+
+    expect(result).toEqual({
+      status: 'removed',
+      detail: 'participant sonnet removed, but thread member verification was unavailable: Discord listThreadMembers failed: 403 missing access',
+    });
 
     vi.unstubAllGlobals();
   });

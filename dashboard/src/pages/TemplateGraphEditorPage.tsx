@@ -204,15 +204,15 @@ export function TemplateGraphEditorPage() {
 
   const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
-  const graphNodes = useMemo<Node[]>(() => (
+  const graphNodes: Node[] = (
     draftGraph?.nodes.map((node) => ({
       id: node.id,
       position: node.layout ?? { x: 0, y: 0 },
       data: { label: node.name },
       type: 'default',
     })) ?? []
-  ), [draftGraph]);
-  const graphCanvasEdges = useMemo<Edge[]>(() => (
+  );
+  const graphCanvasEdges: Edge[] = (
     draftGraph?.edges.map((edge) => ({
       id: edge.id,
       source: edge.from,
@@ -221,7 +221,7 @@ export function TemplateGraphEditorPage() {
       markerEnd: { type: MarkerType.ArrowClosed },
       animated: edge.kind === 'reject',
     })) ?? []
-  ), [draftGraph]);
+  );
   const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
   const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
 
@@ -325,7 +325,7 @@ export function TemplateGraphEditorPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
+      <section className="template-graph-editor-layout">
         <aside className="surface-panel surface-panel--workspace space-y-3">
           <h3 className="section-title">Graph tools</h3>
           <button
@@ -395,7 +395,7 @@ export function TemplateGraphEditorPage() {
         </aside>
 
         <div className="surface-panel surface-panel--workspace">
-          <div style={{ width: '100%', height: '70vh', minHeight: 640 }}>
+          <div className="template-graph-editor-canvas">
             <ReactFlow
               fitView
               nodes={graphNodes}

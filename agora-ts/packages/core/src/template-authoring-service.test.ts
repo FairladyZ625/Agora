@@ -142,17 +142,26 @@ describe('template authoring service', () => {
     const templatesDir = makeTemplatesDir();
     const repository = new TemplateRepository(db);
 
-    repository.saveTemplate('coding', {
-      name: '旧编码模板',
-      type: 'coding',
-      governance: 'standard',
-      defaultTeam: {
-        architect: { suggested: ['opus'] },
-        developer: { suggested: ['sonnet'] },
-        craftsman: { suggested: ['codex'] },
-      },
-      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
-    }, 'user');
+    db.prepare(`
+      INSERT INTO templates (id, source, payload, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      'coding',
+      'user',
+      JSON.stringify({
+        name: '旧编码模板',
+        type: 'coding',
+        governance: 'standard',
+        defaultTeam: {
+          architect: { suggested: ['opus'] },
+          developer: { suggested: ['sonnet'] },
+          craftsman: { suggested: ['codex'] },
+        },
+        stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+      }),
+      '2026-03-13T00:00:00.000Z',
+      '2026-03-13T00:00:00.000Z',
+    );
 
     new TemplateAuthoringService({ db, templatesDir });
 

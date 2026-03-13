@@ -247,6 +247,11 @@ export function useTasksPageCopy() {
     detailAction: t('tasks.detailAction'),
     detailDialogLabel: t('tasks.detailDialogLabel'),
     detailDialogTitle: t('tasks.detailDialogTitle'),
+    detailLoadingTitle: t('tasks.detailLoadingTitle'),
+    detailLoadingSummary: t('tasks.detailLoadingSummary'),
+    detailErrorTitle: t('tasks.detailErrorTitle'),
+    detailEmptyTitle: t('tasks.detailEmptyTitle'),
+    detailEmptySummary: t('tasks.detailEmptySummary'),
     quickViewTitle: t('tasks.quickViewTitle'),
     filterSectionLabels: {
       state: t('tasks.filterSectionLabels.state'),

@@ -78,24 +78,32 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
 
   confirmJob: async (id) => {
     set({ error: null });
-    const updated = mapArchiveJobDto(await api.notifyArchiveJob(id));
-    const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
-    set({
-      jobs,
-      selectedJobId: id,
-      selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
-    });
+    try {
+      const updated = mapArchiveJobDto(await api.notifyArchiveJob(id));
+      const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
+      set({
+        jobs,
+        selectedJobId: id,
+        selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
   },
 
   retryJob: async (id, reason = '') => {
     set({ error: null });
-    const updated = mapArchiveJobDto(await api.retryArchiveJob(id, reason));
-    const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
-    set({
-      jobs,
-      selectedJobId: id,
-      selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
-    });
+    try {
+      const updated = mapArchiveJobDto(await api.retryArchiveJob(id, reason));
+      const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
+      set({
+        jobs,
+        selectedJobId: id,
+        selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
   },
 
   setFilters: (partial) => {

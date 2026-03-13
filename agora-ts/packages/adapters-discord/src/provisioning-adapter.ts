@@ -76,7 +76,15 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     const token = this.participantTokens[_input.participant_ref];
     const userId = await this.resolveParticipantUserId(_input.participant_ref, token);
     await this.client.addThreadMember(threadRef, userId);
-    const members = await this.client.listThreadMembers(threadRef);
+    let members;
+    try {
+      members = await this.client.listThreadMembers(threadRef);
+    } catch (error) {
+      return {
+        status: 'joined',
+        detail: `participant ${_input.participant_ref} added, but thread member verification was unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     const joined = members.some((member) => this.readThreadMemberUserId(member) === userId);
     if (!joined) {
       return {
@@ -98,7 +106,15 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     const token = this.participantTokens[input.participant_ref];
     const userId = await this.resolveParticipantUserId(input.participant_ref, token);
     await this.client.removeThreadMember(threadRef, userId);
-    const members = await this.client.listThreadMembers(threadRef);
+    let members;
+    try {
+      members = await this.client.listThreadMembers(threadRef);
+    } catch (error) {
+      return {
+        status: 'removed',
+        detail: `participant ${input.participant_ref} removed, but thread member verification was unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     const removed = members.every((member) => this.readThreadMemberUserId(member) !== userId);
     if (!removed) {
       return {

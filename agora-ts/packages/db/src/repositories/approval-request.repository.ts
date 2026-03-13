@@ -48,7 +48,7 @@ export class ApprovalRequestRepository {
       requestedAt,
       stringifyJsonValue(input.metadata ?? null),
     );
-    return this.getById(id)!;
+    return this.requireById(id, 'insert');
   }
 
   getById(id: string): StoredApprovalRequest | null {
@@ -102,7 +102,15 @@ export class ApprovalRequestRepository {
       stringifyJsonValue(input.metadata ?? current.metadata ?? null),
       id,
     );
-    return this.getById(id)!;
+    return this.requireById(id, 'resolve');
+  }
+
+  private requireById(id: string, operation: 'insert' | 'resolve'): StoredApprovalRequest {
+    const record = this.getById(id);
+    if (!record) {
+      throw new Error(`Failed to retrieve approval request ${id} after ${operation}`);
+    }
+    return record;
   }
 
   private parseRow(row: Record<string, unknown>): StoredApprovalRequest {

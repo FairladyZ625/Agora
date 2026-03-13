@@ -112,6 +112,56 @@ describe('dashboard query service', () => {
     });
   });
 
+  it('uses provider-tagged history events without core hardcoded channel heuristics', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      agentRegistry: {
+        listAgents: () => [{
+          id: 'ops',
+          role: null,
+          host_framework: 'openclaw',
+          channel_providers: ['feishu'],
+          inventory_sources: ['test'],
+          primary_model: null,
+          workspace_dir: null,
+        }],
+      },
+      presenceSource: {
+        listPresence: () => [{
+          agent_id: 'ops',
+          presence: 'online',
+          provider: 'feishu',
+          account_id: 'ops',
+          last_seen_at: '2026-03-13T02:00:00.000Z',
+          reason: 'provider_start',
+        }],
+        listHistory: () => [{
+          occurred_at: '2026-03-13T02:00:00.000Z',
+          agent_id: 'ops',
+          provider: 'feishu',
+          account_id: 'ops',
+          presence: 'online',
+          reason: 'provider_start',
+        }],
+        listSignals: () => [],
+      },
+    });
+
+    const detail = queries.getAgentChannelDetail('feishu');
+
+    expect(detail.channel).toBe('feishu');
+    expect(detail.history).toEqual([
+      expect.objectContaining({
+        agent_id: 'ops',
+        account_id: 'ops',
+        presence: 'online',
+        reason: 'provider_start',
+      }),
+    ]);
+  });
+
   it('lists and retries archive jobs with joined task metadata', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -601,6 +651,34 @@ describe('dashboard query service', () => {
     expect(agentsStatus.tmux_runtime).toBeNull();
   });
 
+  it('does not project closed live sessions into the active agent summary', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessions = new LiveSessionStore({
+      staleAfterMs: 60_000,
+      now: () => new Date('2026-03-08T06:47:30.000Z'),
+    });
+    const queries = new DashboardQueryService(db, { templatesDir, liveSessions });
+
+    liveSessions.upsert({
+      source: 'openclaw',
+      agent_id: 'ops',
+      session_key: 'agent:ops:discord:channel:alerts',
+      channel: 'discord',
+      conversation_id: 'alerts',
+      thread_id: null,
+      status: 'closed',
+      last_event: 'agent_end',
+      last_event_at: '2026-03-08T06:47:13.657Z',
+      metadata: { success: false, error: 'unknown model' },
+    });
+
+    const agentsStatus = queries.getAgentsStatus();
+
+    expect(agentsStatus.summary.active_agents).toBe(0);
+    expect(agentsStatus.agents).toEqual([]);
+  });
+
   it('overlays provider presence and last seen timestamps from gateway events', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -655,6 +733,7 @@ describe('dashboard query service', () => {
         {
           occurred_at: '2026-03-08T07:30:25.241Z',
           agent_id: 'main',
+          provider: 'discord',
           account_id: 'main',
           presence: 'online',
           reason: 'provider_start',
@@ -662,6 +741,7 @@ describe('dashboard query service', () => {
         {
           occurred_at: '2026-03-08T07:27:00.166Z',
           agent_id: 'sonnet',
+          provider: 'discord',
           account_id: 'sonnet',
           presence: 'disconnected',
           reason: 'health_monitor_restart',
@@ -800,6 +880,7 @@ describe('dashboard query service', () => {
         {
           occurred_at: '2026-03-08T10:00:00.000Z',
           agent_id: 'sonnet',
+          provider: 'discord',
           account_id: 'sonnet',
           presence: 'online',
           reason: 'provider_start',

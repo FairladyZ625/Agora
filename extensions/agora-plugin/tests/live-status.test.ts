@@ -129,7 +129,7 @@ describe("registerLiveStatusBridge", () => {
       expect.objectContaining({
         agent_id: "ops",
         session_key: "agent:ops:discord:channel:alerts",
-        status: "idle",
+        status: "closed",
         last_event: "agent_end",
         metadata: expect.objectContaining({
           success: false,

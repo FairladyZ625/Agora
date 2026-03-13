@@ -123,7 +123,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       channel: ctx.channelId ?? inferChannel(sessionKey),
       conversation_id: inferConversationId(sessionKey),
       thread_id: null,
-      status: event.success ? "idle" : "idle",
+      status: event.success ? "idle" : "closed",
       last_event: "agent_end",
       last_event_at: new Date().toISOString(),
       metadata: {

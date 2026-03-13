@@ -43,7 +43,7 @@ export class TaskBrainBindingRepository {
       now,
       input.updated_at ?? now,
     );
-    return this.getById(input.id)!;
+    return this.requireById(input.id);
   }
 
   getById(id: string): StoredTaskBrainBinding | null {
@@ -90,5 +90,13 @@ export class TaskBrainBindingRepository {
       updated_at: String(row.updated_at),
       closed_at: row.closed_at === null ? null : String(row.closed_at),
     };
+  }
+
+  private requireById(id: string): StoredTaskBrainBinding {
+    const record = this.getById(id);
+    if (!record) {
+      throw new Error(`Failed to retrieve task brain binding ${id} after insert`);
+    }
+    return record;
   }
 }

@@ -50,7 +50,7 @@ export function TemplatesPage() {
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <section className="templates-workbench-grid">
         <div className="surface-panel surface-panel--workspace" data-testid="templates-library">
           <div className="section-title-row">
             <h3 className="section-title">{copy.listTitle}</h3>

@@ -29,6 +29,7 @@ export interface AgentPresenceSnapshot {
 export interface AgentPresenceHistoryEvent {
   occurred_at: string;
   agent_id: string;
+  provider: string | null;
   account_id: string | null;
   presence: AgentPresenceState;
   reason: string | null;

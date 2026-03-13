@@ -303,7 +303,7 @@ export class DashboardQueryService {
       current.host_framework = current.host_framework ?? 'openclaw';
       mergeUnique(current.inventory_sources, 'openclaw');
       const channelProvider = normalizeChannelProvider(session.channel);
-      if (channelProvider) {
+      if (channelProvider && channelProvider !== session.agent_id) {
         mergeUnique(current.channel_providers, channelProvider);
       }
       current.primary_model ??= null;
@@ -633,13 +633,11 @@ function presenceRank(presence: 'online' | 'offline' | 'disconnected' | 'stale')
 }
 
 function normalizeChannelProvider(value?: string | null) {
-  if (!value) {
+  const normalized = value?.trim();
+  if (!normalized) {
     return null;
   }
-  if (value === 'discord' || value === 'whatsapp') {
-    return value;
-  }
-  return null;
+  return normalized;
 }
 
 function mergeUnique(target: string[], value: string | null) {
@@ -906,7 +904,7 @@ function presenceSeverity(presence: 'online' | 'offline' | 'disconnected' | 'sta
 }
 
 function inferChannelFromHistory(event: AgentPresenceHistoryEvent) {
-  return event.account_id === null && event.agent_id === 'main' ? 'whatsapp' : 'discord';
+  return normalizeChannelProvider(event.provider);
 }
 
 function compareHistoryEvents(left: AgentPresenceHistoryEvent, right: AgentPresenceHistoryEvent) {

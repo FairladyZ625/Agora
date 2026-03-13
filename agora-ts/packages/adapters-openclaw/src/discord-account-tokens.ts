@@ -13,7 +13,7 @@ export function loadOpenClawDiscordAccountTokens(
   if (!existsSync(configPath)) {
     return {};
   }
-  const raw = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  const raw = parseOpenClawConfig(configPath);
   const channels = isObjectRecord(raw.channels) ? raw.channels : null;
   const discord = channels && isObjectRecord(channels.discord) ? channels.discord : null;
   const accounts = discord && isObjectRecord(discord.accounts) ? discord.accounts : null;
@@ -33,6 +33,14 @@ export function loadOpenClawDiscordAccountTokens(
     tokens[accountId] = token;
   }
   return tokens;
+}
+
+function parseOpenClawConfig(configPath: string): Record<string, unknown> {
+  try {
+    return JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`Invalid OpenClaw config JSON at ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {

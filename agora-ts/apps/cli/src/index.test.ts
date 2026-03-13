@@ -26,6 +26,14 @@ function makeWorkflowFile(payload: Record<string, unknown>) {
   return path;
 }
 
+function makeRawWorkflowFile(content: string) {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-workflow-raw-'));
+  tempPaths.push(dir);
+  const path = join(dir, 'workflow.json');
+  writeFileSync(path, content, 'utf8');
+  return path;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -179,6 +187,27 @@ describe('agora-ts cli', () => {
         },
       ],
     });
+  });
+
+  it('surfaces invalid json option errors with the flag name', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-300B-ERR',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await expect(program.parseAsync([
+      'create',
+      'broken json create',
+      '--type', 'coding',
+      '--team-json', '{broken-json',
+    ], {
+      from: 'user',
+    })).rejects.toThrow(/invalid json for --team-json/i);
   });
 
   it('creates tasks with controller and role binding convenience options', async () => {
@@ -406,6 +435,31 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('graph version: 1');
     expect(template.stages?.map((stage) => stage.id)).toEqual(['triage', 'implement', 'review']);
     expect(template.graph?.entry_nodes).toEqual(['triage']);
+  });
+
+  it('surfaces invalid workflow file json with a clear graph command error', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const workflowFile = makeRawWorkflowFile('{broken-json');
+    const program = createCliProgram({
+      taskService: new TaskService(db, { templatesDir }),
+      templateAuthoringService,
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      dashboardQueryService: createDashboardQueryServiceForDb(db),
+      tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      humanAccountService: new HumanAccountService(db),
+      taskConversationService: new TaskConversationService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await expect(program.parseAsync(['graph', 'validate', '--file', workflowFile], {
+      from: 'user',
+    })).rejects.toThrow(/invalid json in workflow file/i);
   });
 
   it('manages archive jobs through the cli', async () => {

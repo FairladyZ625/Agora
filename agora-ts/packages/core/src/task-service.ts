@@ -226,11 +226,16 @@ export class TaskService {
   }
 
   createTask(input: CreateTaskRequestDto): StoredTask {
-    const template = this.loadTemplate(input.type);
-    const workflow = input.workflow_override ?? this.buildWorkflow(template);
-    const team = this.enrichTeam(this.resolveRequestedTeam(input, template));
+    const template = this.tryLoadTemplate(input.type);
+    const workflow = input.workflow_override ?? (template ? this.buildWorkflow(template) : null);
+    const requestedTeam = input.team_override ?? (template ? this.buildTeam(template) : null);
+    if (!workflow || !requestedTeam) {
+      throw new NotFoundError(`Template not found: ${input.type}`);
+    }
+    const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
     const firstStageId = workflow.stages?.[0]?.id ?? null;
+    const templateLabel = template?.name ?? input.type;
     let active: StoredTask;
     let brainWorkspaceBinding: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null = null;
 
@@ -258,7 +263,7 @@ export class TaskService {
         event: 'state_changed',
         from_state: TaskState.DRAFT,
         to_state: TaskState.CREATED,
-        detail: { template: template.name, task_type: input.type },
+        detail: { template: templateLabel, task_type: input.type },
         actor: 'system',
       });
 
@@ -1397,10 +1402,6 @@ export class TaskService {
     return { members };
   }
 
-  private resolveRequestedTeam(input: CreateTaskRequestDto, template: TaskTemplate): StoredTask['team'] {
-    return input.team_override ?? this.buildTeam(template);
-  }
-
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
     return {
       task_id: task.id,
@@ -1474,6 +1475,11 @@ export class TaskService {
       throw new NotFoundError(`Template not found: ${taskType}`);
     }
     return stored.template as TaskTemplate;
+  }
+
+  private tryLoadTemplate(taskType: string): TaskTemplate | null {
+    const stored = this.templateRepository.getTemplate(taskType);
+    return stored ? stored.template as TaskTemplate : null;
   }
 
   private getTaskOrThrow(taskId: string): StoredTask {

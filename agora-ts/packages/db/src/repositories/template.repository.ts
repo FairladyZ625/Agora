@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { TemplateDetailDto } from '@agora-ts/contracts';
+import { templateDetailSchema, type TemplateDetailDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -37,6 +37,7 @@ export class TemplateRepository {
 
   saveTemplate(templateId: string, template: TemplateDetailDto, source = 'user'): StoredTemplate {
     const now = new Date().toISOString();
+    const normalized = templateDetailSchema.parse(template);
     const existing = this.getTemplate(templateId);
 
     if (existing) {
@@ -45,7 +46,7 @@ export class TemplateRepository {
         SET payload = ?, source = ?, version = version + 1, updated_at = ?
         WHERE id = ?
       `).run(
-        stringifyJsonValue(template),
+        stringifyJsonValue(normalized),
         source,
         now,
         templateId,
@@ -57,7 +58,7 @@ export class TemplateRepository {
       `).run(
         templateId,
         source,
-        stringifyJsonValue(template),
+        stringifyJsonValue(normalized),
         now,
         now,
       );
@@ -73,14 +74,21 @@ export class TemplateRepository {
     }
 
     let inserted = 0;
-    for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
-      const templateId = name.slice(0, -5);
-      if (this.getTemplate(templateId)) {
-        continue;
+    this.db.exec('BEGIN');
+    try {
+      for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
+        const templateId = name.slice(0, -5);
+        if (this.getTemplate(templateId)) {
+          continue;
+        }
+        const template = JSON.parse(readFileSync(resolve(dir, name), 'utf8')) as TemplateDetailDto;
+        this.saveTemplate(templateId, normalizeTemplateGraphPayload(template), 'seed');
+        inserted += 1;
       }
-      const template = JSON.parse(readFileSync(resolve(dir, name), 'utf8')) as TemplateDetailDto;
-      this.saveTemplate(templateId, normalizeTemplateGraphPayload(template), 'seed');
-      inserted += 1;
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
     }
     return { inserted };
   }

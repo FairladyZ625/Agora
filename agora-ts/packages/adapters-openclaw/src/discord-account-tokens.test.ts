@@ -49,4 +49,13 @@ describe('loadOpenClawDiscordAccountTokens', () => {
 
     expect(loadOpenClawDiscordAccountTokens({ configPath: join(dir, 'missing.json') })).toEqual({});
   });
+
+  it('throws a clear error when the openclaw config JSON is invalid', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openclaw-discord-tokens-invalid-'));
+    tempDirs.push(dir);
+    const configPath = join(dir, 'openclaw.json');
+    writeFileSync(configPath, '{invalid-json', 'utf8');
+
+    expect(() => loadOpenClawDiscordAccountTokens({ configPath })).toThrow(/invalid openclaw config json/i);
+  });
 });

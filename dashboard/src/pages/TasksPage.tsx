@@ -150,6 +150,7 @@ export function TasksPage() {
   const tasks = useTaskStore((state) => state.tasks);
   const selectedTaskId = useTaskStore((state) => state.selectedTaskId);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const detailLoading = useTaskStore((state) => state.detailLoading);
   const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const selectTask = useTaskStore((state) => state.selectTask);
@@ -219,6 +220,17 @@ export function TasksPage() {
     activeTask && selectedTaskStatus?.task.id === activeTask.id
       ? selectedTaskStatus
       : null;
+  const routeTaskStatus =
+    taskId && selectedTaskStatus?.task.id === taskId
+      ? selectedTaskStatus
+      : null;
+  const routeTask =
+    routeTaskStatus?.task ??
+    (taskId ? filteredTasks.find((task) => task.id === taskId) ?? null : null);
+  const routeTimeline = useMemo(() => buildTaskTimeline(routeTaskStatus), [routeTaskStatus]);
+  const shouldShowDetailLoading = Boolean(taskId && detailLoading && !routeTaskStatus);
+  const shouldShowDetailError = Boolean(taskId && !detailLoading && !routeTaskStatus && !routeTask && error);
+  const shouldShowDetailEmpty = Boolean(taskId && !detailLoading && !routeTaskStatus && !routeTask && !error);
 
   const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
   const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
@@ -652,129 +664,148 @@ export function TasksPage() {
         ) : null}
       </div>
 
-      {taskId && activeTask ? (
+      {taskId ? (
         <WorkbenchDetailSheet
           label={tasksPageCopy.detailDialogLabel}
           title={tasksPageCopy.detailDialogTitle}
           onClose={() => navigate('/tasks')}
         >
-          <div className="sheet-summary">
-            <span className="type-mono-sm">{activeTask.id}</span>
-            <h4 className="type-heading-lg mt-3">
-              {activeTask.title}
-            </h4>
-            <p className="type-body-sm mt-3">
-              {activeTask.description ?? tasksPageCopy.briefFallback}
-            </p>
-          </div>
-
-          <section className="sheet-section">
-            <TaskBlueprintSection blueprint={activeBlueprint} copy={tasksPageCopy} />
-          </section>
-
-          <section className="sheet-section">
-            <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>
-            <div className="mt-4 space-y-3">
-              {activeTimeline.map((entry) => (
-                <div key={entry.key} className="timeline-item">
-                  <div className="timeline-item__rail" />
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="type-label-sm">{entry.label}</span>
-                      <span className="type-text-xs">
-                        {formatRelativeTimestamp(entry.timestamp)}
-                      </span>
-                    </div>
-                    <p className="type-body-sm mt-2">
-                      {entry.detail || tasksPageCopy.timelineEmptyDetail}
-                    </p>
-                  </div>
-                </div>
-              ))}
+          {shouldShowDetailLoading ? (
+            <div className="empty-state">
+              <p className="type-heading-sm">{tasksPageCopy.detailLoadingTitle}</p>
+              <p className="type-body-sm mt-2">{tasksPageCopy.detailLoadingSummary}</p>
             </div>
-          </section>
+          ) : shouldShowDetailError ? (
+            <div className="empty-state">
+              <p className="type-heading-sm">{tasksPageCopy.detailErrorTitle}</p>
+              <div className="inline-alert inline-alert--danger mt-4">{error}</div>
+            </div>
+          ) : shouldShowDetailEmpty || !routeTask ? (
+            <div className="empty-state">
+              <p className="type-heading-sm">{tasksPageCopy.detailEmptyTitle}</p>
+              <p className="type-body-sm mt-2">{tasksPageCopy.detailEmptySummary}</p>
+            </div>
+          ) : (
+            <>
+              <div className="sheet-summary">
+                <span className="type-mono-sm">{routeTask.id}</span>
+                <h4 className="type-heading-lg mt-3">
+                  {routeTask.title}
+                </h4>
+                <p className="type-body-sm mt-3">
+                  {routeTask.description ?? tasksPageCopy.briefFallback}
+                </p>
+              </div>
 
-          <section className="sheet-section">
-            <h4 className="section-title">{tasksPageCopy.conversationTitle}</h4>
-            <div className="mt-4 space-y-3">
-              {(activeStatus?.conversation ?? []).length > 0 ? (
-                (activeStatus?.conversation ?? []).map((entry) => (
-                  <div key={entry.id} className="data-row">
-                    <div className="min-w-0 flex-1">
-                      <p className="type-label-sm">
-                        {entry.display_name ?? entry.author_ref ?? entry.author_kind}
-                        {' / '}
-                        {entry.provider}
-                      </p>
-                      {entry.statusEvent ? (
-                        <div className="mt-2 rounded-[var(--radius-card)] border border-[var(--color-border-strong)] bg-[var(--color-surface-muted)] px-3 py-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="status-pill status-pill--neutral">{entry.statusEvent.eventType}</span>
-                            <span className="type-text-xs">{entry.statusEvent.taskState}</span>
-                            {entry.statusEvent.currentStage ? (
-                              <span className="type-text-xs">stage: {entry.statusEvent.currentStage}</span>
-                            ) : null}
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                            {entry.statusEvent.executionKind ? (
-                              <span className="type-text-xs">execution: {entry.statusEvent.executionKind}</span>
-                            ) : null}
-                            {entry.statusEvent.controllerRef ? (
-                              <span className="type-text-xs">controller: {entry.statusEvent.controllerRef}</span>
-                            ) : null}
-                            {entry.statusEvent.allowedActions.length > 0 ? (
-                              <span className="type-text-xs">actions: {entry.statusEvent.allowedActions.join(', ')}</span>
-                            ) : null}
-                          </div>
-                          {entry.statusEvent.workspacePath ? (
-                            <p className="type-text-xs mt-2 break-all">
-                              workspace: {entry.statusEvent.workspacePath}
-                            </p>
-                          ) : null}
+              <section className="sheet-section">
+                <TaskBlueprintSection blueprint={routeTaskStatus?.taskBlueprint} copy={tasksPageCopy} />
+              </section>
+
+              <section className="sheet-section">
+                <h4 className="section-title">{tasksPageCopy.timelineTitle}</h4>
+                <div className="mt-4 space-y-3">
+                  {routeTimeline.map((entry) => (
+                    <div key={entry.key} className="timeline-item">
+                      <div className="timeline-item__rail" />
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="type-label-sm">{entry.label}</span>
+                          <span className="type-text-xs">
+                            {formatRelativeTimestamp(entry.timestamp)}
+                          </span>
                         </div>
-                      ) : null}
-                      <p className="type-body-sm mt-2 whitespace-pre-wrap">{entry.body}</p>
+                        <p className="type-body-sm mt-2">
+                          {entry.detail || tasksPageCopy.timelineEmptyDetail}
+                        </p>
+                      </div>
                     </div>
-                    <span className="type-text-xs">{formatRelativeTimestamp(entry.occurred_at)}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="type-body-sm">{tasksPageCopy.conversationEmpty}</p>
-              )}
-            </div>
-          </section>
-
-          <section className="sheet-section">
-            <h4 className="section-title">{tasksPageCopy.progressTitle}</h4>
-            <div className="mt-4 space-y-3">
-              {(activeStatus?.progress_log ?? []).map((entry) => (
-                <div key={entry.id} className="data-row">
-                  <div className="min-w-0 flex-1">
-                    <p className="type-label-sm">{entry.actor}</p>
-                    <p className="type-body-sm mt-2">{entry.content}</p>
-                  </div>
-                  <span className="type-text-xs">{formatRelativeTimestamp(entry.created_at)}</span>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
+              </section>
 
-          <section className="sheet-section">
-            <h4 className="section-title">{tasksPageCopy.subtasksTitle}</h4>
-            <div className="mt-4 space-y-3">
-              {(activeStatus?.subtasks ?? []).map((subtask) => (
-                <div key={subtask.id} className="data-row">
-                  <div className="min-w-0 flex-1">
-                    <p className="type-heading-xs">{subtask.title}</p>
-                    <p className="type-text-xs mt-2">
-                      {subtask.assignee} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
-                    </p>
-                  </div>
-                  <span className="status-pill status-pill--neutral">{subtask.status}</span>
+              <section className="sheet-section">
+                <h4 className="section-title">{tasksPageCopy.conversationTitle}</h4>
+                <div className="mt-4 space-y-3">
+                  {(routeTaskStatus?.conversation ?? []).length > 0 ? (
+                    (routeTaskStatus?.conversation ?? []).map((entry) => (
+                      <div key={entry.id} className="data-row">
+                        <div className="min-w-0 flex-1">
+                          <p className="type-label-sm">
+                            {entry.display_name ?? entry.author_ref ?? entry.author_kind}
+                            {' / '}
+                            {entry.provider}
+                          </p>
+                          {entry.statusEvent ? (
+                            <div className="timeline-status-card">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="status-pill status-pill--neutral">{entry.statusEvent.eventType}</span>
+                                <span className="type-text-xs">{entry.statusEvent.taskState}</span>
+                                {entry.statusEvent.currentStage ? (
+                                  <span className="type-text-xs">stage: {entry.statusEvent.currentStage}</span>
+                                ) : null}
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                {entry.statusEvent.executionKind ? (
+                                  <span className="type-text-xs">execution: {entry.statusEvent.executionKind}</span>
+                                ) : null}
+                                {entry.statusEvent.controllerRef ? (
+                                  <span className="type-text-xs">controller: {entry.statusEvent.controllerRef}</span>
+                                ) : null}
+                                {entry.statusEvent.allowedActions.length > 0 ? (
+                                  <span className="type-text-xs">actions: {entry.statusEvent.allowedActions.join(', ')}</span>
+                                ) : null}
+                              </div>
+                              {entry.statusEvent.workspacePath ? (
+                                <p className="type-text-xs mt-2 break-all">
+                                  workspace: {entry.statusEvent.workspacePath}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          <p className="type-body-sm mt-2 whitespace-pre-wrap">{entry.body}</p>
+                        </div>
+                        <span className="type-text-xs">{formatRelativeTimestamp(entry.occurred_at)}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="type-body-sm">{tasksPageCopy.conversationEmpty}</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          </section>
+              </section>
+
+              <section className="sheet-section">
+                <h4 className="section-title">{tasksPageCopy.progressTitle}</h4>
+                <div className="mt-4 space-y-3">
+                  {(routeTaskStatus?.progress_log ?? []).map((entry) => (
+                    <div key={entry.id} className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="type-label-sm">{entry.actor}</p>
+                        <p className="type-body-sm mt-2">{entry.content}</p>
+                      </div>
+                      <span className="type-text-xs">{formatRelativeTimestamp(entry.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="sheet-section">
+                <h4 className="section-title">{tasksPageCopy.subtasksTitle}</h4>
+                <div className="mt-4 space-y-3">
+                  {(routeTaskStatus?.subtasks ?? []).map((subtask) => (
+                    <div key={subtask.id} className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="type-heading-xs">{subtask.title}</p>
+                        <p className="type-text-xs mt-2">
+                          {subtask.assignee} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
+                        </p>
+                      </div>
+                      <span className="status-pill status-pill--neutral">{subtask.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
         </WorkbenchDetailSheet>
       ) : null}
     </div>

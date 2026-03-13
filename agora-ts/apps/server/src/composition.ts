@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync } from 'node:fs';
-import { resolve as resolvePath } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import {
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
@@ -203,18 +203,14 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
       });
     },
-    createArchiveJobNotifier: () => {
-      const outboxDir = process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR;
-      if (!outboxDir) {
-        return undefined;
-      }
+    createArchiveJobNotifier: (context) => {
+      const outboxDir = process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR
+        ?? join(dirname(resolvePath(context.config.db_path)), 'archive-outbox');
       return new FileArchiveJobNotifier({ outboxDir });
     },
-    createArchiveJobReceiptIngestor: () => {
-      const receiptDir = process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR;
-      if (!receiptDir) {
-        return undefined;
-      }
+    createArchiveJobReceiptIngestor: (context) => {
+      const receiptDir = process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR
+        ?? join(dirname(resolvePath(context.config.db_path)), 'archive-receipts');
       return new FileArchiveJobReceiptIngestor({ receiptDir });
     },
     createDashboardQueryService: (context, deps) => new DashboardQueryService(context.db, {

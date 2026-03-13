@@ -167,6 +167,55 @@ describe('task service', () => {
     });
   });
 
+  it('creates an ad-hoc task when team and workflow overrides are fully provided for an unknown type', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-ADHOC-OVERRIDE',
+    });
+
+    const created = service.createTask({
+      title: 'Ad-hoc orchestration',
+      type: 'adhoc-runtime-task',
+      creator: 'archon',
+      description: 'create from explicit overrides only',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'claude-opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'codex', member_kind: 'citizen', model_preference: 'fast_coding' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'ship', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+        ],
+      },
+    });
+
+    const status = service.getTaskStatus('OC-ADHOC-OVERRIDE');
+
+    expect(created).toMatchObject({
+      id: 'OC-ADHOC-OVERRIDE',
+      type: 'adhoc-runtime-task',
+      state: 'active',
+      current_stage: 'triage',
+    });
+    expect(created.team.members.map((member) => member.role)).toEqual(['architect', 'developer']);
+    expect(status.task_blueprint).toMatchObject({
+      entry_nodes: ['triage'],
+      controller_ref: 'claude-opus',
+      nodes: [
+        { id: 'triage', gate_type: 'command' },
+        { id: 'ship', gate_type: 'all_subtasks_done' },
+      ],
+    });
+  });
+
   it('creates a brain binding and materialized workspace when task brain services are configured', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -238,18 +287,27 @@ describe('task service', () => {
   it('repairs stale database-backed templates with missing member_kind before building the task team', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const templates = new TemplateRepository(db);
-    templates.saveTemplate('coding', {
-      name: 'stale coding template',
-      type: 'coding',
-      governance: 'standard',
-      defaultTeam: {
-        architect: { suggested: ['opus'] },
-        developer: { suggested: ['sonnet'] },
-        craftsman: { suggested: ['codex'] },
-      },
-      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
-    }, 'user');
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO templates (id, source, payload, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      'coding',
+      'user',
+      JSON.stringify({
+        name: 'stale coding template',
+        type: 'coding',
+        governance: 'standard',
+        defaultTeam: {
+          architect: { suggested: ['opus'] },
+          developer: { suggested: ['sonnet'] },
+          craftsman: { suggested: ['codex'] },
+        },
+        stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+      }),
+      now,
+      now,
+    );
 
     const service = new TaskService(db, {
       templatesDir,

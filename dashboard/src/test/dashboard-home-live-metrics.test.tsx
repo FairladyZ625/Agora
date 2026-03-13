@@ -127,6 +127,18 @@ vi.mock('@/stores/feedbackStore', () => ({
   }),
 }));
 
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: () => ({
+    apiBase: '/api',
+    apiToken: '',
+    refreshInterval: 5,
+    pauseOnHidden: true,
+    setApiConfig: vi.fn(),
+    setRefreshInterval: vi.fn(),
+    setPauseOnHidden: vi.fn(),
+  }),
+}));
+
 describe('dashboard home live metrics', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -243,5 +255,46 @@ describe('dashboard home live metrics', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /等待裁决/i }));
     expect(taskStoreState.selectTask).toHaveBeenCalledWith('OC-102');
+  });
+
+  it('refreshes the home task feed on the configured cadence and when the page becomes visible again', () => {
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: false,
+    });
+
+    render(
+      <MemoryRouter>
+        <DashboardHome />
+      </MemoryRouter>,
+    );
+
+    expect(fetchTasks).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(fetchTasks).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: true,
+    });
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      vi.advanceTimersByTime(5000);
+    });
+    expect(fetchTasks).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      value: false,
+    });
+
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(fetchTasks).toHaveBeenCalledTimes(2);
   });
 });

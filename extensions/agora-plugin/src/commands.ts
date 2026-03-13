@@ -27,9 +27,9 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
           case "reject":
             return await handleReject(bridge, rest, ctx);
           case "archon-approve":
-            return await handleArchonApprove(bridge, rest, senderId);
+            return await handleArchonApprove(bridge, rest, ctx);
           case "archon-reject":
-            return await handleArchonReject(bridge, rest, senderId);
+            return await handleArchonReject(bridge, rest, ctx);
           case "confirm":
             return await handleConfirm(bridge, rest, senderId);
           case "subtask-done":
@@ -114,8 +114,11 @@ async function handleApprove(
 ): Promise<CommandResult> {
   const senderId = ctx.senderId || ctx.from || "unknown";
   if (!looksLikeTaskId(args[0]) && (ctx.threadId || ctx.conversationId)) {
+    if (!ctx.provider) {
+      return { text: "Provider context is required for current-thread /task approve" };
+    }
     const task = await bridge.approveCurrent({
-      provider: ctx.provider ?? "discord",
+      provider: ctx.provider,
       threadRef: ctx.threadId,
       conversationRef: ctx.conversationId,
       actorId: senderId,
@@ -139,8 +142,11 @@ async function handleReject(
 ): Promise<CommandResult> {
   const senderId = ctx.senderId || ctx.from || "unknown";
   if (!looksLikeTaskId(args[0]) && (ctx.threadId || ctx.conversationId)) {
+    if (!ctx.provider) {
+      return { text: "Provider context is required for current-thread /task reject" };
+    }
     const task = await bridge.rejectCurrent({
-      provider: ctx.provider ?? "discord",
+      provider: ctx.provider,
       threadRef: ctx.threadId,
       conversationRef: ctx.conversationId,
       actorId: senderId,
@@ -157,23 +163,39 @@ async function handleReject(
   return { text: `${task.id} rejected` };
 }
 
-async function handleArchonApprove(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
+async function handleArchonApprove(
+  bridge: AgoraBridge,
+  args: string[],
+  ctx: { senderId?: string; from?: string; provider?: string },
+): Promise<CommandResult> {
   const taskId = args[0];
   if (!taskId) {
     return { text: "Usage: /task archon-approve <task_id> [comment]" };
   }
+  const senderId = ctx.senderId || ctx.from || "unknown";
+  if (!ctx.provider) {
+    return { text: "Provider context is required for /task archon-approve" };
+  }
   const comment = args.slice(1).join(" ");
-  const task = await bridge.archonApprove(taskId, senderId, comment);
+  const task = await bridge.archonApprove(taskId, senderId, ctx.provider, comment);
   return { text: `${task.id} archon-approved` };
 }
 
-async function handleArchonReject(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
+async function handleArchonReject(
+  bridge: AgoraBridge,
+  args: string[],
+  ctx: { senderId?: string; from?: string; provider?: string },
+): Promise<CommandResult> {
   const taskId = args[0];
   if (!taskId) {
     return { text: "Usage: /task archon-reject <task_id> [reason]" };
   }
+  const senderId = ctx.senderId || ctx.from || "unknown";
+  if (!ctx.provider) {
+    return { text: "Provider context is required for /task archon-reject" };
+  }
   const reason = args.slice(1).join(" ");
-  const task = await bridge.archonReject(taskId, senderId, reason);
+  const task = await bridge.archonReject(taskId, senderId, ctx.provider, reason);
   return { text: `${task.id} archon-rejected` };
 }
 

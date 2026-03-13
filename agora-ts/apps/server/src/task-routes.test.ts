@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,13 @@ function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeEmptyTemplatesDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-empty-templates-'));
+  tempPaths.push(dir);
+  mkdirSync(join(dir, 'tasks'), { recursive: true });
+  return dir;
 }
 
 afterEach(() => {
@@ -133,6 +140,61 @@ describe('task routes', () => {
         stages: [
           { id: 'kickoff' },
           { id: 'build' },
+        ],
+      },
+    });
+  });
+
+  it('creates ad-hoc tasks through the api when complete overrides are provided for an unknown type', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-200C',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'ad-hoc override route',
+        type: 'adhoc-route-task',
+        creator: 'archon',
+        description: 'custom workflow only',
+        priority: 'normal',
+        team_override: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+            { role: 'developer', agentId: 'codex', member_kind: 'citizen', model_preference: 'fast_coding' },
+          ],
+        },
+        workflow_override: {
+          type: 'custom',
+          stages: [
+            { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+            { id: 'ship', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          ],
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-200C',
+      type: 'adhoc-route-task',
+      current_stage: 'triage',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus' },
+          { role: 'developer', agentId: 'codex' },
+        ],
+      },
+      workflow: {
+        type: 'custom',
+        stages: [
+          { id: 'triage' },
+          { id: 'ship' },
         ],
       },
     });

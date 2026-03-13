@@ -6,6 +6,7 @@ import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
 import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -169,6 +170,8 @@ export function DashboardHome() {
   const resolveReview = useTaskStore((state) => state.resolveReview);
   const selectTask = useTaskStore((state) => state.selectTask);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const refreshInterval = useSettingsStore((state) => state.refreshInterval);
+  const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const [reviewIndex, setReviewIndex] = useState(0);
@@ -181,6 +184,30 @@ export function DashboardHome() {
       void fetchTasks();
     }
   }, [error, fetchTasks, loading, tasks.length]);
+
+  useEffect(() => {
+    if (refreshInterval <= 0) {
+      return undefined;
+    }
+
+    const refreshHomeTasks = () => {
+      if (pauseOnHidden && document.hidden) {
+        return;
+      }
+      if (loading) {
+        return;
+      }
+      void fetchTasks();
+    };
+
+    const intervalId = window.setInterval(refreshHomeTasks, refreshInterval * 1000);
+    document.addEventListener('visibilitychange', refreshHomeTasks);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshHomeTasks);
+    };
+  }, [fetchTasks, loading, pauseOnHidden, refreshInterval]);
 
   useEffect(() => {
     const summaryTimerId = window.setTimeout(() => {

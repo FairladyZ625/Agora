@@ -166,6 +166,7 @@ function parseHistoryLine(line: string): HistoryEvent | null {
     return {
       occurred_at: timestamp,
       agent_id: agentId,
+      provider: 'discord',
       account_id: agentId,
       presence: 'disconnected',
       reason: 'health_monitor_restart',
@@ -178,6 +179,7 @@ function parseHistoryLine(line: string): HistoryEvent | null {
     return {
       occurred_at: timestamp,
       agent_id: agentId,
+      provider: 'discord',
       account_id: agentId,
       presence: 'online',
       reason: 'provider_start',

@@ -419,6 +419,55 @@ describe('dashboard expansion stores', () => {
     });
   });
 
+  it('surfaces archive confirm failures without dropping the current selection', async () => {
+    useArchiveStore.setState({
+      jobs: [{
+        id: 9,
+        taskId: 'OC-302',
+        taskTitle: '待归档任务',
+        taskType: 'document',
+        status: 'pending',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { state: 'cancelled' },
+        payloadSummary: '{"state":"cancelled"}',
+        canConfirm: true,
+        canRetry: false,
+      }],
+      selectedJobId: 9,
+      selectedJob: {
+        id: 9,
+        taskId: 'OC-302',
+        taskTitle: '待归档任务',
+        taskType: 'document',
+        status: 'pending',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { state: 'cancelled' },
+        payloadSummary: '{"state":"cancelled"}',
+        canConfirm: true,
+        canRetry: false,
+      },
+      error: null,
+    });
+    vi.mocked(api.notifyArchiveJob).mockRejectedValue(new Error('writer notify failed'));
+
+    await expect(useArchiveStore.getState().confirmJob(9)).resolves.toBeUndefined();
+
+    expect(useArchiveStore.getState().selectedJob).toMatchObject({
+      id: 9,
+      status: 'pending',
+      canConfirm: true,
+    });
+    expect(useArchiveStore.getState().error).toContain('writer notify failed');
+  });
+
   it('supports todo CRUD and promote refreshes through the store layer', async () => {
     vi.mocked(api.listTodos).mockResolvedValue([
       {

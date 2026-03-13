@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -159,7 +159,7 @@ describe('server runtime', () => {
     runtime.db.close();
   });
 
-  it('does not enable file archive outbox adapters unless env paths are configured', () => {
+  it('uses stable default archive outbox and receipt directories when env paths are unset', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
@@ -201,7 +201,23 @@ describe('server runtime', () => {
 
     try {
       const runtime = createServerRuntime({ configPath });
-      expect(() => runtime.dashboardQueryService.notifyArchiveJob(job.id)).toThrow('Archive job notifier is not configured');
+      const notified = runtime.dashboardQueryService.notifyArchiveJob(job.id);
+      const outboxDir = join(dir, 'archive-outbox');
+      const receiptDir = join(dir, 'archive-receipts');
+
+      expect(notified.status).toBe('notified');
+      expect(readdirSync(outboxDir)).toEqual(['archive-job-1.json']);
+
+      mkdirSync(receiptDir, { recursive: true });
+      writeFileSync(join(receiptDir, 'archive-job-1.receipt.json'), JSON.stringify({
+        job_id: 1,
+        status: 'synced',
+        commit_hash: 'deadbeef',
+      }), 'utf8');
+
+      const ingested = runtime.dashboardQueryService.ingestArchiveJobReceipts();
+      expect(ingested.synced).toBe(1);
+      expect(readdirSync(receiptDir)).toEqual(['archive-job-1.processed.json']);
       runtime.db.close();
     } finally {
       if (previousOutbox === undefined) {

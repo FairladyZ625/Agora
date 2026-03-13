@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,6 +15,17 @@ function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-db-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeTemplatesDir(files: Record<string, unknown>) {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-templates-'));
+  tempPaths.push(dir);
+  const tasksDir = join(dir, 'tasks');
+  mkdirSync(tasksDir, { recursive: true });
+  for (const [name, payload] of Object.entries(files)) {
+    writeFileSync(join(tasksDir, `${name}.json`), JSON.stringify(payload), 'utf8');
+  }
+  return dir;
 }
 
 afterEach(() => {
@@ -144,23 +155,80 @@ describe('agora-ts sqlite bootstrap', () => {
     });
   });
 
+  it('rejects invalid templates at the repository boundary', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+
+    expect(() => templates.saveTemplate('invalid_template', {
+      name: '坏模板',
+      type: 'invalid_template',
+      governance: 'lean',
+      defaultTeam: {
+        developer: {
+          member_kind: 'citizen',
+          suggested: ['sonnet'],
+        },
+      },
+      stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+    }, 'user')).toThrow(/exactly one controller role/i);
+  });
+
+  it('rolls back seedFromDir when any template in the batch is invalid', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templates = new TemplateRepository(db);
+    const templatesDir = makeTemplatesDir({
+      aaa_valid: {
+        name: '有效模板',
+        type: 'valid',
+        governance: 'lean',
+        defaultTeam: {
+          architect: { member_kind: 'controller', suggested: ['opus'] },
+        },
+        stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+      },
+      zzz_invalid: {
+        name: '无控制器模板',
+        type: 'invalid',
+        governance: 'lean',
+        defaultTeam: {
+          developer: { member_kind: 'citizen', suggested: ['sonnet'] },
+        },
+        stages: [{ id: 'draft', mode: 'discuss', gate: { type: 'command' } }],
+      },
+    });
+
+    expect(() => templates.seedFromDir(templatesDir)).toThrow(/exactly one controller role/i);
+    expect(templates.listTemplates()).toEqual([]);
+  });
+
   it('repairs existing sqlite templates with missing member_kind from the seed directory without overwriting other fields', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templates = new TemplateRepository(db);
 
-    templates.saveTemplate('coding', {
-      name: '自定义编码模板',
-      type: 'coding',
-      description: 'db customized',
-      governance: 'standard',
-      defaultTeam: {
-        architect: { suggested: ['custom-opus'] },
-        developer: { model_preference: 'custom-fast', suggested: ['custom-sonnet'] },
-        craftsman: { suggested: ['codex'] },
-      },
-      stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
-    }, 'user');
+    db.prepare(`
+      INSERT INTO templates (id, source, payload, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      'coding',
+      'user',
+      JSON.stringify({
+        name: '自定义编码模板',
+        type: 'coding',
+        description: 'db customized',
+        governance: 'standard',
+        defaultTeam: {
+          architect: { suggested: ['custom-opus'] },
+          developer: { model_preference: 'custom-fast', suggested: ['custom-sonnet'] },
+          craftsman: { suggested: ['codex'] },
+        },
+        stages: [{ id: 'discuss', mode: 'discuss', gate: { type: 'command' } }],
+      }),
+      '2026-03-13T00:00:00.000Z',
+      '2026-03-13T00:00:00.000Z',
+    );
 
     const repaired = templates.repairMemberKindsFromDir(resolve(process.cwd(), 'templates'));
 
