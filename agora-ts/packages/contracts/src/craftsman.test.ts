@@ -3,6 +3,9 @@ import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
   craftsmanExecutionSchema,
+  tmuxSendKeysRequestSchema,
+  tmuxSendTextRequestSchema,
+  tmuxSubmitChoiceRequestSchema,
   craftsmanRuntimeIdentityRequestSchema,
 } from './craftsman.js';
 
@@ -46,7 +49,7 @@ describe('craftsman contracts', () => {
     expect(
       craftsmanCallbackRequestSchema.parse({
         execution_id: 'exec-001',
-        status: 'succeeded',
+        status: 'needs_input',
         session_id: 'session-42',
         payload: {
           output: {
@@ -54,11 +57,18 @@ describe('craftsman contracts', () => {
             artifacts: ['src/index.ts'],
             structured: { files: 3 },
           },
+          input_request: {
+            transport: 'choice',
+            hint: 'Select the next plan step',
+            choice_options: [
+              { id: 'continue', label: 'Continue', keys: ['Down'], submit: true },
+            ],
+          },
         },
         error: null,
-        finished_at: '2026-03-08T10:10:00.000Z',
+        finished_at: null,
       }).status,
-    ).toBe('succeeded');
+    ).toBe('needs_input');
   });
 
   it('rejects invalid execution modes and statuses', () => {
@@ -107,5 +117,23 @@ describe('craftsman contracts', () => {
         identity_source: 'plugin_event',
       }).identity_source,
     ).toBe('plugin_event');
+  });
+
+  it('parses structured tmux input requests', () => {
+    expect(tmuxSendTextRequestSchema.parse({
+      agent: 'codex',
+      text: 'Continue with the implementation plan',
+      submit: false,
+    }).submit).toBe(false);
+
+    expect(tmuxSendKeysRequestSchema.parse({
+      agent: 'claude',
+      keys: ['Down', 'Down', 'Tab'],
+    }).keys).toEqual(['Down', 'Down', 'Tab']);
+
+    expect(tmuxSubmitChoiceRequestSchema.parse({
+      agent: 'gemini',
+      keys: ['Down'],
+    }).keys).toEqual(['Down']);
   });
 });

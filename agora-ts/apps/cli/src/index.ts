@@ -12,6 +12,7 @@ import type { DashboardQueryService, RolePackService, TaskConversationService, T
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
+  CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
   CreateSubtasksRequestDto,
   CreateTaskRequestDto,
@@ -20,7 +21,13 @@ import type {
   TemplateGraphDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
-import { createSubtasksRequestSchema, createTaskRequestSchema } from '@agora-ts/contracts';
+import {
+  createSubtasksRequestSchema,
+  createTaskRequestSchema,
+  tmuxSendKeysRequestSchema,
+  tmuxSendTextRequestSchema,
+  tmuxSubmitChoiceRequestSchema,
+} from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
 import type { HumanAccountService } from '@agora-ts/core';
@@ -46,7 +53,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
+type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
@@ -1234,6 +1241,50 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action((agent: string, command: string) => {
       tmuxRuntimeService.send(agent, command);
       writeLine(stdout, `tmux command 已发送: ${agent}`);
+    });
+
+  tmux
+    .command('send-text')
+    .description('向指定 tmux pane 发送文本输入')
+    .argument('<agent>', 'agent pane name')
+    .argument('<text>', 'text input')
+    .option('--no-submit', '发送后不自动回车')
+    .action((agent: string, text: string, options: { submit?: boolean }) => {
+      const payload = tmuxSendTextRequestSchema.parse({
+        agent,
+        text,
+        submit: options.submit ?? true,
+      });
+      tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
+      writeLine(stdout, `tmux text 已发送: ${agent}`);
+    });
+
+  tmux
+    .command('send-keys')
+    .description('向指定 tmux pane 发送结构化按键')
+    .argument('<agent>', 'agent pane name')
+    .argument('<keys...>', 'keys like Down Tab Enter')
+    .action((agent: string, keys: CraftsmanInputKeyDto[]) => {
+      const payload = tmuxSendKeysRequestSchema.parse({
+        agent,
+        keys,
+      });
+      tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
+      writeLine(stdout, `tmux keys 已发送: ${agent}`);
+    });
+
+  tmux
+    .command('submit-choice')
+    .description('向指定 tmux pane 提交 choice，自动补 Enter')
+    .argument('<agent>', 'agent pane name')
+    .argument('[keys...]', 'optional navigation keys before submit')
+    .action((agent: string, keys: CraftsmanInputKeyDto[] = []) => {
+      const payload = tmuxSubmitChoiceRequestSchema.parse({
+        agent,
+        keys,
+      });
+      tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
+      writeLine(stdout, `tmux choice 已提交: ${agent}`);
     });
 
   tmux

@@ -787,7 +787,11 @@ export class TaskService {
 
   handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {
     const result = this.craftsmanCallbacks.handleCallback(input);
-    if (result.task.state !== TaskState.PAUSED && (result.subtask.status === 'done' || result.subtask.status === 'failed')) {
+    if (
+      result.task.state !== TaskState.PAUSED
+      && ['done', 'failed', 'in_progress'].includes(result.subtask.status)
+      && ['succeeded', 'failed', 'cancelled', 'needs_input', 'awaiting_choice'].includes(result.execution.status)
+    ) {
       this.sendImmediateCraftsmanNotification(result.task.id, result.execution.execution_id, result.subtask.id);
     }
     return result;
@@ -1823,6 +1827,14 @@ export class TaskService {
           '- Confirm this callback also appears in Agora conversation and Dashboard timeline.',
           `- Controller ${controllerRef} should decide whether to continue, retry, or resubmit based on the callback result.`,
         ];
+      case 'craftsman_needs_input':
+      case 'craftsman_awaiting_choice':
+        return [
+          '',
+          'Smoke Guidance:',
+          '- Validate the structured input loop now using tmux send-text / send-keys / submit-choice.',
+          '- Confirm the callback metadata includes the input_request payload and appears in conversation/Dashboard.',
+        ];
       case 'thread_probe_controller':
       case 'thread_probe_roster':
       case 'thread_probe_inbox':
@@ -1847,7 +1859,14 @@ export class TaskService {
     if (!execution || !subtask) {
       return;
     }
-    const eventType = execution.status === 'succeeded' ? 'craftsman_completed' : 'craftsman_failed';
+    const eventType = execution.status === 'succeeded'
+      ? 'craftsman_completed'
+      : execution.status === 'needs_input'
+        ? 'craftsman_needs_input'
+        : execution.status === 'awaiting_choice'
+          ? 'craftsman_awaiting_choice'
+          : 'craftsman_failed';
+    const payload = execution.callback_payload as { input_request?: { hint?: string | null; choice_options?: Array<{ id: string; label: string }> | null } } | null;
     this.publishTaskStatusBroadcast(task, {
       kind: eventType,
       bodyLines: [
@@ -1856,6 +1875,10 @@ export class TaskService {
         `Execution: ${execution.execution_id}`,
         `Status: ${execution.status}`,
         ...(subtask.output ? [`Output: ${subtask.output}`] : []),
+        ...(payload?.input_request?.hint ? [`Input Hint: ${payload.input_request.hint}`] : []),
+        ...((payload?.input_request?.choice_options?.length ?? 0) > 0
+          ? [`Choices: ${payload?.input_request?.choice_options?.map((option) => `${option.id}:${option.label}`).join(', ')}`]
+          : []),
       ],
       ...(execution.finished_at ? { occurredAt: execution.finished_at } : {}),
     });

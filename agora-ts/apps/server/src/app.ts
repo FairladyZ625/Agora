@@ -6,6 +6,9 @@ import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
   craftsmanRuntimeIdentityRequestSchema,
+  tmuxSendKeysRequestSchema,
+  tmuxSendTextRequestSchema,
+  tmuxSubmitChoiceRequestSchema,
   approveTaskRequestSchema,
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
@@ -77,7 +80,7 @@ export interface BuildAppOptions {
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
-  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
+  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
   taskContextBindingService?: TaskContextBindingService;
   taskConversationService?: TaskConversationService;
   taskParticipationService?: TaskParticipationService;
@@ -521,7 +524,7 @@ function recordCraftsmanCallback(metrics: MetricsState, status: string) {
 function renderMetrics(options: {
   metrics: MetricsState;
   taskService: TaskService | undefined;
-  tmuxRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
+  tmuxRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
 }) {
   const lines: string[] = [
     '# HELP agora_http_requests_total Total HTTP requests served by agora-ts server.',
@@ -1573,6 +1576,48 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const payload = tmuxSendSchema.parse(request.body);
       tmuxRuntimeService.send(payload.agent, payload.command);
+      return reply.send({ ok: true });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/tmux/send-text', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const payload = tmuxSendTextRequestSchema.parse(request.body);
+      tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
+      return reply.send({ ok: true });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/tmux/send-keys', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const payload = tmuxSendKeysRequestSchema.parse(request.body);
+      tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
+      return reply.send({ ok: true });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/tmux/submit-choice', async (request, reply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+    }
+    try {
+      const payload = tmuxSubmitChoiceRequestSchema.parse(request.body);
+      tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
       return reply.send({ ok: true });
     } catch (error) {
       const translated = translateError(error);

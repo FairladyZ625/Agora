@@ -69,6 +69,9 @@ function createTmuxRuntimeServiceStub() {
     up: () => { throw new Error('unused'); },
     status: () => { throw new Error('unused'); },
     send: () => { throw new Error('unused'); },
+    sendText: () => { throw new Error('unused'); },
+    sendKeys: () => { throw new Error('unused'); },
+    submitChoice: () => { throw new Error('unused'); },
     start: () => { throw new Error('unused'); },
     resume: () => { throw new Error('unused'); },
     task: () => { throw new Error('unused'); },
@@ -565,6 +568,15 @@ describe('agora-ts cli', () => {
         send: () => {
           throw new Error('unused');
         },
+        sendText: () => {
+          throw new Error('unused');
+        },
+        sendKeys: () => {
+          throw new Error('unused');
+        },
+        submitChoice: () => {
+          throw new Error('unused');
+        },
         start: () => {
           throw new Error('unused');
         },
@@ -621,6 +633,15 @@ describe('agora-ts cli', () => {
           throw new Error('unused');
         },
         send: () => {
+          throw new Error('unused');
+        },
+        sendText: () => {
+          throw new Error('unused');
+        },
+        sendKeys: () => {
+          throw new Error('unused');
+        },
+        submitChoice: () => {
           throw new Error('unused');
         },
         start: () => {
@@ -719,6 +740,9 @@ describe('agora-ts cli', () => {
         up: () => { throw new Error('unused'); },
         status: () => { throw new Error('unused'); },
         send: () => { throw new Error('unused'); },
+        sendText: () => { throw new Error('unused'); },
+        sendKeys: () => { throw new Error('unused'); },
+        submitChoice: () => { throw new Error('unused'); },
         start: () => { throw new Error('unused'); },
         resume: () => { throw new Error('unused'); },
         task: () => { throw new Error('unused'); },
@@ -788,6 +812,9 @@ describe('agora-ts cli', () => {
         up: () => { throw new Error('unused'); },
         status: () => { throw new Error('unused'); },
         send: () => { throw new Error('unused'); },
+        sendText: () => { throw new Error('unused'); },
+        sendKeys: () => { throw new Error('unused'); },
+        submitChoice: () => { throw new Error('unused'); },
         start: () => { throw new Error('unused'); },
         resume: () => { throw new Error('unused'); },
         task: () => { throw new Error('unused'); },
@@ -862,6 +889,9 @@ describe('agora-ts cli', () => {
         up: () => { throw new Error('unused'); },
         status: () => { throw new Error('unused'); },
         send: () => { throw new Error('unused'); },
+        sendText: () => { throw new Error('unused'); },
+        sendKeys: () => { throw new Error('unused'); },
+        submitChoice: () => { throw new Error('unused'); },
         start: () => { throw new Error('unused'); },
         resume: () => { throw new Error('unused'); },
         task: () => { throw new Error('unused'); },
@@ -1477,6 +1507,9 @@ describe('agora-ts cli', () => {
         }],
       }),
       send: () => {},
+      sendText: () => {},
+      sendKeys: () => {},
+      submitChoice: () => {},
       recordIdentity: () => ({
         continuityBackend: 'codex_session_file' as const,
         resumeCapability: 'native_resume' as const,
@@ -1558,5 +1591,43 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('tail output');
     expect(stdout.value).toContain('codex\t%0\tbash\tready\tcodex_session_file\tsession_file\tcodex-session-123\t/tmp/codex/session.json\t2026-03-08T23:01:00.000Z');
     expect(stdout.value).toContain('tmux session 已关闭: agora-craftsmen');
+  });
+
+  it('supports tmux structured input commands through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const calls: Array<{ kind: string; agent: string; payload: unknown }> = [];
+    const tmuxRuntimeService = {
+      ...createTmuxRuntimeServiceStub(),
+      sendText: (agent: string, text: string, submit = true) => {
+        calls.push({ kind: 'text', agent, payload: { text, submit } });
+      },
+      sendKeys: (agent: string, keys: string[]) => {
+        calls.push({ kind: 'keys', agent, payload: keys });
+      },
+      submitChoice: (agent: string, keys: string[]) => {
+        calls.push({ kind: 'choice', agent, payload: keys });
+      },
+    };
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      tmuxRuntimeService,
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'tmux', 'send-text', 'codex', 'Need approval', '--no-submit'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'tmux', 'send-keys', 'codex', 'Down', 'Tab'], { from: 'user' });
+    await program.parseAsync(['craftsman', 'tmux', 'submit-choice', 'codex', 'Down'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(calls).toEqual([
+      { kind: 'text', agent: 'codex', payload: { text: 'Need approval', submit: false } },
+      { kind: 'keys', agent: 'codex', payload: ['Down', 'Tab'] },
+      { kind: 'choice', agent: 'codex', payload: ['Down'] },
+    ]);
+    expect(stdout.value).toContain('tmux text 已发送: codex');
+    expect(stdout.value).toContain('tmux keys 已发送: codex');
+    expect(stdout.value).toContain('tmux choice 已提交: codex');
   });
 });

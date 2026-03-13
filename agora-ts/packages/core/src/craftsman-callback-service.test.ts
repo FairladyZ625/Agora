@@ -473,4 +473,112 @@ describe('craftsman callback service', () => {
       }),
     ]);
   });
+
+  it('records input-required callbacks without settling the subtask', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+    const outbox = new NotificationOutboxRepository(db);
+    const conversations = new TaskConversationRepository(db);
+    const callback = new CraftsmanCallbackService(db);
+
+    tasks.insertTask({
+      id: 'OC-975',
+      title: 'callback needs input',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    bindings.insert({
+      id: 'bind-975',
+      task_id: 'OC-975',
+      im_provider: 'discord',
+      thread_ref: 'thread-975',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-codex',
+      task_id: 'OC-975',
+      stage_id: 'develop',
+      title: 'run codex',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+      craftsman_session: 'codex-session-need-input',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-975',
+      task_id: 'OC-975',
+      subtask_id: 'sub-codex',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'codex-session-need-input',
+      status: 'running',
+      callback_payload: null,
+      error: null,
+      started_at: '2026-03-13T12:00:00.000Z',
+    });
+
+    const result = callback.handleCallback({
+      execution_id: 'exec-975',
+      status: 'needs_input',
+      session_id: 'codex-session-need-input',
+      payload: {
+        output: {
+          summary: 'Need your decision before patching.',
+          artifacts: [],
+        },
+        input_request: {
+          transport: 'choice',
+          hint: 'Choose whether to continue with the patch.',
+          choice_options: [
+            { id: 'continue', label: 'Continue', keys: ['Down'], submit: true },
+            { id: 'abort', label: 'Abort', keys: ['Escape'], submit: false },
+          ],
+        },
+      },
+      error: null,
+      finished_at: null,
+    });
+
+    expect(result.execution).toMatchObject({
+      execution_id: 'exec-975',
+      status: 'needs_input',
+      finished_at: null,
+      callback_payload: {
+        input_request: {
+          transport: 'choice',
+        },
+      },
+    });
+    expect(result.subtask).toMatchObject({
+      id: 'sub-codex',
+      status: 'in_progress',
+      dispatch_status: 'needs_input',
+      done_at: null,
+    });
+    expect(outbox.listByTask('OC-975')).toEqual([
+      expect.objectContaining({
+        event_type: 'craftsman_needs_input',
+        payload: expect.objectContaining({
+          status: 'needs_input',
+        }),
+      }),
+    ]);
+    expect(conversations.listByTask('OC-975')).toEqual([
+      expect.objectContaining({
+        body: 'Need your decision before patching.',
+        metadata: expect.objectContaining({
+          event_type: 'craftsman_needs_input',
+          status: 'needs_input',
+        }),
+      }),
+    ]);
+  });
 });

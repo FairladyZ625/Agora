@@ -257,6 +257,70 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('supports tmux structured input routes', async () => {
+    const calls: Array<{ kind: string; agent: string; payload: unknown }> = [];
+    const app = buildApp({
+      tmuxRuntimeService: {
+        up: () => ({ session: 'agora-craftsmen', panes: [] }),
+        status: () => ({ session: 'agora-craftsmen', panes: [] }),
+        doctor: () => ({ session: 'agora-craftsmen', panes: [] }),
+        send: () => undefined,
+        sendText: (agent: string, text: string, submit = true) => {
+          calls.push({ kind: 'text', agent, payload: { text, submit } });
+        },
+        sendKeys: (agent: string, keys: string[]) => {
+          calls.push({ kind: 'keys', agent, payload: keys });
+        },
+        submitChoice: (agent: string, keys: string[]) => {
+          calls.push({ kind: 'choice', agent, payload: keys });
+        },
+        task: () => ({
+          status: 'running' as const,
+          session_id: 'tmux:agora-craftsmen:codex',
+          started_at: '2026-03-13T12:30:00.000Z',
+        }),
+        tail: () => 'tail output',
+        down: () => undefined,
+        recordIdentity: () => ({
+          continuityBackend: 'codex_session_file' as const,
+          resumeCapability: 'native_resume' as const,
+          sessionReference: 'codex-session-456',
+          identitySource: 'hook_event' as const,
+          identityPath: null,
+          sessionObservedAt: '2026-03-13T12:31:00.000Z',
+          workspaceRoot: '/tmp/codex',
+          lastRecoveryMode: 'resume_exact' as const,
+          transportSessionId: 'tmux:agora-craftsmen:codex',
+        }),
+      },
+    });
+
+    const sendText = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/tmux/send-text',
+      payload: { agent: 'codex', text: 'Need approval', submit: false },
+    });
+    const sendKeys = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/tmux/send-keys',
+      payload: { agent: 'codex', keys: ['Down', 'Tab'] },
+    });
+    const submitChoice = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/tmux/submit-choice',
+      payload: { agent: 'codex', keys: ['Down'] },
+    });
+
+    expect(sendText.statusCode).toBe(200);
+    expect(sendKeys.statusCode).toBe(200);
+    expect(submitChoice.statusCode).toBe(200);
+    expect(calls).toEqual([
+      { kind: 'text', agent: 'codex', payload: { text: 'Need approval', submit: false } },
+      { kind: 'keys', agent: 'codex', payload: ['Down', 'Tab'] },
+      { kind: 'choice', agent: 'codex', payload: ['Down'] },
+    ]);
+  });
+
   it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -374,6 +438,9 @@ describe('craftsman routes', () => {
           }],
         }),
         send: () => {},
+        sendText: () => {},
+        sendKeys: () => {},
+        submitChoice: () => {},
         recordIdentity: () => ({
           continuityBackend: 'codex_session_file',
           resumeCapability: 'native_resume',

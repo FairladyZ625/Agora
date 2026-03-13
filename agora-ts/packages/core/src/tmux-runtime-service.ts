@@ -96,7 +96,22 @@ export class TmuxRuntimeService {
 
   send(agent: string, command: string) {
     const target = this.registry.getPaneTarget(agent);
-    this.registry.sendKeys(target, command);
+    this.registry.sendText(target, command, true);
+  }
+
+  sendText(agent: string, text: string, submit = true) {
+    const target = this.registry.getPaneTarget(agent);
+    this.registry.sendText(target, text, submit);
+  }
+
+  sendKeys(agent: string, keys: string[]) {
+    const target = this.registry.getPaneTarget(agent);
+    this.registry.sendKeys(target, keys);
+  }
+
+  submitChoice(agent: string, keys: string[]) {
+    const target = this.registry.getPaneTarget(agent);
+    this.registry.sendKeys(target, [...keys, 'Enter']);
   }
 
   recordIdentity(agent: string, identity: TmuxRuntimeIdentityUpdate) {
@@ -131,7 +146,7 @@ export class TmuxRuntimeService {
     this.persistWorkspaceRoot(agent, workspaceRoot ?? null);
     const spec = adapter.createInteractiveStartSpec();
     const command = renderShellCommand(spec.command, spec.args);
-    this.registry.sendKeys(target, command);
+    this.registry.sendText(target, command, true);
     this.registry.updatePaneState(agent, {
       lastRecoveryMode: 'fresh_start',
     });
@@ -160,7 +175,7 @@ export class TmuxRuntimeService {
     const nextReference = resolvedIdentity.sessionReference ?? null;
     const resume = adapter.createInteractiveResumeSpec(nextReference);
     const command = renderShellCommand(resume.spec.command, resume.spec.args);
-    this.registry.sendKeys(target, command);
+    this.registry.sendText(target, command, true);
     this.registry.updatePaneState(agent, {
       sessionReference: nextReference,
       identitySource: resolvedIdentity.identitySource,

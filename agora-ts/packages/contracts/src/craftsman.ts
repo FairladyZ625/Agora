@@ -6,11 +6,47 @@ export type CraftsmanModeDto = z.infer<typeof craftsmanModeSchema>;
 export const craftsmanExecutionStatusSchema = z.enum([
   'queued',
   'running',
+  'needs_input',
+  'awaiting_choice',
   'succeeded',
   'failed',
   'cancelled',
 ]);
 export type CraftsmanExecutionStatusDto = z.infer<typeof craftsmanExecutionStatusSchema>;
+
+export const craftsmanInputTransportSchema = z.enum(['text', 'keys', 'choice']);
+export type CraftsmanInputTransportDto = z.infer<typeof craftsmanInputTransportSchema>;
+
+export const craftsmanInputKeySchema = z.enum([
+  'Up',
+  'Down',
+  'Left',
+  'Right',
+  'Tab',
+  'Enter',
+  'Escape',
+  'Space',
+  'Backspace',
+]);
+export type CraftsmanInputKeyDto = z.infer<typeof craftsmanInputKeySchema>;
+
+export const craftsmanChoiceOptionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().nullable().optional(),
+  keys: z.array(craftsmanInputKeySchema).optional().default([]),
+  submit: z.boolean().optional().default(true),
+}).strict();
+export type CraftsmanChoiceOptionDto = z.infer<typeof craftsmanChoiceOptionSchema>;
+
+export const craftsmanInputRequestSchema = z.object({
+  transport: craftsmanInputTransportSchema,
+  hint: z.string().nullable().optional(),
+  text_placeholder: z.string().nullable().optional(),
+  keys: z.array(craftsmanInputKeySchema).optional(),
+  choice_options: z.array(craftsmanChoiceOptionSchema).optional(),
+}).strict();
+export type CraftsmanInputRequestDto = z.infer<typeof craftsmanInputRequestSchema>;
 
 export const craftsmanAdapterSchema = z.string().min(1);
 export type CraftsmanAdapterDto = z.infer<typeof craftsmanAdapterSchema>;
@@ -26,6 +62,7 @@ export type CraftsmanNormalizedOutputDto = z.infer<typeof craftsmanNormalizedOut
 
 export const craftsmanExecutionPayloadSchema = z.object({
   output: craftsmanNormalizedOutputSchema.optional(),
+  input_request: craftsmanInputRequestSchema.nullable().optional(),
 }).catchall(z.unknown());
 export type CraftsmanExecutionPayloadDto = z.infer<typeof craftsmanExecutionPayloadSchema>;
 
@@ -96,3 +133,22 @@ export const craftsmanRuntimeIdentityRequestSchema = z.object({
   workspace_root: z.string().min(1).nullable().optional(),
 });
 export type CraftsmanRuntimeIdentityRequestDto = z.infer<typeof craftsmanRuntimeIdentityRequestSchema>;
+
+export const tmuxSendTextRequestSchema = z.object({
+  agent: z.string().min(1),
+  text: z.string(),
+  submit: z.boolean().optional().default(true),
+}).strict();
+export type TmuxSendTextRequestDto = z.infer<typeof tmuxSendTextRequestSchema>;
+
+export const tmuxSendKeysRequestSchema = z.object({
+  agent: z.string().min(1),
+  keys: z.array(craftsmanInputKeySchema).min(1),
+}).strict();
+export type TmuxSendKeysRequestDto = z.infer<typeof tmuxSendKeysRequestSchema>;
+
+export const tmuxSubmitChoiceRequestSchema = z.object({
+  agent: z.string().min(1),
+  keys: z.array(craftsmanInputKeySchema).optional().default([]),
+}).strict();
+export type TmuxSubmitChoiceRequestDto = z.infer<typeof tmuxSubmitChoiceRequestSchema>;

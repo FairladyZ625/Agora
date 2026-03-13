@@ -125,9 +125,18 @@ export class TmuxPaneRegistry {
     return match.id;
   }
 
-  sendKeys(target: string, text: string) {
+  sendText(target: string, text: string, submit = true) {
     this.execTmux(['send-keys', '-t', target, '-l', '--', text]);
-    this.execTmux(['send-keys', '-t', target, 'Enter']);
+    if (submit) {
+      this.execTmux(['send-keys', '-t', target, 'Enter']);
+    }
+  }
+
+  sendKeys(target: string, keys: string[]) {
+    if (keys.length === 0) {
+      return;
+    }
+    this.execTmux(['send-keys', '-t', target, ...keys]);
   }
 
   capturePane(target: string, lines = 40) {

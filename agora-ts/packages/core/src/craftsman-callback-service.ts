@@ -18,6 +18,7 @@ import { NotFoundError } from './errors.js';
 import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
+const INPUT_WAITING_STATUSES = new Set(['needs_input', 'awaiting_choice']);
 
 export class CraftsmanCallbackService {
   private readonly executions: CraftsmanExecutionRepository;
@@ -66,7 +67,7 @@ export class CraftsmanCallbackService {
       session_id: input.session_id ?? execution.session_id,
       callback_payload: input.payload ?? null,
       error: input.error ?? null,
-      finished_at: finishedAt,
+      finished_at: INPUT_WAITING_STATUSES.has(input.status) ? null : finishedAt,
     });
 
     if (task.state === 'paused') {
@@ -84,6 +85,10 @@ export class CraftsmanCallbackService {
         actor: nextExecution.adapter,
       });
       return { execution: nextExecution, subtask, task };
+    }
+
+    if (INPUT_WAITING_STATUSES.has(nextExecution.status)) {
+      return this.recordInputRequired(task, subtask, nextExecution);
     }
 
     return this.settleExecutionResult(task, subtask, nextExecution);
@@ -187,6 +192,50 @@ export class CraftsmanCallbackService {
 
     this.enqueueNotification(task, execution, nextSubtask, eventType);
 
+    return { execution, subtask: nextSubtask, task };
+  }
+
+  private recordInputRequired(
+    task: StoredTask,
+    subtask: StoredSubtask,
+    execution: StoredCraftsmanExecution,
+  ) {
+    const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
+    const inputRequest = payload?.input_request ?? null;
+    const output = formatCraftsmanOutput(payload)
+      ?? inputRequest?.hint
+      ?? `${execution.adapter} requires follow-up input`;
+    const nextSubtask = this.subtasks.updateSubtask(execution.task_id, execution.subtask_id, {
+      status: 'in_progress',
+      output,
+      dispatch_status: execution.status,
+      done_at: null,
+    });
+    const eventType = execution.status === 'awaiting_choice' ? 'craftsman_awaiting_choice' : 'craftsman_needs_input';
+    this.flowLogs.insertFlowLog({
+      task_id: execution.task_id,
+      kind: 'system',
+      event: 'subtask_waiting_input',
+      stage_id: nextSubtask.stage_id,
+      detail: {
+        subtask_id: nextSubtask.id,
+        execution_id: execution.execution_id,
+        adapter: execution.adapter,
+        status: execution.status,
+        input_request: inputRequest,
+      },
+      actor: execution.adapter,
+    });
+    this.progressLogs.insertProgressLog({
+      task_id: execution.task_id,
+      kind: 'progress',
+      stage_id: nextSubtask.stage_id,
+      subtask_id: nextSubtask.id,
+      content: output,
+      artifacts: payload ?? null,
+      actor: execution.adapter,
+    });
+    this.enqueueNotification(task, execution, nextSubtask, eventType);
     return { execution, subtask: nextSubtask, task };
   }
 
