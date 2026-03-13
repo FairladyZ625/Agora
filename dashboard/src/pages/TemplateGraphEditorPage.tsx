@@ -7,11 +7,14 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  Handle,
   MarkerType,
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useOnViewportChange,
   useUpdateNodeInternals,
+  type NodeProps,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -23,8 +26,66 @@ import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { TemplateDetail, TemplateGraph } from '@/types/dashboard';
 
+type GraphStageNodeData = {
+  label: string;
+  executionKind: string | null;
+  gateType: string | null;
+  isEntry: boolean;
+};
+
+function formatExecutionKindLabel(executionKind: string | null) {
+  switch (executionKind) {
+    case 'citizen_execute':
+      return 'execute';
+    case 'craftsman_dispatch':
+      return 'craftsman';
+    case 'human_approval':
+      return 'approval';
+    case 'citizen_discuss':
+      return 'discuss';
+    default:
+      return 'stage';
+  }
+}
+
+function formatGateLabel(gateType: string | null) {
+  if (!gateType) {
+    return 'open';
+  }
+  return gateType.replaceAll('_', ' ');
+}
+
+function GraphStageNode({ data, selected }: NodeProps<Node<GraphStageNodeData>>) {
+  return (
+    <div className={`template-graph-node${selected ? ' template-graph-node--selected' : ''}`}>
+      <Handle
+        id="in"
+        type="target"
+        position={Position.Left}
+        className="template-graph-node__handle template-graph-node__handle--in"
+      />
+      <Handle
+        id="out"
+        type="source"
+        position={Position.Right}
+        className="template-graph-node__handle template-graph-node__handle--out"
+      />
+      <div className="template-graph-node__eyebrow">
+        <span className="template-graph-node__kind">{formatExecutionKindLabel(data.executionKind)}</span>
+        {data.isEntry ? <span className="template-graph-node__entry">entry</span> : null}
+      </div>
+      <div className="template-graph-node__title">{data.label}</div>
+      <div className="template-graph-node__gate">{formatGateLabel(data.gateType)}</div>
+    </div>
+  );
+}
+
+const graphNodeTypes = {
+  stage: GraphStageNode,
+};
+
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
-  const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
+  const graph = tidyGraphLayout(template.graph ?? deriveTemplateGraphFromStages(template.stages));
   return {
     ...template,
     stages: template.stages.map((stage) => ({ ...stage })),
@@ -133,6 +194,62 @@ function deriveStagesFromTemplateGraph(graph: TemplateGraph): TemplateDetail['st
     }));
 }
 
+function tidyGraphLayout(graph: TemplateGraph): TemplateGraph {
+  const advanceBySource = new Map<string, string[]>();
+  const incomingAdvanceCount = new Map<string, number>();
+
+  for (const node of graph.nodes) {
+    advanceBySource.set(node.id, []);
+    incomingAdvanceCount.set(node.id, 0);
+  }
+
+  for (const edge of graph.edges) {
+    if (edge.kind !== 'advance') {
+      continue;
+    }
+    advanceBySource.get(edge.from)?.push(edge.to);
+    incomingAdvanceCount.set(edge.to, (incomingAdvanceCount.get(edge.to) ?? 0) + 1);
+  }
+
+  const queue = graph.entryNodes.length > 0
+    ? [...graph.entryNodes]
+    : graph.nodes.filter((node) => (incomingAdvanceCount.get(node.id) ?? 0) === 0).map((node) => node.id);
+  const visited = new Set<string>();
+  const columns = new Map<string, number>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+    const currentColumn = columns.get(nodeId) ?? 0;
+    for (const nextId of advanceBySource.get(nodeId) ?? []) {
+      columns.set(nextId, Math.max(columns.get(nextId) ?? 0, currentColumn + 1));
+      queue.push(nextId);
+    }
+  }
+
+  let fallbackColumn = 0;
+  const rowCounts = new Map<number, number>();
+
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const column = columns.get(node.id) ?? fallbackColumn++;
+      const row = rowCounts.get(column) ?? 0;
+      rowCounts.set(column, row + 1);
+      return {
+        ...node,
+        layout: {
+          x: column * 320,
+          y: row * 144,
+        },
+      };
+    }),
+  };
+}
+
 function validateTemplateGraphDraft(graph: TemplateGraph) {
   const errors: string[] = [];
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
@@ -177,6 +294,108 @@ function GraphCanvasInternalsSync({ nodeIds }: { nodeIds: string[] }) {
   }, [nodeIds, nodeSignature, updateNodeInternals]);
 
   return null;
+}
+
+function buildOverlayEdgePath(edge: TemplateGraph['edges'][number], nodes: TemplateGraph['nodes']) {
+  const source = nodes.find((node) => node.id === edge.from);
+  const target = nodes.find((node) => node.id === edge.to);
+  if (!source?.layout || !target?.layout) {
+    return null;
+  }
+
+  const sourceX = source.layout.x + 220;
+  const sourceY = source.layout.y + 42;
+  const targetX = target.layout.x;
+  const targetY = target.layout.y + 42;
+  const isBackEdge = targetX < sourceX;
+
+  if (edge.kind === 'reject' || isBackEdge) {
+    const crestY = Math.min(sourceY, targetY) - 108;
+    const midX = (sourceX + targetX) / 2;
+    return {
+      path: `M ${sourceX} ${sourceY} C ${sourceX + 68} ${sourceY}, ${sourceX + 36} ${crestY}, ${midX} ${crestY} S ${targetX - 68} ${targetY}, ${targetX} ${targetY}`,
+      labelX: midX,
+      labelY: crestY - 14,
+    };
+  }
+
+  const controlOffset = Math.max(72, (targetX - sourceX) * 0.35);
+  return {
+    path: `M ${sourceX} ${sourceY} C ${sourceX + controlOffset} ${sourceY}, ${targetX - controlOffset} ${targetY}, ${targetX} ${targetY}`,
+    labelX: (sourceX + targetX) / 2,
+    labelY: (sourceY + targetY) / 2 - 14,
+  };
+}
+
+function GraphCanvasOverlay({
+  nodes,
+  edges,
+  selectedEdgeId,
+  onSelectEdge,
+}: {
+  nodes: TemplateGraph['nodes'];
+  edges: TemplateGraph['edges'];
+  selectedEdgeId: string | null;
+  onSelectEdge: (edgeId: string) => void;
+}) {
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+
+  useOnViewportChange({
+    onChange: setViewport,
+  });
+
+  return (
+    <svg className="react-flow__edges template-graph-overlay">
+      <defs>
+        <marker id="template-graph-arrow-advance" markerWidth="14" markerHeight="14" viewBox="-7 -7 14 14" orient="auto">
+          <path d="M -4 -4 L 0 0 L -4 4" className="template-graph-overlay__marker template-graph-overlay__marker--advance" />
+        </marker>
+        <marker id="template-graph-arrow-reject" markerWidth="14" markerHeight="14" viewBox="-7 -7 14 14" orient="auto">
+          <path d="M -4 -4 L 0 0 L -4 4" className="template-graph-overlay__marker template-graph-overlay__marker--reject" />
+        </marker>
+      </defs>
+      <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
+        {edges.map((edge) => {
+          const geometry = buildOverlayEdgePath(edge, nodes);
+          if (!geometry) {
+            return null;
+          }
+
+          const selected = selectedEdgeId === edge.id;
+          const labelWidth = edge.kind === 'reject' ? 62 : 76;
+
+          return (
+            <g
+              key={edge.id}
+              className={`template-graph-overlay__edge template-graph-overlay__edge--${edge.kind}${selected ? ' template-graph-overlay__edge--selected' : ''}`}
+            >
+              <path
+                className="template-graph-overlay__hitbox"
+                d={geometry.path}
+                onClick={() => onSelectEdge(edge.id)}
+              />
+              <path
+                className="template-graph-overlay__path"
+                d={geometry.path}
+                markerEnd={`url(#${edge.kind === 'reject' ? 'template-graph-arrow-reject' : 'template-graph-arrow-advance'})`}
+                onClick={() => onSelectEdge(edge.id)}
+              />
+              <g
+                className="template-graph-overlay__label"
+                transform={`translate(${geometry.labelX - labelWidth / 2} ${geometry.labelY - 10})`}
+                onClick={() => onSelectEdge(edge.id)}
+              >
+                <rect width={labelWidth} height="20" rx="999" />
+                <text x={labelWidth / 2} y="13">
+                  {edge.kind}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
 }
 
 function TemplateGraphEditorContent() {
@@ -229,27 +448,56 @@ function TemplateGraphEditorContent() {
 
   const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
-  const graphNodes: Node[] = (
+  const graphNodes: Node<GraphStageNodeData>[] = (
     draftGraph?.nodes.map((node) => ({
-    id: node.id,
-    position: node.layout ?? { x: 0, y: 0 },
-    data: { label: node.name },
-    type: 'default',
-    sourcePosition: Position.Right,
-    targetPosition: Position.Left,
-    width: 188,
-    height: 50,
-  })) ?? []
+      id: node.id,
+      position: node.layout ?? { x: 0, y: 0 },
+      data: {
+        label: node.name,
+        executionKind: node.executionKind,
+        gateType: node.gateType,
+        isEntry: draftGraph.entryNodes.includes(node.id),
+      },
+      type: 'stage',
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      sourceHandle: 'out',
+      targetHandle: 'in',
+      width: 220,
+      height: 84,
+      draggable: true,
+    })) ?? []
   );
   const graphCanvasEdges: Edge[] = (
     draftGraph?.edges.map((edge) => ({
-    id: edge.id,
-    source: edge.from,
-    target: edge.to,
-    label: edge.kind,
-    markerEnd: { type: MarkerType.ArrowClosed },
-    animated: edge.kind === 'reject',
-  })) ?? []
+      id: edge.id,
+      source: edge.from,
+      target: edge.to,
+      sourceHandle: 'out',
+      targetHandle: 'in',
+      type: 'smoothstep',
+      label: edge.kind,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      animated: edge.kind === 'reject',
+      style: edge.kind === 'reject'
+        ? {
+            stroke: 'var(--template-graph-edge-reject)',
+            strokeWidth: 1.8,
+            strokeDasharray: '7 6',
+          }
+        : {
+            stroke: 'var(--template-graph-edge-advance)',
+            strokeWidth: 1.8,
+          },
+      labelStyle: edge.kind === 'reject'
+        ? { fill: 'var(--template-graph-edge-reject)', fontSize: '11px', fontWeight: 600 }
+        : { fill: 'var(--template-graph-edge-advance)', fontSize: '11px', fontWeight: 600 },
+      labelBgStyle: edge.kind === 'reject'
+        ? { fill: 'var(--template-graph-label-reject-bg)' }
+        : { fill: 'var(--template-graph-label-bg)' },
+      labelBgPadding: [8, 4],
+      labelBgBorderRadius: 999,
+    })) ?? []
   );
   const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
   const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
@@ -384,6 +632,13 @@ function TemplateGraphEditorContent() {
           >
             新增节点
           </button>
+          <button
+            type="button"
+            className="button-secondary w-full justify-center"
+            onClick={() => updateDraftGraph((currentGraph) => tidyGraphLayout(currentGraph))}
+          >
+            整理布局
+          </button>
           <div className="space-y-2">
             <p className="field-label">节点</p>
             {draftGraph.nodes.map((node) => (
@@ -427,11 +682,19 @@ function TemplateGraphEditorContent() {
             <div className="template-graph-editor-canvas">
               <ReactFlow
                 fitView
+                fitViewOptions={{ padding: 0.2, duration: 380 }}
                 nodes={graphNodes}
                 edges={graphCanvasEdges}
+                nodeTypes={graphNodeTypes}
                 onNodesChange={handleGraphNodesChange}
                 onEdgesChange={handleGraphEdgesChange}
                 onConnect={handleGraphConnect}
+                connectionLineStyle={{ stroke: 'var(--template-graph-edge-advance)', strokeWidth: 1.8 }}
+                connectionLineContainerStyle={{ opacity: 0.85 }}
+                defaultEdgeOptions={{
+                  type: 'smoothstep',
+                  markerEnd: { type: MarkerType.ArrowClosed },
+                }}
                 onNodeClick={(_, node) => {
                   setSelectedGraphNodeId(node.id);
                   setSelectedGraphEdgeId(null);
@@ -442,9 +705,18 @@ function TemplateGraphEditorContent() {
                 }}
               >
                 <GraphCanvasInternalsSync nodeIds={draftGraph.nodes.map((node) => node.id)} />
-                <Background />
+                <Background gap={20} size={1} color="var(--color-text-tertiary)" />
                 <Controls />
               </ReactFlow>
+              <GraphCanvasOverlay
+                nodes={draftGraph.nodes}
+                edges={draftGraph.edges}
+                selectedEdgeId={selectedGraphEdgeId}
+                onSelectEdge={(edgeId) => {
+                  setSelectedGraphEdgeId(edgeId);
+                  setSelectedGraphNodeId(null);
+                }}
+              />
             </div>
           </div>
         <aside className="surface-panel surface-panel--workspace space-y-3">

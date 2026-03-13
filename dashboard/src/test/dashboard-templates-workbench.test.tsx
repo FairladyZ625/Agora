@@ -167,6 +167,14 @@ describe('templates workflow surfaces', () => {
     }
   });
 
+  it('renders graph edges inside the ReactFlow canvas', () => {
+    const { container } = renderGraphEditor();
+
+    const edgePaths = Array.from(container.querySelectorAll('.react-flow__edges path'));
+
+    expect(edgePaths.length).toBeGreaterThan(0);
+  });
+
   it('updates entry nodes and deletes graph nodes through the dedicated workflow editor page', () => {
     renderGraphEditor();
 
