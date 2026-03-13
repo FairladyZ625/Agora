@@ -29,7 +29,7 @@ export class TmuxCraftsmanAdapter implements CraftsmanAdapter {
       command: spec.command,
       args: spec.args,
     });
-    this.registry.sendKeys(paneTarget, shellCommand);
+    this.registry.sendText(paneTarget, shellCommand, true);
     const transportSessionId = `tmux:${this.registry.getSessionName()}:${this.name}`;
     this.registry.updatePaneState(this.name, {
       transportSessionId,
