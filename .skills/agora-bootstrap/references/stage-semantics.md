@@ -13,5 +13,9 @@ Implications:
 
 - `citizen_discuss`: discuss, question, decompose, align.
 - `citizen_execute`: perform non-craftsman execution work.
-- `craftsman_dispatch`: controller or allowed actor may dispatch craftsmen through Agora CLI.
+- `craftsman_dispatch`: controller or allowed actor may create execution-bound subtasks and dispatch craftsmen through Agora CLI.
 - `human_approval`: wait for human confirmation; do not self-advance.
+
+Additional control-plane rule:
+
+- `craftsman_dispatch` does not mean the thread is now "owned by craftsmen". It means the current citizen/controller loop may call craftsmen as execution engines and continue them through `execution_id` if they need more input.
