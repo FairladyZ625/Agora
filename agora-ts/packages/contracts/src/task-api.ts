@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { craftsmanExecutionSchema, craftsmanModeSchema } from './craftsman.js';
+import { craftsmanExecutionSchema, craftsmanInteractionExpectationSchema, craftsmanModeSchema } from './craftsman.js';
 import { taskControlModeSchema, taskPrioritySchema, taskStateSchema } from './task.js';
 import { validateWorkflowStages } from './workflow-rules.js';
 import { templateGraphSchema } from './template-graph.js';
@@ -278,6 +278,7 @@ export type SubtaskDto = z.infer<typeof subtaskSchema>;
 export const createSubtaskCraftsmanSpecSchema = z.object({
   adapter: z.string().min(1),
   mode: craftsmanModeSchema.default('one_shot'),
+  interaction_expectation: craftsmanInteractionExpectationSchema.default('one_shot'),
   workdir: z.string().nullable().optional(),
   prompt: z.string().nullable().optional(),
   brief_path: z.string().nullable().optional(),

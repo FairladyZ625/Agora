@@ -42,10 +42,19 @@ describe('craftsman contracts', () => {
         caller_id: 'opus',
         adapter: 'shell',
         mode: 'interactive',
+        interaction_expectation: 'needs_input',
         brief_path: null,
         workdir: '/tmp/worktree',
       }).mode,
     ).toBe('interactive');
+    expect(
+      craftsmanDispatchRequestSchema.parse({
+        task_id: 'OC-500',
+        subtask_id: 'build-runtime',
+        caller_id: 'opus',
+        adapter: 'shell',
+      }).interaction_expectation,
+    ).toBe('one_shot');
     expect(
       craftsmanCallbackRequestSchema.parse({
         execution_id: 'exec-001',

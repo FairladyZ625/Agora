@@ -11,6 +11,7 @@ import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
+  CraftsmanInteractionExpectationDto,
   CraftsmanModeDto,
   CraftsmanExecutionStatusDto,
   CraftsmanInputKeyDto,
@@ -1188,12 +1189,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--caller-id <callerId>', '调用者 agent id（默认要求 controller）')
     .requiredOption('--adapter <adapter>', 'adapter 名称')
     .option('--mode <mode>', '执行模式（one_shot|interactive）', 'one_shot')
+    .option('--interaction <interactionExpectation>', '交互预期（one_shot|needs_input|awaiting_choice）')
     .option('--workdir <workdir>', '工作目录')
     .option('--brief-path <briefPath>', 'brief 路径')
     .action((taskId: string, subtaskId: string, options: {
       callerId: string;
       adapter: string;
       mode: CraftsmanModeDto;
+      interaction?: CraftsmanInteractionExpectationDto;
       workdir?: string;
       briefPath?: string;
     }) => {
@@ -1203,6 +1206,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         caller_id: options.callerId,
         adapter: options.adapter,
         mode: options.mode,
+        interaction_expectation: options.interaction ?? (options.mode === 'interactive' ? 'needs_input' : 'one_shot'),
         workdir: options.workdir ?? null,
         brief_path: options.briefPath ?? null,
       });

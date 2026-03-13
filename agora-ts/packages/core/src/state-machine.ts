@@ -133,7 +133,7 @@ export class StateMachine {
       if (rows.length === 0) {
         return true;
       }
-      return rows.every((row) => row.status === 'done');
+      return rows.every((row) => ['done', 'cancelled', 'archived'].includes(row.status));
     }
 
     if (gateType === GateType.APPROVAL) {

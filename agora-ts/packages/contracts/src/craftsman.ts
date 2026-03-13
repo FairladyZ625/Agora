@@ -3,6 +3,13 @@ import { z } from 'zod';
 export const craftsmanModeSchema = z.enum(['one_shot', 'interactive']);
 export type CraftsmanModeDto = z.infer<typeof craftsmanModeSchema>;
 
+export const craftsmanInteractionExpectationSchema = z.enum([
+  'one_shot',
+  'needs_input',
+  'awaiting_choice',
+]);
+export type CraftsmanInteractionExpectationDto = z.infer<typeof craftsmanInteractionExpectationSchema>;
+
 export const craftsmanExecutionStatusSchema = z.enum([
   'queued',
   'running',
@@ -91,6 +98,7 @@ export const craftsmanDispatchRequestSchema = z.object({
   caller_id: z.string().min(1),
   adapter: craftsmanAdapterSchema,
   mode: craftsmanModeSchema.default('one_shot'),
+  interaction_expectation: craftsmanInteractionExpectationSchema.default('one_shot'),
   brief_path: z.string().nullable().optional(),
   workdir: z.string().nullable().optional(),
 });

@@ -1256,6 +1256,7 @@ describe('task service', () => {
       caller_id: 'opus',
       adapter: 'codex',
       mode: 'one_shot',
+      interaction_expectation: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow("Task OC-107 is in state 'paused', expected 'active'");
     expect(executions.listBySubtask('OC-107', 'paused-subtask')).toEqual([]);
@@ -2048,6 +2049,7 @@ describe('task service', () => {
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
+            interaction_expectation: 'one_shot',
             workdir: '/tmp/smoke-loop',
             prompt: 'Implement the smoke loop',
           },
@@ -2458,6 +2460,7 @@ describe('task service', () => {
       caller_id: 'opus',
       adapter: 'codex',
       mode: 'one_shot',
+      interaction_expectation: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow(/does not allow craftsman dispatch/i);
     expect(executions.listBySubtask('OC-DISPATCH-GUARD-1', 'sub-disallowed-1')).toEqual([]);
@@ -2514,6 +2517,7 @@ describe('task service', () => {
       caller_id: 'opus',
       adapter: 'codex',
       mode: 'one_shot',
+      interaction_expectation: 'one_shot',
       workdir: '/tmp/codex',
     });
 
@@ -2575,6 +2579,7 @@ describe('task service', () => {
       caller_id: 'sonnet',
       adapter: 'codex',
       mode: 'one_shot',
+      interaction_expectation: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow(/controller ownership/i);
   });
@@ -2654,6 +2659,7 @@ describe('task service', () => {
       caller_id: 'opus',
       adapter: 'codex',
       mode: 'one_shot',
+      interaction_expectation: 'one_shot',
       workdir: '/tmp/codex',
     })).toThrow(/per-agent concurrency limit exceeded/i);
   });
@@ -2713,6 +2719,7 @@ describe('task service', () => {
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
+            interaction_expectation: 'one_shot',
           },
         },
       ],
@@ -2847,6 +2854,7 @@ describe('task service', () => {
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
+            interaction_expectation: 'one_shot',
             workdir: '/tmp/subtask-build-api',
             prompt: 'Implement the API',
           },
@@ -2987,6 +2995,7 @@ describe('task service', () => {
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
+            interaction_expectation: 'one_shot',
             prompt: 'do work',
           },
         },
@@ -3048,11 +3057,58 @@ describe('task service', () => {
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
+            interaction_expectation: 'one_shot',
             prompt: 'do work',
           },
         },
       ],
     })).toThrow(/memory utilization/i);
+  });
+
+  it('rejects one_shot craftsman subtasks that declare interactive follow-up', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-GUARD-1',
+    });
+
+    service.createTask({
+      title: 'Interaction guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-SUBTASK-GUARD-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'interactive-mismatch',
+          title: 'Should fail',
+          assignee: 'opus',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'one_shot',
+            interaction_expectation: 'needs_input',
+            prompt: 'wait for more input',
+          },
+        },
+      ],
+    })).toThrow(/execution_mode='one_shot'/i);
   });
 
   it('applies team/workflow overrides when creating a task', () => {

@@ -167,7 +167,13 @@ describe('agora-ts state machine', () => {
       sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
     ).toBe(false);
 
-    db.prepare('UPDATE subtasks SET status = ? WHERE task_id = ? AND id = ?').run('done', 'OC-001', 'dev-api');
+    db.prepare('UPDATE subtasks SET status = ? WHERE task_id = ? AND id = ?').run('cancelled', 'OC-001', 'dev-api');
+
+    expect(
+      sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
+    ).toBe(true);
+
+    db.prepare('UPDATE subtasks SET status = ? WHERE task_id = ? AND id = ?').run('archived', 'OC-001', 'dev-api');
 
     expect(
       sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),

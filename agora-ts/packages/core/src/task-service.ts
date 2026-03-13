@@ -888,6 +888,13 @@ export class TaskService {
       if (subtask.craftsman && !stageAllowsCraftsmanDispatch(stage)) {
         throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
       }
+      if (subtask.craftsman) {
+        this.assertCraftsmanInteractionGuard(
+          subtask.craftsman.mode,
+          subtask.craftsman.interaction_expectation,
+          `subtask '${subtask.id}'`,
+        );
+      }
     }
     this.assertCraftsmanGovernanceForSubtasks(options.subtasks);
 
@@ -980,6 +987,11 @@ export class TaskService {
     if (!stageAllowsCraftsmanDispatch(stage)) {
       throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
     }
+    this.assertCraftsmanInteractionGuard(
+      input.mode,
+      input.interaction_expectation,
+      `dispatch for subtask '${subtask.id}'`,
+    );
     this.assertCraftsmanDispatchAllowed(subtask.assignee);
     const dispatched = this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
@@ -2441,6 +2453,18 @@ export class TaskService {
     if (active + additionalPlanned > limit) {
       throw new Error(
         `Craftsman per-agent concurrency limit exceeded for ${assignee}: ${active + additionalPlanned}/${limit}`,
+      );
+    }
+  }
+
+  private assertCraftsmanInteractionGuard(
+    mode: 'one_shot' | 'interactive',
+    interactionExpectation: 'one_shot' | 'needs_input' | 'awaiting_choice',
+    scope: string,
+  ) {
+    if (mode === 'one_shot' && interactionExpectation !== 'one_shot') {
+      throw new Error(
+        `${scope} declares interaction_expectation='${interactionExpectation}', but execution_mode='one_shot' only supports one-pass runs. Use execution_mode='interactive' for continued input or menu loops.`,
       );
     }
   }
