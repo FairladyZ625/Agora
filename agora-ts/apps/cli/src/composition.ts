@@ -1,4 +1,5 @@
-import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
+import { agoraDataDirPath, loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
 import { resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
@@ -91,6 +92,24 @@ export interface CliComposition {
   rolePackService: RolePackService;
   dashboardQueryService: DashboardQueryService;
   taskBrainBindingService: TaskBrainBindingService;
+}
+
+function ensureRuntimeBrainPackRoot(projectRoot: string): string {
+  const explicitRoot = process.env.AGORA_BRAIN_PACK_ROOT;
+  const runtimeBrainPackDir = explicitRoot
+    ? resolvePath(explicitRoot)
+    : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
+  if (existsSync(runtimeBrainPackDir)) {
+    return runtimeBrainPackDir;
+  }
+  const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
+  mkdirSync(runtimeBrainPackDir, { recursive: true });
+  cpSync(bundledBrainPackDir, runtimeBrainPackDir, {
+    recursive: true,
+    filter: (source) => !source.startsWith(resolvePath(bundledBrainPackDir, 'tasks')),
+  });
+  mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
+  return runtimeBrainPackDir;
 }
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
@@ -201,7 +220,7 @@ export function createCliComposition(
   runMigrations(db);
   const templatesDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/templates');
   const rolePackDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/role-packs/agora-default');
-  const brainPackDir = resolvePath(runtimeEnv.projectRoot, 'agora-ai-brain');
+  const brainPackDir = ensureRuntimeBrainPackRoot(runtimeEnv.projectRoot);
   const context: CliCompositionContext = {
     config,
     runtimeEnv,

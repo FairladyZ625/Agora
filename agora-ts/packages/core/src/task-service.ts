@@ -1671,6 +1671,7 @@ export class TaskService {
       execution_kind: resolveStageExecutionKind(stage),
       allowed_actions: resolveAllowedActions(stage),
       controller_ref: resolveControllerRef(task.team.members),
+      control_mode: task.control?.mode ?? 'normal',
       workspace_path: brainBinding?.workspace_path ?? null,
       participant_refs: input.participantRefs ?? null,
       lines: [
@@ -1683,10 +1684,73 @@ export class TaskService {
         `Allowed Actions: ${resolveAllowedActions(stage).join(', ') || '-'}`,
         `Controller: ${resolveControllerRef(task.team.members) ?? '-'}`,
         ...input.bodyLines,
+        ...this.buildSmokeStatusGuidance(task, input.kind),
         ...(brainBinding ? [`Task Workspace: ${brainBinding.workspace_path}`] : []),
         ...(brainBinding ? [`Current Brief: ${join(brainBinding.workspace_path, '00-current.md')}`] : []),
       ],
     };
+  }
+
+  private buildSmokeStatusGuidance(task: StoredTask, kind: string): string[] {
+    if (task.control?.mode !== 'smoke_test') {
+      return [];
+    }
+
+    const currentStage = task.current_stage ?? '-';
+    const controllerRef = resolveControllerRef(task.team.members) ?? '-';
+    switch (kind) {
+      case 'gate_waiting':
+        return [
+          '',
+          'Smoke Guidance:',
+          '- Validate the human approval path now.',
+          '- In this task thread, use the IM command or Dashboard to approve/reject without typing the task id.',
+          `- After a decision, confirm the controller (${controllerRef}) receives the next-step status update.`,
+        ];
+      case 'gate_rejected':
+      case 'controller_gate_rejected':
+        return [
+          '',
+          'Smoke Guidance:',
+          `- This is the reject/rework loop for stage ${currentStage}.`,
+          `- Controller ${controllerRef} should reorganize the roster work, reply in-thread with the fix plan, and resubmit for approval.`,
+          '- Validate that the reject reason is preserved in both Discord and Agora conversation.',
+        ];
+      case 'gate_approved':
+      case 'controller_gate_approved':
+        return [
+          '',
+          'Smoke Guidance:',
+          `- Approval passed for stage ${currentStage}.`,
+          `- Controller ${controllerRef} should continue the orchestration loop and drive the next allowed action.`,
+        ];
+      case 'craftsman_started':
+        return [
+          '',
+          'Smoke Guidance:',
+          '- Validate the automatic loop now: wait for the craftsman callback and confirm the status returns to this thread.',
+          '- Do not trigger a second craftsman dispatch until the current callback completes.',
+        ];
+      case 'craftsman_completed':
+      case 'craftsman_failed':
+        return [
+          '',
+          'Smoke Guidance:',
+          '- Confirm this callback also appears in Agora conversation and Dashboard timeline.',
+          `- Controller ${controllerRef} should decide whether to continue, retry, or resubmit based on the callback result.`,
+        ];
+      case 'thread_probe_controller':
+      case 'thread_probe_roster':
+      case 'thread_probe_inbox':
+        return [
+          '',
+          'Smoke Guidance:',
+          '- This is a stuck-task escalation probe.',
+          '- Confirm the escalation order is controller -> roster -> inbox and that each step appears only once after real inactivity.',
+        ];
+      default:
+        return [];
+    }
   }
 
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
@@ -2315,6 +2379,7 @@ type TaskStatusBroadcastEnvelope = {
   execution_kind: string | null;
   allowed_actions: string[];
   controller_ref: string | null;
+  control_mode: 'normal' | 'smoke_test';
   workspace_path: string | null;
   participant_refs: string[] | null;
   lines: string[];

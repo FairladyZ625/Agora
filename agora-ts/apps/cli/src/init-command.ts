@@ -192,9 +192,13 @@ function installBundledAgoraAssets(options: RunInitCommandOptions) {
 
   const bundledBrainPackDir = resolveBundledBrainPackDir(options);
   if (existsSync(bundledBrainPackDir)) {
-    cpSync(bundledBrainPackDir, resolve(userAgoraDir, 'agora-ai-brain'), {
+    const userBrainPackDir = resolve(userAgoraDir, 'agora-ai-brain');
+    mkdirSync(userBrainPackDir, { recursive: true });
+    cpSync(bundledBrainPackDir, userBrainPackDir, {
       recursive: true,
       force: true,
+      filter: (source) => !source.startsWith(resolve(bundledBrainPackDir, 'tasks')),
     });
+    mkdirSync(resolve(userBrainPackDir, 'tasks'), { recursive: true });
   }
 }

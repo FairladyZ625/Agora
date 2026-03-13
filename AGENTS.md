@@ -471,6 +471,10 @@ TypeScript 默认规范：
   - `cd agora-ts && npm run scenario:list`
   - `cd agora-ts && npm run scenario -- <scenario> --json`
   - `cd agora-ts && npm run scenario:all`
+- 涉及 IM/thread/bootstrap/approval/callback/probe 的改动，除了单测和类型检查外，必须补至少一轮真实 Discord 冒烟
+  - 默认优先用 `agora create --smoke-test ...` 创建真实验证任务
+  - 再在真实 thread 中验证 bootstrap、role brief、status broadcast、approve/reject、callback 或 probe
+  - `smoke_test` 只用于测试模式，禁止把测试引导语混入正式产品默认流程
 - 当 IM / thread / bootstrap / approval / callback / plugin conversation 相关链路变更且本地 Discord/OpenClaw 已配置可用时，必须追加至少一轮真实 Discord 冒烟回归：
   - 优先用 `agora` CLI 或 server facade 创建真实 task
   - 在真实 thread 中核对 bootstrap、role brief、approval/reject、craftsman/status、conversation 回投

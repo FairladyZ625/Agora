@@ -1799,6 +1799,142 @@ describe('task service', () => {
     expect(meta).toContain('control_mode: "smoke_test"');
   });
 
+  it('adds smoke-mode guidance to gate and callback status broadcasts only in smoke mode', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-smoke-status-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SMOKE-STATUS-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-smoke-status-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Smoke status task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'smoke status loop',
+      priority: 'normal',
+      control: {
+        mode: 'smoke_test',
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+
+    expect(() => service.advanceTask('OC-SMOKE-STATUS-1', { callerId: 'archon' })).toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const gateWaitingMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'gate_waiting');
+    expect(gateWaitingMessage?.body).toContain('Smoke Guidance:');
+    expect(gateWaitingMessage?.body).toContain('Validate the human approval path now.');
+
+    provisioningPort.published.length = 0;
+    subtasks.insertSubtask({
+      id: 'smoke-subtask-1',
+      task_id: 'OC-SMOKE-STATUS-1',
+      stage_id: 'develop',
+      title: 'smoke callback',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      dispatch_status: 'running',
+      craftsman_session: 'tmux:smoke-status-1',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-smoke-status-1',
+      task_id: 'OC-SMOKE-STATUS-1',
+      subtask_id: 'smoke-subtask-1',
+      adapter: 'codex',
+      mode: 'task',
+      session_id: 'tmux:smoke-status-1',
+      status: 'running',
+      started_at: '2026-03-13T11:00:00.000Z',
+    });
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-smoke-status-1',
+      status: 'succeeded',
+      session_id: 'tmux:smoke-status-1',
+      payload: {
+        output: {
+          summary: 'smoke callback complete',
+          artifacts: [],
+        },
+      },
+      error: null,
+      finished_at: '2026-03-13T11:01:00.000Z',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_completed');
+    expect(callbackMessage?.body).toContain('Smoke Guidance:');
+    expect(callbackMessage?.body).toContain('Confirm this callback also appears in Agora conversation and Dashboard timeline.');
+
+  });
+
+  it('adds smoke-mode guidance to probe broadcasts only in smoke mode', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-smoke-probe-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SMOKE-PROBE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Smoke probe task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      control: {
+        mode: 'smoke_test',
+      },
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-13T00:00:00.000Z', 'OC-SMOKE-PROBE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-13T00:00:00.000Z', 'OC-SMOKE-PROBE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-13T00:00:00.000Z', 'OC-SMOKE-PROBE-1');
+
+    service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-13T01:00:00.000Z'),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const probeMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'thread_probe_controller');
+    expect(probeMessage?.body).toContain('Smoke Guidance:');
+    expect(probeMessage?.body).toContain('controller -> roster -> inbox');
+  });
+
   it('joins explicit im_target participant refs in addition to interactive team members', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

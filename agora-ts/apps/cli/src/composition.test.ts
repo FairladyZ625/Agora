@@ -16,6 +16,7 @@ function makeTempDir() {
 }
 
 afterEach(() => {
+  delete process.env.AGORA_BRAIN_PACK_ROOT;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -29,6 +30,7 @@ describe('cli composition', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
 
     const composition = createCliComposition({ configPath });
@@ -43,6 +45,7 @@ describe('cli composition', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
 
     const overriddenTaskService = {
@@ -69,6 +72,7 @@ describe('cli composition', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(configPath, JSON.stringify({
       db_path: dbPath,
       im: {
@@ -108,6 +112,35 @@ describe('cli composition', () => {
     expect(captured.taskContextBindingService).toBeDefined();
     expect(captured.taskParticipationService).toBeDefined();
     expect(captured.agentRuntimePort).toBeDefined();
+    composition.db.close();
+  });
+
+  it('uses the configured runtime brain pack root instead of the repo skeleton path', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    const brainPackRoot = join(dir, 'brain-pack');
+    process.env.AGORA_BRAIN_PACK_ROOT = brainPackRoot;
+    writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
+
+    let capturedBrainPackDir: string | null = null;
+    const composition = createCliComposition(
+      { configPath },
+      {
+        createTaskBrainWorkspacePort: (context) => {
+          capturedBrainPackDir = context.brainPackDir;
+          return {
+            createWorkspace: () => {
+              throw new Error('not used');
+            },
+            updateWorkspace: () => undefined,
+            destroyWorkspace: () => undefined,
+          };
+        },
+      },
+    );
+
+    expect(capturedBrainPackDir).toBe(brainPackRoot);
     composition.db.close();
   });
 });

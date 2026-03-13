@@ -17,6 +17,7 @@ function makeTempDir() {
 }
 
 afterEach(() => {
+  delete process.env.AGORA_BRAIN_PACK_ROOT;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -30,6 +31,7 @@ describe('server runtime', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -57,6 +59,7 @@ describe('server runtime', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -130,6 +133,7 @@ describe('server runtime', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -159,6 +163,7 @@ describe('server runtime', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({

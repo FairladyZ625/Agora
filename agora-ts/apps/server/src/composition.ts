@@ -1,3 +1,4 @@
+import { cpSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import {
   ClaudeCraftsmanAdapter,
@@ -33,7 +34,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import type { AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -117,6 +118,24 @@ export interface ServerCompositionFactories {
   createHumanAccountService: (context: ServerCompositionContext) => HumanAccountService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
   createTaskConversationService: (context: ServerCompositionContext) => TaskConversationService;
+}
+
+function ensureRuntimeBrainPackRoot(projectRoot: string): string {
+  const explicitRoot = process.env.AGORA_BRAIN_PACK_ROOT;
+  const runtimeBrainPackDir = explicitRoot
+    ? resolvePath(explicitRoot)
+    : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
+  if (existsSync(runtimeBrainPackDir)) {
+    return runtimeBrainPackDir;
+  }
+  const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
+  mkdirSync(runtimeBrainPackDir, { recursive: true });
+  cpSync(bundledBrainPackDir, runtimeBrainPackDir, {
+    recursive: true,
+    filter: (source) => !source.startsWith(resolvePath(bundledBrainPackDir, 'tasks')),
+  });
+  mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
+  return runtimeBrainPackDir;
 }
 
 export function createDefaultServerCompositionFactories(): ServerCompositionFactories {
@@ -239,7 +258,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
-      brainPackRoot: resolvePath(context.runtimeEnv.projectRoot, 'agora-ai-brain'),
+      brainPackRoot: ensureRuntimeBrainPackRoot(context.runtimeEnv.projectRoot),
     }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,

@@ -64,8 +64,10 @@ describe('runInitCommand', () => {
     mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
     writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
     mkdirSync(join(bundledBrainPackDir, 'roles'), { recursive: true });
+    mkdirSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY'), { recursive: true });
     writeFileSync(join(bundledBrainPackDir, 'README.md'), '# brain\n');
     writeFileSync(join(bundledBrainPackDir, 'roles', 'controller.md'), '# controller\n');
+    writeFileSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY', 'task.meta.yaml'), 'task_id: "seed"\n');
 
     await runInitCommand({
       humanAccountService: {
@@ -90,6 +92,8 @@ describe('runInitCommand', () => {
     });
     expect(existsSync(join(userAgoraDir, 'skills', 'agora-bootstrap', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'roles', 'controller.md'))).toBe(true);
+    expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks'))).toBe(true);
+    expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks', 'OC-SEED-SHOULD-NOT-COPY'))).toBe(false);
     expect(existsSync(join(userSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
     expect(readFileSync(join(userSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
   });
