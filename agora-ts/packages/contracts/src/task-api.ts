@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { craftsmanExecutionSchema, craftsmanModeSchema } from './craftsman.js';
 import { taskControlModeSchema, taskPrioritySchema, taskStateSchema } from './task.js';
 import { validateWorkflowStages } from './workflow-rules.js';
 import { templateGraphSchema } from './template-graph.js';
@@ -253,6 +254,36 @@ export const subtaskSchema = z.object({
   done_at: z.string().nullable(),
 });
 export type SubtaskDto = z.infer<typeof subtaskSchema>;
+
+export const createSubtaskCraftsmanSpecSchema = z.object({
+  adapter: z.string().min(1),
+  mode: craftsmanModeSchema.default('task'),
+  workdir: z.string().nullable().optional(),
+  prompt: z.string().nullable().optional(),
+  brief_path: z.string().nullable().optional(),
+}).strict();
+export type CreateSubtaskCraftsmanSpecDto = z.infer<typeof createSubtaskCraftsmanSpecSchema>;
+
+export const createSubtaskDefinitionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  assignee: z.string().min(1),
+  craftsman: createSubtaskCraftsmanSpecSchema.optional(),
+}).strict();
+export type CreateSubtaskDefinitionDto = z.infer<typeof createSubtaskDefinitionSchema>;
+
+export const createSubtasksRequestSchema = z.object({
+  caller_id: z.string().min(1),
+  subtasks: z.array(createSubtaskDefinitionSchema).min(1),
+}).strict();
+export type CreateSubtasksRequestDto = z.infer<typeof createSubtasksRequestSchema>;
+
+export const createSubtasksResponseSchema = z.object({
+  task: taskSchema,
+  subtasks: z.array(subtaskSchema),
+  dispatched_executions: z.array(craftsmanExecutionSchema),
+});
+export type CreateSubtasksResponseDto = z.infer<typeof createSubtasksResponseSchema>;
 
 export const taskStatusSchema = z.object({
   task: taskSchema,

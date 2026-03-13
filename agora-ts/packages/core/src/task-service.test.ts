@@ -2373,6 +2373,129 @@ describe('task service', () => {
     })).toThrow(/controller ownership/i);
   });
 
+  it('creates execute-mode subtasks through the formal service surface and auto-dispatches craftsmen specs', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-subtask-create-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T10:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-CREATE-1',
+      craftsmanDispatcher: dispatcher,
+    });
+
+    service.createTask({
+      title: 'Formal subtask surface',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    const result = service.createSubtasks('OC-SUBTASK-CREATE-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'build-api',
+          title: 'Build API',
+          assignee: 'sonnet',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'task',
+            workdir: '/tmp/subtask-build-api',
+            prompt: 'Implement the API',
+          },
+        },
+        {
+          id: 'write-tests',
+          title: 'Write tests',
+          assignee: 'gpt52',
+        },
+      ],
+    });
+
+    expect(result.subtasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'build-api',
+          task_id: 'OC-SUBTASK-CREATE-1',
+          stage_id: 'develop',
+          craftsman_type: 'codex',
+          dispatch_status: 'running',
+        }),
+        expect.objectContaining({
+          id: 'write-tests',
+          assignee: 'gpt52',
+          craftsman_type: null,
+        }),
+      ]),
+    );
+    expect(result.dispatched_executions).toEqual([
+      expect.objectContaining({
+        execution_id: 'exec-subtask-create-1',
+        task_id: 'OC-SUBTASK-CREATE-1',
+        subtask_id: 'build-api',
+        adapter: 'codex',
+      }),
+    ]);
+  });
+
+  it('rejects formal subtask creation when the caller is not the controller', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-CREATE-2',
+    });
+
+    service.createTask({
+      title: 'Subtask ownership guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'citizen_execute',
+            allowed_actions: ['execute'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-SUBTASK-CREATE-2', {
+      caller_id: 'sonnet',
+      subtasks: [
+        {
+          id: 'rogue-subtask',
+          title: 'Should fail',
+          assignee: 'sonnet',
+        },
+      ],
+    })).toThrow(/controller ownership/i);
+  });
+
   it('applies team/workflow overrides when creating a task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

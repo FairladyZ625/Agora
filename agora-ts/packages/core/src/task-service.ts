@@ -5,12 +5,15 @@ import { fileURLToPath } from 'node:url';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanDispatchRequestDto,
+  CreateSubtasksRequestDto,
+  CreateSubtasksResponseDto,
   CreateTaskRequestDto,
   PromoteTodoRequestDto,
   TaskBlueprintDto,
   TaskStatusDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
+import { craftsmanExecutionSchema } from '@agora-ts/contracts';
 import {
   ApprovalRequestRepository,
   ArchiveJobRepository,
@@ -31,6 +34,7 @@ import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
 import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { GateService } from './gate-service.js';
+import { ModeController } from './mode-controller.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
@@ -699,6 +703,86 @@ export class TaskService {
       },
     });
     return task;
+  }
+
+  createSubtasks(taskId: string, options: CreateSubtasksRequestDto): CreateSubtasksResponseDto {
+    const task = this.getTaskOrThrow(taskId);
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
+    }
+    if (!task.current_stage) {
+      throw new Error(`Task ${taskId} has no current_stage set`);
+    }
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (controllerRef && options.caller_id !== controllerRef) {
+      throw new Error(`Subtask creation requires controller ownership: expected '${controllerRef}', received '${options.caller_id}'`);
+    }
+    const stage = this.getCurrentStageOrThrow(task);
+    const executionKind = resolveStageExecutionKind(stage);
+    if (executionKind !== 'citizen_execute' && executionKind !== 'craftsman_dispatch') {
+      throw new Error(`Stage '${stage.id}' does not allow execute-mode subtasks`);
+    }
+    const duplicateIds = new Set<string>();
+    const existingIds = new Set(this.subtaskRepository.listByTask(taskId).map((subtask) => subtask.id));
+    for (const subtask of options.subtasks) {
+      if (duplicateIds.has(subtask.id) || existingIds.has(subtask.id)) {
+        throw new Error(`Subtask id '${subtask.id}' already exists in task ${taskId}`);
+      }
+      duplicateIds.add(subtask.id);
+      if (subtask.craftsman && !stageAllowsCraftsmanDispatch(stage)) {
+        throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
+      }
+    }
+
+    const executeDefs = options.subtasks.map((subtask) => ({
+      id: subtask.id,
+      title: subtask.title,
+      assignee: subtask.assignee,
+      ...(subtask.craftsman ? {
+        craftsman: {
+          adapter: subtask.craftsman.adapter,
+          mode: subtask.craftsman.mode,
+          workdir: subtask.craftsman.workdir ?? null,
+          prompt: subtask.craftsman.prompt ?? null,
+          brief_path: subtask.craftsman.brief_path ?? null,
+        },
+      } : {}),
+    }));
+
+    const controller = new ModeController(
+      this.db,
+      this.craftsmanDispatcher ? { dispatcher: this.craftsmanDispatcher } : {},
+    );
+    controller.enterExecuteMode(taskId, stage.id, executeDefs);
+
+    const createdSubtasks = this.subtaskRepository
+      .listByTask(taskId)
+      .filter((subtask) => duplicateIds.has(subtask.id));
+    const dispatchedExecutions = createdSubtasks
+      .flatMap((subtask) => this.craftsmanExecutions.listBySubtask(taskId, subtask.id))
+      .map((execution) => craftsmanExecutionSchema.parse(execution));
+
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'subtasks_created',
+      bodyLines: [
+        `Controller ${options.caller_id} created ${createdSubtasks.length} subtasks in stage ${stage.id}.`,
+        ...createdSubtasks.map((subtask) => `- ${subtask.id} | ${subtask.assignee} | ${subtask.craftsman_type ?? 'citizen_only'}`),
+        ...(dispatchedExecutions.length > 0
+          ? [`Auto-dispatched executions: ${dispatchedExecutions.map((execution) => `${execution.subtask_id}:${execution.execution_id}`).join(', ')}`]
+          : []),
+      ],
+    });
+
+    return {
+      task: this.withControllerRef(this.getTaskOrThrow(taskId)) as CreateSubtasksResponseDto['task'],
+      subtasks: createdSubtasks,
+      dispatched_executions: dispatchedExecutions,
+    };
+  }
+
+  listSubtasks(taskId: string) {
+    this.getTaskOrThrow(taskId);
+    return this.subtaskRepository.listByTask(taskId);
   }
 
   handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {

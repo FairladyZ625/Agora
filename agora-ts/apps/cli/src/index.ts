@@ -13,13 +13,14 @@ import type {
   CraftsmanCallbackRequestDto,
   CraftsmanExecutionStatusDto,
   CraftsmanRuntimeIdentitySourceDto,
+  CreateSubtasksRequestDto,
   CreateTaskRequestDto,
   TaskPriority,
   TemplateDetailDto,
   TemplateGraphDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
-import { createTaskRequestSchema } from '@agora-ts/contracts';
+import { createSubtasksRequestSchema, createTaskRequestSchema } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
 import type { HumanAccountService } from '@agora-ts/core';
@@ -873,6 +874,49 @@ export function createCliProgram(deps: CliDependencies = {}) {
         output: options.output,
       });
       writeLine(stdout, `任务 ${taskId} 的子任务 ${options.subtaskId} 已完成`);
+    });
+
+  const subtasks = program
+    .command('subtasks')
+    .description('subtask execute-mode commands');
+
+  subtasks
+    .command('list')
+    .description('列出任务 subtasks')
+    .argument('<taskId>', '任务 ID')
+    .option('--json', '输出 JSON', false)
+    .action((taskId: string, options: { json?: boolean }) => {
+      const items = taskService.listSubtasks(taskId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ subtasks: items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, `任务 ${taskId} 暂无 subtasks`);
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.id}\t${item.stage_id}\t${item.assignee}\t${item.status}\t${item.craftsman_type ?? '-'}`);
+      }
+    });
+
+  subtasks
+    .command('create')
+    .description('为当前执行阶段创建 subtasks')
+    .argument('<taskId>', '任务 ID')
+    .requiredOption('--caller-id <callerId>', '调用者 ID（当前默认要求 controller）')
+    .requiredOption('--file <file>', 'subtasks json file')
+    .action((taskId: string, options: { callerId: string; file: string }) => {
+      const parsed = JSON.parse(readFileSync(options.file, 'utf8')) as { subtasks?: CreateSubtasksRequestDto['subtasks'] };
+      const payload = createSubtasksRequestSchema.parse({
+        caller_id: options.callerId,
+        subtasks: parsed.subtasks ?? [],
+      });
+      const result = taskService.createSubtasks(taskId, payload);
+      writeLine(stdout, `任务 ${taskId} 已创建 ${result.subtasks.length} 个 subtasks`);
+      if (result.dispatched_executions.length > 0) {
+        writeLine(stdout, `auto-dispatched executions: ${result.dispatched_executions.map((item) => item.execution_id).join(', ')}`);
+      }
     });
 
   program

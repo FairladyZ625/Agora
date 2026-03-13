@@ -25,6 +25,7 @@ import {
   dashboardUserUpdatePasswordRequestSchema,
   createInboxRequestSchema,
   createTaskRequestSchema,
+  createSubtasksRequestSchema,
   createTaskContextBindingRequestSchema,
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
@@ -1241,6 +1242,33 @@ export function buildApp(options: BuildAppOptions = {}) {
           output: payload.output,
         }),
       );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/tasks/:taskId/subtasks', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      return reply.send({ subtasks: taskService.listSubtasks(params.taskId) });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/subtasks', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string };
+      const payload = createSubtasksRequestSchema.parse(request.body);
+      return reply.send(taskService.createSubtasks(params.taskId, payload));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

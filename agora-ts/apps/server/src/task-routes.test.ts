@@ -610,6 +610,79 @@ describe('task routes', () => {
     expect(bindingService.listBindings('OC-CTX-ROUTE')[0]?.status).toBe('archived');
   });
 
+  it('creates and lists subtasks through the task routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-202-SUBTASK',
+    });
+    const app = buildApp({ taskService });
+
+    taskService.createTask({
+      title: 'Subtask routes',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'citizen_execute',
+            allowed_actions: ['execute'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202-SUBTASK/subtasks',
+      payload: {
+        caller_id: 'opus',
+        subtasks: [
+          {
+            id: 'build-api',
+            title: 'Build API',
+            assignee: 'sonnet',
+          },
+        ],
+      },
+    });
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/tasks/OC-202-SUBTASK/subtasks',
+    });
+
+    expect(create.statusCode).toBe(200);
+    expect(create.json()).toMatchObject({
+      task: {
+        id: 'OC-202-SUBTASK',
+      },
+      subtasks: [
+        {
+          id: 'build-api',
+          stage_id: 'develop',
+          assignee: 'sonnet',
+        },
+      ],
+      dispatched_executions: [],
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json()).toMatchObject({
+      subtasks: [
+        {
+          id: 'build-api',
+          stage_id: 'develop',
+        },
+      ],
+    });
+  });
+
   it('deletes the IM context when the archive job is marked synced through the route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

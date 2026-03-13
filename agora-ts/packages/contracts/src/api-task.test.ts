@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   approveTaskRequestSchema,
+  createSubtasksRequestSchema,
+  createSubtasksResponseSchema,
   createTaskRequestSchema,
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
@@ -191,6 +193,97 @@ describe('task api contracts', () => {
       roster_after_ms: 2000,
       inbox_after_ms: 3000,
     }).inbox_after_ms).toBe(3000);
+  });
+
+  it('parses create subtasks request/response payloads', () => {
+    expect(createSubtasksRequestSchema.parse({
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'build-api',
+          title: 'Build API',
+          assignee: 'sonnet',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'task',
+            workdir: '/tmp/build-api',
+          },
+        },
+      ],
+    })).toMatchObject({
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'build-api',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'task',
+          },
+        },
+      ],
+    });
+
+    expect(createSubtasksResponseSchema.parse({
+      task: {
+        id: 'OC-SUBTASK-1',
+        version: 1,
+        title: 'Subtask create',
+        description: null,
+        type: 'coding',
+        priority: 'normal',
+        creator: 'archon',
+        state: 'active',
+        archive_status: null,
+        controller_ref: 'opus',
+        current_stage: 'develop',
+        team: { members: [] },
+        workflow: { stages: [] },
+        scheduler: null,
+        scheduler_snapshot: null,
+        discord: null,
+        metrics: null,
+        error_detail: null,
+        created_at: '2026-03-13T00:00:00.000Z',
+        updated_at: '2026-03-13T00:00:00.000Z',
+      },
+      subtasks: [
+        {
+          id: 'build-api',
+          task_id: 'OC-SUBTASK-1',
+          stage_id: 'develop',
+          title: 'Build API',
+          assignee: 'sonnet',
+          status: 'in_progress',
+          output: null,
+          craftsman_type: 'codex',
+          craftsman_session: 'tmux:codex-1',
+          craftsman_workdir: '/tmp/build-api',
+          craftsman_prompt: null,
+          dispatch_status: 'running',
+          dispatched_at: '2026-03-13T00:00:00.000Z',
+          done_at: null,
+        },
+      ],
+      dispatched_executions: [
+        {
+          execution_id: 'exec-subtask-1',
+          task_id: 'OC-SUBTASK-1',
+          subtask_id: 'build-api',
+          adapter: 'codex',
+          mode: 'task',
+          session_id: 'tmux:codex-1',
+          status: 'running',
+          brief_path: null,
+          workdir: '/tmp/build-api',
+          callback_payload: null,
+          error: null,
+          started_at: '2026-03-13T00:00:00.000Z',
+          finished_at: null,
+          created_at: '2026-03-13T00:00:00.000Z',
+          updated_at: '2026-03-13T00:00:00.000Z',
+        },
+      ],
+    }).dispatched_executions[0]?.execution_id).toBe('exec-subtask-1');
   });
 
   it('accepts team members with empty model_preference for legacy and quick tasks', () => {

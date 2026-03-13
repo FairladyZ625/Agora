@@ -1363,6 +1363,79 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('craftsman execution 已派发: exec-cli-limit-1');
   });
 
+  it('creates and lists subtasks through the cli formal surface', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-cli-subtask-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T11:00:00.000Z'),
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-307',
+      craftsmanDispatcher: dispatcher,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+    const subtaskFile = makeWorkflowFile({
+      subtasks: [
+        {
+          id: 'build-api',
+          title: 'Build API',
+          assignee: 'sonnet',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'task',
+            workdir: '/tmp/cli-subtask-build-api',
+          },
+        },
+        {
+          id: 'write-tests',
+          title: 'Write tests',
+          assignee: 'gpt52',
+        },
+      ],
+    });
+
+    taskService.createTask({
+      title: 'formal cli subtasks',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'craftsman_dispatch',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
+    });
+
+    await program.parseAsync([
+      'subtasks',
+      'create',
+      'OC-307',
+      '--caller-id',
+      'opus',
+      '--file',
+      subtaskFile,
+    ], { from: 'user' });
+    await program.parseAsync(['subtasks', 'list', 'OC-307'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('任务 OC-307 已创建 2 个 subtasks');
+    expect(stdout.value).toContain('auto-dispatched executions: exec-cli-subtask-1');
+    expect(stdout.value).toContain('build-api\tdevelop\tsonnet\tnot_started\tcodex');
+    expect(stdout.value).toContain('write-tests\tdevelop\tgpt52\tnot_started\t-');
+  });
+
   it('supports tmux runtime management commands through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
