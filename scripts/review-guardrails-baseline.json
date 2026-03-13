@@ -1,0 +1,25 @@
+{
+  "providerFallbackHardcode": [
+    "agora-ts/packages/core/src/dashboard-query-service.ts:303 provider/runtime fallback literal"
+  ],
+  "rawJsonParse": [],
+  "repositoryNonNullReload": [
+    "agora-ts/packages/db/src/repositories/craftsman-execution.repository.ts:88 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/craftsman-execution.repository.ts:164 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/human-account.repository.ts:97 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/inbox.repository.ts:73 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/inbox.repository.ts:77 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/notification-outbox.repository.ts:47 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/participant-binding.repository.ts:52 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/role-definition.repository.ts:76 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/runtime-session-binding.repository.ts:60 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/subtask.repository.ts:63 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/subtask.repository.ts:125 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/task-context-binding.repository.ts:42 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/task-conversation-read-cursor.repository.ts:46 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/task-conversation.repository.ts:82 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/template.repository.ts:67 repository reload uses non-null assertion",
+    "agora-ts/packages/db/src/repositories/todo.repository.ts:56 repository reload uses non-null assertion"
+  ],
+  "dashboardEmptyCatch": []
+}
