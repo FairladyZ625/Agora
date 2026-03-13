@@ -27,7 +27,12 @@ describe('tmux pane registry', () => {
       .mockImplementationOnce(() => {
         throw new Error('no session');
       })
-      .mockImplementation(() => '');
+      .mockImplementation((args: string[]) => {
+        if (args[0] === 'list-panes' && args.includes('#{pane_id}')) {
+          return ['%7', '%8', '%9'].join('\n');
+        }
+        return '';
+      });
     const registry = new TmuxPaneRegistry({ exec, registryDir: makeRegistryDir() });
 
     registry.ensureSession();
@@ -36,9 +41,9 @@ describe('tmux pane registry', () => {
     expect(exec).toHaveBeenCalledWith(['new-session', '-d', '-s', 'agora-craftsmen', '-n', 'orchestrator', 'bash']);
     expect(exec).toHaveBeenCalledWith(['split-window', '-h', '-t', 'agora-craftsmen:orchestrator', 'bash']);
     expect(exec).toHaveBeenCalledWith(['split-window', '-v', '-t', 'agora-craftsmen:orchestrator', 'bash']);
-    expect(exec).toHaveBeenCalledWith(['select-pane', '-t', '%0', '-T', 'codex']);
-    expect(exec).toHaveBeenCalledWith(['select-pane', '-t', '%1', '-T', 'claude']);
-    expect(exec).toHaveBeenCalledWith(['select-pane', '-t', '%2', '-T', 'gemini']);
+    expect(exec).toHaveBeenCalledWith(['select-pane', '-t', '%7', '-T', 'codex']);
+    expect(exec).toHaveBeenCalledWith(['select-pane', '-t', '%8', '-T', 'claude']);
+    expect(exec).toHaveBeenCalledWith(['select-pane', '-t', '%9', '-T', 'gemini']);
   });
 
   it('parses pane status and resolves pane target by title', () => {

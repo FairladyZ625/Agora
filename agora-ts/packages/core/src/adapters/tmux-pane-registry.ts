@@ -61,9 +61,15 @@ export class TmuxPaneRegistry {
       this.execTmux(['new-session', '-d', '-s', this.sessionName, '-n', this.windowName, 'bash']);
       this.execTmux(['split-window', '-h', '-t', `${this.sessionName}:${this.windowName}`, 'bash']);
       this.execTmux(['split-window', '-v', '-t', `${this.sessionName}:${this.windowName}`, 'bash']);
-      this.execTmux(['select-pane', '-t', '%0', '-T', 'codex']);
-      this.execTmux(['select-pane', '-t', '%1', '-T', 'claude']);
-      this.execTmux(['select-pane', '-t', '%2', '-T', 'gemini']);
+      const paneIds = this.listPaneIds();
+      const titles = ['codex', 'claude', 'gemini'];
+      for (const [index, title] of titles.entries()) {
+        const paneId = paneIds[index];
+        if (!paneId) {
+          throw new Error(`tmux session ${this.sessionName} did not provision enough panes`);
+        }
+        this.execTmux(['select-pane', '-t', paneId, '-T', title]);
+      }
     }
     for (const pane of this.listPaneTitles()) {
       this.ensurePaneState(pane.title);
@@ -185,6 +191,20 @@ export class TmuxPaneRegistry {
         }
         return { id, title };
       });
+  }
+
+  private listPaneIds() {
+    const output = this.execTmux([
+      'list-panes',
+      '-t',
+      `${this.sessionName}:${this.windowName}`,
+      '-F',
+      '#{pane_id}',
+    ]);
+    return output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
   private ensureRegistryDir() {
