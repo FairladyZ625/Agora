@@ -150,6 +150,54 @@ export function getTaskConversation(taskId: string): Promise<ApiTaskConversation
   );
 }
 
+export function closeSubtask(
+  taskId: string,
+  subtaskId: string,
+  callerId: string,
+  note: string,
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(
+    `/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}/close`,
+    taskSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ caller_id: callerId, note }),
+    },
+  );
+}
+
+export function archiveSubtask(
+  taskId: string,
+  subtaskId: string,
+  callerId: string,
+  note: string,
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(
+    `/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}/archive`,
+    taskSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ caller_id: callerId, note }),
+    },
+  );
+}
+
+export function cancelSubtask(
+  taskId: string,
+  subtaskId: string,
+  callerId: string,
+  note: string,
+): Promise<ApiTaskDto> {
+  return request<ApiTaskDto>(
+    `/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}/cancel`,
+    taskSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ caller_id: callerId, note }),
+    },
+  );
+}
+
 export function listSubtaskExecutions(taskId: string, subtaskId: string): Promise<ApiCraftsmanExecutionDto[]> {
   return request<ApiCraftsmanExecutionDto[]>(
     `/craftsmen/tasks/${encodeURIComponent(taskId)}/subtasks/${encodeURIComponent(subtaskId)}/executions`,

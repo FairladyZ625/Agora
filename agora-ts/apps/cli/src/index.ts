@@ -952,6 +952,54 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
     });
 
+  subtasks
+    .command('close')
+    .description('关闭 subtask（标记为 done）')
+    .argument('<taskId>', '任务 ID')
+    .requiredOption('--subtask-id <subtaskId>', '子任务 ID')
+    .requiredOption('--caller-id <callerId>', '调用者 ID')
+    .option('--note <note>', '备注', '')
+    .action((taskId: string, options: { subtaskId: string; callerId: string; note: string }) => {
+      taskService.completeSubtask(taskId, {
+        subtaskId: options.subtaskId,
+        callerId: options.callerId,
+        output: options.note,
+      });
+      writeLine(stdout, `任务 ${taskId} 的子任务 ${options.subtaskId} 已关闭`);
+    });
+
+  subtasks
+    .command('archive')
+    .description('归档 subtask')
+    .argument('<taskId>', '任务 ID')
+    .requiredOption('--subtask-id <subtaskId>', '子任务 ID')
+    .requiredOption('--caller-id <callerId>', '调用者 ID')
+    .option('--note <note>', '备注', '')
+    .action((taskId: string, options: { subtaskId: string; callerId: string; note: string }) => {
+      taskService.archiveSubtask(taskId, {
+        subtaskId: options.subtaskId,
+        callerId: options.callerId,
+        note: options.note,
+      });
+      writeLine(stdout, `任务 ${taskId} 的子任务 ${options.subtaskId} 已归档`);
+    });
+
+  subtasks
+    .command('cancel')
+    .description('取消 subtask')
+    .argument('<taskId>', '任务 ID')
+    .requiredOption('--subtask-id <subtaskId>', '子任务 ID')
+    .requiredOption('--caller-id <callerId>', '调用者 ID')
+    .option('--note <note>', '备注', '')
+    .action((taskId: string, options: { subtaskId: string; callerId: string; note: string }) => {
+      taskService.cancelSubtask(taskId, {
+        subtaskId: options.subtaskId,
+        callerId: options.callerId,
+        note: options.note,
+      });
+      writeLine(stdout, `任务 ${taskId} 的子任务 ${options.subtaskId} 已取消`);
+    });
+
   program
     .command('force-advance')
     .description('强制推进任务')

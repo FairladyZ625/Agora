@@ -133,6 +133,12 @@ export interface CompleteSubtaskOptions {
   output: string;
 }
 
+export interface SubtaskLifecycleOptions {
+  subtaskId: string;
+  callerId: string;
+  note: string;
+}
+
 export interface ForceAdvanceOptions {
   reason: string;
 }
@@ -735,13 +741,8 @@ export class TaskService {
 
   completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
-    const subtask = this.subtaskRepository.listByTask(taskId).find((item) => item.id === options.subtaskId);
-    if (!subtask) {
-      throw new NotFoundError(`Subtask ${options.subtaskId} not found in task ${taskId}`);
-    }
-    if (!this.permissions.verifySubtaskDone(options.callerId, subtask.assignee)) {
-      throw new PermissionDeniedError(`${options.callerId} 无权完成子任务 ${options.subtaskId}（assignee=${subtask.assignee}）`);
-    }
+    const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
+    this.assertSubtaskControl(task, subtask, options.callerId);
     this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
       status: 'done',
       output: options.output,
@@ -762,6 +763,100 @@ export class TaskService {
         event: 'subtask_done',
         subtask_id: options.subtaskId,
       },
+    });
+    return task;
+  }
+
+  archiveSubtask(taskId: string, options: SubtaskLifecycleOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
+    this.assertSubtaskControl(task, subtask, options.callerId);
+    if (TERMINAL_SUBTASK_STATES.has(subtask.status)) {
+      throw new Error(`Subtask ${options.subtaskId} is already terminal (${subtask.status})`);
+    }
+    const now = new Date().toISOString();
+    this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
+      status: 'archived',
+      output: options.note || subtask.output || `Subtask archived by ${options.callerId}`,
+      done_at: now,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'subtask_archived',
+      stage_id: subtask.stage_id,
+      detail: { subtask_id: options.subtaskId, note: options.note || null },
+      actor: options.callerId,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.callerId,
+      body: `Subtask ${options.subtaskId} archived`,
+      metadata: {
+        event: 'subtask_archived',
+        subtask_id: options.subtaskId,
+        note: options.note || null,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'subtask_archived',
+      bodyLines: [
+        `Subtask ${options.subtaskId} archived by ${options.callerId}.`,
+        ...(options.note ? [`Note: ${options.note}`] : []),
+      ],
+    });
+    return task;
+  }
+
+  cancelSubtask(taskId: string, options: SubtaskLifecycleOptions): StoredTask {
+    const task = this.getTaskOrThrow(taskId);
+    const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
+    this.assertSubtaskControl(task, subtask, options.callerId);
+    if (TERMINAL_SUBTASK_STATES.has(subtask.status)) {
+      throw new Error(`Subtask ${options.subtaskId} is already terminal (${subtask.status})`);
+    }
+    const now = new Date().toISOString();
+    const reason = options.note || `Subtask cancelled by ${options.callerId}`;
+    this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
+      status: 'cancelled',
+      output: reason,
+      dispatch_status: subtask.dispatch_status && !TERMINAL_EXECUTION_STATUSES.has(subtask.dispatch_status)
+        ? 'failed'
+        : subtask.dispatch_status,
+      done_at: now,
+    });
+    for (const execution of this.craftsmanExecutions.listBySubtask(taskId, subtask.id)) {
+      if (TERMINAL_EXECUTION_STATUSES.has(execution.status)) {
+        continue;
+      }
+      this.craftsmanExecutions.updateExecution(execution.execution_id, {
+        status: 'cancelled',
+        error: reason,
+        finished_at: now,
+      });
+    }
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'subtask_cancelled',
+      stage_id: subtask.stage_id,
+      detail: { subtask_id: options.subtaskId, note: options.note || null },
+      actor: options.callerId,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.callerId,
+      body: `Subtask ${options.subtaskId} cancelled`,
+      metadata: {
+        event: 'subtask_cancelled',
+        subtask_id: options.subtaskId,
+        note: options.note || null,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'subtask_cancelled',
+      bodyLines: [
+        `Subtask ${options.subtaskId} cancelled by ${options.callerId}.`,
+        ...(options.note ? [`Reason: ${options.note}`] : []),
+      ],
     });
     return task;
   }
@@ -2367,6 +2462,26 @@ export class TaskService {
       || dispatchStatus === 'running'
       || dispatchStatus === 'needs_input'
       || dispatchStatus === 'awaiting_choice';
+  }
+
+  private getSubtaskOrThrow(taskId: string, subtaskId: string) {
+    const subtask = this.subtaskRepository.listByTask(taskId).find((item) => item.id === subtaskId);
+    if (!subtask) {
+      throw new NotFoundError(`Subtask ${subtaskId} not found in task ${taskId}`);
+    }
+    return subtask;
+  }
+
+  private assertSubtaskControl(task: StoredTask, subtask: { id: string; assignee: string }, callerId: string) {
+    const controllerRef = resolveControllerRef(task.team.members);
+    const allowed = this.permissions.isArchon(callerId)
+      || callerId === subtask.assignee
+      || (controllerRef !== null && callerId === controllerRef);
+    if (!allowed) {
+      throw new PermissionDeniedError(
+        `${callerId} cannot control subtask ${subtask.id} (assignee=${subtask.assignee}, controller=${controllerRef ?? '-'})`,
+      );
+    }
   }
 
   private failMissingCraftsmanSessions(

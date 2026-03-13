@@ -105,6 +105,28 @@ const taskStoreState = {
   error: null,
   selectedTaskId: null,
   selectedTaskStatus: null,
+  governanceSnapshot: {
+    limits: {
+      maxConcurrentRunning: 6,
+      maxConcurrentPerAgent: 2,
+      hostMemoryUtilizationLimit: 0.85,
+      hostSwapUtilizationLimit: 0.25,
+      hostLoadPerCpuLimit: 1.5,
+    },
+    activeExecutions: 4,
+    activeByAssignee: [{ assignee: 'opus', count: 2 }],
+    host: {
+      observedAt: '2026-03-07T11:58:00.000Z',
+      cpuCount: 8,
+      load1m: 1.25,
+      memoryTotalBytes: 10,
+      memoryUsedBytes: 5,
+      memoryUtilization: 0.5,
+      swapTotalBytes: 10,
+      swapUsedBytes: 0,
+      swapUtilization: 0,
+    },
+  },
   filters: { state: null, search: '' },
   fetchTasks,
   selectTask: vi.fn(async () => undefined),
@@ -116,6 +138,9 @@ const taskStoreState = {
   sendCraftsmanInputText: vi.fn(async () => 'live'),
   sendCraftsmanInputKeys: vi.fn(async () => 'live'),
   submitCraftsmanChoice: vi.fn(async () => 'live'),
+  closeSubtask: vi.fn(async () => 'live'),
+  archiveSubtask: vi.fn(async () => 'live'),
+  cancelSubtask: vi.fn(async () => 'live'),
   cleanupTasks: vi.fn(async () => 0),
   setFilters: vi.fn(),
   clearError: vi.fn(),
@@ -208,6 +233,20 @@ describe('dashboard home live metrics', () => {
       .find(Boolean);
     expect(completedPulse).not.toBeNull();
     expect(within(completedPulse as HTMLElement).getByText('30 分钟前')).toBeInTheDocument();
+
+    const executionPulse = screen
+      .getAllByText('活跃执行单元')
+      .map((node) => node.closest('.inline-stat'))
+      .find(Boolean);
+    expect(executionPulse).not.toBeNull();
+    expect(within(executionPulse as HTMLElement).getByText('4')).toBeInTheDocument();
+
+    const loadPulse = screen
+      .getAllByText('主机负载')
+      .map((node) => node.closest('.inline-stat'))
+      .find(Boolean);
+    expect(loadPulse).not.toBeNull();
+    expect(within(loadPulse as HTMLElement).getByText('1.25')).toBeInTheDocument();
   });
 
   it('defers secondary homepage panels until after the first paint window', () => {

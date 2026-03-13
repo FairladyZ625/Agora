@@ -17,6 +17,7 @@ import type { CraftsmanExecution, Subtask, TaskAction, TaskBlueprint, TaskConver
 
 const TASK_STATE_VALUES = ['in_progress', 'gate_waiting', 'completed', 'pending', 'paused', 'blocked', 'cancelled'] as const;
 const TASK_PRIORITY_VALUES = ['high', 'normal', 'low'] as const;
+const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 
 type TimelineItem = {
   key: string;
@@ -160,6 +161,9 @@ export function TasksPage() {
   const sendCraftsmanInputText = useTaskStore((state) => state.sendCraftsmanInputText);
   const sendCraftsmanInputKeys = useTaskStore((state) => state.sendCraftsmanInputKeys);
   const submitCraftsmanChoice = useTaskStore((state) => state.submitCraftsmanChoice);
+  const closeSubtask = useTaskStore((state) => state.closeSubtask);
+  const archiveSubtask = useTaskStore((state) => state.archiveSubtask);
+  const cancelSubtask = useTaskStore((state) => state.cancelSubtask);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
@@ -417,6 +421,36 @@ export function TasksPage() {
       showMessage(
         t('feedback.taskActionFailureTitle'),
         inputError instanceof Error ? inputError.message : String(inputError),
+        'warning',
+      );
+    }
+  };
+
+  const runSubtaskLifecycle = async (
+    action: 'close' | 'archive' | 'cancel',
+    subtask: Subtask,
+  ) => {
+    if (!activeTask) {
+      return;
+    }
+    try {
+      if (action === 'close') {
+        await closeSubtask(activeTask.id, subtask.id, resolvedActionActor, actionNote);
+      } else if (action === 'archive') {
+        await archiveSubtask(activeTask.id, subtask.id, resolvedActionActor, actionNote);
+      } else {
+        await cancelSubtask(activeTask.id, subtask.id, resolvedActionActor, actionNote);
+      }
+      showMessage(
+        t('feedback.taskActionSuccessTitle'),
+        t('feedback.taskActionSuccessDetail', { id: activeTask.id }),
+        'success',
+      );
+      setActionNote('');
+    } catch (subtaskError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        subtaskError instanceof Error ? subtaskError.message : String(subtaskError),
         'warning',
       );
     }
@@ -722,6 +756,33 @@ export function TasksPage() {
                               {' / '}
                               {selectedSubtask.status}
                             </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {!TERMINAL_SUBTASK_STATES.has(selectedSubtask.status) ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="button-secondary"
+                                    onClick={() => void runSubtaskLifecycle('close', selectedSubtask)}
+                                  >
+                                    {tasksPageCopy.subtaskCloseAction}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button-secondary"
+                                    onClick={() => void runSubtaskLifecycle('archive', selectedSubtask)}
+                                  >
+                                    {tasksPageCopy.subtaskArchiveAction}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button-danger"
+                                    onClick={() => void runSubtaskLifecycle('cancel', selectedSubtask)}
+                                  >
+                                    {tasksPageCopy.subtaskCancelAction}
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                         ) : null}
                         <div className="space-y-2">

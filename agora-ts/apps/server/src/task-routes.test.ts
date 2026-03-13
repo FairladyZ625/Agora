@@ -520,6 +520,39 @@ describe('task routes', () => {
       id: 'OC-202',
       state: 'done',
     });
+
+    subtasks.insertSubtask({
+      id: 'archive-202',
+      task_id: 'OC-202',
+      stage_id: 'write',
+      title: '归档稿件',
+      assignee: 'glm5',
+    });
+    subtasks.insertSubtask({
+      id: 'cancel-202',
+      task_id: 'OC-202',
+      stage_id: 'write',
+      title: '取消稿件',
+      assignee: 'glm5',
+    });
+    const subtaskArchive = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/subtasks/archive-202/archive',
+      payload: {
+        caller_id: 'glm5',
+        note: 'hold',
+      },
+    });
+    const subtaskCancel = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-202/subtasks/cancel-202/cancel',
+      payload: {
+        caller_id: 'glm5',
+        note: 'drop',
+      },
+    });
+    expect(subtaskArchive.statusCode).toBe(200);
+    expect(subtaskCancel.statusCode).toBe(200);
   });
 
   it('serves confirm and state transition routes', async () => {

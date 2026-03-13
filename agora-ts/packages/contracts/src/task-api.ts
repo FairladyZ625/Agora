@@ -449,6 +449,12 @@ export const subtaskDoneRequestSchema = z.object({
 });
 export type SubtaskDoneRequestDto = z.infer<typeof subtaskDoneRequestSchema>;
 
+export const subtaskLifecycleRequestSchema = z.object({
+  caller_id: z.string().min(1),
+  note: z.string().default(''),
+});
+export type SubtaskLifecycleRequestDto = z.infer<typeof subtaskLifecycleRequestSchema>;
+
 export const taskNoteRequestSchema = z.object({
   reason: z.string().default(''),
 });

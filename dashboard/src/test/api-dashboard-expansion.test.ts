@@ -211,6 +211,9 @@ describe('dashboard expansion api client', () => {
         if (/\/craftsmen\/executions\/[^/]+\/submit-choice$/.test(url)) {
           return { ok: true, execution_id: 'exec-1' };
         }
+        if (/\/tasks\/[^/]+\/subtasks\/[^/]+\/(close|archive|cancel)$/.test(url)) {
+          return buildTaskResponse();
+        }
         if (/\/craftsmen\/tasks\/[^/]+\/subtasks\/[^/]+\/executions$/.test(url)) {
           return [{
             execution_id: 'exec-1',
@@ -425,6 +428,9 @@ describe('dashboard expansion api client', () => {
     await api.sendCraftsmanExecutionInputText('exec-1', { text: 'Continue' });
     await api.sendCraftsmanExecutionInputKeys('exec-1', { keys: ['Down'] });
     await api.submitCraftsmanExecutionChoice('exec-1', { keys: ['Enter'] });
+    await api.closeSubtask('OC-001', 'sub-1', 'opus', 'done');
+    await api.archiveSubtask('OC-001', 'sub-1', 'opus', 'hold');
+    await api.cancelSubtask('OC-001', 'sub-1', 'opus', 'drop');
 
     expectFetchCall('/api/agents/status', { method: 'GET' });
     expectFetchCall('/api/agents/channels/discord', { method: 'GET' });
@@ -475,6 +481,18 @@ describe('dashboard expansion api client', () => {
     expectFetchCall('/api/craftsmen/executions/exec-1/submit-choice', {
       method: 'POST',
       body: JSON.stringify({ keys: ['Enter'] }),
+    });
+    expectFetchCall('/api/tasks/OC-001/subtasks/sub-1/close', {
+      method: 'POST',
+      body: JSON.stringify({ caller_id: 'opus', note: 'done' }),
+    });
+    expectFetchCall('/api/tasks/OC-001/subtasks/sub-1/archive', {
+      method: 'POST',
+      body: JSON.stringify({ caller_id: 'opus', note: 'hold' }),
+    });
+    expectFetchCall('/api/tasks/OC-001/subtasks/sub-1/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ caller_id: 'opus', note: 'drop' }),
     });
   });
 

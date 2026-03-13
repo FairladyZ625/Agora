@@ -539,10 +539,25 @@ describe('agora-ts cli', () => {
       title: '写正文',
       assignee: 'glm5',
     });
-
     await program.parseAsync(['subtask-done', 'OC-301', '--subtask-id', 'write-doc', '--caller-id', 'glm5', '--output', 'done'], { from: 'user' });
     await program.parseAsync(['advance', 'OC-301', '--caller-id', 'archon'], { from: 'user' });
     await program.parseAsync(['approve', 'OC-301', '--approver-id', 'gpt52', '--comment', 'ship it'], { from: 'user' });
+    subtasks.insertSubtask({
+      id: 'archive-doc',
+      task_id: 'OC-301',
+      stage_id: 'write',
+      title: '归档正文',
+      assignee: 'glm5',
+    });
+    subtasks.insertSubtask({
+      id: 'cancel-doc',
+      task_id: 'OC-301',
+      stage_id: 'write',
+      title: '取消正文',
+      assignee: 'glm5',
+    });
+    await program.parseAsync(['subtasks', 'archive', 'OC-301', '--subtask-id', 'archive-doc', '--caller-id', 'glm5', '--note', 'hold'], { from: 'user' });
+    await program.parseAsync(['subtasks', 'cancel', 'OC-301', '--subtask-id', 'cancel-doc', '--caller-id', 'glm5', '--note', 'drop'], { from: 'user' });
     await program.parseAsync(['create', '实现 CLI states', '--type', 'document'], { from: 'user' });
     await program.parseAsync(['pause', 'OC-302', '--reason', 'hold'], { from: 'user' });
     await program.parseAsync(['resume', 'OC-302'], { from: 'user' });
@@ -551,6 +566,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('已 Archon 审批通过');
     expect(stdout.value).toContain('子任务 write-doc 已完成');
+    expect(stdout.value).toContain('子任务 archive-doc 已归档');
+    expect(stdout.value).toContain('子任务 cancel-doc 已取消');
     expect(stdout.value).toContain('已推进到阶段: review');
     expect(stdout.value).toContain('已审批通过');
     expect(stdout.value).toContain('已暂停');

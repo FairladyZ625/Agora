@@ -1,5 +1,5 @@
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
-import type { Task } from '@/types/task';
+import type { CraftsmanGovernanceSnapshot, Task } from '@/types/task';
 
 const ACTIVE_HOME_STATES = new Set(['in_progress', 'gate_waiting', 'paused', 'blocked']);
 
@@ -21,6 +21,8 @@ export interface DashboardHomeDerivedMetrics {
   waitingCount: number;
   participantCount: number;
   latestCompletedLabel: string;
+  activeExecutions: number;
+  hostLoadLabel: string;
   recentTasks: Task[];
   reviewItems: Task[];
 }
@@ -28,6 +30,7 @@ export interface DashboardHomeDerivedMetrics {
 export function deriveDashboardHomeMetrics(
   tasks: Task[],
   latestCompletedFallback: string,
+  governanceSnapshot?: CraftsmanGovernanceSnapshot | null,
 ): DashboardHomeDerivedMetrics {
   const recentTasks = [...tasks].sort((left, right) => {
     return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
@@ -46,6 +49,10 @@ export function deriveDashboardHomeMetrics(
     latestCompletedLabel: latestCompletedTask
       ? formatRelativeTimestamp(latestCompletedTask.updated_at)
       : latestCompletedFallback,
+    activeExecutions: governanceSnapshot?.activeExecutions ?? 0,
+    hostLoadLabel: governanceSnapshot?.host?.load1m !== null && governanceSnapshot?.host?.load1m !== undefined
+      ? governanceSnapshot.host.load1m.toFixed(2)
+      : '—',
     recentTasks,
     reviewItems,
   };

@@ -18,6 +18,9 @@ vi.mock('@/lib/api', () => ({
   markTaskConversationRead: vi.fn(),
   listSubtaskExecutions: vi.fn(),
   getCraftsmanGovernance: vi.fn(),
+  closeSubtask: vi.fn(),
+  archiveSubtask: vi.fn(),
+  cancelSubtask: vi.fn(),
   archonApprove: vi.fn(),
   archonReject: vi.fn(),
 }));
@@ -364,5 +367,70 @@ describe('task store live API mode', () => {
     expect(result).toBe('live');
     expect(api.archonApprove).toHaveBeenCalledWith('OC-001', 'looks good');
     expect(state.selectedTaskStatus?.task.state).toBe('gate_waiting');
+  });
+
+  it('runs subtask lifecycle actions and refreshes the selected detail', async () => {
+    vi.mocked(api.closeSubtask).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.archiveSubtask).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.cancelSubtask).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto()]);
+    vi.mocked(api.getTask).mockResolvedValue(buildTaskDto());
+    vi.mocked(api.getTaskStatus).mockResolvedValue(buildTaskStatusDto({
+      subtasks: [{
+        id: 'dev-api',
+        task_id: 'OC-001',
+        stage_id: 'develop',
+        title: '后端 API',
+        assignee: 'opus',
+        status: 'cancelled',
+        output: 'drop',
+        craftsman_type: 'codex',
+        dispatch_status: 'failed',
+        dispatched_at: '2026-03-07T00:10:00.000Z',
+        done_at: '2026-03-07T00:30:00.000Z',
+      }],
+    }));
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
+    vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
+
+    useTaskStore.setState({
+      tasks: [],
+      selectedTaskId: 'OC-001',
+      selectedTaskStatus: buildTaskStatusDto({
+        subtasks: [{
+          id: 'dev-api',
+          task_id: 'OC-001',
+          stage_id: 'develop',
+          title: '后端 API',
+          assignee: 'opus',
+          status: 'in_progress',
+          output: null,
+          craftsman_type: 'codex',
+          dispatch_status: 'running',
+          dispatched_at: '2026-03-07T00:10:00.000Z',
+          done_at: null,
+        }],
+      }) as never,
+      filters: { state: null, search: '' },
+      loading: false,
+      detailLoading: false,
+      error: null,
+    });
+
+    await useTaskStore.getState().closeSubtask('OC-001', 'dev-api', 'opus', 'done');
+    await useTaskStore.getState().archiveSubtask('OC-001', 'dev-api', 'opus', 'hold');
+    await useTaskStore.getState().cancelSubtask('OC-001', 'dev-api', 'opus', 'drop');
+
+    expect(api.closeSubtask).toHaveBeenCalledWith('OC-001', 'dev-api', 'opus', 'done');
+    expect(api.archiveSubtask).toHaveBeenCalledWith('OC-001', 'dev-api', 'opus', 'hold');
+    expect(api.cancelSubtask).toHaveBeenCalledWith('OC-001', 'dev-api', 'opus', 'drop');
+    expect(useTaskStore.getState().selectedTaskStatus?.subtasks[0]?.status).toBe('cancelled');
   });
 });

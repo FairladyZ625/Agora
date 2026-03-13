@@ -50,6 +50,7 @@ import {
   rejectTaskRequestSchema,
   saveTemplateRequestSchema,
   type CreateTaskRequestDto,
+  subtaskLifecycleRequestSchema,
   subtaskDoneRequestSchema,
   taskNoteRequestSchema,
   unblockTaskRequestSchema,
@@ -1245,6 +1246,66 @@ export function buildApp(options: BuildAppOptions = {}) {
           subtaskId: payload.subtask_id,
           callerId: payload.caller_id,
           output: payload.output,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/subtasks/:subtaskId/close', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string; subtaskId: string };
+      const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.completeSubtask(params.taskId, {
+          subtaskId: params.subtaskId,
+          callerId: payload.caller_id,
+          output: payload.note,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/subtasks/:subtaskId/archive', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string; subtaskId: string };
+      const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.archiveSubtask(params.taskId, {
+          subtaskId: params.subtaskId,
+          callerId: payload.caller_id,
+          note: payload.note,
+        }),
+      );
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/tasks/:taskId/subtasks/:subtaskId/cancel', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { taskId: string; subtaskId: string };
+      const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      return reply.send(
+        taskService.cancelSubtask(params.taskId, {
+          subtaskId: params.subtaskId,
+          callerId: payload.caller_id,
+          note: payload.note,
         }),
       );
     } catch (error) {

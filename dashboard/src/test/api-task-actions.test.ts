@@ -124,6 +124,9 @@ describe('dashboard task action api client', () => {
     await api.rejectTask('OC-001', 'glm5', '需要修复');
     await api.confirmTask('OC-001', 'sonnet', 'approve', '同意');
     await api.subtaskDone('OC-001', 'dev-api', 'sonnet', 'done');
+    await api.closeSubtask('OC-001', 'dev-api', 'opus', '完成交付');
+    await api.archiveSubtask('OC-001', 'dev-api', 'opus', '阶段冻结');
+    await api.cancelSubtask('OC-001', 'dev-api', 'opus', '不再继续');
     await api.forceAdvanceTask('OC-001', '人工确认');
     await api.pauseTask('OC-001', '等待确认');
     await api.resumeTask('OC-001');
@@ -138,6 +141,9 @@ describe('dashboard task action api client', () => {
     expectFetchCall('/api/tasks/OC-001/reject', { method: 'POST', body: JSON.stringify({ rejector_id: 'glm5', reason: '需要修复' }) });
     expectFetchCall('/api/tasks/OC-001/confirm', { method: 'POST', body: JSON.stringify({ voter_id: 'sonnet', vote: 'approve', comment: '同意' }) });
     expectFetchCall('/api/tasks/OC-001/subtask-done', { method: 'POST', body: JSON.stringify({ subtask_id: 'dev-api', caller_id: 'sonnet', output: 'done' }) });
+    expectFetchCall('/api/tasks/OC-001/subtasks/dev-api/close', { method: 'POST', body: JSON.stringify({ caller_id: 'opus', note: '完成交付' }) });
+    expectFetchCall('/api/tasks/OC-001/subtasks/dev-api/archive', { method: 'POST', body: JSON.stringify({ caller_id: 'opus', note: '阶段冻结' }) });
+    expectFetchCall('/api/tasks/OC-001/subtasks/dev-api/cancel', { method: 'POST', body: JSON.stringify({ caller_id: 'opus', note: '不再继续' }) });
     expectFetchCall('/api/tasks/OC-001/force-advance', { method: 'POST', body: JSON.stringify({ reason: '人工确认' }) });
     expectFetchCall('/api/tasks/OC-001/pause', { method: 'POST', body: JSON.stringify({ reason: '等待确认' }) });
     expectFetchCall('/api/tasks/OC-001/resume', {

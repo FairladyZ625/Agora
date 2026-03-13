@@ -170,6 +170,7 @@ export function DashboardHome() {
   const resolveReview = useTaskStore((state) => state.resolveReview);
   const selectTask = useTaskStore((state) => state.selectTask);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const governanceSnapshot = useTaskStore((state) => state.governanceSnapshot ?? null);
   const refreshInterval = useSettingsStore((state) => state.refreshInterval);
   const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
   const { showMessage } = useFeedbackStore();
@@ -224,8 +225,8 @@ export function DashboardHome() {
   }, []);
 
   const homeMetrics = useMemo(
-    () => deriveDashboardHomeMetrics(tasks, homeCopy.latestCompletedFallback),
-    [homeCopy.latestCompletedFallback, tasks],
+    () => deriveDashboardHomeMetrics(tasks, homeCopy.latestCompletedFallback, governanceSnapshot),
+    [governanceSnapshot, homeCopy.latestCompletedFallback, tasks],
   );
 
   const reviewItems = homeMetrics.reviewItems;
@@ -438,6 +439,14 @@ export function DashboardHome() {
                   <div className="inline-stat">
                     <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
                     <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.activeExecutions}</span>
+                    <span className="inline-stat__value">{homeMetrics.activeExecutions}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.hostLoad}</span>
+                    <span className="inline-stat__value">{homeMetrics.hostLoadLabel}</span>
                   </div>
                 </div>
                 <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>

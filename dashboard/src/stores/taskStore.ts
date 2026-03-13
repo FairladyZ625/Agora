@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import type { CreateTaskInput, Task, TaskAction, TaskActionPayload, TaskStatus } from '@/types/task';
+import type {
+  CraftsmanGovernanceSnapshot,
+  CreateTaskInput,
+  Task,
+  TaskAction,
+  TaskActionPayload,
+  TaskStatus,
+} from '@/types/task';
 import * as api from '@/lib/api';
 import { translate } from '@/lib/i18n';
 import {
@@ -21,6 +28,7 @@ interface TaskStore {
   tasks: Task[];
   selectedTaskId: string | null;
   selectedTaskStatus: TaskStatus | null;
+  governanceSnapshot?: CraftsmanGovernanceSnapshot | null;
   filters: TaskFilters;
   loading: boolean;
   detailLoading: boolean;
@@ -35,6 +43,9 @@ interface TaskStore {
   sendCraftsmanInputText: (executionId: string, text: string, submit?: boolean) => Promise<'live'>;
   sendCraftsmanInputKeys: (executionId: string, keys: string[]) => Promise<'live'>;
   submitCraftsmanChoice: (executionId: string, keys?: string[]) => Promise<'live'>;
+  closeSubtask: (taskId: string, subtaskId: string, callerId: string, note?: string) => Promise<'live'>;
+  archiveSubtask: (taskId: string, subtaskId: string, callerId: string, note?: string) => Promise<'live'>;
+  cancelSubtask: (taskId: string, subtaskId: string, callerId: string, note?: string) => Promise<'live'>;
   cleanupTasks: (taskId?: string) => Promise<number>;
   resolveReview: (id: string, decision: 'approve' | 'reject', note: string) => Promise<'live'>;
   setFilters: (filters: Partial<TaskFilters>) => void;
@@ -89,6 +100,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
   tasks: [],
   selectedTaskId: null,
   selectedTaskStatus: null,
+  governanceSnapshot: null,
   filters: { state: null, search: '' },
   loading: false,
   detailLoading: false,
@@ -98,13 +110,18 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const { filters } = get();
-      const tasks = (await api.listTasks(filters.state ?? undefined))
+      const [tasksDto, governanceDto] = await Promise.all([
+        api.listTasks(filters.state ?? undefined),
+        api.getCraftsmanGovernance(),
+      ]);
+      const tasks = tasksDto
         .filter(isTaskVisibleInWorkbench)
         .map(mapTaskDto);
       const { selectedTaskId } = get();
       const selectedTaskStillVisible = selectedTaskId ? tasks.some((task) => task.id === selectedTaskId) : false;
       set({
         tasks,
+        governanceSnapshot: mapCraftsmanGovernanceSnapshotDto(governanceDto),
         loading: false,
         ...(selectedTaskId && !selectedTaskStillVisible
           ? { selectedTaskId: null, selectedTaskStatus: null }
@@ -125,6 +142,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       set({
         tasks: [],
         selectedTaskStatus: null,
+        governanceSnapshot: null,
         loading: false,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -258,6 +276,27 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     if (selectedTaskId) {
       await get().selectTask(selectedTaskId);
     }
+    return 'live';
+  },
+
+  closeSubtask: async (taskId, subtaskId, callerId, note = '') => {
+    set({ error: null });
+    await api.closeSubtask(taskId, subtaskId, callerId, note);
+    await refreshTaskContext(get, taskId);
+    return 'live';
+  },
+
+  archiveSubtask: async (taskId, subtaskId, callerId, note = '') => {
+    set({ error: null });
+    await api.archiveSubtask(taskId, subtaskId, callerId, note);
+    await refreshTaskContext(get, taskId);
+    return 'live';
+  },
+
+  cancelSubtask: async (taskId, subtaskId, callerId, note = '') => {
+    set({ error: null });
+    await api.cancelSubtask(taskId, subtaskId, callerId, note);
+    await refreshTaskContext(get, taskId);
     return 'live';
   },
 
