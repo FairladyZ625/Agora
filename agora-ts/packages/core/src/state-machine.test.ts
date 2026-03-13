@@ -161,7 +161,7 @@ describe('agora-ts state machine', () => {
 
     db.prepare(
       'INSERT INTO subtasks (id, task_id, stage_id, title, assignee, status) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run('dev-api', 'OC-001', 'develop', 'API', 'sonnet', 'not_started');
+    ).run('dev-api', 'OC-001', 'develop', 'API', 'sonnet', 'pending');
 
     expect(
       sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),

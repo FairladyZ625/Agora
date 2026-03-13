@@ -677,7 +677,7 @@ function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
     stage_id: task.current_stage ?? 'develop',
     title: 'Draft the plan',
     assignee: 'opus',
-    status: 'not_started',
+    status: 'pending',
   });
   subtasks.insertSubtask({
     id: 'run-codex',
