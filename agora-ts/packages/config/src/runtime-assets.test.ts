@@ -36,5 +36,22 @@ describe('runtime assets', () => {
     expect(readFileSync(join(targetRoot, 'projects', 'README.md'), 'utf8')).toBe('projects readme');
     expect(() => readFileSync(join(targetRoot, 'tasks', 'OC-SHOULD-SKIP', 'task.meta.yaml'), 'utf8')).toThrow();
   });
-});
 
+  it('overwrites existing root files without throwing EEXIST', () => {
+    const sourceRoot = makeTempDir();
+    const targetRoot = makeTempDir();
+    mkdirSync(join(sourceRoot, 'projects'), { recursive: true });
+    writeFileSync(join(sourceRoot, 'README.md'), 'bundled readme');
+    writeFileSync(join(sourceRoot, 'projects', 'README.md'), 'projects readme');
+
+    writeFileSync(join(targetRoot, 'README.md'), 'old readme');
+    mkdirSync(join(targetRoot, 'projects'), { recursive: true });
+    writeFileSync(join(targetRoot, 'projects', 'README.md'), 'old projects readme');
+
+    expect(() => syncBundledBrainPackContents(sourceRoot, targetRoot)).not.toThrow();
+    expect(() => syncBundledBrainPackContents(sourceRoot, targetRoot)).not.toThrow();
+
+    expect(readFileSync(join(targetRoot, 'README.md'), 'utf8')).toBe('bundled readme');
+    expect(readFileSync(join(targetRoot, 'projects', 'README.md'), 'utf8')).toBe('projects readme');
+  });
+});
