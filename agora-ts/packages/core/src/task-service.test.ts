@@ -193,6 +193,242 @@ describe('task service', () => {
     });
   });
 
+  it('requests runtime diagnosis through the recovery port and records control-plane events', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-RUNTIME-DIAG-1',
+      agentRuntimePort: {
+        resolveAgent: () => ({
+          agent_ref: 'opus',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+        }),
+      },
+      runtimeRecoveryPort: {
+        requestRuntimeDiagnosis: () => ({
+          operation: 'request_runtime_diagnosis',
+          task_id: 'OC-RUNTIME-DIAG-1',
+          agent_ref: 'opus',
+          status: 'accepted',
+          health: 'healthy',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+          summary: 'runtime-opus looks healthy',
+          detail: 'last heartbeat just now',
+        }),
+        restartCitizenRuntime: () => {
+          throw new Error('not used');
+        },
+        stopExecution: () => {
+          throw new Error('not used');
+        },
+      },
+    });
+
+    service.createTask({
+      title: 'Runtime diagnosis test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    const result = service.requestRuntimeDiagnosis('OC-RUNTIME-DIAG-1', {
+      task_id: 'OC-RUNTIME-DIAG-1',
+      agent_ref: 'opus',
+      caller_id: 'opus',
+      reason: 'health check',
+    });
+
+    expect(result).toMatchObject({
+      status: 'accepted',
+      health: 'healthy',
+      summary: 'runtime-opus looks healthy',
+    });
+    const flow = db.prepare("SELECT event FROM flow_log WHERE task_id = 'OC-RUNTIME-DIAG-1' ORDER BY id DESC LIMIT 1").get() as { event: string };
+    expect(flow.event).toBe('runtime_diagnosis_requested');
+  });
+
+  it('requests craftsman stop through the recovery port for a running execution', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-stop-1',
+      adapters: {
+        claude: new StubCraftsmanAdapter('claude'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STOP-1',
+      craftsmanDispatcher: dispatcher,
+      runtimeRecoveryPort: {
+        requestRuntimeDiagnosis: () => {
+          throw new Error('not used');
+        },
+        restartCitizenRuntime: () => {
+          throw new Error('not used');
+        },
+        stopExecution: (input) => ({
+          operation: 'stop_execution',
+          status: 'accepted',
+          task_id: input.taskId,
+          agent_ref: input.adapter,
+          execution_id: input.executionId,
+          summary: 'stop signal sent',
+          detail: null,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'Craftsman stop test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    service.createSubtasks('OC-STOP-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-stop',
+          title: 'stop me',
+          assignee: 'opus',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'interactive',
+            interaction_expectation: 'needs_input',
+            prompt: 'wait',
+          },
+        },
+      ],
+    });
+
+    const result = service.stopCraftsmanExecution('exec-stop-1', {
+      caller_id: 'opus',
+      reason: 'operator stop',
+    });
+
+    expect(result).toMatchObject({
+      operation: 'stop_execution',
+      status: 'accepted',
+      execution_id: 'exec-stop-1',
+    });
+    const flow = db.prepare("SELECT event FROM flow_log WHERE task_id = 'OC-STOP-1' ORDER BY id DESC LIMIT 1").get() as { event: string };
+    expect(flow.event).toBe('craftsman_stop_requested');
+  });
+
+  it('rejects stop requests for terminal craftsman executions', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-stop-terminal-1',
+      adapters: {
+        claude: new StubCraftsmanAdapter('claude'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STOP-TERM-1',
+      craftsmanDispatcher: dispatcher,
+      runtimeRecoveryPort: {
+        requestRuntimeDiagnosis: () => {
+          throw new Error('not used');
+        },
+        restartCitizenRuntime: () => {
+          throw new Error('not used');
+        },
+        stopExecution: () => {
+          throw new Error('not used');
+        },
+      },
+    });
+
+    service.createTask({
+      title: 'terminal stop test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    service.createSubtasks('OC-STOP-TERM-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-stop-terminal',
+          title: 'terminal stop',
+          assignee: 'opus',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'one_shot',
+            interaction_expectation: 'one_shot',
+            prompt: 'done',
+          },
+        },
+      ],
+    });
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-stop-terminal-1',
+      status: 'succeeded',
+      session_id: 'tmux:claude',
+      payload: null,
+      error: null,
+      finished_at: '2026-03-14T00:00:00.000Z',
+    });
+
+    expect(() =>
+      service.stopCraftsmanExecution('exec-stop-terminal-1', {
+        caller_id: 'opus',
+      }),
+    ).toThrow(/already terminal/);
+  });
+
   it('creates a task from template and exposes task status payloads', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

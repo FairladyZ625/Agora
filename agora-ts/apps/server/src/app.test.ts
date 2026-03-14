@@ -117,6 +117,66 @@ describe('agora-ts server bootstrap', () => {
       im: {
         active_bindings: 1,
       },
+      escalation: {
+        controller_pinged_tasks: 0,
+      },
+    });
+  });
+
+  it('serves runtime diagnosis and restart routes', async () => {
+    const app = buildApp({
+      taskService: {
+        requestRuntimeDiagnosis: () => ({
+          operation: 'request_runtime_diagnosis',
+          task_id: 'OC-RUNTIME',
+          agent_ref: 'opus',
+          status: 'accepted',
+          health: 'healthy',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+          summary: 'runtime healthy',
+          detail: null,
+        }),
+        restartCitizenRuntime: () => ({
+          operation: 'restart_citizen_runtime',
+          status: 'unsupported',
+          task_id: 'OC-RUNTIME',
+          agent_ref: 'opus',
+          execution_id: null,
+          summary: 'restart unsupported',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+    });
+
+    const diagnosis = await app.inject({
+      method: 'POST',
+      url: '/api/runtime/diagnose',
+      payload: {
+        task_id: 'OC-RUNTIME',
+        agent_ref: 'opus',
+        caller_id: 'opus',
+      },
+    });
+    const restart = await app.inject({
+      method: 'POST',
+      url: '/api/runtime/restart',
+      payload: {
+        task_id: 'OC-RUNTIME',
+        agent_ref: 'opus',
+        caller_id: 'opus',
+      },
+    });
+
+    expect(diagnosis.statusCode).toBe(200);
+    expect(diagnosis.json()).toMatchObject({
+      operation: 'request_runtime_diagnosis',
+      status: 'accepted',
+    });
+    expect(restart.statusCode).toBe(200);
+    expect(restart.json()).toMatchObject({
+      operation: 'restart_citizen_runtime',
+      status: 'unsupported',
     });
   });
 

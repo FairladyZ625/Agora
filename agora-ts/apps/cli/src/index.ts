@@ -1177,6 +1177,44 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `inbox_items: ${result.inbox_items}`);
     });
 
+  const runtimeCommand = program
+    .command('runtime')
+    .description('runtime recovery commands');
+
+  runtimeCommand
+    .command('diagnose')
+    .description('request runtime diagnosis for a task agent')
+    .argument('<taskId>', '任务 ID')
+    .argument('<agentRef>', 'agent ref')
+    .requiredOption('--caller-id <callerId>', 'caller id')
+    .option('--reason <reason>', 'reason', '')
+    .action((taskId: string, agentRef: string, options: { callerId: string; reason: string }) => {
+      const result = taskService.requestRuntimeDiagnosis(taskId, {
+        task_id: taskId,
+        agent_ref: agentRef,
+        caller_id: options.callerId,
+        ...(options.reason ? { reason: options.reason } : {}),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  runtimeCommand
+    .command('restart')
+    .description('request citizen runtime restart for a task agent')
+    .argument('<taskId>', '任务 ID')
+    .argument('<agentRef>', 'agent ref')
+    .requiredOption('--caller-id <callerId>', 'caller id')
+    .option('--reason <reason>', 'reason', '')
+    .action((taskId: string, agentRef: string, options: { callerId: string; reason: string }) => {
+      const result = taskService.restartCitizenRuntime(taskId, {
+        task_id: taskId,
+        agent_ref: agentRef,
+        caller_id: options.callerId,
+        ...(options.reason ? { reason: options.reason } : {}),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
   const task = program
     .command('task')
     .description('task read-model commands');
@@ -1371,6 +1409,20 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const result = taskService.observeCraftsmanExecutions({
         runningAfterMs: Number(options.runningAfterMs),
         waitingAfterMs: Number(options.waitingAfterMs),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  craftsman
+    .command('stop')
+    .description('request a stop signal for a running craftsman execution')
+    .argument('<executionId>', 'execution ID')
+    .requiredOption('--caller-id <callerId>', 'caller id')
+    .option('--reason <reason>', 'reason', '')
+    .action((executionId: string, options: { callerId: string; reason: string }) => {
+      const result = taskService.stopCraftsmanExecution(executionId, {
+        caller_id: options.callerId,
+        ...(options.reason ? { reason: options.reason } : {}),
       });
       writeLine(stdout, JSON.stringify(result, null, 2));
     });

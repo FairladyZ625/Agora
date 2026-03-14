@@ -6,15 +6,19 @@ import type {
   CraftsmanCallbackRequestDto,
   CraftsmanDispatchRequestDto,
   CraftsmanInputKeyDto,
+  CraftsmanStopExecutionRequestDto,
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
   HostResourceSnapshotDto,
   PromoteTodoRequestDto,
+  RuntimeDiagnosisResultDto,
+  RuntimeRecoveryActionDto,
   TaskBlueprintDto,
   UnifiedHealthSnapshotDto,
   TaskLocaleDto,
   TaskStatusDto,
+  RuntimeRecoveryRequestDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
 import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
@@ -45,6 +49,7 @@ import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
+import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
@@ -105,6 +110,7 @@ export interface TaskServiceOptions {
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
   agentRuntimePort?: AgentRuntimePort;
+  runtimeRecoveryPort?: RuntimeRecoveryPort;
   craftsmanInputPort?: CraftsmanInputPort;
   craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;
   hostResourcePort?: HostResourcePort;
@@ -242,6 +248,7 @@ export class TaskService {
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
+  private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
   private readonly hostResourcePort: HostResourcePort | undefined;
   private readonly liveSessionStore: LiveSessionStore | undefined;
@@ -286,6 +293,7 @@ export class TaskService {
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
     this.agentRuntimePort = options.agentRuntimePort;
+    this.runtimeRecoveryPort = options.runtimeRecoveryPort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
     this.hostResourcePort = options.hostResourcePort;
     this.liveSessionStore = options.liveSessionStore;
@@ -1198,6 +1206,159 @@ export class TaskService {
       },
       escalation: escalationSnapshot,
     };
+  }
+
+  requestRuntimeDiagnosis(taskId: string, options: RuntimeRecoveryRequestDto): RuntimeDiagnosisResultDto {
+    const task = this.getTaskOrThrow(taskId);
+    this.assertTaskRuntimeControl(task, options.caller_id, `runtime diagnosis for agent '${options.agent_ref}'`);
+    if (!this.runtimeRecoveryPort) {
+      throw new Error('Runtime recovery port is not configured');
+    }
+    const runtimeResolution = this.resolveTaskRuntimeParticipant(task, options.agent_ref);
+    const result = this.runtimeRecoveryPort.requestRuntimeDiagnosis({
+      taskId,
+      agentRef: options.agent_ref,
+      runtimeProvider: runtimeResolution.runtime_provider,
+      runtimeActorRef: runtimeResolution.runtime_actor_ref,
+      reason: options.reason ?? null,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'runtime_diagnosis_requested',
+      stage_id: task.current_stage,
+      detail: {
+        agent_ref: options.agent_ref,
+        caller_id: options.caller_id,
+        status: result.status,
+        health: result.health,
+      },
+      actor: options.caller_id,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.caller_id,
+      body: `Runtime diagnosis requested for ${options.agent_ref}.`,
+      metadata: {
+        event: 'runtime_diagnosis_requested',
+        status: result.status,
+        health: result.health,
+        summary: result.summary,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'runtime_diagnosis_requested',
+      participantRefs: [options.agent_ref],
+      bodyLines: [
+        `Agent: ${options.agent_ref}`,
+        `Caller: ${options.caller_id}`,
+        `Status: ${result.status}`,
+        `Health: ${result.health}`,
+        `Summary: ${result.summary}`,
+      ],
+    });
+    return result;
+  }
+
+  restartCitizenRuntime(taskId: string, options: RuntimeRecoveryRequestDto): RuntimeRecoveryActionDto {
+    const task = this.getTaskOrThrow(taskId);
+    this.assertTaskRuntimeControl(task, options.caller_id, `runtime restart for agent '${options.agent_ref}'`);
+    if (!this.runtimeRecoveryPort) {
+      throw new Error('Runtime recovery port is not configured');
+    }
+    const runtimeResolution = this.resolveTaskRuntimeParticipant(task, options.agent_ref);
+    const result = this.runtimeRecoveryPort.restartCitizenRuntime({
+      taskId,
+      agentRef: options.agent_ref,
+      runtimeProvider: runtimeResolution.runtime_provider,
+      runtimeActorRef: runtimeResolution.runtime_actor_ref,
+      reason: options.reason ?? null,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'runtime_restart_requested',
+      stage_id: task.current_stage,
+      detail: {
+        agent_ref: options.agent_ref,
+        caller_id: options.caller_id,
+        status: result.status,
+      },
+      actor: options.caller_id,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.caller_id,
+      body: `Runtime restart requested for ${options.agent_ref}.`,
+      metadata: {
+        event: 'runtime_restart_requested',
+        status: result.status,
+        summary: result.summary,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'runtime_restart_requested',
+      participantRefs: [options.agent_ref],
+      bodyLines: [
+        `Agent: ${options.agent_ref}`,
+        `Caller: ${options.caller_id}`,
+        `Status: ${result.status}`,
+        `Summary: ${result.summary}`,
+      ],
+    });
+    return result;
+  }
+
+  stopCraftsmanExecution(executionId: string, options: CraftsmanStopExecutionRequestDto & { caller_id: string }): RuntimeRecoveryActionDto {
+    const execution = this.getCraftsmanExecution(executionId);
+    if (TERMINAL_EXECUTION_STATUSES.has(execution.status)) {
+      throw new Error(`Craftsman execution ${executionId} is already terminal (status=${execution.status})`);
+    }
+    const task = this.getTaskOrThrow(execution.task_id);
+    const subtask = this.getSubtaskOrThrow(execution.task_id, execution.subtask_id);
+    this.assertSubtaskControl(task, subtask, options.caller_id);
+    if (!this.runtimeRecoveryPort) {
+      throw new Error('Runtime recovery port is not configured');
+    }
+    const result = this.runtimeRecoveryPort.stopExecution({
+      taskId: execution.task_id,
+      subtaskId: execution.subtask_id,
+      executionId: execution.execution_id,
+      adapter: execution.adapter,
+      sessionId: execution.session_id,
+      reason: options.reason ?? null,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: execution.task_id,
+      kind: 'system',
+      event: 'craftsman_stop_requested',
+      stage_id: subtask.stage_id,
+      detail: {
+        execution_id: execution.execution_id,
+        subtask_id: execution.subtask_id,
+        caller_id: options.caller_id,
+        status: result.status,
+      },
+      actor: options.caller_id,
+    });
+    this.mirrorConversationEntry(execution.task_id, {
+      actor: options.caller_id,
+      body: `Craftsman stop requested for execution ${execution.execution_id}.`,
+      metadata: {
+        event: 'craftsman_stop_requested',
+        status: result.status,
+        summary: result.summary,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'craftsman_stop_requested',
+      bodyLines: [
+        `Execution: ${execution.execution_id}`,
+        `Subtask: ${execution.subtask_id}`,
+        `Caller: ${options.caller_id}`,
+        `Status: ${result.status}`,
+        `Summary: ${result.summary}`,
+      ],
+    });
+    return result;
   }
 
   sendCraftsmanInputText(executionId: string, text: string, submit = true) {
@@ -2758,6 +2919,29 @@ export class TaskService {
         `${callerId} cannot control subtask ${subtask.id} (assignee=${subtask.assignee}, controller=${controllerRef ?? '-'})`,
       );
     }
+  }
+
+  private assertTaskRuntimeControl(task: StoredTask, callerId: string, action: string) {
+    const controllerRef = resolveControllerRef(task.team.members);
+    const allowed = this.permissions.isArchon(callerId)
+      || (controllerRef !== null && callerId === controllerRef);
+    if (!allowed) {
+      throw new PermissionDeniedError(
+        `${callerId} cannot request ${action} (controller=${controllerRef ?? '-'})`,
+      );
+    }
+  }
+
+  private resolveTaskRuntimeParticipant(task: StoredTask, agentRef: string) {
+    const member = task.team.members.find((item) => item.agentId === agentRef);
+    if (!member) {
+      throw new NotFoundError(`Agent ${agentRef} is not part of task ${task.id}`);
+    }
+    return this.agentRuntimePort?.resolveAgent(agentRef) ?? {
+      agent_ref: agentRef,
+      runtime_provider: null,
+      runtime_actor_ref: null,
+    };
   }
 
   private failMissingCraftsmanSessions(
