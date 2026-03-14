@@ -36,6 +36,7 @@ import {
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
 import { classifyCliError, CliError, CLI_EXIT_CODES, renderCliError } from './errors.js';
+import { cliText, resolveCliLocale } from './locale.js';
 import type { HumanAccountService } from '@agora-ts/core';
 
 type Writable = {
@@ -202,6 +203,7 @@ function addRedirectCommand(
   movedTo: string,
   examples: string[],
 ) {
+  const locale = resolveCliLocale();
   program
     .command(name)
     .description(`redirect to \`${movedTo}\``)
@@ -209,17 +211,17 @@ function addRedirectCommand(
     .argument('[args...]')
     .addHelpText('after', [
       '',
-      `Moved to: ${movedTo}`,
-      'Examples:',
+      cliText(locale, `已迁移到：${movedTo}`, `Moved to: ${movedTo}`),
+      cliText(locale, '示例：', 'Examples:'),
       ...examples.map((example) => `  ${example}`),
     ].join('\n'))
     .action(() => {
       throw new CliError(
-        `\`agora ${name}\` has moved under \`${movedTo}\`.`,
+        cliText(locale, `\`agora ${name}\` 已迁移到 \`${movedTo}\`。`, `\`agora ${name}\` has moved under \`${movedTo}\`.`),
         'usage',
         CLI_EXIT_CODES.usage,
         [
-          `Use \`${movedTo} --help\` for the real command tree.`,
+          cliText(locale, `请改用 \`${movedTo} --help\` 查看真实命令树。`, `Use \`${movedTo} --help\` for the real command tree.`),
           ...examples.map((example) => `- ${example}`),
         ].join('\n'),
       );
