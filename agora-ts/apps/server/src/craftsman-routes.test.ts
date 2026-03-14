@@ -433,12 +433,29 @@ describe('craftsman routes', () => {
           limits: {
             max_concurrent_running: 8,
             max_concurrent_per_agent: 3,
+            host_memory_warning_utilization_limit: 0.75,
             host_memory_utilization_limit: 0.9,
+            host_swap_warning_utilization_limit: 0.75,
             host_swap_utilization_limit: 0.9,
+            host_load_per_cpu_warning_limit: 1,
             host_load_per_cpu_limit: 1.5,
           },
           active_executions: 1,
           active_by_assignee: [{ assignee: 'opus', count: 1 }],
+          active_execution_details: [
+            {
+              execution_id: 'exec-1',
+              task_id: 'OC-1',
+              subtask_id: 'sub-1',
+              assignee: 'opus',
+              adapter: 'claude',
+              status: 'running',
+              session_id: 'tmux:claude',
+              workdir: '/tmp/agora',
+            },
+          ],
+          host_pressure_status: 'healthy',
+          warnings: [],
           host: {
             observed_at: '2026-03-13T12:00:00.000Z',
             cpu_count: 8,
@@ -463,6 +480,7 @@ describe('craftsman routes', () => {
     expect(response.json()).toMatchObject({
       active_executions: 1,
       active_by_assignee: [{ assignee: 'opus', count: 1 }],
+      active_execution_details: [expect.objectContaining({ execution_id: 'exec-1' })],
     });
   });
 

@@ -190,8 +190,11 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       hostResourcePort: new OsHostResourcePort(),
       craftsmanGovernance: {
         maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
+        hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,
         hostMemoryUtilizationLimit: context.config.craftsmen.host_memory_utilization_limit,
+        hostSwapWarningUtilizationLimit: context.config.craftsmen.host_swap_warning_utilization_limit,
         hostSwapUtilizationLimit: context.config.craftsmen.host_swap_utilization_limit,
+        hostLoadPerCpuWarningLimit: context.config.craftsmen.host_load_per_cpu_warning_limit,
         hostLoadPerCpuLimit: context.config.craftsmen.host_load_per_cpu_limit,
       },
       escalationPolicy: {

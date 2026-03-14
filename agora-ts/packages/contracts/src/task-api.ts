@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { craftsmanExecutionSchema, craftsmanInteractionExpectationSchema, craftsmanModeSchema } from './craftsman.js';
+import { craftsmanExecutionSchema, craftsmanExecutionStatusSchema, craftsmanInteractionExpectationSchema, craftsmanModeSchema } from './craftsman.js';
 import { taskControlModeSchema, taskPrioritySchema, taskStateSchema } from './task.js';
 import { validateWorkflowStages } from './workflow-rules.js';
 import { templateGraphSchema } from './template-graph.js';
@@ -346,12 +346,30 @@ export const hostResourceSnapshotSchema = z.object({
 });
 export type HostResourceSnapshotDto = z.infer<typeof hostResourceSnapshotSchema>;
 
+export const craftsmanGovernancePressureStatusSchema = z.enum(['healthy', 'warning', 'hard_limit', 'unavailable']);
+export type CraftsmanGovernancePressureStatusDto = z.infer<typeof craftsmanGovernancePressureStatusSchema>;
+
+export const craftsmanGovernanceExecutionDetailSchema = z.object({
+  execution_id: z.string(),
+  task_id: z.string(),
+  subtask_id: z.string(),
+  assignee: z.string(),
+  adapter: z.string(),
+  status: craftsmanExecutionStatusSchema,
+  session_id: z.string().nullable(),
+  workdir: z.string().nullable(),
+});
+export type CraftsmanGovernanceExecutionDetailDto = z.infer<typeof craftsmanGovernanceExecutionDetailSchema>;
+
 export const craftsmanGovernanceSnapshotSchema = z.object({
   limits: z.object({
     max_concurrent_running: z.number().int().positive().nullable(),
     max_concurrent_per_agent: z.number().int().positive().nullable(),
+    host_memory_warning_utilization_limit: z.number().nullable(),
     host_memory_utilization_limit: z.number().nullable(),
+    host_swap_warning_utilization_limit: z.number().nullable(),
     host_swap_utilization_limit: z.number().nullable(),
+    host_load_per_cpu_warning_limit: z.number().nullable(),
     host_load_per_cpu_limit: z.number().nullable(),
   }),
   active_executions: z.number().int().nonnegative(),
@@ -359,6 +377,9 @@ export const craftsmanGovernanceSnapshotSchema = z.object({
     assignee: z.string(),
     count: z.number().int().nonnegative(),
   })),
+  active_execution_details: z.array(craftsmanGovernanceExecutionDetailSchema),
+  host_pressure_status: craftsmanGovernancePressureStatusSchema,
+  warnings: z.array(z.string()),
   host: hostResourceSnapshotSchema.nullable(),
 });
 export type CraftsmanGovernanceSnapshotDto = z.infer<typeof craftsmanGovernanceSnapshotSchema>;

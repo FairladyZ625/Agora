@@ -3742,6 +3742,88 @@ describe('task service', () => {
     })).not.toThrow();
   });
 
+  it('includes warning-level host pressure and active execution attribution in governance snapshot', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GOV-SNAPSHOT-1',
+      craftsmanGovernance: {
+        hostMemoryWarningUtilizationLimit: 0.75,
+        hostMemoryUtilizationLimit: 0.95,
+      },
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-14T01:00:00.000Z',
+          cpu_count: 8,
+          load_1m: 2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 80,
+          memory_utilization: 0.8,
+          swap_total_bytes: 100,
+          swap_used_bytes: 10,
+          swap_utilization: 0.1,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'governance snapshot warnings',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-gov-1',
+      task_id: 'OC-GOV-SNAPSHOT-1',
+      stage_id: 'develop',
+      title: 'running execution',
+      assignee: 'opus',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      craftsman_workdir: '/tmp/agora',
+      dispatch_status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-gov-1',
+      task_id: 'OC-GOV-SNAPSHOT-1',
+      subtask_id: 'sub-gov-1',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'tmux:claude',
+      status: 'running',
+      started_at: '2026-03-14T01:00:00.000Z',
+    });
+
+    const snapshot = service.getCraftsmanGovernanceSnapshot();
+
+    expect(snapshot.host_pressure_status).toBe('warning');
+    expect(snapshot.warnings).toContain('Host memory utilization warning: 0.80');
+    expect(snapshot.active_execution_details).toEqual([
+      expect.objectContaining({
+        execution_id: 'exec-gov-1',
+        assignee: 'opus',
+        adapter: 'claude',
+        workdir: '/tmp/agora',
+      }),
+    ]);
+  });
+
   it('blocks macOS dispatch when memory pressure exceeds the configured limit', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

@@ -13,6 +13,16 @@
     },
     "archonUsers": ["lizeyu"]
   },
+  "craftsmen": {
+    "max_concurrent_running": 8,
+    "max_concurrent_per_agent": 3,
+    "host_memory_warning_utilization_limit": 0.75,
+    "host_memory_utilization_limit": 0.9,
+    "host_swap_warning_utilization_limit": 0.75,
+    "host_swap_utilization_limit": 0.9,
+    "host_load_per_cpu_warning_limit": 1,
+    "host_load_per_cpu_limit": 1.5
+  },
   "scheduler": {
     "enabled": true,
     "scan_interval_sec": 60,

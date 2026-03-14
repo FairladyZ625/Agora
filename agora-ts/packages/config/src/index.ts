@@ -78,8 +78,11 @@ export type ImConfig = z.infer<typeof imConfigSchema>;
 export const craftsmenConfigSchema = z.object({
   max_concurrent_running: z.number().int().positive().default(8),
   max_concurrent_per_agent: z.number().int().positive().default(3),
+  host_memory_warning_utilization_limit: z.number().positive().max(1).default(0.75),
   host_memory_utilization_limit: z.number().positive().max(1).default(0.9),
+  host_swap_warning_utilization_limit: z.number().positive().max(1).default(0.75),
   host_swap_utilization_limit: z.number().positive().max(1).default(0.9),
+  host_load_per_cpu_warning_limit: z.number().positive().default(1),
   host_load_per_cpu_limit: z.number().positive().default(1.5),
   isolate_git_worktrees: z.boolean().default(false),
   isolated_root: z.string().default('.agora-ts/craftsman-workdirs'),
@@ -140,8 +143,11 @@ export const agoraConfigSchema = z.object({
   craftsmen: craftsmenConfigSchema.default({
     max_concurrent_running: 8,
     max_concurrent_per_agent: 3,
+    host_memory_warning_utilization_limit: 0.75,
     host_memory_utilization_limit: 0.9,
+    host_swap_warning_utilization_limit: 0.75,
     host_swap_utilization_limit: 0.9,
+    host_load_per_cpu_warning_limit: 1,
     host_load_per_cpu_limit: 1.5,
     isolate_git_worktrees: false,
     isolated_root: '.agora-ts/craftsman-workdirs',
