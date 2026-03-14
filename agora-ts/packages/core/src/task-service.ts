@@ -1858,6 +1858,7 @@ export class TaskService {
 
     for (const member of task.team.members.filter(isInteractiveParticipant)) {
       const roleBriefPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '00-role-brief.md') : null;
+      const citizenScaffoldPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md') : null;
       const roleDocPath = workspacePath ? resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`) : null;
       messages.push({
         kind: 'role_brief',
@@ -1889,6 +1890,7 @@ export class TaskService {
           ...(member.briefing_mode === 'overlay_delta'
             ? [taskText(task, '该 Agent 已自带 Agora 托管的基础角色上下文；以下 role brief 只提供本任务增量。', 'This agent already carries Agora-managed base role context; use the role brief below as task delta.')]
             : [taskText(task, '该 Agent 应在行动前加载完整的 Agora 角色覆盖上下文。', 'This agent should load the full Agora role overlay before acting.')]),
+          ...(citizenScaffoldPath ? [`${taskText(task, '阅读 Citizen Scaffold', 'Read citizen scaffold')}: ${citizenScaffoldPath}`] : []),
           ...(roleBriefPath ? [`${taskText(task, '阅读角色简报', 'Read role brief')}: ${roleBriefPath}`] : []),
         ].join('\n'),
       });

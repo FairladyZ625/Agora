@@ -131,6 +131,7 @@ describe('server runtime', () => {
     expect(runtime.dashboardQueryService).toBeDefined();
     expect(runtime.liveSessionStore).toBeDefined();
     expect(runtime.taskConversationService).toBeDefined();
+    expect(readFileSync(join(process.env.AGORA_BRAIN_PACK_ROOT!, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     runtime.db.close();
   });
 

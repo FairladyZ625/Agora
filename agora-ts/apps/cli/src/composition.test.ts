@@ -143,6 +143,7 @@ describe('cli composition', () => {
     );
 
     expect(capturedBrainPackDir).toBe(brainPackRoot);
+    expect(readFileSync(join(brainPackRoot, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     composition.db.close();
   });
 

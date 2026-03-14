@@ -32,6 +32,12 @@ function makeRolePackDir() {
         prompt_asset: 'roles/controller.md',
         source: 'agora',
         allowed_target_kinds: ['runtime_agent'],
+        citizen_scaffold: {
+          soul: 'Keep task state coherent.',
+          boundaries: ['Do not fabricate approval.'],
+          heartbeat: ['Restate the current objective before changing plan.'],
+          recap_expectations: ['Summarize owner, risk, and next action.'],
+        },
       },
       {
         id: 'architect',
@@ -67,6 +73,10 @@ describe('role pack service', () => {
     });
 
     expect(service.listRoleDefinitions().map((role) => role.id)).toEqual(['architect', 'controller']);
+    expect(service.getRoleDefinition('controller')?.payload.citizen_scaffold).toMatchObject({
+      soul: 'Keep task state coherent.',
+      boundaries: ['Do not fabricate approval.'],
+    });
   });
 
   it('resolves bindings by explicit scope precedence', () => {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -33,6 +33,9 @@ function makeBrainPackDir() {
   tempPaths.push(dir);
   mkdirSync(join(dir, 'templates'), { recursive: true });
   mkdirSync(join(dir, 'tasks'), { recursive: true });
+  cpSync(resolve(process.cwd(), '../agora-ai-brain/roles'), join(dir, 'roles'), {
+    recursive: true,
+  });
   return dir;
 }
 
@@ -251,6 +254,9 @@ describe('task service', () => {
     expect(binding?.workspace_path).toBe(join(brainPackDir, 'tasks', 'OC-BRAIN-100'));
     expect(existsSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', 'task.meta.yaml'))).toBe(true);
     expect(existsSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '00-role-brief.md'))).toBe(true);
+    expect(existsSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '03-citizen-scaffold.md'))).toBe(true);
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '03-citizen-scaffold.md'), 'utf8')).toContain('Soul');
+    expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '03-citizen-scaffold.md'), 'utf8')).toContain('Clarify system shape');
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '02-roster.md'), 'utf8')).toContain('opus | architect | controller');
   });
 
@@ -1805,6 +1811,7 @@ describe('task service', () => {
     expect(mentionBrief?.body).toContain('`<@USER_ID>`');
     const opusBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
     expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '00-role-brief.md'));
+    expect(opusBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '05-agents', 'opus', '03-citizen-scaffold.md'));
     expect(opusBrief?.body).toContain('architect');
     expect(opusBrief?.body).toContain('简报模式: overlay_delta');
     expect(opusBrief?.body).toContain('快速决策：一次性结果用 `one_shot`；需要后续输入或菜单选择用 `interactive`。');

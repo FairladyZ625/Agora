@@ -122,6 +122,14 @@ describe('agora-ts sqlite bootstrap', () => {
       id: 'controller',
       member_kind: 'controller',
       prompt_asset_path: 'roles/controller.md',
+      payload: {
+        citizen_scaffold: {
+          soul: expect.any(String),
+          boundaries: expect.any(Array),
+          heartbeat: expect.any(Array),
+          recap_expectations: expect.any(Array),
+        },
+      },
     });
     expect(roles.getRoleDefinition('craftsman')).toMatchObject({
       id: 'craftsman',

@@ -110,13 +110,11 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
   const runtimeBrainPackDir = explicitRoot
     ? resolvePath(explicitRoot)
     : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
-  if (existsSync(runtimeBrainPackDir)) {
-    return runtimeBrainPackDir;
-  }
   const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
   mkdirSync(runtimeBrainPackDir, { recursive: true });
   cpSync(bundledBrainPackDir, runtimeBrainPackDir, {
     recursive: true,
+    force: true,
     filter: (source) => !source.startsWith(resolvePath(bundledBrainPackDir, 'tasks')),
   });
   mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });

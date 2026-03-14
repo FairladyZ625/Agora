@@ -68,9 +68,16 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     for (const member of input.team_members) {
       const agentDir = join(workspacePath, '05-agents', member.agentId);
       mkdirSync(agentDir, { recursive: true });
+      const roleDocPath = resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`);
+      const roleDoc = readRoleDocSummary(roleDocPath);
       writeFileSync(
         join(agentDir, '00-role-brief.md'),
-        renderRoleBrief(input, workspacePath, member, currentStage),
+        renderRoleBrief(input, workspacePath, member, currentStage, roleDoc, roleDocPath),
+        'utf8',
+      );
+      writeFileSync(
+        join(agentDir, '03-citizen-scaffold.md'),
+        renderCitizenScaffold(input, member, roleDoc),
         'utf8',
       );
       if (options.seedEmptyAgentNotes) {
@@ -189,9 +196,10 @@ function renderRoleBrief(
   workspacePath: string,
   member: TaskBrainWorkspaceRequest['team_members'][number],
   currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
+  roleDoc: ReturnType<typeof readRoleDocSummary>,
+  roleDocPath: string,
 ) {
-  const roleDocPath = resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`);
-  const roleDoc = readRoleDocSummary(roleDocPath);
+  const scaffoldPath = join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md');
   return [
     '---',
     `role_id: "${member.role}"`,
@@ -225,10 +233,52 @@ function renderRoleBrief(
     `${brainText(input.locale, '任务工作区', 'Task workspace')}: ${workspacePath}`,
     `${brainText(input.locale, '任务简报', 'Task brief')}: ${join(workspacePath, '01-task-brief.md')}`,
     `${brainText(input.locale, '阶段状态', 'Stage state')}: ${join(workspacePath, '03-stage-state.md')}`,
+    `${brainText(input.locale, 'Citizen Scaffold', 'Citizen Scaffold')}: ${scaffoldPath}`,
     '',
     `${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
     `${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
     `${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
+    '',
+  ].join('\n');
+}
+
+function renderCitizenScaffold(
+  input: TaskBrainWorkspaceRequest,
+  member: TaskBrainWorkspaceRequest['team_members'][number],
+  roleDoc: ReturnType<typeof readRoleDocSummary>,
+) {
+  const boundaries = roleDoc.boundaries.length > 0 ? roleDoc.boundaries : [
+    brainText(input.locale, '沿用角色文档中的边界，不要越权。', 'Follow the role boundaries and do not overreach.'),
+  ];
+  const heartbeat = roleDoc.heartbeat.length > 0 ? roleDoc.heartbeat : [
+    brainText(input.locale, '保持当前目标、阻塞与下一步动作可见。', 'Keep the current objective, blockers, and next action visible.'),
+  ];
+  const recap = roleDoc.recapExpectations.length > 0 ? roleDoc.recapExpectations : [
+    brainText(input.locale, '留下当前进展、风险与下一步。', 'Leave current progress, risks, and next action.'),
+  ];
+
+  return [
+    `# ${brainText(input.locale, 'Citizen Scaffold', 'Citizen Scaffold')}`,
+    '',
+    `- ${brainText(input.locale, 'Agent', 'Agent')}: ${member.agentId}`,
+    `- ${brainText(input.locale, 'Agora 角色', 'Agora Role')}: ${member.role}`,
+    `- ${brainText(input.locale, '成员类型', 'Member Kind')}: ${member.member_kind ?? 'citizen'}`,
+    '',
+    `## ${brainText(input.locale, 'Soul', 'Soul')}`,
+    '',
+    roleDoc.soul || brainText(input.locale, '保持该角色的核心职责与行为约束。', 'Preserve the role’s core responsibility and behavioral constraints.'),
+    '',
+    `## ${brainText(input.locale, 'Boundaries', 'Boundaries')}`,
+    '',
+    ...boundaries.map((item) => `- ${item}`),
+    '',
+    `## ${brainText(input.locale, 'Heartbeat', 'Heartbeat')}`,
+    '',
+    ...heartbeat.map((item) => `- ${item}`),
+    '',
+    `## ${brainText(input.locale, 'Recap Expectations', 'Recap Expectations')}`,
+    '',
+    ...recap.map((item) => `- ${item}`),
     '',
   ].join('\n');
 }
@@ -275,9 +325,16 @@ function resolveStageAllowedActions(stage: TaskBrainWorkspaceRequest['workflow_s
   }
 }
 
-function readRoleDocSummary(roleDocPath: string): { summary: string; mission: string } {
+function readRoleDocSummary(roleDocPath: string): {
+  summary: string;
+  mission: string;
+  soul: string;
+  boundaries: string[];
+  heartbeat: string[];
+  recapExpectations: string[];
+} {
   if (!existsSync(roleDocPath)) {
-    return { summary: '', mission: '' };
+    return { summary: '', mission: '', soul: '', boundaries: [], heartbeat: [], recapExpectations: [] };
   }
   const content = readFileSync(roleDocPath, 'utf8');
   const frontmatter = extractFrontmatter(content);
@@ -285,6 +342,10 @@ function readRoleDocSummary(roleDocPath: string): { summary: string; mission: st
   return {
     summary: frontmatter.summary ?? '',
     mission,
+    soul: frontmatter.soul ?? '',
+    boundaries: extractBulletSection(content, 'Boundaries'),
+    heartbeat: splitFrontmatterList(frontmatter.heartbeat),
+    recapExpectations: splitFrontmatterList(frontmatter.recap_expectations),
   };
 }
 
@@ -311,6 +372,24 @@ function extractSection(content: string, heading: string) {
   const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(\\n## |$)`);
   const match = content.match(pattern);
   return match?.[1]?.trim().replace(/\n+/g, ' ') ?? '';
+}
+
+function extractBulletSection(content: string, heading: string) {
+  const pattern = new RegExp(`## ${heading}\\n\\n([\\s\\S]*?)(\\n## |$)`);
+  const match = content.match(pattern)?.[1] ?? '';
+  return match
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('- '))
+    .map((line) => line.slice(2).trim())
+    .filter((line) => line.length > 0);
+}
+
+function splitFrontmatterList(value: string | undefined) {
+  return (value ?? '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 }
 
 function escapeYaml(value: string) {

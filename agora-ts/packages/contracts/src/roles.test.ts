@@ -20,6 +20,35 @@ describe('role pack contracts', () => {
           source: 'agora',
           source_ref: null,
           default_model_preference: 'strong_reasoning',
+          citizen_scaffold: {
+            soul: 'Keep the whole task coherent and decision-ready.',
+            boundaries: ['Do not fabricate human approval.'],
+            heartbeat: ['Restate the current objective and stage before changing direction.'],
+            recap_expectations: ['Summarize current objective, owner, risks, and next action.'],
+          },
+        },
+        {
+          id: 'craftsman',
+          name: 'Craftsman',
+          member_kind: 'craftsman',
+          summary: 'Executes coding work through craftsman adapters.',
+          prompt_asset: 'roles/craftsman.md',
+          source: 'agora',
+        },
+      ],
+    }).roles[0]?.citizen_scaffold?.heartbeat[0]).toContain('Restate');
+    expect(rolePackManifestSchema.parse({
+      pack_id: 'agora-default',
+      name: 'Agora Default',
+      version: 1,
+      roles: [
+        {
+          id: 'controller',
+          name: 'Controller',
+          member_kind: 'controller',
+          summary: 'Owns orchestration flow and dispatch decisions.',
+          prompt_asset: 'roles/controller.md',
+          source: 'agora',
         },
         {
           id: 'craftsman',
