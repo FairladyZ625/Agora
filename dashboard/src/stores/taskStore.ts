@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   CraftsmanGovernanceSnapshot,
+  CraftsmanExecutionTail,
   CreateTaskInput,
   RuntimeDiagnosisResult,
   RuntimeRecoveryAction,
@@ -36,7 +37,7 @@ interface TaskStore {
   selectedTaskStatus: TaskStatus | null;
   governanceSnapshot?: CraftsmanGovernanceSnapshot | null;
   healthSnapshot?: UnifiedHealthSnapshot | null;
-  executionTailById: Record<string, { available: boolean; output: string | null; source: 'tmux' | 'unavailable' }>;
+  executionTailById: Record<string, CraftsmanExecutionTail>;
   executionTailLoadingById: Record<string, boolean>;
   filters: TaskFilters;
   loading: boolean;
@@ -314,6 +315,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
             available: tail.available,
             output: tail.output,
             source: tail.source,
+            fetchedAt: new Date().toISOString(),
           },
         },
         executionTailLoadingById: {

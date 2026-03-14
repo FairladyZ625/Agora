@@ -129,6 +129,13 @@ export interface CraftsmanExecution {
   updatedAt: string;
 }
 
+export interface CraftsmanExecutionTail {
+  available: boolean;
+  output: string | null;
+  source: 'tmux' | 'unavailable';
+  fetchedAt: string;
+}
+
 export interface CraftsmanGovernanceSnapshot {
   limits: {
     maxConcurrentRunning: number | null;
