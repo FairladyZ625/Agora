@@ -92,7 +92,7 @@
 
 ## 项目概述
 
-Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 Python 版本已迁入 `archive/agora-python-legacy/`，保留为迁移参考与 legacy 对照。
+Agora 是一个多 Agent 民主编排框架。当前默认实现口径已经切向 `agora-ts/`，采用 SQLite + TypeScript/Node.js；旧 Python 实现已不再保留在主仓库中。
 
 ## 目录结构
 
@@ -108,16 +108,6 @@ agora-ts/           # TypeScript 主实现（默认开发目标）
 │   ├── config/     # 配置 schema / loader
 │   └── testing/    # 测试 runtime / helpers
 
-archive/agora-python-legacy/  # Python legacy 参考实现（非默认开发目标，已归档）
-├── core/
-├── adapters/
-├── craftsmen/
-├── server/
-├── templates/
-├── scripts/
-├── tests/
-└── config/
-
 dashboard/          # 前端 Dashboard（React + TypeScript + Vite）
 ├── src/
 │   ├── components/ # ui/ (基础) + features/ (业务) + layouts/ (布局)
@@ -127,6 +117,7 @@ dashboard/          # 前端 Dashboard（React + TypeScript + Vite）
 │   └── pages/      # 页面组件
 └── dist/           # 生产构建产物（agora-ts server 静态挂载 /dashboard/）
 
+Doc/                # 主仓库内可公开分享的文档包（白皮书/教程/架构概览）
 docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 ├── 00-RAW-PRDS/       # 历史架构/需求原始文档（过渡保留）
 ├── 01-GOVERNANCE/     # 治理规范
@@ -442,17 +433,10 @@ Skill(skill="feature-dev")
   - 应开发对应 craftsman adapter 包
   - Core 只消费统一 execution dispatch / callback / waiting-input contract
 
-### Python 代码规范
+### Python 状态说明
 
-仅适用于 legacy `archive/agora-python-legacy/` 对照实现；非新增默认目标。
-
-- 枚举使用 `class XxxState(str, Enum)` 模式（EscalationLevel 除外，使用 `int, Enum`）
-- 所有枚举值必须与 `docs/00-RAW-PRDS/ENUMS.md` 完全一致
-- JSON 字段用 TEXT 存储在 SQLite 中
-- 所有写操作使用事务（BEGIN → 操作 → COMMIT）
-- 乐观锁：UPDATE 时校验 version 字段
-- 使用 type hints（`from typing import Optional, dict, list`）
-- Docstring 使用简洁的单行或多行格式
+- 主仓库当前不再保留 Python legacy 实现。
+- 若未来需要恢复历史 Python 分支，只能作为独立历史维护事项处理，不能影响当前 TS 默认口径。
 
 ### 测试规范
 
@@ -470,14 +454,6 @@ TypeScript 默认规范：
   - `cd agora-ts && npm run scenario:list`
   - `cd agora-ts && npm run scenario -- <scenario> --json`
   - `cd agora-ts && npm run scenario:all`
-
-Python legacy 参考规范：
-
-- 测试文件命名：`test_<module>.py`
-- 使用 pytest fixtures 管理测试数据
-- 每个测试类对应一个功能点（如 `TestCommandGate`）
-- 测试方法命名：`test_<scenario>_<expected_result>`
-- 使用 `tmp_path` fixture 创建临时数据库
 
 ### Git 提交规范
 

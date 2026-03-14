@@ -27,6 +27,7 @@ import {
   craftsmanExecutionSendKeysRequestSchema,
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
+  craftsmanExecutionTailResponseSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
   tmuxSendKeysRequestSchema,
@@ -36,6 +37,7 @@ import {
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
 import { classifyCliError, CliError, CLI_EXIT_CODES, renderCliError } from './errors.js';
+import { cliText, resolveCliLocale } from './locale.js';
 import type { HumanAccountService } from '@agora-ts/core';
 
 type Writable = {
@@ -57,6 +59,8 @@ export interface CliDependencies {
   dashboardQueryService?: DashboardQueryService;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
+  startCommandCwd?: string;
+  startCommandFallbackRoot?: string;
   configPath?: string;
   dbPath?: string;
   stdout?: Writable;
@@ -202,6 +206,7 @@ function addRedirectCommand(
   movedTo: string,
   examples: string[],
 ) {
+  const locale = resolveCliLocale();
   program
     .command(name)
     .description(`redirect to \`${movedTo}\``)
@@ -209,17 +214,17 @@ function addRedirectCommand(
     .argument('[args...]')
     .addHelpText('after', [
       '',
-      `Moved to: ${movedTo}`,
-      'Examples:',
+      cliText(locale, `已迁移到：${movedTo}`, `Moved to: ${movedTo}`),
+      cliText(locale, '示例：', 'Examples:'),
       ...examples.map((example) => `  ${example}`),
     ].join('\n'))
     .action(() => {
       throw new CliError(
-        `\`agora ${name}\` has moved under \`${movedTo}\`.`,
+        cliText(locale, `\`agora ${name}\` 已迁移到 \`${movedTo}\`。`, `\`agora ${name}\` has moved under \`${movedTo}\`.`),
         'usage',
         CLI_EXIT_CODES.usage,
         [
-          `Use \`${movedTo} --help\` for the real command tree.`,
+          cliText(locale, `请改用 \`${movedTo} --help\` 查看真实命令树。`, `Use \`${movedTo} --help\` for the real command tree.`),
           ...examples.map((example) => `- ${example}`),
         ].join('\n'),
       );
@@ -322,11 +327,41 @@ export function createCliProgram(deps: CliDependencies = {}) {
     writeErr: (text) => stderr.write(text),
   });
 
-  program
+  const health = program
     .command('health')
-    .description('Print the bootstrap health marker')
+    .description('health commands')
     .action(() => {
       writeLine(stdout, 'agora-ts bootstrap ok');
+    });
+
+  health
+    .command('snapshot')
+    .description('print unified health snapshot')
+    .option('--json', 'emit JSON')
+    .action((options: { json?: boolean }) => {
+      const snapshot = taskService.getHealthSnapshot();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      writeLine(stdout, `generated_at: ${snapshot.generated_at}`);
+      writeLine(stdout, `tasks: total=${snapshot.tasks.total_tasks} active=${snapshot.tasks.active_tasks} blocked=${snapshot.tasks.blocked_tasks} paused=${snapshot.tasks.paused_tasks} done=${snapshot.tasks.done_tasks} status=${snapshot.tasks.status}`);
+      writeLine(stdout, `im: bindings=${snapshot.im.active_bindings} threads=${snapshot.im.active_threads} status=${snapshot.im.status}`);
+      writeLine(stdout, `runtime: available=${snapshot.runtime.available} active=${snapshot.runtime.active_sessions} idle=${snapshot.runtime.idle_sessions} closed=${snapshot.runtime.closed_sessions} status=${snapshot.runtime.status}`);
+      writeLine(stdout, `craftsman: active=${snapshot.craftsman.active_executions} running=${snapshot.craftsman.running_executions} waiting_input=${snapshot.craftsman.waiting_input_executions} awaiting_choice=${snapshot.craftsman.awaiting_choice_executions} status=${snapshot.craftsman.status}`);
+      if (snapshot.host.snapshot) {
+        const host = snapshot.host.snapshot;
+        const memoryLabel = host.platform === 'darwin' && host.memory_pressure != null
+          ? `pressure=${host.memory_pressure}`
+          : `memory=${host.memory_utilization ?? '-'}`;
+        writeLine(stdout, `host: ${memoryLabel} swap=${host.swap_utilization ?? '-'} load_1m=${host.load_1m ?? '-'} status=${snapshot.host.status}`);
+      } else {
+        writeLine(stdout, `host: unavailable status=${snapshot.host.status}`);
+      }
+      writeLine(
+        stdout,
+        `escalation: controller=${snapshot.escalation.controller_pinged_tasks} roster=${snapshot.escalation.roster_pinged_tasks} inbox=${snapshot.escalation.inbox_escalated_tasks} runtime_unhealthy=${snapshot.escalation.runtime_unhealthy} status=${snapshot.escalation.status}`,
+      );
     });
 
   program
@@ -1145,6 +1180,44 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `inbox_items: ${result.inbox_items}`);
     });
 
+  const runtimeCommand = program
+    .command('runtime')
+    .description('runtime recovery commands');
+
+  runtimeCommand
+    .command('diagnose')
+    .description('request runtime diagnosis for a task agent')
+    .argument('<taskId>', '任务 ID')
+    .argument('<agentRef>', 'agent ref')
+    .requiredOption('--caller-id <callerId>', 'caller id')
+    .option('--reason <reason>', 'reason', '')
+    .action((taskId: string, agentRef: string, options: { callerId: string; reason: string }) => {
+      const result = taskService.requestRuntimeDiagnosis(taskId, {
+        task_id: taskId,
+        agent_ref: agentRef,
+        caller_id: options.callerId,
+        ...(options.reason ? { reason: options.reason } : {}),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  runtimeCommand
+    .command('restart')
+    .description('request citizen runtime restart for a task agent')
+    .argument('<taskId>', '任务 ID')
+    .argument('<agentRef>', 'agent ref')
+    .requiredOption('--caller-id <callerId>', 'caller id')
+    .option('--reason <reason>', 'reason', '')
+    .action((taskId: string, agentRef: string, options: { callerId: string; reason: string }) => {
+      const result = taskService.restartCitizenRuntime(taskId, {
+        task_id: taskId,
+        agent_ref: agentRef,
+        caller_id: options.callerId,
+        ...(options.reason ? { reason: options.reason } : {}),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
   const task = program
     .command('task')
     .description('task read-model commands');
@@ -1308,8 +1381,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
       );
       writeLine(
         stdout,
-        `host limits: memory=${snapshot.limits.host_memory_utilization_limit ?? '-'} swap=${snapshot.limits.host_swap_utilization_limit ?? '-'} load_per_cpu=${snapshot.limits.host_load_per_cpu_limit ?? '-'}`,
+        `host limits: memory_warn=${snapshot.limits.host_memory_warning_utilization_limit ?? '-'} memory_hard=${snapshot.limits.host_memory_utilization_limit ?? '-'} swap_warn=${snapshot.limits.host_swap_warning_utilization_limit ?? '-'} swap_hard=${snapshot.limits.host_swap_utilization_limit ?? '-'} load_warn=${snapshot.limits.host_load_per_cpu_warning_limit ?? '-'} load_hard=${snapshot.limits.host_load_per_cpu_limit ?? '-'}`,
       );
+      writeLine(stdout, `host pressure status: ${snapshot.host_pressure_status}`);
       if (snapshot.host) {
         const memoryLabel = snapshot.host.platform === 'darwin' && snapshot.host.memory_pressure != null
           ? `pressure=${snapshot.host.memory_pressure}`
@@ -1321,12 +1395,22 @@ export function createCliProgram(deps: CliDependencies = {}) {
       } else {
         writeLine(stdout, 'host: unavailable');
       }
+      for (const warning of snapshot.warnings) {
+        writeLine(stdout, `warning: ${warning}`);
+      }
       if (snapshot.active_by_assignee.length === 0) {
         writeLine(stdout, 'active by assignee: none');
+      } else {
+        for (const item of snapshot.active_by_assignee) {
+          writeLine(stdout, `${item.assignee}\t${item.count}`);
+        }
+      }
+      if (snapshot.active_execution_details.length === 0) {
+        writeLine(stdout, 'active execution details: none');
         return;
       }
-      for (const item of snapshot.active_by_assignee) {
-        writeLine(stdout, `${item.assignee}\t${item.count}`);
+      for (const detail of snapshot.active_execution_details) {
+        writeLine(stdout, `${detail.execution_id}\t${detail.assignee}\t${detail.adapter}\t${detail.status}\t${detail.session_id ?? '-'}\t${detail.workdir ?? '-'}`);
       }
     });
 
@@ -1341,6 +1425,35 @@ export function createCliProgram(deps: CliDependencies = {}) {
         waitingAfterMs: Number(options.waitingAfterMs),
       });
       writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  craftsman
+    .command('stop')
+    .description('request a stop signal for a running craftsman execution')
+    .argument('<executionId>', 'execution ID')
+    .requiredOption('--caller-id <callerId>', 'caller id')
+    .option('--reason <reason>', 'reason', '')
+    .action((executionId: string, options: { callerId: string; reason: string }) => {
+      const result = taskService.stopCraftsmanExecution(executionId, {
+        caller_id: options.callerId,
+        ...(options.reason ? { reason: options.reason } : {}),
+      });
+      writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  craftsman
+    .command('tail')
+    .description('查看指定 execution 的最近输出')
+    .argument('<executionId>', 'execution ID')
+    .option('--lines <lines>', '最近输出行数', '120')
+    .action((executionId: string, options: { lines: string }) => {
+      const lines = Number(options.lines);
+      const result = craftsmanExecutionTailResponseSchema.parse(taskService.getCraftsmanExecutionTail(executionId, lines));
+      if (!result.available) {
+        writeLine(stdout, `craftsman tail 不可用: ${executionId}`);
+        return;
+      }
+      writeLine(stdout, result.output ?? '');
     });
 
   craftsman
@@ -1736,7 +1849,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('一键启动本地开发栈（后端 + Dashboard）')
     .action(async () => {
       await runStartCommand({
-        cwd: process.cwd(),
+        cwd: deps.startCommandCwd ?? process.cwd(),
+        ...(deps.startCommandFallbackRoot ? { fallbackRoot: deps.startCommandFallbackRoot } : {}),
         ...(deps.startCommandRunner ? { runner: deps.startCommandRunner } : {}),
       });
     });

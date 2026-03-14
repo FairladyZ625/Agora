@@ -1,4 +1,5 @@
 import { EnvHttpProxyAgent, type Dispatcher } from 'undici';
+import { resolveDiscordProxyEnvironment } from './proxy-support.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
 
@@ -28,7 +29,7 @@ export class DiscordHttpClient {
       Authorization: `Bot ${options.botToken}`,
       'Content-Type': 'application/json',
     };
-    this.dispatcher = hasProxyEnvironment() ? new EnvHttpProxyAgent() : undefined;
+    this.dispatcher = resolveDiscordProxyEnvironment().enabled ? new EnvHttpProxyAgent() : undefined;
   }
 
   async createThread(channelId: string, name: string, message: string, visibility: 'public' | 'private' = 'public'): Promise<string> {
@@ -177,15 +178,4 @@ export class DiscordHttpClient {
       throw new Error(`Discord deleteChannel failed: ${res.status} ${body}`);
     }
   }
-}
-
-function hasProxyEnvironment() {
-  return [
-    process.env.https_proxy,
-    process.env.HTTPS_PROXY,
-    process.env.http_proxy,
-    process.env.HTTP_PROXY,
-    process.env.all_proxy,
-    process.env.ALL_PROXY,
-  ].some((value) => typeof value === 'string' && value.length > 0);
 }

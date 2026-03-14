@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import {
   agoraDataDirPath,
   ensureBundledAgoraAssetsInstalled,
+  hasInstalledBrainPack,
   loadAgoraConfig,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   syncBundledBrainPackContents,
@@ -27,6 +28,8 @@ import {
   TaskBrainBindingService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
+  TmuxCraftsmanTailPort,
+  TmuxRuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -79,6 +82,8 @@ export interface CliCompositionFactories {
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
+      craftsmanExecutionTailPort: TmuxCraftsmanTailPort;
+      runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -112,7 +117,9 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
     ? resolvePath(explicitRoot)
     : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
   const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
-  syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  if (!hasInstalledBrainPack(runtimeBrainPackDir)) {
+    syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  }
   mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
   return runtimeBrainPackDir;
 }
@@ -182,14 +189,24 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
       agentRuntimePort: deps.agentRuntimePort,
+      runtimeRecoveryPort: deps.runtimeRecoveryPort,
       craftsmanInputPort: deps.craftsmanInputPort,
       craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
+      craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
       hostResourcePort: new OsHostResourcePort(),
       craftsmanGovernance: {
         maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
+        hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,
         hostMemoryUtilizationLimit: context.config.craftsmen.host_memory_utilization_limit,
+        hostSwapWarningUtilizationLimit: context.config.craftsmen.host_swap_warning_utilization_limit,
         hostSwapUtilizationLimit: context.config.craftsmen.host_swap_utilization_limit,
+        hostLoadPerCpuWarningLimit: context.config.craftsmen.host_load_per_cpu_warning_limit,
         hostLoadPerCpuLimit: context.config.craftsmen.host_load_per_cpu_limit,
+      },
+      escalationPolicy: {
+        controllerAfterMs: context.config.scheduler.task_probe_controller_after_sec * 1000,
+        rosterAfterMs: context.config.scheduler.task_probe_roster_after_sec * 1000,
+        inboxAfterMs: context.config.scheduler.task_probe_inbox_after_sec * 1000,
       },
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
     }),
@@ -230,7 +247,10 @@ export function createCliComposition(
 ): CliComposition {
   const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
-  const db = createAgoraDatabase({ dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path });
+  const db = createAgoraDatabase({
+    dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path,
+    busyTimeoutMs: config.db_busy_timeout_ms,
+  });
   runMigrations(db);
   ensureBundledAgoraAssetsInstalled({
     projectRoot: runtimeEnv.projectRoot ?? new URL('../../../../', import.meta.url).pathname,
@@ -265,6 +285,7 @@ export function createCliComposition(
     craftsmanDispatcher,
     craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
     craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
     taskBrainBindingService,
     taskBrainWorkspacePort,
     imProvisioningPort,
@@ -272,6 +293,7 @@ export function createCliComposition(
     taskContextBindingService,
     taskParticipationService,
     agentRuntimePort,
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   });
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);

@@ -36,6 +36,11 @@ export type ApiAuthConfig = z.infer<typeof apiAuthSchema>;
 export const schedulerConfigSchema = z.object({
   enabled: z.boolean().default(true),
   scan_interval_sec: z.number().int().min(5, 'scheduler.scan_interval_sec must be >= 5').default(60),
+  task_probe_controller_after_sec: z.number().int().min(5, 'scheduler.task_probe_controller_after_sec must be >= 5').default(300),
+  task_probe_roster_after_sec: z.number().int().min(5, 'scheduler.task_probe_roster_after_sec must be >= 5').default(900),
+  task_probe_inbox_after_sec: z.number().int().min(5, 'scheduler.task_probe_inbox_after_sec must be >= 5').default(1800),
+  craftsman_running_after_sec: z.number().int().min(5, 'scheduler.craftsman_running_after_sec must be >= 5').default(300),
+  craftsman_waiting_after_sec: z.number().int().min(5, 'scheduler.craftsman_waiting_after_sec must be >= 5').default(120),
   orphan_scan_on_boot: z.boolean().default(false),
   startup_recovery_on_boot: z.boolean().default(true),
 });
@@ -61,6 +66,9 @@ export const discordImConfigSchema = z.object({
   bot_token: z.string().optional(),
   default_channel_id: z.string().optional(),
   notify_on_task_create: z.boolean().default(true),
+  gateway_presence_enabled: z.boolean().default(true),
+  gateway_presence_status: z.enum(['online', 'idle', 'dnd', 'invisible']).default('online'),
+  gateway_presence_activity: z.string().min(1).default('Agora'),
 });
 export type DiscordImConfig = z.infer<typeof discordImConfigSchema>;
 
@@ -73,8 +81,11 @@ export type ImConfig = z.infer<typeof imConfigSchema>;
 export const craftsmenConfigSchema = z.object({
   max_concurrent_running: z.number().int().positive().default(8),
   max_concurrent_per_agent: z.number().int().positive().default(3),
+  host_memory_warning_utilization_limit: z.number().positive().max(1).default(0.75),
   host_memory_utilization_limit: z.number().positive().max(1).default(0.9),
+  host_swap_warning_utilization_limit: z.number().positive().max(1).default(0.75),
   host_swap_utilization_limit: z.number().positive().max(1).default(0.9),
+  host_load_per_cpu_warning_limit: z.number().positive().default(1),
   host_load_per_cpu_limit: z.number().positive().default(1.5),
   isolate_git_worktrees: z.boolean().default(false),
   isolated_root: z.string().default('.agora-ts/craftsman-workdirs'),
@@ -103,6 +114,7 @@ export type PermissionsConfig = z.infer<typeof permissionsSchema>;
 
 export const agoraConfigSchema = z.object({
   db_path: z.string().transform(normalizeDbPath).default(defaultAgoraDbPath()),
+  db_busy_timeout_ms: z.number().int().min(0).default(5000),
   api_auth: apiAuthSchema.default({ enabled: false, token: 'change-me' }),
   permissions: permissionsSchema.default({
     allowAgents: { '*': { canCall: [], canAdvance: false } },
@@ -111,6 +123,11 @@ export const agoraConfigSchema = z.object({
   scheduler: schedulerConfigSchema.default({
     enabled: true,
     scan_interval_sec: 60,
+    task_probe_controller_after_sec: 300,
+    task_probe_roster_after_sec: 900,
+    task_probe_inbox_after_sec: 1800,
+    craftsman_running_after_sec: 300,
+    craftsman_waiting_after_sec: 120,
     orphan_scan_on_boot: false,
     startup_recovery_on_boot: true,
   }),
@@ -129,8 +146,11 @@ export const agoraConfigSchema = z.object({
   craftsmen: craftsmenConfigSchema.default({
     max_concurrent_running: 8,
     max_concurrent_per_agent: 3,
+    host_memory_warning_utilization_limit: 0.75,
     host_memory_utilization_limit: 0.9,
+    host_swap_warning_utilization_limit: 0.75,
     host_swap_utilization_limit: 0.9,
+    host_load_per_cpu_warning_limit: 1,
     host_load_per_cpu_limit: 1.5,
     isolate_git_worktrees: false,
     isolated_root: '.agora-ts/craftsman-workdirs',

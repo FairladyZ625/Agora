@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import {
   ClaudeCraftsmanAdapter,
@@ -19,6 +19,8 @@ import {
   HumanAccountService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
+  TmuxCraftsmanTailPort,
+  TmuxRuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   TaskBrainBindingService,
   StubIMMessagingPort,
@@ -36,8 +38,8 @@ import {
   type PresenceSource,
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
-import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { agoraDataDirPath, hasInstalledBrainPack, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -69,6 +71,7 @@ export interface ServerComposition {
   humanAccountService: HumanAccountService;
   notificationDispatcher: NotificationDispatcher;
   taskConversationService: TaskConversationService;
+  discordPresenceService?: DiscordGatewayPresenceService;
 }
 
 export interface ServerCompositionFactories {
@@ -92,6 +95,9 @@ export interface ServerCompositionFactories {
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
+      craftsmanExecutionTailPort: TmuxCraftsmanTailPort;
+      runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
+      liveSessionStore: LiveSessionStore;
     },
   ) => TaskService;
   createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier | undefined;
@@ -123,6 +129,7 @@ export interface ServerCompositionFactories {
   createHumanAccountService: (context: ServerCompositionContext) => HumanAccountService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
   createTaskConversationService: (context: ServerCompositionContext) => TaskConversationService;
+  createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
 }
 
 function ensureRuntimeBrainPackRoot(projectRoot: string): string {
@@ -131,7 +138,9 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
     ? resolvePath(explicitRoot)
     : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
   const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
-  syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  if (!hasInstalledBrainPack(runtimeBrainPackDir)) {
+    syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  }
   mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
   return runtimeBrainPackDir;
 }
@@ -195,14 +204,25 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
         agentRuntimePort: deps.agentRuntimePort,
+        runtimeRecoveryPort: deps.runtimeRecoveryPort,
         craftsmanInputPort: deps.craftsmanInputPort,
         craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
+        craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
         hostResourcePort: new OsHostResourcePort(),
+        liveSessionStore: deps.liveSessionStore,
         craftsmanGovernance: {
           maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
+          hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,
           hostMemoryUtilizationLimit: context.config.craftsmen.host_memory_utilization_limit,
+          hostSwapWarningUtilizationLimit: context.config.craftsmen.host_swap_warning_utilization_limit,
           hostSwapUtilizationLimit: context.config.craftsmen.host_swap_utilization_limit,
+          hostLoadPerCpuWarningLimit: context.config.craftsmen.host_load_per_cpu_warning_limit,
           hostLoadPerCpuLimit: context.config.craftsmen.host_load_per_cpu_limit,
+        },
+        escalationPolicy: {
+          controllerAfterMs: context.config.scheduler.task_probe_controller_after_sec * 1000,
+          rosterAfterMs: context.config.scheduler.task_probe_roster_after_sec * 1000,
+          inboxAfterMs: context.config.scheduler.task_probe_inbox_after_sec * 1000,
         },
         ...(imProvisioningPort ? { imProvisioningPort } : {}),
       });
@@ -269,6 +289,23 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createHumanAccountService: (context) => new HumanAccountService(context.db),
     createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
     createTaskConversationService: (context) => new TaskConversationService(context.db),
+    createDiscordPresenceService: (context) => {
+      const { im } = context.config;
+      if (im.provider !== 'discord' || !im.discord?.bot_token) {
+        return undefined;
+      }
+      return new DiscordGatewayPresenceService({
+        botToken: im.discord.bot_token,
+        enabled: im.discord.gateway_presence_enabled,
+        status: im.discord.gateway_presence_status,
+        activityName: im.discord.gateway_presence_activity,
+        logger: {
+          info: (message) => console.info(message),
+          warn: (message) => console.warn(message),
+          error: (message, error) => console.error(message, error),
+        },
+      });
+    },
   };
 }
 
@@ -299,6 +336,7 @@ export function buildServerComposition(
     tmuxRuntimeService,
     imProvisioningPort,
     messagingPort,
+    liveSessionStore,
     taskBrainBindingService,
     taskBrainWorkspacePort,
     taskContextBindingService,
@@ -306,6 +344,8 @@ export function buildServerComposition(
     agentRuntimePort,
     craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
     craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
@@ -323,6 +363,7 @@ export function buildServerComposition(
   const inboxService = factories.createInboxService(context, { taskService });
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
   const taskConversationService = factories.createTaskConversationService(context);
+  const discordPresenceService = factories.createDiscordPresenceService(context);
 
   return {
     taskService,
@@ -336,6 +377,7 @@ export function buildServerComposition(
     humanAccountService,
     notificationDispatcher,
     taskConversationService,
+    ...(discordPresenceService ? { discordPresenceService } : {}),
   };
 }
 

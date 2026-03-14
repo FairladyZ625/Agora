@@ -13,6 +13,8 @@ interface TaskStoreMockState {
   error: string | null;
   selectedTaskId: string | null;
   selectedTaskStatus: TaskStatus | null;
+  executionTailById: Record<string, unknown>;
+  executionTailLoadingById: Record<string, boolean>;
   filters: { state: string | null; search: string };
   fetchTasks: ReturnType<typeof vi.fn>;
   selectTask: ReturnType<typeof vi.fn>;
@@ -20,7 +22,12 @@ interface TaskStoreMockState {
   createTask: typeof createTask;
   runTaskAction: ReturnType<typeof vi.fn>;
   observeCraftsmen: ReturnType<typeof vi.fn>;
+  refreshHealthSnapshot: ReturnType<typeof vi.fn>;
   probeCraftsmanExecution: ReturnType<typeof vi.fn>;
+  fetchCraftsmanExecutionTail: ReturnType<typeof vi.fn>;
+  diagnoseRuntime: ReturnType<typeof vi.fn>;
+  restartRuntime: ReturnType<typeof vi.fn>;
+  stopCraftsmanExecution: ReturnType<typeof vi.fn>;
   sendCraftsmanInputText: ReturnType<typeof vi.fn>;
   sendCraftsmanInputKeys: ReturnType<typeof vi.fn>;
   submitCraftsmanChoice: ReturnType<typeof vi.fn>;
@@ -64,6 +71,8 @@ const taskStoreState: TaskStoreMockState = {
   error: null,
   selectedTaskId: null,
   selectedTaskStatus: null,
+  executionTailById: {},
+  executionTailLoadingById: {},
   filters: { state: null, search: '' },
   fetchTasks: vi.fn(async () => 'live'),
   selectTask: vi.fn(async () => undefined),
@@ -71,7 +80,12 @@ const taskStoreState: TaskStoreMockState = {
   createTask,
   runTaskAction: vi.fn(async () => 'live'),
   observeCraftsmen: vi.fn(async () => 'live'),
+  refreshHealthSnapshot: vi.fn(async () => 'live'),
   probeCraftsmanExecution: vi.fn(async () => 'live'),
+  fetchCraftsmanExecutionTail: vi.fn(async () => 'live'),
+  diagnoseRuntime: vi.fn(async () => ({ summary: 'ok', detail: null, status: 'accepted' })),
+  restartRuntime: vi.fn(async () => ({ summary: 'ok', detail: null, status: 'accepted' })),
+  stopCraftsmanExecution: vi.fn(async () => ({ summary: 'ok', detail: null, status: 'accepted' })),
   sendCraftsmanInputText: vi.fn(async () => 'live'),
   sendCraftsmanInputKeys: vi.fn(async () => 'live'),
   submitCraftsmanChoice: vi.fn(async () => 'live'),
@@ -235,12 +249,18 @@ describe('dashboard phase 2 routes', () => {
         limits: {
           maxConcurrentRunning: 4,
           maxConcurrentPerAgent: 2,
+          hostMemoryWarningUtilizationLimit: 0.7,
           hostMemoryUtilizationLimit: 0.8,
+          hostSwapWarningUtilizationLimit: 0.1,
           hostSwapUtilizationLimit: 0.2,
+          hostLoadPerCpuWarningLimit: 1.2,
           hostLoadPerCpuLimit: 1.5,
         },
         activeExecutions: 1,
         activeByAssignee: [{ assignee: 'opus', count: 1 }],
+        activeExecutionDetails: [],
+        hostPressureStatus: 'healthy',
+        warnings: [],
         host: {
           observedAt: '2026-03-07T00:12:00.000Z',
           cpuCount: 8,

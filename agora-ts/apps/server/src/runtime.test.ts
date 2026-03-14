@@ -46,6 +46,11 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
       scheduler: {
         enabled: false,
         scan_interval_sec: 60,
+        task_probe_controller_after_sec: 300,
+        task_probe_roster_after_sec: 900,
+        task_probe_inbox_after_sec: 1800,
+        craftsman_running_after_sec: 300,
+        craftsman_waiting_after_sec: 120,
         startup_recovery_on_boot: false,
       },
     })),
@@ -135,6 +140,41 @@ describe('server runtime', () => {
     runtime.db.close();
   });
 
+  it('starts discord presence service when provided by composition', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        im: {
+          provider: 'discord',
+          discord: {
+            bot_token: 'discord-token',
+            default_channel_id: '123',
+          },
+        },
+      }),
+    );
+
+    const start = vi.fn();
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createDiscordPresenceService: () => ({
+          start,
+          stop: vi.fn(),
+          enabled: true,
+        }) as never,
+      },
+    });
+
+    expect(start).toHaveBeenCalledTimes(1);
+    runtime.db.close();
+  });
+
   it('runs startup recovery on boot when configured', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
@@ -207,6 +247,74 @@ describe('server runtime', () => {
       ]),
     );
     runtime.db.close();
+  });
+
+  it('runs schedulerized observation ticks on the configured interval', () => {
+    vi.useFakeTimers();
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+          task_probe_controller_after_sec: 11,
+          task_probe_roster_after_sec: 22,
+          task_probe_inbox_after_sec: 33,
+          craftsman_running_after_sec: 44,
+          craftsman_waiting_after_sec: 55,
+          startup_recovery_on_boot: false,
+        },
+      }),
+    );
+
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 1,
+      probed: 1,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => ({
+      scanned_tasks: 2,
+      controller_pings: 1,
+      roster_pings: 0,
+      inbox_items: 0,
+    }));
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+      },
+    });
+
+    expect(runtime.observationScheduler.enabled).toBe(true);
+    expect(runtime.observationScheduler.interval_ms).toBe(5000);
+    expect(observeCraftsmanExecutions).not.toHaveBeenCalled();
+    expect(probeInactiveTasks).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(5000);
+
+    expect(observeCraftsmanExecutions).toHaveBeenCalledWith({
+      runningAfterMs: 44_000,
+      waitingAfterMs: 55_000,
+    });
+    expect(probeInactiveTasks).toHaveBeenCalledWith({
+      controllerAfterMs: 11_000,
+      rosterAfterMs: 22_000,
+      inboxAfterMs: 33_000,
+    });
+
+    runtime.observationScheduler.stop();
+    runtime.db.close();
+    vi.useRealTimers();
   });
 
   it('accepts composition factory overrides for runtime dependencies', () => {

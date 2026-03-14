@@ -124,23 +124,22 @@ Citizens が議論  →  Archon が決定  →  Craftsmen が実行
 - npm 10+
 - tmux（craftsmen tmuxランタイムを使用する場合）
 
-### インストール
+### ソースからインストール
 
 ```bash
 git clone https://github.com/FairladyZ625/Agora.git
 cd agora
-cp .env.example .env
-cd agora-ts && npm install
-cd ../dashboard && npm install
+./scripts/bootstrap-local.sh
 ```
 
-### 開発スタック起動
+### 初期化と起動
 
 ```bash
-./docs/02-PRODUCT/scripts/dev-start.sh
+./agora init
+./agora start
 ```
 
-デフォルトエンドポイント：
+このソースモードの導線では依存関係のインストール、`.env` の準備、`~/.agora/` へのローカル設定書き込みを行ったうえで、Fastify バックエンドと Vite Dashboard 開発サーバーを起動します。デフォルトエンドポイント：
 
 - API: `http://127.0.0.1:18420/api/health`
 - Dashboard: `http://127.0.0.1:33173/dashboard/`
@@ -148,8 +147,7 @@ cd ../dashboard && npm install
 ### 最初のタスクを作成
 
 ```bash
-cd agora-ts
-npm run dev -w @agora-ts/cli -- create "APIに認証ミドルウェアを追加する"
+./agora create "APIに認証ミドルウェアを追加する"
 ```
 
 ### 典型的なフロー
@@ -238,7 +236,7 @@ agora-ts/                    TypeScript実装（server / cli / packages）
     └── testing/             テストランタイムヘルパー
 
 dashboard/                   Reactフロントエンド（Vite + Tailwind + Zustand）
-archive/agora-python-legacy/ Pythonレガシー参照実装
+Doc/                         公開共有向けドキュメント束（ホワイトペーパー、クイックスタート、統合ガイド）
 docs/                        アーキテクチャドキュメント（独立gitリポジトリ）
 extensions/                  プラグインアダプター（OpenClawなど）
 ```

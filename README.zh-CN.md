@@ -124,32 +124,32 @@ Citizens 讨论  →  Archon 裁决  →  Craftsmen 执行
 - npm 10+
 - tmux（若要使用 craftsmen tmux runtime）
 
-### 安装
+### 源码安装
 
 ```bash
 git clone https://github.com/FairladyZ625/Agora.git
 cd agora
-cp .env.example .env
-cd agora-ts && npm install
-cd ../dashboard && npm install
+./scripts/bootstrap-local.sh
 ```
 
-### 启动开发环境
+### 初始化并启动
 
 ```bash
-./docs/02-PRODUCT/scripts/dev-start.sh
+./agora init
+./agora start
 ```
 
-默认地址：
+这条源码模式路径会自动安装依赖、准备 `.env`、把本地 Agora 配置写到 `~/.agora/`，并启动 Fastify 后端和 Vite Dashboard 开发服务器。默认地址：
 
 - API：`http://127.0.0.1:18420/api/health`
 - Dashboard：`http://127.0.0.1:33173/dashboard/`
 
+如果你想直接看底层启动脚本，`./agora start` 实际复用的是 `docs/02-PRODUCT/scripts/dev-start.sh`。
+
 ### 创建第一个任务
 
 ```bash
-cd agora-ts
-npm run dev -w @agora-ts/cli -- create "给 API 加上认证中间件"
+./agora create "给 API 加上认证中间件"
 ```
 
 ### 典型流程
@@ -238,7 +238,7 @@ agora-ts/                    TypeScript 主实现（server / cli / packages）
     └── testing/             测试 runtime helpers
 
 dashboard/                   React 前端（Vite + Tailwind + Zustand）
-archive/agora-python-legacy/ Python legacy 参考实现
+Doc/                         可公开分享的文档包（白皮书、快速开始、集成指南）
 docs/                        架构文档（独立 git 仓库）
 extensions/                  插件 adapter（OpenClaw 等）
 ```

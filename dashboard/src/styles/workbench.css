@@ -691,6 +691,23 @@
   gap: 12px;
 }
 
+.task-tail-card {
+  border: 1px solid var(--review-divider);
+  border-radius: 16px;
+  background: var(--surface-glass-authority);
+  padding: 12px;
+}
+
+.task-tail-pre {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-ink-primary);
+  font-size: 12px;
+  line-height: 1.25rem;
+}
+
 .workbench-grid--page .review-pane--queue,
 .workbench-grid--page .task-pane--queue {
   border-right: 0;
