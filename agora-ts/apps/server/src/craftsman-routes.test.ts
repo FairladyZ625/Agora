@@ -426,6 +426,37 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('supports execution-scoped craftsman tail route', async () => {
+    const calls: Array<{ executionId: string; lines: number }> = [];
+    const app = buildApp({
+      taskService: {
+        getCraftsmanExecutionTail: (executionId: string, lines: number) => {
+          calls.push({ executionId, lines });
+          return {
+            execution_id: executionId,
+            available: true,
+            output: 'tail output',
+            source: 'tmux',
+          };
+        },
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/executions/exec-123/tail?lines=77',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(calls).toEqual([{ executionId: 'exec-123', lines: 77 }]);
+    expect(response.json()).toEqual({
+      execution_id: 'exec-123',
+      available: true,
+      output: 'tail output',
+      source: 'tmux',
+    });
+  });
+
   it('serves craftsman governance snapshot route', async () => {
     const app = buildApp({
       taskService: {

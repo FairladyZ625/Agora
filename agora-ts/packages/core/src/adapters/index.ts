@@ -4,6 +4,7 @@ export * from './tmux-pane-registry.js';
 export * from './tmux-craftsman-adapter.js';
 export * from './tmux-craftsman-input-port.js';
 export * from './tmux-craftsman-probe-port.js';
+export * from './tmux-craftsman-tail-port.js';
 export * from './tmux-runtime-recovery-port.js';
 export * from './codex-adapter.js';
 export * from './claude-adapter.js';

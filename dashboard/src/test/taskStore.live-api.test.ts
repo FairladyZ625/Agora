@@ -20,6 +20,7 @@ vi.mock('@/lib/api', () => ({
   listSubtaskExecutions: vi.fn(),
   getCraftsmanGovernance: vi.fn(),
   getHealthSnapshot: vi.fn(),
+  getCraftsmanExecutionTail: vi.fn(),
   closeSubtask: vi.fn(),
   archiveSubtask: vi.fn(),
   cancelSubtask: vi.fn(),
@@ -218,6 +219,8 @@ describe('task store live API mode', () => {
       selectedTaskStatus: null,
       governanceSnapshot: null,
       healthSnapshot: null,
+      executionTailById: {},
+      executionTailLoadingById: {},
       filters: { state: null, search: '' },
       loading: false,
       detailLoading: false,
@@ -236,6 +239,27 @@ describe('task store live API mode', () => {
     expect(state.tasks[0]?.state).toBe('in_progress');
     expect(state.tasks[0]?.teamLabel).toContain('opus');
     expect(state.error).toBeNull();
+  });
+
+  it('loads execution-scoped craftsman tail into the store', async () => {
+    vi.mocked(api.getCraftsmanExecutionTail).mockResolvedValue({
+      execution_id: 'exec-1',
+      available: true,
+      output: 'tail:exec-1',
+      source: 'tmux',
+    });
+
+    const result = await useTaskStore.getState().fetchCraftsmanExecutionTail('exec-1', 66);
+    const state = useTaskStore.getState();
+
+    expect(result).toBe('live');
+    expect(api.getCraftsmanExecutionTail).toHaveBeenCalledWith('exec-1', 66);
+    expect(state.executionTailById['exec-1']).toEqual({
+      available: true,
+      output: 'tail:exec-1',
+      source: 'tmux',
+    });
+    expect(state.executionTailLoadingById['exec-1']).toBe(false);
   });
 
   it('drops synced archived tasks from the workbench list and clears stale selection', async () => {

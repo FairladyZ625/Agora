@@ -8,6 +8,7 @@ import {
   craftsmanExecutionSendKeysRequestSchema,
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
+  craftsmanExecutionTailResponseSchema,
   craftsmanGovernanceSnapshotSchema,
   observeCraftsmanExecutionsRequestSchema,
   observeCraftsmanExecutionsResponseSchema,
@@ -1615,6 +1616,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { executionId: string };
       return reply.send(taskService.getCraftsmanExecution(params.executionId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/craftsmen/executions/:executionId/tail', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { executionId: string };
+      const query = request.query as { lines?: string };
+      const lines = query.lines ? Number(query.lines) : 120;
+      return reply.send(craftsmanExecutionTailResponseSchema.parse(taskService.getCraftsmanExecutionTail(params.executionId, lines)));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

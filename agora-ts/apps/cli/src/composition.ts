@@ -27,6 +27,7 @@ import {
   TaskBrainBindingService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
+  TmuxCraftsmanTailPort,
   TmuxRuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
@@ -80,6 +81,7 @@ export interface CliCompositionFactories {
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
+      craftsmanExecutionTailPort: TmuxCraftsmanTailPort;
       runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
     },
   ) => TaskService;
@@ -187,6 +189,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       runtimeRecoveryPort: deps.runtimeRecoveryPort,
       craftsmanInputPort: deps.craftsmanInputPort,
       craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
+      craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
       hostResourcePort: new OsHostResourcePort(),
       craftsmanGovernance: {
         maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
@@ -279,6 +282,7 @@ export function createCliComposition(
     craftsmanDispatcher,
     craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
     craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
     taskBrainBindingService,
     taskBrainWorkspacePort,
     imProvisioningPort,

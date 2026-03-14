@@ -257,6 +257,26 @@ export function probeCraftsmanExecution(executionId: string): Promise<{
   );
 }
 
+export function getCraftsmanExecutionTail(
+  executionId: string,
+  lines = 120,
+): Promise<{
+  execution_id: string;
+  available: boolean;
+  output: string | null;
+  source: 'tmux' | 'unavailable';
+}> {
+  return request(
+    `/craftsmen/executions/${encodeURIComponent(executionId)}/tail?lines=${encodeURIComponent(String(lines))}`,
+    z.object({
+      execution_id: z.string(),
+      available: z.boolean(),
+      output: z.string().nullable(),
+      source: z.enum(['tmux', 'unavailable']),
+    }),
+  );
+}
+
 export function stopCraftsmanExecution(
   executionId: string,
   input: { caller_id: string; reason?: string },

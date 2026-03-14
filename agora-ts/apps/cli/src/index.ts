@@ -27,6 +27,7 @@ import {
   craftsmanExecutionSendKeysRequestSchema,
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
+  craftsmanExecutionTailResponseSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
   tmuxSendKeysRequestSchema,
@@ -1436,6 +1437,21 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.reason ? { reason: options.reason } : {}),
       });
       writeLine(stdout, JSON.stringify(result, null, 2));
+    });
+
+  craftsman
+    .command('tail')
+    .description('查看指定 execution 的最近输出')
+    .argument('<executionId>', 'execution ID')
+    .option('--lines <lines>', '最近输出行数', '120')
+    .action((executionId: string, options: { lines: string }) => {
+      const lines = Number(options.lines);
+      const result = craftsmanExecutionTailResponseSchema.parse(taskService.getCraftsmanExecutionTail(executionId, lines));
+      if (!result.available) {
+        writeLine(stdout, `craftsman tail 不可用: ${executionId}`);
+        return;
+      }
+      writeLine(stdout, result.output ?? '');
     });
 
   craftsman

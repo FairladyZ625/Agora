@@ -182,6 +182,14 @@ describe('dashboard expansion api client', () => {
         if (url.includes('/craftsmen/tmux/tail/')) {
           return { output: 'tail:codex' };
         }
+        if (/\/craftsmen\/executions\/[^/]+\/tail/.test(url)) {
+          return {
+            execution_id: 'exec-1',
+            available: true,
+            output: 'tail:exec-1',
+            source: 'tmux',
+          };
+        }
         if (url.includes('/craftsmen/governance')) {
           return {
             limits: {
@@ -431,6 +439,7 @@ describe('dashboard expansion api client', () => {
     await api.observeCraftsmanExecutions({ running_after_ms: 120000, waiting_after_ms: 60000 });
     await api.listSubtaskExecutions('OC-001', 'sub-1');
     await api.probeCraftsmanExecution('exec-1');
+    await api.getCraftsmanExecutionTail('exec-1', 88);
     await api.sendCraftsmanExecutionInputText('exec-1', { text: 'Continue' });
     await api.sendCraftsmanExecutionInputKeys('exec-1', { keys: ['Down'] });
     await api.submitCraftsmanExecutionChoice('exec-1', { keys: ['Enter'] });
@@ -441,6 +450,7 @@ describe('dashboard expansion api client', () => {
     expectFetchCall('/api/agents/status', { method: 'GET' });
     expectFetchCall('/api/agents/channels/discord', { method: 'GET' });
     expectFetchCall('/api/craftsmen/tmux/tail/codex?lines=20', { method: 'GET' });
+    expectFetchCall('/api/craftsmen/executions/exec-1/tail?lines=88', { method: 'GET' });
     expectFetchCall('/api/archive/jobs', { method: 'GET' });
     expectFetchCall('/api/archive/jobs?status=failed&task_id=OC-001', { method: 'GET' });
     expectFetchCall('/api/archive/jobs/7', { method: 'GET' });
