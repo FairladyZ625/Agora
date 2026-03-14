@@ -2057,6 +2057,7 @@ describe('task service', () => {
           id: 'build-loop',
           title: 'Build loop',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -2790,6 +2791,7 @@ describe('task service', () => {
           id: 'sub-host-limit-1',
           title: 'Should be blocked by host limit',
           assignee: 'codex',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -2925,6 +2927,7 @@ describe('task service', () => {
           id: 'build-api',
           title: 'Build API',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -2937,6 +2940,7 @@ describe('task service', () => {
           id: 'write-tests',
           title: 'Write tests',
           assignee: 'gpt52',
+          execution_target: 'manual',
         },
       ],
     });
@@ -3009,6 +3013,7 @@ describe('task service', () => {
           id: 'smoke-claude',
           title: 'Smoke Claude alias',
           assignee: 'opus',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'claude_code',
             mode: 'interactive',
@@ -3069,9 +3074,92 @@ describe('task service', () => {
           id: 'rogue-subtask',
           title: 'Should fail',
           assignee: 'sonnet',
+          execution_target: 'manual',
         },
       ],
     })).toThrow(/controller ownership/i);
+  });
+
+  it('requires explicit manual intent for non-craftsman subtasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-CREATE-MANUAL-1',
+    });
+
+    service.createTask({
+      title: 'Subtask explicit manual intent',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'citizen_execute',
+            allowed_actions: ['execute'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-SUBTASK-CREATE-MANUAL-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'implicit-manual',
+          title: 'Should fail without explicit intent',
+          assignee: 'sonnet',
+        } as never,
+      ],
+    })).toThrow(/execution_target/i);
+  });
+
+  it('rejects manual subtasks in smoke mode when the stage is craftsman-capable', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-SMOKE-MANUAL-1',
+    });
+
+    service.createTask({
+      title: 'Smoke manual intent guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      control: { mode: 'smoke_test' },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-SUBTASK-SMOKE-MANUAL-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'manual-smoke',
+          title: 'Should be blocked in smoke mode',
+          assignee: 'opus',
+          execution_target: 'manual',
+        },
+      ],
+    })).toThrow(/execution_target='manual'/i);
   });
 
   it('rejects craftsman subtask creation when the per-agent concurrency limit would be exceeded', () => {
@@ -3133,6 +3221,7 @@ describe('task service', () => {
           id: 'new-runner',
           title: 'Should be blocked',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -3195,6 +3284,7 @@ describe('task service', () => {
           id: 'blocked-by-memory',
           title: 'Should not dispatch under memory pressure',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -3260,6 +3350,7 @@ describe('task service', () => {
           id: 'allowed-under-pressure',
           title: 'Should still dispatch on mac',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -3324,6 +3415,7 @@ describe('task service', () => {
           id: 'blocked-under-pressure',
           title: 'Should block on mac pressure',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -3370,6 +3462,7 @@ describe('task service', () => {
           id: 'interactive-mismatch',
           title: 'Should fail',
           assignee: 'opus',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'claude',
             mode: 'one_shot',

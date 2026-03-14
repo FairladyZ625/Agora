@@ -744,6 +744,7 @@ describe('task routes', () => {
             id: 'build-api',
             title: 'Build API',
             assignee: 'sonnet',
+            execution_target: 'manual',
           },
         ],
       },

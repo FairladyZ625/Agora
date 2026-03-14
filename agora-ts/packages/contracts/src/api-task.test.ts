@@ -204,6 +204,7 @@ describe('task api contracts', () => {
           id: 'build-api',
           title: 'Build API',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -216,6 +217,7 @@ describe('task api contracts', () => {
       subtasks: [
         {
           id: 'build-api',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -425,5 +427,16 @@ describe('task api contracts', () => {
       execution_kind: 'craftsman_dispatch',
       allowed_actions: ['dispatch_craftsman'],
     });
+
+    expect(() => createSubtasksRequestSchema.parse({
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'manual-build',
+          title: 'Manual Build',
+          assignee: 'sonnet',
+        },
+      ],
+    })).toThrow(/execution_target/i);
   });
 });

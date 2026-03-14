@@ -289,8 +289,24 @@ export const createSubtaskDefinitionSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   assignee: z.string().min(1),
+  execution_target: z.enum(['manual', 'craftsman']),
   craftsman: createSubtaskCraftsmanSpecSchema.optional(),
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (value.execution_target === 'craftsman' && !value.craftsman) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'craftsman spec is required when execution_target is craftsman',
+      path: ['craftsman'],
+    });
+  }
+  if (value.execution_target === 'manual' && value.craftsman) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'craftsman spec must be omitted when execution_target is manual',
+      path: ['craftsman'],
+    });
+  }
+});
 export type CreateSubtaskDefinitionDto = z.infer<typeof createSubtaskDefinitionSchema>;
 
 export const createSubtasksRequestSchema = z.object({

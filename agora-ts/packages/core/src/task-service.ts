@@ -15,7 +15,7 @@ import type {
   TaskStatusDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
-import { craftsmanExecutionSchema } from '@agora-ts/contracts';
+import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
 import {
   ApprovalRequestRepository,
   ArchiveJobRepository,
@@ -863,6 +863,7 @@ export class TaskService {
   }
 
   createSubtasks(taskId: string, options: CreateSubtasksRequestDto): CreateSubtasksResponseDto {
+    options = createSubtasksRequestSchema.parse(options);
     const task = this.getTaskOrThrow(taskId);
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
@@ -895,15 +896,38 @@ export class TaskService {
         throw new Error(`Subtask id '${subtask.id}' already exists in task ${taskId}`);
       }
       duplicateIds.add(subtask.id);
-      if (subtask.craftsman && !stageAllowsCraftsmanDispatch(stage)) {
+      if (subtask.execution_target === 'craftsman' && !stageAllowsCraftsmanDispatch(stage)) {
         throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
       }
-      if (subtask.craftsman) {
+      if (subtask.execution_target === 'craftsman' && subtask.craftsman) {
         this.assertCraftsmanInteractionGuard(
           subtask.craftsman.mode,
           subtask.craftsman.interaction_expectation,
           `subtask '${subtask.id}'`,
         );
+      }
+      if (
+        task.control?.mode === 'smoke_test'
+        && stageAllowsCraftsmanDispatch(stage)
+        && subtask.execution_target === 'manual'
+      ) {
+        throw new Error([
+          `Smoke task ${taskId} is in a craftsman-capable stage '${stage.id}', but subtask '${subtask.id}' declares execution_target='manual'.`,
+          'If you want a craftsman run, use execution_target="craftsman" and include a craftsman block.',
+          'Example:',
+          JSON.stringify({
+            id: subtask.id,
+            title: subtask.title,
+            assignee: subtask.assignee,
+            execution_target: 'craftsman',
+            craftsman: {
+              adapter: 'claude',
+              mode: 'one_shot',
+              interaction_expectation: 'one_shot',
+              prompt: '<prompt>',
+            },
+          }, null, 2),
+        ].join('\n'));
       }
     }
     this.assertCraftsmanGovernanceForSubtasks(normalizedSubtasks);
@@ -912,7 +936,7 @@ export class TaskService {
       id: subtask.id,
       title: subtask.title,
       assignee: subtask.assignee,
-      ...(subtask.craftsman ? {
+      ...(subtask.execution_target === 'craftsman' && subtask.craftsman ? {
         craftsman: {
           adapter: subtask.craftsman.adapter,
           mode: subtask.craftsman.mode,
@@ -940,7 +964,7 @@ export class TaskService {
       kind: 'subtasks_created',
       bodyLines: [
         `Controller ${options.caller_id} created ${createdSubtasks.length} subtasks in stage ${stage.id}.`,
-        ...createdSubtasks.map((subtask) => `- ${subtask.id} | ${subtask.assignee} | ${subtask.craftsman_type ?? 'citizen_only'}`),
+        ...createdSubtasks.map((subtask) => `- ${subtask.id} | ${subtask.assignee} | ${subtask.craftsman_type ?? 'manual'}`),
         ...(dispatchedExecutions.length > 0
           ? [`Auto-dispatched executions: ${dispatchedExecutions.map((execution) => `${execution.subtask_id}:${execution.execution_id}`).join(', ')}`]
           : []),
@@ -1831,6 +1855,7 @@ export class TaskService {
           '',
           `${taskText(task, 'Craftsman 循环', 'Craftsman loop')}:`,
           `- ${taskText(task, '在当前任务线程内，使用 subtask 作为正式执行绑定对象。', 'Use subtasks as the formal execution binding object inside this task thread.')}`,
+          `- ${taskText(task, '每个 subtask 都必须显式声明 `execution_target`：`manual` 或 `craftsman`。', 'Every subtask must declare `execution_target` explicitly: `manual` or `craftsman`.')}`,
           `- ${taskText(task, '仅当活动阶段允许 `craftsman_dispatch` 时，才从 subtask 调度 craftsman。', 'Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.')}`,
           `- ${taskText(task, '执行模式优先使用 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Prefer `one_shot` (single result) or `interactive` (continued dialogue) as the execution mode.')}`,
           `- ${taskText(task, '如果 craftsman 进入 `needs_input` 或 `awaiting_choice`，通过它的 `execution_id` 继续同一个执行。', 'If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.')}`,
@@ -1885,6 +1910,7 @@ export class TaskService {
           `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
           taskText(task, '执行模式：优先 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Execution Mode: prefer `one_shot` (single result) or `interactive` (continued dialogue).'),
           taskText(task, '快速决策：一次性结果用 `one_shot`；需要后续输入或菜单选择用 `interactive`。', 'Quick decision: use `one_shot` for one-pass results; use `interactive` when you expect more input or menu choices.'),
+          taskText(task, 'subtask 意图：显式写 `execution_target: "manual"` 或 `execution_target: "craftsman"`。', 'Subtask intent: explicitly write `execution_target: "manual"` or `execution_target: "craftsman"`.'),
           `agora subtasks create ${task.id} --caller-id ${controllerRef ?? '<controller>'} --file subtasks.json`,
           `agora subtasks list ${task.id}`,
           taskText(task, 'Craftsman 循环：使用正式 subtask 绑定 craftsman，等待中的执行通过 `execution_id` 继续，而不是靠原始 pane 名。', 'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.'),
@@ -2213,7 +2239,8 @@ export class TaskService {
       '',
       'Smoke Next Step:',
       `- Controller should create execute-mode subtasks now: \`agora subtasks create ${task.id} --caller-id ${controllerRef} --file subtasks.json\``,
-      '- Put the craftsman spec inside `subtasks.json` if this stage should auto-dispatch a craftsman.',
+      '- Every subtask must declare `execution_target` explicitly: use `craftsman` for auto-dispatch or `manual` for purely human/agent work.',
+      '- In smoke mode, craftsman-capable stages should use `execution_target: "craftsman"` plus a full `craftsman` block.',
     ];
   }
 
@@ -2237,7 +2264,7 @@ export class TaskService {
       lines.push(`- First execution ready: \`${first.execution_id}\``);
       lines.push(`- If it pauses for input, continue with: \`agora craftsman input-text ${first.execution_id} "<text>"\``);
     } else if (createdSubtasks.length > 0) {
-      lines.push('- After dispatch, watch the thread for `craftsman_started` and later callback events.');
+      lines.push('- No execution was auto-dispatched. If this was supposed to be a craftsman run, recreate the subtask with `execution_target: "craftsman"` and a full `craftsman` block.');
     }
     return lines;
   }

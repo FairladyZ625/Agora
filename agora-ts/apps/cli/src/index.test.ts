@@ -1503,6 +1503,7 @@ describe('agora-ts cli', () => {
           id: 'build-api',
           title: 'Build API',
           assignee: 'sonnet',
+          execution_target: 'craftsman',
           craftsman: {
             adapter: 'codex',
             mode: 'one_shot',
@@ -1513,6 +1514,7 @@ describe('agora-ts cli', () => {
           id: 'write-tests',
           title: 'Write tests',
           assignee: 'gpt52',
+          execution_target: 'manual',
         },
       ],
     });
