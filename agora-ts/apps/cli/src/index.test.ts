@@ -161,6 +161,46 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('create [options] <taskId>');
   });
 
+  it('renders redirect help for agora tmux --help', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      configPath: '/definitely/missing/agora.json',
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    try {
+      await program.parseAsync(['tmux', '--help'], { from: 'user' });
+    } catch {
+      // Commander may surface help as an exit signal.
+    }
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Moved to: agora craftsman tmux');
+    expect(stdout.value).toContain('agora craftsman tmux status');
+  });
+
+  it('renders redirect help for agora users --help', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      configPath: '/definitely/missing/agora.json',
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    try {
+      await program.parseAsync(['users', '--help'], { from: 'user' });
+    } catch {
+      // Commander may surface help as an exit signal.
+    }
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Moved to: agora dashboard users');
+    expect(stdout.value).toContain('agora dashboard users list');
+  });
+
   it('treats a symlinked executable path as the cli entrypoint', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-entrypoint-'));
     tempPaths.push(dir);

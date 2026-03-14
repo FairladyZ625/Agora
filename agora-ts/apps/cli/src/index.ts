@@ -35,7 +35,7 @@ import {
 } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
-import { classifyCliError, renderCliError } from './errors.js';
+import { classifyCliError, CliError, CLI_EXIT_CODES, renderCliError } from './errors.js';
 import type { HumanAccountService } from '@agora-ts/core';
 
 type Writable = {
@@ -194,6 +194,36 @@ function parseJsonFile(path: string, context: string): Record<string, unknown> {
   } catch (error) {
     throw new Error(`Invalid JSON in ${context} ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+function addRedirectCommand(
+  program: Command,
+  name: string,
+  movedTo: string,
+  examples: string[],
+) {
+  program
+    .command(name)
+    .description(`redirect to \`${movedTo}\``)
+    .allowUnknownOption(true)
+    .argument('[args...]')
+    .addHelpText('after', [
+      '',
+      `Moved to: ${movedTo}`,
+      'Examples:',
+      ...examples.map((example) => `  ${example}`),
+    ].join('\n'))
+    .action(() => {
+      throw new CliError(
+        `\`agora ${name}\` has moved under \`${movedTo}\`.`,
+        'usage',
+        CLI_EXIT_CODES.usage,
+        [
+          `Use \`${movedTo} --help\` for the real command tree.`,
+          ...examples.map((example) => `- ${example}`),
+        ].join('\n'),
+      );
+    });
 }
 
 function insertStage(
@@ -483,6 +513,15 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const archive = program
     .command('archive')
     .description('archive control commands');
+
+  addRedirectCommand(program, 'tmux', 'agora craftsman tmux', [
+    'agora craftsman tmux --help',
+    'agora craftsman tmux status',
+  ]);
+  addRedirectCommand(program, 'users', 'agora dashboard users', [
+    'agora dashboard users list',
+    'agora dashboard users add --username alice --password secret',
+  ]);
 
   templates
     .command('show')
