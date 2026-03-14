@@ -552,6 +552,7 @@ function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioR
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
 
@@ -705,6 +706,7 @@ function runCancelActiveTaskScenario(runtime: TestRuntime): ScenarioResult {
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.cancelTask(task.id, { reason: 'scope dropped' });
@@ -817,6 +819,7 @@ function runCraftsmanHappyPathScenario(runtime: TestRuntime): ScenarioResult {
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.handleCraftsmanCallback({
@@ -854,6 +857,7 @@ function runCraftsmanCallbackFailureScenario(runtime: TestRuntime): ScenarioResu
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.handleCraftsmanCallback({
@@ -899,6 +903,7 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/craft-limit-1',
   });
   let errorMessage = '';
@@ -909,6 +914,7 @@ function runCraftsmanConcurrencyLimitScenario(runtime: TestRuntime): ScenarioRes
       caller_id: 'opus',
       adapter: 'codex',
       mode: 'one_shot',
+      interaction_expectation: 'one_shot',
       workdir: '/tmp/craft-limit-2',
     });
   } catch (error) {
@@ -947,6 +953,7 @@ function runCraftsmanWorkdirIsolationScenario(runtime: TestRuntime): ScenarioRes
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/repo/root',
   });
 
@@ -982,6 +989,7 @@ function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.handleCraftsmanCallback({
@@ -998,6 +1006,7 @@ function runCraftsmanRetryScenario(runtime: TestRuntime): ScenarioResult {
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.handleCraftsmanCallback({
@@ -1035,6 +1044,7 @@ function runCraftsmanTimeoutScenario(runtime: TestRuntime): ScenarioResult {
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.handleCraftsmanCallback({
@@ -1083,6 +1093,7 @@ function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): Scenari
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/codex',
   });
   runtime.taskService.handleCraftsmanCallback({
@@ -1305,6 +1316,7 @@ function runControlPlaneLoopScenario(runtime: TestRuntime): ScenarioResult {
     caller_id: 'opus',
     adapter: 'codex',
     mode: 'one_shot',
+    interaction_expectation: 'one_shot',
     workdir: '/tmp/control-loop',
   });
   taskService.handleCraftsmanCallback({

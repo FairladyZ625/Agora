@@ -1938,6 +1938,10 @@ describe('task service', () => {
     const gateWaitingMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'gate_waiting');
     expect(gateWaitingMessage?.body).toContain('冒烟引导:');
     expect(gateWaitingMessage?.body).toContain('现在验证人工审批链路。');
+    provisioningPort.published.length = 0;
+    expect(() => service.advanceTask('OC-SMOKE-STATUS-1', { callerId: 'archon' })).toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'gate_waiting')).toBeUndefined();
 
     provisioningPort.published.length = 0;
     subtasks.insertSubtask({

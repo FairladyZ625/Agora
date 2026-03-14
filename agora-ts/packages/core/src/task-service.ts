@@ -473,13 +473,13 @@ export class TaskService {
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
     if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
       const approvalRequest = this.ensureApprovalRequestForGate(task, currentStage, options.callerId);
-      if (approvalRequest) {
+      if (approvalRequest?.shouldBroadcast) {
         this.publishTaskStatusBroadcast(task, {
           kind: 'gate_waiting',
           bodyLines: [
-            `Gate ${approvalRequest.gate_type} is waiting for human decision.`,
-            `Approval Request: ${approvalRequest.id}`,
-            ...(approvalRequest.summary_path ? [`Summary Path: ${approvalRequest.summary_path}`] : []),
+            `Gate ${approvalRequest.request.gate_type} is waiting for human decision.`,
+            `Approval Request: ${approvalRequest.request.id}`,
+            ...(approvalRequest.request.summary_path ? [`Summary Path: ${approvalRequest.request.summary_path}`] : []),
           ],
         });
       }
@@ -1959,10 +1959,14 @@ export class TaskService {
     }
     const existing = this.approvalRequestRepository.getLatestPending(task.id, stage.id);
     if (existing) {
-      return existing;
+      return {
+        request: existing,
+        shouldBroadcast: false,
+      };
     }
     const brainBinding = this.taskBrainBindingService?.getActiveBinding(task.id) ?? null;
-    return this.approvalRequestRepository.insert({
+    return {
+      request: this.approvalRequestRepository.insert({
       task_id: task.id,
       stage_id: stage.id,
       gate_type: gateType,
@@ -1971,8 +1975,11 @@ export class TaskService {
       metadata: {
         controller_ref: resolveControllerRef(task.team.members),
         current_stage: task.current_stage,
+        waiting_broadcasted_at: new Date().toISOString(),
       },
-    });
+      }),
+      shouldBroadcast: true,
+    };
   }
 
   private resolvePendingApprovalRequest(
