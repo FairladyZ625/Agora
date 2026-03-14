@@ -2539,6 +2539,69 @@ describe('task service', () => {
     });
   });
 
+  it('normalizes craftsman adapter aliases for manual dispatch', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-allowed-alias-1',
+      adapters: {
+        claude: new StubCraftsmanAdapter('claude', () => '2026-03-14T11:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-GUARD-ALIAS-1',
+      craftsmanDispatcher: dispatcher,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Guard execute stage alias',
+      type: 'coding_heavy',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-allowed-alias-1',
+      task_id: 'OC-DISPATCH-GUARD-ALIAS-1',
+      stage_id: 'implement',
+      title: 'Should dispatch in craftsman stage',
+      assignee: 'opus',
+      status: 'pending',
+      craftsman_type: 'claude_code',
+      craftsman_prompt: 'Pair with me',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-GUARD-ALIAS-1',
+      subtask_id: 'sub-allowed-alias-1',
+      caller_id: 'opus',
+      adapter: 'claude_code',
+      mode: 'interactive',
+      interaction_expectation: 'needs_input',
+      workdir: '/tmp/claude',
+    });
+
+    expect(result.execution).toMatchObject({
+      task_id: 'OC-DISPATCH-GUARD-ALIAS-1',
+      subtask_id: 'sub-allowed-alias-1',
+      adapter: 'claude',
+    });
+  });
+
   it('rejects craftsman dispatch when the caller is not the controller', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -2900,6 +2963,73 @@ describe('task service', () => {
         task_id: 'OC-SUBTASK-CREATE-1',
         subtask_id: 'build-api',
         adapter: 'codex',
+      }),
+    ]);
+  });
+
+  it('normalizes craftsman adapter aliases during formal subtask creation and auto-dispatch', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-subtask-create-alias-1',
+      adapters: {
+        claude: new StubCraftsmanAdapter('claude', () => '2026-03-14T10:00:00.000Z'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-CREATE-ALIAS-1',
+      craftsmanDispatcher: dispatcher,
+    });
+
+    service.createTask({
+      title: 'Formal subtask adapter alias',
+      type: 'coding_heavy',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    const result = service.createSubtasks('OC-SUBTASK-CREATE-ALIAS-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'smoke-claude',
+          title: 'Smoke Claude alias',
+          assignee: 'opus',
+          craftsman: {
+            adapter: 'claude_code',
+            mode: 'interactive',
+            interaction_expectation: 'needs_input',
+            prompt: 'Pair with me',
+          },
+        },
+      ],
+    });
+
+    expect(result.subtasks).toEqual([
+      expect.objectContaining({
+        id: 'smoke-claude',
+        craftsman_type: 'claude',
+        dispatch_status: 'running',
+      }),
+    ]);
+    expect(result.dispatched_executions).toEqual([
+      expect.objectContaining({
+        execution_id: 'exec-subtask-create-alias-1',
+        adapter: 'claude',
       }),
     ]);
   });

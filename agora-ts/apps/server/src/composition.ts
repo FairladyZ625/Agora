@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import {
   ClaudeCraftsmanAdapter,
@@ -37,7 +37,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, type AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -131,12 +131,7 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
     ? resolvePath(explicitRoot)
     : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
   const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
-  mkdirSync(runtimeBrainPackDir, { recursive: true });
-  cpSync(bundledBrainPackDir, runtimeBrainPackDir, {
-    recursive: true,
-    force: true,
-    filter: (source) => !source.startsWith(resolvePath(bundledBrainPackDir, 'tasks')),
-  });
+  syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
   mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
   return runtimeBrainPackDir;
 }

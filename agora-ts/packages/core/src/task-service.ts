@@ -34,6 +34,7 @@ import {
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
+import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { GateService } from './gate-service.js';
 import { ModeController } from './mode-controller.js';
@@ -880,7 +881,16 @@ export class TaskService {
     }
     const duplicateIds = new Set<string>();
     const existingIds = new Set(this.subtaskRepository.listByTask(taskId).map((subtask) => subtask.id));
-    for (const subtask of options.subtasks) {
+    const normalizedSubtasks = options.subtasks.map((subtask) => ({
+      ...subtask,
+      ...(subtask.craftsman ? {
+        craftsman: {
+          ...subtask.craftsman,
+          adapter: normalizeCraftsmanAdapter(subtask.craftsman.adapter),
+        },
+      } : {}),
+    }));
+    for (const subtask of normalizedSubtasks) {
       if (duplicateIds.has(subtask.id) || existingIds.has(subtask.id)) {
         throw new Error(`Subtask id '${subtask.id}' already exists in task ${taskId}`);
       }
@@ -896,9 +906,9 @@ export class TaskService {
         );
       }
     }
-    this.assertCraftsmanGovernanceForSubtasks(options.subtasks);
+    this.assertCraftsmanGovernanceForSubtasks(normalizedSubtasks);
 
-    const executeDefs = options.subtasks.map((subtask) => ({
+    const executeDefs = normalizedSubtasks.map((subtask) => ({
       id: subtask.id,
       title: subtask.title,
       assignee: subtask.assignee,
@@ -966,6 +976,7 @@ export class TaskService {
     if (!this.craftsmanDispatcher) {
       throw new Error('Craftsman dispatcher is not configured');
     }
+    const normalizedAdapter = normalizeCraftsmanAdapter(input.adapter);
     const task = this.getTaskOrThrow(input.task_id);
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${input.task_id} is in state '${task.state}', expected 'active'`);
@@ -997,7 +1008,7 @@ export class TaskService {
       task_id: input.task_id,
       stage_id: subtask.stage_id,
       subtask_id: input.subtask_id,
-      adapter: input.adapter,
+      adapter: normalizedAdapter,
       mode: input.mode,
       workdir: input.workdir ?? subtask.craftsman_workdir,
       prompt: subtask.craftsman_prompt,
@@ -1008,7 +1019,7 @@ export class TaskService {
       bodyLines: [
         `Craftsman dispatch started for subtask ${subtask.id}.`,
         `Caller: ${input.caller_id}`,
-        `Adapter: ${input.adapter}`,
+        `Adapter: ${normalizedAdapter}`,
         `Execution: ${dispatched.execution.execution_id}`,
         ...this.buildSmokeExecutionCommands(task, dispatched.execution.execution_id, dispatched.execution.status),
       ],

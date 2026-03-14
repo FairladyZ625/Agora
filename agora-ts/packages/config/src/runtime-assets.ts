@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -72,12 +72,7 @@ export function ensureBundledAgoraAssetsInstalled(
   const userBrainPackDir = resolve(userAgoraDir, 'agora-ai-brain');
   const bundledBrainPackDir = options.bundledBrainPackDir;
   if (bundledBrainPackDir && existsSync(bundledBrainPackDir)) {
-    mkdirSync(userBrainPackDir, { recursive: true });
-    cpSync(bundledBrainPackDir, userBrainPackDir, {
-      recursive: true,
-      force: true,
-      filter: (source) => !source.startsWith(resolve(bundledBrainPackDir, 'tasks')),
-    });
+    syncBundledBrainPackContents(bundledBrainPackDir, userBrainPackDir);
     mkdirSync(resolve(userBrainPackDir, 'tasks'), { recursive: true });
   }
 
@@ -88,4 +83,17 @@ export function ensureBundledAgoraAssetsInstalled(
     installedSkillTargets,
     userBrainPackDir,
   };
+}
+
+export function syncBundledBrainPackContents(sourceRoot: string, targetRoot: string) {
+  mkdirSync(targetRoot, { recursive: true });
+  for (const entry of readdirSync(sourceRoot, { withFileTypes: true })) {
+    if (entry.name === 'tasks') {
+      continue;
+    }
+    cpSync(resolve(sourceRoot, entry.name), resolve(targetRoot, entry.name), {
+      recursive: true,
+      force: true,
+    });
+  }
 }
