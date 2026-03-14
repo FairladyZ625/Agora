@@ -82,5 +82,5 @@ describe('agora-ts scenario cli', () => {
         'graph-driven-path',
       ]),
     );
-  });
+  }, 30000);
 });

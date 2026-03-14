@@ -29,6 +29,7 @@ export class AgoraBridge {
       creator,
       description: "",
       priority: "normal",
+      locale: "zh-CN",
     };
     return this.request("/api/tasks", {
       method: "POST",

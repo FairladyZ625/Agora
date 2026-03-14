@@ -287,7 +287,7 @@ describe('server runtime', () => {
     const runtime = createServerRuntime({
       configPath,
       factories: {
-        createTaskService: (context, deps) => ({
+        createTaskService: () => ({
           observeCraftsmanExecutions,
           probeInactiveTasks,
           startupRecoveryScan: vi.fn(),

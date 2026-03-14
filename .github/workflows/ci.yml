@@ -65,6 +65,10 @@ jobs:
       - name: Install dashboard dependencies
         run: npm ci
 
+      - name: Install agora-ts workspace dependencies
+        working-directory: agora-ts
+        run: npm ci
+
       - name: Run strict dashboard quality gates
         run: npm run check:strict
 
@@ -85,6 +89,10 @@ jobs:
           cache-dependency-path: extensions/agora-plugin/package-lock.json
 
       - name: Install plugin dependencies
+        run: npm ci
+
+      - name: Install agora-ts workspace dependencies
+        working-directory: agora-ts
         run: npm ci
 
       - name: Run strict plugin quality gates
