@@ -1,8 +1,14 @@
-import { cpSync, existsSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { input, select, confirm } from '@inquirer/prompts';
-import { defaultAgoraDbPath, loadGlobalConfig, saveGlobalConfig } from '@agora-ts/config';
+import {
+  defaultAgoraDbPath,
+  ensureBundledAgoraAssetsInstalled,
+  loadGlobalConfig,
+  resolveUserAgoraDir,
+  resolveUserAgoraSkillDir,
+  resolveUserSkillDirs,
+  saveGlobalConfig,
+} from '@agora-ts/config';
 import type { HumanAccountService } from '@agora-ts/core';
 
 export interface RunInitCommandOptions {
@@ -10,7 +16,7 @@ export interface RunInitCommandOptions {
   bundledSkillsDir?: string;
   bundledBrainPackDir?: string;
   userAgoraDir?: string;
-  userSkillsDir?: string;
+  userSkillDirs?: string[];
 }
 
 export async function runInitCommand(options: RunInitCommandOptions = {}): Promise<void> {
@@ -62,15 +68,13 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
       },
     };
     saveGlobalConfig(config);
-    installBundledAgoraAssets(options);
+    const assets = ensureInstalledAssets(options);
     options.humanAccountService?.bootstrapAdmin({
       username: adminUsername.trim(),
       password: adminPassword,
     });
     console.log('\n配置已保存（无 IM 集成）');
-    console.log(`  Agora Home: ${resolveUserAgoraDir(options)}`);
-    console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserAgoraSkillDir(options)}`);
-    console.log(`  Agent Auto-Scan Skill: 已同步到 ${resolveUserSkillsDir(options)}`);
+    logInstalledAssets(assets);
     return;
   }
 
@@ -121,7 +125,7 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   };
 
   saveGlobalConfig(config);
-  installBundledAgoraAssets(options);
+  const assets = ensureInstalledAssets(options);
   if (options.humanAccountService) {
     options.humanAccountService.bootstrapAdmin({
       username: adminUsername.trim(),
@@ -140,9 +144,7 @@ export async function runInitCommand(options: RunInitCommandOptions = {}): Promi
   console.log(`  默认频道: ${defaultChannelId.trim()}`);
   console.log(`  创建任务时建 thread: ${notifyOnTaskCreate ? '是' : '否'}`);
   console.log(`  Dashboard Session: 已启用`);
-  console.log(`  Agora Home: ${resolveUserAgoraDir(options)}`);
-  console.log(`  Agora Bootstrap Skill: 已安装到 ${resolveUserAgoraSkillDir(options)}`);
-  console.log(`  Agent Auto-Scan Skill: 已同步到 ${resolveUserSkillsDir(options)}`);
+  logInstalledAssets(assets);
   console.log(`  管理员: ${adminUsername.trim()}`);
   if (discordHumanUserId.trim()) {
     console.log(`  管理员 Discord 用户 ID: ${discordHumanUserId.trim()}`);
@@ -157,48 +159,30 @@ function resolveBundledBrainPackDir(options: RunInitCommandOptions) {
   return options.bundledBrainPackDir ?? resolve(dirname(new URL(import.meta.url).pathname), '../../../../agora-ai-brain');
 }
 
-function resolveUserAgoraDir(options: RunInitCommandOptions) {
-  return options.userAgoraDir ?? resolve(homedir(), '.agora');
+function ensureInstalledAssets(options: RunInitCommandOptions) {
+  return ensureBundledAgoraAssetsInstalled({
+    projectRoot: resolve(dirname(new URL(import.meta.url).pathname), '../../../..'),
+    bundledSkillsDir: resolveBundledSkillsDir(options),
+    bundledBrainPackDir: resolveBundledBrainPackDir(options),
+    ...(options.userAgoraDir ? { userAgoraDir: options.userAgoraDir } : {}),
+    ...(options.userSkillDirs ? { userSkillDirs: options.userSkillDirs } : {}),
+  });
 }
 
-function resolveUserAgoraSkillDir(options: RunInitCommandOptions) {
-  return resolve(resolveUserAgoraDir(options), 'skills', 'agora-bootstrap');
-}
-
-function resolveUserSkillsDir(options: RunInitCommandOptions) {
-  return options.userSkillsDir ?? resolve(homedir(), '.agents/skills');
-}
-
-function installBundledAgoraAssets(options: RunInitCommandOptions) {
-  const sourceDir = resolve(resolveBundledSkillsDir(options), 'agora-bootstrap');
-  const userAgoraDir = resolveUserAgoraDir(options);
-  mkdirSync(userAgoraDir, { recursive: true });
-
-  if (existsSync(sourceDir)) {
-    const agoraSkillDir = resolveUserAgoraSkillDir(options);
-    mkdirSync(resolve(userAgoraDir, 'skills'), { recursive: true });
-    cpSync(sourceDir, agoraSkillDir, {
-      recursive: true,
-      force: true,
-    });
-
-    const userSkillsDir = resolveUserSkillsDir(options);
-    mkdirSync(userSkillsDir, { recursive: true });
-    cpSync(sourceDir, resolve(userSkillsDir, 'agora-bootstrap'), {
-      recursive: true,
-      force: true,
-    });
+function logInstalledAssets(assets: ReturnType<typeof ensureInstalledAssets>) {
+  console.log(`  Agora Home: ${assets.userAgoraDir}`);
+  console.log(`  Agora Bootstrap Skill: 已安装到 ${assets.agoraSkillDir}`);
+  const mirrorTargets = assets.installedSkillTargets.filter((target) => target !== assets.agoraSkillDir);
+  if (mirrorTargets.length > 0) {
+    console.log(`  Agent Skill Mirrors: ${mirrorTargets.join(', ')}`);
   }
-
-  const bundledBrainPackDir = resolveBundledBrainPackDir(options);
-  if (existsSync(bundledBrainPackDir)) {
-    const userBrainPackDir = resolve(userAgoraDir, 'agora-ai-brain');
-    mkdirSync(userBrainPackDir, { recursive: true });
-    cpSync(bundledBrainPackDir, userBrainPackDir, {
-      recursive: true,
-      force: true,
-      filter: (source) => !source.startsWith(resolve(bundledBrainPackDir, 'tasks')),
-    });
-    mkdirSync(resolve(userBrainPackDir, 'tasks'), { recursive: true });
+  const expectedMirrors = resolveUserSkillDirs({ userSkillDirs: assets.userSkillDirs });
+  const unresolvedMirrors = expectedMirrors
+    .map((dir) => resolve(dir, 'agora-bootstrap'))
+    .filter((target) => !mirrorTargets.includes(target));
+  if (unresolvedMirrors.length > 0) {
+    console.log(`  Agent Skill Mirrors (missing source): ${unresolvedMirrors.join(', ')}`);
   }
+  console.log(`  Agora Brain Pack: ${assets.userBrainPackDir}`);
+  console.log(`  Skill Doctor: 期望路径包括 ${resolveUserAgoraSkillDir({ userAgoraDir: assets.userAgoraDir })}`);
 }

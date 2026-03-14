@@ -186,11 +186,13 @@ export function mapCraftsmanGovernanceSnapshotDto(
     host: snapshot.host
       ? {
           observedAt: snapshot.host.observed_at,
+          platform: snapshot.host.platform ?? null,
           cpuCount: snapshot.host.cpu_count,
           load1m: snapshot.host.load_1m,
           memoryTotalBytes: snapshot.host.memory_total_bytes,
           memoryUsedBytes: snapshot.host.memory_used_bytes,
           memoryUtilization: snapshot.host.memory_utilization,
+          memoryPressure: snapshot.host.memory_pressure ?? null,
           swapTotalBytes: snapshot.host.swap_total_bytes,
           swapUsedBytes: snapshot.host.swap_used_bytes,
           swapUtilization: snapshot.host.swap_utilization,

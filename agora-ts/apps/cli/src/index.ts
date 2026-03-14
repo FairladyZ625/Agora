@@ -1266,9 +1266,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
         `host limits: memory=${snapshot.limits.host_memory_utilization_limit ?? '-'} swap=${snapshot.limits.host_swap_utilization_limit ?? '-'} load_per_cpu=${snapshot.limits.host_load_per_cpu_limit ?? '-'}`,
       );
       if (snapshot.host) {
+        const memoryLabel = snapshot.host.platform === 'darwin' && snapshot.host.memory_pressure != null
+          ? `pressure=${snapshot.host.memory_pressure}`
+          : `memory=${snapshot.host.memory_utilization ?? '-'}`;
         writeLine(
           stdout,
-          `host: memory=${snapshot.host.memory_utilization ?? '-'} swap=${snapshot.host.swap_utilization ?? '-'} load_1m=${snapshot.host.load_1m ?? '-'} cpu_count=${snapshot.host.cpu_count ?? '-'}`,
+          `host: ${memoryLabel} swap=${snapshot.host.swap_utilization ?? '-'} load_1m=${snapshot.host.load_1m ?? '-'} cpu_count=${snapshot.host.cpu_count ?? '-'} platform=${snapshot.host.platform ?? '-'}`,
         );
       } else {
         writeLine(stdout, 'host: unavailable');

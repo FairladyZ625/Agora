@@ -317,11 +317,13 @@ export type TaskStatusDto = z.infer<typeof taskStatusSchema>;
 
 export const hostResourceSnapshotSchema = z.object({
   observed_at: z.string(),
+  platform: z.string().nullable().optional(),
   cpu_count: z.number().int().nullable(),
   load_1m: z.number().nullable(),
   memory_total_bytes: z.number().nullable(),
   memory_used_bytes: z.number().nullable(),
   memory_utilization: z.number().nullable(),
+  memory_pressure: z.number().nullable().optional(),
   swap_total_bytes: z.number().nullable(),
   swap_used_bytes: z.number().nullable(),
   swap_utilization: z.number().nullable(),

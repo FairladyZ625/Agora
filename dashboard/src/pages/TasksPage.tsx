@@ -60,6 +60,20 @@ function buildTaskTimeline(status: TaskStatus | null | undefined): TimelineItem[
   return [...flowItems, ...statusItems].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
 }
 
+function formatGovernanceMemoryValue(status: TaskStatus | null | undefined, fallback: string) {
+  const host = status?.governanceSnapshot?.host;
+  if (!host) {
+    return fallback;
+  }
+  if (host.platform === 'darwin' && host.memoryPressure != null) {
+    return `${Math.round(host.memoryPressure * 100)}% pressure`;
+  }
+  if (host.memoryUtilization != null) {
+    return `${Math.round(host.memoryUtilization * 100)}%`;
+  }
+  return fallback;
+}
+
 function TaskBlueprintSection({
   blueprint,
   copy,
@@ -723,9 +737,7 @@ export function TasksPage() {
                       <Clock3 size={16} className="detail-card__icon" />
                       <span className="detail-card__label">{tasksPageCopy.governanceMemoryLabel}</span>
                       <strong className="detail-card__value">
-                        {activeGovernanceSnapshot?.host?.memoryUtilization != null
-                          ? `${Math.round(activeGovernanceSnapshot.host.memoryUtilization * 100)}%`
-                          : tasksPageCopy.stageFallback}
+                        {formatGovernanceMemoryValue(activeStatus, tasksPageCopy.stageFallback)}
                       </strong>
                     </div>
                     <div className="detail-card">

@@ -136,6 +136,7 @@ function renderBootstrap(
     '',
     `${brainText(input.locale, '执行前请先阅读以下文件', 'Read these files before acting')}:`,
     `- ~/.agora/skills/agora-bootstrap/SKILL.md`,
+    `- ~/.codex/skills/agora-bootstrap/SKILL.md`,
     `- ${join(workspacePath, '01-task-brief.md')}`,
     `- ${join(workspacePath, '02-roster.md')}`,
     `- ${join(workspacePath, '03-stage-state.md')}`,

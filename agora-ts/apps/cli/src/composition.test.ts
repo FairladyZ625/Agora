@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,6 +17,8 @@ function makeTempDir() {
 
 afterEach(() => {
   delete process.env.AGORA_BRAIN_PACK_ROOT;
+  delete process.env.AGORA_HOME_DIR;
+  delete process.env.AGORA_SKILL_TARGET_DIRS;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -141,6 +143,26 @@ describe('cli composition', () => {
     );
 
     expect(capturedBrainPackDir).toBe(brainPackRoot);
+    composition.db.close();
+  });
+
+  it('self-heals bundled bootstrap skill into user-visible skill roots', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    const agoraHomeDir = join(dir, 'agora-home');
+    const agentsSkillsDir = join(dir, 'agents-skills');
+    const codexSkillsDir = join(dir, 'codex-skills');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    process.env.AGORA_SKILL_TARGET_DIRS = [agentsSkillsDir, codexSkillsDir].join(',');
+    writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
+
+    const composition = createCliComposition({ configPath });
+
+    expect(readFileSync(join(agoraHomeDir, 'skills', 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
+    expect(readFileSync(join(agentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
+    expect(readFileSync(join(codexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     composition.db.close();
   });
 });

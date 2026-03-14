@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -49,6 +49,13 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
         startup_recovery_on_boot: false,
       },
     })),
+    ensureBundledAgoraAssetsInstalled: vi.fn(() => ({
+      userAgoraDir: '/tmp/agora-home',
+      agoraSkillDir: '/tmp/agora-home/skills/agora-bootstrap',
+      userSkillDirs: [],
+      installedSkillTargets: [],
+      userBrainPackDir: '/tmp/agora-home/agora-ai-brain',
+    })),
     resolveAgoraRuntimeEnvironmentFromConfigPackage: vi.fn(() => ({})),
   }));
   vi.doMock('@agora-ts/db', () => ({
@@ -88,6 +95,8 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
 
 afterEach(() => {
   delete process.env.AGORA_BRAIN_PACK_ROOT;
+  delete process.env.AGORA_HOME_DIR;
+  delete process.env.AGORA_SKILL_TARGET_DIRS;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -226,6 +235,31 @@ describe('server runtime', () => {
 
     expect(runtime.liveSessionStore).toBe(liveSessionStore);
     expect(runtime.tmuxRuntimeService).toBe(tmuxRuntimeService);
+    runtime.db.close();
+  });
+
+  it('self-heals bundled bootstrap skill into runtime-visible skill roots on startup', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    const agoraHomeDir = join(dir, 'agora-home');
+    const agentsSkillsDir = join(dir, 'agents-skills');
+    const codexSkillsDir = join(dir, 'codex-skills');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    process.env.AGORA_SKILL_TARGET_DIRS = [agentsSkillsDir, codexSkillsDir].join(',');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    const runtime = createServerRuntime({ configPath });
+
+    expect(readFileSync(join(agoraHomeDir, 'skills', 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
+    expect(readFileSync(join(agentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
+    expect(readFileSync(join(codexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     runtime.db.close();
   });
 

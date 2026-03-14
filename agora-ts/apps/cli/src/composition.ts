@@ -1,5 +1,11 @@
 import { cpSync, existsSync, mkdirSync } from 'node:fs';
-import { agoraDataDirPath, loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
+import {
+  agoraDataDirPath,
+  ensureBundledAgoraAssetsInstalled,
+  loadAgoraConfig,
+  resolveAgoraRuntimeEnvironmentFromConfigPackage,
+  type AgoraConfig,
+} from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
 import { resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
@@ -232,6 +238,9 @@ export function createCliComposition(
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const db = createAgoraDatabase({ dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path });
   runMigrations(db);
+  ensureBundledAgoraAssetsInstalled({
+    projectRoot: runtimeEnv.projectRoot ?? new URL('../../../../', import.meta.url).pathname,
+  });
   const templatesDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/templates');
   const rolePackDir = resolvePath(runtimeEnv.projectRoot, 'agora-ts/role-packs/agora-default');
   const brainPackDir = ensureRuntimeBrainPackRoot(runtimeEnv.projectRoot);

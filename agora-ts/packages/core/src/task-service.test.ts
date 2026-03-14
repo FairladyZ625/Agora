@@ -3065,6 +3065,135 @@ describe('task service', () => {
     })).toThrow(/memory utilization/i);
   });
 
+  it('uses macOS memory pressure instead of resident memory and swap for dispatch governance', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-MAC-1',
+      craftsmanGovernance: {
+        hostMemoryUtilizationLimit: 0.9,
+        hostSwapUtilizationLimit: 0.9,
+      },
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-14T00:20:00.000Z',
+          platform: 'darwin',
+          cpu_count: 8,
+          load_1m: 2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 99,
+          memory_utilization: 0.99,
+          memory_pressure: 0.7,
+          swap_total_bytes: 100,
+          swap_used_bytes: 95,
+          swap_utilization: 0.95,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'mac pressure guard',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-SUBTASK-MAC-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'allowed-under-pressure',
+          title: 'Should still dispatch on mac',
+          assignee: 'sonnet',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'one_shot',
+            interaction_expectation: 'one_shot',
+            prompt: 'do work',
+          },
+        },
+      ],
+    })).not.toThrow();
+  });
+
+  it('blocks macOS dispatch when memory pressure exceeds the configured limit', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-MAC-2',
+      craftsmanGovernance: {
+        hostMemoryUtilizationLimit: 0.9,
+      },
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-14T00:25:00.000Z',
+          platform: 'darwin',
+          cpu_count: 8,
+          load_1m: 2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 70,
+          memory_utilization: 0.7,
+          memory_pressure: 0.95,
+          swap_total_bytes: 100,
+          swap_used_bytes: 10,
+          swap_utilization: 0.1,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'mac pressure block',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.createSubtasks('OC-SUBTASK-MAC-2', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'blocked-under-pressure',
+          title: 'Should block on mac pressure',
+          assignee: 'sonnet',
+          craftsman: {
+            adapter: 'codex',
+            mode: 'one_shot',
+            interaction_expectation: 'one_shot',
+            prompt: 'do work',
+          },
+        },
+      ],
+    })).toThrow(/memory pressure/i);
+  });
+
   it('rejects one_shot craftsman subtasks that declare interactive follow-up', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

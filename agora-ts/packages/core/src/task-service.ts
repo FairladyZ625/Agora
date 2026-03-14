@@ -1790,6 +1790,7 @@ export class TaskService {
           '',
           `${taskText(task, '首先阅读', 'Read first')}:`,
           `- ${join(homedir(), '.agora', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
+          `- ${join(homedir(), '.codex', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
           ...(workspacePath
             ? [
                 `- ${join(workspacePath, '00-bootstrap.md')}`,
@@ -1834,6 +1835,7 @@ export class TaskService {
           `- ${taskText(task, '要可靠唤醒 bot 或人类，请使用真实的 Discord mention 语法 `<@USER_ID>`。', 'To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.')}`,
           `- ${taskText(task, '不要输入显示名，例如 `@Opus` 或 `@Sonnet`。', 'Do not type display names like `@Opus` or `@Sonnet`.')}`,
           `- ${taskText(task, '尽量复用本线程里已经出现过的真实 mention。', 'Reuse the real mentions already shown in this thread whenever possible.')}`,
+          `- ${taskText(task, '如果本机找不到 `~/.agora/skills/agora-bootstrap/SKILL.md`，再尝试 `~/.codex/skills/agora-bootstrap/SKILL.md`。', 'If `~/.agora/skills/agora-bootstrap/SKILL.md` is missing, fall back to `~/.codex/skills/agora-bootstrap/SKILL.md`.')}`,
           ...(mentionMapLines.length > 0
             ? [
                 `${taskText(task, '成员 mention 对照表', 'Roster mention map')}:`,
@@ -2478,8 +2480,21 @@ export class TaskService {
       return;
     }
     const memoryLimit = this.craftsmanGovernance.hostMemoryUtilizationLimit;
+    const memoryPressure = snapshot.memory_pressure ?? null;
+    const useDarwinPressure = snapshot.platform === 'darwin' && memoryPressure !== null;
     if (
       memoryLimit !== null
+      && useDarwinPressure
+      && memoryPressure !== null
+      && memoryPressure > memoryLimit
+    ) {
+      throw new Error(
+        `Host memory pressure ${memoryPressure.toFixed(2)} exceeds limit ${memoryLimit.toFixed(2)}`,
+      );
+    }
+    if (
+      memoryLimit !== null
+      && !useDarwinPressure
       && snapshot.memory_utilization !== null
       && snapshot.memory_utilization > memoryLimit
     ) {
@@ -2489,6 +2504,8 @@ export class TaskService {
     }
     const swapLimit = this.craftsmanGovernance.hostSwapUtilizationLimit;
     if (
+      !useDarwinPressure
+      && 
       swapLimit !== null
       && snapshot.swap_utilization !== null
       && snapshot.swap_utilization > swapLimit

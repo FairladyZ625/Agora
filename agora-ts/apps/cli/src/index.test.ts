@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
 import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
@@ -16,6 +16,12 @@ function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeTempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempPaths.push(dir);
+  return dir;
 }
 
 function makeWorkflowFile(payload: Record<string, unknown>) {
@@ -34,7 +40,17 @@ function makeRawWorkflowFile(content: string) {
   return path;
 }
 
+beforeEach(() => {
+  const agoraHomeDir = makeTempDir('agora-ts-cli-home-');
+  const agentsSkillsDir = makeTempDir('agora-ts-cli-agents-skills-');
+  const codexSkillsDir = makeTempDir('agora-ts-cli-codex-skills-');
+  process.env.AGORA_HOME_DIR = agoraHomeDir;
+  process.env.AGORA_SKILL_TARGET_DIRS = [agentsSkillsDir, codexSkillsDir].join(',');
+});
+
 afterEach(() => {
+  delete process.env.AGORA_HOME_DIR;
+  delete process.env.AGORA_SKILL_TARGET_DIRS;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {

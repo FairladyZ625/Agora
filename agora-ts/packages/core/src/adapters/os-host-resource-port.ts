@@ -36,6 +36,24 @@ function parseDarwinSwapUsage(): { total: number | null; used: number | null } {
   }
 }
 
+function parseDarwinMemoryPressure(): number | null {
+  try {
+    const output = execFileSync('/usr/bin/memory_pressure', [], { encoding: 'utf8' });
+    const freePercentMatch = output.match(/System-wide memory free percentage:\s*([0-9.]+)%/i);
+    if (!freePercentMatch) {
+      return null;
+    }
+    const freePercent = Number(freePercentMatch[1]);
+    if (!Number.isFinite(freePercent)) {
+      return null;
+    }
+    const normalizedFree = Math.max(0, Math.min(100, freePercent));
+    return 1 - normalizedFree / 100;
+  } catch {
+    return null;
+  }
+}
+
 export class OsHostResourcePort implements HostResourcePort {
   readSnapshot(): HostResourceSnapshot {
     const cpuCount = os.cpus().length || null;
@@ -47,14 +65,19 @@ export class OsHostResourcePort implements HostResourcePort {
     const swap = process.platform === 'darwin'
       ? parseDarwinSwapUsage()
       : { total: null, used: null };
+    const memoryPressure = process.platform === 'darwin'
+      ? parseDarwinMemoryPressure()
+      : null;
 
     return {
       observed_at: new Date().toISOString(),
+      platform: process.platform,
       cpu_count: cpuCount,
       load_1m: Number.isFinite(load1m) ? load1m : null,
       memory_total_bytes: memoryTotal,
       memory_used_bytes: memoryUsed,
       memory_utilization: safeRatio(memoryUsed, memoryTotal),
+      memory_pressure: memoryPressure,
       swap_total_bytes: swap.total,
       swap_used_bytes: swap.used,
       swap_utilization: safeRatio(swap.used, swap.total),

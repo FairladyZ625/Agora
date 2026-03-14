@@ -59,8 +59,9 @@ describe('runInitCommand', () => {
     const bundledSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-src-'));
     const bundledBrainPackDir = mkdtempSync(join(tmpdir(), 'agora-init-brain-src-'));
     const userAgoraDir = mkdtempSync(join(tmpdir(), 'agora-init-home-'));
-    const userSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-dst-'));
-    tempPaths.push(bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userSkillsDir);
+    const userAgentsSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-agents-skill-dst-'));
+    const userCodexSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-codex-skill-dst-'));
+    tempPaths.push(bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userAgentsSkillsDir, userCodexSkillsDir);
     mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
     writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
     mkdirSync(join(bundledBrainPackDir, 'roles'), { recursive: true });
@@ -76,7 +77,7 @@ describe('runInitCommand', () => {
       bundledSkillsDir,
       bundledBrainPackDir,
       userAgoraDir,
-      userSkillsDir,
+      userSkillDirs: [userAgentsSkillsDir, userCodexSkillsDir],
     });
 
     expect(configState.saved).toMatchObject({
@@ -94,7 +95,9 @@ describe('runInitCommand', () => {
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'roles', 'controller.md'))).toBe(true);
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks'))).toBe(true);
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks', 'OC-SEED-SHOULD-NOT-COPY'))).toBe(false);
-    expect(existsSync(join(userSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
-    expect(readFileSync(join(userSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
+    expect(existsSync(join(userAgentsSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(userCodexSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
+    expect(readFileSync(join(userAgentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
+    expect(readFileSync(join(userCodexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
   });
 });

@@ -144,11 +144,13 @@ export interface CraftsmanGovernanceSnapshot {
   }>;
   host: {
     observedAt: string;
+    platform?: string | null;
     cpuCount: number | null;
     load1m: number | null;
     memoryTotalBytes: number | null;
     memoryUsedBytes: number | null;
     memoryUtilization: number | null;
+    memoryPressure?: number | null;
     swapTotalBytes: number | null;
     swapUsedBytes: number | null;
     swapUtilization: number | null;

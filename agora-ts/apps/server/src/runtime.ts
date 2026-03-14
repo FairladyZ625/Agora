@@ -1,7 +1,12 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import type { ServerCompositionFactories, ServerCompositionOptions } from './composition.js';
 import { buildServerComposition } from './composition.js';
-import { loadAgoraConfig, resolveAgoraRuntimeEnvironmentFromConfigPackage, type AgoraConfig } from '@agora-ts/config';
+import {
+  ensureBundledAgoraAssetsInstalled,
+  loadAgoraConfig,
+  resolveAgoraRuntimeEnvironmentFromConfigPackage,
+  type AgoraConfig,
+} from '@agora-ts/config';
 import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions extends ServerCompositionOptions {
@@ -24,6 +29,9 @@ function resolveDashboardDir() {
 export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  ensureBundledAgoraAssetsInstalled({
+    projectRoot: runtimeEnv.projectRoot ?? new URL('../../../../', import.meta.url).pathname,
+  });
   const db = createAgoraDatabase({ dbPath: config.db_path });
   runMigrations(db);
   const templatesDir = new URL('../../../templates', import.meta.url).pathname;

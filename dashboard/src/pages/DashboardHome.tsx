@@ -10,7 +10,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { Task, TaskStatus } from '@/types/task';
+import type { CraftsmanGovernanceSnapshot, Task, TaskStatus } from '@/types/task';
 
 function getProposalTone(state: string) {
   if (state === 'gate_waiting') {
@@ -157,6 +157,20 @@ function buildOperationalLines(status: TaskStatus | null, task: Task | null, fal
       createdAt: task.updated_at,
     },
   ];
+}
+
+function formatGovernanceMemoryValue(governanceSnapshot: CraftsmanGovernanceSnapshot | null) {
+  const host = governanceSnapshot?.host;
+  if (!host) {
+    return '—';
+  }
+  if (host.platform === 'darwin' && host.memoryPressure != null) {
+    return `${Math.round(host.memoryPressure * 100)}% pressure`;
+  }
+  if (host.memoryUtilization != null) {
+    return `${Math.round(host.memoryUtilization * 100)}%`;
+  }
+  return '—';
 }
 
 export function DashboardHome() {
@@ -652,9 +666,7 @@ export function DashboardHome() {
                         <Clock3 size={16} className="detail-card__icon" />
                         <span className="detail-card__label">{homeCopy.governance.hostMemory}</span>
                         <strong className="detail-card__value">
-                          {governanceSnapshot.host?.memoryUtilization != null
-                            ? `${Math.round(governanceSnapshot.host.memoryUtilization * 100)}%`
-                            : '—'}
+                          {formatGovernanceMemoryValue(governanceSnapshot)}
                         </strong>
                       </div>
                     </div>
