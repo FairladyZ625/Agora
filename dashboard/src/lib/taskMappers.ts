@@ -3,24 +3,30 @@ import type {
   ApiCraftsmanGovernanceSnapshotDto,
   ApiFlowLogDto,
   ApiProgressLogDto,
+  ApiRuntimeDiagnosisResultDto,
+  ApiRuntimeRecoveryActionDto,
   ApiSubtaskDto,
   ApiTaskDto,
   ApiTeamMemberDto,
   ApiTaskConversationEntryDto,
   ApiTaskConversationSummaryDto,
   ApiTaskStatusDto,
+  ApiUnifiedHealthSnapshotDto,
   ApiWorkflowStageDto,
 } from '@/types/api';
 import type {
   Task,
   CraftsmanExecution,
   CraftsmanGovernanceSnapshot,
+  RuntimeDiagnosisResult,
+  RuntimeRecoveryAction,
   TaskBlueprint,
   TaskConversationEntry,
   TaskConversationStatusEvent,
   TaskConversationSummary,
   TaskState,
   TaskStatus,
+  UnifiedHealthSnapshot,
 } from '@/types/task';
 import { translate } from '@/lib/i18n';
 
@@ -177,12 +183,27 @@ export function mapCraftsmanGovernanceSnapshotDto(
     limits: {
       maxConcurrentRunning: snapshot.limits.max_concurrent_running,
       maxConcurrentPerAgent: snapshot.limits.max_concurrent_per_agent,
+      hostMemoryWarningUtilizationLimit: snapshot.limits.host_memory_warning_utilization_limit,
       hostMemoryUtilizationLimit: snapshot.limits.host_memory_utilization_limit,
+      hostSwapWarningUtilizationLimit: snapshot.limits.host_swap_warning_utilization_limit,
       hostSwapUtilizationLimit: snapshot.limits.host_swap_utilization_limit,
+      hostLoadPerCpuWarningLimit: snapshot.limits.host_load_per_cpu_warning_limit,
       hostLoadPerCpuLimit: snapshot.limits.host_load_per_cpu_limit,
     },
     activeExecutions: snapshot.active_executions,
     activeByAssignee: snapshot.active_by_assignee.map((item) => ({ ...item })),
+    activeExecutionDetails: snapshot.active_execution_details.map((detail) => ({
+      executionId: detail.execution_id,
+      taskId: detail.task_id,
+      subtaskId: detail.subtask_id,
+      assignee: detail.assignee,
+      adapter: detail.adapter,
+      status: detail.status,
+      sessionId: detail.session_id,
+      workdir: detail.workdir,
+    })),
+    hostPressureStatus: snapshot.host_pressure_status,
+    warnings: [...snapshot.warnings],
     host: snapshot.host
       ? {
           observedAt: snapshot.host.observed_at,
@@ -198,6 +219,106 @@ export function mapCraftsmanGovernanceSnapshotDto(
           swapUtilization: snapshot.host.swap_utilization,
         }
       : null,
+  };
+}
+
+export function mapUnifiedHealthSnapshotDto(snapshot: ApiUnifiedHealthSnapshotDto): UnifiedHealthSnapshot {
+  return {
+    generatedAt: snapshot.generated_at,
+    tasks: {
+      status: snapshot.tasks.status,
+      totalTasks: snapshot.tasks.total_tasks,
+      activeTasks: snapshot.tasks.active_tasks,
+      pausedTasks: snapshot.tasks.paused_tasks,
+      blockedTasks: snapshot.tasks.blocked_tasks,
+      doneTasks: snapshot.tasks.done_tasks,
+    },
+    im: {
+      status: snapshot.im.status,
+      activeBindings: snapshot.im.active_bindings,
+      activeThreads: snapshot.im.active_threads,
+      bindingsByProvider: snapshot.im.bindings_by_provider.map((item) => ({ ...item })),
+    },
+    runtime: {
+      status: snapshot.runtime.status,
+      available: snapshot.runtime.available,
+      staleAfterMs: snapshot.runtime.stale_after_ms,
+      activeSessions: snapshot.runtime.active_sessions,
+      idleSessions: snapshot.runtime.idle_sessions,
+      closedSessions: snapshot.runtime.closed_sessions,
+      agents: snapshot.runtime.agents.map((agent) => ({
+        agentId: agent.agent_id,
+        status: agent.status,
+        sessionCount: agent.session_count,
+        lastEventAt: agent.last_event_at,
+      })),
+    },
+    craftsman: {
+      status: snapshot.craftsman.status,
+      activeExecutions: snapshot.craftsman.active_executions,
+      queuedExecutions: snapshot.craftsman.queued_executions,
+      runningExecutions: snapshot.craftsman.running_executions,
+      waitingInputExecutions: snapshot.craftsman.waiting_input_executions,
+      awaitingChoiceExecutions: snapshot.craftsman.awaiting_choice_executions,
+      activeByAssignee: snapshot.craftsman.active_by_assignee.map((item) => ({ ...item })),
+    },
+    host: {
+      status: snapshot.host.status,
+      snapshot: snapshot.host.snapshot
+        ? {
+            observedAt: snapshot.host.snapshot.observed_at,
+            platform: snapshot.host.snapshot.platform ?? null,
+            cpuCount: snapshot.host.snapshot.cpu_count,
+            load1m: snapshot.host.snapshot.load_1m,
+            memoryTotalBytes: snapshot.host.snapshot.memory_total_bytes,
+            memoryUsedBytes: snapshot.host.snapshot.memory_used_bytes,
+            memoryUtilization: snapshot.host.snapshot.memory_utilization,
+            memoryPressure: snapshot.host.snapshot.memory_pressure ?? null,
+            swapTotalBytes: snapshot.host.snapshot.swap_total_bytes,
+            swapUsedBytes: snapshot.host.snapshot.swap_used_bytes,
+            swapUtilization: snapshot.host.snapshot.swap_utilization,
+          }
+        : null,
+    },
+    escalation: {
+      status: snapshot.escalation.status,
+      policy: {
+        controllerAfterMs: snapshot.escalation.policy.controller_after_ms,
+        rosterAfterMs: snapshot.escalation.policy.roster_after_ms,
+        inboxAfterMs: snapshot.escalation.policy.inbox_after_ms,
+      },
+      controllerPingedTasks: snapshot.escalation.controller_pinged_tasks,
+      rosterPingedTasks: snapshot.escalation.roster_pinged_tasks,
+      inboxEscalatedTasks: snapshot.escalation.inbox_escalated_tasks,
+      unhealthyRuntimeAgents: snapshot.escalation.unhealthy_runtime_agents,
+      runtimeUnhealthy: snapshot.escalation.runtime_unhealthy,
+    },
+  };
+}
+
+export function mapRuntimeDiagnosisResultDto(result: ApiRuntimeDiagnosisResultDto): RuntimeDiagnosisResult {
+  return {
+    operation: result.operation,
+    taskId: result.task_id,
+    agentRef: result.agent_ref,
+    status: result.status,
+    health: result.health,
+    runtimeProvider: result.runtime_provider,
+    runtimeActorRef: result.runtime_actor_ref,
+    summary: result.summary,
+    detail: result.detail,
+  };
+}
+
+export function mapRuntimeRecoveryActionDto(result: ApiRuntimeRecoveryActionDto): RuntimeRecoveryAction {
+  return {
+    operation: result.operation,
+    status: result.status,
+    taskId: result.task_id,
+    agentRef: result.agent_ref,
+    executionId: result.execution_id,
+    summary: result.summary,
+    detail: result.detail,
   };
 }
 

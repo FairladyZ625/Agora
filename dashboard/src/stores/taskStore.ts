@@ -2,10 +2,13 @@ import { create } from 'zustand';
 import type {
   CraftsmanGovernanceSnapshot,
   CreateTaskInput,
+  RuntimeDiagnosisResult,
+  RuntimeRecoveryAction,
   Task,
   TaskAction,
   TaskActionPayload,
   TaskStatus,
+  UnifiedHealthSnapshot,
 } from '@/types/task';
 import * as api from '@/lib/api';
 import { translate } from '@/lib/i18n';
@@ -13,10 +16,13 @@ import {
   mapCraftsmanExecutionDto,
   mapCraftsmanGovernanceSnapshotDto,
   isTaskVisibleInWorkbench,
+  mapRuntimeDiagnosisResultDto,
+  mapRuntimeRecoveryActionDto,
   mapTaskConversationEntryDto,
   mapTaskConversationSummaryDto,
   mapTaskDto,
   mapTaskStatusDto,
+  mapUnifiedHealthSnapshotDto,
 } from '@/lib/taskMappers';
 
 interface TaskFilters {
@@ -29,6 +35,7 @@ interface TaskStore {
   selectedTaskId: string | null;
   selectedTaskStatus: TaskStatus | null;
   governanceSnapshot?: CraftsmanGovernanceSnapshot | null;
+  healthSnapshot?: UnifiedHealthSnapshot | null;
   filters: TaskFilters;
   loading: boolean;
   detailLoading: boolean;
@@ -39,7 +46,25 @@ interface TaskStore {
   createTask: (input: CreateTaskInput) => Promise<Task>;
   runTaskAction: (action: TaskAction, payload: TaskActionPayload) => Promise<'live'>;
   observeCraftsmen: (input?: { running_after_ms?: number; waiting_after_ms?: number }) => Promise<'live'>;
+  refreshHealthSnapshot: () => Promise<'live' | 'error'>;
   probeCraftsmanExecution: (executionId: string) => Promise<'live'>;
+  diagnoseRuntime: (
+    taskId: string,
+    agentRef: string,
+    callerId: string,
+    reason?: string,
+  ) => Promise<RuntimeDiagnosisResult>;
+  restartRuntime: (
+    taskId: string,
+    agentRef: string,
+    callerId: string,
+    reason?: string,
+  ) => Promise<RuntimeRecoveryAction>;
+  stopCraftsmanExecution: (
+    executionId: string,
+    callerId: string,
+    reason?: string,
+  ) => Promise<RuntimeRecoveryAction>;
   sendCraftsmanInputText: (executionId: string, text: string, submit?: boolean) => Promise<'live'>;
   sendCraftsmanInputKeys: (executionId: string, keys: string[]) => Promise<'live'>;
   submitCraftsmanChoice: (executionId: string, keys?: string[]) => Promise<'live'>;
@@ -101,6 +126,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
   selectedTaskId: null,
   selectedTaskStatus: null,
   governanceSnapshot: null,
+  healthSnapshot: null,
   filters: { state: null, search: '' },
   loading: false,
   detailLoading: false,
@@ -110,9 +136,10 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const { filters } = get();
-      const [tasksDto, governanceDto] = await Promise.all([
+      const [tasksDto, governanceDto, healthDto] = await Promise.all([
         api.listTasks(filters.state ?? undefined),
         api.getCraftsmanGovernance(),
+        api.getHealthSnapshot(),
       ]);
       const tasks = tasksDto
         .filter(isTaskVisibleInWorkbench)
@@ -122,6 +149,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       set({
         tasks,
         governanceSnapshot: mapCraftsmanGovernanceSnapshotDto(governanceDto),
+        healthSnapshot: mapUnifiedHealthSnapshotDto(healthDto),
         loading: false,
         ...(selectedTaskId && !selectedTaskStillVisible
           ? { selectedTaskId: null, selectedTaskStatus: null }
@@ -143,6 +171,7 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
         tasks: [],
         selectedTaskStatus: null,
         governanceSnapshot: null,
+        healthSnapshot: null,
         loading: false,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -239,6 +268,18 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
     return 'live';
   },
 
+  refreshHealthSnapshot: async () => {
+    set({ error: null });
+    try {
+      const snapshot = await api.getHealthSnapshot();
+      set({ healthSnapshot: mapUnifiedHealthSnapshotDto(snapshot) });
+      return 'live';
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+      return 'error';
+    }
+  },
+
   probeCraftsmanExecution: async (executionId) => {
     set({ error: null });
     await api.probeCraftsmanExecution(executionId);
@@ -247,6 +288,47 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       await get().selectTask(selectedTaskId);
     }
     return 'live';
+  },
+
+  diagnoseRuntime: async (taskId, agentRef, callerId, reason = '') => {
+    set({ error: null });
+    const result = await api.diagnoseRuntime({
+      task_id: taskId,
+      agent_ref: agentRef,
+      caller_id: callerId,
+      reason,
+    });
+    const mapped = mapRuntimeDiagnosisResultDto(result);
+    await get().refreshHealthSnapshot();
+    return mapped;
+  },
+
+  restartRuntime: async (taskId, agentRef, callerId, reason = '') => {
+    set({ error: null });
+    const result = await api.restartRuntime({
+      task_id: taskId,
+      agent_ref: agentRef,
+      caller_id: callerId,
+      reason,
+    });
+    const mapped = mapRuntimeRecoveryActionDto(result);
+    await get().refreshHealthSnapshot();
+    return mapped;
+  },
+
+  stopCraftsmanExecution: async (executionId, callerId, reason = '') => {
+    set({ error: null });
+    const result = await api.stopCraftsmanExecution(executionId, {
+      caller_id: callerId,
+      reason,
+    });
+    const mapped = mapRuntimeRecoveryActionDto(result);
+    const { selectedTaskId } = get();
+    if (selectedTaskId) {
+      await get().selectTask(selectedTaskId);
+    }
+    await get().refreshHealthSnapshot();
+    return mapped;
   },
 
   sendCraftsmanInputText: async (executionId, text, submit = true) => {

@@ -187,12 +187,18 @@ describe('dashboard expansion api client', () => {
             limits: {
               max_concurrent_running: 4,
               max_concurrent_per_agent: 2,
+              host_memory_warning_utilization_limit: 0.7,
               host_memory_utilization_limit: 0.8,
+              host_swap_warning_utilization_limit: 0.1,
               host_swap_utilization_limit: 0.2,
+              host_load_per_cpu_warning_limit: 1.2,
               host_load_per_cpu_limit: 1.5,
             },
             active_executions: 1,
             active_by_assignee: [{ assignee: 'opus', count: 1 }],
+            active_execution_details: [],
+            host_pressure_status: 'healthy',
+            warnings: [],
             host: null,
           };
         }
