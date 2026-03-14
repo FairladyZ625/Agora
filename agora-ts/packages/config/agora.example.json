@@ -12,5 +12,15 @@
       "*": { "canCall": [], "canAdvance": false }
     },
     "archonUsers": ["lizeyu"]
+  },
+  "scheduler": {
+    "enabled": true,
+    "scan_interval_sec": 60,
+    "task_probe_controller_after_sec": 300,
+    "task_probe_roster_after_sec": 900,
+    "task_probe_inbox_after_sec": 1800,
+    "craftsman_running_after_sec": 300,
+    "craftsman_waiting_after_sec": 120,
+    "startup_recovery_on_boot": true
   }
 }

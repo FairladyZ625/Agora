@@ -14,6 +14,28 @@ export interface CreateServerRuntimeOptions extends ServerCompositionOptions {
   factories?: Partial<ServerCompositionFactories>;
 }
 
+export interface ObservationSchedulerTickResult {
+  observed_at: string;
+  craftsman: {
+    scanned: number;
+    probed: number;
+    progressed: number;
+  };
+  tasks: {
+    scanned_tasks: number;
+    controller_pings: number;
+    roster_pings: number;
+    inbox_items: number;
+  };
+}
+
+export interface ObservationSchedulerController {
+  enabled: boolean;
+  interval_ms: number | null;
+  tick: () => ObservationSchedulerTickResult;
+  stop: () => void;
+}
+
 function resolveDashboardDir() {
   const explicit = process.env.AGORA_DASHBOARD_DIR;
   if (explicit && existsSync(explicit)) {
@@ -24,6 +46,62 @@ function resolveDashboardDir() {
     return distDir;
   }
   return undefined;
+}
+
+function createObservationScheduler(runtime: {
+  config: AgoraConfig;
+  taskService: {
+    observeCraftsmanExecutions: (input: { runningAfterMs: number; waitingAfterMs: number }) => {
+      scanned: number;
+      probed: number;
+      progressed: number;
+    };
+    probeInactiveTasks: (input: { controllerAfterMs: number; rosterAfterMs: number; inboxAfterMs: number }) => {
+      scanned_tasks: number;
+      controller_pings: number;
+      roster_pings: number;
+      inbox_items: number;
+    };
+  };
+}): ObservationSchedulerController {
+  const { scheduler } = runtime.config;
+  const intervalMs = scheduler.enabled ? scheduler.scan_interval_sec * 1000 : null;
+  const tick = (): ObservationSchedulerTickResult => ({
+    observed_at: new Date().toISOString(),
+    craftsman: runtime.taskService.observeCraftsmanExecutions({
+      runningAfterMs: scheduler.craftsman_running_after_sec * 1000,
+      waitingAfterMs: scheduler.craftsman_waiting_after_sec * 1000,
+    }),
+    tasks: runtime.taskService.probeInactiveTasks({
+      controllerAfterMs: scheduler.task_probe_controller_after_sec * 1000,
+      rosterAfterMs: scheduler.task_probe_roster_after_sec * 1000,
+      inboxAfterMs: scheduler.task_probe_inbox_after_sec * 1000,
+    }),
+  });
+
+  let timer: NodeJS.Timeout | null = null;
+  if (intervalMs !== null) {
+    timer = setInterval(() => {
+      try {
+        tick();
+      } catch (error) {
+        console.error('[agora] observation scheduler tick failed', error);
+      }
+    }, intervalMs);
+    timer.unref?.();
+  }
+
+  return {
+    enabled: scheduler.enabled,
+    interval_ms: intervalMs,
+    tick,
+    stop: () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    },
+  };
 }
 
 export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
@@ -46,6 +124,10 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   if (config.scheduler.startup_recovery_on_boot) {
     taskService.startupRecoveryScan();
   }
+  const observationScheduler = createObservationScheduler({
+    config,
+    taskService,
+  });
 
   return {
     config: config as AgoraConfig,
@@ -67,5 +149,6 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     },
     observability: config.observability,
     dashboardDir: resolveDashboardDir(),
+    observationScheduler,
   };
 }

@@ -28,6 +28,11 @@ describe('agora-ts config contracts', () => {
     expect(parsed.permissions.allowAgents['*']?.canAdvance).toBe(false);
     expect(parsed.scheduler.enabled).toBe(true);
     expect(parsed.scheduler.scan_interval_sec).toBe(60);
+    expect(parsed.scheduler.task_probe_controller_after_sec).toBe(300);
+    expect(parsed.scheduler.task_probe_roster_after_sec).toBe(900);
+    expect(parsed.scheduler.task_probe_inbox_after_sec).toBe(1800);
+    expect(parsed.scheduler.craftsman_running_after_sec).toBe(300);
+    expect(parsed.scheduler.craftsman_waiting_after_sec).toBe(120);
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(true);
     expect(parsed.rate_limit.enabled).toBe(false);
     expect(parsed.dashboard_auth.enabled).toBe(false);
@@ -45,6 +50,11 @@ describe('agora-ts config contracts', () => {
       scheduler: {
         enabled: true,
         scan_interval_sec: 30,
+        task_probe_controller_after_sec: 120,
+        task_probe_roster_after_sec: 240,
+        task_probe_inbox_after_sec: 360,
+        craftsman_running_after_sec: 90,
+        craftsman_waiting_after_sec: 45,
         orphan_scan_on_boot: true,
         startup_recovery_on_boot: false,
       },
@@ -78,6 +88,11 @@ describe('agora-ts config contracts', () => {
     });
 
     expect(parsed.scheduler.scan_interval_sec).toBe(30);
+    expect(parsed.scheduler.task_probe_controller_after_sec).toBe(120);
+    expect(parsed.scheduler.task_probe_roster_after_sec).toBe(240);
+    expect(parsed.scheduler.task_probe_inbox_after_sec).toBe(360);
+    expect(parsed.scheduler.craftsman_running_after_sec).toBe(90);
+    expect(parsed.scheduler.craftsman_waiting_after_sec).toBe(45);
     expect(parsed.db_busy_timeout_ms).toBe(12000);
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(false);
     expect(parsed.rate_limit.max_requests).toBe(120);
