@@ -243,6 +243,9 @@ If Agora saves you time or helps your team ship better AI workflows, you can sup
 
 - Project: [github.com/FairladyZ625/Agora](https://github.com/FairladyZ625/Agora)
 - Issues / collaboration: [github.com/FairladyZ625/Agora/issues](https://github.com/FairladyZ625/Agora/issues)
+- Email: `lizeyu990625@gmail.com`
+- WeChat: `FairladyZ625`
+- Phone: `15258817691`
 
 <details>
 <summary>WeChat Pay / Alipay</summary>

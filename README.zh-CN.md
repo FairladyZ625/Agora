@@ -259,6 +259,9 @@ extensions/                  插件 adapter（OpenClaw 等）
 
 - 项目地址：[github.com/FairladyZ625/Agora](https://github.com/FairladyZ625/Agora)
 - 问题反馈 / 合作联系：[github.com/FairladyZ625/Agora/issues](https://github.com/FairladyZ625/Agora/issues)
+- 邮箱：`lizeyu990625@gmail.com`
+- 微信：`FairladyZ625`
+- 电话：`15258817691`
 
 <details>
 <summary>微信支付 / 支付宝</summary>
