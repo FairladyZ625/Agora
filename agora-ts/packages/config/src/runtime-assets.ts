@@ -1,4 +1,4 @@
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -8,6 +8,7 @@ export interface EnsureBundledAgoraAssetsOptions {
   bundledBrainPackDir?: string;
   userAgoraDir?: string;
   userSkillDirs?: string[];
+  brainPackSyncMode?: 'bootstrap_if_missing' | 'force_sync';
 }
 
 export interface EnsuredAgoraAssetsResult {
@@ -72,7 +73,10 @@ export function ensureBundledAgoraAssetsInstalled(
   const userBrainPackDir = resolve(userAgoraDir, 'agora-ai-brain');
   const bundledBrainPackDir = options.bundledBrainPackDir;
   if (bundledBrainPackDir && existsSync(bundledBrainPackDir)) {
-    syncBundledBrainPackContents(bundledBrainPackDir, userBrainPackDir);
+    const brainPackMode = options.brainPackSyncMode ?? 'bootstrap_if_missing';
+    if (brainPackMode === 'force_sync' || !hasInstalledBrainPack(userBrainPackDir)) {
+      syncBundledBrainPackContents(bundledBrainPackDir, userBrainPackDir);
+    }
     mkdirSync(resolve(userBrainPackDir, 'tasks'), { recursive: true });
   }
 
@@ -105,8 +109,9 @@ function syncRuntimeAssetEntry(sourcePath: string, targetPath: string) {
     return;
   }
 
-  cpSync(sourcePath, targetPath, {
-    force: true,
-    recursive: false,
-  });
+  copyFileSync(sourcePath, targetPath);
+}
+
+export function hasInstalledBrainPack(targetRoot: string) {
+  return existsSync(resolve(targetRoot, 'AGORA.md'));
 }

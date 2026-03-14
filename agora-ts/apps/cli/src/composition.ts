@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import {
   agoraDataDirPath,
   ensureBundledAgoraAssetsInstalled,
+  hasInstalledBrainPack,
   loadAgoraConfig,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   syncBundledBrainPackContents,
@@ -116,7 +117,9 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
     ? resolvePath(explicitRoot)
     : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
   const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
-  syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  if (!hasInstalledBrainPack(runtimeBrainPackDir)) {
+    syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  }
   mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
   return runtimeBrainPackDir;
 }
