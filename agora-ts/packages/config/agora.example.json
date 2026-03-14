@@ -1,5 +1,6 @@
 {
   "db_path": "~/.agora/agora.db",
+  "db_busy_timeout_ms": 5000,
   "api_auth": {
     "enabled": false,
     "token": "change-me"

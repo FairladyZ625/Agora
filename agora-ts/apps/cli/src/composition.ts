@@ -230,7 +230,10 @@ export function createCliComposition(
 ): CliComposition {
   const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
-  const db = createAgoraDatabase({ dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path });
+  const db = createAgoraDatabase({
+    dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path,
+    busyTimeoutMs: config.db_busy_timeout_ms,
+  });
   runMigrations(db);
   ensureBundledAgoraAssetsInstalled({
     projectRoot: runtimeEnv.projectRoot ?? new URL('../../../../', import.meta.url).pathname,
