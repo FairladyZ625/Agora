@@ -67,6 +67,27 @@ describe('DiscordGatewayPresenceService', () => {
     expect(stub.setPresence).not.toHaveBeenCalled();
   });
 
+  it('logs proxy enablement before login when proxy bootstrap is active', async () => {
+    const stub = createClientStub();
+    const info = vi.fn();
+    const service = new DiscordGatewayPresenceService({
+      botToken: 'discord-token',
+      clientFactory: () => stub.client,
+      proxyBootstrap: () => ({
+        enabled: true,
+        httpsProxy: 'http://127.0.0.1:7897',
+        httpProxy: 'http://127.0.0.1:7897',
+      }),
+      logger: { info },
+    });
+
+    service.start();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(info).toHaveBeenCalledWith('[agora] discord gateway presence proxy enabled (http://127.0.0.1:7897)');
+  });
+
   it('destroys the client when stopped after start', () => {
     const stub = createClientStub();
     const service = new DiscordGatewayPresenceService({

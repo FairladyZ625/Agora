@@ -1,4 +1,5 @@
 import { ActivityType, Client, GatewayIntentBits } from 'discord.js';
+import { ensureDiscordGatewayProxy, sanitizeProxyForLogs } from './proxy-support.js';
 
 export type DiscordGatewayPresenceStatus = 'online' | 'idle' | 'dnd' | 'invisible';
 
@@ -7,6 +8,11 @@ export interface DiscordGatewayPresenceServiceOptions {
   enabled?: boolean;
   status?: DiscordGatewayPresenceStatus;
   activityName?: string | null;
+  proxyBootstrap?: () => {
+    enabled: boolean;
+    httpsProxy: string | null;
+    httpProxy: string | null;
+  };
   clientFactory?: () => DiscordGatewayPresenceClient;
   logger?: {
     info?: (message: string) => void;
@@ -58,6 +64,7 @@ export class DiscordGatewayPresenceService {
   private readonly botToken: string;
   private readonly status: DiscordGatewayPresenceStatus;
   private readonly activityName: string | null;
+  private readonly proxyBootstrap: NonNullable<DiscordGatewayPresenceServiceOptions['proxyBootstrap']>;
   private readonly client: DiscordGatewayPresenceClient;
   private readonly logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>;
   private started = false;
@@ -67,6 +74,7 @@ export class DiscordGatewayPresenceService {
     this.enabled = options.enabled ?? true;
     this.status = options.status ?? 'online';
     this.activityName = options.activityName?.trim() ? options.activityName.trim() : 'Agora';
+    this.proxyBootstrap = options.proxyBootstrap ?? (() => ensureDiscordGatewayProxy());
     this.client = options.clientFactory?.() ?? createDefaultClient();
     this.logger = options.logger ?? {};
   }
@@ -76,6 +84,12 @@ export class DiscordGatewayPresenceService {
       return;
     }
     this.started = true;
+
+    const proxy = this.proxyBootstrap();
+    if (proxy.enabled) {
+      const proxyTarget = sanitizeProxyForLogs(proxy.httpsProxy ?? proxy.httpProxy);
+      this.logger.info?.(`[agora] discord gateway presence proxy enabled${proxyTarget ? ` (${proxyTarget})` : ''}`);
+    }
 
     this.client.once('ready', () => {
       if (!this.client.user) {
