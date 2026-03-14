@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import {
   agoraDataDirPath,
   ensureBundledAgoraAssetsInstalled,

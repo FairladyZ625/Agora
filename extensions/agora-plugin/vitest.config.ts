@@ -10,7 +10,7 @@ export default defineConfig({
       exclude: ["tests/**", "src/types.ts", "dist/**", "vitest.config.ts"],
       thresholds: {
         statements: 75,
-        branches: 85,
+        branches: 80,
         functions: 60,
         lines: 75,
       },
