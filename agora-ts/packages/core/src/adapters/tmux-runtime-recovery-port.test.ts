@@ -63,4 +63,28 @@ describe('tmux runtime recovery port', () => {
       execution_id: 'exec-1',
     });
   });
+
+  it('rejects stop requests when the execution has no tmux session binding', () => {
+    const sendKeys = vi.fn();
+    const port = new TmuxRuntimeRecoveryPort({
+      doctor: () => ({ session: 'agora', panes: [] }),
+      tail: () => '',
+      sendKeys,
+    });
+
+    const result = port.stopExecution({
+      taskId: 'OC-STOP-2',
+      subtaskId: 'sub-2',
+      executionId: 'exec-2',
+      adapter: 'claude',
+      sessionId: null,
+    });
+
+    expect(sendKeys).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: 'unsupported',
+      execution_id: 'exec-2',
+    });
+    expect(result.detail).toContain('no tmux session binding');
+  });
 });

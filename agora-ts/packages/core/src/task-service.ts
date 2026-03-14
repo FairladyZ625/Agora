@@ -1204,13 +1204,13 @@ export class TaskService {
           agent_id: session.agent_id,
           status: session.status,
           session_count: 0,
-          last_event_at: null as string | null,
+          last_event_at: session.last_event_at,
         };
         current.session_count += 1;
-        current.status = session.status;
-        current.last_event_at = current.last_event_at && current.last_event_at > session.last_event_at
-          ? current.last_event_at
-          : session.last_event_at;
+        if (current.last_event_at === null || current.last_event_at < session.last_event_at) {
+          current.status = session.status;
+          current.last_event_at = session.last_event_at;
+        }
         map.set(session.agent_id, current);
         return map;
       }, new Map<string, { agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>()),
@@ -1224,7 +1224,7 @@ export class TaskService {
       : this.isHostHealthDegraded(hostSnapshot)
         ? 'degraded'
         : 'healthy';
-    const escalationSnapshot = this.buildEscalationSnapshot(tasks, sessions);
+    const escalationSnapshot = this.buildEscalationSnapshot(tasks, runtimeAgents);
 
     return {
       generated_at: generatedAt,
@@ -1241,7 +1241,7 @@ export class TaskService {
       runtime: {
         status: !this.liveSessionStore
           ? 'unavailable'
-          : sessions.some((session) => session.status === 'closed')
+          : runtimeAgents.some((agent) => agent.status === 'closed')
             ? 'degraded'
             : 'healthy',
         available: !!this.liveSessionStore,
@@ -3614,7 +3614,10 @@ export class TaskService {
     };
   }
 
-  private buildEscalationSnapshot(tasks: StoredTask[], sessions: ReturnType<NonNullable<LiveSessionStore['listAll']>>): UnifiedHealthSnapshotDto['escalation'] {
+  private buildEscalationSnapshot(
+    tasks: StoredTask[],
+    runtimeAgents: Array<{ agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>,
+  ): UnifiedHealthSnapshotDto['escalation'] {
     const activeTasks = tasks.filter((task) => task.state === TaskState.ACTIVE);
     let controllerPingedTasks = 0;
     let rosterPingedTasks = 0;
@@ -3632,7 +3635,7 @@ export class TaskService {
       }
     }
 
-    const unhealthyRuntimeAgents = sessions.filter((session) => session.status === 'closed').length;
+    const unhealthyRuntimeAgents = runtimeAgents.filter((agent) => agent.status === 'closed').length;
     const runtimeUnhealthy = !!this.liveSessionStore && unhealthyRuntimeAgents > 0;
 
     return {

@@ -147,6 +147,36 @@ describe('task service', () => {
       last_event_at: new Date().toISOString(),
       metadata: {},
     });
+    liveSessionStore.upsert({
+      source: 'openclaw',
+      agent_id: 'opus',
+      session_key: 'sess-opus-0',
+      channel: 'discord',
+      status: 'closed',
+      last_event: 'runtime_closed',
+      last_event_at: '2026-03-14T04:00:00.000Z',
+      metadata: {},
+    });
+    liveSessionStore.upsert({
+      source: 'openclaw',
+      agent_id: 'sonnet',
+      session_key: 'sess-sonnet-1',
+      channel: 'discord',
+      status: 'closed',
+      last_event: 'runtime_closed',
+      last_event_at: '2026-03-14T04:10:00.000Z',
+      metadata: {},
+    });
+    liveSessionStore.upsert({
+      source: 'openclaw',
+      agent_id: 'sonnet',
+      session_key: 'sess-sonnet-2',
+      channel: 'discord',
+      status: 'closed',
+      last_event: 'runtime_closed',
+      last_event_at: '2026-03-14T04:20:00.000Z',
+      metadata: {},
+    });
 
     const snapshot = service.getHealthSnapshot();
 
@@ -164,8 +194,21 @@ describe('task service', () => {
       available: true,
       active_sessions: 1,
       stale_after_ms: 1234,
-      status: 'healthy',
+      status: 'degraded',
     });
+    expect(snapshot.runtime.agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        agent_id: 'opus',
+        status: 'active',
+        session_count: 2,
+      }),
+      expect.objectContaining({
+        agent_id: 'sonnet',
+        status: 'closed',
+        session_count: 2,
+        last_event_at: '2026-03-14T04:20:00.000Z',
+      }),
+    ]));
     expect(snapshot.craftsman).toMatchObject({
       active_executions: 1,
       waiting_input_executions: 0,
@@ -179,12 +222,12 @@ describe('task service', () => {
       },
     });
     expect(snapshot.escalation).toMatchObject({
-      status: 'healthy',
+      status: 'degraded',
       controller_pinged_tasks: 0,
       roster_pinged_tasks: 0,
       inbox_escalated_tasks: 0,
-      unhealthy_runtime_agents: 0,
-      runtime_unhealthy: false,
+      unhealthy_runtime_agents: 1,
+      runtime_unhealthy: true,
       policy: {
         controller_after_ms: 300000,
         roster_after_ms: 900000,
