@@ -171,9 +171,12 @@ export function TasksPage() {
   const selectTask = useTaskStore((state) => state.selectTask);
   const runTaskAction = useTaskStore((state) => state.runTaskAction);
   const observeCraftsmen = useTaskStore((state) => state.observeCraftsmen);
+  const diagnoseRuntime = useTaskStore((state) => state.diagnoseRuntime);
   const probeCraftsmanExecution = useTaskStore((state) => state.probeCraftsmanExecution);
+  const restartRuntime = useTaskStore((state) => state.restartRuntime);
   const sendCraftsmanInputText = useTaskStore((state) => state.sendCraftsmanInputText);
   const sendCraftsmanInputKeys = useTaskStore((state) => state.sendCraftsmanInputKeys);
+  const stopCraftsmanExecution = useTaskStore((state) => state.stopCraftsmanExecution);
   const submitCraftsmanChoice = useTaskStore((state) => state.submitCraftsmanChoice);
   const closeSubtask = useTaskStore((state) => state.closeSubtask);
   const archiveSubtask = useTaskStore((state) => state.archiveSubtask);
@@ -435,6 +438,60 @@ export function TasksPage() {
       showMessage(
         t('feedback.taskActionFailureTitle'),
         inputError instanceof Error ? inputError.message : String(inputError),
+        'warning',
+      );
+    }
+  };
+
+  const runRuntimeDiagnosis = async (agentRef: string) => {
+    if (!activeTask) {
+      return;
+    }
+    try {
+      const result = await diagnoseRuntime(activeTask.id, agentRef, resolvedActionActor, actionNote);
+      showMessage(t('feedback.syncSuccessTitle'), result.summary, result.status === 'accepted' ? 'success' : 'warning');
+      if (result.detail) {
+        setActionNote(result.detail);
+      }
+    } catch (runtimeError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        runtimeError instanceof Error ? runtimeError.message : String(runtimeError),
+        'warning',
+      );
+    }
+  };
+
+  const runRuntimeRestart = async (agentRef: string) => {
+    if (!activeTask) {
+      return;
+    }
+    try {
+      const result = await restartRuntime(activeTask.id, agentRef, resolvedActionActor, actionNote);
+      showMessage(t('feedback.taskActionSuccessTitle'), result.summary, result.status === 'accepted' ? 'success' : 'warning');
+      if (result.detail) {
+        setActionNote(result.detail);
+      }
+    } catch (runtimeError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        runtimeError instanceof Error ? runtimeError.message : String(runtimeError),
+        'warning',
+      );
+    }
+  };
+
+  const runExecutionStop = async (executionId: string) => {
+    try {
+      const result = await stopCraftsmanExecution(executionId, resolvedActionActor, actionNote);
+      showMessage(t('feedback.taskActionSuccessTitle'), result.summary, result.status === 'accepted' ? 'success' : 'warning');
+      if (result.detail) {
+        setActionNote(result.detail);
+      }
+    } catch (stopError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        stopError instanceof Error ? stopError.message : String(stopError),
         'warning',
       );
     }
@@ -826,6 +883,13 @@ export function TasksPage() {
                               >
                                 {tasksPageCopy.executionProbeAction}
                               </button>
+                              <button
+                                type="button"
+                                className="button-danger"
+                                onClick={() => void runExecutionStop(selectedExecution.executionId)}
+                              >
+                                {tasksPageCopy.executionStopAction}
+                              </button>
                             </div>
                             {selectedExecution.callbackPayload?.inputRequest?.hint ? (
                               <p className="type-body-sm">{selectedExecution.callbackPayload.inputRequest.hint}</p>
@@ -902,6 +966,40 @@ export function TasksPage() {
                             </div>
                           </div>
                         ) : null}
+                        {(activeGovernanceSnapshot?.warnings ?? []).length ? (
+                          <div className="space-y-2">
+                            <p className="field-label">{tasksPageCopy.governanceWarningsLabel}</p>
+                            <div className="space-y-2">
+                              {(activeGovernanceSnapshot?.warnings ?? []).map((warning) => (
+                                <div key={warning} className="data-row">
+                                  <span className="type-body-sm">{warning}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {(activeGovernanceSnapshot?.activeExecutionDetails ?? []).length ? (
+                          <div className="space-y-2">
+                            <p className="field-label">{tasksPageCopy.governanceExecutionDetailsLabel}</p>
+                            <div className="space-y-2">
+                              {(activeGovernanceSnapshot?.activeExecutionDetails ?? []).map((detail) => (
+                                <div key={detail.executionId} className="data-row">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="type-mono-xs">{detail.executionId}</p>
+                                    <p className="type-text-xs mt-1">
+                                      {detail.assignee}
+                                      {' / '}
+                                      {detail.adapter}
+                                      {' / '}
+                                      {detail.status}
+                                    </p>
+                                  </div>
+                                  <span className="status-pill status-pill--neutral">{detail.subtaskId}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : (
@@ -941,6 +1039,24 @@ export function TasksPage() {
                   </div>
 
                   <div className="task-authority__actions">
+                    {selectedSubtask ? (
+                      <>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => void runRuntimeDiagnosis(selectedSubtask.assignee)}
+                        >
+                          {tasksPageCopy.runtimeDiagnosisAction}
+                        </button>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => void runRuntimeRestart(selectedSubtask.assignee)}
+                        >
+                          {tasksPageCopy.runtimeRestartAction}
+                        </button>
+                      </>
+                    ) : null}
                     {activeGateType === 'approval' ? (
                       <>
                         <button type="button" className="button-primary" onClick={() => void runAction('approve')}>

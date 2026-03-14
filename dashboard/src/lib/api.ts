@@ -11,6 +11,8 @@ import type {
   ApiHealthDto,
   ApiObserveCraftsmanExecutionsResponseDto,
   ApiPromoteTodoResultDto,
+  ApiRuntimeDiagnosisResultDto,
+  ApiRuntimeRecoveryActionDto,
   ApiTaskDto,
   ApiTaskConversationListResponseDto,
   ApiTaskConversationSummaryDto,
@@ -18,6 +20,7 @@ import type {
   ApiTemplateDetailDto,
   ApiTemplateSummaryDto,
   ApiTodoDto,
+  ApiUnifiedHealthSnapshotDto,
 } from '@/types/api';
 import type { CreateTaskInput } from '@/types/task';
 import type { TodoFilter } from '@/types/dashboard';
@@ -39,6 +42,8 @@ import {
   healthResponseSchema,
   observeCraftsmanExecutionsResponseSchema,
   promoteTodoResultSchema,
+  runtimeDiagnosisResultSchema,
+  runtimeRecoveryActionSchema,
   taskSchema,
   taskConversationListResponseSchema,
   taskConversationMarkReadRequestSchema,
@@ -46,6 +51,7 @@ import {
   taskStatusSchema,
   templateDetailSchema,
   templateSummarySchema,
+  unifiedHealthSnapshotSchema,
   templateValidationResponseSchema,
   todoItemSchema,
   validateWorkflowRequestSchema,
@@ -212,6 +218,10 @@ export function getCraftsmanGovernance(): Promise<ApiCraftsmanGovernanceSnapshot
   );
 }
 
+export function getHealthSnapshot(): Promise<ApiUnifiedHealthSnapshotDto> {
+  return request<ApiUnifiedHealthSnapshotDto>('/health/snapshot', unifiedHealthSnapshotSchema);
+}
+
 export function observeCraftsmanExecutions(input?: {
   running_after_ms?: number;
   waiting_after_ms?: number;
@@ -245,6 +255,44 @@ export function probeCraftsmanExecution(executionId: string): Promise<{
       body: JSON.stringify({}),
     },
   );
+}
+
+export function stopCraftsmanExecution(
+  executionId: string,
+  input: { caller_id: string; reason?: string },
+): Promise<ApiRuntimeRecoveryActionDto> {
+  return request<ApiRuntimeRecoveryActionDto>(
+    `/craftsmen/executions/${encodeURIComponent(executionId)}/stop`,
+    runtimeRecoveryActionSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function diagnoseRuntime(input: {
+  task_id: string;
+  agent_ref: string;
+  caller_id: string;
+  reason?: string;
+}): Promise<ApiRuntimeDiagnosisResultDto> {
+  return request<ApiRuntimeDiagnosisResultDto>('/runtime/diagnose', runtimeDiagnosisResultSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function restartRuntime(input: {
+  task_id: string;
+  agent_ref: string;
+  caller_id: string;
+  reason?: string;
+}): Promise<ApiRuntimeRecoveryActionDto> {
+  return request<ApiRuntimeRecoveryActionDto>('/runtime/restart', runtimeRecoveryActionSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function sendCraftsmanExecutionInputText(

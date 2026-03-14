@@ -133,8 +133,11 @@ export interface CraftsmanGovernanceSnapshot {
   limits: {
     maxConcurrentRunning: number | null;
     maxConcurrentPerAgent: number | null;
+    hostMemoryWarningUtilizationLimit: number | null;
     hostMemoryUtilizationLimit: number | null;
+    hostSwapWarningUtilizationLimit: number | null;
     hostSwapUtilizationLimit: number | null;
+    hostLoadPerCpuWarningLimit: number | null;
     hostLoadPerCpuLimit: number | null;
   };
   activeExecutions: number;
@@ -142,6 +145,18 @@ export interface CraftsmanGovernanceSnapshot {
     assignee: string;
     count: number;
   }>;
+  activeExecutionDetails: Array<{
+    executionId: string;
+    taskId: string;
+    subtaskId: string;
+    assignee: string;
+    adapter: string;
+    status: string;
+    sessionId: string | null;
+    workdir: string | null;
+  }>;
+  hostPressureStatus: 'healthy' | 'warning' | 'hard_limit' | 'unavailable';
+  warnings: string[];
   host: {
     observedAt: string;
     platform?: string | null;
@@ -155,6 +170,86 @@ export interface CraftsmanGovernanceSnapshot {
     swapUsedBytes: number | null;
     swapUtilization: number | null;
   } | null;
+}
+
+export interface UnifiedHealthSnapshot {
+  generatedAt: string;
+  tasks: {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    totalTasks: number;
+    activeTasks: number;
+    pausedTasks: number;
+    blockedTasks: number;
+    doneTasks: number;
+  };
+  im: {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    activeBindings: number;
+    activeThreads: number;
+    bindingsByProvider: Array<{ label: string; count: number }>;
+  };
+  runtime: {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    available: boolean;
+    staleAfterMs: number | null;
+    activeSessions: number;
+    idleSessions: number;
+    closedSessions: number;
+    agents: Array<{
+      agentId: string;
+      status: string;
+      sessionCount: number;
+      lastEventAt: string | null;
+    }>;
+  };
+  craftsman: {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    activeExecutions: number;
+    queuedExecutions: number;
+    runningExecutions: number;
+    waitingInputExecutions: number;
+    awaitingChoiceExecutions: number;
+    activeByAssignee: Array<{ label: string; count: number }>;
+  };
+  host: {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    snapshot: CraftsmanGovernanceSnapshot['host'];
+  };
+  escalation: {
+    status: 'healthy' | 'degraded' | 'unavailable';
+    policy: {
+      controllerAfterMs: number;
+      rosterAfterMs: number;
+      inboxAfterMs: number;
+    };
+    controllerPingedTasks: number;
+    rosterPingedTasks: number;
+    inboxEscalatedTasks: number;
+    unhealthyRuntimeAgents: number;
+    runtimeUnhealthy: boolean;
+  };
+}
+
+export interface RuntimeDiagnosisResult {
+  operation: 'request_runtime_diagnosis';
+  taskId: string;
+  agentRef: string;
+  status: 'accepted' | 'unsupported' | 'unavailable';
+  health: 'healthy' | 'degraded' | 'unavailable';
+  runtimeProvider: string | null;
+  runtimeActorRef: string | null;
+  summary: string;
+  detail: string | null;
+}
+
+export interface RuntimeRecoveryAction {
+  operation: 'restart_citizen_runtime' | 'stop_execution';
+  status: 'accepted' | 'unsupported' | 'unavailable';
+  taskId: string | null;
+  agentRef: string | null;
+  executionId: string | null;
+  summary: string;
+  detail: string | null;
 }
 
 export interface TaskConversationEntry {
