@@ -140,6 +140,41 @@ describe('server runtime', () => {
     runtime.db.close();
   });
 
+  it('starts discord presence service when provided by composition', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        im: {
+          provider: 'discord',
+          discord: {
+            bot_token: 'discord-token',
+            default_channel_id: '123',
+          },
+        },
+      }),
+    );
+
+    const start = vi.fn();
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createDiscordPresenceService: () => ({
+          start,
+          stop: vi.fn(),
+          enabled: true,
+        }) as never,
+      },
+    });
+
+    expect(start).toHaveBeenCalledTimes(1);
+    runtime.db.close();
+  });
+
   it('runs startup recovery on boot when configured', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');

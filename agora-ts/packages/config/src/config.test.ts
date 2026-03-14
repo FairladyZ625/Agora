@@ -46,6 +46,8 @@ describe('agora-ts config contracts', () => {
     expect(parsed.craftsmen.host_load_per_cpu_limit).toBe(1.5);
     expect(parsed.craftsmen.isolate_git_worktrees).toBe(false);
     expect(parsed.observability.ready_path).toBe('/ready');
+    expect(parsed.im.provider).toBe('none');
+    expect(parsed.im.discord).toBeUndefined();
   });
 
   it('parses explicit scheduler and security settings', () => {
@@ -72,6 +74,17 @@ describe('agora-ts config contracts', () => {
         method: 'basic',
         allowed_users: ['lizeyu'],
         session_ttl_hours: 24,
+      },
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-token',
+          default_channel_id: '123',
+          notify_on_task_create: true,
+          gateway_presence_enabled: true,
+          gateway_presence_status: 'idle',
+          gateway_presence_activity: 'Watching tasks',
+        },
       },
       craftsmen: {
         max_concurrent_running: 3,
@@ -103,6 +116,10 @@ describe('agora-ts config contracts', () => {
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(false);
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');
+    expect(parsed.im.provider).toBe('discord');
+    expect(parsed.im.discord?.gateway_presence_enabled).toBe(true);
+    expect(parsed.im.discord?.gateway_presence_status).toBe('idle');
+    expect(parsed.im.discord?.gateway_presence_activity).toBe('Watching tasks');
     expect(parsed.craftsmen.max_concurrent_running).toBe(3);
     expect(parsed.craftsmen.max_concurrent_per_agent).toBe(2);
     expect(parsed.craftsmen.host_memory_warning_utilization_limit).toBe(0.7);
