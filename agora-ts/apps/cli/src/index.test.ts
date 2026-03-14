@@ -922,6 +922,7 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const startCommandRunner = vi.fn().mockResolvedValue(undefined);
+    const agoraProjectRoot = resolve(import.meta.dirname, '../../../../');
     const program = createCliProgram({
       taskService: {
         createTask: () => {
@@ -982,6 +983,8 @@ describe('agora-ts cli', () => {
         },
       } as unknown as TaskConversationService,
       startCommandRunner,
+      startCommandCwd: makeTempDir('agora-ts-cli-start-cwd-'),
+      startCommandFallbackRoot: agoraProjectRoot,
       stdout,
       stderr,
     }).exitOverride();
