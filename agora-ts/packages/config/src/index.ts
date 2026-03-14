@@ -36,6 +36,11 @@ export type ApiAuthConfig = z.infer<typeof apiAuthSchema>;
 export const schedulerConfigSchema = z.object({
   enabled: z.boolean().default(true),
   scan_interval_sec: z.number().int().min(5, 'scheduler.scan_interval_sec must be >= 5').default(60),
+  task_probe_controller_after_sec: z.number().int().min(5, 'scheduler.task_probe_controller_after_sec must be >= 5').default(300),
+  task_probe_roster_after_sec: z.number().int().min(5, 'scheduler.task_probe_roster_after_sec must be >= 5').default(900),
+  task_probe_inbox_after_sec: z.number().int().min(5, 'scheduler.task_probe_inbox_after_sec must be >= 5').default(1800),
+  craftsman_running_after_sec: z.number().int().min(5, 'scheduler.craftsman_running_after_sec must be >= 5').default(300),
+  craftsman_waiting_after_sec: z.number().int().min(5, 'scheduler.craftsman_waiting_after_sec must be >= 5').default(120),
   orphan_scan_on_boot: z.boolean().default(false),
   startup_recovery_on_boot: z.boolean().default(true),
 });
@@ -112,6 +117,11 @@ export const agoraConfigSchema = z.object({
   scheduler: schedulerConfigSchema.default({
     enabled: true,
     scan_interval_sec: 60,
+    task_probe_controller_after_sec: 300,
+    task_probe_roster_after_sec: 900,
+    task_probe_inbox_after_sec: 1800,
+    craftsman_running_after_sec: 300,
+    craftsman_waiting_after_sec: 120,
     orphan_scan_on_boot: false,
     startup_recovery_on_boot: true,
   }),
