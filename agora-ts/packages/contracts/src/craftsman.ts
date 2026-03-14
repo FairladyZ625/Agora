@@ -92,6 +92,14 @@ export const craftsmanExecutionSchema = z.object({
 });
 export type CraftsmanExecutionDto = z.infer<typeof craftsmanExecutionSchema>;
 
+export const craftsmanExecutionTailResponseSchema = z.object({
+  execution_id: z.string().min(1),
+  available: z.boolean(),
+  output: z.string().nullable(),
+  source: z.enum(['tmux', 'unavailable']),
+});
+export type CraftsmanExecutionTailResponseDto = z.infer<typeof craftsmanExecutionTailResponseSchema>;
+
 export const craftsmanDispatchRequestSchema = z.object({
   task_id: z.string().min(1),
   subtask_id: z.string().min(1),

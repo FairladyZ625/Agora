@@ -1,10 +1,11 @@
 // @vitest-environment node
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { build, createServer, mergeConfig, preview, type ViteDevServer, type PreviewServer } from 'vite';
 import viteConfig from '../../vite.config';
 
-let server: ViteDevServer | PreviewServer | undefined;
+let server: ViteDevServer | undefined;
+let previewServer: PreviewServer | undefined;
 
 async function startServer() {
   server = await createServer(mergeConfig(viteConfig, {
@@ -31,6 +32,11 @@ afterEach(async () => {
   server = undefined;
 });
 
+afterAll(async () => {
+  await previewServer?.close();
+  previewServer = undefined;
+});
+
 describe('dashboard base path redirect', () => {
   it('redirects root requests to /dashboard/', async () => {
     const origin = await startServer();
@@ -54,59 +60,48 @@ describe('dashboard base path redirect', () => {
     expect(response.headers.get('location')).toBe('/dashboard/');
   });
 
-  it('redirects preview root requests to /dashboard/', async () => {
-    await build(mergeConfig(viteConfig, {
-      configFile: false,
-      logLevel: 'silent',
-    }));
-    server = await preview(mergeConfig(viteConfig, {
-      configFile: false,
-      logLevel: 'silent',
-      preview: {
-        host: '127.0.0.1',
-        port: 0,
-        strictPort: false,
-      },
-    }));
+  describe('preview redirects', () => {
+    let previewOrigin = '';
 
-    const address = server.httpServer?.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('failed to resolve Vite preview server port');
-    }
+    beforeAll(async () => {
+      await build(mergeConfig(viteConfig, {
+        configFile: false,
+        logLevel: 'silent',
+      }));
+      previewServer = await preview(mergeConfig(viteConfig, {
+        configFile: false,
+        logLevel: 'silent',
+        preview: {
+          host: '127.0.0.1',
+          port: 0,
+          strictPort: false,
+        },
+      }));
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/`, {
-      redirect: 'manual',
+      const address = previewServer.httpServer?.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('failed to resolve Vite preview server port');
+      }
+
+      previewOrigin = `http://127.0.0.1:${address.port}`;
+    }, 45000);
+
+    it('redirects preview root requests to /dashboard/', async () => {
+      const response = await fetch(`${previewOrigin}/`, {
+        redirect: 'manual',
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/dashboard/');
     });
 
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/dashboard/');
-  }, 20000);
+    it('redirects preview /dashboard requests to /dashboard/', async () => {
+      const response = await fetch(`${previewOrigin}/dashboard`, {
+        redirect: 'manual',
+      });
 
-  it('redirects preview /dashboard requests to /dashboard/', async () => {
-    await build(mergeConfig(viteConfig, {
-      configFile: false,
-      logLevel: 'silent',
-    }));
-    server = await preview(mergeConfig(viteConfig, {
-      configFile: false,
-      logLevel: 'silent',
-      preview: {
-        host: '127.0.0.1',
-        port: 0,
-        strictPort: false,
-      },
-    }));
-
-    const address = server.httpServer?.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('failed to resolve Vite preview server port');
-    }
-
-    const response = await fetch(`http://127.0.0.1:${address.port}/dashboard`, {
-      redirect: 'manual',
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe('/dashboard/');
     });
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe('/dashboard/');
-  }, 20000);
+  });
 });

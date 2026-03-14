@@ -12,6 +12,7 @@ describe('agora-ts config contracts', () => {
     const parsed = parseAgoraConfig(raw);
 
     expect(parsed.db_path).toBe(defaultAgoraDbPath());
+    expect(parsed.db_busy_timeout_ms).toBe(5000);
     expect(parsed.api_auth.enabled).toBe(false);
     expect(parsed.permissions.archonUsers).toContain('lizeyu');
     expect(parsed.permissions.allowAgents.opus?.canAdvance).toBe(true);
@@ -21,21 +22,32 @@ describe('agora-ts config contracts', () => {
     const parsed = agoraConfigSchema.parse({});
 
     expect(parsed.db_path).toBe(defaultAgoraDbPath());
+    expect(parsed.db_busy_timeout_ms).toBe(5000);
     expect(parsed.api_auth.enabled).toBe(false);
     expect(parsed.permissions.archonUsers).toEqual([]);
     expect(parsed.permissions.allowAgents['*']?.canAdvance).toBe(false);
     expect(parsed.scheduler.enabled).toBe(true);
     expect(parsed.scheduler.scan_interval_sec).toBe(60);
+    expect(parsed.scheduler.task_probe_controller_after_sec).toBe(300);
+    expect(parsed.scheduler.task_probe_roster_after_sec).toBe(900);
+    expect(parsed.scheduler.task_probe_inbox_after_sec).toBe(1800);
+    expect(parsed.scheduler.craftsman_running_after_sec).toBe(300);
+    expect(parsed.scheduler.craftsman_waiting_after_sec).toBe(120);
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(true);
     expect(parsed.rate_limit.enabled).toBe(false);
     expect(parsed.dashboard_auth.enabled).toBe(false);
     expect(parsed.craftsmen.max_concurrent_running).toBe(8);
     expect(parsed.craftsmen.max_concurrent_per_agent).toBe(3);
+    expect(parsed.craftsmen.host_memory_warning_utilization_limit).toBe(0.75);
     expect(parsed.craftsmen.host_memory_utilization_limit).toBe(0.9);
+    expect(parsed.craftsmen.host_swap_warning_utilization_limit).toBe(0.75);
     expect(parsed.craftsmen.host_swap_utilization_limit).toBe(0.9);
+    expect(parsed.craftsmen.host_load_per_cpu_warning_limit).toBe(1);
     expect(parsed.craftsmen.host_load_per_cpu_limit).toBe(1.5);
     expect(parsed.craftsmen.isolate_git_worktrees).toBe(false);
     expect(parsed.observability.ready_path).toBe('/ready');
+    expect(parsed.im.provider).toBe('none');
+    expect(parsed.im.discord).toBeUndefined();
   });
 
   it('parses explicit scheduler and security settings', () => {
@@ -43,6 +55,11 @@ describe('agora-ts config contracts', () => {
       scheduler: {
         enabled: true,
         scan_interval_sec: 30,
+        task_probe_controller_after_sec: 120,
+        task_probe_roster_after_sec: 240,
+        task_probe_inbox_after_sec: 360,
+        craftsman_running_after_sec: 90,
+        craftsman_waiting_after_sec: 45,
         orphan_scan_on_boot: true,
         startup_recovery_on_boot: false,
       },
@@ -58,11 +75,25 @@ describe('agora-ts config contracts', () => {
         allowed_users: ['lizeyu'],
         session_ttl_hours: 24,
       },
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-token',
+          default_channel_id: '123',
+          notify_on_task_create: true,
+          gateway_presence_enabled: true,
+          gateway_presence_status: 'idle',
+          gateway_presence_activity: 'Watching tasks',
+        },
+      },
       craftsmen: {
         max_concurrent_running: 3,
         max_concurrent_per_agent: 2,
+        host_memory_warning_utilization_limit: 0.7,
         host_memory_utilization_limit: 0.85,
+        host_swap_warning_utilization_limit: 0.65,
         host_swap_utilization_limit: 0.8,
+        host_load_per_cpu_warning_limit: 0.9,
         host_load_per_cpu_limit: 1.2,
         isolate_git_worktrees: true,
         isolated_root: '/tmp/agora-isolated',
@@ -72,16 +103,30 @@ describe('agora-ts config contracts', () => {
         metrics_enabled: true,
         structured_logs: true,
       },
+      db_busy_timeout_ms: 12000,
     });
 
     expect(parsed.scheduler.scan_interval_sec).toBe(30);
+    expect(parsed.scheduler.task_probe_controller_after_sec).toBe(120);
+    expect(parsed.scheduler.task_probe_roster_after_sec).toBe(240);
+    expect(parsed.scheduler.task_probe_inbox_after_sec).toBe(360);
+    expect(parsed.scheduler.craftsman_running_after_sec).toBe(90);
+    expect(parsed.scheduler.craftsman_waiting_after_sec).toBe(45);
+    expect(parsed.db_busy_timeout_ms).toBe(12000);
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(false);
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');
+    expect(parsed.im.provider).toBe('discord');
+    expect(parsed.im.discord?.gateway_presence_enabled).toBe(true);
+    expect(parsed.im.discord?.gateway_presence_status).toBe('idle');
+    expect(parsed.im.discord?.gateway_presence_activity).toBe('Watching tasks');
     expect(parsed.craftsmen.max_concurrent_running).toBe(3);
     expect(parsed.craftsmen.max_concurrent_per_agent).toBe(2);
+    expect(parsed.craftsmen.host_memory_warning_utilization_limit).toBe(0.7);
     expect(parsed.craftsmen.host_memory_utilization_limit).toBe(0.85);
+    expect(parsed.craftsmen.host_swap_warning_utilization_limit).toBe(0.65);
     expect(parsed.craftsmen.host_swap_utilization_limit).toBe(0.8);
+    expect(parsed.craftsmen.host_load_per_cpu_warning_limit).toBe(0.9);
     expect(parsed.craftsmen.host_load_per_cpu_limit).toBe(1.2);
     expect(parsed.craftsmen.isolate_git_worktrees).toBe(true);
     expect(parsed.craftsmen.isolated_root).toBe('/tmp/agora-isolated');

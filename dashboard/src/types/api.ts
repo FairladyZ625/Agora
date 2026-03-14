@@ -25,9 +25,12 @@ import type {
   TemplateSummaryDto,
   TodoItemDto,
   ObserveCraftsmanExecutionsResponseDto,
+  RuntimeDiagnosisResultDto,
+  RuntimeRecoveryActionDto,
   WorkflowDto,
   WorkflowGateDto,
   WorkflowStageDto,
+  UnifiedHealthSnapshotDto,
 } from '@agora-ts/contracts';
 
 export type ApiTaskState = TaskState;
@@ -54,6 +57,9 @@ export type ApiCraftsmanDto = ApiAgentsStatusDto['craftsmen'][number];
 export type ApiCraftsmanExecutionDto = CraftsmanExecutionDto;
 export type ApiCraftsmanGovernanceSnapshotDto = CraftsmanGovernanceSnapshotDto;
 export type ApiObserveCraftsmanExecutionsResponseDto = ObserveCraftsmanExecutionsResponseDto;
+export type ApiUnifiedHealthSnapshotDto = UnifiedHealthSnapshotDto;
+export type ApiRuntimeDiagnosisResultDto = RuntimeDiagnosisResultDto;
+export type ApiRuntimeRecoveryActionDto = RuntimeRecoveryActionDto;
 export type ApiAgentChannelSummaryDto = ApiAgentsStatusDto['channel_summaries'][number];
 export type ApiArchiveJobDto = ArchiveJobDto;
 export type ApiDashboardSessionStatusDto = DashboardSessionStatusResponseDto;

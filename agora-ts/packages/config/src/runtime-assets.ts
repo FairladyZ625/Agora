@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -8,6 +8,7 @@ export interface EnsureBundledAgoraAssetsOptions {
   bundledBrainPackDir?: string;
   userAgoraDir?: string;
   userSkillDirs?: string[];
+  brainPackSyncMode?: 'bootstrap_if_missing' | 'force_sync';
 }
 
 export interface EnsuredAgoraAssetsResult {
@@ -72,7 +73,10 @@ export function ensureBundledAgoraAssetsInstalled(
   const userBrainPackDir = resolve(userAgoraDir, 'agora-ai-brain');
   const bundledBrainPackDir = options.bundledBrainPackDir;
   if (bundledBrainPackDir && existsSync(bundledBrainPackDir)) {
-    syncBundledBrainPackContents(bundledBrainPackDir, userBrainPackDir);
+    const brainPackMode = options.brainPackSyncMode ?? 'bootstrap_if_missing';
+    if (brainPackMode === 'force_sync' || !hasInstalledBrainPack(userBrainPackDir)) {
+      syncBundledBrainPackContents(bundledBrainPackDir, userBrainPackDir);
+    }
     mkdirSync(resolve(userBrainPackDir, 'tasks'), { recursive: true });
   }
 
@@ -91,9 +95,23 @@ export function syncBundledBrainPackContents(sourceRoot: string, targetRoot: str
     if (entry.name === 'tasks') {
       continue;
     }
-    cpSync(resolve(sourceRoot, entry.name), resolve(targetRoot, entry.name), {
-      recursive: true,
-      force: true,
-    });
+    syncRuntimeAssetEntry(resolve(sourceRoot, entry.name), resolve(targetRoot, entry.name));
   }
+}
+
+function syncRuntimeAssetEntry(sourcePath: string, targetPath: string) {
+  const stat = lstatSync(sourcePath);
+  if (stat.isDirectory()) {
+    mkdirSync(targetPath, { recursive: true });
+    for (const child of readdirSync(sourcePath, { withFileTypes: true })) {
+      syncRuntimeAssetEntry(resolve(sourcePath, child.name), resolve(targetPath, child.name));
+    }
+    return;
+  }
+
+  copyFileSync(sourcePath, targetPath);
+}
+
+export function hasInstalledBrainPack(targetRoot: string) {
+  return existsSync(resolve(targetRoot, 'AGORA.md'));
 }

@@ -6,13 +6,20 @@ import type {
   CraftsmanCallbackRequestDto,
   CraftsmanDispatchRequestDto,
   CraftsmanInputKeyDto,
+  CraftsmanStopExecutionRequestDto,
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
+  HostResourceSnapshotDto,
   PromoteTodoRequestDto,
+  RuntimeDiagnosisResultDto,
+  RuntimeRecoveryActionDto,
+  CraftsmanExecutionTailResponseDto,
   TaskBlueprintDto,
+  UnifiedHealthSnapshotDto,
   TaskLocaleDto,
   TaskStatusDto,
+  RuntimeRecoveryRequestDto,
   WorkflowDto,
 } from '@agora-ts/contracts';
 import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
@@ -43,14 +50,17 @@ import { PermissionService } from './permission-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
+import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
+import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
+import type { LiveSessionStore } from './live-session-store.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -77,9 +87,18 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
 type CraftsmanGovernanceLimits = {
   maxConcurrentRunning: number | null;
   maxConcurrentPerAgent: number | null;
+  hostMemoryWarningUtilizationLimit: number | null;
   hostMemoryUtilizationLimit: number | null;
+  hostSwapWarningUtilizationLimit: number | null;
   hostSwapUtilizationLimit: number | null;
+  hostLoadPerCpuWarningLimit: number | null;
   hostLoadPerCpuLimit: number | null;
+};
+
+type EscalationPolicy = {
+  controllerAfterMs: number;
+  rosterAfterMs: number;
+  inboxAfterMs: number;
 };
 
 export interface TaskServiceOptions {
@@ -96,15 +115,26 @@ export interface TaskServiceOptions {
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
   agentRuntimePort?: AgentRuntimePort;
+  runtimeRecoveryPort?: RuntimeRecoveryPort;
   craftsmanInputPort?: CraftsmanInputPort;
   craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;
+  craftsmanExecutionTailPort?: CraftsmanExecutionTailPort;
   hostResourcePort?: HostResourcePort;
+  liveSessionStore?: LiveSessionStore;
   craftsmanGovernance?: {
     maxConcurrentRunning?: number | null;
     maxConcurrentPerAgent?: number | null;
+    hostMemoryWarningUtilizationLimit?: number | null;
     hostMemoryUtilizationLimit?: number | null;
+    hostSwapWarningUtilizationLimit?: number | null;
     hostSwapUtilizationLimit?: number | null;
+    hostLoadPerCpuWarningLimit?: number | null;
     hostLoadPerCpuLimit?: number | null;
+  };
+  escalationPolicy?: {
+    controllerAfterMs?: number;
+    rosterAfterMs?: number;
+    inboxAfterMs?: number;
   };
 }
 
@@ -165,9 +195,9 @@ export interface StartupRecoveryScanResult {
 }
 
 export interface InactiveTaskProbeOptions {
-  controllerAfterMs: number;
-  rosterAfterMs: number;
-  inboxAfterMs: number;
+  controllerAfterMs?: number;
+  rosterAfterMs?: number;
+  inboxAfterMs?: number;
   now?: Date;
 }
 
@@ -227,9 +257,13 @@ export class TaskService {
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
+  private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
+  private readonly craftsmanExecutionTailPort: CraftsmanExecutionTailPort | undefined;
   private readonly hostResourcePort: HostResourcePort | undefined;
+  private readonly liveSessionStore: LiveSessionStore | undefined;
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
+  private readonly escalationPolicy: EscalationPolicy;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -269,14 +303,25 @@ export class TaskService {
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
     this.agentRuntimePort = options.agentRuntimePort;
+    this.runtimeRecoveryPort = options.runtimeRecoveryPort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
+    this.craftsmanExecutionTailPort = options.craftsmanExecutionTailPort;
     this.hostResourcePort = options.hostResourcePort;
+    this.liveSessionStore = options.liveSessionStore;
     this.craftsmanGovernance = {
       maxConcurrentRunning: options.craftsmanGovernance?.maxConcurrentRunning ?? null,
       maxConcurrentPerAgent: options.craftsmanGovernance?.maxConcurrentPerAgent ?? null,
+      hostMemoryWarningUtilizationLimit: options.craftsmanGovernance?.hostMemoryWarningUtilizationLimit ?? null,
       hostMemoryUtilizationLimit: options.craftsmanGovernance?.hostMemoryUtilizationLimit ?? null,
+      hostSwapWarningUtilizationLimit: options.craftsmanGovernance?.hostSwapWarningUtilizationLimit ?? null,
       hostSwapUtilizationLimit: options.craftsmanGovernance?.hostSwapUtilizationLimit ?? null,
+      hostLoadPerCpuWarningLimit: options.craftsmanGovernance?.hostLoadPerCpuWarningLimit ?? null,
       hostLoadPerCpuLimit: options.craftsmanGovernance?.hostLoadPerCpuLimit ?? null,
+    };
+    this.escalationPolicy = {
+      controllerAfterMs: options.escalationPolicy?.controllerAfterMs ?? 300_000,
+      rosterAfterMs: options.escalationPolicy?.rosterAfterMs ?? 900_000,
+      inboxAfterMs: options.escalationPolicy?.inboxAfterMs ?? 1_800_000,
     };
   }
 
@@ -473,6 +518,14 @@ export class TaskService {
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
     if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
+      const refreshed = this.getTaskOrThrow(taskId);
+      if (
+        refreshed.current_stage !== task.current_stage
+        || refreshed.state !== task.state
+        || refreshed.version !== task.version
+      ) {
+        return refreshed;
+      }
       const approvalRequest = this.ensureApprovalRequestForGate(task, currentStage, options.callerId);
       if (approvalRequest?.shouldBroadcast) {
         this.publishTaskStatusBroadcast(task, {
@@ -1059,23 +1112,320 @@ export class TaskService {
     return execution;
   }
 
+  getCraftsmanExecutionTail(executionId: string, lines = 120): CraftsmanExecutionTailResponseDto {
+    if (!Number.isFinite(lines) || lines <= 0) {
+      throw new Error('lines must be a positive number');
+    }
+    const execution = this.getCraftsmanExecution(executionId);
+    if (!this.craftsmanExecutionTailPort) {
+      return {
+        execution_id: execution.execution_id,
+        available: false,
+        output: null,
+        source: 'unavailable',
+      };
+    }
+    return this.craftsmanExecutionTailPort.tail({
+      executionId: execution.execution_id,
+      adapter: execution.adapter,
+      sessionId: execution.session_id,
+      status: execution.status,
+    }, lines) ?? {
+      execution_id: execution.execution_id,
+      available: false,
+      output: null,
+      source: 'unavailable',
+    };
+  }
+
   listCraftsmanExecutions(taskId: string, subtaskId: string) {
     return this.craftsmanExecutions.listBySubtask(taskId, subtaskId);
   }
 
   getCraftsmanGovernanceSnapshot() {
+    const hostSnapshot = this.hostResourcePort?.readSnapshot() ?? null;
     return {
       limits: {
         max_concurrent_running: this.craftsmanGovernance.maxConcurrentRunning,
         max_concurrent_per_agent: this.craftsmanGovernance.maxConcurrentPerAgent,
+        host_memory_warning_utilization_limit: this.craftsmanGovernance.hostMemoryWarningUtilizationLimit,
         host_memory_utilization_limit: this.craftsmanGovernance.hostMemoryUtilizationLimit,
+        host_swap_warning_utilization_limit: this.craftsmanGovernance.hostSwapWarningUtilizationLimit,
         host_swap_utilization_limit: this.craftsmanGovernance.hostSwapUtilizationLimit,
+        host_load_per_cpu_warning_limit: this.craftsmanGovernance.hostLoadPerCpuWarningLimit,
         host_load_per_cpu_limit: this.craftsmanGovernance.hostLoadPerCpuLimit,
       },
       active_executions: this.craftsmanExecutions.countActiveExecutions(),
       active_by_assignee: this.craftsmanExecutions.listActiveExecutionCountsByAssignee(),
-      host: this.hostResourcePort?.readSnapshot() ?? null,
+      active_execution_details: this.craftsmanExecutions.listActiveExecutions().map((execution) => {
+        const subtask = this.getSubtaskOrThrow(execution.task_id, execution.subtask_id);
+        return {
+          execution_id: execution.execution_id,
+          task_id: execution.task_id,
+          subtask_id: execution.subtask_id,
+          assignee: subtask.assignee,
+          adapter: execution.adapter,
+          status: execution.status,
+          session_id: execution.session_id,
+          workdir: subtask.craftsman_workdir,
+        };
+      }),
+      host_pressure_status: this.resolveHostPressureStatus(hostSnapshot),
+      warnings: this.buildHostGovernanceWarnings(hostSnapshot),
+      host: hostSnapshot,
     };
+  }
+
+  getHealthSnapshot(): UnifiedHealthSnapshotDto {
+    const generatedAt = new Date().toISOString();
+    const tasks = this.taskRepository.listTasks();
+    const taskCounts = {
+      total_tasks: tasks.length,
+      active_tasks: tasks.filter((task) => task.state === 'active').length,
+      paused_tasks: tasks.filter((task) => task.state === 'paused').length,
+      blocked_tasks: tasks.filter((task) => task.state === 'blocked').length,
+      done_tasks: tasks.filter((task) => task.state === 'done').length,
+    };
+
+    const activeBindings = tasks
+      .map((task) => this.taskContextBindingRepository.getActiveByTask(task.id))
+      .filter((binding): binding is NonNullable<typeof binding> => binding !== null);
+    const bindingsByProvider = Array.from(
+      activeBindings.reduce((map, binding) => {
+        map.set(binding.im_provider, (map.get(binding.im_provider) ?? 0) + 1);
+        return map;
+      }, new Map<string, number>()),
+    ).map(([label, count]) => ({ label, count })).sort((a, b) => a.label.localeCompare(b.label));
+
+    const sessions = this.liveSessionStore?.listAll() ?? [];
+    const runtimeAgents = Array.from(
+      sessions.reduce((map, session) => {
+        const current = map.get(session.agent_id) ?? {
+          agent_id: session.agent_id,
+          status: session.status,
+          session_count: 0,
+          last_event_at: null as string | null,
+        };
+        current.session_count += 1;
+        current.status = session.status;
+        current.last_event_at = current.last_event_at && current.last_event_at > session.last_event_at
+          ? current.last_event_at
+          : session.last_event_at;
+        map.set(session.agent_id, current);
+        return map;
+      }, new Map<string, { agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>()),
+    ).map(([, agent]) => agent).sort((a, b) => a.agent_id.localeCompare(b.agent_id));
+
+    const activeExecutions = this.craftsmanExecutions.listActiveExecutions();
+    const governance = this.getCraftsmanGovernanceSnapshot();
+    const hostSnapshot = governance.host;
+    const hostStatus = !hostSnapshot
+      ? 'unavailable'
+      : this.isHostHealthDegraded(hostSnapshot)
+        ? 'degraded'
+        : 'healthy';
+    const escalationSnapshot = this.buildEscalationSnapshot(tasks, sessions);
+
+    return {
+      generated_at: generatedAt,
+      tasks: {
+        status: taskCounts.blocked_tasks > 0 ? 'degraded' : 'healthy',
+        ...taskCounts,
+      },
+      im: {
+        status: activeBindings.length > 0 ? 'healthy' : 'unavailable',
+        active_bindings: activeBindings.length,
+        active_threads: activeBindings.filter((binding) => binding.thread_ref !== null).length,
+        bindings_by_provider: bindingsByProvider,
+      },
+      runtime: {
+        status: !this.liveSessionStore
+          ? 'unavailable'
+          : sessions.some((session) => session.status === 'closed')
+            ? 'degraded'
+            : 'healthy',
+        available: !!this.liveSessionStore,
+        stale_after_ms: this.liveSessionStore?.getStaleAfterMs() ?? null,
+        active_sessions: sessions.filter((session) => session.status === 'active').length,
+        idle_sessions: sessions.filter((session) => session.status === 'idle').length,
+        closed_sessions: sessions.filter((session) => session.status === 'closed').length,
+        agents: runtimeAgents,
+      },
+      craftsman: {
+        status: activeExecutions.length === 0
+          ? 'healthy'
+          : activeExecutions.some((execution) => execution.status === 'needs_input' || execution.status === 'awaiting_choice')
+            ? 'degraded'
+            : 'healthy',
+        active_executions: activeExecutions.length,
+        queued_executions: activeExecutions.filter((execution) => execution.status === 'queued').length,
+        running_executions: activeExecutions.filter((execution) => execution.status === 'running').length,
+        waiting_input_executions: activeExecutions.filter((execution) => execution.status === 'needs_input').length,
+        awaiting_choice_executions: activeExecutions.filter((execution) => execution.status === 'awaiting_choice').length,
+        active_by_assignee: governance.active_by_assignee.map((item) => ({
+          label: item.assignee,
+          count: item.count,
+        })),
+      },
+      host: {
+        status: hostStatus,
+        snapshot: hostSnapshot,
+      },
+      escalation: escalationSnapshot,
+    };
+  }
+
+  requestRuntimeDiagnosis(taskId: string, options: RuntimeRecoveryRequestDto): RuntimeDiagnosisResultDto {
+    const task = this.getTaskOrThrow(taskId);
+    this.assertTaskRuntimeControl(task, options.caller_id, `runtime diagnosis for agent '${options.agent_ref}'`);
+    if (!this.runtimeRecoveryPort) {
+      throw new Error('Runtime recovery port is not configured');
+    }
+    const runtimeResolution = this.resolveTaskRuntimeParticipant(task, options.agent_ref);
+    const result = this.runtimeRecoveryPort.requestRuntimeDiagnosis({
+      taskId,
+      agentRef: options.agent_ref,
+      runtimeProvider: runtimeResolution.runtime_provider,
+      runtimeActorRef: runtimeResolution.runtime_actor_ref,
+      reason: options.reason ?? null,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'runtime_diagnosis_requested',
+      stage_id: task.current_stage,
+      detail: {
+        agent_ref: options.agent_ref,
+        caller_id: options.caller_id,
+        status: result.status,
+        health: result.health,
+      },
+      actor: options.caller_id,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.caller_id,
+      body: `Runtime diagnosis requested for ${options.agent_ref}.`,
+      metadata: {
+        event: 'runtime_diagnosis_requested',
+        status: result.status,
+        health: result.health,
+        summary: result.summary,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'runtime_diagnosis_requested',
+      participantRefs: [options.agent_ref],
+      bodyLines: [
+        `Agent: ${options.agent_ref}`,
+        `Caller: ${options.caller_id}`,
+        `Status: ${result.status}`,
+        `Health: ${result.health}`,
+        `Summary: ${result.summary}`,
+      ],
+    });
+    return result;
+  }
+
+  restartCitizenRuntime(taskId: string, options: RuntimeRecoveryRequestDto): RuntimeRecoveryActionDto {
+    const task = this.getTaskOrThrow(taskId);
+    this.assertTaskRuntimeControl(task, options.caller_id, `runtime restart for agent '${options.agent_ref}'`);
+    if (!this.runtimeRecoveryPort) {
+      throw new Error('Runtime recovery port is not configured');
+    }
+    const runtimeResolution = this.resolveTaskRuntimeParticipant(task, options.agent_ref);
+    const result = this.runtimeRecoveryPort.restartCitizenRuntime({
+      taskId,
+      agentRef: options.agent_ref,
+      runtimeProvider: runtimeResolution.runtime_provider,
+      runtimeActorRef: runtimeResolution.runtime_actor_ref,
+      reason: options.reason ?? null,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: taskId,
+      kind: 'system',
+      event: 'runtime_restart_requested',
+      stage_id: task.current_stage,
+      detail: {
+        agent_ref: options.agent_ref,
+        caller_id: options.caller_id,
+        status: result.status,
+      },
+      actor: options.caller_id,
+    });
+    this.mirrorConversationEntry(taskId, {
+      actor: options.caller_id,
+      body: `Runtime restart requested for ${options.agent_ref}.`,
+      metadata: {
+        event: 'runtime_restart_requested',
+        status: result.status,
+        summary: result.summary,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'runtime_restart_requested',
+      participantRefs: [options.agent_ref],
+      bodyLines: [
+        `Agent: ${options.agent_ref}`,
+        `Caller: ${options.caller_id}`,
+        `Status: ${result.status}`,
+        `Summary: ${result.summary}`,
+      ],
+    });
+    return result;
+  }
+
+  stopCraftsmanExecution(executionId: string, options: CraftsmanStopExecutionRequestDto & { caller_id: string }): RuntimeRecoveryActionDto {
+    const execution = this.getCraftsmanExecution(executionId);
+    if (TERMINAL_EXECUTION_STATUSES.has(execution.status)) {
+      throw new Error(`Craftsman execution ${executionId} is already terminal (status=${execution.status})`);
+    }
+    const task = this.getTaskOrThrow(execution.task_id);
+    const subtask = this.getSubtaskOrThrow(execution.task_id, execution.subtask_id);
+    this.assertSubtaskControl(task, subtask, options.caller_id);
+    if (!this.runtimeRecoveryPort) {
+      throw new Error('Runtime recovery port is not configured');
+    }
+    const result = this.runtimeRecoveryPort.stopExecution({
+      taskId: execution.task_id,
+      subtaskId: execution.subtask_id,
+      executionId: execution.execution_id,
+      adapter: execution.adapter,
+      sessionId: execution.session_id,
+      reason: options.reason ?? null,
+    });
+    this.flowLogRepository.insertFlowLog({
+      task_id: execution.task_id,
+      kind: 'system',
+      event: 'craftsman_stop_requested',
+      stage_id: subtask.stage_id,
+      detail: {
+        execution_id: execution.execution_id,
+        subtask_id: execution.subtask_id,
+        caller_id: options.caller_id,
+        status: result.status,
+      },
+      actor: options.caller_id,
+    });
+    this.mirrorConversationEntry(execution.task_id, {
+      actor: options.caller_id,
+      body: `Craftsman stop requested for execution ${execution.execution_id}.`,
+      metadata: {
+        event: 'craftsman_stop_requested',
+        status: result.status,
+        summary: result.summary,
+      },
+    });
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'craftsman_stop_requested',
+      bodyLines: [
+        `Execution: ${execution.execution_id}`,
+        `Subtask: ${execution.subtask_id}`,
+        `Caller: ${options.caller_id}`,
+        `Status: ${result.status}`,
+        `Summary: ${result.summary}`,
+      ],
+    });
+    return result;
   }
 
   sendCraftsmanInputText(executionId: string, text: string, submit = true) {
@@ -1496,6 +1846,7 @@ export class TaskService {
   }
 
   probeInactiveTasks(options: InactiveTaskProbeOptions): InactiveTaskProbeResult {
+    const thresholds = this.resolveEscalationPolicy(options);
     const now = options.now ?? new Date();
     const result: InactiveTaskProbeResult = {
       scanned_tasks: 0,
@@ -1510,14 +1861,14 @@ export class TaskService {
       const idleMs = now.getTime() - latestActivityMs;
       const controllerRef = resolveControllerRef(task.team.members);
       const interactiveRefs = task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId);
-      if (idleMs < options.controllerAfterMs) {
+      if (idleMs < thresholds.controllerAfterMs) {
         continue;
       }
       const probeState = this.getProbeState(task.id, latestActivityMs);
 
       if (!probeState.controllerNotified && controllerRef) {
         this.publishTaskStatusBroadcast(task, {
-          kind: 'thread_probe_controller',
+          kind: 'controller_pinged',
           participantRefs: [controllerRef],
           bodyLines: [
             `Task appears inactive for ${Math.round(idleMs / 1000)} seconds.`,
@@ -1527,7 +1878,7 @@ export class TaskService {
         this.flowLogRepository.insertFlowLog({
           task_id: task.id,
           kind: 'flow',
-          event: 'thread_probe_controller',
+          event: 'controller_pinged',
           stage_id: task.current_stage,
           detail: { idle_ms: idleMs, controller_ref: controllerRef },
           actor: 'system',
@@ -1536,9 +1887,9 @@ export class TaskService {
         continue;
       }
 
-      if (idleMs >= options.rosterAfterMs && probeState.controllerNotified && !probeState.rosterNotified && interactiveRefs.length > 0) {
+      if (idleMs >= thresholds.rosterAfterMs && probeState.controllerNotified && !probeState.rosterNotified && interactiveRefs.length > 0) {
         this.publishTaskStatusBroadcast(task, {
-          kind: 'thread_probe_roster',
+          kind: 'roster_pinged',
           participantRefs: interactiveRefs,
           bodyLines: [
             `Task remains inactive for ${Math.round(idleMs / 1000)} seconds after controller probe.`,
@@ -1548,7 +1899,7 @@ export class TaskService {
         this.flowLogRepository.insertFlowLog({
           task_id: task.id,
           kind: 'flow',
-          event: 'thread_probe_roster',
+          event: 'roster_pinged',
           stage_id: task.current_stage,
           detail: { idle_ms: idleMs, participant_refs: interactiveRefs },
           actor: 'system',
@@ -1557,15 +1908,15 @@ export class TaskService {
         continue;
       }
 
-      if (idleMs >= options.inboxAfterMs && probeState.rosterNotified && !probeState.inboxRaised) {
+      if (idleMs >= thresholds.inboxAfterMs && probeState.rosterNotified && !probeState.inboxRaised) {
         this.inboxRepository.insertInboxItem({
           text: `Task ${task.id} appears stuck`,
-          source: 'thread_probe',
+          source: 'inbox_escalated',
           notes: `Task ${task.id} has remained inactive for ${Math.round(idleMs / 1000)} seconds at stage ${task.current_stage ?? '-'}.`,
           tags: ['task', 'stuck'],
           metadata: {
             task_id: task.id,
-            kind: 'thread_probe_inbox',
+            kind: 'inbox_escalated',
             current_stage: task.current_stage,
             idle_ms: idleMs,
           },
@@ -1573,7 +1924,7 @@ export class TaskService {
         this.flowLogRepository.insertFlowLog({
           task_id: task.id,
           kind: 'flow',
-          event: 'thread_probe_inbox',
+          event: 'inbox_escalated',
           stage_id: task.current_stage,
           detail: { idle_ms: idleMs },
           actor: 'system',
@@ -2212,9 +2563,9 @@ export class TaskService {
           `- ${taskText(task, '现在用 execution-scoped Agora CLI 命令验证结构化输入回环。', 'Validate the structured input loop now using the execution-scoped Agora CLI commands.')}`,
           `- ${taskText(task, '确认 callback metadata 包含 input_request，并且出现在 conversation/Dashboard。', 'Confirm the callback metadata includes the input_request payload and appears in conversation/Dashboard.')}`,
         ];
-      case 'thread_probe_controller':
-      case 'thread_probe_roster':
-      case 'thread_probe_inbox':
+      case 'controller_pinged':
+      case 'roster_pinged':
+      case 'inbox_escalated':
         return [
           '',
           `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
@@ -2594,6 +2945,102 @@ export class TaskService {
       || dispatchStatus === 'awaiting_choice';
   }
 
+  private isHostHealthDegraded(snapshot: HostResourceSnapshotDto) {
+    return this.resolveHostPressureStatus(snapshot) !== 'healthy';
+  }
+
+  private resolveHostPressureStatus(snapshot: HostResourceSnapshotDto | null) {
+    if (!snapshot) {
+      return 'unavailable' as const;
+    }
+    const memorySignal = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
+      ? snapshot.memory_pressure
+      : snapshot.memory_utilization;
+    if (memorySignal != null && this.craftsmanGovernance.hostMemoryUtilizationLimit != null && memorySignal > this.craftsmanGovernance.hostMemoryUtilizationLimit) {
+      return 'hard_limit' as const;
+    }
+    if (
+      snapshot.platform !== 'darwin'
+      && snapshot.swap_utilization != null
+      && this.craftsmanGovernance.hostSwapUtilizationLimit != null
+      && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapUtilizationLimit
+    ) {
+      return 'hard_limit' as const;
+    }
+    const loadPerCpu = snapshot.load_1m != null && snapshot.cpu_count != null && snapshot.cpu_count > 0
+      ? snapshot.load_1m / snapshot.cpu_count
+      : null;
+    if (
+      loadPerCpu != null
+      && this.craftsmanGovernance.hostLoadPerCpuLimit != null
+      && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuLimit
+    ) {
+      return 'hard_limit' as const;
+    }
+    if (
+      memorySignal != null
+      && this.craftsmanGovernance.hostMemoryWarningUtilizationLimit != null
+      && memorySignal > this.craftsmanGovernance.hostMemoryWarningUtilizationLimit
+    ) {
+      return 'warning' as const;
+    }
+    if (
+      snapshot.platform !== 'darwin'
+      && snapshot.swap_utilization != null
+      && this.craftsmanGovernance.hostSwapWarningUtilizationLimit != null
+      && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapWarningUtilizationLimit
+    ) {
+      return 'warning' as const;
+    }
+    if (
+      loadPerCpu != null
+      && this.craftsmanGovernance.hostLoadPerCpuWarningLimit != null
+      && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuWarningLimit
+    ) {
+      return 'warning' as const;
+    }
+    return 'healthy' as const;
+  }
+
+  private buildHostGovernanceWarnings(snapshot: HostResourceSnapshotDto | null) {
+    if (!snapshot) {
+      return [];
+    }
+    const warnings: string[] = [];
+    const memorySignal = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
+      ? snapshot.memory_pressure
+      : snapshot.memory_utilization;
+    if (
+      memorySignal != null
+      && this.craftsmanGovernance.hostMemoryWarningUtilizationLimit != null
+      && memorySignal > this.craftsmanGovernance.hostMemoryWarningUtilizationLimit
+    ) {
+      const label = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
+        ? 'memory pressure'
+        : 'memory utilization';
+      warnings.push(`Host ${label} warning: ${memorySignal.toFixed(2)}`);
+    }
+    if (
+      snapshot.platform !== 'darwin'
+      && snapshot.swap_utilization != null
+      && this.craftsmanGovernance.hostSwapWarningUtilizationLimit != null
+      && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapWarningUtilizationLimit
+    ) {
+      warnings.push(`Host swap warning: ${snapshot.swap_utilization.toFixed(2)}`);
+    }
+    const loadPerCpu = snapshot.load_1m != null && snapshot.cpu_count != null && snapshot.cpu_count > 0
+      ? snapshot.load_1m / snapshot.cpu_count
+      : null;
+    if (
+      loadPerCpu != null
+      && this.craftsmanGovernance.hostLoadPerCpuWarningLimit != null
+      && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuWarningLimit
+    ) {
+      warnings.push(`Host load-per-cpu warning: ${loadPerCpu.toFixed(2)}`);
+    }
+    return warnings;
+  }
+
   private getSubtaskOrThrow(taskId: string, subtaskId: string) {
     const subtask = this.subtaskRepository.listByTask(taskId).find((item) => item.id === subtaskId);
     if (!subtask) {
@@ -2612,6 +3059,29 @@ export class TaskService {
         `${callerId} cannot control subtask ${subtask.id} (assignee=${subtask.assignee}, controller=${controllerRef ?? '-'})`,
       );
     }
+  }
+
+  private assertTaskRuntimeControl(task: StoredTask, callerId: string, action: string) {
+    const controllerRef = resolveControllerRef(task.team.members);
+    const allowed = this.permissions.isArchon(callerId)
+      || (controllerRef !== null && callerId === controllerRef);
+    if (!allowed) {
+      throw new PermissionDeniedError(
+        `${callerId} cannot request ${action} (controller=${controllerRef ?? '-'})`,
+      );
+    }
+  }
+
+  private resolveTaskRuntimeParticipant(task: StoredTask, agentRef: string) {
+    const member = task.team.members.find((item) => item.agentId === agentRef);
+    if (!member) {
+      throw new NotFoundError(`Agent ${agentRef} is not part of task ${task.id}`);
+    }
+    return this.agentRuntimePort?.resolveAgent(agentRef) ?? {
+      agent_ref: agentRef,
+      runtime_provider: null,
+      runtime_actor_ref: null,
+    };
   }
 
   private failMissingCraftsmanSessions(
@@ -3106,8 +3576,9 @@ export class TaskService {
   }
 
   private resolveLatestBusinessActivityMs(task: StoredTask) {
+    const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'inbox_escalated']);
     const flowMs = this.flowLogRepository.listByTask(task.id)
-      .filter((entry) => !entry.event.startsWith('thread_probe_'))
+      .filter((entry) => !escalationEvents.has(entry.event))
       .map((entry) => Date.parse(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const progressMs = this.progressLogRepository.listByTask(task.id)
@@ -3129,9 +3600,55 @@ export class TaskService {
     const flows = this.flowLogRepository.listByTask(taskId);
     const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && Date.parse(entry.created_at) > latestActivityMs);
     return {
-      controllerNotified: notifiedAfterActivity('thread_probe_controller'),
-      rosterNotified: notifiedAfterActivity('thread_probe_roster'),
-      inboxRaised: notifiedAfterActivity('thread_probe_inbox'),
+      controllerNotified: notifiedAfterActivity('controller_pinged'),
+      rosterNotified: notifiedAfterActivity('roster_pinged'),
+      inboxRaised: notifiedAfterActivity('inbox_escalated'),
+    };
+  }
+
+  private resolveEscalationPolicy(options: InactiveTaskProbeOptions) {
+    return {
+      controllerAfterMs: options.controllerAfterMs ?? this.escalationPolicy.controllerAfterMs,
+      rosterAfterMs: options.rosterAfterMs ?? this.escalationPolicy.rosterAfterMs,
+      inboxAfterMs: options.inboxAfterMs ?? this.escalationPolicy.inboxAfterMs,
+    };
+  }
+
+  private buildEscalationSnapshot(tasks: StoredTask[], sessions: ReturnType<NonNullable<LiveSessionStore['listAll']>>): UnifiedHealthSnapshotDto['escalation'] {
+    const activeTasks = tasks.filter((task) => task.state === TaskState.ACTIVE);
+    let controllerPingedTasks = 0;
+    let rosterPingedTasks = 0;
+    let inboxEscalatedTasks = 0;
+
+    for (const task of activeTasks) {
+      const latestActivityMs = this.resolveLatestBusinessActivityMs(task);
+      const probeState = this.getProbeState(task.id, latestActivityMs);
+      if (probeState.inboxRaised) {
+        inboxEscalatedTasks += 1;
+      } else if (probeState.rosterNotified) {
+        rosterPingedTasks += 1;
+      } else if (probeState.controllerNotified) {
+        controllerPingedTasks += 1;
+      }
+    }
+
+    const unhealthyRuntimeAgents = sessions.filter((session) => session.status === 'closed').length;
+    const runtimeUnhealthy = !!this.liveSessionStore && unhealthyRuntimeAgents > 0;
+
+    return {
+      status: controllerPingedTasks > 0 || rosterPingedTasks > 0 || inboxEscalatedTasks > 0 || runtimeUnhealthy
+        ? 'degraded'
+        : 'healthy',
+      policy: {
+        controller_after_ms: this.escalationPolicy.controllerAfterMs,
+        roster_after_ms: this.escalationPolicy.rosterAfterMs,
+        inbox_after_ms: this.escalationPolicy.inboxAfterMs,
+      },
+      controller_pinged_tasks: controllerPingedTasks,
+      roster_pinged_tasks: rosterPingedTasks,
+      inbox_escalated_tasks: inboxEscalatedTasks,
+      unhealthy_runtime_agents: unhealthyRuntimeAgents,
+      runtime_unhealthy: runtimeUnhealthy,
     };
   }
 

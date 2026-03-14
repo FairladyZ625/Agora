@@ -6,6 +6,7 @@ import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepo
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
+import { LiveSessionStore } from './live-session-store.js';
 import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
@@ -49,6 +50,385 @@ afterEach(() => {
 });
 
 describe('task service', () => {
+  it('builds a unified health snapshot across tasks, contexts, runtime sessions, craftsman, and host', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HEALTH-1',
+      imProvisioningPort: new StubIMProvisioningPort({
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'thread-1',
+      }),
+      craftsmanDispatcher: new CraftsmanDispatcher(db, {
+        adapters: {
+          claude: new StubCraftsmanAdapter('claude'),
+        },
+      }),
+      liveSessionStore,
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-14T04:30:00.000Z',
+          platform: 'darwin',
+          cpu_count: 8,
+          load_1m: 1.2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 50,
+          memory_utilization: 0.5,
+          memory_pressure: 0.4,
+          swap_total_bytes: 100,
+          swap_used_bytes: 10,
+          swap_utilization: 0.1,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'Health snapshot smoke',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    new TaskContextBindingRepository(db).insert({
+      id: 'binding-health-1',
+      task_id: 'OC-HEALTH-1',
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent',
+      thread_ref: 'thread-1',
+      status: 'active',
+    });
+
+    service.createSubtasks('OC-HEALTH-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-health',
+          title: 'Health execution',
+          assignee: 'opus',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'interactive',
+            interaction_expectation: 'needs_input',
+            prompt: 'wait for input',
+          },
+        },
+      ],
+    });
+
+    liveSessionStore.upsert({
+      source: 'openclaw',
+      agent_id: 'opus',
+      session_key: 'sess-opus-1',
+      channel: 'discord',
+      status: 'active',
+      last_event: 'provider_ready',
+      last_event_at: new Date().toISOString(),
+      metadata: {},
+    });
+
+    const snapshot = service.getHealthSnapshot();
+
+    expect(snapshot.tasks).toMatchObject({
+      total_tasks: 1,
+      active_tasks: 1,
+      status: 'healthy',
+    });
+    expect(snapshot.im).toMatchObject({
+      active_bindings: 1,
+      active_threads: 1,
+      status: 'healthy',
+    });
+    expect(snapshot.runtime).toMatchObject({
+      available: true,
+      active_sessions: 1,
+      stale_after_ms: 1234,
+      status: 'healthy',
+    });
+    expect(snapshot.craftsman).toMatchObject({
+      active_executions: 1,
+      waiting_input_executions: 0,
+      status: 'healthy',
+    });
+    expect(snapshot.host).toMatchObject({
+      status: 'healthy',
+      snapshot: {
+        platform: 'darwin',
+        memory_pressure: 0.4,
+      },
+    });
+    expect(snapshot.escalation).toMatchObject({
+      status: 'healthy',
+      controller_pinged_tasks: 0,
+      roster_pinged_tasks: 0,
+      inbox_escalated_tasks: 0,
+      unhealthy_runtime_agents: 0,
+      runtime_unhealthy: false,
+      policy: {
+        controller_after_ms: 300000,
+        roster_after_ms: 900000,
+        inbox_after_ms: 1800000,
+      },
+    });
+  });
+
+  it('requests runtime diagnosis through the recovery port and records control-plane events', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-RUNTIME-DIAG-1',
+      agentRuntimePort: {
+        resolveAgent: () => ({
+          agent_ref: 'opus',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+        }),
+      },
+      runtimeRecoveryPort: {
+        requestRuntimeDiagnosis: () => ({
+          operation: 'request_runtime_diagnosis',
+          task_id: 'OC-RUNTIME-DIAG-1',
+          agent_ref: 'opus',
+          status: 'accepted',
+          health: 'healthy',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+          summary: 'runtime-opus looks healthy',
+          detail: 'last heartbeat just now',
+        }),
+        restartCitizenRuntime: () => {
+          throw new Error('not used');
+        },
+        stopExecution: () => {
+          throw new Error('not used');
+        },
+      },
+    });
+
+    service.createTask({
+      title: 'Runtime diagnosis test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    const result = service.requestRuntimeDiagnosis('OC-RUNTIME-DIAG-1', {
+      task_id: 'OC-RUNTIME-DIAG-1',
+      agent_ref: 'opus',
+      caller_id: 'opus',
+      reason: 'health check',
+    });
+
+    expect(result).toMatchObject({
+      status: 'accepted',
+      health: 'healthy',
+      summary: 'runtime-opus looks healthy',
+    });
+    const flow = db.prepare("SELECT event FROM flow_log WHERE task_id = 'OC-RUNTIME-DIAG-1' ORDER BY id DESC LIMIT 1").get() as { event: string };
+    expect(flow.event).toBe('runtime_diagnosis_requested');
+  });
+
+  it('requests craftsman stop through the recovery port for a running execution', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-stop-1',
+      adapters: {
+        claude: new StubCraftsmanAdapter('claude'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STOP-1',
+      craftsmanDispatcher: dispatcher,
+      runtimeRecoveryPort: {
+        requestRuntimeDiagnosis: () => {
+          throw new Error('not used');
+        },
+        restartCitizenRuntime: () => {
+          throw new Error('not used');
+        },
+        stopExecution: (input) => ({
+          operation: 'stop_execution',
+          status: 'accepted',
+          task_id: input.taskId,
+          agent_ref: input.adapter,
+          execution_id: input.executionId,
+          summary: 'stop signal sent',
+          detail: null,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'Craftsman stop test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    service.createSubtasks('OC-STOP-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-stop',
+          title: 'stop me',
+          assignee: 'opus',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'interactive',
+            interaction_expectation: 'needs_input',
+            prompt: 'wait',
+          },
+        },
+      ],
+    });
+
+    const result = service.stopCraftsmanExecution('exec-stop-1', {
+      caller_id: 'opus',
+      reason: 'operator stop',
+    });
+
+    expect(result).toMatchObject({
+      operation: 'stop_execution',
+      status: 'accepted',
+      execution_id: 'exec-stop-1',
+    });
+    const flow = db.prepare("SELECT event FROM flow_log WHERE task_id = 'OC-STOP-1' ORDER BY id DESC LIMIT 1").get() as { event: string };
+    expect(flow.event).toBe('craftsman_stop_requested');
+  });
+
+  it('rejects stop requests for terminal craftsman executions', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-stop-terminal-1',
+      adapters: {
+        claude: new StubCraftsmanAdapter('claude'),
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STOP-TERM-1',
+      craftsmanDispatcher: dispatcher,
+      runtimeRecoveryPort: {
+        requestRuntimeDiagnosis: () => {
+          throw new Error('not used');
+        },
+        restartCitizenRuntime: () => {
+          throw new Error('not used');
+        },
+        stopExecution: () => {
+          throw new Error('not used');
+        },
+      },
+    });
+
+    service.createTask({
+      title: 'terminal stop test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    service.createSubtasks('OC-STOP-TERM-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-stop-terminal',
+          title: 'terminal stop',
+          assignee: 'opus',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'one_shot',
+            interaction_expectation: 'one_shot',
+            prompt: 'done',
+          },
+        },
+      ],
+    });
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-stop-terminal-1',
+      status: 'succeeded',
+      session_id: 'tmux:claude',
+      payload: null,
+      error: null,
+      finished_at: '2026-03-14T00:00:00.000Z',
+    });
+
+    expect(() =>
+      service.stopCraftsmanExecution('exec-stop-terminal-1', {
+        caller_id: 'opus',
+      }),
+    ).toThrow(/already terminal/);
+  });
+
   it('creates a task from template and exposes task status payloads', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -397,6 +777,44 @@ describe('task service', () => {
       event: 'stage_advanced',
       stage_id: 'develop',
     });
+  });
+
+  it('treats concurrent stage advancement as success instead of returning a stale gate failure', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-101B',
+    });
+    const tasks = new TaskRepository(db);
+
+    service.createTask({
+      title: '并发推进回读',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    db.prepare(
+      'INSERT INTO archon_reviews (task_id, stage_id, decision, reviewer_id) VALUES (?, ?, ?, ?)',
+    ).run('OC-101B', 'discuss', 'approved', 'lizeyu');
+
+    const originalCheckGate = (service as never as { stateMachine: { checkGate: typeof service['advanceTask'] } }).stateMachine.checkGate;
+    (service as never as { stateMachine: { checkGate: (...args: unknown[]) => boolean } }).stateMachine.checkGate = () => {
+      const current = tasks.getTask('OC-101B');
+      if (!current) {
+        throw new Error('task missing');
+      }
+      tasks.updateTask('OC-101B', current.version, { current_stage: 'develop' });
+      db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-101B', 'develop');
+      return false;
+    };
+
+    const advanced = service.advanceTask('OC-101B', { callerId: 'archon' });
+    (service as never as { stateMachine: { checkGate: typeof originalCheckGate } }).stateMachine.checkGate = originalCheckGate;
+
+    expect(advanced.current_stage).toBe('develop');
   });
 
   it('uses allowAgents canAdvance config instead of team membership for command advances', () => {
@@ -2150,7 +2568,7 @@ describe('task service', () => {
       now: new Date('2026-03-13T01:00:00.000Z'),
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const probeMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'thread_probe_controller');
+    const probeMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'controller_pinged');
     expect(probeMessage?.body).toContain('冒烟引导:');
     expect(probeMessage?.body).toContain('controller -> roster -> inbox');
   });
@@ -2402,7 +2820,7 @@ describe('task service', () => {
     });
     expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
     expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
-      kind: 'thread_probe_controller',
+      kind: 'controller_pinged',
       participant_refs: ['opus'],
     });
 
@@ -2414,7 +2832,7 @@ describe('task service', () => {
     });
     expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 1, inbox_items: 0 });
     expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
-      kind: 'thread_probe_roster',
+      kind: 'roster_pinged',
       participant_refs: ['opus', 'sonnet', 'glm5'],
     });
 
@@ -2428,7 +2846,7 @@ describe('task service', () => {
     const inboxRows = db.prepare('SELECT text, source FROM inbox_items ORDER BY id DESC').all() as Array<{ text: string; source: string }>;
     expect(inboxRows[0]).toMatchObject({
       text: 'Task OC-PROBE-1 appears stuck',
-      source: 'thread_probe',
+      source: 'inbox_escalated',
     });
   });
 
@@ -3362,6 +3780,88 @@ describe('task service', () => {
     })).not.toThrow();
   });
 
+  it('includes warning-level host pressure and active execution attribution in governance snapshot', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GOV-SNAPSHOT-1',
+      craftsmanGovernance: {
+        hostMemoryWarningUtilizationLimit: 0.75,
+        hostMemoryUtilizationLimit: 0.95,
+      },
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-14T01:00:00.000Z',
+          cpu_count: 8,
+          load_1m: 2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 80,
+          memory_utilization: 0.8,
+          swap_total_bytes: 100,
+          swap_used_bytes: 10,
+          swap_utilization: 0.1,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'governance snapshot warnings',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'develop',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-gov-1',
+      task_id: 'OC-GOV-SNAPSHOT-1',
+      stage_id: 'develop',
+      title: 'running execution',
+      assignee: 'opus',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      craftsman_workdir: '/tmp/agora',
+      dispatch_status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-gov-1',
+      task_id: 'OC-GOV-SNAPSHOT-1',
+      subtask_id: 'sub-gov-1',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'tmux:claude',
+      status: 'running',
+      started_at: '2026-03-14T01:00:00.000Z',
+    });
+
+    const snapshot = service.getCraftsmanGovernanceSnapshot();
+
+    expect(snapshot.host_pressure_status).toBe('warning');
+    expect(snapshot.warnings).toContain('Host memory utilization warning: 0.80');
+    expect(snapshot.active_execution_details).toEqual([
+      expect.objectContaining({
+        execution_id: 'exec-gov-1',
+        assignee: 'opus',
+        adapter: 'claude',
+        workdir: '/tmp/agora',
+      }),
+    ]);
+  });
+
   it('blocks macOS dispatch when memory pressure exceeds the configured limit', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -3783,6 +4283,61 @@ describe('task service', () => {
     const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
     const runningMessage = broadcasts.find((message) => message.kind === 'craftsman_running');
     expect(runningMessage?.body).toContain('Status: running');
+  });
+
+  it('returns execution-scoped tmux tail when a tail port is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TAIL-1',
+      craftsmanExecutionTailPort: {
+        tail: (execution, lines) => ({
+          execution_id: execution.executionId,
+          available: true,
+          output: `tail:${execution.adapter}:${lines}`,
+          source: 'tmux',
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Execution tail route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'tail-subtask-1',
+      task_id: 'OC-TAIL-1',
+      stage_id: 'develop',
+      title: 'stream output',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'tmux:agora-craftsmen:claude',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-tail-1',
+      task_id: 'OC-TAIL-1',
+      subtask_id: 'tail-subtask-1',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'tmux:agora-craftsmen:claude',
+      status: 'running',
+      started_at: '2026-03-14T12:00:00.000Z',
+    });
+
+    expect(service.getCraftsmanExecutionTail('exec-tail-1', 50)).toEqual({
+      execution_id: 'exec-tail-1',
+      available: true,
+      output: 'tail:claude:50',
+      source: 'tmux',
+    });
   });
 
   it('allows execution-scoped input for running continuous tmux executions', async () => {
