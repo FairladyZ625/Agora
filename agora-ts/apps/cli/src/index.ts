@@ -60,6 +60,7 @@ export interface CliDependencies {
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
   startCommandCwd?: string;
+  startCommandFallbackRoot?: string;
   configPath?: string;
   dbPath?: string;
   stdout?: Writable;
@@ -1849,6 +1850,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action(async () => {
       await runStartCommand({
         cwd: deps.startCommandCwd ?? process.cwd(),
+        ...(deps.startCommandFallbackRoot ? { fallbackRoot: deps.startCommandFallbackRoot } : {}),
         ...(deps.startCommandRunner ? { runner: deps.startCommandRunner } : {}),
       });
     });

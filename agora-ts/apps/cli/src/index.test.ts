@@ -11,7 +11,7 @@ import type { DashboardSessionClient } from './dashboard-session-client.js';
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
 const rolePackDir = resolve(process.cwd(), 'role-packs', 'agora-default');
-const agoraProjectRoot = resolve(import.meta.dirname, '../../..');
+const agoraProjectRoot = resolve(import.meta.dirname, '../../../../');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-'));
@@ -984,6 +984,7 @@ describe('agora-ts cli', () => {
       } as unknown as TaskConversationService,
       startCommandRunner,
       startCommandCwd: agoraProjectRoot,
+      startCommandFallbackRoot: agoraProjectRoot,
       stdout,
       stderr,
     }).exitOverride();
