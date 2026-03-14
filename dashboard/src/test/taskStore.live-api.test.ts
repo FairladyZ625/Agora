@@ -256,6 +256,7 @@ describe('task store live API mode', () => {
     expect(api.getCraftsmanExecutionTail).toHaveBeenCalledWith('exec-1', 66);
     expect(state.executionTailById['exec-1']).toEqual({
       available: true,
+      fetchedAt: expect.any(String),
       output: 'tail:exec-1',
       source: 'tmux',
     });
