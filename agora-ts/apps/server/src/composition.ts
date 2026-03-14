@@ -39,7 +39,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, hasInstalledBrainPack, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -138,7 +138,9 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
     ? resolvePath(explicitRoot)
     : resolvePath(agoraDataDirPath(), 'agora-ai-brain');
   const bundledBrainPackDir = resolvePath(projectRoot, 'agora-ai-brain');
-  syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  if (!hasInstalledBrainPack(runtimeBrainPackDir)) {
+    syncBundledBrainPackContents(bundledBrainPackDir, runtimeBrainPackDir);
+  }
   mkdirSync(resolvePath(runtimeBrainPackDir, 'tasks'), { recursive: true });
   return runtimeBrainPackDir;
 }
