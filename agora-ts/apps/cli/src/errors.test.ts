@@ -94,4 +94,26 @@ describe('cli errors', () => {
     expect(output).toContain('The execution id is unknown in the current database.');
     expect(output).toContain('agora craftsman history <taskId> <subtaskId>');
   });
+
+  it('renders localized zh-CN error copy when AGORA_LOCALE is zh-CN', () => {
+    const previous = process.env.AGORA_LOCALE;
+    process.env.AGORA_LOCALE = 'zh-CN';
+
+    try {
+      const output = renderCliError(
+        new Error("ENOENT: no such file or directory, open '/tmp/missing.json'"),
+        ['subtasks', 'create', 'OC-1', '--caller-id', 'opus', '--file', '/tmp/missing.json'],
+      );
+
+      expect(output).toContain('用法错误:');
+      expect(output).toContain('提示:');
+      expect(output).toContain('`--file` 指向的路径不存在或不可读');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.AGORA_LOCALE;
+      } else {
+        process.env.AGORA_LOCALE = previous;
+      }
+    }
+  });
 });
