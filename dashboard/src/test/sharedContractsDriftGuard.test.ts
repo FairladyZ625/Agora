@@ -33,6 +33,7 @@ describe('shared contracts drift guard', () => {
         description: null,
         type: 'quick',
         priority: 'normal',
+        locale: 'zh-CN',
         creator: 'archon',
         state: 'active',
         archive_status: null,
