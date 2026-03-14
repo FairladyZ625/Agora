@@ -89,7 +89,7 @@ export class TmuxRuntimeRecoveryPort implements RuntimeRecoveryPort {
     sessionId: string | null;
     reason?: string | null;
   }): RuntimeRecoveryActionDto {
-    if (!TMUX_AGENTS.has(input.adapter) || (input.sessionId && !input.sessionId.startsWith('tmux:'))) {
+    if (!TMUX_AGENTS.has(input.adapter) || !input.sessionId || !input.sessionId.startsWith('tmux:')) {
       return {
         operation: 'stop_execution',
         status: 'unsupported',
@@ -97,7 +97,9 @@ export class TmuxRuntimeRecoveryPort implements RuntimeRecoveryPort {
         agent_ref: input.adapter,
         execution_id: input.executionId,
         summary: `Execution ${input.executionId} cannot be stopped by the tmux recovery port.`,
-        detail: 'Only tmux-backed codex/claude/gemini executions are currently supported.',
+        detail: input.sessionId
+          ? 'Only tmux-backed codex/claude/gemini executions with a valid tmux session binding are currently supported.'
+          : 'The execution has no tmux session binding, so ownership cannot be verified safely.',
       };
     }
 
