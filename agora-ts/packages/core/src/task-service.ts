@@ -85,8 +85,11 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
 type CraftsmanGovernanceLimits = {
   maxConcurrentRunning: number | null;
   maxConcurrentPerAgent: number | null;
+  hostMemoryWarningUtilizationLimit: number | null;
   hostMemoryUtilizationLimit: number | null;
+  hostSwapWarningUtilizationLimit: number | null;
   hostSwapUtilizationLimit: number | null;
+  hostLoadPerCpuWarningLimit: number | null;
   hostLoadPerCpuLimit: number | null;
 };
 
@@ -118,8 +121,11 @@ export interface TaskServiceOptions {
   craftsmanGovernance?: {
     maxConcurrentRunning?: number | null;
     maxConcurrentPerAgent?: number | null;
+    hostMemoryWarningUtilizationLimit?: number | null;
     hostMemoryUtilizationLimit?: number | null;
+    hostSwapWarningUtilizationLimit?: number | null;
     hostSwapUtilizationLimit?: number | null;
+    hostLoadPerCpuWarningLimit?: number | null;
     hostLoadPerCpuLimit?: number | null;
   };
   escalationPolicy?: {
@@ -300,8 +306,11 @@ export class TaskService {
     this.craftsmanGovernance = {
       maxConcurrentRunning: options.craftsmanGovernance?.maxConcurrentRunning ?? null,
       maxConcurrentPerAgent: options.craftsmanGovernance?.maxConcurrentPerAgent ?? null,
+      hostMemoryWarningUtilizationLimit: options.craftsmanGovernance?.hostMemoryWarningUtilizationLimit ?? null,
       hostMemoryUtilizationLimit: options.craftsmanGovernance?.hostMemoryUtilizationLimit ?? null,
+      hostSwapWarningUtilizationLimit: options.craftsmanGovernance?.hostSwapWarningUtilizationLimit ?? null,
       hostSwapUtilizationLimit: options.craftsmanGovernance?.hostSwapUtilizationLimit ?? null,
+      hostLoadPerCpuWarningLimit: options.craftsmanGovernance?.hostLoadPerCpuWarningLimit ?? null,
       hostLoadPerCpuLimit: options.craftsmanGovernance?.hostLoadPerCpuLimit ?? null,
     };
     this.escalationPolicy = {
@@ -1095,17 +1104,36 @@ export class TaskService {
   }
 
   getCraftsmanGovernanceSnapshot() {
+    const hostSnapshot = this.hostResourcePort?.readSnapshot() ?? null;
     return {
       limits: {
         max_concurrent_running: this.craftsmanGovernance.maxConcurrentRunning,
         max_concurrent_per_agent: this.craftsmanGovernance.maxConcurrentPerAgent,
+        host_memory_warning_utilization_limit: this.craftsmanGovernance.hostMemoryWarningUtilizationLimit,
         host_memory_utilization_limit: this.craftsmanGovernance.hostMemoryUtilizationLimit,
+        host_swap_warning_utilization_limit: this.craftsmanGovernance.hostSwapWarningUtilizationLimit,
         host_swap_utilization_limit: this.craftsmanGovernance.hostSwapUtilizationLimit,
+        host_load_per_cpu_warning_limit: this.craftsmanGovernance.hostLoadPerCpuWarningLimit,
         host_load_per_cpu_limit: this.craftsmanGovernance.hostLoadPerCpuLimit,
       },
       active_executions: this.craftsmanExecutions.countActiveExecutions(),
       active_by_assignee: this.craftsmanExecutions.listActiveExecutionCountsByAssignee(),
-      host: this.hostResourcePort?.readSnapshot() ?? null,
+      active_execution_details: this.craftsmanExecutions.listActiveExecutions().map((execution) => {
+        const subtask = this.getSubtaskOrThrow(execution.task_id, execution.subtask_id);
+        return {
+          execution_id: execution.execution_id,
+          task_id: execution.task_id,
+          subtask_id: execution.subtask_id,
+          assignee: subtask.assignee,
+          adapter: execution.adapter,
+          status: execution.status,
+          session_id: execution.session_id,
+          workdir: subtask.craftsman_workdir,
+        };
+      }),
+      host_pressure_status: this.resolveHostPressureStatus(hostSnapshot),
+      warnings: this.buildHostGovernanceWarnings(hostSnapshot),
+      host: hostSnapshot,
     };
   }
 
@@ -2879,14 +2907,26 @@ export class TaskService {
   }
 
   private isHostHealthDegraded(snapshot: HostResourceSnapshotDto) {
+    return this.resolveHostPressureStatus(snapshot) !== 'healthy';
+  }
+
+  private resolveHostPressureStatus(snapshot: HostResourceSnapshotDto | null) {
+    if (!snapshot) {
+      return 'unavailable' as const;
+    }
     const memorySignal = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
       ? snapshot.memory_pressure
       : snapshot.memory_utilization;
     if (memorySignal != null && this.craftsmanGovernance.hostMemoryUtilizationLimit != null && memorySignal > this.craftsmanGovernance.hostMemoryUtilizationLimit) {
-      return true;
+      return 'hard_limit' as const;
     }
-    if (snapshot.swap_utilization != null && this.craftsmanGovernance.hostSwapUtilizationLimit != null && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapUtilizationLimit) {
-      return true;
+    if (
+      snapshot.platform !== 'darwin'
+      && snapshot.swap_utilization != null
+      && this.craftsmanGovernance.hostSwapUtilizationLimit != null
+      && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapUtilizationLimit
+    ) {
+      return 'hard_limit' as const;
     }
     const loadPerCpu = snapshot.load_1m != null && snapshot.cpu_count != null && snapshot.cpu_count > 0
       ? snapshot.load_1m / snapshot.cpu_count
@@ -2896,9 +2936,70 @@ export class TaskService {
       && this.craftsmanGovernance.hostLoadPerCpuLimit != null
       && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuLimit
     ) {
-      return true;
+      return 'hard_limit' as const;
     }
-    return false;
+    if (
+      memorySignal != null
+      && this.craftsmanGovernance.hostMemoryWarningUtilizationLimit != null
+      && memorySignal > this.craftsmanGovernance.hostMemoryWarningUtilizationLimit
+    ) {
+      return 'warning' as const;
+    }
+    if (
+      snapshot.platform !== 'darwin'
+      && snapshot.swap_utilization != null
+      && this.craftsmanGovernance.hostSwapWarningUtilizationLimit != null
+      && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapWarningUtilizationLimit
+    ) {
+      return 'warning' as const;
+    }
+    if (
+      loadPerCpu != null
+      && this.craftsmanGovernance.hostLoadPerCpuWarningLimit != null
+      && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuWarningLimit
+    ) {
+      return 'warning' as const;
+    }
+    return 'healthy' as const;
+  }
+
+  private buildHostGovernanceWarnings(snapshot: HostResourceSnapshotDto | null) {
+    if (!snapshot) {
+      return [];
+    }
+    const warnings: string[] = [];
+    const memorySignal = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
+      ? snapshot.memory_pressure
+      : snapshot.memory_utilization;
+    if (
+      memorySignal != null
+      && this.craftsmanGovernance.hostMemoryWarningUtilizationLimit != null
+      && memorySignal > this.craftsmanGovernance.hostMemoryWarningUtilizationLimit
+    ) {
+      const label = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
+        ? 'memory pressure'
+        : 'memory utilization';
+      warnings.push(`Host ${label} warning: ${memorySignal.toFixed(2)}`);
+    }
+    if (
+      snapshot.platform !== 'darwin'
+      && snapshot.swap_utilization != null
+      && this.craftsmanGovernance.hostSwapWarningUtilizationLimit != null
+      && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapWarningUtilizationLimit
+    ) {
+      warnings.push(`Host swap warning: ${snapshot.swap_utilization.toFixed(2)}`);
+    }
+    const loadPerCpu = snapshot.load_1m != null && snapshot.cpu_count != null && snapshot.cpu_count > 0
+      ? snapshot.load_1m / snapshot.cpu_count
+      : null;
+    if (
+      loadPerCpu != null
+      && this.craftsmanGovernance.hostLoadPerCpuWarningLimit != null
+      && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuWarningLimit
+    ) {
+      warnings.push(`Host load-per-cpu warning: ${loadPerCpu.toFixed(2)}`);
+    }
+    return warnings;
   }
 
   private getSubtaskOrThrow(taskId: string, subtaskId: string) {

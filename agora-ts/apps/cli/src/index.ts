@@ -1378,8 +1378,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
       );
       writeLine(
         stdout,
-        `host limits: memory=${snapshot.limits.host_memory_utilization_limit ?? '-'} swap=${snapshot.limits.host_swap_utilization_limit ?? '-'} load_per_cpu=${snapshot.limits.host_load_per_cpu_limit ?? '-'}`,
+        `host limits: memory_warn=${snapshot.limits.host_memory_warning_utilization_limit ?? '-'} memory_hard=${snapshot.limits.host_memory_utilization_limit ?? '-'} swap_warn=${snapshot.limits.host_swap_warning_utilization_limit ?? '-'} swap_hard=${snapshot.limits.host_swap_utilization_limit ?? '-'} load_warn=${snapshot.limits.host_load_per_cpu_warning_limit ?? '-'} load_hard=${snapshot.limits.host_load_per_cpu_limit ?? '-'}`,
       );
+      writeLine(stdout, `host pressure status: ${snapshot.host_pressure_status}`);
       if (snapshot.host) {
         const memoryLabel = snapshot.host.platform === 'darwin' && snapshot.host.memory_pressure != null
           ? `pressure=${snapshot.host.memory_pressure}`
@@ -1391,12 +1392,22 @@ export function createCliProgram(deps: CliDependencies = {}) {
       } else {
         writeLine(stdout, 'host: unavailable');
       }
+      for (const warning of snapshot.warnings) {
+        writeLine(stdout, `warning: ${warning}`);
+      }
       if (snapshot.active_by_assignee.length === 0) {
         writeLine(stdout, 'active by assignee: none');
+      } else {
+        for (const item of snapshot.active_by_assignee) {
+          writeLine(stdout, `${item.assignee}\t${item.count}`);
+        }
+      }
+      if (snapshot.active_execution_details.length === 0) {
+        writeLine(stdout, 'active execution details: none');
         return;
       }
-      for (const item of snapshot.active_by_assignee) {
-        writeLine(stdout, `${item.assignee}\t${item.count}`);
+      for (const detail of snapshot.active_execution_details) {
+        writeLine(stdout, `${detail.execution_id}\t${detail.assignee}\t${detail.adapter}\t${detail.status}\t${detail.session_id ?? '-'}\t${detail.workdir ?? '-'}`);
       }
     });
 
