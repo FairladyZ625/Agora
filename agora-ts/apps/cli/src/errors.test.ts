@@ -37,5 +37,61 @@ describe('cli errors', () => {
     expect(output).toContain('Usage Error: Invalid JSON for --team-json: bad payload');
     expect(output).toContain('Hint: Try `agora create --help`.');
   });
-});
 
+  it('renders corrective subtask create guidance for execution_target errors', () => {
+    const output = renderCliError(
+      new Error("Smoke task OC-1 is in a craftsman-capable stage 'build', but subtask 'smoke' declares execution_target='manual'."),
+      ['subtasks', 'create', 'OC-1'],
+    );
+
+    expect(output).toContain('Usage Error:');
+    expect(output).toContain('Every subtask must declare `execution_target` explicitly');
+    expect(output).toContain('"execution_target": "craftsman"');
+    expect(output).toContain('agora subtasks create --help');
+  });
+
+  it('renders corrective craftsman input guidance for invalid execution state', () => {
+    const output = renderCliError(
+      new Error('Craftsman execution exec-123 is not waiting for input or running as an interactive session (status=succeeded)'),
+      ['craftsman', 'input-text', 'exec-123', 'Continue'],
+    );
+
+    expect(output).toContain('State Error:');
+    expect(output).toContain('agora craftsman input-text exec-123 "Continue"');
+    expect(output).toContain('agora craftsman probe exec-123');
+    expect(output).toContain('agora craftsman status <executionId>');
+  });
+
+  it('renders adapter-specific integration guidance', () => {
+    const output = renderCliError(
+      new Error("Craftsman adapter 'claude' not configured"),
+      ['craftsman', 'dispatch'],
+    );
+
+    expect(output).toContain('Integration Error:');
+    expect(output).toContain('Supported craftsman adapters');
+    expect(output).toContain('claude_code');
+  });
+
+  it('renders corrective file guidance for missing --file paths', () => {
+    const output = renderCliError(
+      new Error("ENOENT: no such file or directory, open '/tmp/missing.json'"),
+      ['subtasks', 'create', 'OC-1', '--caller-id', 'opus', '--file', '/tmp/missing.json'],
+    );
+
+    expect(output).toContain('Usage Error:');
+    expect(output).toContain('The `--file` path does not exist or is unreadable.');
+    expect(output).toContain('top-level `subtasks` array');
+  });
+
+  it('renders corrective guidance when craftsman execution ids are missing', () => {
+    const output = renderCliError(
+      new Error('Craftsman execution exec-123 not found'),
+      ['craftsman', 'input-text', 'exec-123', 'Continue'],
+    );
+
+    expect(output).toContain('State Error:');
+    expect(output).toContain('The execution id is unknown in the current database.');
+    expect(output).toContain('agora craftsman history <taskId> <subtaskId>');
+  });
+});
