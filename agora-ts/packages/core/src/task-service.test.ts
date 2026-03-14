@@ -779,6 +779,44 @@ describe('task service', () => {
     });
   });
 
+  it('treats concurrent stage advancement as success instead of returning a stale gate failure', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-101B',
+    });
+    const tasks = new TaskRepository(db);
+
+    service.createTask({
+      title: '并发推进回读',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    db.prepare(
+      'INSERT INTO archon_reviews (task_id, stage_id, decision, reviewer_id) VALUES (?, ?, ?, ?)',
+    ).run('OC-101B', 'discuss', 'approved', 'lizeyu');
+
+    const originalCheckGate = (service as never as { stateMachine: { checkGate: typeof service['advanceTask'] } }).stateMachine.checkGate;
+    (service as never as { stateMachine: { checkGate: (...args: unknown[]) => boolean } }).stateMachine.checkGate = () => {
+      const current = tasks.getTask('OC-101B');
+      if (!current) {
+        throw new Error('task missing');
+      }
+      tasks.updateTask('OC-101B', current.version, { current_stage: 'develop' });
+      db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-101B', 'develop');
+      return false;
+    };
+
+    const advanced = service.advanceTask('OC-101B', { callerId: 'archon' });
+    (service as never as { stateMachine: { checkGate: typeof originalCheckGate } }).stateMachine.checkGate = originalCheckGate;
+
+    expect(advanced.current_stage).toBe('develop');
+  });
+
   it('uses allowAgents canAdvance config instead of team membership for command advances', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
