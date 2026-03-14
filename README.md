@@ -252,7 +252,7 @@ If Agora saves you time or helps your team ship better AI workflows, you can sup
 <tr>
 <td align="center" width="50%">
 <strong>WeChat Pay</strong><br/><br/>
-<img src="./assets/sponsor/wechat-pay.png" alt="WeChat Pay QR for FairladyZ" width="280"/>
+<img src="./assets/sponsor/wechat-pay.jpg" alt="WeChat Pay QR for FairladyZ" width="280"/>
 </td>
 <td align="center" width="50%">
 <strong>Alipay</strong><br/><br/>

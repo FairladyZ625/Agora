@@ -268,7 +268,7 @@ extensions/                  插件 adapter（OpenClaw 等）
 <tr>
 <td align="center" width="50%">
 <strong>微信支付</strong><br/><br/>
-<img src="./assets/sponsor/wechat-pay.png" alt="FairladyZ 微信赞赏码" width="280"/>
+<img src="./assets/sponsor/wechat-pay.jpg" alt="FairladyZ 微信赞赏码" width="280"/>
 </td>
 <td align="center" width="50%">
 <strong>支付宝</strong><br/><br/>
