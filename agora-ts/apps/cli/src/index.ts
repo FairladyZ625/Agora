@@ -35,6 +35,7 @@ import {
 } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
+import { classifyCliError, renderCliError } from './errors.js';
 import type { HumanAccountService } from '@agora-ts/core';
 
 type Writable = {
@@ -1706,7 +1707,13 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
 export async function runCli(argv: string[]) {
   const program = createCliProgram();
-  await program.parseAsync(argv, { from: 'user' });
+  try {
+    await program.parseAsync(argv, { from: 'user' });
+  } catch (error: unknown) {
+    const classified = classifyCliError(error, argv);
+    process.stderr.write(`${renderCliError(classified, argv)}\n`);
+    process.exitCode = classified.exitCode;
+  }
 }
 
 export function isCliEntrypoint(moduleUrl: string, argvPath?: string): boolean {
@@ -1725,8 +1732,8 @@ const isEntrypoint = isCliEntrypoint(import.meta.url, process.argv[1]);
 
 if (isEntrypoint) {
   runCli(process.argv.slice(2)).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
+    const classified = classifyCliError(error, process.argv.slice(2));
+    process.stderr.write(`${renderCliError(classified, process.argv.slice(2))}\n`);
+    process.exitCode = classified.exitCode;
   });
 }
