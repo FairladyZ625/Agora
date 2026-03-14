@@ -13,6 +13,17 @@
     },
     "archonUsers": ["lizeyu"]
   },
+  "im": {
+    "provider": "discord",
+    "discord": {
+      "bot_token": "YOUR_DISCORD_BOT_TOKEN",
+      "default_channel_id": "YOUR_DEFAULT_DISCORD_CHANNEL_ID",
+      "notify_on_task_create": true,
+      "gateway_presence_enabled": true,
+      "gateway_presence_status": "online",
+      "gateway_presence_activity": "Agora"
+    }
+  },
   "craftsmen": {
     "max_concurrent_running": 8,
     "max_concurrent_per_agent": 3,

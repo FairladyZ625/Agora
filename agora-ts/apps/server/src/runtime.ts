@@ -121,6 +121,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     ...(options.isCraftsmanSessionAlive ? { isCraftsmanSessionAlive: options.isCraftsmanSessionAlive } : {}),
   }, options.factories);
   const { taskService } = composition;
+  composition.discordPresenceService?.start();
   if (config.scheduler.startup_recovery_on_boot) {
     taskService.startupRecoveryScan();
   }
@@ -150,5 +151,6 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     observability: config.observability,
     dashboardDir: resolveDashboardDir(),
     observationScheduler,
+    discordPresenceService: composition.discordPresenceService,
   };
 }

@@ -66,6 +66,9 @@ export const discordImConfigSchema = z.object({
   bot_token: z.string().optional(),
   default_channel_id: z.string().optional(),
   notify_on_task_create: z.boolean().default(true),
+  gateway_presence_enabled: z.boolean().default(true),
+  gateway_presence_status: z.enum(['online', 'idle', 'dnd', 'invisible']).default('online'),
+  gateway_presence_activity: z.string().min(1).default('Agora'),
 });
 export type DiscordImConfig = z.infer<typeof discordImConfigSchema>;
 

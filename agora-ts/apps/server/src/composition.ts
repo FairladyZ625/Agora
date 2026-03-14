@@ -37,7 +37,7 @@ import {
   type PresenceSource,
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
-import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import { agoraDataDirPath, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
@@ -70,6 +70,7 @@ export interface ServerComposition {
   humanAccountService: HumanAccountService;
   notificationDispatcher: NotificationDispatcher;
   taskConversationService: TaskConversationService;
+  discordPresenceService?: DiscordGatewayPresenceService;
 }
 
 export interface ServerCompositionFactories {
@@ -126,6 +127,7 @@ export interface ServerCompositionFactories {
   createHumanAccountService: (context: ServerCompositionContext) => HumanAccountService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
   createTaskConversationService: (context: ServerCompositionContext) => TaskConversationService;
+  createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
 }
 
 function ensureRuntimeBrainPackRoot(projectRoot: string): string {
@@ -282,6 +284,23 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createHumanAccountService: (context) => new HumanAccountService(context.db),
     createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
     createTaskConversationService: (context) => new TaskConversationService(context.db),
+    createDiscordPresenceService: (context) => {
+      const { im } = context.config;
+      if (im.provider !== 'discord' || !im.discord?.bot_token) {
+        return undefined;
+      }
+      return new DiscordGatewayPresenceService({
+        botToken: im.discord.bot_token,
+        enabled: im.discord.gateway_presence_enabled,
+        status: im.discord.gateway_presence_status,
+        activityName: im.discord.gateway_presence_activity,
+        logger: {
+          info: (message) => console.info(message),
+          warn: (message) => console.warn(message),
+          error: (message, error) => console.error(message, error),
+        },
+      });
+    },
   };
 }
 
@@ -338,6 +357,7 @@ export function buildServerComposition(
   const inboxService = factories.createInboxService(context, { taskService });
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
   const taskConversationService = factories.createTaskConversationService(context);
+  const discordPresenceService = factories.createDiscordPresenceService(context);
 
   return {
     taskService,
@@ -351,6 +371,7 @@ export function buildServerComposition(
     humanAccountService,
     notificationDispatcher,
     taskConversationService,
+    ...(discordPresenceService ? { discordPresenceService } : {}),
   };
 }
 
