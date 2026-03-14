@@ -9,8 +9,10 @@ import type {
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
+  HostResourceSnapshotDto,
   PromoteTodoRequestDto,
   TaskBlueprintDto,
+  UnifiedHealthSnapshotDto,
   TaskLocaleDto,
   TaskStatusDto,
   WorkflowDto,
@@ -51,6 +53,7 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
+import type { LiveSessionStore } from './live-session-store.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -99,6 +102,7 @@ export interface TaskServiceOptions {
   craftsmanInputPort?: CraftsmanInputPort;
   craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;
   hostResourcePort?: HostResourcePort;
+  liveSessionStore?: LiveSessionStore;
   craftsmanGovernance?: {
     maxConcurrentRunning?: number | null;
     maxConcurrentPerAgent?: number | null;
@@ -229,6 +233,7 @@ export class TaskService {
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
   private readonly hostResourcePort: HostResourcePort | undefined;
+  private readonly liveSessionStore: LiveSessionStore | undefined;
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
 
   constructor(
@@ -271,6 +276,7 @@ export class TaskService {
     this.agentRuntimePort = options.agentRuntimePort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
     this.hostResourcePort = options.hostResourcePort;
+    this.liveSessionStore = options.liveSessionStore;
     this.craftsmanGovernance = {
       maxConcurrentRunning: options.craftsmanGovernance?.maxConcurrentRunning ?? null,
       maxConcurrentPerAgent: options.craftsmanGovernance?.maxConcurrentPerAgent ?? null,
@@ -1075,6 +1081,103 @@ export class TaskService {
       active_executions: this.craftsmanExecutions.countActiveExecutions(),
       active_by_assignee: this.craftsmanExecutions.listActiveExecutionCountsByAssignee(),
       host: this.hostResourcePort?.readSnapshot() ?? null,
+    };
+  }
+
+  getHealthSnapshot(): UnifiedHealthSnapshotDto {
+    const generatedAt = new Date().toISOString();
+    const tasks = this.taskRepository.listTasks();
+    const taskCounts = {
+      total_tasks: tasks.length,
+      active_tasks: tasks.filter((task) => task.state === 'active').length,
+      paused_tasks: tasks.filter((task) => task.state === 'paused').length,
+      blocked_tasks: tasks.filter((task) => task.state === 'blocked').length,
+      done_tasks: tasks.filter((task) => task.state === 'done').length,
+    };
+
+    const activeBindings = tasks
+      .map((task) => this.taskContextBindingRepository.getActiveByTask(task.id))
+      .filter((binding): binding is NonNullable<typeof binding> => binding !== null);
+    const bindingsByProvider = Array.from(
+      activeBindings.reduce((map, binding) => {
+        map.set(binding.im_provider, (map.get(binding.im_provider) ?? 0) + 1);
+        return map;
+      }, new Map<string, number>()),
+    ).map(([label, count]) => ({ label, count })).sort((a, b) => a.label.localeCompare(b.label));
+
+    const sessions = this.liveSessionStore?.listAll() ?? [];
+    const runtimeAgents = Array.from(
+      sessions.reduce((map, session) => {
+        const current = map.get(session.agent_id) ?? {
+          agent_id: session.agent_id,
+          status: session.status,
+          session_count: 0,
+          last_event_at: null as string | null,
+        };
+        current.session_count += 1;
+        current.status = session.status;
+        current.last_event_at = current.last_event_at && current.last_event_at > session.last_event_at
+          ? current.last_event_at
+          : session.last_event_at;
+        map.set(session.agent_id, current);
+        return map;
+      }, new Map<string, { agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>()),
+    ).map(([, agent]) => agent).sort((a, b) => a.agent_id.localeCompare(b.agent_id));
+
+    const activeExecutions = this.craftsmanExecutions.listActiveExecutions();
+    const governance = this.getCraftsmanGovernanceSnapshot();
+    const hostSnapshot = governance.host;
+    const hostStatus = !hostSnapshot
+      ? 'unavailable'
+      : this.isHostHealthDegraded(hostSnapshot)
+        ? 'degraded'
+        : 'healthy';
+
+    return {
+      generated_at: generatedAt,
+      tasks: {
+        status: taskCounts.blocked_tasks > 0 ? 'degraded' : 'healthy',
+        ...taskCounts,
+      },
+      im: {
+        status: activeBindings.length > 0 ? 'healthy' : 'unavailable',
+        active_bindings: activeBindings.length,
+        active_threads: activeBindings.filter((binding) => binding.thread_ref !== null).length,
+        bindings_by_provider: bindingsByProvider,
+      },
+      runtime: {
+        status: !this.liveSessionStore
+          ? 'unavailable'
+          : sessions.some((session) => session.status === 'closed')
+            ? 'degraded'
+            : 'healthy',
+        available: !!this.liveSessionStore,
+        stale_after_ms: this.liveSessionStore?.getStaleAfterMs() ?? null,
+        active_sessions: sessions.filter((session) => session.status === 'active').length,
+        idle_sessions: sessions.filter((session) => session.status === 'idle').length,
+        closed_sessions: sessions.filter((session) => session.status === 'closed').length,
+        agents: runtimeAgents,
+      },
+      craftsman: {
+        status: activeExecutions.length === 0
+          ? 'healthy'
+          : activeExecutions.some((execution) => execution.status === 'needs_input' || execution.status === 'awaiting_choice')
+            ? 'degraded'
+            : 'healthy',
+        active_executions: activeExecutions.length,
+        queued_executions: activeExecutions.filter((execution) => execution.status === 'queued').length,
+        running_executions: activeExecutions.filter((execution) => execution.status === 'running').length,
+        waiting_input_executions: activeExecutions.filter((execution) => execution.status === 'needs_input').length,
+        awaiting_choice_executions: activeExecutions.filter((execution) => execution.status === 'awaiting_choice').length,
+        active_by_assignee: governance.active_by_assignee.map((item) => ({
+          label: item.assignee,
+          count: item.count,
+        })),
+      },
+      host: {
+        status: hostStatus,
+        snapshot: hostSnapshot,
+      },
     };
   }
 
@@ -2592,6 +2695,29 @@ export class TaskService {
       || dispatchStatus === 'running'
       || dispatchStatus === 'needs_input'
       || dispatchStatus === 'awaiting_choice';
+  }
+
+  private isHostHealthDegraded(snapshot: HostResourceSnapshotDto) {
+    const memorySignal = snapshot.platform === 'darwin' && snapshot.memory_pressure != null
+      ? snapshot.memory_pressure
+      : snapshot.memory_utilization;
+    if (memorySignal != null && this.craftsmanGovernance.hostMemoryUtilizationLimit != null && memorySignal > this.craftsmanGovernance.hostMemoryUtilizationLimit) {
+      return true;
+    }
+    if (snapshot.swap_utilization != null && this.craftsmanGovernance.hostSwapUtilizationLimit != null && snapshot.swap_utilization > this.craftsmanGovernance.hostSwapUtilizationLimit) {
+      return true;
+    }
+    const loadPerCpu = snapshot.load_1m != null && snapshot.cpu_count != null && snapshot.cpu_count > 0
+      ? snapshot.load_1m / snapshot.cpu_count
+      : null;
+    if (
+      loadPerCpu != null
+      && this.craftsmanGovernance.hostLoadPerCpuLimit != null
+      && loadPerCpu > this.craftsmanGovernance.hostLoadPerCpuLimit
+    ) {
+      return true;
+    }
+    return false;
   }
 
   private getSubtaskOrThrow(taskId: string, subtaskId: string) {

@@ -6,6 +6,7 @@ import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepo
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
+import { LiveSessionStore } from './live-session-store.js';
 import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
@@ -49,6 +50,136 @@ afterEach(() => {
 });
 
 describe('task service', () => {
+  it('builds a unified health snapshot across tasks, contexts, runtime sessions, craftsman, and host', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HEALTH-1',
+      imProvisioningPort: new StubIMProvisioningPort({
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'thread-1',
+      }),
+      craftsmanDispatcher: new CraftsmanDispatcher(db, {
+        adapters: {
+          claude: new StubCraftsmanAdapter('claude'),
+        },
+      }),
+      liveSessionStore,
+      hostResourcePort: {
+        readSnapshot: () => ({
+          observed_at: '2026-03-14T04:30:00.000Z',
+          platform: 'darwin',
+          cpu_count: 8,
+          load_1m: 1.2,
+          memory_total_bytes: 100,
+          memory_used_bytes: 50,
+          memory_utilization: 0.5,
+          memory_pressure: 0.4,
+          swap_total_bytes: 100,
+          swap_used_bytes: 10,
+          swap_utilization: 0.1,
+        }),
+      },
+    });
+
+    service.createTask({
+      title: 'Health snapshot smoke',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'build',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['execute', 'dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+    });
+
+    new TaskContextBindingRepository(db).insert({
+      id: 'binding-health-1',
+      task_id: 'OC-HEALTH-1',
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent',
+      thread_ref: 'thread-1',
+      status: 'active',
+    });
+
+    service.createSubtasks('OC-HEALTH-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-health',
+          title: 'Health execution',
+          assignee: 'opus',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'interactive',
+            interaction_expectation: 'needs_input',
+            prompt: 'wait for input',
+          },
+        },
+      ],
+    });
+
+    liveSessionStore.upsert({
+      source: 'openclaw',
+      agent_id: 'opus',
+      session_key: 'sess-opus-1',
+      channel: 'discord',
+      status: 'active',
+      last_event: 'provider_ready',
+      last_event_at: new Date().toISOString(),
+      metadata: {},
+    });
+
+    const snapshot = service.getHealthSnapshot();
+
+    expect(snapshot.tasks).toMatchObject({
+      total_tasks: 1,
+      active_tasks: 1,
+      status: 'healthy',
+    });
+    expect(snapshot.im).toMatchObject({
+      active_bindings: 1,
+      active_threads: 1,
+      status: 'healthy',
+    });
+    expect(snapshot.runtime).toMatchObject({
+      available: true,
+      active_sessions: 1,
+      stale_after_ms: 1234,
+      status: 'healthy',
+    });
+    expect(snapshot.craftsman).toMatchObject({
+      active_executions: 1,
+      waiting_input_executions: 0,
+      status: 'healthy',
+    });
+    expect(snapshot.host).toMatchObject({
+      status: 'healthy',
+      snapshot: {
+        platform: 'darwin',
+        memory_pressure: 0.4,
+      },
+    });
+  });
+
   it('creates a task from template and exposes task status payloads', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

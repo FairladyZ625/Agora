@@ -324,11 +324,37 @@ export function createCliProgram(deps: CliDependencies = {}) {
     writeErr: (text) => stderr.write(text),
   });
 
-  program
+  const health = program
     .command('health')
-    .description('Print the bootstrap health marker')
+    .description('health commands')
     .action(() => {
       writeLine(stdout, 'agora-ts bootstrap ok');
+    });
+
+  health
+    .command('snapshot')
+    .description('print unified health snapshot')
+    .option('--json', 'emit JSON')
+    .action((options: { json?: boolean }) => {
+      const snapshot = taskService.getHealthSnapshot();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      writeLine(stdout, `generated_at: ${snapshot.generated_at}`);
+      writeLine(stdout, `tasks: total=${snapshot.tasks.total_tasks} active=${snapshot.tasks.active_tasks} blocked=${snapshot.tasks.blocked_tasks} paused=${snapshot.tasks.paused_tasks} done=${snapshot.tasks.done_tasks} status=${snapshot.tasks.status}`);
+      writeLine(stdout, `im: bindings=${snapshot.im.active_bindings} threads=${snapshot.im.active_threads} status=${snapshot.im.status}`);
+      writeLine(stdout, `runtime: available=${snapshot.runtime.available} active=${snapshot.runtime.active_sessions} idle=${snapshot.runtime.idle_sessions} closed=${snapshot.runtime.closed_sessions} status=${snapshot.runtime.status}`);
+      writeLine(stdout, `craftsman: active=${snapshot.craftsman.active_executions} running=${snapshot.craftsman.running_executions} waiting_input=${snapshot.craftsman.waiting_input_executions} awaiting_choice=${snapshot.craftsman.awaiting_choice_executions} status=${snapshot.craftsman.status}`);
+      if (snapshot.host.snapshot) {
+        const host = snapshot.host.snapshot;
+        const memoryLabel = host.platform === 'darwin' && host.memory_pressure != null
+          ? `pressure=${host.memory_pressure}`
+          : `memory=${host.memory_utilization ?? '-'}`;
+        writeLine(stdout, `host: ${memoryLabel} swap=${host.swap_utilization ?? '-'} load_1m=${host.load_1m ?? '-'} status=${snapshot.host.status}`);
+      } else {
+        writeLine(stdout, `host: unavailable status=${snapshot.host.status}`);
+      }
     });
 
   program
