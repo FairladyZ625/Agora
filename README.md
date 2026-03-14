@@ -11,9 +11,9 @@
 <p>A democratic orchestration layer for multi-agent AI systems.<br/>
 Turn free-form agent deliberation into reliable, auditable production workflows.</p>
 
-[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/agora?style=flat-square&logo=github&color=yellow)](https://github.com/YOUR_USERNAME/agora/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/YOUR_USERNAME/agora?style=flat-square&logo=github)](https://github.com/YOUR_USERNAME/agora/network)
-[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/agora?style=flat-square)](https://github.com/YOUR_USERNAME/agora/issues)
+[![GitHub stars](https://img.shields.io/github/stars/FairladyZ625/Agora?style=flat-square&logo=github&color=yellow)](https://github.com/FairladyZ625/Agora/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/FairladyZ625/Agora?style=flat-square&logo=github)](https://github.com/FairladyZ625/Agora/network)
+[![GitHub issues](https://img.shields.io/github/issues/FairladyZ625/Agora?style=flat-square)](https://github.com/FairladyZ625/Agora/issues)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen?style=flat-square&logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -109,7 +109,7 @@ Core principle: the orchestration semantics live in `packages/core`. Every IM, r
 ### Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/agora.git
+git clone https://github.com/FairladyZ625/Agora.git
 cd agora
 cp .env.example .env
 cd agora-ts && npm install
@@ -239,35 +239,36 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Sponsors
 
-If Agora saves you time or helps your team ship better AI workflows, consider supporting the project.
+If Agora saves you time or helps your team ship better AI workflows, you can support the project here:
 
-<table>
-<tr>
-<td align="center">
-<a href="https://github.com/sponsors/YOUR_USERNAME">
-<img src="https://img.shields.io/badge/GitHub%20Sponsors-❤️-ea4aaa?style=for-the-badge&logo=github-sponsors" alt="GitHub Sponsors"/>
-</a>
-</td>
-<td align="center">
-<a href="https://www.buymeacoffee.com/YOUR_USERNAME">
-<img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"/>
-</a>
-</td>
-</tr>
-</table>
+- Project: [github.com/FairladyZ625/Agora](https://github.com/FairladyZ625/Agora)
+- Issues / collaboration: [github.com/FairladyZ625/Agora/issues](https://github.com/FairladyZ625/Agora/issues)
 
 <details>
 <summary>WeChat Pay / Alipay</summary>
 <br/>
-<p><em>QR codes coming soon — reach out via issues if you'd like to sponsor directly.</em></p>
+
+<table>
+<tr>
+<td align="center" width="50%">
+<strong>WeChat Pay</strong><br/><br/>
+<img src="./assets/sponsor/wechat-pay.png" alt="WeChat Pay QR for FairladyZ" width="280"/>
+</td>
+<td align="center" width="50%">
+<strong>Alipay</strong><br/><br/>
+<img src="./assets/sponsor/alipay-pay.jpg" alt="Alipay QR for FairladyZ" width="280"/>
+</td>
+</tr>
+</table>
+
 </details>
 
 ---
 
 ## Acknowledgments
 
-- [Edict](https://github.com/ptonlix/edict) — the "Three Departments and Six Ministries" architecture showed that governance and free discussion can coexist
-- [OpenClaw](https://github.com/nicepkg/openclaw) — Discord multi-agent infrastructure (Thread management, ACP protocol, Slash Commands, Hook system) that Agora's first adapter is built on
+- [Edict](https://github.com/cft0808/edict) — the "Three Departments and Six Ministries" architecture showed that governance and free discussion can coexist
+- [OpenClaw](https://github.com/openclaw/openclaw) — Discord multi-agent infrastructure (Thread management, ACP protocol, Slash Commands, Hook system) that Agora's first adapter is built on
 - Claude Code Agent Teams — validated the "deliberate → divide → aggregate" collaboration pattern
 
 ---
@@ -284,7 +285,7 @@ The problems hit fast. 12 agents in one channel, messages exploding, impossible 
 
 I was stuck between two bad options: allow free discussion and accept chaos, or enforce strict control and lose collective intelligence.
 
-Then I found [Edict](https://github.com/ptonlix/edict) — a multi-agent orchestration project using a "Three Departments and Six Ministries" architecture. It showed me a third path: **you can have both democracy and decision authority.** Free discussion stays free. Critical checkpoints have a decision-maker. Process advancement is guaranteed by code, not prompt prayers.
+Then I found [Edict](https://github.com/cft0808/edict) — a multi-agent orchestration project using a "Three Departments and Six Ministries" architecture. It showed me a third path: **you can have both democracy and decision authority.** Free discussion stays free. Critical checkpoints have a decision-maker. Process advancement is guaranteed by code, not prompt prayers.
 
 That insight changed everything. Agora is the result.
 

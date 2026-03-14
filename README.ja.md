@@ -11,9 +11,9 @@
 <p>マルチエージェントAIシステムのための民主的オーケストレーション層。<br/>
 自由な議論を、信頼性が高く監査可能な本番ワークフローへ変換します。</p>
 
-[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/agora?style=flat-square&logo=github&color=yellow)](https://github.com/YOUR_USERNAME/agora/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/YOUR_USERNAME/agora?style=flat-square&logo=github)](https://github.com/YOUR_USERNAME/agora/network)
-[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/agora?style=flat-square)](https://github.com/YOUR_USERNAME/agora/issues)
+[![GitHub stars](https://img.shields.io/github/stars/FairladyZ625/Agora?style=flat-square&logo=github&color=yellow)](https://github.com/FairladyZ625/Agora/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/FairladyZ625/Agora?style=flat-square&logo=github)](https://github.com/FairladyZ625/Agora/network)
+[![GitHub issues](https://img.shields.io/github/issues/FairladyZ625/Agora?style=flat-square)](https://github.com/FairladyZ625/Agora/issues)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen?style=flat-square&logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -35,7 +35,7 @@
 
 ジレンマに陥りました。自由な議論を許せば混乱を受け入れることになり、厳格な管理をすれば集合知を失うことになる。
 
-そこで [Edict](https://github.com/ptonlix/edict) を発見しました——「三省六部」アーキテクチャでマルチエージェントオーケストレーションを実現するオープンソースプロジェクトです。これが一つの可能性を示してくれました：**民主主義と決定権を同時に持つことができる。** 自由な議論は保持しつつ、重要なポイントでは誰かが決断を下し、プロセスの推進はプロンプトへの祈りではなくコードで保証される。
+そこで [Edict](https://github.com/cft0808/edict) を発見しました——「三省六部」アーキテクチャでマルチエージェントオーケストレーションを実現するオープンソースプロジェクトです。これが一つの可能性を示してくれました：**民主主義と決定権を同時に持つことができる。** 自由な議論は保持しつつ、重要なポイントでは誰かが決断を下し、プロセスの推進はプロンプトへの祈りではなくコードで保証される。
 
 これがAgoraです。**Freedom of ideas. Discipline of execution.**
 
@@ -127,7 +127,7 @@ Citizens が議論  →  Archon が決定  →  Craftsmen が実行
 ### インストール
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/agora.git
+git clone https://github.com/FairladyZ625/Agora.git
 cd agora
 cp .env.example .env
 cd agora-ts && npm install
@@ -255,29 +255,36 @@ issueから始めるか、直接PRを開いてください。
 
 ## スポンサー
 
-Agoraがあなたの時間を節約したり、チームがより良いAIワークフローを実現するのに役立った場合、プロジェクトの継続的な発展をサポートしていただけると嬉しいです。
+Agoraが役に立った場合は、プロジェクトの継続開発を支援していただけると助かります。
+
+- Project: [github.com/FairladyZ625/Agora](https://github.com/FairladyZ625/Agora)
+- Issues / contact: [github.com/FairladyZ625/Agora/issues](https://github.com/FairladyZ625/Agora/issues)
+
+<details>
+<summary>WeChat Pay / Alipay</summary>
+<br/>
 
 <table>
 <tr>
-<td align="center">
-<a href="https://github.com/sponsors/YOUR_USERNAME">
-<img src="https://img.shields.io/badge/GitHub%20Sponsors-❤️-ea4aaa?style=for-the-badge&logo=github-sponsors" alt="GitHub Sponsors"/>
-</a>
+<td align="center" width="50%">
+<strong>WeChat Pay</strong><br/><br/>
+<img src="./assets/sponsor/wechat-pay.png" alt="WeChat Pay QR for FairladyZ" width="280"/>
 </td>
-<td align="center">
-<a href="https://www.buymeacoffee.com/YOUR_USERNAME">
-<img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"/>
-</a>
+<td align="center" width="50%">
+<strong>Alipay</strong><br/><br/>
+<img src="./assets/sponsor/alipay-pay.jpg" alt="Alipay QR for FairladyZ" width="280"/>
 </td>
 </tr>
 </table>
+
+</details>
 
 ---
 
 ## 謝辞
 
-- [Edict](https://github.com/ptonlix/edict) — 「三省六部」アーキテクチャからのインスピレーション。ガバナンスと自由な議論が共存できることを示してくれました
-- [OpenClaw](https://github.com/nicepkg/openclaw) — Discordマルチエージェントインフラ（スレッド管理、ACPプロトコル、スラッシュコマンド、フックシステム）を提供。Agoraの最初のアダプターはこの上に構築されています
+- [Edict](https://github.com/cft0808/edict) — 「三省六部」アーキテクチャからのインスピレーション。ガバナンスと自由な議論が共存できることを示してくれました
+- [OpenClaw](https://github.com/openclaw/openclaw) — Discordマルチエージェントインフラ（スレッド管理、ACPプロトコル、スラッシュコマンド、フックシステム）を提供。Agoraの最初のアダプターはこの上に構築されています
 - Claude Code Agent Teams — 「議論→分担→集約」というコラボレーションパターンの実現可能性を検証
 
 ---

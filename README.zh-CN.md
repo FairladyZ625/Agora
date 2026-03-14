@@ -11,9 +11,9 @@
 <p>面向多智能体系统的民主编排层。<br/>
 把自由讨论变成可靠、可审、可追踪的生产工作流。</p>
 
-[![GitHub stars](https://img.shields.io/github/stars/YOUR_USERNAME/agora?style=flat-square&logo=github&color=yellow)](https://github.com/YOUR_USERNAME/agora/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/YOUR_USERNAME/agora?style=flat-square&logo=github)](https://github.com/YOUR_USERNAME/agora/network)
-[![GitHub issues](https://img.shields.io/github/issues/YOUR_USERNAME/agora?style=flat-square)](https://github.com/YOUR_USERNAME/agora/issues)
+[![GitHub stars](https://img.shields.io/github/stars/FairladyZ625/Agora?style=flat-square&logo=github&color=yellow)](https://github.com/FairladyZ625/Agora/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/FairladyZ625/Agora?style=flat-square&logo=github)](https://github.com/FairladyZ625/Agora/network)
+[![GitHub issues](https://img.shields.io/github/issues/FairladyZ625/Agora?style=flat-square)](https://github.com/FairladyZ625/Agora/issues)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen?style=flat-square&logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -35,7 +35,7 @@
 
 我陷入了一个两难：要么放任自由讨论但接受混乱，要么严格管控但失去集体智慧。
 
-然后我看到了 [Edict](https://github.com/ptonlix/edict)——一个用"三省六部"架构做多智能体编排的开源项目。它让我看到了一种可能性：**你可以同时拥有民主和决策权。** 自由讨论可以保留，但关键节点必须有人拍板，流程推进必须由代码保证而不是 prompt 祈祷。
+然后我看到了 [Edict](https://github.com/cft0808/edict)——一个用"三省六部"架构做多智能体编排的开源项目。它让我看到了一种可能性：**你可以同时拥有民主和决策权。** 自由讨论可以保留，但关键节点必须有人拍板，流程推进必须由代码保证而不是 prompt 祈祷。
 
 这就是 Agora。**Freedom of ideas. Discipline of execution.**
 
@@ -127,7 +127,7 @@ Citizens 讨论  →  Archon 裁决  →  Craftsmen 执行
 ### 安装
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/agora.git
+git clone https://github.com/FairladyZ625/Agora.git
 cd agora
 cp .env.example .env
 cd agora-ts && npm install
@@ -255,28 +255,27 @@ extensions/                  插件 adapter（OpenClaw 等）
 
 ## 赞助支持
 
-如果 Agora 帮你节省了时间或让团队交付更好的 AI 工作流，欢迎支持项目持续发展。
+如果 Agora 帮你节省了时间，或者让团队交付出更好的 AI 工作流，欢迎支持项目持续开发。
 
-<table>
-<tr>
-<td align="center">
-<a href="https://github.com/sponsors/YOUR_USERNAME">
-<img src="https://img.shields.io/badge/GitHub%20Sponsors-❤️-ea4aaa?style=for-the-badge&logo=github-sponsors" alt="GitHub Sponsors"/>
-</a>
-</td>
-<td align="center">
-<a href="https://www.buymeacoffee.com/YOUR_USERNAME">
-<img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-☕-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee"/>
-</a>
-</td>
-</tr>
-</table>
+- 项目地址：[github.com/FairladyZ625/Agora](https://github.com/FairladyZ625/Agora)
+- 问题反馈 / 合作联系：[github.com/FairladyZ625/Agora/issues](https://github.com/FairladyZ625/Agora/issues)
 
 <details>
 <summary>微信支付 / 支付宝</summary>
 <br/>
 
-> 二维码即将上线。如需直接赞助，欢迎通过 issue 联系。
+<table>
+<tr>
+<td align="center" width="50%">
+<strong>微信支付</strong><br/><br/>
+<img src="./assets/sponsor/wechat-pay.png" alt="FairladyZ 微信赞赏码" width="280"/>
+</td>
+<td align="center" width="50%">
+<strong>支付宝</strong><br/><br/>
+<img src="./assets/sponsor/alipay-pay.jpg" alt="FairladyZ 支付宝赞赏码" width="280"/>
+</td>
+</tr>
+</table>
 
 </details>
 
@@ -284,8 +283,8 @@ extensions/                  插件 adapter（OpenClaw 等）
 
 ## 致谢
 
-- [Edict](https://github.com/ptonlix/edict) — "三省六部"架构带来的启发，让我看到治理与自由讨论可以共存
-- [OpenClaw](https://github.com/nicepkg/openclaw) — 提供 Discord 多智能体基础设施（Thread 管理、ACP 协议、Slash Command、Hook 系统），Agora 的第一个 Adapter 建立在它之上
+- [Edict](https://github.com/cft0808/edict) — "三省六部"架构带来的启发，让我看到治理与自由讨论可以共存
+- [OpenClaw](https://github.com/openclaw/openclaw) — 提供 Discord 多智能体基础设施（Thread 管理、ACP 协议、Slash Command、Hook 系统），Agora 的第一个 Adapter 建立在它之上
 - Claude Code Agent Teams — 验证了"讨论→分工→汇总"协作范式的可行性
 
 ---
