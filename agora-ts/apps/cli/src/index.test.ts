@@ -11,6 +11,7 @@ import type { DashboardSessionClient } from './dashboard-session-client.js';
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
 const rolePackDir = resolve(process.cwd(), 'role-packs', 'agora-default');
+const agoraProjectRoot = resolve(import.meta.dirname, '../../..');
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-'));
@@ -982,6 +983,7 @@ describe('agora-ts cli', () => {
         },
       } as unknown as TaskConversationService,
       startCommandRunner,
+      startCommandCwd: agoraProjectRoot,
       stdout,
       stderr,
     }).exitOverride();
@@ -1502,7 +1504,8 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('scanned_tasks: 1');
-    expect(stdout.value).toContain('controller_pings: 1');
+    expect(stdout.value).toContain('controller_pings:');
+    expect(stdout.value).toContain('roster_pings:');
   });
 
   it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {

@@ -59,6 +59,7 @@ export interface CliDependencies {
   dashboardQueryService?: DashboardQueryService;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
+  startCommandCwd?: string;
   configPath?: string;
   dbPath?: string;
   stdout?: Writable;
@@ -1847,7 +1848,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('一键启动本地开发栈（后端 + Dashboard）')
     .action(async () => {
       await runStartCommand({
-        cwd: process.cwd(),
+        cwd: deps.startCommandCwd ?? process.cwd(),
         ...(deps.startCommandRunner ? { runner: deps.startCommandRunner } : {}),
       });
     });
