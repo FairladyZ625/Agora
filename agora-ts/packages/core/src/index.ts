@@ -22,6 +22,7 @@ export * from './permission-service.js';
 export * from './progress-service.js';
 export * from './role-pack-service.js';
 export * from './runtime-ports.js';
+export * from './runtime-recovery-port.js';
 export * from './state-machine.js';
 export * from './task-context-binding-service.js';
 export * from './task-brain-binding-service.js';

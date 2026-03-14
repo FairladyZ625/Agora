@@ -49,6 +49,10 @@ import {
   probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
   rejectTaskRequestSchema,
+  runtimeRecoveryActionSchema,
+  runtimeDiagnosisResultSchema,
+  runtimeRecoveryRequestSchema,
+  craftsmanStopExecutionRequestSchema,
   saveTemplateRequestSchema,
   type CreateTaskRequestDto,
   subtaskLifecycleRequestSchema,
@@ -1517,6 +1521,32 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/runtime/diagnose', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = runtimeRecoveryRequestSchema.parse(request.body ?? {});
+      return reply.send(runtimeDiagnosisResultSchema.parse(taskService.requestRuntimeDiagnosis(payload.task_id, payload)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/runtime/restart', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = runtimeRecoveryRequestSchema.parse(request.body ?? {});
+      return reply.send(runtimeRecoveryActionSchema.parse(taskService.restartCitizenRuntime(payload.task_id, payload)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/craftsmen/dispatch', async (request, reply) => {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
@@ -1636,6 +1666,20 @@ export function buildApp(options: BuildAppOptions = {}) {
         status: result.execution.status,
         probed: result.probed,
       });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/craftsmen/executions/:executionId/stop', async (request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const params = request.params as { executionId: string };
+      const payload = craftsmanStopExecutionRequestSchema.parse(request.body ?? {});
+      return reply.send(runtimeRecoveryActionSchema.parse(taskService.stopCraftsmanExecution(params.executionId, payload)));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

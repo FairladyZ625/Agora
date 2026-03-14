@@ -142,6 +142,37 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('serves craftsman stop route', async () => {
+    const app = buildApp({
+      taskService: {
+        stopCraftsmanExecution: (executionId: string) => ({
+          operation: 'stop_execution',
+          status: 'accepted',
+          task_id: 'OC-STOP',
+          agent_ref: 'claude',
+          execution_id: executionId,
+          summary: 'stop signal sent',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-stop-route/stop',
+      payload: {
+        caller_id: 'opus',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      operation: 'stop_execution',
+      execution_id: 'exec-stop-route',
+      status: 'accepted',
+    });
+  });
+
   it('rejects craftsmen dispatch for paused tasks', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

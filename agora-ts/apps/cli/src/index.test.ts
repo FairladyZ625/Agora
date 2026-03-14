@@ -285,6 +285,60 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('agora dashboard users list');
   });
 
+  it('prints runtime diagnosis results through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        requestRuntimeDiagnosis: () => ({
+          operation: 'request_runtime_diagnosis',
+          task_id: 'OC-RUNTIME',
+          agent_ref: 'opus',
+          status: 'accepted',
+          health: 'healthy',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+          summary: 'runtime healthy',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['runtime', 'diagnose', 'OC-RUNTIME', 'opus', '--caller-id', 'opus'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"operation": "request_runtime_diagnosis"');
+    expect(stdout.value).toContain('"status": "accepted"');
+  });
+
+  it('prints craftsman stop results through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        stopCraftsmanExecution: () => ({
+          operation: 'stop_execution',
+          status: 'accepted',
+          task_id: 'OC-STOP',
+          agent_ref: 'claude',
+          execution_id: 'exec-stop',
+          summary: 'stop signal sent',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'stop', 'exec-stop', '--caller-id', 'opus'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"operation": "stop_execution"');
+    expect(stdout.value).toContain('"execution_id": "exec-stop"');
+  });
+
   it('treats a symlinked executable path as the cli entrypoint', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-entrypoint-'));
     tempPaths.push(dir);

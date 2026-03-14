@@ -27,6 +27,7 @@ import {
   TaskBrainBindingService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
+  TmuxRuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -79,6 +80,7 @@ export interface CliCompositionFactories {
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
+      runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -182,6 +184,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
       agentRuntimePort: deps.agentRuntimePort,
+      runtimeRecoveryPort: deps.runtimeRecoveryPort,
       craftsmanInputPort: deps.craftsmanInputPort,
       craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
       hostResourcePort: new OsHostResourcePort(),
@@ -280,6 +283,7 @@ export function createCliComposition(
     taskContextBindingService,
     taskParticipationService,
     agentRuntimePort,
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   });
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);
