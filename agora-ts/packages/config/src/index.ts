@@ -103,6 +103,7 @@ export type PermissionsConfig = z.infer<typeof permissionsSchema>;
 
 export const agoraConfigSchema = z.object({
   db_path: z.string().transform(normalizeDbPath).default(defaultAgoraDbPath()),
+  db_busy_timeout_ms: z.number().int().min(0).default(5000),
   api_auth: apiAuthSchema.default({ enabled: false, token: 'change-me' }),
   permissions: permissionsSchema.default({
     allowAgents: { '*': { canCall: [], canAdvance: false } },

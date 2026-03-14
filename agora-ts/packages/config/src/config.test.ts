@@ -12,6 +12,7 @@ describe('agora-ts config contracts', () => {
     const parsed = parseAgoraConfig(raw);
 
     expect(parsed.db_path).toBe(defaultAgoraDbPath());
+    expect(parsed.db_busy_timeout_ms).toBe(5000);
     expect(parsed.api_auth.enabled).toBe(false);
     expect(parsed.permissions.archonUsers).toContain('lizeyu');
     expect(parsed.permissions.allowAgents.opus?.canAdvance).toBe(true);
@@ -21,6 +22,7 @@ describe('agora-ts config contracts', () => {
     const parsed = agoraConfigSchema.parse({});
 
     expect(parsed.db_path).toBe(defaultAgoraDbPath());
+    expect(parsed.db_busy_timeout_ms).toBe(5000);
     expect(parsed.api_auth.enabled).toBe(false);
     expect(parsed.permissions.archonUsers).toEqual([]);
     expect(parsed.permissions.allowAgents['*']?.canAdvance).toBe(false);
@@ -72,9 +74,11 @@ describe('agora-ts config contracts', () => {
         metrics_enabled: true,
         structured_logs: true,
       },
+      db_busy_timeout_ms: 12000,
     });
 
     expect(parsed.scheduler.scan_interval_sec).toBe(30);
+    expect(parsed.db_busy_timeout_ms).toBe(12000);
     expect(parsed.scheduler.startup_recovery_on_boot).toBe(false);
     expect(parsed.rate_limit.max_requests).toBe(120);
     expect(parsed.dashboard_auth.method).toBe('basic');

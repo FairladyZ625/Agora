@@ -32,7 +32,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   ensureBundledAgoraAssetsInstalled({
     projectRoot: runtimeEnv.projectRoot ?? new URL('../../../../', import.meta.url).pathname,
   });
-  const db = createAgoraDatabase({ dbPath: config.db_path });
+  const db = createAgoraDatabase({ dbPath: config.db_path, busyTimeoutMs: config.db_busy_timeout_ms });
   runMigrations(db);
   const templatesDir = new URL('../../../templates', import.meta.url).pathname;
   const composition = buildServerComposition({
