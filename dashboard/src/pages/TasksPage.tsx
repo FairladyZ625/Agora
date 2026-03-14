@@ -312,6 +312,22 @@ export function TasksPage() {
         activeTask.creator;
   const resolvedActionActor = actionActor || preferredActorId;
 
+  useEffect(() => {
+    if (!selectedExecution) {
+      return;
+    }
+    if (!['running', 'needs_input', 'awaiting_choice'].includes(selectedExecution.status)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if (executionTailLoadingById[selectedExecution.executionId]) {
+        return;
+      }
+      void fetchCraftsmanExecutionTail(selectedExecution.executionId);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [selectedExecution, executionTailLoadingById, fetchCraftsmanExecutionTail]);
+
   const taskSections = useMemo(() => [
     {
       label: tasksPageCopy.filterSectionLabels.state,
@@ -468,6 +484,14 @@ export function TasksPage() {
       );
     }
   };
+
+  const selectedExecutionTail = selectedExecution ? executionTailById[selectedExecution.executionId] : null;
+  const selectedExecutionTailLoading = selectedExecution ? !!executionTailLoadingById[selectedExecution.executionId] : false;
+  const selectedExecutionTailMode = selectedExecution
+    ? (['running', 'needs_input', 'awaiting_choice'].includes(selectedExecution.status)
+        ? tasksPageCopy.executionTailLiveLabel
+        : tasksPageCopy.executionTailSnapshotLabel)
+    : null;
 
   const runRuntimeDiagnosis = async (agentRef: string) => {
     if (!activeTask) {
@@ -932,16 +956,26 @@ export function TasksPage() {
                             <div className="space-y-2">
                               <div className="flex items-center justify-between gap-3">
                                 <p className="field-label">{tasksPageCopy.executionTailLabel}</p>
-                                {executionTailLoadingById[selectedExecution.executionId] ? (
-                                  <span className="type-text-xs">{tasksPageCopy.executionTailRefreshAction}…</span>
-                                ) : null}
+                                <div className="flex items-center gap-2">
+                                  {selectedExecutionTailMode ? (
+                                    <span className="status-pill status-pill--neutral">{selectedExecutionTailMode}</span>
+                                  ) : null}
+                                  {selectedExecutionTailLoading ? (
+                                    <span className="type-text-xs">{tasksPageCopy.executionTailPollingLabel}…</span>
+                                  ) : null}
+                                </div>
                               </div>
+                              {selectedExecutionTail?.fetchedAt ? (
+                                <p className="type-text-xs">
+                                  {tasksPageCopy.executionTailUpdatedLabel}: {formatRelativeTimestamp(selectedExecutionTail.fetchedAt)}
+                                </p>
+                              ) : null}
                               <div className="rounded-2xl border border-[rgba(148,163,184,0.22)] bg-[rgba(15,23,42,0.94)] p-3">
                                 <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-slate-100">
-                                  {executionTailById[selectedExecution.executionId]
+                                  {selectedExecutionTail
                                     ? (
-                                        executionTailById[selectedExecution.executionId]?.available
-                                          ? (executionTailById[selectedExecution.executionId]?.output ?? tasksPageCopy.executionTailEmpty)
+                                        selectedExecutionTail.available
+                                          ? (selectedExecutionTail.output ?? tasksPageCopy.executionTailEmpty)
                                           : tasksPageCopy.executionTailUnavailable
                                       )
                                     : tasksPageCopy.executionTailEmpty}

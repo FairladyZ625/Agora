@@ -13,6 +13,8 @@ interface TaskStoreMockState {
   error: string | null;
   selectedTaskId: string | null;
   selectedTaskStatus: TaskStatus | null;
+  executionTailById: Record<string, unknown>;
+  executionTailLoadingById: Record<string, boolean>;
   filters: { state: string | null; search: string };
   fetchTasks: ReturnType<typeof vi.fn>;
   selectTask: ReturnType<typeof vi.fn>;
@@ -22,6 +24,7 @@ interface TaskStoreMockState {
   observeCraftsmen: ReturnType<typeof vi.fn>;
   refreshHealthSnapshot: ReturnType<typeof vi.fn>;
   probeCraftsmanExecution: ReturnType<typeof vi.fn>;
+  fetchCraftsmanExecutionTail: ReturnType<typeof vi.fn>;
   diagnoseRuntime: ReturnType<typeof vi.fn>;
   restartRuntime: ReturnType<typeof vi.fn>;
   stopCraftsmanExecution: ReturnType<typeof vi.fn>;
@@ -68,6 +71,8 @@ const taskStoreState: TaskStoreMockState = {
   error: null,
   selectedTaskId: null,
   selectedTaskStatus: null,
+  executionTailById: {},
+  executionTailLoadingById: {},
   filters: { state: null, search: '' },
   fetchTasks: vi.fn(async () => 'live'),
   selectTask: vi.fn(async () => undefined),
@@ -77,6 +82,7 @@ const taskStoreState: TaskStoreMockState = {
   observeCraftsmen: vi.fn(async () => 'live'),
   refreshHealthSnapshot: vi.fn(async () => 'live'),
   probeCraftsmanExecution: vi.fn(async () => 'live'),
+  fetchCraftsmanExecutionTail: vi.fn(async () => 'live'),
   diagnoseRuntime: vi.fn(async () => ({ summary: 'ok', detail: null, status: 'accepted' })),
   restartRuntime: vi.fn(async () => ({ summary: 'ok', detail: null, status: 'accepted' })),
   stopCraftsmanExecution: vi.fn(async () => ({ summary: 'ok', detail: null, status: 'accepted' })),
