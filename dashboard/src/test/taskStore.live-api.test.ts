@@ -258,6 +258,7 @@ describe('task store live API mode', () => {
       available: true,
       output: 'tail:exec-1',
       source: 'tmux',
+      fetchedAt: expect.any(String),
     });
     expect(state.executionTailLoadingById['exec-1']).toBe(false);
   });

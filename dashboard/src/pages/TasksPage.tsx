@@ -970,8 +970,8 @@ export function TasksPage() {
                                   {tasksPageCopy.executionTailUpdatedLabel}: {formatRelativeTimestamp(selectedExecutionTail.fetchedAt)}
                                 </p>
                               ) : null}
-                              <div className="rounded-2xl border border-[rgba(148,163,184,0.22)] bg-[rgba(15,23,42,0.94)] p-3">
-                                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-slate-100">
+                              <div className="rounded-2xl border border-white/10 bg-slate-950/95 p-3">
+                                <pre className="type-text-xs max-h-64 overflow-auto whitespace-pre-wrap break-words leading-5 text-slate-100">
                                   {selectedExecutionTail
                                     ? (
                                         selectedExecutionTail.available

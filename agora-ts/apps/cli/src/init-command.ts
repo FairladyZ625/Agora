@@ -4,7 +4,6 @@ import {
   defaultAgoraDbPath,
   ensureBundledAgoraAssetsInstalled,
   loadGlobalConfig,
-  resolveUserAgoraDir,
   resolveUserAgoraSkillDir,
   resolveUserSkillDirs,
   saveGlobalConfig,
