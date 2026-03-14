@@ -196,6 +196,19 @@ describe('agora-ts cli', () => {
               swap_utilization: 0.1,
             },
           },
+          escalation: {
+            status: 'degraded',
+            policy: {
+              controller_after_ms: 300000,
+              roster_after_ms: 900000,
+              inbox_after_ms: 1800000,
+            },
+            controller_pinged_tasks: 1,
+            roster_pinged_tasks: 0,
+            inbox_escalated_tasks: 0,
+            unhealthy_runtime_agents: 0,
+            runtime_unhealthy: false,
+          },
         }),
       } as unknown as TaskService,
       stdout,
@@ -209,6 +222,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('tasks: total=2 active=1 blocked=0 paused=0 done=1 status=healthy');
     expect(stdout.value).toContain('runtime: available=true active=1 idle=0 closed=0 status=healthy');
     expect(stdout.value).toContain('craftsman: active=1 running=0 waiting_input=1 awaiting_choice=0 status=degraded');
+    expect(stdout.value).toContain('escalation: controller=1 roster=0 inbox=0 runtime_unhealthy=false status=degraded');
   });
 
   it('renders subcommand help without touching runtime composition', async () => {

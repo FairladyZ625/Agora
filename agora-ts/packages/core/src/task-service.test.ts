@@ -178,6 +178,19 @@ describe('task service', () => {
         memory_pressure: 0.4,
       },
     });
+    expect(snapshot.escalation).toMatchObject({
+      status: 'healthy',
+      controller_pinged_tasks: 0,
+      roster_pinged_tasks: 0,
+      inbox_escalated_tasks: 0,
+      unhealthy_runtime_agents: 0,
+      runtime_unhealthy: false,
+      policy: {
+        controller_after_ms: 300000,
+        roster_after_ms: 900000,
+        inbox_after_ms: 1800000,
+      },
+    });
   });
 
   it('creates a task from template and exposes task status payloads', () => {
@@ -2281,7 +2294,7 @@ describe('task service', () => {
       now: new Date('2026-03-13T01:00:00.000Z'),
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const probeMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'thread_probe_controller');
+    const probeMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'controller_pinged');
     expect(probeMessage?.body).toContain('冒烟引导:');
     expect(probeMessage?.body).toContain('controller -> roster -> inbox');
   });
@@ -2533,7 +2546,7 @@ describe('task service', () => {
     });
     expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
     expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
-      kind: 'thread_probe_controller',
+      kind: 'controller_pinged',
       participant_refs: ['opus'],
     });
 
@@ -2545,7 +2558,7 @@ describe('task service', () => {
     });
     expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 1, inbox_items: 0 });
     expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
-      kind: 'thread_probe_roster',
+      kind: 'roster_pinged',
       participant_refs: ['opus', 'sonnet', 'glm5'],
     });
 
@@ -2559,7 +2572,7 @@ describe('task service', () => {
     const inboxRows = db.prepare('SELECT text, source FROM inbox_items ORDER BY id DESC').all() as Array<{ text: string; source: string }>;
     expect(inboxRows[0]).toMatchObject({
       text: 'Task OC-PROBE-1 appears stuck',
-      source: 'thread_probe',
+      source: 'inbox_escalated',
     });
   });
 

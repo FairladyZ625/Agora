@@ -355,6 +355,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       } else {
         writeLine(stdout, `host: unavailable status=${snapshot.host.status}`);
       }
+      writeLine(
+        stdout,
+        `escalation: controller=${snapshot.escalation.controller_pinged_tasks} roster=${snapshot.escalation.roster_pinged_tasks} inbox=${snapshot.escalation.inbox_escalated_tasks} runtime_unhealthy=${snapshot.escalation.runtime_unhealthy} status=${snapshot.escalation.status}`,
+      );
     });
 
   program
