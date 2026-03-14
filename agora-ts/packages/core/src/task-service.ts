@@ -14,6 +14,7 @@ import type {
   PromoteTodoRequestDto,
   RuntimeDiagnosisResultDto,
   RuntimeRecoveryActionDto,
+  CraftsmanExecutionTailResponseDto,
   TaskBlueprintDto,
   UnifiedHealthSnapshotDto,
   TaskLocaleDto,
@@ -52,6 +53,7 @@ import type { AgentRuntimePort } from './runtime-ports.js';
 import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
+import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
@@ -116,6 +118,7 @@ export interface TaskServiceOptions {
   runtimeRecoveryPort?: RuntimeRecoveryPort;
   craftsmanInputPort?: CraftsmanInputPort;
   craftsmanExecutionProbePort?: CraftsmanExecutionProbePort;
+  craftsmanExecutionTailPort?: CraftsmanExecutionTailPort;
   hostResourcePort?: HostResourcePort;
   liveSessionStore?: LiveSessionStore;
   craftsmanGovernance?: {
@@ -256,6 +259,7 @@ export class TaskService {
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
+  private readonly craftsmanExecutionTailPort: CraftsmanExecutionTailPort | undefined;
   private readonly hostResourcePort: HostResourcePort | undefined;
   private readonly liveSessionStore: LiveSessionStore | undefined;
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
@@ -301,6 +305,7 @@ export class TaskService {
     this.agentRuntimePort = options.agentRuntimePort;
     this.runtimeRecoveryPort = options.runtimeRecoveryPort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
+    this.craftsmanExecutionTailPort = options.craftsmanExecutionTailPort;
     this.hostResourcePort = options.hostResourcePort;
     this.liveSessionStore = options.liveSessionStore;
     this.craftsmanGovernance = {
@@ -1105,6 +1110,32 @@ export class TaskService {
       throw new NotFoundError(`Craftsman execution ${executionId} not found`);
     }
     return execution;
+  }
+
+  getCraftsmanExecutionTail(executionId: string, lines = 120): CraftsmanExecutionTailResponseDto {
+    if (!Number.isFinite(lines) || lines <= 0) {
+      throw new Error('lines must be a positive number');
+    }
+    const execution = this.getCraftsmanExecution(executionId);
+    if (!this.craftsmanExecutionTailPort) {
+      return {
+        execution_id: execution.execution_id,
+        available: false,
+        output: null,
+        source: 'unavailable',
+      };
+    }
+    return this.craftsmanExecutionTailPort.tail({
+      executionId: execution.execution_id,
+      adapter: execution.adapter,
+      sessionId: execution.session_id,
+      status: execution.status,
+    }, lines) ?? {
+      execution_id: execution.execution_id,
+      available: false,
+      output: null,
+      source: 'unavailable',
+    };
   }
 
   listCraftsmanExecutions(taskId: string, subtaskId: string) {

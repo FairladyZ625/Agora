@@ -2004,6 +2004,35 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('status: running');
   });
 
+  it('supports execution-scoped craftsman tail through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const calls: Array<{ executionId: string; lines: number }> = [];
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      taskService: {
+        getCraftsmanExecutionTail: (executionId: string, lines: number) => {
+          calls.push({ executionId, lines });
+          return {
+            execution_id: executionId,
+            available: true,
+            output: 'recent tail output',
+            source: 'tmux',
+          };
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'tail', 'exec-123', '--lines', '55'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(calls).toEqual([{ executionId: 'exec-123', lines: 55 }]);
+    expect(stdout.value).toContain('recent tail output');
+  });
+
   it('shows craftsman governance snapshot through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -2021,6 +2050,9 @@ describe('agora-ts cli', () => {
           },
           active_executions: 2,
           active_by_assignee: [{ assignee: 'opus', count: 2 }],
+          warnings: [],
+          active_execution_details: [],
+          host_pressure_status: 'healthy',
           host: {
             observed_at: '2026-03-13T12:00:00.000Z',
             cpu_count: 8,

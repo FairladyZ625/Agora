@@ -4285,6 +4285,61 @@ describe('task service', () => {
     expect(runningMessage?.body).toContain('Status: running');
   });
 
+  it('returns execution-scoped tmux tail when a tail port is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TAIL-1',
+      craftsmanExecutionTailPort: {
+        tail: (execution, lines) => ({
+          execution_id: execution.executionId,
+          available: true,
+          output: `tail:${execution.adapter}:${lines}`,
+          source: 'tmux',
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Execution tail route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'tail-subtask-1',
+      task_id: 'OC-TAIL-1',
+      stage_id: 'develop',
+      title: 'stream output',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'tmux:agora-craftsmen:claude',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-tail-1',
+      task_id: 'OC-TAIL-1',
+      subtask_id: 'tail-subtask-1',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'tmux:agora-craftsmen:claude',
+      status: 'running',
+      started_at: '2026-03-14T12:00:00.000Z',
+    });
+
+    expect(service.getCraftsmanExecutionTail('exec-tail-1', 50)).toEqual({
+      execution_id: 'exec-tail-1',
+      available: true,
+      output: 'tail:claude:50',
+      source: 'tmux',
+    });
+  });
+
   it('allows execution-scoped input for running continuous tmux executions', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

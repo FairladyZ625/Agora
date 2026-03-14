@@ -173,6 +173,9 @@ export function TasksPage() {
   const observeCraftsmen = useTaskStore((state) => state.observeCraftsmen);
   const diagnoseRuntime = useTaskStore((state) => state.diagnoseRuntime);
   const probeCraftsmanExecution = useTaskStore((state) => state.probeCraftsmanExecution);
+  const fetchCraftsmanExecutionTail = useTaskStore((state) => state.fetchCraftsmanExecutionTail);
+  const executionTailById = useTaskStore((state) => state.executionTailById);
+  const executionTailLoadingById = useTaskStore((state) => state.executionTailLoadingById);
   const restartRuntime = useTaskStore((state) => state.restartRuntime);
   const sendCraftsmanInputText = useTaskStore((state) => state.sendCraftsmanInputText);
   const sendCraftsmanInputKeys = useTaskStore((state) => state.sendCraftsmanInputKeys);
@@ -201,6 +204,16 @@ export function TasksPage() {
   useEffect(() => {
     void fetchTasks();
   }, [fetchTasks]);
+
+  useEffect(() => {
+    if (!selectedExecutionId) {
+      return;
+    }
+    if (executionTailById[selectedExecutionId] || executionTailLoadingById[selectedExecutionId]) {
+      return;
+    }
+    void fetchCraftsmanExecutionTail(selectedExecutionId);
+  }, [selectedExecutionId, executionTailById, executionTailLoadingById, fetchCraftsmanExecutionTail]);
 
   const taskList = tasks;
   const availableTeams = useMemo(() => [...new Set(taskList.map((task) => task.teamLabel))], [taskList]);
@@ -438,6 +451,19 @@ export function TasksPage() {
       showMessage(
         t('feedback.taskActionFailureTitle'),
         inputError instanceof Error ? inputError.message : String(inputError),
+        'warning',
+      );
+    }
+  };
+
+  const runExecutionTailRefresh = async (executionId: string) => {
+    try {
+      await fetchCraftsmanExecutionTail(executionId);
+      showMessage(t('feedback.syncSuccessTitle'), tasksPageCopy.executionTailRefreshAction, 'success');
+    } catch (tailError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        tailError instanceof Error ? tailError.message : String(tailError),
         'warning',
       );
     }
@@ -885,6 +911,15 @@ export function TasksPage() {
                               </button>
                               <button
                                 type="button"
+                                className="button-secondary"
+                                onClick={() => void runExecutionTailRefresh(selectedExecution.executionId)}
+                              >
+                                {executionTailById[selectedExecution.executionId]
+                                  ? tasksPageCopy.executionTailRefreshAction
+                                  : tasksPageCopy.executionTailAction}
+                              </button>
+                              <button
+                                type="button"
                                 className="button-danger"
                                 onClick={() => void runExecutionStop(selectedExecution.executionId)}
                               >
@@ -894,6 +929,25 @@ export function TasksPage() {
                             {selectedExecution.callbackPayload?.inputRequest?.hint ? (
                               <p className="type-body-sm">{selectedExecution.callbackPayload.inputRequest.hint}</p>
                             ) : null}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="field-label">{tasksPageCopy.executionTailLabel}</p>
+                                {executionTailLoadingById[selectedExecution.executionId] ? (
+                                  <span className="type-text-xs">{tasksPageCopy.executionTailRefreshAction}…</span>
+                                ) : null}
+                              </div>
+                              <div className="rounded-2xl border border-[rgba(148,163,184,0.22)] bg-[rgba(15,23,42,0.94)] p-3">
+                                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-slate-100">
+                                  {executionTailById[selectedExecution.executionId]
+                                    ? (
+                                        executionTailById[selectedExecution.executionId]?.available
+                                          ? (executionTailById[selectedExecution.executionId]?.output ?? tasksPageCopy.executionTailEmpty)
+                                          : tasksPageCopy.executionTailUnavailable
+                                      )
+                                    : tasksPageCopy.executionTailEmpty}
+                                </pre>
+                              </div>
+                            </div>
                             {selectedExecution.callbackPayload?.inputRequest?.transport === 'text' ? (
                               <div className="space-y-2">
                                 <label className="field-label" htmlFor="execution-input-text">

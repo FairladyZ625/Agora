@@ -36,6 +36,8 @@ interface TaskStore {
   selectedTaskStatus: TaskStatus | null;
   governanceSnapshot?: CraftsmanGovernanceSnapshot | null;
   healthSnapshot?: UnifiedHealthSnapshot | null;
+  executionTailById: Record<string, { available: boolean; output: string | null; source: 'tmux' | 'unavailable' }>;
+  executionTailLoadingById: Record<string, boolean>;
   filters: TaskFilters;
   loading: boolean;
   detailLoading: boolean;
@@ -48,6 +50,7 @@ interface TaskStore {
   observeCraftsmen: (input?: { running_after_ms?: number; waiting_after_ms?: number }) => Promise<'live'>;
   refreshHealthSnapshot: () => Promise<'live' | 'error'>;
   probeCraftsmanExecution: (executionId: string) => Promise<'live'>;
+  fetchCraftsmanExecutionTail: (executionId: string, lines?: number) => Promise<'live'>;
   diagnoseRuntime: (
     taskId: string,
     agentRef: string,
@@ -127,6 +130,8 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
   selectedTaskStatus: null,
   governanceSnapshot: null,
   healthSnapshot: null,
+  executionTailById: {},
+  executionTailLoadingById: {},
   filters: { state: null, search: '' },
   loading: false,
   detailLoading: false,
@@ -172,6 +177,8 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
         selectedTaskStatus: null,
         governanceSnapshot: null,
         healthSnapshot: null,
+        executionTailById: {},
+        executionTailLoadingById: {},
         loading: false,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -288,6 +295,43 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
       await get().selectTask(selectedTaskId);
     }
     return 'live';
+  },
+
+  fetchCraftsmanExecutionTail: async (executionId, lines = 120) => {
+    set((state) => ({
+      error: null,
+      executionTailLoadingById: {
+        ...state.executionTailLoadingById,
+        [executionId]: true,
+      },
+    }));
+    try {
+      const tail = await api.getCraftsmanExecutionTail(executionId, lines);
+      set((state) => ({
+        executionTailById: {
+          ...state.executionTailById,
+          [executionId]: {
+            available: tail.available,
+            output: tail.output,
+            source: tail.source,
+          },
+        },
+        executionTailLoadingById: {
+          ...state.executionTailLoadingById,
+          [executionId]: false,
+        },
+      }));
+      return 'live';
+    } catch (err) {
+      set((state) => ({
+        executionTailLoadingById: {
+          ...state.executionTailLoadingById,
+          [executionId]: false,
+        },
+        error: err instanceof Error ? err.message : String(err),
+      }));
+      throw err;
+    }
   },
 
   diagnoseRuntime: async (taskId, agentRef, callerId, reason = '') => {
