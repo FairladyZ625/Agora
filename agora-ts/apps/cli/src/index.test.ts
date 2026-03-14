@@ -123,6 +123,44 @@ function createDashboardQueryServiceForDb(db: AgoraDatabase) {
 }
 
 describe('agora-ts cli', () => {
+  it('renders root help without touching runtime composition', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      configPath: '/definitely/missing/agora.json',
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await expect(program.parseAsync(['--help'], { from: 'user' })).rejects.toMatchObject({
+      code: 'commander.helpDisplayed',
+    });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Agora v2 TypeScript CLI');
+    expect(stdout.value).toContain('create [options] <title>');
+  });
+
+  it('renders subcommand help without touching runtime composition', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      configPath: '/definitely/missing/agora.json',
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    try {
+      await program.parseAsync(['subtasks', '--help'], { from: 'user' });
+    } catch {
+      // Commander may surface subcommand help as an exit(0) instead of helpDisplayed.
+    }
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('subtask execute-mode commands');
+    expect(stdout.value).toContain('create [options] <taskId>');
+  });
+
   it('treats a symlinked executable path as the cli entrypoint', () => {
     const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-entrypoint-'));
     tempPaths.push(dir);

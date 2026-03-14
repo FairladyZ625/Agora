@@ -247,33 +247,38 @@ function moveStage(
   throw new Error('stage move requires --before or --after');
 }
 
+function createLazyObject<T extends object>(resolve: () => T): T {
+  return new Proxy({} as T, {
+    get(_target, prop, receiver) {
+      const value = Reflect.get(resolve(), prop, receiver);
+      return typeof value === 'function'
+        ? value.bind(resolve())
+        : value;
+    },
+  });
+}
+
 export function createCliProgram(deps: CliDependencies = {}) {
   const stdout = deps.stdout ?? process.stdout;
   const stderr = deps.stderr ?? process.stderr;
-  const composition = !deps.taskService
-    || !deps.tmuxRuntimeService
-    || !deps.dashboardSessionClient
-    || !deps.humanAccountService
-    || !deps.taskConversationService
-    || !deps.templateAuthoringService
-    || !deps.rolePackService
-    || !deps.dashboardQueryService
-    ? createCliComposition({
-      ...(deps.configPath ? { configPath: deps.configPath } : {}),
-      ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
-    }, deps.factories)
-    : null;
-  const taskService = deps.taskService ?? composition?.taskService;
-  const tmuxRuntimeService = deps.tmuxRuntimeService ?? composition?.tmuxRuntimeService;
-  const dashboardSessionClient = deps.dashboardSessionClient ?? composition?.dashboardSessionClient;
-  const humanAccountService = deps.humanAccountService ?? composition?.humanAccountService;
-  const taskConversationService = deps.taskConversationService ?? composition?.taskConversationService;
-  const templateAuthoringService = deps.templateAuthoringService ?? composition?.templateAuthoringService;
-  const rolePackService = deps.rolePackService ?? composition?.rolePackService;
-  const dashboardQueryService = deps.dashboardQueryService ?? composition?.dashboardQueryService;
-  if (!taskService || !tmuxRuntimeService || !dashboardSessionClient || !humanAccountService || !taskConversationService || !templateAuthoringService || !rolePackService || !dashboardQueryService) {
-    throw new Error('CLI runtime composition is incomplete');
+  let composition: ReturnType<typeof createCliComposition> | null = null;
+  function resolveComposition() {
+    if (!composition) {
+      composition = createCliComposition({
+        ...(deps.configPath ? { configPath: deps.configPath } : {}),
+        ...(deps.dbPath ? { dbPath: deps.dbPath } : {}),
+      }, deps.factories);
+    }
+    return composition;
   }
+  const taskService = createLazyObject(() => deps.taskService ?? resolveComposition().taskService);
+  const tmuxRuntimeService = createLazyObject(() => deps.tmuxRuntimeService ?? resolveComposition().tmuxRuntimeService);
+  const dashboardSessionClient = createLazyObject(() => deps.dashboardSessionClient ?? resolveComposition().dashboardSessionClient);
+  const humanAccountService = createLazyObject(() => deps.humanAccountService ?? resolveComposition().humanAccountService);
+  const taskConversationService = createLazyObject(() => deps.taskConversationService ?? resolveComposition().taskConversationService);
+  const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
+  const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
+  const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
   const program = new Command();
 
   program
