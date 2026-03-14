@@ -191,6 +191,11 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
         hostSwapUtilizationLimit: context.config.craftsmen.host_swap_utilization_limit,
         hostLoadPerCpuLimit: context.config.craftsmen.host_load_per_cpu_limit,
       },
+      escalationPolicy: {
+        controllerAfterMs: context.config.scheduler.task_probe_controller_after_sec * 1000,
+        rosterAfterMs: context.config.scheduler.task_probe_roster_after_sec * 1000,
+        inboxAfterMs: context.config.scheduler.task_probe_inbox_after_sec * 1000,
+      },
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
     }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({

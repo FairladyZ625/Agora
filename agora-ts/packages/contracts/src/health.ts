@@ -17,6 +17,16 @@ export const healthCountByLabelSchema = z.object({
 });
 export type HealthCountByLabelDto = z.infer<typeof healthCountByLabelSchema>;
 
+export const escalationLevelSchema = z.enum(['none', 'controller', 'roster', 'inbox']);
+export type EscalationLevelDto = z.infer<typeof escalationLevelSchema>;
+
+export const escalationPolicySnapshotSchema = z.object({
+  controller_after_ms: z.number().int().nonnegative(),
+  roster_after_ms: z.number().int().nonnegative(),
+  inbox_after_ms: z.number().int().nonnegative(),
+});
+export type EscalationPolicySnapshotDto = z.infer<typeof escalationPolicySnapshotSchema>;
+
 export const taskHealthSnapshotSchema = z.object({
   status: healthLayerStatusSchema,
   total_tasks: z.number().int().nonnegative(),
@@ -71,6 +81,17 @@ export const hostHealthSnapshotSchema = z.object({
 });
 export type HostHealthSnapshotDto = z.infer<typeof hostHealthSnapshotSchema>;
 
+export const escalationHealthSnapshotSchema = z.object({
+  status: healthLayerStatusSchema,
+  policy: escalationPolicySnapshotSchema,
+  controller_pinged_tasks: z.number().int().nonnegative(),
+  roster_pinged_tasks: z.number().int().nonnegative(),
+  inbox_escalated_tasks: z.number().int().nonnegative(),
+  unhealthy_runtime_agents: z.number().int().nonnegative(),
+  runtime_unhealthy: z.boolean(),
+});
+export type EscalationHealthSnapshotDto = z.infer<typeof escalationHealthSnapshotSchema>;
+
 export const unifiedHealthSnapshotSchema = z.object({
   generated_at: z.string().datetime(),
   tasks: taskHealthSnapshotSchema,
@@ -78,5 +99,6 @@ export const unifiedHealthSnapshotSchema = z.object({
   runtime: runtimeHealthSnapshotSchema,
   craftsman: craftsmanHealthSnapshotSchema,
   host: hostHealthSnapshotSchema,
+  escalation: escalationHealthSnapshotSchema,
 });
 export type UnifiedHealthSnapshotDto = z.infer<typeof unifiedHealthSnapshotSchema>;

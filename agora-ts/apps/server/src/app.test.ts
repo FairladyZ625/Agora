@@ -87,6 +87,19 @@ describe('agora-ts server bootstrap', () => {
             status: 'unavailable',
             snapshot: null,
           },
+          escalation: {
+            status: 'healthy',
+            policy: {
+              controller_after_ms: 300000,
+              roster_after_ms: 900000,
+              inbox_after_ms: 1800000,
+            },
+            controller_pinged_tasks: 0,
+            roster_pinged_tasks: 0,
+            inbox_escalated_tasks: 0,
+            unhealthy_runtime_agents: 0,
+            runtime_unhealthy: false,
+          },
         }),
       } as unknown as TaskService,
     });

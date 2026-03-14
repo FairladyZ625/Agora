@@ -85,6 +85,12 @@ type CraftsmanGovernanceLimits = {
   hostLoadPerCpuLimit: number | null;
 };
 
+type EscalationPolicy = {
+  controllerAfterMs: number;
+  rosterAfterMs: number;
+  inboxAfterMs: number;
+};
+
 export interface TaskServiceOptions {
   templatesDir?: string;
   taskIdGenerator?: () => string;
@@ -109,6 +115,11 @@ export interface TaskServiceOptions {
     hostMemoryUtilizationLimit?: number | null;
     hostSwapUtilizationLimit?: number | null;
     hostLoadPerCpuLimit?: number | null;
+  };
+  escalationPolicy?: {
+    controllerAfterMs?: number;
+    rosterAfterMs?: number;
+    inboxAfterMs?: number;
   };
 }
 
@@ -169,9 +180,9 @@ export interface StartupRecoveryScanResult {
 }
 
 export interface InactiveTaskProbeOptions {
-  controllerAfterMs: number;
-  rosterAfterMs: number;
-  inboxAfterMs: number;
+  controllerAfterMs?: number;
+  rosterAfterMs?: number;
+  inboxAfterMs?: number;
   now?: Date;
 }
 
@@ -235,6 +246,7 @@ export class TaskService {
   private readonly hostResourcePort: HostResourcePort | undefined;
   private readonly liveSessionStore: LiveSessionStore | undefined;
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
+  private readonly escalationPolicy: EscalationPolicy;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -283,6 +295,11 @@ export class TaskService {
       hostMemoryUtilizationLimit: options.craftsmanGovernance?.hostMemoryUtilizationLimit ?? null,
       hostSwapUtilizationLimit: options.craftsmanGovernance?.hostSwapUtilizationLimit ?? null,
       hostLoadPerCpuLimit: options.craftsmanGovernance?.hostLoadPerCpuLimit ?? null,
+    };
+    this.escalationPolicy = {
+      controllerAfterMs: options.escalationPolicy?.controllerAfterMs ?? 300_000,
+      rosterAfterMs: options.escalationPolicy?.rosterAfterMs ?? 900_000,
+      inboxAfterMs: options.escalationPolicy?.inboxAfterMs ?? 1_800_000,
     };
   }
 
@@ -1132,6 +1149,7 @@ export class TaskService {
       : this.isHostHealthDegraded(hostSnapshot)
         ? 'degraded'
         : 'healthy';
+    const escalationSnapshot = this.buildEscalationSnapshot(tasks, sessions);
 
     return {
       generated_at: generatedAt,
@@ -1178,6 +1196,7 @@ export class TaskService {
         status: hostStatus,
         snapshot: hostSnapshot,
       },
+      escalation: escalationSnapshot,
     };
   }
 
@@ -1599,6 +1618,7 @@ export class TaskService {
   }
 
   probeInactiveTasks(options: InactiveTaskProbeOptions): InactiveTaskProbeResult {
+    const thresholds = this.resolveEscalationPolicy(options);
     const now = options.now ?? new Date();
     const result: InactiveTaskProbeResult = {
       scanned_tasks: 0,
@@ -1613,14 +1633,14 @@ export class TaskService {
       const idleMs = now.getTime() - latestActivityMs;
       const controllerRef = resolveControllerRef(task.team.members);
       const interactiveRefs = task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId);
-      if (idleMs < options.controllerAfterMs) {
+      if (idleMs < thresholds.controllerAfterMs) {
         continue;
       }
       const probeState = this.getProbeState(task.id, latestActivityMs);
 
       if (!probeState.controllerNotified && controllerRef) {
         this.publishTaskStatusBroadcast(task, {
-          kind: 'thread_probe_controller',
+          kind: 'controller_pinged',
           participantRefs: [controllerRef],
           bodyLines: [
             `Task appears inactive for ${Math.round(idleMs / 1000)} seconds.`,
@@ -1630,7 +1650,7 @@ export class TaskService {
         this.flowLogRepository.insertFlowLog({
           task_id: task.id,
           kind: 'flow',
-          event: 'thread_probe_controller',
+          event: 'controller_pinged',
           stage_id: task.current_stage,
           detail: { idle_ms: idleMs, controller_ref: controllerRef },
           actor: 'system',
@@ -1639,9 +1659,9 @@ export class TaskService {
         continue;
       }
 
-      if (idleMs >= options.rosterAfterMs && probeState.controllerNotified && !probeState.rosterNotified && interactiveRefs.length > 0) {
+      if (idleMs >= thresholds.rosterAfterMs && probeState.controllerNotified && !probeState.rosterNotified && interactiveRefs.length > 0) {
         this.publishTaskStatusBroadcast(task, {
-          kind: 'thread_probe_roster',
+          kind: 'roster_pinged',
           participantRefs: interactiveRefs,
           bodyLines: [
             `Task remains inactive for ${Math.round(idleMs / 1000)} seconds after controller probe.`,
@@ -1651,7 +1671,7 @@ export class TaskService {
         this.flowLogRepository.insertFlowLog({
           task_id: task.id,
           kind: 'flow',
-          event: 'thread_probe_roster',
+          event: 'roster_pinged',
           stage_id: task.current_stage,
           detail: { idle_ms: idleMs, participant_refs: interactiveRefs },
           actor: 'system',
@@ -1660,15 +1680,15 @@ export class TaskService {
         continue;
       }
 
-      if (idleMs >= options.inboxAfterMs && probeState.rosterNotified && !probeState.inboxRaised) {
+      if (idleMs >= thresholds.inboxAfterMs && probeState.rosterNotified && !probeState.inboxRaised) {
         this.inboxRepository.insertInboxItem({
           text: `Task ${task.id} appears stuck`,
-          source: 'thread_probe',
+          source: 'inbox_escalated',
           notes: `Task ${task.id} has remained inactive for ${Math.round(idleMs / 1000)} seconds at stage ${task.current_stage ?? '-'}.`,
           tags: ['task', 'stuck'],
           metadata: {
             task_id: task.id,
-            kind: 'thread_probe_inbox',
+            kind: 'inbox_escalated',
             current_stage: task.current_stage,
             idle_ms: idleMs,
           },
@@ -1676,7 +1696,7 @@ export class TaskService {
         this.flowLogRepository.insertFlowLog({
           task_id: task.id,
           kind: 'flow',
-          event: 'thread_probe_inbox',
+          event: 'inbox_escalated',
           stage_id: task.current_stage,
           detail: { idle_ms: idleMs },
           actor: 'system',
@@ -2315,9 +2335,9 @@ export class TaskService {
           `- ${taskText(task, '现在用 execution-scoped Agora CLI 命令验证结构化输入回环。', 'Validate the structured input loop now using the execution-scoped Agora CLI commands.')}`,
           `- ${taskText(task, '确认 callback metadata 包含 input_request，并且出现在 conversation/Dashboard。', 'Confirm the callback metadata includes the input_request payload and appears in conversation/Dashboard.')}`,
         ];
-      case 'thread_probe_controller':
-      case 'thread_probe_roster':
-      case 'thread_probe_inbox':
+      case 'controller_pinged':
+      case 'roster_pinged':
+      case 'inbox_escalated':
         return [
           '',
           `${taskText(task, '冒烟引导', 'Smoke Guidance')}:`,
@@ -3232,8 +3252,9 @@ export class TaskService {
   }
 
   private resolveLatestBusinessActivityMs(task: StoredTask) {
+    const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'inbox_escalated']);
     const flowMs = this.flowLogRepository.listByTask(task.id)
-      .filter((entry) => !entry.event.startsWith('thread_probe_'))
+      .filter((entry) => !escalationEvents.has(entry.event))
       .map((entry) => Date.parse(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const progressMs = this.progressLogRepository.listByTask(task.id)
@@ -3255,9 +3276,55 @@ export class TaskService {
     const flows = this.flowLogRepository.listByTask(taskId);
     const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && Date.parse(entry.created_at) > latestActivityMs);
     return {
-      controllerNotified: notifiedAfterActivity('thread_probe_controller'),
-      rosterNotified: notifiedAfterActivity('thread_probe_roster'),
-      inboxRaised: notifiedAfterActivity('thread_probe_inbox'),
+      controllerNotified: notifiedAfterActivity('controller_pinged'),
+      rosterNotified: notifiedAfterActivity('roster_pinged'),
+      inboxRaised: notifiedAfterActivity('inbox_escalated'),
+    };
+  }
+
+  private resolveEscalationPolicy(options: InactiveTaskProbeOptions) {
+    return {
+      controllerAfterMs: options.controllerAfterMs ?? this.escalationPolicy.controllerAfterMs,
+      rosterAfterMs: options.rosterAfterMs ?? this.escalationPolicy.rosterAfterMs,
+      inboxAfterMs: options.inboxAfterMs ?? this.escalationPolicy.inboxAfterMs,
+    };
+  }
+
+  private buildEscalationSnapshot(tasks: StoredTask[], sessions: ReturnType<NonNullable<LiveSessionStore['listAll']>>): UnifiedHealthSnapshotDto['escalation'] {
+    const activeTasks = tasks.filter((task) => task.state === TaskState.ACTIVE);
+    let controllerPingedTasks = 0;
+    let rosterPingedTasks = 0;
+    let inboxEscalatedTasks = 0;
+
+    for (const task of activeTasks) {
+      const latestActivityMs = this.resolveLatestBusinessActivityMs(task);
+      const probeState = this.getProbeState(task.id, latestActivityMs);
+      if (probeState.inboxRaised) {
+        inboxEscalatedTasks += 1;
+      } else if (probeState.rosterNotified) {
+        rosterPingedTasks += 1;
+      } else if (probeState.controllerNotified) {
+        controllerPingedTasks += 1;
+      }
+    }
+
+    const unhealthyRuntimeAgents = sessions.filter((session) => session.status === 'closed').length;
+    const runtimeUnhealthy = !!this.liveSessionStore && unhealthyRuntimeAgents > 0;
+
+    return {
+      status: controllerPingedTasks > 0 || rosterPingedTasks > 0 || inboxEscalatedTasks > 0 || runtimeUnhealthy
+        ? 'degraded'
+        : 'healthy',
+      policy: {
+        controller_after_ms: this.escalationPolicy.controllerAfterMs,
+        roster_after_ms: this.escalationPolicy.rosterAfterMs,
+        inbox_after_ms: this.escalationPolicy.inboxAfterMs,
+      },
+      controller_pinged_tasks: controllerPingedTasks,
+      roster_pinged_tasks: rosterPingedTasks,
+      inbox_escalated_tasks: inboxEscalatedTasks,
+      unhealthy_runtime_agents: unhealthyRuntimeAgents,
+      runtime_unhealthy: runtimeUnhealthy,
     };
   }
 
