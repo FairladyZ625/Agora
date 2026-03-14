@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_DIST="$ROOT/agora-ts/apps/cli/dist/index.js"
+CLI_SRC="$ROOT/agora-ts/apps/cli/src/index.ts"
+TSX_BIN="$ROOT/agora-ts/node_modules/.bin/tsx"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Agora requires Node.js 22+ on PATH."
+  exit 1
+fi
+
+if [ -f "$CLI_DIST" ]; then
+  exec node "$CLI_DIST" "$@"
+fi
+
+if [ -x "$TSX_BIN" ] && [ -f "$CLI_SRC" ]; then
+  exec "$TSX_BIN" "$CLI_SRC" "$@"
+fi
+
+cat <<'EOF'
+Agora CLI dependencies are not installed yet.
+
+Run:
+  ./scripts/bootstrap-local.sh
+
+Then:
+  ./agora init
+  ./agora start
+EOF
+exit 1
