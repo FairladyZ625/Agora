@@ -46,6 +46,67 @@ describe('agora-ts server bootstrap', () => {
     expect(response.json()).toEqual({ status: 'ok' });
   });
 
+  it('serves the unified health snapshot endpoint', async () => {
+    const app = buildApp({
+      taskService: {
+        getHealthSnapshot: () => ({
+          generated_at: '2026-03-14T04:30:00.000Z',
+          tasks: {
+            status: 'healthy',
+            total_tasks: 1,
+            active_tasks: 1,
+            paused_tasks: 0,
+            blocked_tasks: 0,
+            done_tasks: 0,
+          },
+          im: {
+            status: 'healthy',
+            active_bindings: 1,
+            active_threads: 1,
+            bindings_by_provider: [{ label: 'discord', count: 1 }],
+          },
+          runtime: {
+            status: 'unavailable',
+            available: false,
+            stale_after_ms: null,
+            active_sessions: 0,
+            idle_sessions: 0,
+            closed_sessions: 0,
+            agents: [],
+          },
+          craftsman: {
+            status: 'healthy',
+            active_executions: 0,
+            queued_executions: 0,
+            running_executions: 0,
+            waiting_input_executions: 0,
+            awaiting_choice_executions: 0,
+            active_by_assignee: [],
+          },
+          host: {
+            status: 'unavailable',
+            snapshot: null,
+          },
+        }),
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/health/snapshot',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      tasks: {
+        total_tasks: 1,
+      },
+      im: {
+        active_bindings: 1,
+      },
+    });
+  });
+
   it('serves a readiness endpoint from the configured ready path', async () => {
     const app = buildApp({
       observability: {

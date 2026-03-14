@@ -42,6 +42,7 @@ import {
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
   type HealthResponse,
+  unifiedHealthSnapshotSchema,
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
   promoteTodoRequestSchema,
@@ -703,6 +704,13 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     return { status: 'ok' };
+  });
+
+  app.get('/api/health/snapshot', async (_request, reply) => {
+    if (!taskService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    return reply.send(unifiedHealthSnapshotSchema.parse(taskService.getHealthSnapshot()));
   });
 
   app.get(readyPath, async () => {

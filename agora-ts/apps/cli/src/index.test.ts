@@ -141,6 +141,76 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('create [options] <title>');
   });
 
+  it('prints unified health snapshot through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        getHealthSnapshot: () => ({
+          generated_at: '2026-03-14T04:30:00.000Z',
+          tasks: {
+            status: 'healthy',
+            total_tasks: 2,
+            active_tasks: 1,
+            paused_tasks: 0,
+            blocked_tasks: 0,
+            done_tasks: 1,
+          },
+          im: {
+            status: 'healthy',
+            active_bindings: 1,
+            active_threads: 1,
+            bindings_by_provider: [{ label: 'discord', count: 1 }],
+          },
+          runtime: {
+            status: 'healthy',
+            available: true,
+            stale_after_ms: 1234,
+            active_sessions: 1,
+            idle_sessions: 0,
+            closed_sessions: 0,
+            agents: [],
+          },
+          craftsman: {
+            status: 'degraded',
+            active_executions: 1,
+            queued_executions: 0,
+            running_executions: 0,
+            waiting_input_executions: 1,
+            awaiting_choice_executions: 0,
+            active_by_assignee: [{ label: 'opus', count: 1 }],
+          },
+          host: {
+            status: 'healthy',
+            snapshot: {
+              observed_at: '2026-03-14T04:30:00.000Z',
+              platform: 'darwin',
+              cpu_count: 8,
+              load_1m: 1,
+              memory_total_bytes: 100,
+              memory_used_bytes: 40,
+              memory_utilization: 0.4,
+              memory_pressure: 0.3,
+              swap_total_bytes: 100,
+              swap_used_bytes: 10,
+              swap_utilization: 0.1,
+            },
+          },
+        }),
+      } as unknown as TaskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['health', 'snapshot'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('generated_at: 2026-03-14T04:30:00.000Z');
+    expect(stdout.value).toContain('tasks: total=2 active=1 blocked=0 paused=0 done=1 status=healthy');
+    expect(stdout.value).toContain('runtime: available=true active=1 idle=0 closed=0 status=healthy');
+    expect(stdout.value).toContain('craftsman: active=1 running=0 waiting_input=1 awaiting_choice=0 status=degraded');
+  });
+
   it('renders subcommand help without touching runtime composition', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

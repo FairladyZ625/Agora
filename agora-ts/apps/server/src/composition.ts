@@ -92,6 +92,7 @@ export interface ServerCompositionFactories {
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
+      liveSessionStore: LiveSessionStore;
     },
   ) => TaskService;
   createArchiveJobNotifier: (context: ServerCompositionContext) => FileArchiveJobNotifier | undefined;
@@ -198,6 +199,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         craftsmanInputPort: deps.craftsmanInputPort,
         craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
         hostResourcePort: new OsHostResourcePort(),
+        liveSessionStore: deps.liveSessionStore,
         craftsmanGovernance: {
           maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
           hostMemoryUtilizationLimit: context.config.craftsmen.host_memory_utilization_limit,
@@ -299,6 +301,7 @@ export function buildServerComposition(
     tmuxRuntimeService,
     imProvisioningPort,
     messagingPort,
+    liveSessionStore,
     taskBrainBindingService,
     taskBrainWorkspacePort,
     taskContextBindingService,
