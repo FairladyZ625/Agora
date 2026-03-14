@@ -200,6 +200,12 @@ npm run scenario:all        # agent scenario harness
 
 ---
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=FairladyZ625/Agora&type=Date)](https://www.star-history.com/#FairladyZ625/Agora&Date)
+
+---
+
 ## Project Structure
 
 ```
