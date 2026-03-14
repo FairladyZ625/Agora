@@ -155,6 +155,26 @@ describe('templates workflow surfaces', () => {
     }));
   });
 
+  it('renders graph nodes visibly inside the ReactFlow canvas', () => {
+    const { container } = renderGraphEditor();
+
+    const canvasNodes = Array.from(container.querySelectorAll('.react-flow__node'));
+
+    expect(canvasNodes.length).toBeGreaterThan(0);
+    for (const node of canvasNodes) {
+      expect(node).toBeVisible();
+      expect(node).not.toHaveStyle({ visibility: 'hidden' });
+    }
+  });
+
+  it('renders graph edges inside the ReactFlow canvas', () => {
+    const { container } = renderGraphEditor();
+
+    const edgePaths = Array.from(container.querySelectorAll('.react-flow__edges path'));
+
+    expect(edgePaths.length).toBeGreaterThan(0);
+  });
+
   it('updates entry nodes and deletes graph nodes through the dedicated workflow editor page', () => {
     renderGraphEditor();
 
