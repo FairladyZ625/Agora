@@ -513,6 +513,14 @@ export class TaskService {
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
     if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
+      const refreshed = this.getTaskOrThrow(taskId);
+      if (
+        refreshed.current_stage !== task.current_stage
+        || refreshed.state !== task.state
+        || refreshed.version !== task.version
+      ) {
+        return refreshed;
+      }
       const approvalRequest = this.ensureApprovalRequestForGate(task, currentStage, options.callerId);
       if (approvalRequest?.shouldBroadcast) {
         this.publishTaskStatusBroadcast(task, {
