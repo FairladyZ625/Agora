@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { Agent } from 'node:http';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { WebSocket } from 'ws';
+import { WebSocket, type ClientOptions, type RawData } from 'ws';
 import { resolveDiscordProxyEnvironment, sanitizeProxyForLogs } from './proxy-support.js';
 
 const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
@@ -87,18 +87,17 @@ function createDiscordGatewayWebSocket(
 ) {
   const gatewayUrl = new URL(DISCORD_GATEWAY_URL);
   const agent = createDiscordGatewayWebSocketProxyAgent(proxy, logger);
-  return new WebSocket(DISCORD_GATEWAY_URL, [], agent
+  const options = (agent
     ? {
         agent,
         host: gatewayUrl.hostname,
-        hostname: gatewayUrl.hostname,
         port: gatewayUrl.port ? Number(gatewayUrl.port) : 443,
-        servername: gatewayUrl.hostname,
         handshakeTimeout: 15_000,
       }
     : {
         handshakeTimeout: 15_000,
-      });
+      }) as ClientOptions;
+  return new WebSocket(DISCORD_GATEWAY_URL, [], options);
 }
 
 class MinimalDiscordGatewayPresenceClient extends EventEmitter implements DiscordGatewayPresenceClient {
@@ -267,14 +266,16 @@ class MinimalDiscordGatewayPresenceClient extends EventEmitter implements Discor
   }
 }
 
-function parseGatewayPayload(data: WebSocket.RawData): GatewayPayload {
+function parseGatewayPayload(data: RawData): GatewayPayload {
   const text = typeof data === 'string'
     ? data
     : Buffer.isBuffer(data)
       ? data.toString('utf8')
+      : Array.isArray(data)
+        ? Buffer.concat(data).toString('utf8')
       : data instanceof ArrayBuffer
         ? Buffer.from(data).toString('utf8')
-        : Buffer.from(data as ArrayBufferView['buffer']).toString('utf8');
+        : Buffer.from(data as ArrayBufferView).toString('utf8');
   return JSON.parse(text) as GatewayPayload;
 }
 
