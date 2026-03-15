@@ -16,6 +16,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
+import { resolveGraphConnectionCandidate } from '@/lib/workflowGraphEditor';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { TemplateDetail, TemplateGraph } from '@/types/dashboard';
 
@@ -254,18 +255,17 @@ export function TemplateGraphEditorPage() {
   };
 
   const handleGraphConnect = (connection: Connection) => {
-    if (!connection.source || !connection.target) {
+    const candidate = resolveGraphConnectionCandidate(draftGraph ?? { nodes: [] }, connection);
+    if (!candidate) {
       return;
     }
-    const source = connection.source;
-    const target = connection.target;
     updateDraftGraph((currentGraph) => ({
       ...currentGraph,
       edges: addEdge({
-        id: `${source}__advance__${target}`,
-        source,
-        target,
-        label: 'advance',
+        id: `${candidate.source}__${candidate.kind}__${candidate.target}`,
+        source: candidate.source,
+        target: candidate.target,
+        label: candidate.kind,
       }, graphCanvasEdges).map((edge) => ({
         id: edge.id,
         from: edge.source,
@@ -273,7 +273,7 @@ export function TemplateGraphEditorPage() {
         kind: edge.label === 'reject' ? 'reject' : 'advance',
       })) as TemplateGraph['edges'],
     }));
-    setSelectedGraphEdgeId(`${source}__advance__${target}`);
+    setSelectedGraphEdgeId(`${candidate.source}__${candidate.kind}__${candidate.target}`);
   };
 
   const handleSave = async () => {

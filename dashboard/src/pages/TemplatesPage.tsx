@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
+import { WorkflowGraphView } from '@/components/features/WorkflowGraphView';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
+import { resolveWorkflowExecutionKindLabel, resolveWorkflowGateLabel } from '@/lib/workflowGraphLabels';
 import { useTemplateStore } from '@/stores/templateStore';
 
 export function TemplatesPage() {
@@ -87,7 +89,7 @@ export function TemplatesPage() {
                 className="button-primary"
                 onClick={() => navigate(`/templates/${selectedTemplate.id}/graph`)}
               >
-                编辑流程
+                {copy.graphOpenEditorAction}
               </button>
             ) : null}
           </div>
@@ -116,6 +118,28 @@ export function TemplatesPage() {
                   </p>
                 </div>
               </div>
+
+              {selectedTemplate.graph ? (
+                <div className="detail-card detail-card--graph">
+                  <WorkflowGraphView
+                    testId="template-detail-graph"
+                    nodes={selectedTemplate.graph.nodes.map((node) => ({
+                      id: node.id,
+                      label: node.name,
+                      kindLabel: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
+                      gateLabel: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+                      isEntry: selectedTemplate.graph?.entryNodes.includes(node.id) ?? false,
+                      layout: node.layout,
+                    }))}
+                    edges={selectedTemplate.graph.edges}
+                    entryLabel={copy.graphEntryLabel}
+                    edgeKindLabels={{
+                      advance: copy.graphGateTypeOptions.advance,
+                      reject: 'reject',
+                    }}
+                  />
+                </div>
+              ) : null}
 
               <div className="detail-card space-y-3">
                 <span className="detail-card__label">{copy.teamLabel}</span>
