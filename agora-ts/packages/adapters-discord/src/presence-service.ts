@@ -56,8 +56,10 @@ type GatewayWebSocketFactory = (proxy: {
 }, logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>) => WebSocket;
 
 type DiscordGatewayPresencePayload = {
+  since: null;
   status: DiscordGatewayPresenceStatus;
   activities: Array<{ name: string; type: number }>;
+  afk: false;
 };
 
 export function createDiscordGatewayWebSocketProxyAgent(proxy: {
@@ -353,10 +355,12 @@ export class DiscordGatewayPresenceService {
     }
 
     const desiredPresence: DiscordGatewayPresencePayload = {
+      since: null,
       status: this.status,
       activities: this.activityName
         ? [{ name: this.activityName, type: DISCORD_WATCHING_ACTIVITY_TYPE }]
         : [],
+      afk: false,
     };
 
     this.client = this.clientFactory(proxy, desiredPresence);
@@ -369,8 +373,10 @@ export class DiscordGatewayPresenceService {
       }
       void Promise.resolve(
         client.user.setPresence({
+          since: desiredPresence.since,
           status: desiredPresence.status,
           activities: desiredPresence.activities,
+          afk: desiredPresence.afk,
         }),
       )
         .then(() => {

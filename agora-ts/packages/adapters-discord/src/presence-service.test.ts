@@ -49,11 +49,13 @@ describe('DiscordGatewayPresenceService', () => {
 
     expect(stub.login).toHaveBeenCalledWith('discord-token');
     expect(stub.setPresence).toHaveBeenCalledWith({
+      since: null,
       status: 'online',
       activities: [{
         name: 'Agora',
         type: 3,
       }],
+      afk: false,
     });
   });
 
@@ -95,8 +97,10 @@ describe('DiscordGatewayPresenceService', () => {
       httpsProxy: 'http://127.0.0.1:7897',
       httpProxy: 'http://127.0.0.1:7897',
     }, {
+      since: null,
       status: 'online',
       activities: [{ name: 'Agora', type: 3 }],
+      afk: false,
     });
     expect(info).toHaveBeenCalledWith('[agora] discord gateway presence proxy enabled (http://127.0.0.1:7897)');
   });
