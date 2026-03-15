@@ -994,7 +994,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(startCommandRunner).toHaveBeenCalledTimes(2);
-    expect(startCommandRunner.mock.calls[0]?.[0]?.args?.[0]).toContain('docs/02-PRODUCT/scripts/dev-start.sh');
+    expect(startCommandRunner.mock.calls[0]?.[0]?.args?.[0]).toContain('scripts/dev-start.sh');
   });
 
   it('reads task conversation entries through the cli', async () => {

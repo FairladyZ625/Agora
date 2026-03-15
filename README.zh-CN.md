@@ -144,7 +144,7 @@ cd agora
 - API：`http://127.0.0.1:18420/api/health`
 - Dashboard：`http://127.0.0.1:33173/dashboard/`
 
-如果你想直接看底层启动脚本，`./agora start` 实际复用的是 `docs/02-PRODUCT/scripts/dev-start.sh`。
+如果你想直接看底层启动脚本，`./agora start` 实际复用的是 `scripts/dev-start.sh`。
 
 ### 创建第一个任务
 

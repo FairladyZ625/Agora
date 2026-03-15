@@ -126,7 +126,7 @@ This source-mode path installs dependencies, prepares `.env`, writes local Agora
 - API: `http://127.0.0.1:18420/api/health`
 - Dashboard: `http://127.0.0.1:33173/dashboard/`
 
-If you want the raw underlying command, `./agora start` delegates to `docs/02-PRODUCT/scripts/dev-start.sh`.
+If you want the raw underlying command, `./agora start` delegates to `scripts/dev-start.sh`.
 
 ### Create Your First Task
 

@@ -70,7 +70,7 @@ export async function ensureServerReachable(url) {
     }
   } catch (error) {
     throw new Error(
-      `Dashboard is not reachable at ${url}. Start it with ./docs/02-PRODUCT/scripts/dev-start.sh or set DASHBOARD_BASE_URL.`,
+      `Dashboard is not reachable at ${url}. Start it with ./scripts/dev-start.sh or set DASHBOARD_BASE_URL.`,
       { cause: error },
     );
   } finally {

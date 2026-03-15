@@ -223,7 +223,7 @@ docs/               # 独立 Git 仓库（设计文档 + Walkthrough）
 
 ```bash
 cp .env.example .env
-./docs/02-PRODUCT/scripts/dev-start.sh
+./scripts/dev-start.sh
 ```
 
 ### 开发阶段兼容性策略（强制）

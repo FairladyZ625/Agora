@@ -19,8 +19,8 @@ afterEach(() => {
 function makeProjectRoot() {
   const root = mkdtempSync(join(tmpdir(), 'agora-start-command-'));
   tempPaths.push(root);
-  mkdirSync(join(root, 'docs/02-PRODUCT/scripts'), { recursive: true });
-  writeFileSync(join(root, 'docs/02-PRODUCT/scripts/dev-start.sh'), '#!/usr/bin/env bash\n');
+  mkdirSync(join(root, 'scripts'), { recursive: true });
+  writeFileSync(join(root, 'scripts/dev-start.sh'), '#!/usr/bin/env bash\n');
   return root;
 }
 
@@ -55,7 +55,7 @@ describe('runStartCommand', () => {
 
     expect(runner).toHaveBeenCalledWith({
       command: 'bash',
-      args: [join(root, 'docs/02-PRODUCT/scripts/dev-start.sh')],
+      args: [join(root, 'scripts/dev-start.sh')],
       cwd: root,
       env: process.env,
     });

@@ -19,7 +19,7 @@ export interface RunStartCommandOptions {
 }
 
 function hasDevStartScript(root: string): boolean {
-  return existsSync(join(root, 'docs/02-PRODUCT/scripts/dev-start.sh'));
+  return existsSync(join(root, 'scripts/dev-start.sh'));
 }
 
 export function findAgoraProjectRoot(startDir: string): string | null {
@@ -78,7 +78,7 @@ export async function runStartCommand(options: RunStartCommandOptions = {}): Pro
   const runner = options.runner ?? defaultStartCommandRunner;
   await runner({
     command: 'bash',
-    args: [join(projectRoot, 'docs/02-PRODUCT/scripts/dev-start.sh')],
+    args: [join(projectRoot, 'scripts/dev-start.sh')],
     cwd: projectRoot,
     env: process.env,
   });
