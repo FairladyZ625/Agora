@@ -142,6 +142,9 @@ export function useDashboardHomeCopy() {
     principleBullets: t('home.principleBullets', { returnObjects: true }) as string[],
     resolutionTitle: t('home.resolutionTitle'),
     resolutionSummary: t('home.resolutionSummary'),
+    resolutionEmptyTitle: t('home.resolutionEmptyTitle'),
+    resolutionEmptySummary: t('home.resolutionEmptySummary'),
+    resolutionEmptyValue: t('home.resolutionEmptyValue'),
     resolutionMeta: {
       gate: t('home.resolutionMeta.gate'),
       stage: t('home.resolutionMeta.stage'),

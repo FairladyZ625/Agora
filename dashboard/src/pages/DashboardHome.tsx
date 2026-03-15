@@ -248,7 +248,6 @@ export function DashboardHome() {
   const currentReviewIndex =
     reviewItems.length === 0 ? 0 : Math.min(reviewIndex, reviewItems.length - 1);
   const focusReview = reviewItems[currentReviewIndex] ?? null;
-  const focusTask = focusReview ?? homeMetrics.recentTasks[0] ?? null;
   const railTasks = useMemo(() => {
     const activeTasks = homeMetrics.recentTasks.filter((task) =>
       ['in_progress', 'gate_waiting', 'paused', 'blocked'].includes(task.state),
@@ -263,9 +262,16 @@ export function DashboardHome() {
         Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
       );
   const canResolveReview = Boolean(focusReview);
-  const authorityStage = formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage);
-  const authorityGate = formatAuthorityGate(focusReview, homeCopy.resolutionFallbacks.gate);
-  const authoritySummary = formatAuthoritySummary(focusReview, homeCopy.resolutionFallbacks.summary);
+  const authorityStage = focusReview
+    ? formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage)
+    : homeCopy.resolutionEmptyValue;
+  const authorityGate = focusReview
+    ? formatAuthorityGate(focusReview, homeCopy.resolutionFallbacks.gate)
+    : homeCopy.resolutionEmptyValue;
+  const authorityTitle = focusReview?.title ?? homeCopy.resolutionEmptyTitle;
+  const authoritySummary = focusReview
+    ? formatAuthoritySummary(focusReview, homeCopy.resolutionFallbacks.summary)
+    : homeCopy.resolutionEmptySummary;
   const selectedRailTask = railTaskId
     ? railTasks.find((task) => task.id === railTaskId) ?? null
     : null;
@@ -406,7 +412,7 @@ export function DashboardHome() {
 
             <div className="home-os__authority surface-panel surface-panel--muted">
               <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
-              <h4 className="home-os__authority-title">{focusTask?.title ?? homeCopy.resolutionTitle}</h4>
+              <h4 className="home-os__authority-title">{authorityTitle}</h4>
               <div className="home-os__authority-grid">
                 <div className="home-os__authority-stat">
                   <span className="page-kicker">{homeCopy.resolutionMeta.gate}</span>
