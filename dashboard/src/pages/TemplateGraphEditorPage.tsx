@@ -16,8 +16,22 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
+import { resolveGraphConnectionCandidate } from '@/lib/workflowGraphEditor';
+import { resolveWorkflowExecutionKindLabel, resolveWorkflowGateLabel } from '@/lib/workflowGraphLabels';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { TemplateDetail, TemplateGraph } from '@/types/dashboard';
+
+type GraphValidationIssue =
+  | { code: 'missing_node' }
+  | { code: 'missing_entry' }
+  | { code: 'unknown_entry'; entryId: string }
+  | { code: 'unknown_edge_source'; nodeId: string }
+  | { code: 'unknown_edge_target'; nodeId: string }
+  | { code: 'advance_not_forward'; from: string; to: string }
+  | { code: 'reject_not_backward'; from: string; to: string }
+  | { code: 'multiple_advance_outgoing'; nodeId: string }
+  | { code: 'multiple_advance_incoming'; nodeId: string }
+  | { code: 'multiple_reject_outgoing'; nodeId: string };
 
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
   const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
@@ -129,29 +143,175 @@ function deriveStagesFromTemplateGraph(graph: TemplateGraph): TemplateDetail['st
     }));
 }
 
+function tidyGraphLayout(graph: TemplateGraph): TemplateGraph {
+  const advanceBySource = new Map<string, string[]>();
+  const incomingAdvanceCount = new Map<string, number>();
+
+  for (const node of graph.nodes) {
+    advanceBySource.set(node.id, []);
+    incomingAdvanceCount.set(node.id, 0);
+  }
+
+  for (const edge of graph.edges) {
+    if (edge.kind !== 'advance') {
+      continue;
+    }
+    advanceBySource.get(edge.from)?.push(edge.to);
+    incomingAdvanceCount.set(edge.to, (incomingAdvanceCount.get(edge.to) ?? 0) + 1);
+  }
+
+  const queue = graph.entryNodes.length > 0
+    ? [...graph.entryNodes]
+    : graph.nodes.filter((node) => (incomingAdvanceCount.get(node.id) ?? 0) === 0).map((node) => node.id);
+  const visited = new Set<string>();
+  const columns = new Map<string, number>();
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) {
+      continue;
+    }
+    visited.add(nodeId);
+    const currentColumn = columns.get(nodeId) ?? 0;
+    for (const nextId of advanceBySource.get(nodeId) ?? []) {
+      columns.set(nextId, Math.max(columns.get(nextId) ?? 0, currentColumn + 1));
+      queue.push(nextId);
+    }
+  }
+
+  let fallbackColumn = 0;
+  const rowCounts = new Map<number, number>();
+
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const column = columns.get(node.id) ?? fallbackColumn++;
+      const row = rowCounts.get(column) ?? 0;
+      rowCounts.set(column, row + 1);
+      return {
+        ...node,
+        layout: {
+          x: column * 320,
+          y: row * 144,
+        },
+      };
+    }),
+  };
+}
+
 function validateTemplateGraphDraft(graph: TemplateGraph) {
-  const errors: string[] = [];
+  const errors: GraphValidationIssue[] = [];
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
+  const advanceOutgoingCount = new Map<string, number>();
+  const advanceIncomingCount = new Map<string, number>();
+  const rejectOutgoingCount = new Map<string, number>();
+  const nodeOrder = new Map(graph.nodes.map((node, index) => [node.id, index]));
   if (graph.nodes.length === 0) {
-    errors.push('Graph must include at least one node.');
+    errors.push({ code: 'missing_node' });
   }
   if (graph.entryNodes.length === 0) {
-    errors.push('Graph must include at least one entry node.');
+    errors.push({ code: 'missing_entry' });
   }
   for (const entryId of graph.entryNodes) {
     if (!nodeIds.has(entryId)) {
-      errors.push(`Unknown entry node: ${entryId}`);
+      errors.push({ code: 'unknown_entry', entryId });
     }
   }
   for (const edge of graph.edges) {
     if (!nodeIds.has(edge.from)) {
-      errors.push(`Unknown edge source: ${edge.from}`);
+      errors.push({ code: 'unknown_edge_source', nodeId: edge.from });
     }
     if (!nodeIds.has(edge.to)) {
-      errors.push(`Unknown edge target: ${edge.to}`);
+      errors.push({ code: 'unknown_edge_target', nodeId: edge.to });
+    }
+    if (edge.kind === 'advance') {
+      advanceOutgoingCount.set(edge.from, (advanceOutgoingCount.get(edge.from) ?? 0) + 1);
+      advanceIncomingCount.set(edge.to, (advanceIncomingCount.get(edge.to) ?? 0) + 1);
+      const fromOrder = nodeOrder.get(edge.from);
+      const toOrder = nodeOrder.get(edge.to);
+      if (typeof fromOrder === 'number' && typeof toOrder === 'number' && toOrder <= fromOrder) {
+        errors.push({ code: 'advance_not_forward', from: edge.from, to: edge.to });
+      }
+    }
+    if (edge.kind === 'reject') {
+      rejectOutgoingCount.set(edge.from, (rejectOutgoingCount.get(edge.from) ?? 0) + 1);
+      const fromOrder = nodeOrder.get(edge.from);
+      const toOrder = nodeOrder.get(edge.to);
+      if (typeof fromOrder === 'number' && typeof toOrder === 'number' && toOrder >= fromOrder) {
+        errors.push({ code: 'reject_not_backward', from: edge.from, to: edge.to });
+      }
+    }
+  }
+
+  for (const [nodeId, count] of advanceOutgoingCount) {
+    if (count > 1) {
+      errors.push({ code: 'multiple_advance_outgoing', nodeId });
+    }
+  }
+  for (const [nodeId, count] of advanceIncomingCount) {
+    if (count > 1) {
+      errors.push({ code: 'multiple_advance_incoming', nodeId });
+    }
+  }
+  for (const [nodeId, count] of rejectOutgoingCount) {
+    if (count > 1) {
+      errors.push({ code: 'multiple_reject_outgoing', nodeId });
     }
   }
   return errors;
+}
+
+function getEdgeTarget(graph: TemplateGraph, fromNodeId: string, kind: 'advance' | 'reject') {
+  return graph.edges.find((edge) => edge.from === fromNodeId && edge.kind === kind)?.to ?? '';
+}
+
+function setEdgeTarget(graph: TemplateGraph, input: { fromNodeId: string; kind: 'advance' | 'reject'; toNodeId: string | null }) {
+  const nextEdges = graph.edges.filter((edge) => !(edge.from === input.fromNodeId && edge.kind === input.kind));
+  if (!input.toNodeId) {
+    return {
+      ...graph,
+      edges: nextEdges,
+    };
+  }
+  return {
+    ...graph,
+    edges: [
+      ...nextEdges,
+      {
+        id: `${input.fromNodeId}__${input.kind}__${input.toNodeId}`,
+        from: input.fromNodeId,
+        to: input.toNodeId,
+        kind: input.kind,
+      },
+    ],
+  };
+}
+
+function formatGraphValidationIssue(issue: GraphValidationIssue, copy: ReturnType<typeof useTemplatesPageCopy>) {
+  switch (issue.code) {
+    case 'missing_node':
+      return copy.graphValidationErrors.missingNode;
+    case 'missing_entry':
+      return copy.graphValidationErrors.missingEntry;
+    case 'unknown_entry':
+      return copy.graphValidationErrors.unknownEntry(issue.entryId);
+    case 'unknown_edge_source':
+      return copy.graphValidationErrors.unknownEdgeSource(issue.nodeId);
+    case 'unknown_edge_target':
+      return copy.graphValidationErrors.unknownEdgeTarget(issue.nodeId);
+    case 'advance_not_forward':
+      return copy.graphValidationErrors.advanceNotForward(issue.from, issue.to);
+    case 'reject_not_backward':
+      return copy.graphValidationErrors.rejectNotBackward(issue.from, issue.to);
+    case 'multiple_advance_outgoing':
+      return copy.graphValidationErrors.multipleAdvanceOutgoing(issue.nodeId);
+    case 'multiple_advance_incoming':
+      return copy.graphValidationErrors.multipleAdvanceIncoming(issue.nodeId);
+    case 'multiple_reject_outgoing':
+      return copy.graphValidationErrors.multipleRejectOutgoing(issue.nodeId);
+    default:
+      return '';
+  }
 }
 
 export function TemplateGraphEditorPage() {
@@ -191,24 +351,32 @@ export function TemplateGraphEditorPage() {
     setDraftState(transform(draft));
   };
 
-  const updateDraftGraph = (transform: (graph: NonNullable<TemplateDetail['graph']>) => NonNullable<TemplateDetail['graph']>) => {
+  const updateDraftGraph = (
+    transform: (graph: NonNullable<TemplateDetail['graph']>) => NonNullable<TemplateDetail['graph']>,
+    options?: { syncStages?: boolean },
+  ) => {
     updateDraft((current) => {
       const nextGraph = transform(current.graph ?? deriveTemplateGraphFromStages(current.stages));
       return {
         ...current,
         graph: nextGraph,
-        stages: deriveStagesFromTemplateGraph(nextGraph),
+        stages: options?.syncStages === false ? current.stages : deriveStagesFromTemplateGraph(nextGraph),
       };
     });
   };
 
   const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
+  const graphValidationMessages = graphValidationErrors.map((issue) => formatGraphValidationIssue(issue, copy));
   const graphNodes: Node[] = (
     draftGraph?.nodes.map((node) => ({
       id: node.id,
       position: node.layout ?? { x: 0, y: 0 },
-      data: { label: node.name },
+      data: {
+        label: node.name,
+        executionKind: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
+        gateType: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+      },
       type: 'default',
     })) ?? []
   );
@@ -224,6 +392,14 @@ export function TemplateGraphEditorPage() {
   );
   const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
   const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
+  const draftGraphNodes = draftGraph?.nodes ?? [];
+  const selectedGraphNodeIndex = selectedGraphNode ? draftGraphNodes.findIndex((node) => node.id === selectedGraphNode.id) : -1;
+  const advanceCandidates = selectedGraphNodeIndex >= 0
+    ? draftGraphNodes.filter((node, index) => node.id !== selectedGraphNode?.id && index > selectedGraphNodeIndex)
+    : [];
+  const rejectCandidates = selectedGraphNodeIndex >= 0
+    ? draftGraphNodes.filter((node, index) => node.id !== selectedGraphNode?.id && index < selectedGraphNodeIndex)
+    : [];
 
   const handleGraphNodesChange = (changes: NodeChange[]) => {
     updateDraftGraph((currentGraph) => {
@@ -240,7 +416,7 @@ export function TemplateGraphEditorPage() {
             : node;
         }),
       };
-    });
+    }, { syncStages: false });
   };
 
   const handleGraphEdgesChange = (changes: EdgeChange[]) => {
@@ -254,18 +430,17 @@ export function TemplateGraphEditorPage() {
   };
 
   const handleGraphConnect = (connection: Connection) => {
-    if (!connection.source || !connection.target) {
+    const candidate = resolveGraphConnectionCandidate(draftGraph ?? { nodes: [] }, connection);
+    if (!candidate) {
       return;
     }
-    const source = connection.source;
-    const target = connection.target;
     updateDraftGraph((currentGraph) => ({
       ...currentGraph,
       edges: addEdge({
-        id: `${source}__advance__${target}`,
-        source,
-        target,
-        label: 'advance',
+        id: `${candidate.source}__${candidate.kind}__${candidate.target}`,
+        source: candidate.source,
+        target: candidate.target,
+        label: candidate.kind,
       }, graphCanvasEdges).map((edge) => ({
         id: edge.id,
         from: edge.source,
@@ -273,7 +448,7 @@ export function TemplateGraphEditorPage() {
         kind: edge.label === 'reject' ? 'reject' : 'advance',
       })) as TemplateGraph['edges'],
     }));
-    setSelectedGraphEdgeId(`${source}__advance__${target}`);
+    setSelectedGraphEdgeId(`${candidate.source}__${candidate.kind}__${candidate.target}`);
   };
 
   const handleSave = async () => {
@@ -289,14 +464,14 @@ export function TemplateGraphEditorPage() {
   };
 
   if (detailLoading) {
-    return <div className="surface-panel surface-panel--workspace">Loading workflow editor…</div>;
+    return <div className="surface-panel surface-panel--workspace">{copy.graphLoadingTitle}</div>;
   }
 
   if (!draft || !draftGraph) {
     return (
       <div className="surface-panel surface-panel--workspace">
         {error ? <div className="inline-alert inline-alert--danger">{error}</div> : null}
-        <p className="type-body-sm">Template graph not available.</p>
+        <p className="type-body-sm">{copy.graphUnavailableTitle}</p>
       </div>
     );
   }
@@ -308,26 +483,26 @@ export function TemplateGraphEditorPage() {
           <div>
             <p className="page-kicker">{copy.graphTitle}</p>
             <h2 className="page-title">{draft.name}</h2>
-            <p className="page-summary">在专用页面中编辑工作流 DAG，而不是在模板概览页内嵌预览。</p>
+            <p className="page-summary">{copy.graphEditorSummary}</p>
           </div>
           <div className="flex gap-2">
             <button type="button" className="button-secondary" onClick={() => navigate('/templates')}>
               <ArrowLeft size={16} />
-              返回模板
+              {copy.graphBackAction}
             </button>
             <button type="button" className="button-primary" onClick={() => void handleSave()}>
-              保存流程
+              {copy.graphSaveAction}
             </button>
           </div>
         </div>
         {graphSaveError ? (
-          <div className="inline-alert inline-alert--danger mt-5">请先修复 graph 配置问题。</div>
+          <div className="inline-alert inline-alert--danger mt-5">{copy.graphSaveBlocked}</div>
         ) : null}
       </section>
 
       <section className="template-graph-editor-layout">
         <aside className="surface-panel surface-panel--workspace space-y-3">
-          <h3 className="section-title">Graph tools</h3>
+          <h3 className="section-title">{copy.graphToolsTitle}</h3>
           <button
             type="button"
             className="button-secondary w-full justify-center"
@@ -353,10 +528,17 @@ export function TemplateGraphEditorPage() {
               };
             })}
           >
-            新增节点
+            {copy.graphAddNodeAction}
+          </button>
+          <button
+            type="button"
+            className="button-secondary w-full justify-center"
+            onClick={() => updateDraftGraph((currentGraph) => tidyGraphLayout(currentGraph), { syncStages: false })}
+          >
+            {copy.graphTidyLayoutAction}
           </button>
           <div className="space-y-2">
-            <p className="field-label">节点</p>
+            <p className="field-label">{copy.graphNodesLabel}</p>
             {draftGraph.nodes.map((node) => (
               <button
                 key={`graph-node-list-${node.id}`}
@@ -374,7 +556,7 @@ export function TemplateGraphEditorPage() {
             ))}
           </div>
           <div className="space-y-2">
-            <p className="field-label">边</p>
+            <p className="field-label">{copy.graphEdgesLabel}</p>
             {draftGraph.edges.map((edge) => (
               <button
                 key={`graph-edge-list-${edge.id}`}
@@ -391,7 +573,7 @@ export function TemplateGraphEditorPage() {
               </button>
             ))}
           </div>
-          <p className="type-text-xs">拖动节点、连边、选中节点或边后在右侧 inspector 编辑。</p>
+          <p className="type-text-xs">{copy.graphToolsHint}</p>
         </aside>
 
         <div className="surface-panel surface-panel--workspace">
@@ -419,17 +601,17 @@ export function TemplateGraphEditorPage() {
         </div>
 
         <aside className="surface-panel surface-panel--workspace space-y-3">
-          <h3 className="section-title">Graph inspector</h3>
+          <h3 className="section-title">{copy.graphInspectorTitle}</h3>
           {graphValidationErrors.length > 0 ? (
             <div className="inline-alert inline-alert--warning">
-              {graphValidationErrors.join(' / ')}
+              {graphValidationMessages.join(' / ')}
             </div>
           ) : null}
           {selectedGraphNode ? (
             <div className="space-y-3">
               <p className="type-heading-xs">{selectedGraphNode.id}</p>
               <label className="space-y-2">
-                <span className="field-label">Entry node</span>
+                <span className="field-label">{copy.graphEntryToggleLabel}</span>
                 <input
                   aria-label={`graph node ${selectedGraphNode.id} entry`}
                   type="checkbox"
@@ -443,7 +625,7 @@ export function TemplateGraphEditorPage() {
                 />
               </label>
               <label className="space-y-2">
-                <span className="field-label">Node name</span>
+                <span className="field-label">{copy.graphNodeNameLabel}</span>
                 <input
                   aria-label={`graph node ${selectedGraphNode.id} name`}
                   className="input-shell"
@@ -460,7 +642,7 @@ export function TemplateGraphEditorPage() {
                 />
               </label>
               <label className="space-y-2">
-                <span className="field-label">Execution kind</span>
+                <span className="field-label">{copy.graphExecutionKindLabel}</span>
                 <select
                   aria-label={`graph node ${selectedGraphNode.id} execution kind`}
                   className="input-shell"
@@ -474,15 +656,15 @@ export function TemplateGraphEditorPage() {
                     )),
                   }))}
                 >
-                  <option value="">discuss(default)</option>
-                  <option value="citizen_discuss">citizen_discuss</option>
-                  <option value="citizen_execute">citizen_execute</option>
-                  <option value="craftsman_dispatch">craftsman_dispatch</option>
-                  <option value="human_approval">human_approval</option>
+                  <option value="">{copy.graphExecutionKindOptions.default}</option>
+                  <option value="citizen_discuss">{copy.graphExecutionKindOptions.citizen_discuss}</option>
+                  <option value="citizen_execute">{copy.graphExecutionKindOptions.citizen_execute}</option>
+                  <option value="craftsman_dispatch">{copy.graphExecutionKindOptions.craftsman_dispatch}</option>
+                  <option value="human_approval">{copy.graphExecutionKindOptions.human_approval}</option>
                 </select>
               </label>
               <label className="space-y-2">
-                <span className="field-label">Gate type</span>
+                <span className="field-label">{copy.graphGateTypeLabel}</span>
                 <select
                   aria-label={`graph node ${selectedGraphNode.id} gate type`}
                   className="input-shell"
@@ -496,29 +678,109 @@ export function TemplateGraphEditorPage() {
                     )),
                   }))}
                 >
-                  <option value="">none</option>
-                  <option value="command">command</option>
-                  <option value="approval">approval</option>
-                  <option value="archon_review">archon_review</option>
-                  <option value="all_subtasks_done">all_subtasks_done</option>
-                  <option value="auto_timeout">auto_timeout</option>
-                  <option value="quorum">quorum</option>
+                  <option value="">{copy.graphGateTypeOptions.none}</option>
+                  <option value="command">{copy.graphGateTypeOptions.command}</option>
+                  <option value="approval">{copy.graphGateTypeOptions.approval}</option>
+                  <option value="archon_review">{copy.graphGateTypeOptions.archon_review}</option>
+                  <option value="all_subtasks_done">{copy.graphGateTypeOptions.all_subtasks_done}</option>
+                  <option value="auto_timeout">{copy.graphGateTypeOptions.auto_timeout}</option>
+                  <option value="quorum">{copy.graphGateTypeOptions.quorum}</option>
                 </select>
               </label>
+              <label className="space-y-2">
+                <span className="field-label">{copy.graphNextStageLabel}</span>
+                <select
+                  aria-label={`graph node ${selectedGraphNode.id} next stage`}
+                  className="input-shell"
+                  value={getEdgeTarget(draftGraph, selectedGraphNode.id, 'advance')}
+                  onChange={(event) => updateDraftGraph((currentGraph) => (
+                    setEdgeTarget(currentGraph, {
+                      fromNodeId: selectedGraphNode.id,
+                      kind: 'advance',
+                      toNodeId: event.target.value.length > 0 ? event.target.value : null,
+                    })
+                  ))}
+                >
+                  <option value="">{copy.graphNoNextStageLabel}</option>
+                  {advanceCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="field-label">{copy.graphRejectTargetLabel}</span>
+                <select
+                  aria-label={`graph node ${selectedGraphNode.id} reject target`}
+                  className="input-shell"
+                  value={getEdgeTarget(draftGraph, selectedGraphNode.id, 'reject')}
+                  onChange={(event) => updateDraftGraph((currentGraph) => (
+                    setEdgeTarget(currentGraph, {
+                      fromNodeId: selectedGraphNode.id,
+                      kind: 'reject',
+                      toNodeId: event.target.value.length > 0 ? event.target.value : null,
+                    })
+                  ))}
+                >
+                  <option value="">{copy.graphNoRejectTargetLabel}</option>
+                  {rejectCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => updateDraftGraph((currentGraph) => {
+                    if (advanceCandidates.length === 0 || getEdgeTarget(currentGraph, selectedGraphNode.id, 'advance')) {
+                      return currentGraph;
+                    }
+                    return setEdgeTarget(currentGraph, {
+                      fromNodeId: selectedGraphNode.id,
+                      kind: 'advance',
+                      toNodeId: advanceCandidates[0]?.id ?? null,
+                    });
+                  })}
+                >
+                  {copy.graphAddAdvanceEdgeAction}
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => updateDraftGraph((currentGraph) => {
+                    if (rejectCandidates.length === 0 || getEdgeTarget(currentGraph, selectedGraphNode.id, 'reject')) {
+                      return currentGraph;
+                    }
+                    return setEdgeTarget(currentGraph, {
+                      fromNodeId: selectedGraphNode.id,
+                      kind: 'reject',
+                      toNodeId: rejectCandidates[0]?.id ?? null,
+                    });
+                  })}
+                >
+                  {copy.graphAddRejectEdgeAction}
+                </button>
+              </div>
+              <div className="type-text-xs">
+                {copy.graphNodeSummary(
+                  resolveWorkflowExecutionKindLabel(selectedGraphNode.executionKind, copy.graphExecutionKindOptions),
+                  resolveWorkflowGateLabel(selectedGraphNode.gateType, copy.graphGateTypeOptions),
+                )}
+              </div>
               <button
                 type="button"
                 className="button-secondary"
                 onClick={() => {
                   updateDraftGraph((currentGraph) => ({
                     ...currentGraph,
-                    entryNodes: currentGraph.entryNodes.filter((entryId) => entryId !== selectedGraphNode.id),
                     nodes: currentGraph.nodes.filter((node) => node.id !== selectedGraphNode.id),
+                    entryNodes: currentGraph.entryNodes.filter((entryId) => entryId !== selectedGraphNode.id),
                     edges: currentGraph.edges.filter((edge) => edge.from !== selectedGraphNode.id && edge.to !== selectedGraphNode.id),
                   }));
                   setSelectedGraphNodeId(null);
                 }}
               >
-                Delete node
+                {copy.graphDeleteNodeAction}
               </button>
             </div>
           ) : null}
@@ -527,7 +789,7 @@ export function TemplateGraphEditorPage() {
               <p className="type-heading-xs">{selectedGraphEdge.id}</p>
               <p className="type-text-xs">{selectedGraphEdge.from} {'->'} {selectedGraphEdge.to}</p>
               <label className="space-y-2">
-                <span className="field-label">Edge kind</span>
+                <span className="field-label">{copy.graphEdgeKindLabel}</span>
                 <select
                   aria-label={`graph edge ${selectedGraphEdge.id} kind`}
                   className="input-shell"
@@ -541,8 +803,8 @@ export function TemplateGraphEditorPage() {
                     )),
                   }))}
                 >
-                  <option value="advance">advance</option>
-                  <option value="reject">reject</option>
+                  <option value="advance">{copy.graphEdgeKindOptions.advance}</option>
+                  <option value="reject">{copy.graphEdgeKindOptions.reject}</option>
                 </select>
               </label>
               <button
@@ -556,12 +818,12 @@ export function TemplateGraphEditorPage() {
                   setSelectedGraphEdgeId(null);
                 }}
               >
-                Delete edge
+                {copy.graphDeleteEdgeAction}
               </button>
             </div>
           ) : null}
           {!selectedGraphNode && !selectedGraphEdge ? (
-            <p className="type-body-sm">Select a node or edge on the canvas.</p>
+            <p className="type-body-sm">{copy.graphInspectorEmpty}</p>
           ) : null}
         </aside>
       </section>

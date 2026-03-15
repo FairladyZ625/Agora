@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { WorkflowGraphView } from '@/components/features/WorkflowGraphView';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
+import { normalizeTemplateDraftId } from '@/lib/templateStarter';
+import { resolveWorkflowExecutionKindLabel, resolveWorkflowGateLabel } from '@/lib/workflowGraphLabels';
 import { useTemplateStore } from '@/stores/templateStore';
 
 export function TemplatesPage() {
@@ -12,6 +15,10 @@ export function TemplatesPage() {
   const error = useTemplateStore((state) => state.error);
   const fetchTemplates = useTemplateStore((state) => state.fetchTemplates);
   const selectTemplate = useTemplateStore((state) => state.selectTemplate);
+  const createTemplate = useTemplateStore((state) => state.createTemplate);
+  const duplicateSelectedTemplate = useTemplateStore((state) => state.duplicateSelectedTemplate);
+  const [draftTemplateId, setDraftTemplateId] = useState('');
+  const [draftTemplateName, setDraftTemplateName] = useState('');
 
   useEffect(() => {
     void fetchTemplates();
@@ -22,6 +29,38 @@ export function TemplatesPage() {
       void selectTemplate(templates[0].id);
     }
   }, [selectedTemplateId, selectTemplate, templates]);
+
+  const resetAuthoringDraft = () => {
+    setDraftTemplateId('');
+    setDraftTemplateName('');
+  };
+
+  const handleCreateTemplate = async () => {
+    const templateId = normalizeTemplateDraftId(draftTemplateId || draftTemplateName, `workflow_${Date.now()}`);
+    const templateName = draftTemplateName.trim() || 'Workflow Starter';
+    const result = await createTemplate({ id: templateId, name: templateName });
+    if (result === 'live') {
+      resetAuthoringDraft();
+      navigate(`/templates/${templateId}/graph`);
+    }
+  };
+
+  const handleDuplicateTemplate = async () => {
+    if (!selectedTemplate) {
+      return;
+    }
+    const templateId = normalizeTemplateDraftId(draftTemplateId || `${selectedTemplate.id}_copy`, `${selectedTemplate.id}_copy`);
+    const templateName = draftTemplateName.trim() || `${selectedTemplate.name} Copy`;
+    const result = await duplicateSelectedTemplate({
+      templateId: selectedTemplate.id,
+      newId: templateId,
+      name: templateName,
+    });
+    if (result === 'live') {
+      resetAuthoringDraft();
+      navigate(`/templates/${templateId}/graph`);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -47,6 +86,37 @@ export function TemplatesPage() {
             </div>
           </div>
         </div>
+        <div className="templates-authoring-strip">
+          <label className="templates-authoring-strip__field">
+            <span className="field-label">{copy.createIdLabel}</span>
+            <input
+              className="input-shell"
+              type="text"
+              value={draftTemplateId}
+              onChange={(event) => setDraftTemplateId(event.target.value)}
+              placeholder={copy.createIdPlaceholder}
+            />
+          </label>
+          <label className="templates-authoring-strip__field">
+            <span className="field-label">{copy.createNameLabel}</span>
+            <input
+              className="input-shell"
+              type="text"
+              value={draftTemplateName}
+              onChange={(event) => setDraftTemplateName(event.target.value)}
+              placeholder={copy.createNamePlaceholder}
+            />
+          </label>
+          <div className="templates-authoring-strip__actions">
+            <button type="button" className="button-secondary" onClick={() => void handleCreateTemplate()}>
+              {copy.createAction}
+            </button>
+            <button type="button" className="button-secondary" disabled={!selectedTemplate} onClick={() => void handleDuplicateTemplate()}>
+              {copy.duplicateAction}
+            </button>
+          </div>
+        </div>
+        <p className="type-text-xs mt-3">{copy.createHint}</p>
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
@@ -87,7 +157,7 @@ export function TemplatesPage() {
                 className="button-primary"
                 onClick={() => navigate(`/templates/${selectedTemplate.id}/graph`)}
               >
-                编辑流程
+                {copy.graphOpenEditorAction}
               </button>
             ) : null}
           </div>
@@ -116,6 +186,28 @@ export function TemplatesPage() {
                   </p>
                 </div>
               </div>
+
+              {selectedTemplate.graph ? (
+                <div className="detail-card detail-card--graph">
+                  <WorkflowGraphView
+                    testId="template-detail-graph"
+                    nodes={selectedTemplate.graph.nodes.map((node) => ({
+                      id: node.id,
+                      label: node.name,
+                      kindLabel: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
+                      gateLabel: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+                      isEntry: selectedTemplate.graph?.entryNodes.includes(node.id) ?? false,
+                      layout: node.layout,
+                    }))}
+                    edges={selectedTemplate.graph.edges}
+                    entryLabel={copy.graphEntryLabel}
+                    edgeKindLabels={{
+                      advance: copy.graphEdgeKindOptions.advance,
+                      reject: copy.graphEdgeKindOptions.reject,
+                    }}
+                  />
+                </div>
+              ) : null}
 
               <div className="detail-card space-y-3">
                 <span className="detail-card__label">{copy.teamLabel}</span>

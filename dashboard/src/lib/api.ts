@@ -720,6 +720,31 @@ export function getTemplate(templateId: string): Promise<ApiTemplateDetailDto> {
   return request<ApiTemplateDetailDto>(`/templates/${templateId}`, templateDetailSchema);
 }
 
+export function createTemplate(
+  templateId: string,
+  input: ApiTemplateDetailDto,
+): Promise<{
+  id: string;
+  saved: boolean;
+  template: ApiTemplateDetailDto;
+}> {
+  return request(
+    '/templates',
+    z.object({
+      id: z.string(),
+      saved: z.boolean(),
+      template: templateDetailSchema,
+    }),
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        id: templateId,
+        template: input,
+      }),
+    },
+  );
+}
+
 export function updateTemplate(templateId: string, input: ApiTemplateDetailDto): Promise<{
   id: string;
   saved: boolean;
