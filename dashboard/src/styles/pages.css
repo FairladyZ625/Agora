@@ -1066,7 +1066,7 @@
 
 .workflow-graph-view__node {
   position: absolute;
-  width: 228px;
+  width: var(--workflow-graph-node-width, 228px);
 }
 
 .workflow-graph-view__node--current {
@@ -1076,8 +1076,8 @@
 .template-graph-node {
   position: relative;
   display: flex;
-  min-height: 92px;
-  width: 228px;
+  min-height: var(--workflow-graph-node-height, 92px);
+  width: var(--workflow-graph-node-width, 228px);
   flex-direction: column;
   justify-content: space-between;
   gap: 12px;
@@ -1122,7 +1122,7 @@
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--workflow-graph-pill-font-size, 11px);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1258,11 +1258,11 @@
   border-radius: 999px;
   background: color-mix(in srgb, white 86%, var(--color-surface));
   color: color-mix(in srgb, var(--color-accent) 38%, var(--color-text-primary));
-  font-size: 11px;
+  font-size: var(--workflow-graph-edge-label-font-size, 11px);
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1;
-  padding: 5px 11px;
+  padding: var(--workflow-graph-edge-label-padding-y, 5px) var(--workflow-graph-edge-label-padding-x, 11px);
   text-align: center;
   text-transform: uppercase;
   pointer-events: all;

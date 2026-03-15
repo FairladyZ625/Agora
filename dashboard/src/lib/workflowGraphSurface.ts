@@ -6,6 +6,36 @@ export const WORKFLOW_GRAPH_CANVAS_PADDING_X = 24;
 export const WORKFLOW_GRAPH_CANVAS_PADDING_TOP = 24;
 export const WORKFLOW_GRAPH_CANVAS_PADDING_BOTTOM = 18;
 
+export type WorkflowGraphSurfaceMetrics = {
+  nodeWidth: number;
+  nodeHeight: number;
+  columnGap: number;
+  rowGap: number;
+  paddingX: number;
+  paddingTop: number;
+  paddingBottom: number;
+};
+
+export const DEFAULT_WORKFLOW_GRAPH_METRICS: WorkflowGraphSurfaceMetrics = {
+  nodeWidth: WORKFLOW_GRAPH_NODE_WIDTH,
+  nodeHeight: WORKFLOW_GRAPH_NODE_HEIGHT,
+  columnGap: WORKFLOW_GRAPH_COLUMN_GAP,
+  rowGap: WORKFLOW_GRAPH_ROW_GAP,
+  paddingX: WORKFLOW_GRAPH_CANVAS_PADDING_X,
+  paddingTop: WORKFLOW_GRAPH_CANVAS_PADDING_TOP,
+  paddingBottom: WORKFLOW_GRAPH_CANVAS_PADDING_BOTTOM,
+};
+
+export const COMPACT_WORKFLOW_GRAPH_METRICS: WorkflowGraphSurfaceMetrics = {
+  nodeWidth: 196,
+  nodeHeight: 80,
+  columnGap: 244,
+  rowGap: 132,
+  paddingX: 18,
+  paddingTop: 18,
+  paddingBottom: 14,
+};
+
 export type WorkflowGraphSurfaceNode = {
   id: string;
   isEntry: boolean;
@@ -50,6 +80,7 @@ export function buildWorkflowSurfaceCurve(
 export function layoutWorkflowSurfaceNodes<T extends WorkflowGraphSurfaceNode>(
   nodes: T[],
   edges: WorkflowGraphSurfaceEdge[],
+  metrics: WorkflowGraphSurfaceMetrics = DEFAULT_WORKFLOW_GRAPH_METRICS,
 ) {
   const allHaveLayout = nodes.every((node) => node.layout);
   if (allHaveLayout) {
@@ -106,8 +137,8 @@ export function layoutWorkflowSurfaceNodes<T extends WorkflowGraphSurfaceNode>(
     return {
       ...node,
       layout: {
-        x: column * WORKFLOW_GRAPH_COLUMN_GAP,
-        y: row * WORKFLOW_GRAPH_ROW_GAP,
+        x: column * metrics.columnGap,
+        y: row * metrics.rowGap,
       },
     };
   });
@@ -116,6 +147,7 @@ export function layoutWorkflowSurfaceNodes<T extends WorkflowGraphSurfaceNode>(
 export function buildWorkflowSurfaceEdgePath(
   edge: WorkflowGraphSurfaceEdge,
   nodes: Array<{ id: string; layout?: { x: number; y: number } | null }>,
+  metrics: WorkflowGraphSurfaceMetrics = DEFAULT_WORKFLOW_GRAPH_METRICS,
 ) {
   const source = nodes.find((node) => node.id === edge.from);
   const target = nodes.find((node) => node.id === edge.to);
@@ -128,15 +160,16 @@ export function buildWorkflowSurfaceEdgePath(
     return null;
   }
 
-  const sourceX = sourceLayout.x + WORKFLOW_GRAPH_NODE_WIDTH;
-  const sourceY = sourceLayout.y + WORKFLOW_GRAPH_NODE_HEIGHT / 2;
+  const sourceX = sourceLayout.x + metrics.nodeWidth;
+  const sourceY = sourceLayout.y + metrics.nodeHeight / 2;
   const targetX = targetLayout.x;
-  const targetY = targetLayout.y + WORKFLOW_GRAPH_NODE_HEIGHT / 2;
+  const targetY = targetLayout.y + metrics.nodeHeight / 2;
   return buildWorkflowSurfaceCurve(sourceX, sourceY, targetX, targetY, edge.kind);
 }
 
 export function getWorkflowSurfaceCanvasBounds(
   nodes: Array<{ layout?: { x: number; y: number } | null }>,
+  metrics: WorkflowGraphSurfaceMetrics = DEFAULT_WORKFLOW_GRAPH_METRICS,
 ) {
   const readyNodes = nodes.filter((node): node is { layout: { x: number; y: number } } => Boolean(node.layout));
   if (readyNodes.length === 0) {
@@ -147,7 +180,7 @@ export function getWorkflowSurfaceCanvasBounds(
   }
 
   return {
-    width: Math.max(...readyNodes.map((node) => node.layout.x + WORKFLOW_GRAPH_NODE_WIDTH + WORKFLOW_GRAPH_CANVAS_PADDING_X * 2)),
-    height: Math.max(...readyNodes.map((node) => node.layout.y + WORKFLOW_GRAPH_NODE_HEIGHT + WORKFLOW_GRAPH_CANVAS_PADDING_TOP + WORKFLOW_GRAPH_CANVAS_PADDING_BOTTOM)),
+    width: Math.max(...readyNodes.map((node) => node.layout.x + metrics.nodeWidth + metrics.paddingX * 2)),
+    height: Math.max(...readyNodes.map((node) => node.layout.y + metrics.nodeHeight + metrics.paddingTop + metrics.paddingBottom)),
   };
 }
