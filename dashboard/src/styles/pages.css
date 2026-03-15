@@ -984,8 +984,10 @@
   z-index: 2;
 }
 
-.template-graph-editor-canvas .react-flow__pane {
-  pointer-events: none;
+.template-graph-editor-canvas .react-flow__renderer {
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 92%, transparent), color-mix(in srgb, var(--color-surface-muted) 96%, transparent));
 }
 
 .template-graph-editor-canvas .react-flow__edge-path {
@@ -993,24 +995,51 @@
 }
 
 .template-graph-editor-canvas .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 88%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
   box-shadow: var(--shadow-panel);
 }
 
 .template-graph-editor-canvas .react-flow__controls-button {
+  width: 34px;
+  height: 34px;
   background: color-mix(in srgb, var(--color-surface) 90%, transparent);
   border-bottom-color: var(--color-border);
   color: var(--color-text-secondary);
 }
 
+.template-graph-editor-canvas .react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface));
+  color: var(--color-text-primary);
+}
+
 .workflow-graph-view {
   width: 100%;
-  overflow-x: auto;
+  overflow: hidden;
+}
+
+.workflow-graph-view__viewport {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 82%, transparent);
+  border-radius: calc(var(--radius-card) + 2px);
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 36%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, transparent), color-mix(in srgb, var(--color-surface-muted) 98%, transparent));
+  padding: 12px;
+  min-height: var(--workflow-graph-preview-height, 220px);
 }
 
 .workflow-graph-view__canvas {
   position: relative;
-  min-width: 100%;
-  padding: 24px 20px 12px;
+  transform-origin: top left;
+  width: var(--workflow-graph-canvas-width, 320px);
+  min-height: var(--workflow-graph-canvas-height, 180px);
+  padding: 28px 24px 20px;
+  transition: transform 220ms ease;
+  transform: translate(var(--workflow-graph-offset-x, 0), 0) scale(var(--workflow-graph-scale, 1));
 }
 
 .workflow-graph-view__edges {
@@ -1022,9 +1051,15 @@
   pointer-events: none;
 }
 
+.workflow-graph-view__edge-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .workflow-graph-view__node {
   position: absolute;
-  width: 220px;
+  width: 236px;
 }
 
 .workflow-graph-view__node--current {
@@ -1034,17 +1069,18 @@
 .template-graph-node {
   position: relative;
   display: flex;
-  min-height: 84px;
-  width: 220px;
+  min-height: 92px;
+  width: 236px;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   overflow: hidden;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-panel);
-  padding: 14px 14px 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 98%, transparent), color-mix(in srgb, var(--color-surface-muted) 92%, transparent));
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--color-shadow) 12%, transparent);
+  padding: 15px 16px 14px;
 }
 
 .template-graph-node::before {
@@ -1100,9 +1136,10 @@
 }
 
 .template-graph-node__title {
-  font-size: var(--font-size-body-md);
+  font-size: 17px;
   font-weight: 700;
   color: var(--color-text-primary);
+  line-height: 1.22;
 }
 
 .template-graph-node__gate {
@@ -1139,11 +1176,11 @@
 
 .template-graph-overlay__path {
   fill: none;
-  stroke: color-mix(in srgb, var(--color-accent) 36%, var(--color-border-strong));
-  stroke-width: 2;
+  stroke: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-strong));
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 2px 10px color-mix(in srgb, var(--color-accent) 16%, transparent));
+  filter: drop-shadow(0 3px 12px color-mix(in srgb, var(--color-accent) 18%, transparent));
   transition: stroke 180ms ease, stroke-width 180ms ease, filter 180ms ease, opacity 180ms ease;
 }
 
@@ -1185,6 +1222,53 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-anchor: middle;
+}
+
+.template-graph-edge {
+  stroke: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-strong));
+  stroke-width: 2.2;
+  fill: none;
+  filter: drop-shadow(0 3px 12px color-mix(in srgb, var(--color-accent) 18%, transparent));
+  transition: stroke 180ms ease, stroke-width 180ms ease, filter 180ms ease, opacity 180ms ease;
+}
+
+.template-graph-edge--reject {
+  stroke: var(--color-warning);
+  stroke-dasharray: 7 5;
+  animation: template-graph-reject-flow 14s linear infinite;
+}
+
+.template-graph-edge--selected {
+  stroke-width: 2.6;
+  filter: drop-shadow(0 4px 14px color-mix(in srgb, var(--color-accent) 30%, transparent));
+}
+
+.template-graph-edge__label {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 97%, transparent);
+  color: color-mix(in srgb, var(--color-accent) 28%, var(--color-text-primary));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 6px 12px;
+  text-align: center;
+  text-transform: uppercase;
+  pointer-events: all;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--color-shadow) 14%, transparent);
+}
+
+.template-graph-edge__label--reject {
+  border-color: color-mix(in srgb, var(--color-warning) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-warning) 72%, var(--color-text-primary));
+}
+
+.template-graph-edge__label--selected {
+  box-shadow: 0 0 0 1px var(--color-accent), 0 10px 18px color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 @keyframes template-graph-reject-flow {
@@ -1235,7 +1319,7 @@
   }
 
   .template-graph-editor-layout {
-    grid-template-columns: 220px minmax(0, 1fr) 320px;
+    grid-template-columns: 200px minmax(0, 1fr) 280px;
   }
 }
 

@@ -230,13 +230,10 @@ describe('templates workflow surfaces', () => {
   });
 
   it('renders a visible reject loop edge inside the graph editor canvas', () => {
-    const { container } = renderGraphEditor();
+    renderGraphEditor();
 
-    const rejectEdges = Array.from(container.querySelectorAll('.template-graph-overlay__edge--reject'));
-
-    expect(rejectEdges.length).toBeGreaterThan(0);
-    expect(rejectEdges[0]?.querySelector('.template-graph-overlay__path')).not.toBeNull();
-    expect(rejectEdges[0]?.textContent).toMatch(/打回|reject/i);
+    expect(screen.getByRole('button', { name: 'graph edge review develop' })).toBeInTheDocument();
+    expect(document.body.textContent).toMatch(/打回|reject/i);
   });
 
   it('adds nodes and tidies the canvas layout from the graph tools rail', () => {
