@@ -94,6 +94,9 @@ describe('DiscordGatewayPresenceService', () => {
       enabled: true,
       httpsProxy: 'http://127.0.0.1:7897',
       httpProxy: 'http://127.0.0.1:7897',
+    }, {
+      status: 'online',
+      activities: [{ name: 'Agora', type: 3 }],
     });
     expect(info).toHaveBeenCalledWith('[agora] discord gateway presence proxy enabled (http://127.0.0.1:7897)');
   });

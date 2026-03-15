@@ -24,7 +24,7 @@ export interface DiscordGatewayPresenceServiceOptions {
     enabled: boolean;
     httpsProxy: string | null;
     httpProxy: string | null;
-  }) => DiscordGatewayPresenceClient;
+  }, initialPresence: DiscordGatewayPresencePayload) => DiscordGatewayPresenceClient;
   logger?: {
     info?: (message: string) => void;
     warn?: (message: string) => void;
@@ -54,6 +54,11 @@ type GatewayWebSocketFactory = (proxy: {
   httpsProxy: string | null;
   httpProxy: string | null;
 }, logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>) => WebSocket;
+
+type DiscordGatewayPresencePayload = {
+  status: DiscordGatewayPresenceStatus;
+  activities: Array<{ name: string; type: number }>;
+};
 
 export function createDiscordGatewayWebSocketProxyAgent(proxy: {
   enabled: boolean;
@@ -111,6 +116,7 @@ class MinimalDiscordGatewayPresenceClient extends EventEmitter implements Discor
 
   private readonly logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>;
   private readonly webSocketFactory: GatewayWebSocketFactory;
+  private readonly initialPresence: DiscordGatewayPresencePayload;
   private socket: WebSocket | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private sequence: number | null = null;
@@ -123,11 +129,13 @@ class MinimalDiscordGatewayPresenceClient extends EventEmitter implements Discor
       httpProxy: string | null;
     };
     logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>;
+    initialPresence: DiscordGatewayPresencePayload;
     webSocketFactory?: GatewayWebSocketFactory;
   }) {
     super();
     this.proxy = options.proxy;
     this.logger = options.logger;
+    this.initialPresence = options.initialPresence;
     this.webSocketFactory = options.webSocketFactory ?? createDiscordGatewayWebSocket;
   }
 
@@ -205,6 +213,7 @@ class MinimalDiscordGatewayPresenceClient extends EventEmitter implements Discor
           d: {
             token,
             intents: DISCORD_GATEWAY_GUILDS_INTENT,
+            presence: this.initialPresence,
             properties: {
               os: process.platform,
               browser: 'agora-presence',
@@ -297,8 +306,9 @@ function extractHeartbeatInterval(payload: unknown) {
 function createDefaultClient(
   proxy: { enabled: boolean; httpsProxy: string | null; httpProxy: string | null },
   logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>,
+  initialPresence: DiscordGatewayPresencePayload,
 ) {
-  return new MinimalDiscordGatewayPresenceClient({ proxy, logger });
+  return new MinimalDiscordGatewayPresenceClient({ proxy, logger, initialPresence });
 }
 
 export class DiscordGatewayPresenceService {
@@ -327,7 +337,7 @@ export class DiscordGatewayPresenceService {
       };
     });
     this.logger = options.logger ?? {};
-    this.clientFactory = options.clientFactory ?? ((proxy) => createDefaultClient(proxy, this.logger));
+    this.clientFactory = options.clientFactory ?? ((proxy, initialPresence) => createDefaultClient(proxy, this.logger, initialPresence));
   }
 
   start() {
@@ -342,7 +352,14 @@ export class DiscordGatewayPresenceService {
       this.logger.info?.(`[agora] discord gateway presence proxy enabled${proxyTarget ? ` (${proxyTarget})` : ''}`);
     }
 
-    this.client = this.clientFactory(proxy);
+    const desiredPresence: DiscordGatewayPresencePayload = {
+      status: this.status,
+      activities: this.activityName
+        ? [{ name: this.activityName, type: DISCORD_WATCHING_ACTIVITY_TYPE }]
+        : [],
+    };
+
+    this.client = this.clientFactory(proxy, desiredPresence);
     const client = this.client;
 
     client.once('ready', () => {
@@ -352,10 +369,8 @@ export class DiscordGatewayPresenceService {
       }
       void Promise.resolve(
         client.user.setPresence({
-          status: this.status,
-          activities: this.activityName
-            ? [{ name: this.activityName, type: DISCORD_WATCHING_ACTIVITY_TYPE }]
-            : [],
+          status: desiredPresence.status,
+          activities: desiredPresence.activities,
         }),
       )
         .then(() => {
