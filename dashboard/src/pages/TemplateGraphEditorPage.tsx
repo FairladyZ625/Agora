@@ -7,12 +7,17 @@ import ReactFlow, {
   applyNodeChanges,
   Background,
   Controls,
-  MarkerType,
+  Handle,
+  Position,
+  ReactFlowProvider,
   type Connection,
   type Edge,
   type EdgeChange,
   type Node,
   type NodeChange,
+  type NodeProps,
+  useOnViewportChange,
+  useUpdateNodeInternals,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
@@ -32,6 +37,43 @@ type GraphValidationIssue =
   | { code: 'multiple_advance_outgoing'; nodeId: string }
   | { code: 'multiple_advance_incoming'; nodeId: string }
   | { code: 'multiple_reject_outgoing'; nodeId: string };
+
+type GraphStageNodeData = {
+  label: string;
+  kindLabel: string;
+  gateLabel: string;
+  entryLabel: string;
+  isEntry: boolean;
+};
+
+function GraphStageNode({ data, selected }: NodeProps<GraphStageNodeData>) {
+  return (
+    <div className={`template-graph-node${selected ? ' template-graph-node--selected' : ''}`}>
+      <Handle
+        id="in"
+        type="target"
+        position={Position.Left}
+        className="template-graph-node__handle template-graph-node__handle--in"
+      />
+      <Handle
+        id="out"
+        type="source"
+        position={Position.Right}
+        className="template-graph-node__handle template-graph-node__handle--out"
+      />
+      <div className="template-graph-node__eyebrow">
+        <span className="template-graph-node__kind">{data.kindLabel}</span>
+        {data.isEntry ? <span className="template-graph-node__entry">{data.entryLabel}</span> : null}
+      </div>
+      <div className="template-graph-node__title">{data.label}</div>
+      <div className="template-graph-node__gate">{data.gateLabel}</div>
+    </div>
+  );
+}
+
+const graphNodeTypes = {
+  stage: GraphStageNode,
+};
 
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
   const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
@@ -287,6 +329,127 @@ function setEdgeTarget(graph: TemplateGraph, input: { fromNodeId: string; kind: 
   };
 }
 
+function GraphCanvasInternalsSync({ nodeIds }: { nodeIds: string[] }) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  const nodeSignature = nodeIds.join('|');
+
+  useEffect(() => {
+    if (nodeIds.length === 0) {
+      return undefined;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      for (const nodeId of nodeIds) {
+        updateNodeInternals(nodeId);
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [nodeIds, nodeSignature, updateNodeInternals]);
+
+  return null;
+}
+
+function buildOverlayEdgePath(edge: TemplateGraph['edges'][number], nodes: TemplateGraph['nodes']) {
+  const source = nodes.find((node) => node.id === edge.from);
+  const target = nodes.find((node) => node.id === edge.to);
+  if (!source?.layout || !target?.layout) {
+    return null;
+  }
+
+  const sourceX = source.layout.x + 220;
+  const sourceY = source.layout.y + 42;
+  const targetX = target.layout.x;
+  const targetY = target.layout.y + 42;
+  const isBackEdge = targetX < sourceX;
+
+  if (edge.kind === 'reject' || isBackEdge) {
+    const crestY = Math.min(sourceY, targetY) - 108;
+    const midX = (sourceX + targetX) / 2;
+    return {
+      path: `M ${sourceX} ${sourceY} C ${sourceX + 68} ${sourceY}, ${sourceX + 36} ${crestY}, ${midX} ${crestY} S ${targetX - 68} ${targetY}, ${targetX} ${targetY}`,
+      labelX: midX,
+      labelY: crestY - 14,
+    };
+  }
+
+  const controlOffset = Math.max(72, (targetX - sourceX) * 0.35);
+  return {
+    path: `M ${sourceX} ${sourceY} C ${sourceX + controlOffset} ${sourceY}, ${targetX - controlOffset} ${targetY}, ${targetX} ${targetY}`,
+    labelX: (sourceX + targetX) / 2,
+    labelY: (sourceY + targetY) / 2 - 14,
+  };
+}
+
+function GraphCanvasOverlay({
+  nodes,
+  edges,
+  edgeKindLabels,
+  selectedEdgeId,
+  onSelectEdge,
+}: {
+  nodes: TemplateGraph['nodes'];
+  edges: TemplateGraph['edges'];
+  edgeKindLabels: Record<string, string>;
+  selectedEdgeId: string | null;
+  onSelectEdge: (edgeId: string) => void;
+}) {
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+
+  useOnViewportChange({
+    onChange: setViewport,
+  });
+
+  return (
+    <svg className="react-flow__edges template-graph-overlay">
+      <defs>
+        <marker id="template-graph-arrow-advance" markerWidth="14" markerHeight="14" viewBox="-7 -7 14 14" orient="auto">
+          <path d="M -4 -4 L 0 0 L -4 4" className="template-graph-overlay__marker template-graph-overlay__marker--advance" />
+        </marker>
+        <marker id="template-graph-arrow-reject" markerWidth="14" markerHeight="14" viewBox="-7 -7 14 14" orient="auto">
+          <path d="M -4 -4 L 0 0 L -4 4" className="template-graph-overlay__marker template-graph-overlay__marker--reject" />
+        </marker>
+      </defs>
+      <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
+        {edges.map((edge) => {
+          const geometry = buildOverlayEdgePath(edge, nodes);
+          if (!geometry) {
+            return null;
+          }
+
+          const selected = selectedEdgeId === edge.id;
+          const labelWidth = edge.kind === 'reject' ? 62 : 76;
+
+          return (
+            <g
+              key={edge.id}
+              className={`template-graph-overlay__edge template-graph-overlay__edge--${edge.kind}${selected ? ' template-graph-overlay__edge--selected' : ''}`}
+            >
+              <path className="template-graph-overlay__hitbox" d={geometry.path} onClick={() => onSelectEdge(edge.id)} />
+              <path
+                className="template-graph-overlay__path"
+                d={geometry.path}
+                markerEnd={`url(#${edge.kind === 'reject' ? 'template-graph-arrow-reject' : 'template-graph-arrow-advance'})`}
+                onClick={() => onSelectEdge(edge.id)}
+              />
+              <g
+                className="template-graph-overlay__label"
+                transform={`translate(${geometry.labelX - labelWidth / 2} ${geometry.labelY - 10})`}
+                onClick={() => onSelectEdge(edge.id)}
+              >
+                <rect width={labelWidth} height="20" rx="999" />
+                <text x={labelWidth / 2} y="13">
+                  {edgeKindLabels[edge.kind] ?? edge.kind}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
 function formatGraphValidationIssue(issue: GraphValidationIssue, copy: ReturnType<typeof useTemplatesPageCopy>) {
   switch (issue.code) {
     case 'missing_node':
@@ -314,7 +477,7 @@ function formatGraphValidationIssue(issue: GraphValidationIssue, copy: ReturnTyp
   }
 }
 
-export function TemplateGraphEditorPage() {
+function TemplateGraphEditorContent() {
   const copy = useTemplatesPageCopy();
   const navigate = useNavigate();
   const { templateId } = useParams<{ templateId: string }>();
@@ -368,7 +531,7 @@ export function TemplateGraphEditorPage() {
   const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
   const graphValidationMessages = graphValidationErrors.map((issue) => formatGraphValidationIssue(issue, copy));
-  const graphNodes: Node[] = (
+  const graphNodes: Node<GraphStageNodeData>[] = (
     draftGraph?.nodes.map((node) => ({
       id: node.id,
       position: node.layout ?? { x: 0, y: 0 },
@@ -376,8 +539,16 @@ export function TemplateGraphEditorPage() {
         label: node.name,
         executionKind: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
         gateType: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+        kindLabel: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
+        gateLabel: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+        entryLabel: copy.graphEntryLabel,
+        isEntry: draftGraph.entryNodes.includes(node.id),
       },
-      type: 'default',
+      type: 'stage',
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      width: 220,
+      height: 84,
     })) ?? []
   );
   const graphCanvasEdges: Edge[] = (
@@ -385,9 +556,15 @@ export function TemplateGraphEditorPage() {
       id: edge.id,
       source: edge.from,
       target: edge.to,
-      label: edge.kind,
-      markerEnd: { type: MarkerType.ArrowClosed },
-      animated: edge.kind === 'reject',
+      sourceHandle: 'out',
+      targetHandle: 'in',
+      type: 'smoothstep',
+      selectable: false,
+      focusable: false,
+      style: {
+        strokeOpacity: 0,
+        strokeWidth: 20,
+      },
     })) ?? []
   );
   const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
@@ -580,23 +757,37 @@ export function TemplateGraphEditorPage() {
           <div className="template-graph-editor-canvas">
             <ReactFlow
               fitView
+              fitViewOptions={{ padding: 0.2, duration: 380 }}
               nodes={graphNodes}
               edges={graphCanvasEdges}
+              nodeTypes={graphNodeTypes}
               onNodesChange={handleGraphNodesChange}
               onEdgesChange={handleGraphEdgesChange}
               onConnect={handleGraphConnect}
+              connectionLineStyle={{ stroke: 'var(--color-accent)', strokeWidth: 1.8 }}
+              connectionLineContainerStyle={{ opacity: 0.85 }}
+              defaultEdgeOptions={{
+                type: 'smoothstep',
+              }}
               onNodeClick={(_, node) => {
                 setSelectedGraphNodeId(node.id);
                 setSelectedGraphEdgeId(null);
               }}
-              onEdgeClick={(_, edge) => {
-                setSelectedGraphEdgeId(edge.id);
-                setSelectedGraphNodeId(null);
-              }}
             >
-              <Background />
+              <GraphCanvasInternalsSync nodeIds={draftGraph.nodes.map((node) => node.id)} />
+              <Background gap={20} size={1} color="var(--color-text-tertiary)" />
               <Controls />
             </ReactFlow>
+            <GraphCanvasOverlay
+              nodes={draftGraph.nodes}
+              edges={draftGraph.edges}
+              edgeKindLabels={copy.graphEdgeKindOptions}
+              selectedEdgeId={selectedGraphEdgeId}
+              onSelectEdge={(edgeId) => {
+                setSelectedGraphEdgeId(edgeId);
+                setSelectedGraphNodeId(null);
+              }}
+            />
           </div>
         </div>
 
@@ -828,5 +1019,13 @@ export function TemplateGraphEditorPage() {
         </aside>
       </section>
     </div>
+  );
+}
+
+export function TemplateGraphEditorPage() {
+  return (
+    <ReactFlowProvider>
+      <TemplateGraphEditorContent />
+    </ReactFlowProvider>
   );
 }

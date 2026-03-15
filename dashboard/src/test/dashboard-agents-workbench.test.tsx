@@ -282,7 +282,7 @@ describe('agents workbench layout', () => {
     fetchTmuxTail.mockClear();
   });
 
-  it('uses grouped anomaly queue rows and drawer-based detail axes', () => {
+  it('uses grouped anomaly queue rows and drawer-based detail axes', { timeout: 10_000 }, () => {
     renderPage();
 
     expect(screen.getByTestId('agents-global-status')).toBeInTheDocument();

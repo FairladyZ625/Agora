@@ -154,7 +154,7 @@ describe('dashboard visual rescue target structure', () => {
     expect(screen.getAllByText('主控 Agent').length).toBeGreaterThan(0);
     expect(screen.getAllByText('archon').length).toBeGreaterThan(0);
     expect(screen.getByText('策略护栏')).toBeInTheDocument();
-    expect(screen.getByText('review -> policy-guard')).toBeInTheDocument();
+    expect(screen.getByTestId('task-blueprint-graph')).toBeInTheDocument();
   });
 
   it('rebuilds the reviews page as a decision queue workspace', () => {

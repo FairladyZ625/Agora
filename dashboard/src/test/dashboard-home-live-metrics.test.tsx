@@ -99,7 +99,7 @@ const liveTasks: Task[] = [
 ];
 
 const taskStoreState = {
-  tasks: liveTasks,
+  tasks: [...liveTasks],
   loading: false,
   detailLoading: false,
   error: null,
@@ -200,6 +200,7 @@ describe('dashboard home live metrics', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-07T12:00:00.000Z'));
+    taskStoreState.tasks = [...liveTasks];
     fetchTasks.mockClear();
     resolveReview.mockClear();
     showMessage.mockClear();
@@ -308,6 +309,24 @@ describe('dashboard home live metrics', () => {
 
     await Promise.resolve();
     expect(resolveReview).toHaveBeenCalledWith('OC-102', 'approve', '');
+  });
+
+  it('shows an empty authority target when no review item is pending', () => {
+    taskStoreState.tasks = liveTasks.filter((task) => task.state !== 'gate_waiting');
+
+    render(
+      <MemoryRouter>
+        <DashboardHome />
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(screen.getByText('当前暂无裁决目标')).toBeInTheDocument();
+    expect(screen.getAllByText('暂无')).toHaveLength(2);
+    expect(screen.getByText('当前裁决 0 / 0')).toBeInTheDocument();
   });
 
   it('does not preload task detail context until the operator focuses a rail task', () => {

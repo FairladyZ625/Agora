@@ -217,6 +217,28 @@ describe('templates workflow surfaces', () => {
     }));
   });
 
+  it('renders visible workflow nodes inside the graph editor canvas', () => {
+    const { container } = renderGraphEditor();
+
+    const canvasNodes = Array.from(container.querySelectorAll('.react-flow__node'));
+
+    expect(canvasNodes.length).toBeGreaterThan(0);
+    for (const node of canvasNodes) {
+      expect(node).toBeVisible();
+      expect(node.querySelector('.template-graph-node__title')).not.toBeNull();
+    }
+  });
+
+  it('renders a visible reject loop edge inside the graph editor canvas', () => {
+    const { container } = renderGraphEditor();
+
+    const rejectEdges = Array.from(container.querySelectorAll('.template-graph-overlay__edge--reject'));
+
+    expect(rejectEdges.length).toBeGreaterThan(0);
+    expect(rejectEdges[0]?.querySelector('.template-graph-overlay__path')).not.toBeNull();
+    expect(rejectEdges[0]?.textContent).toMatch(/打回|reject/i);
+  });
+
   it('adds nodes and tidies the canvas layout from the graph tools rail', () => {
     renderGraphEditor();
 

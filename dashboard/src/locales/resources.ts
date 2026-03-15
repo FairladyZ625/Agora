@@ -203,6 +203,9 @@ export const resources = {
         ],
         resolutionTitle: '资源分配与安全约束冲突',
         resolutionSummary: '自动共识未能收敛，当前需要人工裁决来解决启发式分歧。',
+        resolutionEmptyTitle: '当前暂无裁决目标',
+        resolutionEmptySummary: '当前没有处于裁决门的任务；出现新目标后会自动展示。',
+        resolutionEmptyValue: '暂无',
         resolutionMeta: {
           gate: '审批门',
           stage: '当前阶段',
@@ -1120,6 +1123,9 @@ export const resources = {
         ],
         resolutionTitle: 'Resource Allocation vs. Safety Constraints',
         resolutionSummary: 'Automated consensus failed to converge. Human-in-the-loop arbitration is required to resolve heuristic divergence.',
+        resolutionEmptyTitle: 'No Review Target Right Now',
+        resolutionEmptySummary: 'No task is currently waiting at the decision gate. New targets will appear automatically.',
+        resolutionEmptyValue: 'N/A',
         resolutionMeta: {
           gate: 'Gate',
           stage: 'Stage',
