@@ -106,32 +106,32 @@ Core principle: the orchestration semantics live in `packages/core`. Every IM, r
 - npm 10+
 - tmux (for craftsmen tmux runtime)
 
-### Install
+### Install From Source
 
 ```bash
 git clone https://github.com/FairladyZ625/Agora.git
 cd agora
-cp .env.example .env
-cd agora-ts && npm install
-cd ../dashboard && npm install
+./scripts/bootstrap-local.sh
 ```
 
-### Start Dev Stack
+### Initialize And Start
 
 ```bash
-./docs/02-PRODUCT/scripts/dev-start.sh
+./agora init
+./agora start
 ```
 
-This starts the Fastify backend and Vite dashboard dev server. Default endpoints:
+This source-mode path installs dependencies, prepares `.env`, writes local Agora config into `~/.agora/`, and starts the Fastify backend plus Vite dashboard dev server. Default endpoints:
 
 - API: `http://127.0.0.1:18420/api/health`
 - Dashboard: `http://127.0.0.1:33173/dashboard/`
 
+If you want the raw underlying command, `./agora start` delegates to `scripts/dev-start.sh`.
+
 ### Create Your First Task
 
 ```bash
-cd agora-ts
-npm run dev -w @agora-ts/cli -- create "Add authentication middleware to the API"
+./agora create "Add authentication middleware to the API"
 ```
 
 ### Typical Flow
@@ -220,7 +220,7 @@ agora-ts/                    TypeScript implementation (server / cli / packages)
     └── testing/             Test runtime helpers
 
 dashboard/                   React frontend (Vite + Tailwind + Zustand)
-archive/agora-python-legacy/ Python legacy reference implementation
+Doc/                         Public docs bundle (whitepaper, quick start, integration guides)
 docs/                        Architecture docs (separate git repo)
 extensions/                  Plugin adapters (OpenClaw, etc.)
 ```

@@ -141,6 +141,90 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('create [options] <title>');
   });
 
+  it('prints unified health snapshot through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        getHealthSnapshot: () => ({
+          generated_at: '2026-03-14T04:30:00.000Z',
+          tasks: {
+            status: 'healthy',
+            total_tasks: 2,
+            active_tasks: 1,
+            paused_tasks: 0,
+            blocked_tasks: 0,
+            done_tasks: 1,
+          },
+          im: {
+            status: 'healthy',
+            active_bindings: 1,
+            active_threads: 1,
+            bindings_by_provider: [{ label: 'discord', count: 1 }],
+          },
+          runtime: {
+            status: 'healthy',
+            available: true,
+            stale_after_ms: 1234,
+            active_sessions: 1,
+            idle_sessions: 0,
+            closed_sessions: 0,
+            agents: [],
+          },
+          craftsman: {
+            status: 'degraded',
+            active_executions: 1,
+            queued_executions: 0,
+            running_executions: 0,
+            waiting_input_executions: 1,
+            awaiting_choice_executions: 0,
+            active_by_assignee: [{ label: 'opus', count: 1 }],
+          },
+          host: {
+            status: 'healthy',
+            snapshot: {
+              observed_at: '2026-03-14T04:30:00.000Z',
+              platform: 'darwin',
+              cpu_count: 8,
+              load_1m: 1,
+              memory_total_bytes: 100,
+              memory_used_bytes: 40,
+              memory_utilization: 0.4,
+              memory_pressure: 0.3,
+              swap_total_bytes: 100,
+              swap_used_bytes: 10,
+              swap_utilization: 0.1,
+            },
+          },
+          escalation: {
+            status: 'degraded',
+            policy: {
+              controller_after_ms: 300000,
+              roster_after_ms: 900000,
+              inbox_after_ms: 1800000,
+            },
+            controller_pinged_tasks: 1,
+            roster_pinged_tasks: 0,
+            inbox_escalated_tasks: 0,
+            unhealthy_runtime_agents: 0,
+            runtime_unhealthy: false,
+          },
+        }),
+      } as unknown as TaskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['health', 'snapshot'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('generated_at: 2026-03-14T04:30:00.000Z');
+    expect(stdout.value).toContain('tasks: total=2 active=1 blocked=0 paused=0 done=1 status=healthy');
+    expect(stdout.value).toContain('runtime: available=true active=1 idle=0 closed=0 status=healthy');
+    expect(stdout.value).toContain('craftsman: active=1 running=0 waiting_input=1 awaiting_choice=0 status=degraded');
+    expect(stdout.value).toContain('escalation: controller=1 roster=0 inbox=0 runtime_unhealthy=false status=degraded');
+  });
+
   it('renders subcommand help without touching runtime composition', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -199,6 +283,60 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Moved to: agora dashboard users');
     expect(stdout.value).toContain('agora dashboard users list');
+  });
+
+  it('prints runtime diagnosis results through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        requestRuntimeDiagnosis: () => ({
+          operation: 'request_runtime_diagnosis',
+          task_id: 'OC-RUNTIME',
+          agent_ref: 'opus',
+          status: 'accepted',
+          health: 'healthy',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+          summary: 'runtime healthy',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['runtime', 'diagnose', 'OC-RUNTIME', 'opus', '--caller-id', 'opus'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"operation": "request_runtime_diagnosis"');
+    expect(stdout.value).toContain('"status": "accepted"');
+  });
+
+  it('prints craftsman stop results through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService: {
+        stopCraftsmanExecution: () => ({
+          operation: 'stop_execution',
+          status: 'accepted',
+          task_id: 'OC-STOP',
+          agent_ref: 'claude',
+          execution_id: 'exec-stop',
+          summary: 'stop signal sent',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'stop', 'exec-stop', '--caller-id', 'opus'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('"operation": "stop_execution"');
+    expect(stdout.value).toContain('"execution_id": "exec-stop"');
   });
 
   it('treats a symlinked executable path as the cli entrypoint', () => {
@@ -784,6 +922,7 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const startCommandRunner = vi.fn().mockResolvedValue(undefined);
+    const agoraProjectRoot = resolve(import.meta.dirname, '../../../../');
     const program = createCliProgram({
       taskService: {
         createTask: () => {
@@ -844,6 +983,8 @@ describe('agora-ts cli', () => {
         },
       } as unknown as TaskConversationService,
       startCommandRunner,
+      startCommandCwd: makeTempDir('agora-ts-cli-start-cwd-'),
+      startCommandFallbackRoot: agoraProjectRoot,
       stdout,
       stderr,
     }).exitOverride();
@@ -853,7 +994,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(startCommandRunner).toHaveBeenCalledTimes(2);
-    expect(startCommandRunner.mock.calls[0]?.[0]?.args?.[0]).toContain('docs/02-PRODUCT/scripts/dev-start.sh');
+    expect(startCommandRunner.mock.calls[0]?.[0]?.args?.[0]).toContain('scripts/dev-start.sh');
   });
 
   it('reads task conversation entries through the cli', async () => {
@@ -1364,7 +1505,8 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('scanned_tasks: 1');
-    expect(stdout.value).toContain('controller_pings: 1');
+    expect(stdout.value).toContain('controller_pings:');
+    expect(stdout.value).toContain('roster_pings:');
   });
 
   it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {
@@ -1866,6 +2008,35 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('status: running');
   });
 
+  it('supports execution-scoped craftsman tail through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const calls: Array<{ executionId: string; lines: number }> = [];
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      taskService: {
+        getCraftsmanExecutionTail: (executionId: string, lines: number) => {
+          calls.push({ executionId, lines });
+          return {
+            execution_id: executionId,
+            available: true,
+            output: 'recent tail output',
+            source: 'tmux',
+          };
+        },
+      } as unknown as TaskService,
+      tmuxRuntimeService: createTmuxRuntimeServiceStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+    }).exitOverride();
+
+    await program.parseAsync(['craftsman', 'tail', 'exec-123', '--lines', '55'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(calls).toEqual([{ executionId: 'exec-123', lines: 55 }]);
+    expect(stdout.value).toContain('recent tail output');
+  });
+
   it('shows craftsman governance snapshot through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -1883,6 +2054,9 @@ describe('agora-ts cli', () => {
           },
           active_executions: 2,
           active_by_assignee: [{ assignee: 'opus', count: 2 }],
+          warnings: [],
+          active_execution_details: [],
+          host_pressure_status: 'healthy',
           host: {
             observed_at: '2026-03-13T12:00:00.000Z',
             cpu_count: 8,

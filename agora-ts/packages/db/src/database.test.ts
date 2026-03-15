@@ -38,6 +38,15 @@ afterEach(() => {
 });
 
 describe('agora-ts sqlite bootstrap', () => {
+  it('applies a busy timeout to sqlite connections', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath(), busyTimeoutMs: 4321 });
+
+    const row = db.prepare('PRAGMA busy_timeout;').get() as { timeout: number } | undefined;
+
+    expect(row).toBeDefined();
+    expect(Object.values(row ?? {})).toContain(4321);
+  });
+
   it('runs the initial migration and records it', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
 

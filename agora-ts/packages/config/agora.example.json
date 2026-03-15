@@ -1,5 +1,6 @@
 {
   "db_path": "~/.agora/agora.db",
+  "db_busy_timeout_ms": 5000,
   "api_auth": {
     "enabled": false,
     "token": "change-me"
@@ -11,5 +12,36 @@
       "*": { "canCall": [], "canAdvance": false }
     },
     "archonUsers": ["lizeyu"]
+  },
+  "im": {
+    "provider": "discord",
+    "discord": {
+      "bot_token": "YOUR_DISCORD_BOT_TOKEN",
+      "default_channel_id": "YOUR_DEFAULT_DISCORD_CHANNEL_ID",
+      "notify_on_task_create": true,
+      "gateway_presence_enabled": true,
+      "gateway_presence_status": "online",
+      "gateway_presence_activity": "Agora"
+    }
+  },
+  "craftsmen": {
+    "max_concurrent_running": 8,
+    "max_concurrent_per_agent": 3,
+    "host_memory_warning_utilization_limit": 0.75,
+    "host_memory_utilization_limit": 0.9,
+    "host_swap_warning_utilization_limit": 0.75,
+    "host_swap_utilization_limit": 0.9,
+    "host_load_per_cpu_warning_limit": 1,
+    "host_load_per_cpu_limit": 1.5
+  },
+  "scheduler": {
+    "enabled": true,
+    "scan_interval_sec": 60,
+    "task_probe_controller_after_sec": 300,
+    "task_probe_roster_after_sec": 900,
+    "task_probe_inbox_after_sec": 1800,
+    "craftsman_running_after_sec": 300,
+    "craftsman_waiting_after_sec": 120,
+    "startup_recovery_on_boot": true
   }
 }

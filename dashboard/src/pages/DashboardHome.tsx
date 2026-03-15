@@ -185,6 +185,7 @@ export function DashboardHome() {
   const selectTask = useTaskStore((state) => state.selectTask);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
   const governanceSnapshot = useTaskStore((state) => state.governanceSnapshot ?? null);
+  const healthSnapshot = useTaskStore((state) => state.healthSnapshot ?? null);
   const refreshInterval = useSettingsStore((state) => state.refreshInterval);
   const pauseOnHidden = useSettingsStore((state) => state.pauseOnHidden);
   const { showMessage } = useFeedbackStore();
@@ -669,6 +670,21 @@ export function DashboardHome() {
                           {formatGovernanceMemoryValue(governanceSnapshot)}
                         </strong>
                       </div>
+                      <div className="detail-card">
+                        <Network size={16} className="detail-card__icon" />
+                        <span className="detail-card__label">{homeCopy.governance.pressureStatus}</span>
+                        <strong className="detail-card__value">{governanceSnapshot.hostPressureStatus}</strong>
+                      </div>
+                      <div className="detail-card">
+                        <Network size={16} className="detail-card__icon" />
+                        <span className="detail-card__label">{homeCopy.governance.runtimeStatus}</span>
+                        <strong className="detail-card__value">{healthSnapshot?.runtime.status ?? '—'}</strong>
+                      </div>
+                      <div className="detail-card">
+                        <Network size={16} className="detail-card__icon" />
+                        <span className="detail-card__label">{homeCopy.governance.escalationStatus}</span>
+                        <strong className="detail-card__value">{healthSnapshot?.escalation.status ?? '—'}</strong>
+                      </div>
                     </div>
                     <div className="mt-4 space-y-2">
                       <p className="field-label">{homeCopy.governance.assigneeTitle}</p>
@@ -683,6 +699,44 @@ export function DashboardHome() {
                         </div>
                       ) : (
                         <p className="type-body-sm">{homeCopy.governance.emptyAssignee}</p>
+                      )}
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <p className="field-label">{homeCopy.governance.warningsTitle}</p>
+                      {(governanceSnapshot.warnings ?? []).length > 0 ? (
+                        <div className="space-y-2">
+                          {(governanceSnapshot.warnings ?? []).map((warning) => (
+                            <div key={warning} className="data-row">
+                              <span className="type-body-sm">{warning}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="type-body-sm">{homeCopy.governance.emptyWarnings}</p>
+                      )}
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <p className="field-label">{homeCopy.governance.executionDetailsTitle}</p>
+                      {(governanceSnapshot.activeExecutionDetails ?? []).length > 0 ? (
+                        <div className="space-y-2">
+                          {(governanceSnapshot.activeExecutionDetails ?? []).slice(0, 4).map((detail) => (
+                            <div key={detail.executionId} className="data-row">
+                              <div className="min-w-0 flex-1">
+                                <p className="type-mono-xs">{detail.executionId}</p>
+                                <p className="type-text-xs mt-1">
+                                  {detail.assignee}
+                                  {' / '}
+                                  {detail.adapter}
+                                  {' / '}
+                                  {detail.status}
+                                </p>
+                              </div>
+                              <span className="status-pill status-pill--neutral">{detail.subtaskId}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="type-body-sm">{homeCopy.governance.emptyExecutionDetails}</p>
                       )}
                     </div>
                   </section>

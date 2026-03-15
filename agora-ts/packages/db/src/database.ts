@@ -12,6 +12,7 @@ export interface AgoraDatabase {
 
 export interface CreateAgoraDatabaseOptions {
   dbPath: string;
+  busyTimeoutMs?: number;
 }
 
 function resolveMigrationsDir() {
@@ -24,9 +25,13 @@ function resolveMigrationsDir() {
 
 export function createAgoraDatabase(options: CreateAgoraDatabaseOptions): AgoraDatabase {
   mkdirSync(dirname(options.dbPath), { recursive: true });
-  const raw = new DatabaseSync(options.dbPath);
+  const busyTimeoutMs = options.busyTimeoutMs ?? 5000;
+  const raw = new DatabaseSync(options.dbPath, {
+    timeout: busyTimeoutMs,
+  });
   raw.exec('PRAGMA journal_mode=WAL;');
   raw.exec('PRAGMA foreign_keys=ON;');
+  raw.exec(`PRAGMA busy_timeout=${busyTimeoutMs};`);
   raw.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       name TEXT PRIMARY KEY,

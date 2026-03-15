@@ -98,7 +98,7 @@ describe('agora-ts testing scenarios', () => {
 
     expect(result.name).toBe('control-plane-loop');
     expect(result.events).toEqual(expect.arrayContaining([
-      'thread_probe_controller',
+      'controller_pinged',
       'archon_rejected',
       'stage_rewound',
     ]));

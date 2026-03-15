@@ -46,6 +46,140 @@ describe('agora-ts server bootstrap', () => {
     expect(response.json()).toEqual({ status: 'ok' });
   });
 
+  it('serves the unified health snapshot endpoint', async () => {
+    const app = buildApp({
+      taskService: {
+        getHealthSnapshot: () => ({
+          generated_at: '2026-03-14T04:30:00.000Z',
+          tasks: {
+            status: 'healthy',
+            total_tasks: 1,
+            active_tasks: 1,
+            paused_tasks: 0,
+            blocked_tasks: 0,
+            done_tasks: 0,
+          },
+          im: {
+            status: 'healthy',
+            active_bindings: 1,
+            active_threads: 1,
+            bindings_by_provider: [{ label: 'discord', count: 1 }],
+          },
+          runtime: {
+            status: 'unavailable',
+            available: false,
+            stale_after_ms: null,
+            active_sessions: 0,
+            idle_sessions: 0,
+            closed_sessions: 0,
+            agents: [],
+          },
+          craftsman: {
+            status: 'healthy',
+            active_executions: 0,
+            queued_executions: 0,
+            running_executions: 0,
+            waiting_input_executions: 0,
+            awaiting_choice_executions: 0,
+            active_by_assignee: [],
+          },
+          host: {
+            status: 'unavailable',
+            snapshot: null,
+          },
+          escalation: {
+            status: 'healthy',
+            policy: {
+              controller_after_ms: 300000,
+              roster_after_ms: 900000,
+              inbox_after_ms: 1800000,
+            },
+            controller_pinged_tasks: 0,
+            roster_pinged_tasks: 0,
+            inbox_escalated_tasks: 0,
+            unhealthy_runtime_agents: 0,
+            runtime_unhealthy: false,
+          },
+        }),
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/health/snapshot',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      tasks: {
+        total_tasks: 1,
+      },
+      im: {
+        active_bindings: 1,
+      },
+      escalation: {
+        controller_pinged_tasks: 0,
+      },
+    });
+  });
+
+  it('serves runtime diagnosis and restart routes', async () => {
+    const app = buildApp({
+      taskService: {
+        requestRuntimeDiagnosis: () => ({
+          operation: 'request_runtime_diagnosis',
+          task_id: 'OC-RUNTIME',
+          agent_ref: 'opus',
+          status: 'accepted',
+          health: 'healthy',
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: 'runtime-opus',
+          summary: 'runtime healthy',
+          detail: null,
+        }),
+        restartCitizenRuntime: () => ({
+          operation: 'restart_citizen_runtime',
+          status: 'unsupported',
+          task_id: 'OC-RUNTIME',
+          agent_ref: 'opus',
+          execution_id: null,
+          summary: 'restart unsupported',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+    });
+
+    const diagnosis = await app.inject({
+      method: 'POST',
+      url: '/api/runtime/diagnose',
+      payload: {
+        task_id: 'OC-RUNTIME',
+        agent_ref: 'opus',
+        caller_id: 'opus',
+      },
+    });
+    const restart = await app.inject({
+      method: 'POST',
+      url: '/api/runtime/restart',
+      payload: {
+        task_id: 'OC-RUNTIME',
+        agent_ref: 'opus',
+        caller_id: 'opus',
+      },
+    });
+
+    expect(diagnosis.statusCode).toBe(200);
+    expect(diagnosis.json()).toMatchObject({
+      operation: 'request_runtime_diagnosis',
+      status: 'accepted',
+    });
+    expect(restart.statusCode).toBe(200);
+    expect(restart.json()).toMatchObject({
+      operation: 'restart_citizen_runtime',
+      status: 'unsupported',
+    });
+  });
+
   it('serves a readiness endpoint from the configured ready path', async () => {
     const app = buildApp({
       observability: {

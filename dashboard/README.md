@@ -16,7 +16,7 @@ The React Compiler is not enabled on this template because of its impact on dev 
 Run the Dashboard browser baselines after starting the local stack:
 
 ```bash
-./docs/02-PRODUCT/scripts/dev-start.sh
+./scripts/dev-start.sh
 cd dashboard
 npm run test:browsers:install
 npm run test:compat

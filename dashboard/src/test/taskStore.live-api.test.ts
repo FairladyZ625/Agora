@@ -5,6 +5,7 @@ import type {
   ApiTaskConversationSummaryDto,
   ApiTaskDto,
   ApiTaskStatusDto,
+  ApiUnifiedHealthSnapshotDto,
 } from '@/types/api';
 import { useTaskStore } from '@/stores/taskStore';
 import * as api from '@/lib/api';
@@ -18,6 +19,8 @@ vi.mock('@/lib/api', () => ({
   markTaskConversationRead: vi.fn(),
   listSubtaskExecutions: vi.fn(),
   getCraftsmanGovernance: vi.fn(),
+  getHealthSnapshot: vi.fn(),
+  getCraftsmanExecutionTail: vi.fn(),
   closeSubtask: vi.fn(),
   archiveSubtask: vi.fn(),
   cancelSubtask: vi.fn(),
@@ -119,12 +122,18 @@ function buildGovernanceSnapshotDto(
     limits: {
       max_concurrent_running: 4,
       max_concurrent_per_agent: 2,
+      host_memory_warning_utilization_limit: 0.7,
       host_memory_utilization_limit: 0.8,
+      host_swap_warning_utilization_limit: 0.1,
       host_swap_utilization_limit: 0.2,
+      host_load_per_cpu_warning_limit: 1.2,
       host_load_per_cpu_limit: 1.5,
     },
     active_executions: 1,
     active_by_assignee: [{ assignee: 'opus', count: 1 }],
+    active_execution_details: [],
+    host_pressure_status: 'healthy',
+    warnings: [],
     host: {
       observed_at: '2026-03-07T02:00:00.000Z',
       cpu_count: 8,
@@ -140,15 +149,78 @@ function buildGovernanceSnapshotDto(
   };
 }
 
+function buildHealthSnapshotDto(
+  overrides: Partial<ApiUnifiedHealthSnapshotDto> = {},
+): ApiUnifiedHealthSnapshotDto {
+  return {
+    generated_at: '2026-03-07T02:00:00.000Z',
+    tasks: {
+      status: 'healthy',
+      total_tasks: 1,
+      active_tasks: 1,
+      paused_tasks: 0,
+      blocked_tasks: 0,
+      done_tasks: 0,
+    },
+    im: {
+      status: 'healthy',
+      active_bindings: 1,
+      active_threads: 1,
+      bindings_by_provider: [{ label: 'discord', count: 1 }],
+    },
+    runtime: {
+      status: 'healthy',
+      available: true,
+      stale_after_ms: 300000,
+      active_sessions: 1,
+      idle_sessions: 0,
+      closed_sessions: 0,
+      agents: [],
+    },
+    craftsman: {
+      status: 'healthy',
+      active_executions: 1,
+      queued_executions: 0,
+      running_executions: 1,
+      waiting_input_executions: 0,
+      awaiting_choice_executions: 0,
+      active_by_assignee: [{ label: 'opus', count: 1 }],
+    },
+    host: {
+      status: 'healthy',
+      snapshot: null,
+    },
+    escalation: {
+      status: 'healthy',
+      policy: {
+        controller_after_ms: 600000,
+        roster_after_ms: 1200000,
+        inbox_after_ms: 1800000,
+      },
+      controller_pinged_tasks: 0,
+      roster_pinged_tasks: 0,
+      inbox_escalated_tasks: 0,
+      unhealthy_runtime_agents: 0,
+      runtime_unhealthy: false,
+    },
+    ...overrides,
+  };
+}
+
 describe('task store live API mode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.listSubtaskExecutions).mockResolvedValue([]);
     vi.mocked(api.getCraftsmanGovernance).mockResolvedValue(buildGovernanceSnapshotDto());
+    vi.mocked(api.getHealthSnapshot).mockResolvedValue(buildHealthSnapshotDto());
     useTaskStore.setState({
       tasks: [],
       selectedTaskId: null,
       selectedTaskStatus: null,
+      governanceSnapshot: null,
+      healthSnapshot: null,
+      executionTailById: {},
+      executionTailLoadingById: {},
       filters: { state: null, search: '' },
       loading: false,
       detailLoading: false,
@@ -167,6 +239,28 @@ describe('task store live API mode', () => {
     expect(state.tasks[0]?.state).toBe('in_progress');
     expect(state.tasks[0]?.teamLabel).toContain('opus');
     expect(state.error).toBeNull();
+  });
+
+  it('loads execution-scoped craftsman tail into the store', async () => {
+    vi.mocked(api.getCraftsmanExecutionTail).mockResolvedValue({
+      execution_id: 'exec-1',
+      available: true,
+      output: 'tail:exec-1',
+      source: 'tmux',
+    });
+
+    const result = await useTaskStore.getState().fetchCraftsmanExecutionTail('exec-1', 66);
+    const state = useTaskStore.getState();
+
+    expect(result).toBe('live');
+    expect(api.getCraftsmanExecutionTail).toHaveBeenCalledWith('exec-1', 66);
+    expect(state.executionTailById['exec-1']).toEqual({
+      available: true,
+      fetchedAt: expect.any(String),
+      output: 'tail:exec-1',
+      source: 'tmux',
+    });
+    expect(state.executionTailLoadingById['exec-1']).toBe(false);
   });
 
   it('drops synced archived tasks from the workbench list and clears stale selection', async () => {

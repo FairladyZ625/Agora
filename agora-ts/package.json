@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "build": "tsc -b tsconfig.workspace.build.json",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "cli:install-global": "bash ./scripts/install-global-cli.sh",
+    "check": "npm run lint && npm run build && npm run typecheck && npm test",
     "check:strict": "npm run check && npm run test:coverage",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",

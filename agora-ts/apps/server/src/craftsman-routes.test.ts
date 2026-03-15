@@ -142,6 +142,37 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('serves craftsman stop route', async () => {
+    const app = buildApp({
+      taskService: {
+        stopCraftsmanExecution: (executionId: string) => ({
+          operation: 'stop_execution',
+          status: 'accepted',
+          task_id: 'OC-STOP',
+          agent_ref: 'claude',
+          execution_id: executionId,
+          summary: 'stop signal sent',
+          detail: null,
+        }),
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-stop-route/stop',
+      payload: {
+        caller_id: 'opus',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      operation: 'stop_execution',
+      execution_id: 'exec-stop-route',
+      status: 'accepted',
+    });
+  });
+
   it('rejects craftsmen dispatch for paused tasks', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -395,6 +426,37 @@ describe('craftsman routes', () => {
     });
   });
 
+  it('supports execution-scoped craftsman tail route', async () => {
+    const calls: Array<{ executionId: string; lines: number }> = [];
+    const app = buildApp({
+      taskService: {
+        getCraftsmanExecutionTail: (executionId: string, lines: number) => {
+          calls.push({ executionId, lines });
+          return {
+            execution_id: executionId,
+            available: true,
+            output: 'tail output',
+            source: 'tmux',
+          };
+        },
+      } as unknown as TaskService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/executions/exec-123/tail?lines=77',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(calls).toEqual([{ executionId: 'exec-123', lines: 77 }]);
+    expect(response.json()).toEqual({
+      execution_id: 'exec-123',
+      available: true,
+      output: 'tail output',
+      source: 'tmux',
+    });
+  });
+
   it('serves craftsman governance snapshot route', async () => {
     const app = buildApp({
       taskService: {
@@ -402,12 +464,29 @@ describe('craftsman routes', () => {
           limits: {
             max_concurrent_running: 8,
             max_concurrent_per_agent: 3,
+            host_memory_warning_utilization_limit: 0.75,
             host_memory_utilization_limit: 0.9,
+            host_swap_warning_utilization_limit: 0.75,
             host_swap_utilization_limit: 0.9,
+            host_load_per_cpu_warning_limit: 1,
             host_load_per_cpu_limit: 1.5,
           },
           active_executions: 1,
           active_by_assignee: [{ assignee: 'opus', count: 1 }],
+          active_execution_details: [
+            {
+              execution_id: 'exec-1',
+              task_id: 'OC-1',
+              subtask_id: 'sub-1',
+              assignee: 'opus',
+              adapter: 'claude',
+              status: 'running',
+              session_id: 'tmux:claude',
+              workdir: '/tmp/agora',
+            },
+          ],
+          host_pressure_status: 'healthy',
+          warnings: [],
           host: {
             observed_at: '2026-03-13T12:00:00.000Z',
             cpu_count: 8,
@@ -432,6 +511,7 @@ describe('craftsman routes', () => {
     expect(response.json()).toMatchObject({
       active_executions: 1,
       active_by_assignee: [{ assignee: 'opus', count: 1 }],
+      active_execution_details: [expect.objectContaining({ execution_id: 'exec-1' })],
     });
   });
 

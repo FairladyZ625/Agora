@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { syncBundledBrainPackContents } from './runtime-assets.js';
+import { ensureBundledAgoraAssetsInstalled, syncBundledBrainPackContents } from './runtime-assets.js';
 
 const tempPaths: string[] = [];
 
@@ -36,5 +36,46 @@ describe('runtime assets', () => {
     expect(readFileSync(join(targetRoot, 'projects', 'README.md'), 'utf8')).toBe('projects readme');
     expect(() => readFileSync(join(targetRoot, 'tasks', 'OC-SHOULD-SKIP', 'task.meta.yaml'), 'utf8')).toThrow();
   });
-});
 
+  it('overwrites existing root files without throwing EEXIST', () => {
+    const sourceRoot = makeTempDir();
+    const targetRoot = makeTempDir();
+    mkdirSync(join(sourceRoot, 'projects'), { recursive: true });
+    writeFileSync(join(sourceRoot, 'README.md'), 'bundled readme');
+    writeFileSync(join(sourceRoot, 'projects', 'README.md'), 'projects readme');
+
+    writeFileSync(join(targetRoot, 'README.md'), 'old readme');
+    mkdirSync(join(targetRoot, 'projects'), { recursive: true });
+    writeFileSync(join(targetRoot, 'projects', 'README.md'), 'old projects readme');
+
+    expect(() => syncBundledBrainPackContents(sourceRoot, targetRoot)).not.toThrow();
+    expect(() => syncBundledBrainPackContents(sourceRoot, targetRoot)).not.toThrow();
+
+    expect(readFileSync(join(targetRoot, 'README.md'), 'utf8')).toBe('bundled readme');
+    expect(readFileSync(join(targetRoot, 'projects', 'README.md'), 'utf8')).toBe('projects readme');
+  });
+
+  it('keeps the installed brain pack as the runtime source of truth by default', () => {
+    const projectRoot = makeTempDir();
+    const bundledBrainPackDir = join(projectRoot, 'agora-ai-brain');
+    const userAgoraDir = makeTempDir();
+
+    mkdirSync(bundledBrainPackDir, { recursive: true });
+    writeFileSync(join(bundledBrainPackDir, 'AGORA.md'), 'bundled agora');
+    writeFileSync(join(bundledBrainPackDir, 'README.md'), 'bundled readme');
+
+    const installedBrainPackDir = join(userAgoraDir, 'agora-ai-brain');
+    mkdirSync(installedBrainPackDir, { recursive: true });
+    writeFileSync(join(installedBrainPackDir, 'AGORA.md'), 'runtime agora');
+    writeFileSync(join(installedBrainPackDir, 'README.md'), 'runtime readme');
+
+    ensureBundledAgoraAssetsInstalled({
+      projectRoot,
+      bundledBrainPackDir,
+      userAgoraDir,
+    });
+
+    expect(readFileSync(join(installedBrainPackDir, 'AGORA.md'), 'utf8')).toBe('runtime agora');
+    expect(readFileSync(join(installedBrainPackDir, 'README.md'), 'utf8')).toBe('runtime readme');
+  });
+});

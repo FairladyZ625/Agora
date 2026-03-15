@@ -45,6 +45,10 @@ export class LiveSessionStore {
     return Array.from(this.sessions.values()).sort((a, b) => a.session_key.localeCompare(b.session_key));
   }
 
+  getStaleAfterMs() {
+    return this.staleAfterMs;
+  }
+
   cleanupStale() {
     let cleaned = 0;
     for (const session of this.sessions.values()) {

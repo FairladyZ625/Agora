@@ -171,9 +171,15 @@ export function TasksPage() {
   const selectTask = useTaskStore((state) => state.selectTask);
   const runTaskAction = useTaskStore((state) => state.runTaskAction);
   const observeCraftsmen = useTaskStore((state) => state.observeCraftsmen);
+  const diagnoseRuntime = useTaskStore((state) => state.diagnoseRuntime);
   const probeCraftsmanExecution = useTaskStore((state) => state.probeCraftsmanExecution);
+  const fetchCraftsmanExecutionTail = useTaskStore((state) => state.fetchCraftsmanExecutionTail);
+  const executionTailById = useTaskStore((state) => state.executionTailById);
+  const executionTailLoadingById = useTaskStore((state) => state.executionTailLoadingById);
+  const restartRuntime = useTaskStore((state) => state.restartRuntime);
   const sendCraftsmanInputText = useTaskStore((state) => state.sendCraftsmanInputText);
   const sendCraftsmanInputKeys = useTaskStore((state) => state.sendCraftsmanInputKeys);
+  const stopCraftsmanExecution = useTaskStore((state) => state.stopCraftsmanExecution);
   const submitCraftsmanChoice = useTaskStore((state) => state.submitCraftsmanChoice);
   const closeSubtask = useTaskStore((state) => state.closeSubtask);
   const archiveSubtask = useTaskStore((state) => state.archiveSubtask);
@@ -198,6 +204,16 @@ export function TasksPage() {
   useEffect(() => {
     void fetchTasks();
   }, [fetchTasks]);
+
+  useEffect(() => {
+    if (!selectedExecutionId) {
+      return;
+    }
+    if (executionTailById[selectedExecutionId] || executionTailLoadingById[selectedExecutionId]) {
+      return;
+    }
+    void fetchCraftsmanExecutionTail(selectedExecutionId);
+  }, [selectedExecutionId, executionTailById, executionTailLoadingById, fetchCraftsmanExecutionTail]);
 
   const taskList = tasks;
   const availableTeams = useMemo(() => [...new Set(taskList.map((task) => task.teamLabel))], [taskList]);
@@ -295,6 +311,22 @@ export function TasksPage() {
         activeMembers[0]?.agentId ??
         activeTask.creator;
   const resolvedActionActor = actionActor || preferredActorId;
+
+  useEffect(() => {
+    if (!selectedExecution) {
+      return;
+    }
+    if (!['running', 'needs_input', 'awaiting_choice'].includes(selectedExecution.status)) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      if (executionTailLoadingById[selectedExecution.executionId]) {
+        return;
+      }
+      void fetchCraftsmanExecutionTail(selectedExecution.executionId);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [selectedExecution, executionTailLoadingById, fetchCraftsmanExecutionTail]);
 
   const taskSections = useMemo(() => [
     {
@@ -435,6 +467,81 @@ export function TasksPage() {
       showMessage(
         t('feedback.taskActionFailureTitle'),
         inputError instanceof Error ? inputError.message : String(inputError),
+        'warning',
+      );
+    }
+  };
+
+  const runExecutionTailRefresh = async (executionId: string) => {
+    try {
+      await fetchCraftsmanExecutionTail(executionId);
+      showMessage(t('feedback.syncSuccessTitle'), tasksPageCopy.executionTailRefreshAction, 'success');
+    } catch (tailError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        tailError instanceof Error ? tailError.message : String(tailError),
+        'warning',
+      );
+    }
+  };
+
+  const selectedExecutionTail = selectedExecution ? executionTailById[selectedExecution.executionId] : null;
+  const selectedExecutionTailLoading = selectedExecution ? !!executionTailLoadingById[selectedExecution.executionId] : false;
+  const selectedExecutionTailMode = selectedExecution
+    ? (['running', 'needs_input', 'awaiting_choice'].includes(selectedExecution.status)
+        ? tasksPageCopy.executionTailLiveLabel
+        : tasksPageCopy.executionTailSnapshotLabel)
+    : null;
+
+  const runRuntimeDiagnosis = async (agentRef: string) => {
+    if (!activeTask) {
+      return;
+    }
+    try {
+      const result = await diagnoseRuntime(activeTask.id, agentRef, resolvedActionActor, actionNote);
+      showMessage(t('feedback.syncSuccessTitle'), result.summary, result.status === 'accepted' ? 'success' : 'warning');
+      if (result.detail) {
+        setActionNote(result.detail);
+      }
+    } catch (runtimeError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        runtimeError instanceof Error ? runtimeError.message : String(runtimeError),
+        'warning',
+      );
+    }
+  };
+
+  const runRuntimeRestart = async (agentRef: string) => {
+    if (!activeTask) {
+      return;
+    }
+    try {
+      const result = await restartRuntime(activeTask.id, agentRef, resolvedActionActor, actionNote);
+      showMessage(t('feedback.taskActionSuccessTitle'), result.summary, result.status === 'accepted' ? 'success' : 'warning');
+      if (result.detail) {
+        setActionNote(result.detail);
+      }
+    } catch (runtimeError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        runtimeError instanceof Error ? runtimeError.message : String(runtimeError),
+        'warning',
+      );
+    }
+  };
+
+  const runExecutionStop = async (executionId: string) => {
+    try {
+      const result = await stopCraftsmanExecution(executionId, resolvedActionActor, actionNote);
+      showMessage(t('feedback.taskActionSuccessTitle'), result.summary, result.status === 'accepted' ? 'success' : 'warning');
+      if (result.detail) {
+        setActionNote(result.detail);
+      }
+    } catch (stopError) {
+      showMessage(
+        t('feedback.taskActionFailureTitle'),
+        stopError instanceof Error ? stopError.message : String(stopError),
         'warning',
       );
     }
@@ -826,10 +933,55 @@ export function TasksPage() {
                               >
                                 {tasksPageCopy.executionProbeAction}
                               </button>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => void runExecutionTailRefresh(selectedExecution.executionId)}
+                              >
+                                {executionTailById[selectedExecution.executionId]
+                                  ? tasksPageCopy.executionTailRefreshAction
+                                  : tasksPageCopy.executionTailAction}
+                              </button>
+                              <button
+                                type="button"
+                                className="button-danger"
+                                onClick={() => void runExecutionStop(selectedExecution.executionId)}
+                              >
+                                {tasksPageCopy.executionStopAction}
+                              </button>
                             </div>
                             {selectedExecution.callbackPayload?.inputRequest?.hint ? (
                               <p className="type-body-sm">{selectedExecution.callbackPayload.inputRequest.hint}</p>
                             ) : null}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="field-label">{tasksPageCopy.executionTailLabel}</p>
+                                <div className="flex items-center gap-2">
+                                  {selectedExecutionTailMode ? (
+                                    <span className="status-pill status-pill--neutral">{selectedExecutionTailMode}</span>
+                                  ) : null}
+                                  {selectedExecutionTailLoading ? (
+                                    <span className="type-text-xs">{tasksPageCopy.executionTailPollingLabel}…</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              {selectedExecutionTail?.fetchedAt ? (
+                                <p className="type-text-xs">
+                                  {tasksPageCopy.executionTailUpdatedLabel}: {formatRelativeTimestamp(selectedExecutionTail.fetchedAt)}
+                                </p>
+                              ) : null}
+                              <div className="task-tail-card">
+                                <pre className="task-tail-pre">
+                                  {selectedExecutionTail
+                                    ? (
+                                        selectedExecutionTail.available
+                                          ? (selectedExecutionTail.output ?? tasksPageCopy.executionTailEmpty)
+                                          : tasksPageCopy.executionTailUnavailable
+                                      )
+                                    : tasksPageCopy.executionTailEmpty}
+                                </pre>
+                              </div>
+                            </div>
                             {selectedExecution.callbackPayload?.inputRequest?.transport === 'text' ? (
                               <div className="space-y-2">
                                 <label className="field-label" htmlFor="execution-input-text">
@@ -902,6 +1054,40 @@ export function TasksPage() {
                             </div>
                           </div>
                         ) : null}
+                        {(activeGovernanceSnapshot?.warnings ?? []).length ? (
+                          <div className="space-y-2">
+                            <p className="field-label">{tasksPageCopy.governanceWarningsLabel}</p>
+                            <div className="space-y-2">
+                              {(activeGovernanceSnapshot?.warnings ?? []).map((warning) => (
+                                <div key={warning} className="data-row">
+                                  <span className="type-body-sm">{warning}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {(activeGovernanceSnapshot?.activeExecutionDetails ?? []).length ? (
+                          <div className="space-y-2">
+                            <p className="field-label">{tasksPageCopy.governanceExecutionDetailsLabel}</p>
+                            <div className="space-y-2">
+                              {(activeGovernanceSnapshot?.activeExecutionDetails ?? []).map((detail) => (
+                                <div key={detail.executionId} className="data-row">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="type-mono-xs">{detail.executionId}</p>
+                                    <p className="type-text-xs mt-1">
+                                      {detail.assignee}
+                                      {' / '}
+                                      {detail.adapter}
+                                      {' / '}
+                                      {detail.status}
+                                    </p>
+                                  </div>
+                                  <span className="status-pill status-pill--neutral">{detail.subtaskId}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : (
@@ -941,6 +1127,24 @@ export function TasksPage() {
                   </div>
 
                   <div className="task-authority__actions">
+                    {selectedSubtask ? (
+                      <>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => void runRuntimeDiagnosis(selectedSubtask.assignee)}
+                        >
+                          {tasksPageCopy.runtimeDiagnosisAction}
+                        </button>
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => void runRuntimeRestart(selectedSubtask.assignee)}
+                        >
+                          {tasksPageCopy.runtimeRestartAction}
+                        </button>
+                      </>
+                    ) : null}
                     {activeGateType === 'approval' ? (
                       <>
                         <button type="button" className="button-primary" onClick={() => void runAction('approve')}>
