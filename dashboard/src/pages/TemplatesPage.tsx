@@ -226,34 +226,6 @@ export function TemplatesPage() {
                 </div>
               </div>
 
-              <div className="detail-card space-y-3">
-                <span className="detail-card__label">{copy.stagesTitle}</span>
-                <div className="space-y-2">
-                  {selectedTemplate.stages.map((stage) => (
-                    <div key={stage.id} className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <p className="type-heading-xs">{stage.name}</p>
-                        <p className="type-text-xs mt-1">{stage.id} / {stage.mode}</p>
-                      </div>
-                      {stage.gateType ? <span className="status-pill status-pill--neutral">{stage.gateType}</span> : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="detail-card space-y-3">
-                <span className="detail-card__label">{copy.graphEdgesLabel}</span>
-                <div className="space-y-2">
-                  {(selectedTemplate.graph?.edges ?? []).map((edge) => (
-                    <div key={edge.id} className="data-row">
-                      <span className="type-mono-xs">{`${edge.from} -> ${edge.to}`}</span>
-                      <span className={edge.kind === 'reject' ? 'status-pill status-pill--warning' : 'status-pill status-pill--info'}>
-                        {edge.kind}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           ) : (
             <div className="empty-state mt-5">

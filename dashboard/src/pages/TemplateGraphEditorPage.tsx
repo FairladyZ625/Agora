@@ -7,12 +7,15 @@ import ReactFlow, {
   applyNodeChanges,
   Background,
   Controls,
+  Handle,
   MarkerType,
+  Position,
   type Connection,
   type Edge,
   type EdgeChange,
   type Node,
   type NodeChange,
+  type NodeProps,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
@@ -32,6 +35,43 @@ type GraphValidationIssue =
   | { code: 'multiple_advance_outgoing'; nodeId: string }
   | { code: 'multiple_advance_incoming'; nodeId: string }
   | { code: 'multiple_reject_outgoing'; nodeId: string };
+
+type GraphStageNodeData = {
+  label: string;
+  kindLabel: string;
+  gateLabel: string;
+  entryLabel: string;
+  isEntry: boolean;
+};
+
+function GraphStageNode({ data, selected }: NodeProps<GraphStageNodeData>) {
+  return (
+    <div className={`template-graph-node${selected ? ' template-graph-node--selected' : ''}`}>
+      <Handle
+        id="in"
+        type="target"
+        position={Position.Left}
+        className="template-graph-node__handle template-graph-node__handle--in"
+      />
+      <Handle
+        id="out"
+        type="source"
+        position={Position.Right}
+        className="template-graph-node__handle template-graph-node__handle--out"
+      />
+      <div className="template-graph-node__eyebrow">
+        <span className="template-graph-node__kind">{data.kindLabel}</span>
+        {data.isEntry ? <span className="template-graph-node__entry">{data.entryLabel}</span> : null}
+      </div>
+      <div className="template-graph-node__title">{data.label}</div>
+      <div className="template-graph-node__gate">{data.gateLabel}</div>
+    </div>
+  );
+}
+
+const graphNodeTypes = {
+  stage: GraphStageNode,
+};
 
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
   const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
@@ -368,7 +408,7 @@ export function TemplateGraphEditorPage() {
   const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
   const graphValidationMessages = graphValidationErrors.map((issue) => formatGraphValidationIssue(issue, copy));
-  const graphNodes: Node[] = (
+  const graphNodes: Node<GraphStageNodeData>[] = (
     draftGraph?.nodes.map((node) => ({
       id: node.id,
       position: node.layout ?? { x: 0, y: 0 },
@@ -376,8 +416,16 @@ export function TemplateGraphEditorPage() {
         label: node.name,
         executionKind: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
         gateType: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+        kindLabel: resolveWorkflowExecutionKindLabel(node.executionKind, copy.graphExecutionKindOptions),
+        gateLabel: resolveWorkflowGateLabel(node.gateType, copy.graphGateTypeOptions),
+        entryLabel: copy.graphEntryLabel,
+        isEntry: draftGraph.entryNodes.includes(node.id),
       },
-      type: 'default',
+      type: 'stage',
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      width: 220,
+      height: 84,
     })) ?? []
   );
   const graphCanvasEdges: Edge[] = (
@@ -582,6 +630,7 @@ export function TemplateGraphEditorPage() {
               fitView
               nodes={graphNodes}
               edges={graphCanvasEdges}
+              nodeTypes={graphNodeTypes}
               onNodesChange={handleGraphNodesChange}
               onEdgesChange={handleGraphEdgesChange}
               onConnect={handleGraphConnect}

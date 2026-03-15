@@ -6,6 +6,7 @@ import { useTasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
+import { WorkflowGraphView } from '@/components/features/WorkflowGraphView';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
@@ -77,9 +78,11 @@ function formatGovernanceMemoryValue(status: TaskStatus | null | undefined, fall
 function TaskBlueprintSection({
   blueprint,
   copy,
+  currentStageId,
 }: {
   blueprint: TaskBlueprint | undefined;
   copy: ReturnType<typeof useTasksPageCopy>;
+  currentStageId?: string | null;
 }) {
   return (
     <section className="task-authority__section">
@@ -96,48 +99,25 @@ function TaskBlueprintSection({
               </div>
             </div>
           ) : null}
-          <div>
-            <p className="field-label">{copy.blueprintEntryLabel}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {blueprint.entryNodes.map((nodeId) => (
-                <span key={nodeId} className="choice-pill choice-pill--active">
-                  {nodeId}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="field-label">{copy.blueprintNodesLabel}</p>
-            <div className="mt-2 space-y-2">
-              {blueprint.nodes.map((node) => (
-                <div key={node.id} className="data-row">
-                  <div className="min-w-0 flex-1">
-                    <p className="type-heading-xs">{node.name ?? node.id}</p>
-                    <p className="type-text-xs mt-1">
-                      {node.id}
-                      {' / '}
-                      {node.mode ?? 'stage'}
-                    </p>
-                  </div>
-                  {node.gateType ? <span className="status-pill status-pill--neutral">{node.gateType}</span> : null}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="field-label">{copy.blueprintEdgesLabel}</p>
-            <div className="mt-2 space-y-2">
-              {blueprint.edges.map((edge, index) => (
-                <div key={`${edge.from}-${edge.to}-${edge.kind}-${index}`} className="data-row">
-                  <span className="type-mono-xs">{`${edge.from} -> ${edge.to}`}</span>
-                  <span className={edge.kind === 'reject' ? 'status-pill status-pill--warning' : 'status-pill status-pill--info'}>
-                    {edge.kind}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <div className="detail-card detail-card--graph">
+            <WorkflowGraphView
+              testId="task-blueprint-graph"
+              currentNodeId={currentStageId ?? null}
+              entryLabel={copy.blueprintEntryLabel}
+              nodes={blueprint.nodes.map((node) => ({
+                id: node.id,
+                label: node.name ?? node.id,
+                kindLabel: node.mode ?? 'stage',
+                gateLabel: node.gateType ?? 'open',
+                isEntry: blueprint.entryNodes.includes(node.id),
+                layout: null,
+              }))}
+              edges={blueprint.edges}
+              edgeKindLabels={{
+                advance: 'advance',
+                reject: 'reject',
+              }}
+            />
           </div>
 
           {blueprint.artifactContracts.length > 0 ? (
@@ -817,7 +797,11 @@ export function TasksPage() {
                   </div>
                 </div>
 
-                <TaskBlueprintSection blueprint={activeBlueprint} copy={tasksPageCopy} />
+                <TaskBlueprintSection
+                  blueprint={activeBlueprint}
+                  copy={tasksPageCopy}
+                  currentStageId={activeStatus?.task.current_stage ?? null}
+                />
 
                 <div className="task-authority__section">
                   <div className="flex items-center justify-between gap-3">
@@ -1296,7 +1280,11 @@ export function TasksPage() {
               </div>
 
               <section className="sheet-section">
-                <TaskBlueprintSection blueprint={routeTaskStatus?.taskBlueprint} copy={tasksPageCopy} />
+                <TaskBlueprintSection
+                  blueprint={routeTaskStatus?.taskBlueprint}
+                  copy={tasksPageCopy}
+                  currentStageId={routeTaskStatus?.task.current_stage ?? null}
+                />
               </section>
 
               <section className="sheet-section">

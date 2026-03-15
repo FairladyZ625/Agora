@@ -1057,6 +1057,18 @@
   color: var(--color-text-secondary);
 }
 
+.template-graph-node__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-border-strong);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.template-graph-node__handle--out {
+  border-color: var(--color-accent);
+}
+
 .template-graph-overlay__path {
   fill: none;
   stroke: color-mix(in srgb, var(--color-accent) 36%, var(--color-border-strong));

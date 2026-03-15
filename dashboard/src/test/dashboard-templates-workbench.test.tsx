@@ -217,6 +217,18 @@ describe('templates workflow surfaces', () => {
     }));
   });
 
+  it('renders visible workflow nodes inside the graph editor canvas', () => {
+    const { container } = renderGraphEditor();
+
+    const canvasNodes = Array.from(container.querySelectorAll('.react-flow__node'));
+
+    expect(canvasNodes.length).toBeGreaterThan(0);
+    for (const node of canvasNodes) {
+      expect(node).toBeVisible();
+      expect(node.querySelector('.template-graph-node__title')).not.toBeNull();
+    }
+  });
+
   it('adds nodes and tidies the canvas layout from the graph tools rail', () => {
     renderGraphEditor();
 
