@@ -275,7 +275,10 @@ function parseGatewayPayload(data: RawData): GatewayPayload {
         ? Buffer.concat(data).toString('utf8')
       : data instanceof ArrayBuffer
         ? Buffer.from(data).toString('utf8')
-        : Buffer.from(data as ArrayBufferView).toString('utf8');
+        : (() => {
+            const view = data as unknown as ArrayBufferView;
+            return Buffer.from(new Uint8Array(view.buffer, view.byteOffset, view.byteLength)).toString('utf8');
+          })();
   return JSON.parse(text) as GatewayPayload;
 }
 
