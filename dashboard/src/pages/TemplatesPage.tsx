@@ -202,8 +202,8 @@ export function TemplatesPage() {
                     edges={selectedTemplate.graph.edges}
                     entryLabel={copy.graphEntryLabel}
                     edgeKindLabels={{
-                      advance: copy.graphGateTypeOptions.advance,
-                      reject: 'reject',
+                      advance: copy.graphEdgeKindOptions.advance,
+                      reject: copy.graphEdgeKindOptions.reject,
                     }}
                   />
                 </div>

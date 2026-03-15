@@ -25,6 +25,7 @@ const templateStoreState = {
     },
   ],
   selectedTemplateId: 'coding',
+  detailLoading: false,
   selectedTemplate: {
     id: 'coding',
     name: 'Coding Task',
@@ -105,6 +106,8 @@ function renderGraphEditor() {
 
 describe('templates workflow surfaces', () => {
   beforeEach(() => {
+    templateStoreState.detailLoading = false;
+    templateStoreState.error = null;
     fetchTemplates.mockClear();
     selectTemplate.mockClear();
     createTemplate.mockClear();
@@ -152,9 +155,8 @@ describe('templates workflow surfaces', () => {
     fireEvent.change(screen.getByLabelText('graph node discuss execution kind'), {
       target: { value: 'citizen_discuss' },
     });
-    fireEvent.click(screen.getByLabelText('graph edge review develop'));
-    fireEvent.change(screen.getByLabelText('graph edge review__reject__develop kind'), {
-      target: { value: 'advance' },
+    fireEvent.change(screen.getByLabelText('graph node discuss gate type'), {
+      target: { value: 'command' },
     });
     fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
 
@@ -165,15 +167,111 @@ describe('templates workflow surfaces', () => {
             id: 'discuss',
             name: '讨论 v2',
             executionKind: 'citizen_discuss',
+            gateType: 'command',
           }),
         ]),
+      }),
+    }));
+  });
+
+  it('adds nodes and tidies the canvas layout from the graph tools rail', () => {
+    renderGraphEditor();
+
+    fireEvent.click(screen.getByRole('button', { name: '整理布局' }));
+    fireEvent.click(screen.getByRole('button', { name: '新增节点' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'node_4',
+            name: '新节点',
+          }),
+        ]),
+      }),
+      stages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'node_4',
+          name: '新节点',
+        }),
+      ]),
+    }));
+  });
+
+  it('edits advance and reject targets directly from the node inspector', () => {
+    renderGraphEditor();
+
+    fireEvent.click(screen.getByLabelText('graph node review'));
+    fireEvent.change(screen.getByLabelText('graph node review reject target'), {
+      target: { value: 'discuss' },
+    });
+    fireEvent.click(screen.getByLabelText('graph node discuss'));
+    fireEvent.change(screen.getByLabelText('graph node discuss next stage'), {
+      target: { value: 'develop' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
         edges: expect.arrayContaining([
           expect.objectContaining({
-            id: 'review__reject__develop',
+            id: 'review__reject__discuss',
+            from: 'review',
+            to: 'discuss',
+            kind: 'reject',
+          }),
+          expect.objectContaining({
+            id: 'discuss__advance__develop',
+            from: 'discuss',
+            to: 'develop',
             kind: 'advance',
           }),
         ]),
       }),
+      stages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'review',
+          rejectTarget: 'discuss',
+        }),
+      ]),
+    }));
+  });
+
+  it('offers explicit add-edge actions for advance and reject paths', () => {
+    renderGraphEditor();
+
+    fireEvent.click(screen.getByLabelText('graph node develop'));
+    fireEvent.change(screen.getByLabelText('graph node develop next stage'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新增推进边' }));
+    fireEvent.click(screen.getByRole('button', { name: '新增打回边' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
+        edges: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'develop__advance__review',
+            from: 'develop',
+            to: 'review',
+            kind: 'advance',
+          }),
+          expect.objectContaining({
+            id: 'develop__reject__discuss',
+            from: 'develop',
+            to: 'discuss',
+            kind: 'reject',
+          }),
+        ]),
+      }),
+      stages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'develop',
+          rejectTarget: 'discuss',
+        }),
+      ]),
     }));
   });
 
@@ -183,7 +281,7 @@ describe('templates workflow surfaces', () => {
     fireEvent.click(screen.getByLabelText('graph node develop'));
     fireEvent.click(screen.getByLabelText('graph node develop entry'));
     fireEvent.click(screen.getByLabelText('graph node review'));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除节点' }));
     fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
 
     expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
@@ -207,7 +305,20 @@ describe('templates workflow surfaces', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
 
     expect(saveSelectedTemplate).not.toHaveBeenCalled();
-    expect(screen.getByText(/请先修复 graph 配置问题/i)).toBeInTheDocument();
-    expect(screen.getByText(/Graph must include at least one entry node/i)).toBeInTheDocument();
+    expect(screen.getByText(/请先修复流程图配置问题/i)).toBeInTheDocument();
+    expect(screen.getByText(/流程图至少需要一个入口节点/i)).toBeInTheDocument();
+  });
+
+  it('blocks save when the graph creates multiple incoming advance edges', () => {
+    renderGraphEditor();
+
+    fireEvent.click(screen.getByLabelText('graph node discuss'));
+    fireEvent.change(screen.getByLabelText('graph node discuss next stage'), {
+      target: { value: 'review' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
+
+    expect(saveSelectedTemplate).not.toHaveBeenCalled();
+    expect(screen.getByText(/不能接收多条推进边/i)).toBeInTheDocument();
   });
 });
