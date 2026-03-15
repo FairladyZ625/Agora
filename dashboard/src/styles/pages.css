@@ -967,9 +967,39 @@
 }
 
 .template-graph-editor-canvas {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: calc(var(--radius-card) + 4px);
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 36%),
+    var(--color-surface-muted);
   width: 100%;
   height: 70vh;
   min-height: 640px;
+}
+
+.template-graph-editor-canvas .react-flow {
+  position: relative;
+  z-index: 2;
+}
+
+.template-graph-editor-canvas .react-flow__pane {
+  pointer-events: none;
+}
+
+.template-graph-editor-canvas .react-flow__edge-path {
+  transition: stroke 160ms ease, stroke-width 160ms ease, opacity 160ms ease;
+}
+
+.template-graph-editor-canvas .react-flow__controls {
+  box-shadow: var(--shadow-panel);
+}
+
+.template-graph-editor-canvas .react-flow__controls-button {
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  border-bottom-color: var(--color-border);
+  color: var(--color-text-secondary);
 }
 
 .workflow-graph-view {
@@ -1002,6 +1032,14 @@
 }
 
 .template-graph-node {
+  position: relative;
+  display: flex;
+  min-height: 84px;
+  width: 220px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  overflow: hidden;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-card);
   background: var(--color-surface);
@@ -1009,24 +1047,36 @@
   padding: 14px 14px 12px;
 }
 
+.template-graph-node::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 70%, white);
+  opacity: 0.9;
+}
+
 .template-graph-node--selected {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent), 0 16px 30px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 90%, var(--color-accent) 10%);
 }
 
 .template-graph-node__eyebrow {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
 }
 
 .template-graph-node__kind,
-.template-graph-node__entry {
+.template-graph-node__entry,
+.template-graph-node__gate {
   display: inline-flex;
   align-items: center;
-  height: 22px;
   border-radius: 999px;
-  padding: 0 8px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -1034,12 +1084,16 @@
 }
 
 .template-graph-node__kind {
+  height: 22px;
+  padding: 0 8px;
   border: 1px solid var(--color-border);
   background: var(--color-surface-muted);
   color: var(--color-text-secondary);
 }
 
 .template-graph-node__entry {
+  height: 22px;
+  padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--color-accent) 36%, transparent);
   background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
   color: var(--color-accent);
@@ -1052,8 +1106,10 @@
 }
 
 .template-graph-node__gate {
+  align-self: flex-start;
   margin-top: 10px;
-  font-size: var(--font-size-body-xs);
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-muted));
   color: var(--color-text-secondary);
 }
 
@@ -1069,20 +1125,44 @@
   border-color: var(--color-accent);
 }
 
+.template-graph-overlay__edge {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.template-graph-overlay__hitbox {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 20;
+  pointer-events: stroke;
+}
+
 .template-graph-overlay__path {
   fill: none;
   stroke: color-mix(in srgb, var(--color-accent) 36%, var(--color-border-strong));
   stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 10px color-mix(in srgb, var(--color-accent) 16%, transparent));
+  transition: stroke 180ms ease, stroke-width 180ms ease, filter 180ms ease, opacity 180ms ease;
 }
 
 .template-graph-overlay__edge--reject .template-graph-overlay__path {
   stroke: var(--color-warning);
   stroke-dasharray: 7 5;
+  animation: template-graph-reject-flow 14s linear infinite;
+}
+
+.template-graph-overlay__edge--selected .template-graph-overlay__path {
+  stroke-width: 2.6;
+  filter: drop-shadow(0 4px 14px color-mix(in srgb, var(--color-accent) 30%, transparent));
 }
 
 .template-graph-overlay__marker {
   fill: none;
   stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .template-graph-overlay__marker--advance {
@@ -1105,6 +1185,16 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-anchor: middle;
+}
+
+@keyframes template-graph-reject-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -120;
+  }
 }
 
 .timeline-status-card {
