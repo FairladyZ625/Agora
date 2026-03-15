@@ -1,11 +1,12 @@
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TemplatesPage } from '@/pages/TemplatesPage';
 import { TemplateGraphEditorPage } from '@/pages/TemplateGraphEditorPage';
 
 const fetchTemplates = vi.fn(async () => 'live');
 const selectTemplate = vi.fn(async () => undefined);
+const createTemplate = vi.fn(async () => 'live');
 const saveSelectedTemplate = vi.fn(async () => 'live');
 const duplicateSelectedTemplate = vi.fn(async () => 'live');
 const validateSelectedTemplate = vi.fn(async () => 'live');
@@ -62,6 +63,7 @@ const templateStoreState = {
   validationResult: null,
   fetchTemplates,
   selectTemplate,
+  createTemplate,
   saveSelectedTemplate,
   duplicateSelectedTemplate,
   validateSelectedTemplate,
@@ -105,6 +107,7 @@ describe('templates workflow surfaces', () => {
   beforeEach(() => {
     fetchTemplates.mockClear();
     selectTemplate.mockClear();
+    createTemplate.mockClear();
     saveSelectedTemplate.mockClear();
     duplicateSelectedTemplate.mockClear();
     validateSelectedTemplate.mockClear();
@@ -118,6 +121,25 @@ describe('templates workflow surfaces', () => {
     expect(screen.getByTestId('templates-detail-panel')).toBeInTheDocument();
     expect(screen.getByText('流程图预览')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '编辑流程' })).toBeInTheDocument();
+  });
+
+  it('creates a starter template from the authoring strip', async () => {
+    renderTemplatesOverview();
+
+    fireEvent.change(screen.getByLabelText('模板 ID'), {
+      target: { value: 'workflow_starter' },
+    });
+    fireEvent.change(screen.getByLabelText('模板名称'), {
+      target: { value: 'Workflow Starter' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '新建模板' }));
+
+    await waitFor(() => {
+      expect(createTemplate).toHaveBeenCalledWith({
+        id: 'workflow_starter',
+        name: 'Workflow Starter',
+      });
+    });
   });
 
   it('edits graph node and edge properties through the dedicated workflow editor page', () => {

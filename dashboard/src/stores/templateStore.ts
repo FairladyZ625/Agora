@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
 import { mapTemplateDetailDto, mapTemplateDetailToDto, mapTemplateSummaryDto } from '@/lib/dashboardExpansionMappers';
+import { buildStarterTemplateDto } from '@/lib/templateStarter';
 import type { TemplateDetail, TemplateSummary } from '@/types/dashboard';
 
 interface TemplateStore {
@@ -14,6 +15,7 @@ interface TemplateStore {
   error: string | null;
   fetchTemplates: () => Promise<'live' | 'error'>;
   selectTemplate: (id: string | null) => Promise<void>;
+  createTemplate: (input: { id: string; name?: string }) => Promise<'live' | 'error'>;
   saveSelectedTemplate: (template: TemplateDetail) => Promise<'live' | 'error'>;
   validateSelectedTemplate: (template: TemplateDetail) => Promise<'live' | 'error'>;
   duplicateSelectedTemplate: (input: { templateId: string; newId: string; name?: string }) => Promise<'live' | 'error'>;
@@ -61,6 +63,38 @@ export const useTemplateStore = create<TemplateStore>()((set) => ({
         detailLoading: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  },
+
+  createTemplate: async ({ id, name }) => {
+    set({ saving: true, error: null });
+    try {
+      const response = await api.createTemplate(id, buildStarterTemplateDto({ id, name }));
+      const selectedTemplate = mapTemplateDetailDto(response.id, response.template);
+      set((state) => ({
+        selectedTemplateId: response.id,
+        selectedTemplate,
+        saving: false,
+        templates: [
+          ...state.templates.filter((item) => item.id !== response.id),
+          {
+            id: response.id,
+            name: selectedTemplate.name,
+            type: selectedTemplate.type,
+            description: selectedTemplate.description,
+            governance: selectedTemplate.governance,
+            stageCount: selectedTemplate.stageCount,
+            stageCountLabel: `${selectedTemplate.stageCount} stages`,
+          },
+        ],
+      }));
+      return 'live';
+    } catch (error) {
+      set({
+        saving: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
     }
   },
 
