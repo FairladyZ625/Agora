@@ -12,6 +12,40 @@ const duplicateSelectedTemplate = vi.fn(async () => 'live');
 const validateSelectedTemplate = vi.fn(async () => 'live');
 const fetchStatus = vi.fn(async () => 'live');
 
+const baseSelectedTemplate = {
+  id: 'coding',
+  name: 'Coding Task',
+  type: 'coding',
+  description: '实现代码任务',
+  governance: 'standard',
+  stageCount: 4,
+  stages: [
+    { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
+    { id: 'develop', name: '开发', mode: 'execute', gateType: null },
+    { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
+  ],
+  graph: {
+    graphVersion: 1,
+    entryNodes: ['discuss'],
+    nodes: [
+      { id: 'discuss', name: '讨论', kind: 'stage', executionKind: 'citizen_discuss', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 0, y: 0 } },
+      { id: 'develop', name: '开发', kind: 'stage', executionKind: 'citizen_execute', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 260, y: 0 } },
+      { id: 'review', name: '审查', kind: 'stage', executionKind: 'human_approval', allowedActions: [], gateType: 'approval', gateApprover: 'reviewer', gateRequired: null, gateTimeoutSec: null, layout: { x: 520, y: 0 } },
+    ],
+    edges: [
+      { id: 'discuss__advance__develop', from: 'discuss', to: 'develop', kind: 'advance' },
+      { id: 'develop__advance__review', from: 'develop', to: 'review', kind: 'advance' },
+      { id: 'review__reject__develop', from: 'review', to: 'develop', kind: 'reject' },
+    ],
+  },
+  defaultTeamRoles: ['architect', 'craftsman'],
+  defaultTeam: [
+    { role: 'architect', memberKind: 'controller', modelPreference: null, suggested: ['opus'] },
+    { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code'] },
+  ],
+  raw: {},
+};
+
 const templateStoreState = {
   templates: [
     {
@@ -24,42 +58,10 @@ const templateStoreState = {
       stageCountLabel: '4 stages',
     },
   ],
-  selectedTemplateId: 'coding',
+  selectedTemplateId: 'coding' as string | null,
   detailLoading: false,
-  selectedTemplate: {
-    id: 'coding',
-    name: 'Coding Task',
-    type: 'coding',
-    description: '实现代码任务',
-    governance: 'standard',
-    stageCount: 4,
-    stages: [
-      { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
-      { id: 'develop', name: '开发', mode: 'execute', gateType: null },
-      { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
-    ],
-    graph: {
-      graphVersion: 1,
-      entryNodes: ['discuss'],
-      nodes: [
-        { id: 'discuss', name: '讨论', kind: 'stage', executionKind: 'citizen_discuss', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 0, y: 0 } },
-        { id: 'develop', name: '开发', kind: 'stage', executionKind: 'citizen_execute', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 260, y: 0 } },
-        { id: 'review', name: '审查', kind: 'stage', executionKind: 'human_approval', allowedActions: [], gateType: 'approval', gateApprover: 'reviewer', gateRequired: null, gateTimeoutSec: null, layout: { x: 520, y: 0 } },
-      ],
-      edges: [
-        { id: 'discuss__advance__develop', from: 'discuss', to: 'develop', kind: 'advance' },
-        { id: 'develop__advance__review', from: 'develop', to: 'review', kind: 'advance' },
-        { id: 'review__reject__develop', from: 'review', to: 'develop', kind: 'reject' },
-      ],
-    },
-    defaultTeamRoles: ['architect', 'craftsman'],
-    defaultTeam: [
-      { role: 'architect', memberKind: 'controller', modelPreference: null, suggested: ['opus'] },
-      { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code'] },
-    ],
-    raw: {},
-  },
-  error: null,
+  selectedTemplate: structuredClone(baseSelectedTemplate) as typeof baseSelectedTemplate | null,
+  error: null as string | null,
   saving: false,
   validationResult: null,
   fetchTemplates,
@@ -104,10 +106,23 @@ function renderGraphEditor() {
   );
 }
 
+function renderGraphEditorWithRoutes() {
+  return render(
+    <MemoryRouter initialEntries={['/templates/coding/graph']}>
+      <Routes>
+        <Route path="/templates" element={<div>templates route</div>} />
+        <Route path="/templates/:templateId/graph" element={<TemplateGraphEditorPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe('templates workflow surfaces', () => {
   beforeEach(() => {
+    templateStoreState.selectedTemplateId = 'coding';
     templateStoreState.detailLoading = false;
     templateStoreState.error = null;
+    templateStoreState.selectedTemplate = structuredClone(baseSelectedTemplate);
     fetchTemplates.mockClear();
     selectTemplate.mockClear();
     createTemplate.mockClear();
@@ -142,6 +157,34 @@ describe('templates workflow surfaces', () => {
         id: 'workflow_starter',
         name: 'Workflow Starter',
       });
+    });
+  });
+
+  it('shows an explicit loading state while the workflow editor detail is still fetching', () => {
+    templateStoreState.detailLoading = true;
+
+    renderGraphEditor();
+
+    expect(screen.getByText('正在加载流程编辑器…')).toBeInTheDocument();
+  });
+
+  it('shows an unavailable state when the template graph cannot be loaded', () => {
+    templateStoreState.selectedTemplate = null;
+    templateStoreState.error = 'template missing';
+
+    renderGraphEditor();
+
+    expect(screen.getByText('template missing')).toBeInTheDocument();
+    expect(screen.getByText('当前模板流程不可用。')).toBeInTheDocument();
+  });
+
+  it('navigates back to the templates surface from the graph editor header', async () => {
+    renderGraphEditorWithRoutes();
+
+    fireEvent.click(screen.getByRole('button', { name: '返回模板' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('templates route')).toBeInTheDocument();
     });
   });
 
@@ -272,6 +315,24 @@ describe('templates workflow surfaces', () => {
           rejectTarget: 'discuss',
         }),
       ]),
+    }));
+  });
+
+  it('supports deleting edges from the dedicated edge inspector', () => {
+    renderGraphEditor();
+
+    fireEvent.click(screen.getByLabelText('graph edge develop review'));
+    fireEvent.click(screen.getByRole('button', { name: '删除边' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
+        edges: expect.not.arrayContaining([
+          expect.objectContaining({
+            id: 'develop__advance__review',
+          }),
+        ]),
+      }),
     }));
   });
 
