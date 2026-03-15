@@ -1,10 +1,10 @@
-export const WORKFLOW_GRAPH_NODE_WIDTH = 236;
+export const WORKFLOW_GRAPH_NODE_WIDTH = 228;
 export const WORKFLOW_GRAPH_NODE_HEIGHT = 92;
-export const WORKFLOW_GRAPH_COLUMN_GAP = 352;
-export const WORKFLOW_GRAPH_ROW_GAP = 164;
-export const WORKFLOW_GRAPH_CANVAS_PADDING_X = 28;
-export const WORKFLOW_GRAPH_CANVAS_PADDING_TOP = 28;
-export const WORKFLOW_GRAPH_CANVAS_PADDING_BOTTOM = 20;
+export const WORKFLOW_GRAPH_COLUMN_GAP = 304;
+export const WORKFLOW_GRAPH_ROW_GAP = 156;
+export const WORKFLOW_GRAPH_CANVAS_PADDING_X = 24;
+export const WORKFLOW_GRAPH_CANVAS_PADDING_TOP = 24;
+export const WORKFLOW_GRAPH_CANVAS_PADDING_BOTTOM = 18;
 
 export type WorkflowGraphSurfaceNode = {
   id: string;
@@ -29,13 +29,13 @@ export function buildWorkflowSurfaceCurve(
 
   if (kind === 'reject' || isBackEdge) {
     const horizontalDistance = Math.abs(targetX - sourceX);
-    const crestOffset = Math.min(200, Math.max(80, horizontalDistance * 0.28));
+    const crestOffset = Math.min(184, Math.max(92, horizontalDistance * 0.24));
     const crestY = Math.min(sourceY, targetY) - crestOffset;
     const midX = (sourceX + targetX) / 2;
     return {
       path: `M ${sourceX} ${sourceY} C ${sourceX + 68} ${sourceY}, ${sourceX + 36} ${crestY}, ${midX} ${crestY} S ${targetX - 68} ${targetY}, ${targetX} ${targetY}`,
       labelX: midX,
-      labelY: crestY - 14,
+      labelY: crestY - 4,
     };
   }
 
@@ -43,7 +43,7 @@ export function buildWorkflowSurfaceCurve(
   return {
     path: `M ${sourceX} ${sourceY} C ${sourceX + controlOffset} ${sourceY}, ${targetX - controlOffset} ${targetY}, ${targetX} ${targetY}`,
     labelX: (sourceX + targetX) / 2,
-    labelY: (sourceY + targetY) / 2 - 14,
+    labelY: (sourceY + targetY) / 2 - 4,
   };
 }
 

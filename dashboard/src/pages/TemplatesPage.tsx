@@ -191,6 +191,7 @@ export function TemplatesPage() {
                 <div className="detail-card detail-card--graph">
                   <WorkflowGraphView
                     testId="template-detail-graph"
+                    currentNodeId={selectedTemplate.graph.entryNodes[0] ?? null}
                     nodes={selectedTemplate.graph.nodes.map((node) => ({
                       id: node.id,
                       label: node.name,

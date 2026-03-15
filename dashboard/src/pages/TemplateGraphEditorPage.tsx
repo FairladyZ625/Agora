@@ -83,7 +83,7 @@ const graphEdgeTypes = {
   workflow: WorkflowGraphEdge,
 };
 
-const GRAPH_EDITOR_FIT_VIEW_OPTIONS = { padding: 0.08, duration: 0 } as const;
+const GRAPH_EDITOR_FIT_VIEW_OPTIONS = { padding: 0.04, duration: 0 } as const;
 
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
   const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
@@ -473,6 +473,28 @@ function TemplateGraphEditorContent() {
   const rejectCandidates = selectedGraphNodeIndex >= 0
     ? draftGraphNodes.filter((node, index) => node.id !== selectedGraphNode?.id && index < selectedGraphNodeIndex)
     : [];
+
+  useEffect(() => {
+    if (!draftGraph) {
+      return;
+    }
+
+    if (selectedGraphEdgeId && !draftGraph.edges.some((edge) => edge.id === selectedGraphEdgeId)) {
+      setSelectedGraphEdgeId(null);
+    }
+
+    if (selectedGraphNodeId && !draftGraph.nodes.some((node) => node.id === selectedGraphNodeId)) {
+      setSelectedGraphNodeId(null);
+      return;
+    }
+
+    if (!selectedGraphNodeId && !selectedGraphEdgeId) {
+      const entryNodeId = draftGraph.entryNodes[0] ?? draftGraph.nodes[0]?.id ?? null;
+      if (entryNodeId) {
+        setSelectedGraphNodeId(entryNodeId);
+      }
+    }
+  }, [draftGraph, selectedGraphEdgeId, selectedGraphNodeId]);
 
   const handleGraphNodesChange = (changes: NodeChange[]) => {
     updateDraftGraph((currentGraph) => {
