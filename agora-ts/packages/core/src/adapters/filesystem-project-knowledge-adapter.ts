@@ -11,6 +11,7 @@ import type {
   ProjectKnowledgeTaskBindingInput,
   ProjectKnowledgeTaskRecapInput,
 } from '../project-knowledge-port.js';
+import { extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 export interface FilesystemProjectKnowledgeAdapterOptions {
   brainPackRoot: string;
@@ -58,15 +59,16 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
     }
     const content = readFileSync(path, 'utf8');
     const stats = statSync(path);
+    const parsed = parseMarkdownFrontmatter(content);
     return {
       project_id: projectId,
       kind: 'index',
       slug: 'index',
-      title: extractHeading(content),
+      title: extractMarkdownHeading(content),
       path,
       content,
-      created_at: stats.birthtime.toISOString(),
-      updated_at: stats.mtime.toISOString(),
+      created_at: parsed.attributes.created_at ?? stats.birthtime.toISOString(),
+      updated_at: parsed.attributes.updated_at ?? stats.mtime.toISOString(),
       source_task_ids: [],
     };
   }
@@ -81,13 +83,13 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
       .map((name) => {
         const path = join(recapsDir, name);
         const content = readFileSync(path, 'utf8');
-        const titleLine = content.split('\n').find((line) => line.startsWith('- 标题: ') || line.startsWith('- Title: ')) ?? null;
+        const parsed = parseMarkdownFrontmatter(content);
         const updatedAt = statSync(path).mtime.toISOString();
         return {
           project_id: projectId,
           task_id: basename(name, '.md'),
           path,
-          title: titleLine ? titleLine.replace(/^- (标题|Title): /, '') : null,
+          title: extractMarkdownHeading(content) ?? parsed.attributes.title ?? null,
           updated_at: updatedAt,
         } satisfies ProjectKnowledgeRecapSummary;
       })
@@ -217,15 +219,16 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
       return null;
     }
     const content = readFileSync(path, 'utf8');
+    const parsed = parseMarkdownFrontmatter(content);
     return {
       project_id: projectId,
       kind: 'timeline',
       slug: 'timeline',
-      title: extractHeading(content),
+      title: extractMarkdownHeading(content),
       path,
       content,
-      created_at: statSync(path).birthtime.toISOString(),
-      updated_at: statSync(path).mtime.toISOString(),
+      created_at: parsed.attributes.created_at ?? statSync(path).birthtime.toISOString(),
+      updated_at: parsed.attributes.updated_at ?? statSync(path).mtime.toISOString(),
       source_task_ids: [],
     };
   }
@@ -233,7 +236,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   private rewriteProjectIndexFromDisk(projectId: string) {
     const current = this.getProjectIndex(projectId);
     const summary = extractSummary(current?.content ?? '');
-    const name = extractHeading(current?.content ?? projectId) ?? projectId;
+    const name = extractMarkdownHeading(current?.content ?? projectId) ?? projectId;
     this.rewriteProjectIndex({
       id: projectId,
       name,
@@ -288,6 +291,15 @@ function renderProjectIndex(
   const openQuestions = knowledge.filter((doc) => doc.kind === 'open_question');
   const references = knowledge.filter((doc) => doc.kind === 'reference');
   return [
+    renderMarkdownFrontmatter({
+      doc_type: 'project_index',
+      project_id: input.id,
+      kind: 'index',
+      slug: 'index',
+      title: input.name,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
     `# ${input.name}`,
     '',
     `- Project ID: ${input.id}`,
@@ -331,6 +343,15 @@ function renderProjectIndex(
 
 function renderTimelineHeader(projectId: string, projectName: string) {
   return [
+    renderMarkdownFrontmatter({
+      doc_type: 'project_timeline',
+      project_id: projectId,
+      kind: 'timeline',
+      slug: 'timeline',
+      title: `Timeline: ${projectName}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
     `# Timeline: ${projectName}`,
     '',
     `- Project ID: ${projectId}`,
@@ -338,11 +359,6 @@ function renderTimelineHeader(projectId: string, projectName: string) {
     '## Events',
     '',
   ].join('\n');
-}
-
-function extractHeading(content: string) {
-  const heading = content.split('\n').find((line) => line.startsWith('# '));
-  return heading ? heading.replace(/^# /, '') : null;
 }
 
 function extractSummary(content: string) {
@@ -378,18 +394,17 @@ function renderKnowledgeDocument(input: {
     ? ['source_task_ids:', ...input.source_task_ids.map((id) => `  - ${id}`)]
     : ['source_task_ids: []'];
   return [
-    '---',
-    'doc_type: project_knowledge',
-    `project_id: ${input.project_id}`,
-    `kind: ${input.kind}`,
-    `slug: ${input.slug}`,
-    `title: ${escapeYaml(input.title)}`,
-    `summary: ${escapeYaml(input.summary ?? '')}`,
-    `created_at: ${input.created_at}`,
-    `updated_at: ${input.updated_at}`,
-    ...taskIds,
-    '---',
-    '',
+    renderMarkdownFrontmatter({
+      doc_type: 'project_knowledge',
+      project_id: input.project_id,
+      kind: input.kind,
+      slug: input.slug,
+      title: input.title,
+      summary: input.summary ?? '',
+      created_at: input.created_at,
+      updated_at: input.updated_at,
+      source_task_ids: input.source_task_ids,
+    }),
     `# ${input.title}`,
     '',
     ...(input.summary ? [input.summary, ''] : []),
@@ -406,70 +421,26 @@ function parseKnowledgeDocument(content: string): {
   updated_at: string | null;
   source_task_ids: string[];
 } {
-  const lines = content.split('\n');
-  if (lines[0] !== '---') {
+  const parsed = parseMarkdownFrontmatter(content);
+  if (Object.keys(parsed.attributes).length === 0 && Object.keys(parsed.lists).length === 0) {
     return {
       kind: null,
       slug: null,
-      title: extractHeading(content),
+      title: extractMarkdownHeading(content),
       created_at: null,
       updated_at: null,
       source_task_ids: [],
     };
   }
-  const frontmatterLines: string[] = [];
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line === '---') {
-      break;
-    }
-    frontmatterLines.push(line ?? '');
-  }
-  const record = new Map<string, string>();
-  const sourceTaskIds: string[] = [];
-  let inTaskIds = false;
-  for (const line of frontmatterLines) {
-    if (line.startsWith('source_task_ids:')) {
-      inTaskIds = !line.includes('[]');
-      continue;
-    }
-    if (inTaskIds && line.trimStart().startsWith('- ')) {
-      sourceTaskIds.push(line.trim().replace(/^- /, ''));
-      continue;
-    }
-    inTaskIds = false;
-    const separatorIndex = line.indexOf(':');
-    if (separatorIndex < 0) {
-      continue;
-    }
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    record.set(key, value);
-  }
-  const kind = record.get('kind');
+  const kind = parsed.attributes.kind;
   return {
     kind: kind === 'decision' || kind === 'fact' || kind === 'open_question' || kind === 'reference' ? kind : null,
-    slug: record.get('slug') ?? null,
-    title: unwrapYaml(record.get('title') ?? null),
-    created_at: record.get('created_at') ?? null,
-    updated_at: record.get('updated_at') ?? null,
-    source_task_ids: sourceTaskIds,
+    slug: parsed.attributes.slug ?? null,
+    title: parsed.attributes.title ?? extractMarkdownHeading(content),
+    created_at: parsed.attributes.created_at ?? null,
+    updated_at: parsed.attributes.updated_at ?? null,
+    source_task_ids: parsed.lists.source_task_ids ?? [],
   };
-}
-
-function escapeYaml(value: string) {
-  return JSON.stringify(value);
-}
-
-function unwrapYaml(value: string | null) {
-  if (!value) {
-    return null;
-  }
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
 }
 
 function buildSnippet(content: string, needle: string) {

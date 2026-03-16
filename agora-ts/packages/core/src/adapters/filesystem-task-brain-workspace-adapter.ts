@@ -7,6 +7,7 @@ import type {
   TaskBrainWorkspaceRequest,
   TaskBrainWorkspaceResult,
 } from '../task-brain-port.js';
+import { renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 export interface FilesystemTaskBrainWorkspaceAdapterOptions {
   brainPackRoot: string;
@@ -279,6 +280,15 @@ function renderCitizenScaffold(
   ];
 
   return [
+    renderMarkdownFrontmatter({
+      doc_type: 'citizen_scaffold',
+      task_id: input.task_id,
+      project_id: input.project_id ?? '',
+      agent_id: member.agentId,
+      role_id: member.role,
+      member_kind: member.member_kind ?? 'citizen',
+      title: `${member.agentId} citizen scaffold`,
+    }),
     `# ${brainText(input.locale, 'Citizen Scaffold', 'Citizen Scaffold')}`,
     '',
     `- ${brainText(input.locale, 'Agent', 'Agent')}: ${member.agentId}`,
@@ -306,6 +316,17 @@ function renderCitizenScaffold(
 
 function renderTaskCloseRecap(input: TaskBrainCloseRecapRequest) {
   return [
+    renderMarkdownFrontmatter({
+      doc_type: 'task_recap',
+      task_id: input.task_id,
+      project_id: input.project_id ?? '',
+      kind: 'recap',
+      slug: input.task_id,
+      title: input.title,
+      created_at: input.completed_at,
+      updated_at: input.completed_at,
+      source_task_ids: [input.task_id],
+    }),
     `# ${brainText(input.locale, '任务收口回写', 'Task Close Recap')}`,
     '',
     `- ${brainText(input.locale, '任务', 'Task')}: ${input.task_id}`,

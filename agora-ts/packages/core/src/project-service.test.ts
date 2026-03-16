@@ -57,7 +57,9 @@ describe('project service', () => {
       }),
     ]);
     expect(existsSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'))).toBe(true);
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'timeline.md'), 'utf8')).toContain('doc_type: project_timeline');
   });
 
   it('throws when requiring a missing project', () => {

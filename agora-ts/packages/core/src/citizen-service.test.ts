@@ -89,5 +89,7 @@ describe('citizen service', () => {
     ]);
     expect(preview.files[1]?.content).toContain('Think in systems.');
     expect(preview.files[1]?.content).toContain('Keep runtime adapters outside core.');
+    expect(preview.files[1]?.content).toContain('doc_type: citizen_scaffold');
+    expect(preview.files[1]?.content).toContain('citizen_id: citizen-alpha');
   });
 });

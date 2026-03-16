@@ -11,6 +11,7 @@ import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
   CitizenService,
   DashboardQueryService,
+  ProjectBrainService,
   ProjectService,
   RolePackService,
   TaskConversationService,
@@ -67,6 +68,7 @@ type CreateCitizenInputLike = CreateCitizenRequestDto;
 export interface CliDependencies {
   taskService?: TaskService;
   projectService?: ProjectService;
+  projectBrainService?: ProjectBrainService;
   citizenService?: CitizenService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
@@ -344,6 +346,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
+  const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
@@ -693,6 +696,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projectKnowledge = projects
     .command('knowledge')
     .description('project knowledge CRUD');
+  const projectBrain = projects
+    .command('brain')
+    .description('project brain query / append commands');
 
   projectKnowledge
     .command('add')
@@ -811,6 +817,127 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
         writeLine(stdout, `  ${item.snippet}`);
       }
+    });
+
+  projectBrain
+    .command('list')
+    .description('列出 project brain docs')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind?: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      json?: boolean;
+    }) => {
+      const docs = projectBrainService.listDocuments(options.project, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ documents: docs }, null, 2));
+        return;
+      }
+      if (docs.length === 0) {
+        writeLine(stdout, '没有找到 brain docs');
+        return;
+      }
+      for (const doc of docs) {
+        writeLine(stdout, `${doc.kind}\t${doc.slug}\t${doc.title ?? '-'}\t${doc.path}`);
+      }
+    });
+
+  projectBrain
+    .command('show')
+    .description('查看单个 project brain doc')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--slug <slug>', 'doc slug; required for recap/knowledge/citizen_scaffold')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      slug?: string;
+      json?: boolean;
+    }) => {
+      const doc = projectBrainService.getDocument(options.project, options.kind, options.slug);
+      if (!doc) {
+        throw new Error(`brain doc not found: ${options.kind}${options.slug ? `/${options.slug}` : ''}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(doc, null, 2));
+        return;
+      }
+      writeLine(stdout, `${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+      writeLine(stdout, '');
+      writeLine(stdout, doc.content.trimEnd());
+    });
+
+  projectBrain
+    .command('query')
+    .description('搜索 project brain docs')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--query <query>', 'search query')
+    .option('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      query: string;
+      kind?: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      json?: boolean;
+    }) => {
+      const results = projectBrainService.queryDocuments(options.project, options.query, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ results }, null, 2));
+        return;
+      }
+      if (results.length === 0) {
+        writeLine(stdout, '没有匹配结果');
+        return;
+      }
+      for (const item of results) {
+        writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
+        writeLine(stdout, `  ${item.snippet}`);
+      }
+    });
+
+  projectBrain
+    .command('append')
+    .description('向 project brain 追加 Markdown 内容')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'timeline|decision|fact|open_question|reference')
+    .option('--slug <slug>', 'knowledge doc slug')
+    .option('--title <title>', 'knowledge doc title (required when creating a new knowledge doc)')
+    .option('--summary <summary>', 'knowledge summary')
+    .option('--heading <heading>', 'optional heading before appended content')
+    .option('--body <body>', 'markdown body')
+    .option('--body-file <path>', 'load body from file')
+    .option('--source-task <taskId>', 'source task id', collectOption, [])
+    .action((options: {
+      project: string;
+      kind: 'timeline' | 'decision' | 'fact' | 'open_question' | 'reference';
+      slug?: string;
+      title?: string;
+      summary?: string;
+      heading?: string;
+      body?: string;
+      bodyFile?: string;
+      sourceTask?: string[];
+    }) => {
+      const body = readTextOption(options.body, options.bodyFile, 'projects brain append').trim();
+      if (!body) {
+        throw new Error('brain append body is required');
+      }
+      const doc = projectBrainService.appendDocument({
+        project_id: options.project,
+        kind: options.kind,
+        ...(options.slug ? { slug: options.slug } : {}),
+        ...(options.title ? { title: options.title } : {}),
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.heading ? { heading: options.heading } : {}),
+        ...(options.sourceTask && options.sourceTask.length > 0 ? { source_task_ids: options.sourceTask } : {}),
+        body,
+      });
+      writeLine(stdout, `Brain 已追加: ${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
     });
 
   citizens

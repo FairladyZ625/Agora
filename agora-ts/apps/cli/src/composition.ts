@@ -18,6 +18,7 @@ import {
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemProjectBrainQueryAdapter,
   FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   GeminiCraftsmanAdapter,
@@ -26,6 +27,7 @@ import {
   InventoryBackedAgentRuntimePort,
   OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
+  ProjectBrainService,
   ProjectService,
   StubIMMessagingPort,
   RolePackService,
@@ -75,6 +77,10 @@ export interface CliCompositionFactories {
     context: CliCompositionContext,
     deps: { projectKnowledgePort: ProjectKnowledgePort },
   ) => ProjectService;
+  createProjectBrainService: (
+    context: CliCompositionContext,
+    deps: { projectService: ProjectService; citizenService: CitizenService },
+  ) => ProjectBrainService;
   createCitizenService: (
     context: CliCompositionContext,
     deps: { projectService: ProjectService; rolePackService: RolePackService },
@@ -117,6 +123,7 @@ export interface CliComposition {
   db: AgoraDatabase;
   taskService: TaskService;
   projectService: ProjectService;
+  projectBrainService: ProjectBrainService;
   citizenService: CitizenService;
   tmuxRuntimeService: TmuxRuntimeService;
   dashboardSessionClient: DashboardSessionClient;
@@ -198,6 +205,13 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
+    }),
+    createProjectBrainService: (context, deps) => new ProjectBrainService({
+      projectService: deps.projectService,
+      citizenService: deps.citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot: context.brainPackDir,
+      }),
     }),
     createCitizenService: (context, deps) => new CitizenService(context.db, {
       projectService: deps.projectService,
@@ -308,6 +322,7 @@ export function createCliComposition(
   const projectService = factories.createProjectService(context, { projectKnowledgePort });
   const rolePackService = factories.createRolePackService(context);
   const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
+  const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
@@ -339,6 +354,7 @@ export function createCliComposition(
     db,
     taskService,
     projectService,
+    projectBrainService,
     citizenService,
     tmuxRuntimeService,
     dashboardSessionClient,

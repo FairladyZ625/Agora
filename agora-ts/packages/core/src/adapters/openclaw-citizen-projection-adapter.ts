@@ -1,5 +1,6 @@
 import type { CitizenProjectionPreviewDto } from '@agora-ts/contracts';
 import type { CitizenProjectionPort } from '../citizen-projection-port.js';
+import { renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 function toMarkdownSection(title: string, lines: string[]) {
   return [`## ${title}`, ...lines, ''].join('\n');
@@ -24,6 +25,16 @@ export class OpenClawCitizenProjectionAdapter implements CitizenProjectionPort {
       runtime_projection: input.citizen.runtime_projection,
     };
     const scaffoldMarkdown = [
+      renderMarkdownFrontmatter({
+        doc_type: 'citizen_scaffold',
+        project_id: input.project.id,
+        citizen_id: input.citizen.citizen_id,
+        role_id: input.citizen.role_id,
+        adapter: input.citizen.runtime_projection.adapter,
+        title: input.citizen.display_name,
+        created_at: input.citizen.created_at,
+        updated_at: input.citizen.updated_at,
+      }),
       `# ${input.citizen.display_name}`,
       '',
       `- citizen_id: \`${input.citizen.citizen_id}\``,

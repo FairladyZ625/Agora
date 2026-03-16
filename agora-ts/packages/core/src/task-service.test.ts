@@ -783,8 +783,10 @@ describe('task service', () => {
     expect(existsSync(projectRecapPath)).toBe(true);
     expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'))).toBe(true);
     expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'))).toBe(true);
+    expect(readFileSync(taskRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('Project: proj-recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('任务已到达 done，已进入 archive 流程。');
+    expect(readFileSync(projectRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');

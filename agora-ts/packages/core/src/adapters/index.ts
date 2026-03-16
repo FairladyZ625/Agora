@@ -12,5 +12,7 @@ export * from './gemini-adapter.js';
 export * from './gemini-session-discovery.js';
 export * from './filesystem-task-brain-workspace-adapter.js';
 export * from './filesystem-project-knowledge-adapter.js';
+export * from './filesystem-project-brain-query-adapter.js';
+export * from './markdown-frontmatter.js';
 export * from './openclaw-citizen-projection-adapter.js';
 export * from './os-host-resource-port.js';

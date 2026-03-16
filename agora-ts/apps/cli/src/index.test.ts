@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -429,6 +429,7 @@ describe('agora-ts cli', () => {
   it('supports citizen creation, listing, show, and preview through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-citizen-brain-');
     const projectService = new ProjectService(db);
     projectService.createProject({
       id: 'proj-citizen',
@@ -455,10 +456,16 @@ describe('agora-ts cli', () => {
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
     });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
     const stdout = createBuffer();
     const stderr = createBuffer();
     const program = createCliProgram({
       projectService,
+      projectBrainService,
       citizenService,
       rolePackService,
       stdout,
@@ -485,6 +492,94 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('citizen-alpha — Alpha Architect');
     expect(stdout.value).toContain('.openclaw/citizens/citizen-alpha/profile.json');
     expect(stdout.value).toContain('.openclaw/citizens/citizen-alpha/brain/03-citizen-scaffold.md');
+  });
+
+  it('supports project brain query and append through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-brain',
+      name: 'Brain Project',
+      owner: 'archon',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-brain',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime-specific logic out of core.',
+      body: 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
+      source_task_ids: ['OC-100'],
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Stay core-first.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-brain',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      boundaries: ['Keep runtime adapters outside core.'],
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+      },
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      projectBrainService,
+      citizenService,
+      rolePackService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'query',
+      '--project', 'proj-brain',
+      '--query', 'runtime',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'append',
+      '--project', 'proj-brain',
+      '--kind', 'reference',
+      '--slug', 'obsidian-notes',
+      '--title', 'Obsidian Notes',
+      '--body', 'Append this note into the project brain.',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('citizen_scaffold');
+    expect(stdout.value).toContain('runtime-boundary');
+    expect(stdout.value).toContain('Brain 已追加');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {
