@@ -2,7 +2,7 @@ import type { CitizenDefinitionDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
-export interface StoredCitizenDefinition extends CitizenDefinitionDto {}
+export type StoredCitizenDefinition = CitizenDefinitionDto;
 
 export interface InsertCitizenInput {
   citizen_id: string;

@@ -42,12 +42,16 @@ describe('citizen service', () => {
       summary: 'Design systems.',
       prompt_asset: 'roles/architect.md',
       source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
       citizen_scaffold: {
         soul: 'Think in systems.',
         boundaries: ['Stay core-first.'],
         heartbeat: ['Restate objective.'],
         recap_expectations: ['Summarize next step.'],
       },
+      metadata: {},
     });
     const service = new CitizenService(db, {
       projectService,
@@ -63,9 +67,12 @@ describe('citizen service', () => {
       persona: 'Systems thinker',
       boundaries: ['Keep runtime adapters outside core.'],
       skills_ref: ['system-design'],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
       runtime_projection: {
         adapter: 'openclaw',
         auto_provision: false,
+        metadata: {},
       },
     });
 

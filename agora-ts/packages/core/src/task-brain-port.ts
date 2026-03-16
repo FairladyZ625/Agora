@@ -30,6 +30,16 @@ export interface TaskBrainWorkspaceRequest {
     agent_origin?: 'agora_managed' | 'user_managed';
     briefing_mode?: 'overlay_full' | 'overlay_delta';
   }>;
+  project_brain_context?: {
+    audience: 'controller' | 'citizen' | 'craftsman';
+    source_documents: Array<{
+      kind: string;
+      slug: string;
+      title: string | null;
+      path: string;
+    }>;
+    markdown: string;
+  } | null;
 }
 
 export interface TaskBrainWorkspaceResult {

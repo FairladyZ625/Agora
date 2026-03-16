@@ -11,6 +11,7 @@ import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
   CitizenService,
   DashboardQueryService,
+  ProjectBrainAutomationService,
   ProjectBrainService,
   ProjectService,
   RolePackService,
@@ -66,6 +67,7 @@ export interface CliDependencies {
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
+  projectBrainAutomationService?: ProjectBrainAutomationService;
   citizenService?: CitizenService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
@@ -344,6 +346,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
+  const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
   const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
@@ -893,6 +896,31 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   projectBrain
+    .command('bootstrap-context')
+    .description('生成 agent-facing project brain bootstrap context')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--audience <audience>', 'controller|citizen|craftsman', 'controller')
+    .option('--citizen <citizenId>', 'citizen id for citizen-scoped bootstrap')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
+      citizen?: string;
+      json?: boolean;
+    }) => {
+      const context = projectBrainAutomationService.buildBootstrapContext({
+        project_id: options.project,
+        audience: options.audience ?? 'controller',
+        ...(options.citizen ? { citizen_id: options.citizen } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(context, null, 2));
+        return;
+      }
+      writeLine(stdout, context.markdown.trimEnd());
+    });
+
+  projectBrain
     .command('append')
     .description('向 project brain 追加 Markdown 内容')
     .requiredOption('--project <projectId>', 'project id')
@@ -930,6 +958,47 @@ export function createCliProgram(deps: CliDependencies = {}) {
         body,
       });
       writeLine(stdout, `Brain 已追加: ${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+    });
+
+  projectBrain
+    .command('promote')
+    .description('显式提升内容到 stable project knowledge')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'decision|fact|open_question|reference')
+    .option('--slug <slug>', 'knowledge doc slug')
+    .option('--title <title>', 'knowledge doc title (required when creating a new knowledge doc)')
+    .option('--summary <summary>', 'knowledge summary')
+    .option('--heading <heading>', 'optional heading before appended content')
+    .option('--body <body>', 'markdown body')
+    .option('--body-file <path>', 'load body from file')
+    .option('--source-task <taskId>', 'source task id', collectOption, [])
+    .action((options: {
+      project: string;
+      kind: 'decision' | 'fact' | 'open_question' | 'reference';
+      slug?: string;
+      title?: string;
+      summary?: string;
+      heading?: string;
+      body?: string;
+      bodyFile?: string;
+      sourceTask?: string[];
+    }) => {
+      const body = readTextOption(options.body, options.bodyFile, 'projects brain promote').trim();
+      if (!body) {
+        throw new Error('brain promote body is required');
+      }
+      const doc = projectBrainAutomationService.promoteKnowledge({
+        project_id: options.project,
+        kind: options.kind,
+        ...(options.slug ? { slug: options.slug } : {}),
+        ...(options.title ? { title: options.title } : {}),
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.heading ? { heading: options.heading } : {}),
+        ...(options.sourceTask && options.sourceTask.length > 0 ? { source_task_ids: options.sourceTask } : {}),
+        body,
+      });
+      writeLine(stdout, `Brain 已提升: ${doc.kind}/${doc.slug}`);
       writeLine(stdout, `path: ${doc.path}`);
     });
 

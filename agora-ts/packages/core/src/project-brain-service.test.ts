@@ -63,12 +63,16 @@ describe('project brain service', () => {
       summary: 'Design systems.',
       prompt_asset: 'roles/architect.md',
       source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
       citizen_scaffold: {
         soul: 'Think in systems.',
         boundaries: ['Stay core-first.'],
         heartbeat: ['Restate objective.'],
         recap_expectations: ['Summarize next step.'],
       },
+      metadata: {},
     });
     const citizenService = new CitizenService(db, {
       projectService,
@@ -80,9 +84,15 @@ describe('project brain service', () => {
       project_id: 'proj-brain',
       role_id: 'architect',
       display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: [],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
       runtime_projection: {
         adapter: 'openclaw',
         auto_provision: false,
+        metadata: {},
       },
     });
     const service = new ProjectBrainService({

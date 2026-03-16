@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainAutomationService, ProjectBrainService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -424,12 +424,16 @@ describe('agora-ts cli', () => {
       summary: 'Design systems.',
       prompt_asset: 'roles/architect.md',
       source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
       citizen_scaffold: {
         soul: 'Think in systems.',
         boundaries: ['Stay core-first.'],
         heartbeat: ['Restate objective.'],
         recap_expectations: ['Summarize next step.'],
       },
+      metadata: {},
     });
     const citizenService = new CitizenService(db, {
       projectService,
@@ -503,12 +507,16 @@ describe('agora-ts cli', () => {
       summary: 'Design systems.',
       prompt_asset: 'roles/architect.md',
       source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
       citizen_scaffold: {
         soul: 'Think in systems.',
         boundaries: ['Stay core-first.'],
         heartbeat: ['Restate objective.'],
         recap_expectations: ['Summarize next step.'],
       },
+      metadata: {},
     });
     const citizenService = new CitizenService(db, {
       projectService,
@@ -525,10 +533,15 @@ describe('agora-ts cli', () => {
       project_id: 'proj-brain',
       role_id: 'architect',
       display_name: 'Alpha Architect',
+      persona: null,
       boundaries: ['Keep runtime adapters outside core.'],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
       runtime_projection: {
         adapter: 'openclaw',
         auto_provision: false,
+        metadata: {},
       },
     });
     const stdout = createBuffer();
@@ -560,6 +573,109 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('citizen_scaffold');
     expect(stdout.value).toContain('runtime-boundary');
     expect(stdout.value).toContain('Brain 已追加');
+  });
+
+  it('supports project brain bootstrap-context and promote through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-bootstrap-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-bootstrap',
+      name: 'Bootstrap Project',
+      owner: 'archon',
+      summary: 'Project bootstrap summary',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-bootstrap',
+      kind: 'fact',
+      slug: 'core-first',
+      title: 'Core First',
+      summary: 'Keep orchestration inside core.',
+      body: 'Core keeps orchestration semantics.',
+      source_task_ids: ['OC-BOOT-1'],
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Keep adapters outside core.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Capture next steps.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-bootstrap',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: [],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+        metadata: {},
+      },
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    const projectBrainAutomationService = new ProjectBrainAutomationService({
+      projectBrainService,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      projectBrainService,
+      projectBrainAutomationService,
+      citizenService,
+      rolePackService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'bootstrap-context',
+      '--project', 'proj-bootstrap',
+      '--audience', 'controller',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'promote',
+      '--project', 'proj-bootstrap',
+      '--kind', 'decision',
+      '--slug', 'obsidian-adapter',
+      '--title', 'Obsidian Adapter',
+      '--body', 'Obsidian stays optional.',
+      '--source-task', 'OC-BOOT-1',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('project_brain_bootstrap_context');
+    expect(stdout.value).toContain('Alpha Architect');
+    expect(stdout.value).toContain('Brain 已提升');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {

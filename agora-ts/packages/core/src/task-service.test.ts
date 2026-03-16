@@ -4,12 +4,18 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
+import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
+import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
+import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
 import { LiveSessionStore } from './live-session-store.js';
+import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import { ProjectBrainService } from './project-brain-service.js';
 import { ProjectService } from './project-service.js';
+import { RolePackService } from './role-pack-service.js';
 import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
@@ -729,6 +735,111 @@ describe('task service', () => {
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(
       join(brainPackDir, 'roles', 'architect.md'),
     );
+  });
+
+  it('materializes a bootstrap project brain context file for project-bound tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-bootstrap',
+      name: 'Project Bootstrap',
+      summary: 'Automation bootstrap context',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-bootstrap',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime adapters outside core.',
+      body: 'Runtime adapters stay outside core and expose provider-neutral ports.',
+      source_task_ids: ['OC-BOOT-0'],
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Keep runtime adapters outside core.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-bootstrap',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: [],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+        metadata: {},
+      },
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    const automationService = new ProjectBrainAutomationService({
+      projectBrainService,
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-BOOTSTRAP',
+      projectService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-bootstrap',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      projectBrainAutomationService: automationService,
+    });
+
+    service.createTask({
+      title: 'Project bootstrap task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'bootstrap project context',
+      priority: 'high',
+      project_id: 'proj-bootstrap',
+    });
+
+    const workspacePath = join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
+    const bootstrapContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+    expect(existsSync(bootstrapContextPath)).toBe(true);
+    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('Runtime Boundary');
+    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('citizen-alpha');
+    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(bootstrapContextPath);
+    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(bootstrapContextPath);
   });
 
   it('materializes task close recap into task and project scope for project-bound tasks', () => {

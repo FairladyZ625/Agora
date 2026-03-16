@@ -24,6 +24,8 @@ export * from './mode-controller.js';
 export * from './notification-dispatcher.js';
 export * from './permission-service.js';
 export * from './project-knowledge-port.js';
+export * from './project-brain-automation-policy.js';
+export * from './project-brain-automation-service.js';
 export * from './project-brain-query-port.js';
 export * from './project-brain-service.js';
 export * from './project-service.js';

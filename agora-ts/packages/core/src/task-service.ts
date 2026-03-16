@@ -60,6 +60,7 @@ import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
+import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
 
@@ -116,6 +117,7 @@ export interface TaskServiceOptions {
   taskBrainBindingService?: TaskBrainBindingService;
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
+  projectBrainAutomationService?: ProjectBrainAutomationService;
   agentRuntimePort?: AgentRuntimePort;
   runtimeRecoveryPort?: RuntimeRecoveryPort;
   craftsmanInputPort?: CraftsmanInputPort;
@@ -259,6 +261,7 @@ export class TaskService {
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -306,6 +309,7 @@ export class TaskService {
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
+    this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.agentRuntimePort = options.agentRuntimePort;
     this.runtimeRecoveryPort = options.runtimeRecoveryPort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
@@ -2058,6 +2062,12 @@ export class TaskService {
   }
 
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
+    const projectBrainContext = task.project_id && this.projectBrainAutomationService
+      ? this.projectBrainAutomationService.buildBootstrapContext({
+          project_id: task.project_id,
+          audience: 'controller',
+        })
+      : null;
     return {
       task_id: task.id,
       project_id: task.project_id ?? null,
@@ -2088,6 +2098,15 @@ export class TaskService {
         ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
         ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
       })),
+      ...(projectBrainContext
+        ? {
+            project_brain_context: {
+              audience: projectBrainContext.audience,
+              source_documents: projectBrainContext.source_documents,
+              markdown: projectBrainContext.markdown,
+            },
+          }
+        : {}),
     } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
   }
 
@@ -2364,7 +2383,32 @@ export class TaskService {
   }
 
   private materializeTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
-    if (!task.project_id || !this.taskBrainWorkspacePort || !this.taskBrainBindingService) {
+    if (this.projectBrainAutomationService) {
+      this.projectBrainAutomationService.recordTaskCloseRecap(task, actor, reason);
+    } else if (task.project_id && this.taskBrainWorkspacePort && this.taskBrainBindingService) {
+      const binding = this.taskBrainBindingService.getActiveBinding(task.id);
+      if (binding) {
+        const summaryLines = [
+          taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
+          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+          `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
+          ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
+        ];
+        this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
+          task_id: task.id,
+          project_id: task.project_id,
+          locale: task.locale,
+          title: task.title,
+          state: task.state,
+          current_stage: task.current_stage,
+          controller_ref: resolveControllerRef(task.team.members),
+          completed_by: actor,
+          completed_at: new Date().toISOString(),
+          summary_lines: summaryLines,
+        });
+      }
+    }
+    if (!task.project_id || !this.taskBrainBindingService) {
       return;
     }
     const binding = this.taskBrainBindingService.getActiveBinding(task.id);
@@ -2377,18 +2421,6 @@ export class TaskService {
       `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
       ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
     ];
-    this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
-      task_id: task.id,
-      project_id: task.project_id,
-      locale: task.locale,
-      title: task.title,
-      state: task.state,
-      current_stage: task.current_stage,
-      controller_ref: resolveControllerRef(task.team.members),
-      completed_by: actor,
-      completed_at: new Date().toISOString(),
-      summary_lines: summaryLines,
-    });
     this.projectService.recordTaskRecap({
       project_id: task.project_id,
       task_id: task.id,

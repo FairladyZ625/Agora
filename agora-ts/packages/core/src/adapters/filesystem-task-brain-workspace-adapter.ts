@@ -73,8 +73,9 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
   ) {
     const workspacePath = binding.workspace_path;
     const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
+    const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
     writeFileSync(join(workspacePath, 'task.meta.yaml'), renderTaskMeta(input, binding), 'utf8');
-    writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input, currentStage), 'utf8');
+    writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input, workspacePath, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '00-bootstrap.md'), renderBootstrap(input, workspacePath, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '01-task-brief.md'), renderTaskBrief(input), 'utf8');
     writeFileSync(join(workspacePath, '02-roster.md'), renderRoster(input), 'utf8');
@@ -83,6 +84,9 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
       writeFileSync(join(workspacePath, '04-context', 'user-input.md'), `${input.description.trim() || '(empty description)'}\n`, 'utf8');
       writeFileSync(join(workspacePath, '04-context', 'references.md'), '', 'utf8');
       writeFileSync(join(workspacePath, '04-context', 'linked-docs.md'), '', 'utf8');
+    }
+    if (input.project_brain_context?.markdown) {
+      writeFileSync(projectBrainContextPath, input.project_brain_context.markdown, 'utf8');
     }
     for (const member of input.team_members) {
       const agentDir = join(workspacePath, '05-agents', member.agentId);
@@ -122,12 +126,14 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
     `task_state: "${input.state}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
     `execution_kind: "${resolveStageExecutionKind(currentStage) ?? ''}"`,
+    `project_brain_audience: "${input.project_brain_context?.audience ?? ''}"`,
     '',
   ].join('\n');
 }
 
 function renderCurrent(
   input: TaskBrainWorkspaceRequest,
+  workspacePath: string,
   currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
   return [
@@ -142,6 +148,9 @@ function renderCurrent(
     `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
     `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `- ${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
+    ...(input.project_brain_context
+      ? [`- ${brainText(input.locale, 'Project Brain 上下文', 'Project Brain Context')}: ${join(workspacePath, '04-context', 'project-brain-context.md')}`]
+      : []),
     '',
   ].join('\n');
 }
@@ -169,6 +178,7 @@ function renderBootstrap(
     `- ${join(workspacePath, '01-task-brief.md')}`,
     `- ${join(workspacePath, '02-roster.md')}`,
     `- ${join(workspacePath, '03-stage-state.md')}`,
+    ...(input.project_brain_context ? [`- ${join(workspacePath, '04-context', 'project-brain-context.md')}`] : []),
     '',
   ].join('\n');
 }
@@ -222,6 +232,7 @@ function renderRoleBrief(
   roleDocPath: string,
 ) {
   const scaffoldPath = join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md');
+  const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
   return [
     '---',
     `role_id: "${member.role}"`,
@@ -255,6 +266,9 @@ function renderRoleBrief(
     `${brainText(input.locale, '任务工作区', 'Task workspace')}: ${workspacePath}`,
     `${brainText(input.locale, '任务简报', 'Task brief')}: ${join(workspacePath, '01-task-brief.md')}`,
     `${brainText(input.locale, '阶段状态', 'Stage state')}: ${join(workspacePath, '03-stage-state.md')}`,
+    ...(input.project_brain_context
+      ? [`${brainText(input.locale, 'Project Brain Context', 'Project Brain Context')}: ${projectBrainContextPath}`]
+      : []),
     `${brainText(input.locale, 'Citizen Scaffold', 'Citizen Scaffold')}: ${scaffoldPath}`,
     '',
     `${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,

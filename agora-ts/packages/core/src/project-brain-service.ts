@@ -7,7 +7,7 @@ import type {
   ProjectBrainQueryPort,
   ProjectBrainSearchResult,
 } from './project-brain-query-port.js';
-import { ProjectService } from './project-service.js';
+import type { ProjectService } from './project-service.js';
 
 export interface ProjectBrainServiceOptions {
   projectService: ProjectService;

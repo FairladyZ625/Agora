@@ -31,6 +31,7 @@ import {
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
   OpenClawCitizenProjectionAdapter,
+  ProjectBrainAutomationService,
   OsHostResourcePort,
   ProjectBrainService,
   ProjectService,
@@ -95,6 +96,14 @@ export interface CliCompositionFactories {
     context: CliCompositionContext,
     deps: { projectService: ProjectService; citizenService: CitizenService },
   ) => ProjectBrainService;
+  createProjectBrainAutomationService: (
+    context: CliCompositionContext,
+    deps: {
+      projectBrainService: ProjectBrainService;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
+    },
+  ) => ProjectBrainAutomationService;
   createCitizenService: (
     context: CliCompositionContext,
     deps: { projectService: ProjectService; rolePackService: RolePackService },
@@ -113,6 +122,7 @@ export interface CliCompositionFactories {
       messagingPort: IMMessagingPort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      projectBrainAutomationService: ProjectBrainAutomationService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: CraftsmanInputPort;
@@ -138,6 +148,7 @@ export interface CliComposition {
   taskService: TaskService;
   projectService: ProjectService;
   projectBrainService: ProjectBrainService;
+  projectBrainAutomationService: ProjectBrainAutomationService;
   citizenService: CitizenService;
   tmuxRuntimeService: TmuxRuntimeService;
   dashboardSessionClient: DashboardSessionClient;
@@ -235,6 +246,11 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       rolePackService: deps.rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
     }),
+    createProjectBrainAutomationService: (_context, deps) => new ProjectBrainAutomationService({
+      projectBrainService: deps.projectBrainService,
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
     }),
@@ -247,6 +263,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       imMessagingPort: deps.messagingPort,
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
+      projectBrainAutomationService: deps.projectBrainAutomationService,
       projectService: deps.projectService,
       agentRuntimePort: deps.agentRuntimePort,
       runtimeRecoveryPort: deps.runtimeRecoveryPort,
@@ -351,6 +368,11 @@ export function createCliComposition(
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
+  const projectBrainAutomationService = factories.createProjectBrainAutomationService(context, {
+    projectBrainService,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
+  });
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     taskBrainBindingService,
@@ -359,6 +381,7 @@ export function createCliComposition(
     messagingPort,
     taskContextBindingService,
     taskParticipationService,
+    projectBrainAutomationService,
     projectService,
     agentRuntimePort,
     ...createCraftsmanTransportDeps(craftsmanMode, tmuxRuntimeService, acpRuntime),
@@ -374,6 +397,7 @@ export function createCliComposition(
     taskService,
     projectService,
     projectBrainService,
+    projectBrainAutomationService,
     citizenService,
     tmuxRuntimeService,
     dashboardSessionClient,
