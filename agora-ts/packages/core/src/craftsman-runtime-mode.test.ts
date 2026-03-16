@@ -26,10 +26,10 @@ describe('craftsman runtime mode', () => {
   });
 
   it('falls back to target-specific defaults when unset or invalid', () => {
-    expect(resolveCraftsmanRuntimeMode('server', {})).toBe('watched');
-    expect(resolveCraftsmanRuntimeMode('cli', {})).toBe('tmux');
+    expect(resolveCraftsmanRuntimeMode('server', {})).toBe('acp');
+    expect(resolveCraftsmanRuntimeMode('cli', {})).toBe('acp');
     expect(resolveCraftsmanRuntimeMode('server', {
       AGORA_CRAFTSMAN_ADAPTER_MODE: 'unknown',
-    })).toBe('watched');
+    })).toBe('acp');
   });
 });

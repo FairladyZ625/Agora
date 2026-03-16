@@ -17,5 +17,5 @@ export function resolveCraftsmanRuntimeMode(
   if (raw && VALID_MODES.has(raw as CraftsmanRuntimeMode)) {
     return raw as CraftsmanRuntimeMode;
   }
-  return target === 'server' ? 'watched' : 'tmux';
+  return 'acp';
 }

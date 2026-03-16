@@ -1541,7 +1541,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   const tmux = craftsman
     .command('tmux')
-    .description('tmux runtime commands for craftsmen panes');
+    .description('legacy tmux debug commands for craftsmen panes');
 
   const runtime = craftsman
     .command('runtime')
@@ -1555,7 +1555,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('up')
-    .description('初始化 tmux craftsmen session')
+    .description('初始化 legacy tmux craftsmen session')
     .action(() => {
       const result = tmuxRuntimeService.up();
       writeLine(stdout, `tmux session 已就绪: ${result.session}`);
@@ -1566,7 +1566,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('status')
-    .description('查看 tmux pane 状态')
+    .description('查看 legacy tmux pane 状态')
     .action(() => {
       const result = tmuxRuntimeService.status();
       for (const pane of result.panes) {
@@ -1579,7 +1579,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('send')
-    .description('向指定 tmux pane 发送原始命令')
+    .description('向指定 legacy tmux pane 发送原始命令')
     .argument('<agent>', 'agent pane name')
     .argument('<command>', 'raw shell command')
     .action((agent: string, command: string) => {
@@ -1589,7 +1589,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('send-text')
-    .description('向指定 tmux pane 发送文本输入')
+    .description('向指定 legacy tmux pane 发送文本输入')
     .argument('<agent>', 'agent pane name')
     .argument('<text>', 'text input')
     .option('--no-submit', '发送后不自动回车')
@@ -1605,7 +1605,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('send-keys')
-    .description('向指定 tmux pane 发送结构化按键')
+    .description('向指定 legacy tmux pane 发送结构化按键')
     .argument('<agent>', 'agent pane name')
     .argument('<keys...>', 'keys like Down Tab Enter')
     .action((agent: string, keys: CraftsmanInputKeyDto[]) => {
@@ -1619,7 +1619,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('submit-choice')
-    .description('向指定 tmux pane 提交 choice，自动补 Enter')
+    .description('向指定 legacy tmux pane 提交 choice，自动补 Enter')
     .argument('<agent>', 'agent pane name')
     .argument('[keys...]', 'optional navigation keys before submit')
     .action((agent: string, keys: CraftsmanInputKeyDto[] = []) => {
@@ -1658,7 +1658,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('task')
-    .description('通过 tmux pane 派发一条简短 CLI 任务')
+    .description('通过 legacy tmux pane 派发一条简短 CLI 任务')
     .argument('<agent>', 'agent pane name')
     .argument('<prompt>', 'prompt')
     .option('--workdir <workdir>', '工作目录')
@@ -1679,7 +1679,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('tail')
-    .description('查看 tmux pane 最近输出')
+    .description('查看 legacy tmux pane 最近输出')
     .argument('<agent>', 'agent pane name')
     .option('--lines <lines>', '输出行数', '40')
     .action((agent: string, options: { lines: string }) => {
@@ -1688,7 +1688,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('doctor')
-    .description('查看 tmux pane readiness')
+    .description('查看 legacy tmux pane readiness')
     .action(() => {
       const result = tmuxRuntimeService.doctor();
       for (const pane of result.panes) {
@@ -1701,12 +1701,19 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('down')
-    .description('关闭 tmux craftsmen session')
+    .description('关闭 legacy tmux craftsmen session')
     .action(() => {
       const result = tmuxRuntimeService.status();
       tmuxRuntimeService.down();
       writeLine(stdout, `tmux session 已关闭: ${result.session}`);
     });
+
+  tmux.addHelpText('after', [
+    '',
+    'Legacy debug surface:',
+    '  ACPX is now the default craftsman runtime.',
+    '  Use `agora craftsman tmux *` only for transitional debugging or recovery of old tmux-backed sessions.',
+  ].join('\n'));
 
   runtime
     .command('identity')

@@ -1771,7 +1771,7 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post('/api/craftsmen/runtime/identity', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
       const payload = craftsmanRuntimeIdentityRequestSchema.parse(request.body);
@@ -1793,23 +1793,26 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.get('/api/craftsmen/tmux/status', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
+    reply.header('Deprecation', 'true');
     return reply.send(tmuxRuntimeService.status());
   });
 
   app.get('/api/craftsmen/tmux/doctor', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
+    reply.header('Deprecation', 'true');
     return reply.send(tmuxRuntimeService.doctor());
   });
 
   app.post('/api/craftsmen/tmux/send', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
+      reply.header('Deprecation', 'true');
       const payload = tmuxSendSchema.parse(request.body);
       tmuxRuntimeService.send(payload.agent, payload.command);
       return reply.send({ ok: true });
@@ -1821,9 +1824,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post('/api/craftsmen/tmux/send-text', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
+      reply.header('Deprecation', 'true');
       const payload = tmuxSendTextRequestSchema.parse(request.body);
       tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
       return reply.send({ ok: true });
@@ -1835,9 +1839,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post('/api/craftsmen/tmux/send-keys', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
+      reply.header('Deprecation', 'true');
       const payload = tmuxSendKeysRequestSchema.parse(request.body);
       tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
       return reply.send({ ok: true });
@@ -1849,9 +1854,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post('/api/craftsmen/tmux/submit-choice', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
+      reply.header('Deprecation', 'true');
       const payload = tmuxSubmitChoiceRequestSchema.parse(request.body);
       tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
       return reply.send({ ok: true });
@@ -1863,9 +1869,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post('/api/craftsmen/tmux/task', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
+      reply.header('Deprecation', 'true');
       const payload = tmuxTaskSchema.parse(request.body);
       return reply.send(tmuxRuntimeService.task(payload.agent, {
         execution_id: `tmux-${Date.now()}`,
@@ -1886,9 +1893,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
+      reply.header('Deprecation', 'true');
       const params = request.params as { agent: string };
       const query = request.query as { lines?: string };
       const lines = query.lines ? Number(query.lines) : 40;
