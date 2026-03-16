@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as api from '@/lib/api';
 import { mapAgentsStatusDto } from '@/lib/dashboardExpansionMappers';
-import type { AgentChannelSummary, AgentHostSummary, AgentStatusItem, AgentStatusSummary, CraftsmanStatusItem, TmuxRuntimeStatus } from '@/types/dashboard';
+import type { AgentChannelSummary, AgentHostSummary, AgentStatusItem, AgentStatusSummary, CraftsmanRuntimeStatus, CraftsmanStatusItem, TmuxRuntimeStatus } from '@/types/dashboard';
 import type { AgentPresenceFilter } from '@/lib/agentProviderInsights';
 
 export type CraftsmenFilter = 'all' | 'failures' | 'running';
@@ -15,6 +15,7 @@ interface AgentStore {
   channelDetails: Record<string, AgentChannelSummary>;
   channelDetailFetchedAt: Record<string, number>;
   hostSummaries: AgentHostSummary[];
+  craftsmanRuntime: CraftsmanRuntimeStatus | null;
   tmuxRuntime: TmuxRuntimeStatus | null;
   tmuxTailByAgent: Record<string, string | null>;
   presenceFilter: AgentPresenceFilter;
@@ -46,6 +47,7 @@ export const useAgentStore = create<AgentStore>()(
       channelDetails: {},
       channelDetailFetchedAt: {},
       hostSummaries: [],
+      craftsmanRuntime: null,
       tmuxRuntime: null,
       tmuxTailByAgent: {},
       presenceFilter: 'all',
@@ -68,9 +70,10 @@ export const useAgentStore = create<AgentStore>()(
             craftsmen: payload.craftsmen,
             channelSummaries: payload.channelSummaries,
             hostSummaries: payload.hostSummaries,
+            craftsmanRuntime: payload.craftsmanRuntime,
             tmuxRuntime: payload.tmuxRuntime,
             tmuxTailByAgent: Object.fromEntries(
-              Object.entries(payload.tmuxRuntime?.panes.reduce<Record<string, string | null>>((acc, pane) => {
+              Object.entries((payload.craftsmanRuntime?.slots ?? payload.tmuxRuntime?.panes ?? []).reduce<Record<string, string | null>>((acc, pane) => {
                 acc[pane.agent] = pane.tailPreview;
                 return acc;
               }, {}) ?? {}).map(([agent, tail]) => [agent, tail]),
@@ -85,6 +88,7 @@ export const useAgentStore = create<AgentStore>()(
             craftsmen: [],
             channelSummaries: [],
             hostSummaries: [],
+            craftsmanRuntime: null,
             tmuxRuntime: null,
             tmuxTailByAgent: {},
             loading: false,
@@ -111,6 +115,7 @@ export const useAgentStore = create<AgentStore>()(
             craftsmen: [],
             channel_summaries: [await api.getAgentChannelDetail(channel)],
             host_summaries: [],
+            craftsman_runtime: null,
             tmux_runtime: null,
           }).channelSummaries[0];
           if (!detail) {

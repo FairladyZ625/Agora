@@ -139,12 +139,44 @@ export interface TmuxRuntimeStatus {
   panes: TmuxRuntimePane[];
 }
 
+export interface CraftsmanRuntimeProviderSummary {
+  provider: 'tmux' | 'acpx' | 'unknown';
+  session: string | null;
+  slotCount: number;
+  readySlots: number;
+  activeSlots: number;
+}
+
+export interface CraftsmanRuntimeSlot {
+  provider: 'tmux' | 'acpx' | 'unknown';
+  agent: string;
+  sessionId: string | null;
+  runtimeMode: string | null;
+  transport: string | null;
+  status: string;
+  ready: boolean;
+  active: boolean;
+  currentCommand: string | null;
+  tailPreview: string | null;
+  sessionReference: string | null;
+  executionId: string | null;
+  taskId: string | null;
+  subtaskId: string | null;
+  title: string | null;
+}
+
+export interface CraftsmanRuntimeStatus {
+  providers: CraftsmanRuntimeProviderSummary[];
+  slots: CraftsmanRuntimeSlot[];
+}
+
 export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];
   craftsmen: CraftsmanStatusItem[];
   channelSummaries: AgentChannelSummary[];
   hostSummaries: AgentHostSummary[];
+  craftsmanRuntime: CraftsmanRuntimeStatus | null;
   tmuxRuntime: TmuxRuntimeStatus | null;
 }
 

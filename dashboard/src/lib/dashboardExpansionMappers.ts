@@ -16,6 +16,7 @@ import type {
   AgentChannelSummary,
   AgentHostSummary,
   CraftsmanStatusItem,
+  CraftsmanRuntimeStatus,
   PromoteTodoResult,
   TemplateDetail,
   TemplateGraph,
@@ -112,6 +113,38 @@ function mapTmuxRuntime(dto: ApiAgentsStatusDto['tmux_runtime']): TmuxRuntimeSta
       sessionObservedAt: pane.session_observed_at ?? null,
       lastRecoveryMode: pane.last_recovery_mode,
       transportSessionId: pane.transport_session_id,
+    })),
+  };
+}
+
+function mapCraftsmanRuntime(dto: ApiAgentsStatusDto['craftsman_runtime']): CraftsmanRuntimeStatus | null {
+  if (!dto) {
+    return null;
+  }
+  return {
+    providers: dto.providers.map((provider) => ({
+      provider: provider.provider,
+      session: provider.session,
+      slotCount: provider.slot_count,
+      readySlots: provider.ready_slots,
+      activeSlots: provider.active_slots,
+    })),
+    slots: dto.slots.map((slot) => ({
+      provider: slot.provider,
+      agent: slot.agent,
+      sessionId: slot.session_id,
+      runtimeMode: slot.runtime_mode,
+      transport: slot.transport,
+      status: slot.status,
+      ready: slot.ready,
+      active: slot.active,
+      currentCommand: slot.current_command,
+      tailPreview: slot.tail_preview,
+      sessionReference: slot.session_reference,
+      executionId: slot.execution_id,
+      taskId: slot.task_id,
+      subtaskId: slot.subtask_id,
+      title: slot.title,
     })),
   };
 }
@@ -213,6 +246,7 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
     craftsmen: dto.craftsmen.map(mapCraftsmanDto),
     channelSummaries: dto.channel_summaries.map(mapChannelSummaryDto),
     hostSummaries: dto.host_summaries.map(mapHostSummaryDto),
+    craftsmanRuntime: mapCraftsmanRuntime(dto.craftsman_runtime),
     tmuxRuntime: mapTmuxRuntime(dto.tmux_runtime),
   };
 }

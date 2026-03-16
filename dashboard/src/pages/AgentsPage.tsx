@@ -87,6 +87,7 @@ export function AgentsPage() {
   const channelDetails = useAgentStore((state) => state.channelDetails);
   const channelDetailFetchedAt = useAgentStore((state) => state.channelDetailFetchedAt);
   const hostSummaries = useAgentStore((state) => state.hostSummaries);
+  const craftsmanRuntime = useAgentStore((state) => state.craftsmanRuntime);
   const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
   const tmuxTailByAgent = useAgentStore((state) => state.tmuxTailByAgent);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
@@ -178,18 +179,45 @@ export function AgentsPage() {
     },
     [channelDetails, channelSummaries, selectedChannelId],
   );
+  const runtimeSlots = useMemo(() => (
+    craftsmanRuntime?.slots
+      ?? tmuxRuntime?.panes.map((pane) => ({
+        provider: 'tmux' as const,
+        agent: pane.agent,
+        sessionId: pane.transportSessionId,
+        runtimeMode: 'tmux',
+        transport: 'tmux-pane',
+        status: pane.active ? 'running' : pane.ready ? 'idle' : 'unready',
+        ready: pane.ready,
+        active: pane.active,
+        currentCommand: pane.currentCommand,
+        tailPreview: pane.tailPreview,
+        sessionReference: pane.sessionReference,
+        executionId: null,
+        taskId: null,
+        subtaskId: null,
+        title: null,
+      }))
+      ?? []
+  ), [craftsmanRuntime, tmuxRuntime]);
+
   const runtimeSummary = useMemo(() => {
-    const panes = tmuxRuntime?.panes ?? [];
+    const providerSummary = craftsmanRuntime?.providers ?? [];
+    const sessionLabel = providerSummary.length === 1
+      ? providerSummary[0]?.session ?? providerSummary[0]?.provider ?? 'n/a'
+      : providerSummary.length > 1
+        ? `${providerSummary.length} providers`
+        : tmuxRuntime?.session ?? 'n/a';
     return {
-      session: tmuxRuntime?.session ?? 'n/a',
-      totalPanes: panes.length,
-      readyPanes: panes.filter((pane) => pane.ready).length,
-      activePanes: panes.filter((pane) => pane.active).length,
+      session: sessionLabel,
+      totalPanes: runtimeSlots.length,
+      readyPanes: runtimeSlots.filter((slot) => slot.ready).length,
+      activePanes: runtimeSlots.filter((slot) => slot.active).length,
       runningCraftsmen: craftsmen.filter((item) => item.status === 'busy' || item.recentExecutions.some((execution) => execution.status === 'running')).length,
       failedCraftsmen: craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')).length,
-      unhealthyPanes: panes.filter((pane) => !pane.ready).length,
+      unhealthyPanes: runtimeSlots.filter((slot) => !slot.ready).length,
     };
-  }, [craftsmen, tmuxRuntime]);
+  }, [craftsmanRuntime, craftsmen, runtimeSlots, tmuxRuntime]);
   const visibleCraftsmen = useMemo(() => {
     const filtered = craftsmenFilter === 'all'
       ? craftsmen
@@ -211,7 +239,7 @@ export function AgentsPage() {
   const criticalAgents = agents.filter((agent) => ['disconnected', 'offline'].includes(agent.presence));
   const staleAgents = agents.filter((agent) => agent.presence === 'stale');
   const failedCraftsmen = craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed'));
-  const unhealthyPanes = (tmuxRuntime?.panes ?? []).filter((pane) => !pane.ready);
+  const unhealthyPanes = runtimeSlots.filter((slot) => !slot.ready);
   const openIssueCount =
     degradedChannels.length +
     criticalAgents.length +
@@ -936,18 +964,18 @@ export function AgentsPage() {
                 <h3 className="section-title">{copy.tmuxRuntimeTitle}</h3>
                 <span className="status-pill status-pill--neutral">{tmuxRuntime?.session ?? 'n/a'}</span>
               </div>
-              {!tmuxRuntime || tmuxRuntime.panes.length === 0 ? (
+              {runtimeSlots.length === 0 ? (
                 <div className="empty-state">
                   <p className="type-body-sm">{copy.emptyTmuxRuntime}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {tmuxRuntime.panes.map((pane) => (
+                  {runtimeSlots.map((pane) => (
                     <div key={pane.agent} className="decision-card">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="type-heading-sm">{pane.agent}</p>
-                          <p className="type-body-sm mt-2">{copy.paneLabel}: {pane.paneId ?? 'n/a'}</p>
+                          <p className="type-body-sm mt-2">{copy.paneLabel}: {pane.sessionId ?? pane.sessionReference ?? 'n/a'}</p>
                         </div>
                         <span className={getPillClass(pane.ready ? 'success' : 'warning')}>
                           {copy.readyLabel}: {pane.ready ? 'yes' : 'no'}
@@ -955,24 +983,24 @@ export function AgentsPage() {
                       </div>
                       <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
                         <span>{copy.commandLabel}: {pane.currentCommand ?? 'n/a'}</span>
-                        <span>{copy.statusLabel}: {pane.active ? 'active' : 'idle'}</span>
-                        <span>{copy.continuityBackendLabel}: {pane.continuityBackend}</span>
-                        <span>{copy.resumeCapabilityLabel}: {pane.resumeCapability}</span>
-                        <span>{copy.identitySourceLabel}: {pane.identitySource}</span>
-                        <span>{copy.identityPathLabel}: {pane.identityPath ?? 'n/a'}</span>
-                        <span>{copy.observedAtLabel}: {pane.sessionObservedAt ?? 'n/a'}</span>
+                        <span>{copy.statusLabel}: {pane.status}</span>
+                        <span>provider: {pane.provider}</span>
+                        <span>runtime: {pane.runtimeMode ?? 'n/a'}</span>
+                        <span>transport: {pane.transport ?? 'n/a'}</span>
                         <span>{copy.sessionReferenceLabel}: {pane.sessionReference ?? 'n/a'}</span>
-                        <span>{copy.recoveryModeLabel}: {pane.lastRecoveryMode ?? 'n/a'}</span>
+                        <span>execution: {pane.executionId ?? 'n/a'}</span>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-3">
                         <p className="type-text-xs">{copy.tailPreviewLabel}: {tmuxTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>
-                        <button
-                          type="button"
-                          className="status-pill status-pill--neutral"
-                          onClick={() => void fetchTmuxTail(pane.agent)}
-                        >
-                          {tmuxTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
-                        </button>
+                        {pane.provider === 'tmux' ? (
+                          <button
+                            type="button"
+                            className="status-pill status-pill--neutral"
+                            onClick={() => void fetchTmuxTail(pane.agent)}
+                          >
+                            {tmuxTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   ))}

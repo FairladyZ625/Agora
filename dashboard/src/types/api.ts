@@ -61,6 +61,7 @@ export type ApiUnifiedHealthSnapshotDto = UnifiedHealthSnapshotDto;
 export type ApiRuntimeDiagnosisResultDto = RuntimeDiagnosisResultDto;
 export type ApiRuntimeRecoveryActionDto = RuntimeRecoveryActionDto;
 export type ApiAgentChannelSummaryDto = ApiAgentsStatusDto['channel_summaries'][number];
+export type ApiCraftsmanRuntimeDto = ApiAgentsStatusDto['craftsman_runtime'];
 export type ApiArchiveJobDto = ArchiveJobDto;
 export type ApiDashboardSessionStatusDto = DashboardSessionStatusResponseDto;
 export type ApiDashboardSessionLoginDto = DashboardSessionLoginResponseDto;
