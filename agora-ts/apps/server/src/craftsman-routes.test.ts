@@ -609,6 +609,7 @@ describe('craftsman routes', () => {
   it('exposes provider-neutral runtime status, doctor, tail, and identity routes', async () => {
     const app = buildApp({
       tmuxRuntimeService: {
+        up: () => ({ session: 'agora-craftsmen', panes: [] }),
         status: () => ({
           session: 'agora-craftsmen',
           panes: [{
@@ -624,6 +625,11 @@ describe('craftsman routes', () => {
             transportSessionId: 'tmux:agora-craftsmen:codex',
           }],
         }),
+        send: () => undefined,
+        sendText: () => undefined,
+        sendKeys: () => undefined,
+        submitChoice: () => undefined,
+        task: () => ({ status: 'running', session_id: 'tmux:agora-craftsmen:codex', started_at: '2026-03-09T00:00:00.000Z', payload: null }),
         recordIdentity: () => ({
           continuityBackend: 'codex_session_file',
           resumeCapability: 'native_resume',
@@ -652,6 +658,7 @@ describe('craftsman routes', () => {
             transportSessionId: 'tmux:agora-craftsmen:codex',
           }],
         }),
+        down: () => undefined,
       },
     });
 

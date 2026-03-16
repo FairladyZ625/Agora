@@ -19,6 +19,7 @@ function makeTempDir() {
 function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
   vi.doMock('node:fs', () => ({
     existsSync: vi.fn(existsSyncImpl),
+    mkdirSync: vi.fn(),
   }));
   vi.doMock('@agora-ts/config', () => ({
     loadAgoraConfig: vi.fn(() => ({
@@ -61,7 +62,13 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
       installedSkillTargets: [],
       userBrainPackDir: '/tmp/agora-home/agora-ai-brain',
     })),
-    resolveAgoraRuntimeEnvironmentFromConfigPackage: vi.fn(() => ({})),
+    agoraDataDirPath: vi.fn(() => '/tmp/agora-home'),
+    hasInstalledBrainPack: vi.fn(() => true),
+    syncBundledBrainPackContents: vi.fn(),
+    resolveAgoraRuntimeEnvironmentFromConfigPackage: vi.fn(() => ({
+      apiBaseUrl: 'http://127.0.0.1:3000',
+      projectRoot: '/tmp/agora-project',
+    })),
   }));
   vi.doMock('@agora-ts/db', () => ({
     createAgoraDatabase: vi.fn(() => ({ close: vi.fn() })),
@@ -83,19 +90,23 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     NotificationDispatcher: class NotificationDispatcher {},
     HumanAccountService: class HumanAccountService {},
   }));
-  vi.doMock('./composition.js', () => ({
-    buildServerComposition: vi.fn(() => ({
-      taskService: { startupRecoveryScan: vi.fn() },
-      dashboardQueryService: {},
-      inboxService: {},
-      liveSessionStore: {},
-      taskConversationService: {},
-      taskContextBindingService: {},
-      taskParticipationService: {},
-      notificationDispatcher: {},
-      humanAccountService: {},
-    })),
-  }));
+  vi.doMock('./composition.js', async (importOriginal) => {
+    const actual = await importOriginal() as Record<string, unknown>;
+    return {
+      ...actual,
+      buildServerComposition: vi.fn(() => ({
+        taskService: { startupRecoveryScan: vi.fn() },
+        dashboardQueryService: {},
+        inboxService: {},
+        liveSessionStore: {},
+        taskConversationService: {},
+        taskContextBindingService: {},
+        taskParticipationService: {},
+        notificationDispatcher: {},
+        humanAccountService: {},
+      })),
+    };
+  });
 }
 
 afterEach(() => {

@@ -53,6 +53,19 @@ describe('agora-ts scenario cli', () => {
     });
   });
 
+  it('runs a single scenario and prints the text summary by default', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const exitCode = await runScenarioCli(['happy-path'], { stdout, stderr });
+
+    expect(exitCode).toBe(0);
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('scenario=happy-path');
+    expect(stdout.value).toContain('state=done');
+    expect(stdout.value).toContain('events=');
+  });
+
   it('runs the full matrix when asked for all scenarios', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -83,4 +96,16 @@ describe('agora-ts scenario cli', () => {
       ]),
     );
   }, 30000);
+
+  it('returns usage guidance for unknown commands', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const exitCode = await runScenarioCli(['unknown-scenario'], { stdout, stderr });
+
+    expect(exitCode).toBe(1);
+    expect(stdout.value).toBe('');
+    expect(stderr.value).toContain('Unknown scenario command: unknown-scenario');
+    expect(stderr.value).toContain('Usage: scenario [list|all|');
+  });
 });
