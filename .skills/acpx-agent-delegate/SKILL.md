@@ -44,6 +44,12 @@ This skill adds Agora-local conventions:
 - wrapper-tracked Opus session manifests per `(cwd, sessionName)` scope
 - local caveats around Claude named sessions
 
+This is now the primary execution skill in Agora.
+
+- use this skill for direct execution/delegation
+- do not reach for tmux first
+- treat tmux as archived legacy debug transport only
+
 ## Command model
 
 The wrapper exposes two modes:
@@ -110,6 +116,42 @@ The Agora wrapper now exposes the ACPX controls that matter in practice:
 - `--file <path>`
 
 Use them instead of dropping straight to raw `acpx` unless you need a provider-specific knob that the wrapper still does not expose.
+
+## Fast recipes
+
+If you want the shortest path and do not want to remember profile names, use recipes:
+
+- `--recipe review-with-claude-opus`
+- `--recipe plan-with-claude-opus`
+- `--recipe session-start-sonnet`
+- `--recipe session-continue-sonnet`
+- `--recipe session-start-opus`
+- `--recipe session-continue-opus`
+
+Examples:
+
+```bash
+node /Users/lizeyu/Projects/Agora/scripts/acpx-delegate.mjs \
+  --recipe review-with-claude-opus \
+  --cwd /Users/lizeyu/Projects/Agora \
+  --prompt "Review this patch and list the top 3 risks."
+```
+
+```bash
+node /Users/lizeyu/Projects/Agora/scripts/acpx-delegate.mjs \
+  --recipe session-start-opus \
+  --session-name architecture-pass \
+  --cwd /Users/lizeyu/Projects/Agora \
+  --prompt "Create a focused architecture plan."
+```
+
+```bash
+node /Users/lizeyu/Projects/Agora/scripts/acpx-delegate.mjs \
+  --recipe session-continue-opus \
+  --session-name architecture-pass \
+  --cwd /Users/lizeyu/Projects/Agora \
+  --prompt "Tighten the top 3 risks."
+```
 
 ## Recommended Claude profiles
 

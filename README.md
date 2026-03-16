@@ -104,7 +104,8 @@ Core principle: the orchestration semantics live in `packages/core`. Every IM, r
 
 - Node.js 22+
 - npm 10+
-- tmux (for craftsmen tmux runtime)
+- `acpx` is recommended for the default craftsmen runtime path
+- tmux is optional and only kept for the archived legacy debug adapter
 
 ### Install From Source
 

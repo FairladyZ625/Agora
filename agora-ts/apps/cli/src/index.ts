@@ -2011,7 +2011,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   const tmux = craftsman
     .command('tmux')
-    .description('tmux runtime commands for craftsmen panes');
+    .description('legacy debug tmux runtime commands for craftsmen panes');
 
   const runtime = craftsman
     .command('runtime')
