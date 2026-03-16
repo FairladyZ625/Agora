@@ -88,7 +88,6 @@ export function AgentsPage() {
   const channelDetailFetchedAt = useAgentStore((state) => state.channelDetailFetchedAt);
   const hostSummaries = useAgentStore((state) => state.hostSummaries);
   const craftsmanRuntime = useAgentStore((state) => state.craftsmanRuntime);
-  const legacyRuntime = useAgentStore((state) => state.legacyRuntime);
   const runtimeTailByAgent = useAgentStore((state) => state.runtimeTailByAgent);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
   const craftsmenFilter = useAgentStore((state) => state.craftsmenFilter);
@@ -179,27 +178,7 @@ export function AgentsPage() {
     },
     [channelDetails, channelSummaries, selectedChannelId],
   );
-  const runtimeSlots = useMemo(() => (
-    craftsmanRuntime?.slots
-      ?? legacyRuntime?.panes.map((pane) => ({
-        provider: 'tmux' as const,
-        agent: pane.agent,
-        sessionId: pane.transportSessionId,
-        runtimeMode: 'tmux',
-        transport: 'tmux-pane',
-        status: pane.active ? 'running' : pane.ready ? 'idle' : 'unready',
-        ready: pane.ready,
-        active: pane.active,
-        currentCommand: pane.currentCommand,
-        tailPreview: pane.tailPreview,
-        sessionReference: pane.sessionReference,
-        executionId: null,
-        taskId: null,
-        subtaskId: null,
-        title: null,
-      }))
-      ?? []
-  ), [craftsmanRuntime, legacyRuntime]);
+  const runtimeSlots = useMemo(() => craftsmanRuntime?.slots ?? [], [craftsmanRuntime]);
 
   const runtimeSummary = useMemo(() => {
     const providerSummary = craftsmanRuntime?.providers ?? [];
@@ -207,7 +186,7 @@ export function AgentsPage() {
       ? providerSummary[0]?.session ?? providerSummary[0]?.provider ?? 'n/a'
       : providerSummary.length > 1
         ? `${providerSummary.length} providers`
-        : legacyRuntime?.session ?? 'n/a';
+        : 'n/a';
     return {
       session: sessionLabel,
       totalPanes: runtimeSlots.length,
@@ -217,7 +196,7 @@ export function AgentsPage() {
       failedCraftsmen: craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')).length,
       unhealthyPanes: runtimeSlots.filter((slot) => !slot.ready).length,
     };
-  }, [craftsmanRuntime, craftsmen, runtimeSlots, legacyRuntime]);
+  }, [craftsmanRuntime, craftsmen, runtimeSlots]);
   const visibleCraftsmen = useMemo(() => {
     const filtered = craftsmenFilter === 'all'
       ? craftsmen
@@ -962,7 +941,7 @@ export function AgentsPage() {
             <section className="space-y-4">
               <div className="section-title-row">
                 <h3 className="section-title">{copy.runtimeTitle}</h3>
-                <span className="status-pill status-pill--neutral">{legacyRuntime?.session ?? 'n/a'}</span>
+                <span className="status-pill status-pill--neutral">{runtimeSummary.session}</span>
               </div>
               {runtimeSlots.length === 0 ? (
                 <div className="empty-state">

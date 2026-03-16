@@ -76,33 +76,6 @@ export const craftsmanStatusItemSchema = z.object({
   })),
 });
 
-export const tmuxRuntimePaneSchema = z.object({
-  agent: z.string(),
-  pane_id: z.string().nullable(),
-  current_command: z.string().nullable(),
-  active: z.boolean(),
-  ready: z.boolean(),
-  tail_preview: z.string().nullable(),
-  continuity_backend: z.enum(['claude_session_id', 'codex_session_file', 'gemini_session_id', 'unknown']),
-  resume_capability: z.enum(['native_resume', 'resume_last', 'none']),
-  session_reference: z.string().nullable(),
-  identity_source: z.enum(['registry_default', 'runtime_gateway', 'plugin_event', 'hook_event', 'session_file', 'chat_file', 'latest_fallback', 'manual', 'transport_session']),
-  identity_source_rank: z.number().int().nonnegative(),
-  identity_path: z.string().nullable().optional(),
-  session_observed_at: z.string().nullable().optional(),
-  identity_conflict_count: z.number().int().nonnegative(),
-  last_rejected_identity_source: z.enum(['registry_default', 'runtime_gateway', 'plugin_event', 'hook_event', 'session_file', 'chat_file', 'latest_fallback', 'manual', 'transport_session']).nullable().optional(),
-  last_rejected_session_reference: z.string().nullable().optional(),
-  last_rejected_observed_at: z.string().nullable().optional(),
-  last_recovery_mode: z.enum(['fresh_start', 'resume_exact', 'resume_latest', 'resume_last']).nullable(),
-  transport_session_id: z.string().nullable(),
-});
-
-export const tmuxRuntimeSchema = z.object({
-  session: z.string().nullable(),
-  panes: z.array(tmuxRuntimePaneSchema),
-});
-
 export const craftsmanRuntimeProviderSchema = z.enum(['tmux', 'acpx', 'unknown']);
 
 export const craftsmanRuntimeSlotSchema = z.object({
@@ -217,7 +190,6 @@ export const agentsStatusSchema = z.object({
   channel_summaries: z.array(agentChannelSummarySchema),
   host_summaries: z.array(agentHostSummarySchema),
   craftsman_runtime: craftsmanRuntimeSchema.nullable().optional(),
-  tmux_runtime: tmuxRuntimeSchema.nullable(),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
 

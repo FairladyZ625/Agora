@@ -44,9 +44,6 @@ import {
   createProjectRequestSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
-  tmuxSendKeysRequestSchema,
-  tmuxSendTextRequestSchema,
-  tmuxSubmitChoiceRequestSchema,
 } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
@@ -592,10 +589,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .command('archive')
     .description('archive control commands');
 
-  addRedirectCommand(program, 'tmux', 'agora craftsman tmux', [
-    'agora craftsman tmux --help',
-    'agora craftsman tmux status',
-  ]);
   addRedirectCommand(program, 'users', 'agora dashboard users', [
     'agora dashboard users list',
     'agora dashboard users add --username alice --password secret',
@@ -2009,10 +2002,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `craftsman choice 已提交: ${execution.executionId}`);
     });
 
-  const tmux = craftsman
-    .command('tmux')
-    .description('legacy debug tmux commands for old craftsmen panes and recovery flows');
-
   const runtime = craftsman
     .command('runtime')
     .description('generic runtime identity and observability commands');
@@ -2022,168 +2011,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardUsers = dashboard
     .command('users')
     .description('dashboard human account commands');
-
-  tmux
-    .command('up')
-    .description('初始化 legacy tmux craftsmen session')
-    .action(() => {
-      const result = tmuxRuntimeService.up();
-      writeLine(stdout, `tmux session 已就绪: ${result.session}`);
-      for (const pane of result.panes) {
-        writeLine(stdout, `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}`);
-      }
-    });
-
-  tmux
-    .command('status')
-    .description('查看 legacy tmux pane 状态')
-    .action(() => {
-      const result = tmuxRuntimeService.status();
-      for (const pane of result.panes) {
-        writeLine(
-          stdout,
-          `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}\t${pane.identityPath ?? '-'}\t${pane.sessionObservedAt ?? '-'}`,
-        );
-      }
-    });
-
-  tmux
-    .command('send')
-    .description('向指定 legacy tmux pane 发送原始命令')
-    .argument('<agent>', 'agent pane name')
-    .argument('<command>', 'raw shell command')
-    .action((agent: string, command: string) => {
-      tmuxRuntimeService.send(agent, command);
-      writeLine(stdout, `tmux command 已发送: ${agent}`);
-    });
-
-  tmux
-    .command('send-text')
-    .description('向指定 legacy tmux pane 发送文本输入')
-    .argument('<agent>', 'agent pane name')
-    .argument('<text>', 'text input')
-    .option('--no-submit', '发送后不自动回车')
-    .action((agent: string, text: string, options: { submit?: boolean }) => {
-      const payload = tmuxSendTextRequestSchema.parse({
-        agent,
-        text,
-        submit: options.submit ?? true,
-      });
-      tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
-      writeLine(stdout, `tmux text 已发送: ${agent}`);
-    });
-
-  tmux
-    .command('send-keys')
-    .description('向指定 legacy tmux pane 发送结构化按键')
-    .argument('<agent>', 'agent pane name')
-    .argument('<keys...>', 'keys like Down Tab Enter')
-    .action((agent: string, keys: CraftsmanInputKeyDto[]) => {
-      const payload = tmuxSendKeysRequestSchema.parse({
-        agent,
-        keys,
-      });
-      tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
-      writeLine(stdout, `tmux keys 已发送: ${agent}`);
-    });
-
-  tmux
-    .command('submit-choice')
-    .description('向指定 legacy tmux pane 提交 choice，自动补 Enter')
-    .argument('<agent>', 'agent pane name')
-    .argument('[keys...]', 'optional navigation keys before submit')
-    .action((agent: string, keys: CraftsmanInputKeyDto[] = []) => {
-      const payload = tmuxSubmitChoiceRequestSchema.parse({
-        agent,
-        keys,
-      });
-      tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
-      writeLine(stdout, `tmux choice 已提交: ${agent}`);
-    });
-
-  tmux
-    .command('start')
-    .description('启动指定 agent 的 legacy interactive runtime')
-    .argument('<agent>', 'agent pane name')
-    .action((agent: string) => {
-      const result = tmuxRuntimeService.start(agent, process.cwd());
-      writeLine(stdout, `legacy runtime 已启动 (tmux): ${agent}`);
-      writeLine(stdout, `pane: ${result.pane ?? '-'}`);
-      writeLine(stdout, `mode: ${result.recoveryMode}`);
-      writeLine(stdout, `command: ${result.command}`);
-    });
-
-  tmux
-    .command('resume')
-    .description('恢复指定 agent 的 legacy interactive runtime')
-    .argument('<agent>', 'agent pane name')
-    .argument('[sessionReference]', 'resume session reference')
-    .action((agent: string, sessionReference?: string) => {
-      const result = tmuxRuntimeService.resume(agent, sessionReference ?? null, process.cwd());
-      writeLine(stdout, `legacy runtime 已恢复 (tmux): ${agent}`);
-      writeLine(stdout, `pane: ${result.pane ?? '-'}`);
-      writeLine(stdout, `mode: ${result.recoveryMode}`);
-      writeLine(stdout, `command: ${result.command}`);
-    });
-
-  tmux
-    .command('task')
-    .description('通过 legacy tmux pane 派发一条简短 CLI 任务')
-    .argument('<agent>', 'agent pane name')
-    .argument('<prompt>', 'prompt')
-    .option('--workdir <workdir>', '工作目录')
-    .action((agent: string, prompt: string, options: { workdir?: string }) => {
-      const result = tmuxRuntimeService.task(agent, {
-        execution_id: `tmux-${Date.now()}`,
-        task_id: 'TMUX',
-        stage_id: 'dispatch',
-        subtask_id: `${agent}-tmux-task`,
-        adapter: agent,
-        mode: 'one_shot',
-        workdir: options.workdir ?? process.cwd(),
-        prompt,
-        brief_path: null,
-      });
-      writeLine(stdout, `tmux task 已派发: ${result.session_id ?? '-'}`);
-    });
-
-  tmux
-    .command('tail')
-    .description('查看 legacy tmux pane 最近输出')
-    .argument('<agent>', 'agent pane name')
-    .option('--lines <lines>', '输出行数', '40')
-    .action((agent: string, options: { lines: string }) => {
-      writeLine(stdout, tmuxRuntimeService.tail(agent, Number(options.lines)));
-    });
-
-  tmux
-    .command('doctor')
-    .description('查看 legacy tmux pane readiness')
-    .action(() => {
-      const result = tmuxRuntimeService.doctor();
-      for (const pane of result.panes) {
-        writeLine(
-          stdout,
-          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}\t${pane.identityPath ?? '-'}\t${pane.sessionObservedAt ?? '-'}`,
-        );
-      }
-    });
-
-  tmux
-    .command('down')
-    .description('关闭 legacy tmux craftsmen session')
-    .action(() => {
-      const result = tmuxRuntimeService.status();
-      tmuxRuntimeService.down();
-      writeLine(stdout, `tmux session 已关闭: ${result.session}`);
-    });
-
-  tmux.addHelpText('after', [
-    '',
-    'Legacy debug surface:',
-    '  ACPX is now the default craftsman runtime.',
-    '  Use `agora craftsman tmux *` only for transitional debugging or recovery of old tmux-backed sessions.',
-  ].join('\n'));
 
   runtime
     .command('identity')

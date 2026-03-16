@@ -1,4 +1,4 @@
-import type { CraftsmanRuntimeStatus, TmuxRuntimeStatus } from '@/types/dashboard';
+import type { CraftsmanRuntimeStatus } from '@/types/dashboard';
 
 export type MemberKind = 'controller' | 'citizen' | 'craftsman';
 
@@ -31,11 +31,11 @@ export function normalizeRoleBindingId(role: string, value: string, memberKind?:
   return isCraftsmanRole(role, memberKind) ? normalizeCraftsmanId(value) : value;
 }
 
-export function buildCraftsmanInventory(runtime: CraftsmanRuntimeStatus | TmuxRuntimeStatus | null): string[] {
+export function buildCraftsmanInventory(runtime: CraftsmanRuntimeStatus | null): string[] {
   if (!runtime) {
     return [];
   }
-  const agents = 'slots' in runtime ? runtime.slots.map((slot) => slot.agent) : runtime.panes.map((pane) => pane.agent);
+  const agents = runtime.slots.map((slot) => slot.agent);
   return Array.from(new Set(agents.map((agent) => normalizeCraftsmanId(agent)))).sort((left, right) => (
     left.localeCompare(right)
   ));

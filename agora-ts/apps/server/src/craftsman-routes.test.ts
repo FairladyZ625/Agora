@@ -288,70 +288,6 @@ describe('craftsman routes', () => {
     });
   });
 
-  it('supports tmux structured input routes', async () => {
-    const calls: Array<{ kind: string; agent: string; payload: unknown }> = [];
-    const app = buildApp({
-      tmuxRuntimeService: {
-        up: () => ({ session: 'agora-craftsmen', panes: [] }),
-        status: () => ({ session: 'agora-craftsmen', panes: [] }),
-        doctor: () => ({ session: 'agora-craftsmen', panes: [] }),
-        send: () => undefined,
-        sendText: (agent: string, text: string, submit = true) => {
-          calls.push({ kind: 'text', agent, payload: { text, submit } });
-        },
-        sendKeys: (agent: string, keys: string[]) => {
-          calls.push({ kind: 'keys', agent, payload: keys });
-        },
-        submitChoice: (agent: string, keys: string[]) => {
-          calls.push({ kind: 'choice', agent, payload: keys });
-        },
-        task: () => ({
-          status: 'running' as const,
-          session_id: 'tmux:agora-craftsmen:codex',
-          started_at: '2026-03-13T12:30:00.000Z',
-        }),
-        tail: () => 'tail output',
-        down: () => undefined,
-        recordIdentity: () => ({
-          continuityBackend: 'codex_session_file' as const,
-          resumeCapability: 'native_resume' as const,
-          sessionReference: 'codex-session-456',
-          identitySource: 'hook_event' as const,
-          identityPath: null,
-          sessionObservedAt: '2026-03-13T12:31:00.000Z',
-          workspaceRoot: '/tmp/codex',
-          lastRecoveryMode: 'resume_exact' as const,
-          transportSessionId: 'tmux:agora-craftsmen:codex',
-        }),
-      },
-    });
-
-    const sendText = await app.inject({
-      method: 'POST',
-      url: '/api/craftsmen/tmux/send-text',
-      payload: { agent: 'codex', text: 'Need approval', submit: false },
-    });
-    const sendKeys = await app.inject({
-      method: 'POST',
-      url: '/api/craftsmen/tmux/send-keys',
-      payload: { agent: 'codex', keys: ['Down', 'Tab'] },
-    });
-    const submitChoice = await app.inject({
-      method: 'POST',
-      url: '/api/craftsmen/tmux/submit-choice',
-      payload: { agent: 'codex', keys: ['Down'] },
-    });
-
-    expect(sendText.statusCode).toBe(200);
-    expect(sendKeys.statusCode).toBe(200);
-    expect(submitChoice.statusCode).toBe(200);
-    expect(calls).toEqual([
-      { kind: 'text', agent: 'codex', payload: { text: 'Need approval', submit: false } },
-      { kind: 'keys', agent: 'codex', payload: ['Down', 'Tab'] },
-      { kind: 'choice', agent: 'codex', payload: ['Down'] },
-    ]);
-  });
-
   it('supports execution-scoped craftsman input routes', async () => {
     const calls: Array<{ kind: string; executionId: string; payload: unknown }> = [];
     const app = buildApp({
@@ -620,24 +556,9 @@ describe('craftsman routes', () => {
     });
   });
 
-  it('exposes runtime status/doctor plus legacy tmux debug routes', async () => {
+  it('exposes provider-neutral runtime status, doctor, tail, and identity routes', async () => {
     const app = buildApp({
       tmuxRuntimeService: {
-        up: () => ({
-          session: 'agora-craftsmen',
-          panes: [{
-            id: '%0',
-            title: 'codex',
-            currentCommand: 'bash',
-            active: true,
-            continuityBackend: 'codex_session_file',
-            resumeCapability: 'native_resume',
-            sessionReference: 'codex-session-123',
-            identitySource: 'session_file',
-            lastRecoveryMode: 'resume_exact',
-            transportSessionId: 'tmux:agora-craftsmen:codex',
-          }],
-        }),
         status: () => ({
           session: 'agora-craftsmen',
           panes: [{
@@ -653,10 +574,6 @@ describe('craftsman routes', () => {
             transportSessionId: 'tmux:agora-craftsmen:codex',
           }],
         }),
-        send: () => {},
-        sendText: () => {},
-        sendKeys: () => {},
-        submitChoice: () => {},
         recordIdentity: () => ({
           continuityBackend: 'codex_session_file',
           resumeCapability: 'native_resume',
@@ -667,11 +584,6 @@ describe('craftsman routes', () => {
           workspaceRoot: '/tmp/codex',
           lastRecoveryMode: 'resume_exact' as const,
           transportSessionId: 'tmux:agora-craftsmen:codex',
-        }),
-        task: () => ({
-          status: 'running',
-          session_id: 'tmux:agora-craftsmen:codex',
-          started_at: '2026-03-08T23:00:00.000Z',
         }),
         tail: () => 'tmux tail output',
         doctor: () => ({
@@ -690,7 +602,6 @@ describe('craftsman routes', () => {
             transportSessionId: 'tmux:agora-craftsmen:codex',
           }],
         }),
-        down: () => {},
       },
     });
 
@@ -701,23 +612,6 @@ describe('craftsman routes', () => {
     const doctorResponse = await app.inject({
       method: 'GET',
       url: '/api/craftsmen/runtime/doctor',
-    });
-    const sendResponse = await app.inject({
-      method: 'POST',
-      url: '/api/craftsmen/tmux/send',
-      payload: {
-        agent: 'codex',
-        command: 'echo hello',
-      },
-    });
-    const taskResponse = await app.inject({
-      method: 'POST',
-      url: '/api/craftsmen/tmux/task',
-      payload: {
-        agent: 'codex',
-        prompt: 'Implement via tmux api',
-        workdir: '/tmp/codex',
-      },
     });
     const tailResponse = await app.inject({
       method: 'GET',
@@ -769,17 +663,6 @@ describe('craftsman routes', () => {
         transportSessionId: 'tmux:agora-craftsmen:codex',
       }],
     });
-    expect(sendResponse.statusCode).toBe(200);
-    expect(sendResponse.headers.deprecation).toBe('true');
-    expect(sendResponse.headers['x-agora-legacy-surface']).toBe('tmux');
-    expect(sendResponse.json()).toEqual({ ok: true });
-    expect(taskResponse.statusCode).toBe(200);
-    expect(taskResponse.headers.deprecation).toBe('true');
-    expect(taskResponse.headers['x-agora-legacy-surface']).toBe('tmux');
-    expect(taskResponse.json()).toMatchObject({
-      status: 'running',
-      session_id: 'tmux:agora-craftsmen:codex',
-    });
     expect(tailResponse.statusCode).toBe(200);
     expect(tailResponse.json()).toEqual({ output: 'tmux tail output' });
     expect(identityResponse.statusCode).toBe(200);
@@ -798,20 +681,5 @@ describe('craftsman routes', () => {
       },
     });
 
-    const legacyStatusResponse = await app.inject({
-      method: 'GET',
-      url: '/api/craftsmen/tmux/status',
-    });
-    const legacyDoctorResponse = await app.inject({
-      method: 'GET',
-      url: '/api/craftsmen/tmux/doctor',
-    });
-
-    expect(legacyStatusResponse.statusCode).toBe(200);
-    expect(legacyStatusResponse.headers.deprecation).toBe('true');
-    expect(legacyStatusResponse.headers['x-agora-legacy-surface']).toBe('tmux');
-    expect(legacyDoctorResponse.statusCode).toBe(200);
-    expect(legacyDoctorResponse.headers.deprecation).toBe('true');
-    expect(legacyDoctorResponse.headers['x-agora-legacy-surface']).toBe('tmux');
   });
 });

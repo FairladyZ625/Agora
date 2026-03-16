@@ -117,7 +117,7 @@ describe('agora-ts contracts bootstrap', () => {
             account_id: 'main',
           }],
         }],
-        tmux_runtime: null,
+        craftsman_runtime: null,
       }).summary.active_tasks,
     ).toBe(1);
 

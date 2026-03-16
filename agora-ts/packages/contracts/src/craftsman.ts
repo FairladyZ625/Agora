@@ -150,25 +150,6 @@ export const craftsmanRuntimeIdentityRequestSchema = z.object({
 });
 export type CraftsmanRuntimeIdentityRequestDto = z.infer<typeof craftsmanRuntimeIdentityRequestSchema>;
 
-export const tmuxSendTextRequestSchema = z.object({
-  agent: z.string().min(1),
-  text: z.string(),
-  submit: z.boolean().optional().default(true),
-}).strict();
-export type TmuxSendTextRequestDto = z.infer<typeof tmuxSendTextRequestSchema>;
-
-export const tmuxSendKeysRequestSchema = z.object({
-  agent: z.string().min(1),
-  keys: z.array(craftsmanInputKeySchema).min(1),
-}).strict();
-export type TmuxSendKeysRequestDto = z.infer<typeof tmuxSendKeysRequestSchema>;
-
-export const tmuxSubmitChoiceRequestSchema = z.object({
-  agent: z.string().min(1),
-  keys: z.array(craftsmanInputKeySchema).optional().default([]),
-}).strict();
-export type TmuxSubmitChoiceRequestDto = z.infer<typeof tmuxSubmitChoiceRequestSchema>;
-
 export const craftsmanExecutionSendTextRequestSchema = z.object({
   execution_id: z.string().min(1),
   text: z.string(),

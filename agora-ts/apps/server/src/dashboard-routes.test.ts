@@ -98,7 +98,32 @@ describe('dashboard routes', () => {
 
     expect(agents.statusCode).toBe(200);
     expect(agents.json().summary.active_tasks).toBe(1);
-    expect(agents.json().tmux_runtime).toBeNull();
+    expect(agents.json().craftsman_runtime).toEqual({
+      providers: [{
+        provider: 'tmux',
+        session: null,
+        slot_count: 1,
+        ready_slots: 1,
+        active_slots: 1,
+      }],
+      slots: [{
+        provider: 'tmux',
+        agent: 'codex',
+        session_id: 'tmux:agora-craftsmen:codex',
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+        status: 'running',
+        ready: true,
+        active: true,
+        current_command: null,
+        tail_preview: null,
+        session_reference: 'tmux:agora-craftsmen:codex',
+        execution_id: 'exec-route-dashboard-1',
+        task_id: 'OC-500',
+        subtask_id: 'api',
+        title: 'API',
+      }],
+    });
     expect(agents.json().craftsmen[0].recent_executions[0]).toMatchObject({
       execution_id: 'exec-route-dashboard-1',
       transport: 'tmux-pane',
@@ -780,74 +805,7 @@ describe('dashboard routes', () => {
       }),
     });
     expect(agents.statusCode).toBe(200);
-    expect(agents.json().tmux_runtime).toEqual({
-      session: 'agora-craftsmen',
-      panes: [
-        {
-          agent: 'claude',
-          pane_id: '%1',
-          current_command: 'bash',
-          active: false,
-          ready: true,
-          tail_preview: null,
-          continuity_backend: 'claude_session_id',
-          resume_capability: 'native_resume',
-          session_reference: null,
-          identity_source: 'registry_default',
-          identity_source_rank: 0,
-          identity_path: null,
-          session_observed_at: null,
-          identity_conflict_count: 0,
-          last_rejected_identity_source: null,
-          last_rejected_session_reference: null,
-          last_rejected_observed_at: null,
-          last_recovery_mode: null,
-          transport_session_id: null,
-        },
-        {
-          agent: 'codex',
-          pane_id: '%0',
-          current_command: 'bash',
-          active: true,
-          ready: true,
-          tail_preview: null,
-          continuity_backend: 'codex_session_file',
-          resume_capability: 'native_resume',
-          session_reference: null,
-          identity_source: 'registry_default',
-          identity_source_rank: 0,
-          identity_path: null,
-          session_observed_at: null,
-          identity_conflict_count: 0,
-          last_rejected_identity_source: null,
-          last_rejected_session_reference: null,
-          last_rejected_observed_at: null,
-          last_recovery_mode: null,
-          transport_session_id: null,
-        },
-        {
-          agent: 'gemini',
-          pane_id: '%2',
-          current_command: 'bash',
-          active: false,
-          ready: true,
-          tail_preview: null,
-          continuity_backend: 'gemini_session_id',
-          resume_capability: 'native_resume',
-          session_reference: 'gemini-runtime-123',
-          identity_source: 'runtime_gateway',
-          identity_source_rank: 80,
-          identity_path: '/tmp/runtime/session.json',
-          session_observed_at: '2026-03-08T13:00:00Z',
-          identity_conflict_count: 2,
-          last_rejected_identity_source: 'chat_file',
-          last_rejected_session_reference: 'gemini-chat-file-999',
-          last_rejected_observed_at: '2026-03-08T12:00:00Z',
-          last_recovery_mode: null,
-          transport_session_id: null,
-        },
-      ],
-    });
+    expect(agents.json().craftsman_runtime).toBeTruthy();
   });
 });
 

@@ -3,9 +3,6 @@ import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
   craftsmanExecutionSchema,
-  tmuxSendKeysRequestSchema,
-  tmuxSendTextRequestSchema,
-  tmuxSubmitChoiceRequestSchema,
   craftsmanRuntimeIdentityRequestSchema,
 } from './craftsman.js';
 
@@ -126,23 +123,5 @@ describe('craftsman contracts', () => {
         identity_source: 'plugin_event',
       }).identity_source,
     ).toBe('plugin_event');
-  });
-
-  it('parses structured tmux input requests', () => {
-    expect(tmuxSendTextRequestSchema.parse({
-      agent: 'codex',
-      text: 'Continue with the implementation plan',
-      submit: false,
-    }).submit).toBe(false);
-
-    expect(tmuxSendKeysRequestSchema.parse({
-      agent: 'claude',
-      keys: ['Down', 'Down', 'Tab'],
-    }).keys).toEqual(['Down', 'Down', 'Tab']);
-
-    expect(tmuxSubmitChoiceRequestSchema.parse({
-      agent: 'gemini',
-      keys: ['Down'],
-    }).keys).toEqual(['Down']);
   });
 });

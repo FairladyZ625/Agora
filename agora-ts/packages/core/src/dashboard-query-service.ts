@@ -158,7 +158,6 @@ export class DashboardQueryService {
         includeAffectedAgents: options.includeHostAffectedAgents,
       }),
       craftsman_runtime: buildCraftsmanRuntime(craftsmen, tmuxRuntime),
-      tmux_runtime: tmuxRuntime,
     };
   }
 
@@ -564,10 +563,35 @@ export class DashboardQueryService {
   }
 }
 
+type LegacyTmuxRuntimeView = {
+  session: string | null;
+  panes: Array<{
+    agent: string;
+    pane_id: string | null;
+    current_command: string | null;
+    active: boolean;
+    ready: boolean;
+    tail_preview: string | null;
+    continuity_backend: 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
+    resume_capability: 'native_resume' | 'resume_last' | 'none';
+    session_reference: string | null;
+    identity_source: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
+    identity_source_rank: number;
+    identity_path?: string | null;
+    session_observed_at?: string | null;
+    identity_conflict_count: number;
+    last_rejected_identity_source?: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session' | null;
+    last_rejected_session_reference?: string | null;
+    last_rejected_observed_at?: string | null;
+    last_recovery_mode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
+    transport_session_id: string | null;
+  }>;
+} | null;
+
 function buildTmuxRuntime(
   tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
   options: { includeTailPreview: boolean },
-): AgentsStatusDto['tmux_runtime'] {
+): LegacyTmuxRuntimeView {
   if (!tmuxRuntimeService) {
     return null;
   }
@@ -634,7 +658,7 @@ function normalizeTmuxRuntimeAgent(value: string) {
 
 function buildCraftsmanRuntime(
   craftsmen: AgentsStatusDto['craftsmen'],
-  tmuxRuntime: AgentsStatusDto['tmux_runtime'],
+  tmuxRuntime: LegacyTmuxRuntimeView,
 ): AgentsStatusDto['craftsman_runtime'] {
   type CraftsmanRuntime = NonNullable<AgentsStatusDto['craftsman_runtime']>;
   type CraftsmanRuntimeSlot = CraftsmanRuntime['slots'][number];

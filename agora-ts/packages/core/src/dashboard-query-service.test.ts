@@ -648,7 +648,7 @@ describe('dashboard query service', () => {
         overall_presence: 'online',
       }),
     ]));
-    expect(agentsStatus.tmux_runtime).toBeNull();
+    expect(agentsStatus.craftsman_runtime).toBeNull();
   });
 
   it('does not project closed live sessions into the active agent summary', () => {
@@ -1122,74 +1122,6 @@ describe('dashboard query service', () => {
 
     const agentsStatus = queries.getAgentsStatus();
 
-    expect(agentsStatus.tmux_runtime).toEqual({
-      session: 'agora-craftsmen',
-      panes: [
-        {
-          agent: 'claude',
-          pane_id: '%1',
-          current_command: 'bash',
-          active: false,
-          ready: true,
-          tail_preview: null,
-          continuity_backend: 'claude_session_id',
-          resume_capability: 'native_resume',
-          session_reference: null,
-          identity_source: 'registry_default',
-          identity_source_rank: 0,
-          identity_path: null,
-          session_observed_at: null,
-          identity_conflict_count: 0,
-          last_rejected_identity_source: null,
-          last_rejected_session_reference: null,
-          last_rejected_observed_at: null,
-          last_recovery_mode: null,
-          transport_session_id: null,
-        },
-        {
-          agent: 'codex',
-          pane_id: '%0',
-          current_command: 'bash',
-          active: true,
-          ready: true,
-          tail_preview: null,
-          continuity_backend: 'codex_session_file',
-          resume_capability: 'native_resume',
-          session_reference: 'codex-session-123',
-          identity_source: 'session_file',
-          identity_source_rank: 0,
-          identity_path: null,
-          session_observed_at: null,
-          identity_conflict_count: 0,
-          last_rejected_identity_source: null,
-          last_rejected_session_reference: null,
-          last_rejected_observed_at: null,
-          last_recovery_mode: 'resume_exact',
-          transport_session_id: 'tmux:agora-craftsmen:codex',
-        },
-        {
-          agent: 'gemini',
-          pane_id: null,
-          current_command: null,
-          active: false,
-          ready: false,
-          tail_preview: null,
-          continuity_backend: 'gemini_session_id',
-          resume_capability: 'native_resume',
-          session_reference: null,
-          identity_source: 'registry_default',
-          identity_source_rank: 0,
-          identity_path: null,
-          session_observed_at: null,
-          identity_conflict_count: 0,
-          last_rejected_identity_source: null,
-          last_rejected_session_reference: null,
-          last_rejected_observed_at: null,
-          last_recovery_mode: null,
-          transport_session_id: null,
-        },
-      ],
-    });
     expect(agentsStatus.craftsman_runtime).toEqual({
       providers: [
         {
