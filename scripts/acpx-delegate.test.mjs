@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildClaudeConfigOverride,
   buildCommonArgs,
   buildPromptPayloadArgs,
   buildSessionBootstrapArgs,
   buildSessionModelSetArgs,
+  shouldRetryClaudeSessionPrompt,
   parseArgs,
 } from "./acpx-delegate.mjs";
 
@@ -55,7 +57,7 @@ test("parseArgs applies claude-session-sonnet profile defaults without forcing a
   ]);
   assert.equal(parsed.agent, "claude");
   assert.equal(parsed.mode, "session");
-  assert.equal(parsed.model, null);
+  assert.equal(parsed.model, "sonnet");
   assert.equal(parsed.sessionName, "review-auth");
 });
 
@@ -131,13 +133,13 @@ test("buildCommonArgs can skip model forwarding for session mode", () => {
   ]);
 });
 
-test("buildSessionModelSetArgs emits internal model sync command for named sessions", () => {
+test("buildSessionModelSetArgs still emits model sync for non-Claude named sessions", () => {
   const args = buildSessionModelSetArgs(["-y", "acpx@latest"], {
-    agent: "claude",
+    agent: "codex",
     mode: "session",
     cwd: "/tmp/project",
     sessionName: "review-auth",
-    model: "opus",
+    model: "gpt-5.4",
     verbose: true,
   });
   assert.deepEqual(args, [
@@ -145,14 +147,14 @@ test("buildSessionModelSetArgs emits internal model sync command for named sessi
     "--cwd", "/tmp/project",
     "--format", "quiet",
     "--verbose",
-    "claude",
+    "codex",
     "set",
     "--session", "review-auth",
-    "model", "opus",
+    "model", "gpt-5.4",
   ]);
 });
 
-test("buildSessionModelSetArgs skips fragile Claude session model aliases", () => {
+test("buildSessionModelSetArgs skips Claude session model forcing entirely", () => {
   assert.equal(buildSessionModelSetArgs([], {
     agent: "claude",
     mode: "session",
@@ -160,6 +162,34 @@ test("buildSessionModelSetArgs skips fragile Claude session model aliases", () =
     sessionName: "review-auth",
     model: "sonnet",
     verbose: false,
+  }), null);
+  assert.equal(buildSessionModelSetArgs([], {
+    agent: "claude",
+    mode: "session",
+    cwd: "/tmp/project",
+    sessionName: "review-auth",
+    model: "opus",
+    verbose: false,
+  }), null);
+});
+
+test("buildClaudeConfigOverride creates a stable Claude config scope for session model bootstrapping", () => {
+  const override = buildClaudeConfigOverride({
+    agent: "claude",
+    mode: "session",
+    cwd: "/tmp/project",
+    sessionName: "review-auth",
+    model: "sonnet",
+  });
+  assert.ok(override);
+  assert.equal(override.settings.model, "sonnet");
+  assert.match(override.configDir, /\/\.agora\/acpx-delegate\/claude-config\/[0-9a-f]{12}$/);
+  assert.equal(buildClaudeConfigOverride({
+    agent: "codex",
+    mode: "session",
+    cwd: "/tmp/project",
+    sessionName: "review-auth",
+    model: "gpt-5.4",
   }), null);
 });
 
@@ -221,6 +251,35 @@ test("buildPromptPayloadArgs prefers file passthrough over inline prompt", () =>
   assert.deepEqual(buildPromptPayloadArgs({
     file: null,
   }, "hello"), ["hello"]);
+});
+
+test("shouldRetryClaudeSessionPrompt retries only on reconnect-only first pass", () => {
+  assert.equal(shouldRetryClaudeSessionPrompt({
+    agent: "claude",
+    mode: "session",
+  }, {
+    code: 0,
+    stdout: "[acpx] session foo · agent needs reconnect",
+    stderr: "",
+  }), true);
+
+  assert.equal(shouldRetryClaudeSessionPrompt({
+    agent: "claude",
+    mode: "session",
+  }, {
+    code: 0,
+    stdout: "ACPX session followup ok\n\n[done] end_turn",
+    stderr: "",
+  }), false);
+
+  assert.equal(shouldRetryClaudeSessionPrompt({
+    agent: "claude",
+    mode: "exec",
+  }, {
+    code: 0,
+    stdout: "[acpx] agent needs reconnect",
+    stderr: "",
+  }), false);
 });
 
 test("buildSessionModelSetArgs returns null when model sync is not needed", () => {

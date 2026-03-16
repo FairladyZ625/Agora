@@ -38,6 +38,8 @@ This skill adds Agora-local conventions:
 - default full-permission mode
 - Claude routing guardrails
 - explicit first-turn session strategy
+- wrapper-managed `CLAUDE_CONFIG_DIR` bootstrap for Claude session defaults
+- one automatic reconnect retry for Claude session first-turn bootstrap
 - local caveats around Claude named sessions
 
 ## Command model
@@ -180,8 +182,9 @@ Agora wrapper behavior adds:
 - `session` mode uses `sessions ensure` by default
 - `--fresh-session` switches that first step to `sessions new`
 - `--resume-session <id>` uses `sessions ensure --resume-session <id>`
-- for `claude + session + --model <id>`, the wrapper runs `acpx <agent> set --session <name> model <id>` before sending the prompt
-- exception: `claude + session + --model sonnet|default` does **not** force `set model`, because that path is currently unstable in this environment
+- for `claude + session + --model <id>`, the wrapper now bootstraps a wrapper-managed `CLAUDE_CONFIG_DIR` with `settings.json` so the session starts with the intended default model
+- the wrapper no longer relies on `session/set_config_option model=...` for Claude session routing
+- if the first Claude session prompt returns `agent needs reconnect`, the wrapper retries that prompt once automatically
 
 This matters because Claude named sessions can drift:
 

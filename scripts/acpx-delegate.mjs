@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
+import { mkdirSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import process from "node:process";
 
@@ -290,6 +294,9 @@ function applyProfileDefaults(options, explicit) {
     if (!explicit.mode) {
       options.mode = "session";
     }
+    if (!explicit.model) {
+      options.model = "sonnet";
+    }
     if (!explicit.permissionFlag) {
       options.permissionFlag = "--approve-all";
     }
@@ -390,7 +397,7 @@ export function buildSessionModelSetArgs(acpxArgs, options) {
   if (options.mode !== "session" || !options.sessionName || !options.model) {
     return null;
   }
-  if (options.agent === "claude" && (options.model === "sonnet" || options.model === "default")) {
+  if (options.agent === "claude") {
     return null;
   }
 
@@ -453,15 +460,64 @@ export function emitWrapperWarnings(options) {
     }
   }
   if (options.agent === "claude" && options.mode === "session" && options.model === "sonnet") {
-    process.stderr.write("[acpx-delegate] Warning: claude session + sonnet currently relies on the adapter default session model; the wrapper does not force set_config_option for sonnet because that path is unstable on this machine.\n");
+    process.stderr.write("[acpx-delegate] Info: claude session + sonnet will be bootstrapped via a wrapper-managed CLAUDE_CONFIG_DIR default model, not session/set_config_option.\n");
   }
 }
 
-export function spawnChecked(command, args) {
+export function shouldRetryClaudeSessionPrompt(options, runResult) {
+  if (options.agent !== "claude" || options.mode !== "session" || runResult.code !== 0) {
+    return false;
+  }
+  const combinedOutput = `${runResult.stdout}\n${runResult.stderr}`;
+  return combinedOutput.includes("agent needs reconnect") && !combinedOutput.includes("[done] end_turn");
+}
+
+export function buildClaudeConfigOverride(options) {
+  if (options.agent !== "claude" || options.mode !== "session" || !options.model) {
+    return null;
+  }
+
+  const scope = JSON.stringify({
+    cwd: resolve(options.cwd ?? process.cwd()),
+    sessionName: options.sessionName ?? "__default__",
+    model: options.model,
+  });
+  const digest = createHash("sha1").update(scope).digest("hex").slice(0, 12);
+  const configDir = resolve(
+    homedir(),
+    ".agora",
+    "acpx-delegate",
+    "claude-config",
+    digest,
+  );
+  const settingsPath = resolve(configDir, "settings.json");
+  return {
+    configDir,
+    settingsPath,
+    settings: {
+      model: options.model,
+    },
+  };
+}
+
+export function prepareInvocationEnv(options) {
+  const env = { ...process.env };
+  const override = buildClaudeConfigOverride(options);
+  if (!override) {
+    return env;
+  }
+
+  mkdirSync(dirname(override.settingsPath), { recursive: true });
+  writeFileSync(override.settingsPath, `${JSON.stringify(override.settings, null, 2)}\n`, "utf8");
+  env.CLAUDE_CONFIG_DIR = override.configDir;
+  return env;
+}
+
+export function spawnChecked(command, args, env = process.env) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
-      env: process.env,
+      env,
     });
 
     child.on("error", reject);
@@ -475,10 +531,46 @@ export function spawnChecked(command, args) {
   });
 }
 
+export function spawnObserved(command, args, env = process.env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["inherit", "pipe", "pipe"],
+      env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      stdout += text;
+      process.stdout.write(text);
+    });
+    child.stderr.on("data", (chunk) => {
+      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      stderr += text;
+      process.stderr.write(text);
+    });
+
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`Process terminated by signal ${signal}`));
+        return;
+      }
+      resolve({
+        code: code ?? 1,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   const prompt = await readPrompt(options);
   const acpx = resolveAcpxCommand();
+  const invocationEnv = prepareInvocationEnv(options);
   const commonArgs = buildCommonArgs(options, {
     includeModel: options.mode !== "session",
   });
@@ -488,7 +580,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (options.mode === "session") {
     const bootstrapArgs = buildSessionBootstrapArgs(acpx.args, options, commonArgs);
     if (bootstrapArgs) {
-      const ensureCode = await spawnChecked(acpx.command, bootstrapArgs);
+      const ensureCode = await spawnChecked(acpx.command, bootstrapArgs, invocationEnv);
       if (ensureCode !== 0) {
         process.exit(ensureCode);
       }
@@ -496,7 +588,7 @@ export async function main(argv = process.argv.slice(2)) {
 
     const modelSetArgs = buildSessionModelSetArgs(acpx.args, options);
     if (modelSetArgs) {
-      const setCode = await spawnChecked(acpx.command, modelSetArgs);
+      const setCode = await spawnChecked(acpx.command, modelSetArgs, invocationEnv);
       if (setCode !== 0) {
         process.exit(setCode);
       }
@@ -518,8 +610,14 @@ export async function main(argv = process.argv.slice(2)) {
     runArgs.push("-s", options.sessionName, ...buildPromptPayloadArgs(options, prompt));
   }
 
-  const code = await spawnChecked(acpx.command, runArgs);
-  process.exit(code);
+  const firstRun = await spawnObserved(acpx.command, runArgs, invocationEnv);
+  if (shouldRetryClaudeSessionPrompt(options, firstRun)) {
+    process.stderr.write("[acpx-delegate] Claude session reported reconnect on the first pass; retrying the prompt once.\n");
+    const retryRun = await spawnObserved(acpx.command, runArgs, invocationEnv);
+    process.exit(retryRun.code);
+  }
+
+  process.exit(firstRun.code);
 }
 
 const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
