@@ -96,7 +96,7 @@ export const craftsmanExecutionTailResponseSchema = z.object({
   execution_id: z.string().min(1),
   available: z.boolean(),
   output: z.string().nullable(),
-  source: z.enum(['tmux', 'unavailable']),
+  source: z.enum(['acpx', 'tmux', 'unavailable']),
 });
 export type CraftsmanExecutionTailResponseDto = z.infer<typeof craftsmanExecutionTailResponseSchema>;
 

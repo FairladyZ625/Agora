@@ -102,6 +102,7 @@ afterEach(() => {
   delete process.env.AGORA_BRAIN_PACK_ROOT;
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
+  delete process.env.AGORA_CRAFTSMAN_SERVER_MODE;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -345,6 +346,57 @@ describe('server runtime', () => {
     expect(runtime.liveSessionStore).toBe(liveSessionStore);
     expect(runtime.tmuxRuntimeService).toBe(tmuxRuntimeService);
     runtime.db.close();
+  });
+
+  it('wires acp craftsman ports into server composition when server mode is acp', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_CRAFTSMAN_SERVER_MODE = 'acp';
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    let capturedDeps: Record<string, string> | null = null;
+    let dispatcherRuntime: object | undefined;
+    let inputRuntime: object | undefined;
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: (context, deps) => {
+          capturedDeps = {
+            input: deps.craftsmanInputPort.constructor.name,
+            probe: deps.craftsmanExecutionProbePort.constructor.name,
+            tail: deps.craftsmanExecutionTailPort.constructor.name,
+            recovery: deps.runtimeRecoveryPort.constructor.name,
+          };
+          const adapters = Reflect.get(deps.craftsmanDispatcher as object, 'adapters') as Record<string, unknown> | undefined;
+          const adapter = adapters?.codex ?? adapters?.claude ?? adapters?.gemini;
+          dispatcherRuntime = adapter && typeof adapter === 'object'
+            ? Reflect.get(adapter, 'runtime') as object | undefined
+            : undefined;
+          inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
+          return new TaskService(context.db, {
+            templatesDir: context.templatesDir,
+          });
+        },
+      },
+    });
+
+    expect(capturedDeps).toEqual({
+      input: 'AcpCraftsmanInputPort',
+      probe: 'AcpCraftsmanProbePort',
+      tail: 'AcpCraftsmanTailPort',
+      recovery: 'AcpRuntimeRecoveryPort',
+    });
+    expect(dispatcherRuntime).toBeDefined();
+    expect(inputRuntime).toBe(dispatcherRuntime);
+    runtime.db.close();
+    delete process.env.AGORA_CRAFTSMAN_SERVER_MODE;
   });
 
   it('self-heals bundled bootstrap skill into runtime-visible skill roots on startup', () => {

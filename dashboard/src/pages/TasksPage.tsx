@@ -11,6 +11,7 @@ import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
+import { normalizeCraftsmanId } from '@/lib/orchestrationRoles';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -73,6 +74,10 @@ function formatGovernanceMemoryValue(status: TaskStatus | null | undefined, fall
     return `${Math.round(host.memoryUtilization * 100)}%`;
   }
   return fallback;
+}
+
+function displayAgentId(agentId: string) {
+  return normalizeCraftsmanId(agentId);
 }
 
 function TaskBlueprintSection({
@@ -601,7 +606,7 @@ export function TasksPage() {
             <strong className="dense-row__title">{subtask.title}</strong>
           </div>
           <div className="dense-row__meta">
-            <span>{subtask.assignee}</span>
+            <span>{displayAgentId(subtask.assignee)}</span>
             <span>{subtask.stage_id}</span>
             <span>{executionCount} {tasksPageCopy.executionCountUnit}</span>
           </div>
@@ -853,7 +858,7 @@ export function TasksPage() {
                             <span className="type-mono-sm">{selectedSubtask.id}</span>
                             <h4 className="type-heading-md mt-3">{selectedSubtask.title}</h4>
                             <p className="type-body-sm mt-3">
-                              {selectedSubtask.assignee}
+                              {displayAgentId(selectedSubtask.assignee)}
                               {' / '}
                               {selectedSubtask.stage_id}
                               {' / '}
@@ -1031,7 +1036,7 @@ export function TasksPage() {
                             <div className="space-y-2">
                               {activeGovernanceSnapshot.activeByAssignee.map((item) => (
                                 <div key={item.assignee} className="data-row">
-                                  <span className="type-mono-xs">{item.assignee}</span>
+                                  <span className="type-mono-xs">{displayAgentId(item.assignee)}</span>
                                   <span className="status-pill status-pill--neutral">{item.count}</span>
                                 </div>
                               ))}
@@ -1059,7 +1064,7 @@ export function TasksPage() {
                                   <div className="min-w-0 flex-1">
                                     <p className="type-mono-xs">{detail.executionId}</p>
                                     <p className="type-text-xs mt-1">
-                                      {detail.assignee}
+                                      {displayAgentId(detail.assignee)}
                                       {' / '}
                                       {detail.adapter}
                                       {' / '}
@@ -1091,7 +1096,7 @@ export function TasksPage() {
                           onClick={() => setActionActor(member.agentId)}
                           className={resolvedActionActor === member.agentId ? 'choice-pill choice-pill--active' : 'choice-pill'}
                         >
-                          {member.agentId}
+                          {displayAgentId(member.agentId)}
                         </button>
                       ))}
                     </div>
@@ -1382,7 +1387,7 @@ export function TasksPage() {
                       <div className="min-w-0 flex-1">
                         <p className="type-heading-xs">{subtask.title}</p>
                         <p className="type-text-xs mt-2">
-                          {subtask.assignee} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
+                          {displayAgentId(subtask.assignee)} / {subtask.craftsman_type ?? tasksPageCopy.subtaskFallbackType}
                         </p>
                       </div>
                       <span className="status-pill status-pill--neutral">{subtask.status}</span>

@@ -132,7 +132,7 @@ export interface CraftsmanExecution {
 export interface CraftsmanExecutionTail {
   available: boolean;
   output: string | null;
-  source: 'tmux' | 'unavailable';
+  source: 'tmux' | 'acpx' | 'unavailable';
   fetchedAt: string;
 }
 

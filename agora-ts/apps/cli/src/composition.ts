@@ -13,10 +13,15 @@ import { resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
   CitizenService,
+  AcpCraftsmanInputPort,
+  AcpCraftsmanProbePort,
+  AcpCraftsmanTailPort,
+  AcpRuntimeRecoveryPort,
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
+  DirectAcpxRuntimePort,
   DashboardQueryService,
   FilesystemProjectBrainQueryAdapter,
   FilesystemProjectKnowledgeAdapter,
@@ -37,6 +42,10 @@ import {
   TmuxCraftsmanTailPort,
   TmuxRuntimeRecoveryPort,
   type ProjectKnowledgePort,
+  type CraftsmanInputPort,
+  type CraftsmanExecutionProbePort,
+  type CraftsmanExecutionTailPort,
+  type RuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -67,7 +76,12 @@ export interface CliCompositionContext {
 }
 
 export interface CliCompositionFactories {
-  createCraftsmanDispatcher: (context: CliCompositionContext) => CraftsmanDispatcher;
+  createCraftsmanDispatcher: (
+    context: CliCompositionContext,
+    deps?: {
+      acpRuntime?: DirectAcpxRuntimePort;
+    },
+  ) => CraftsmanDispatcher;
   createAgentRuntimePort: (context: CliCompositionContext) => AgentRuntimePort;
   createIMMessagingPort: (context: CliCompositionContext) => IMMessagingPort;
   createIMProvisioningPort: (context: CliCompositionContext) => IMProvisioningPort | undefined;
@@ -101,10 +115,10 @@ export interface CliCompositionFactories {
       taskParticipationService: TaskParticipationService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
-      craftsmanInputPort: TmuxCraftsmanInputPort;
-      craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
-      craftsmanExecutionTailPort: TmuxCraftsmanTailPort;
-      runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
+      craftsmanInputPort: CraftsmanInputPort;
+      craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
+      craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
+      runtimeRecoveryPort: RuntimeRecoveryPort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -150,13 +164,16 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
   return {
-    createCraftsmanDispatcher: (context) => {
+    createCraftsmanDispatcher: (context, deps) => {
+      const mode = resolveCraftsmanRuntimeMode('cli');
+      const acpRuntime = mode === 'acp' ? (deps?.acpRuntime ?? new DirectAcpxRuntimePort()) : undefined;
       const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
         maxConcurrentRunning: context.config.craftsmen.max_concurrent_running,
         adapters: createDefaultCraftsmanAdapters({
-          mode: resolveCraftsmanRuntimeMode('cli'),
+          mode,
           callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
           apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
+          ...(acpRuntime ? { acpRuntime } : {}),
         }),
       };
       if (context.config.craftsmen.isolate_git_worktrees) {
@@ -313,7 +330,12 @@ export function createCliComposition(
     ...createDefaultCliCompositionFactories(),
     ...overrides,
   };
-  const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
+  const craftsmanMode = resolveCraftsmanRuntimeMode('cli');
+  const acpRuntime = craftsmanMode === 'acp' ? new DirectAcpxRuntimePort() : undefined;
+  const craftsmanDispatcher = factories.createCraftsmanDispatcher(
+    context,
+    acpRuntime ? { acpRuntime } : undefined,
+  );
   const agentRuntimePort = factories.createAgentRuntimePort(context);
   const messagingPort = factories.createIMMessagingPort(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -331,9 +353,6 @@ export function createCliComposition(
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
-    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
-    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
-    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
     taskBrainBindingService,
     taskBrainWorkspacePort,
     imProvisioningPort,
@@ -342,7 +361,7 @@ export function createCliComposition(
     taskParticipationService,
     projectService,
     agentRuntimePort,
-    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
+    ...createCraftsmanTransportDeps(craftsmanMode, tmuxRuntimeService, acpRuntime),
   });
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);
@@ -364,5 +383,32 @@ export function createCliComposition(
     rolePackService,
     dashboardQueryService,
     taskBrainBindingService,
+  };
+}
+
+function createCraftsmanTransportDeps(
+  mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
+  tmuxRuntimeService: TmuxRuntimeService,
+  acpRuntime?: DirectAcpxRuntimePort,
+): {
+  craftsmanInputPort: CraftsmanInputPort;
+  craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
+  craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
+  runtimeRecoveryPort: RuntimeRecoveryPort;
+} {
+  if (mode === 'acp') {
+    const runtime = acpRuntime ?? new DirectAcpxRuntimePort();
+    return {
+      craftsmanInputPort: new AcpCraftsmanInputPort(runtime),
+      craftsmanExecutionProbePort: new AcpCraftsmanProbePort(runtime),
+      craftsmanExecutionTailPort: new AcpCraftsmanTailPort(runtime),
+      runtimeRecoveryPort: new AcpRuntimeRecoveryPort(runtime),
+    };
+  }
+  return {
+    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
+    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   };
 }

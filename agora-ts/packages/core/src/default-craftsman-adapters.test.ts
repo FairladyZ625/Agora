@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter, TmuxCraftsmanAdapter } from './adapters/index.js';
+import { AcpCraftsmanAdapter, ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter, TmuxCraftsmanAdapter } from './adapters/index.js';
 import { createDefaultCraftsmanAdapters } from './default-craftsman-adapters.js';
 import { ShellCraftsmanAdapter, StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { WatchedProcessCraftsmanAdapter } from './adapters/watched-process-craftsman-adapter.js';
@@ -39,5 +39,16 @@ describe('default craftsman adapters', () => {
     expect(adapters.codex).toBeInstanceOf(TmuxCraftsmanAdapter);
     expect(adapters.claude).toBeInstanceOf(TmuxCraftsmanAdapter);
     expect(adapters.gemini).toBeInstanceOf(TmuxCraftsmanAdapter);
+  });
+
+  it('returns acp adapters when adapter mode is acp', () => {
+    const adapters = createDefaultCraftsmanAdapters({
+      mode: 'acp',
+      callbackUrl: 'http://127.0.0.1:18420/api/craftsmen/callback',
+    });
+
+    expect(adapters.codex).toBeInstanceOf(AcpCraftsmanAdapter);
+    expect(adapters.claude).toBeInstanceOf(AcpCraftsmanAdapter);
+    expect(adapters.gemini).toBeInstanceOf(AcpCraftsmanAdapter);
   });
 });

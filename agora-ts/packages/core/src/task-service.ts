@@ -1149,6 +1149,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       status: execution.status,
     }, lines) ?? {
       execution_id: execution.execution_id,
@@ -1411,6 +1412,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       reason: options.reason ?? null,
     });
     this.flowLogRepository.insertFlowLog({
@@ -1481,6 +1483,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       status: execution.status,
     });
     if (!callback) {
@@ -3727,7 +3730,7 @@ export class TaskService {
     const isWaiting = ['needs_input', 'awaiting_choice'].includes(execution.status);
     const isContinuousInteractive = execution.status === 'running'
       && execution.mode === 'interactive'
-      && execution.session_id?.startsWith('tmux:');
+      && execution.session_id !== null;
     if (!isWaiting && !isContinuousInteractive) {
       throw new Error(`Craftsman execution ${executionId} is not waiting for input or running as an interactive session (status=${execution.status})`);
     }
@@ -3735,6 +3738,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       taskId: execution.task_id,
       subtaskId: execution.subtask_id,
     };

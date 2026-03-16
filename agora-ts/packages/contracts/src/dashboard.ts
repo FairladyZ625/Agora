@@ -103,6 +103,39 @@ export const tmuxRuntimeSchema = z.object({
   panes: z.array(tmuxRuntimePaneSchema),
 });
 
+export const craftsmanRuntimeProviderSchema = z.enum(['tmux', 'acpx', 'unknown']);
+
+export const craftsmanRuntimeSlotSchema = z.object({
+  provider: craftsmanRuntimeProviderSchema,
+  agent: z.string(),
+  session_id: z.string().nullable(),
+  runtime_mode: z.string().nullable(),
+  transport: z.string().nullable(),
+  status: z.string(),
+  ready: z.boolean(),
+  active: z.boolean(),
+  current_command: z.string().nullable(),
+  tail_preview: z.string().nullable(),
+  session_reference: z.string().nullable(),
+  execution_id: z.string().nullable(),
+  task_id: z.string().nullable(),
+  subtask_id: z.string().nullable(),
+  title: z.string().nullable(),
+});
+
+export const craftsmanRuntimeProviderSummarySchema = z.object({
+  provider: craftsmanRuntimeProviderSchema,
+  session: z.string().nullable(),
+  slot_count: z.number().int().nonnegative(),
+  ready_slots: z.number().int().nonnegative(),
+  active_slots: z.number().int().nonnegative(),
+});
+
+export const craftsmanRuntimeSchema = z.object({
+  providers: z.array(craftsmanRuntimeProviderSummarySchema),
+  slots: z.array(craftsmanRuntimeSlotSchema),
+});
+
 export const agentAxisAffectedAgentSchema = z.object({
   id: z.string(),
   status: z.string(),
@@ -183,6 +216,7 @@ export const agentsStatusSchema = z.object({
   craftsmen: z.array(craftsmanStatusItemSchema),
   channel_summaries: z.array(agentChannelSummarySchema),
   host_summaries: z.array(agentHostSummarySchema),
+  craftsman_runtime: craftsmanRuntimeSchema.nullable().optional(),
   tmux_runtime: tmuxRuntimeSchema.nullable(),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
