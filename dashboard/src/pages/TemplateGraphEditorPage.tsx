@@ -465,8 +465,16 @@ function TemplateGraphEditorContent() {
       },
     })) ?? []
   );
-  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
-  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
+  const activeSelectedGraphEdgeId = selectedGraphEdgeId && draftGraph?.edges.some((edge) => edge.id === selectedGraphEdgeId)
+    ? selectedGraphEdgeId
+    : null;
+  const activeSelectedGraphNodeId = selectedGraphNodeId && draftGraph?.nodes.some((node) => node.id === selectedGraphNodeId)
+    ? selectedGraphNodeId
+    : !activeSelectedGraphEdgeId
+      ? (draftGraph?.entryNodes[0] ?? draftGraph?.nodes[0]?.id ?? null)
+      : null;
+  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === activeSelectedGraphNodeId) ?? null;
+  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === activeSelectedGraphEdgeId) ?? null;
   const draftGraphNodes = draftGraph?.nodes ?? [];
   const selectedGraphNodeIndex = selectedGraphNode ? draftGraphNodes.findIndex((node) => node.id === selectedGraphNode.id) : -1;
   const advanceCandidates = selectedGraphNodeIndex >= 0
@@ -475,28 +483,6 @@ function TemplateGraphEditorContent() {
   const rejectCandidates = selectedGraphNodeIndex >= 0
     ? draftGraphNodes.filter((node, index) => node.id !== selectedGraphNode?.id && index < selectedGraphNodeIndex)
     : [];
-
-  useEffect(() => {
-    if (!draftGraph) {
-      return;
-    }
-
-    if (selectedGraphEdgeId && !draftGraph.edges.some((edge) => edge.id === selectedGraphEdgeId)) {
-      setSelectedGraphEdgeId(null);
-    }
-
-    if (selectedGraphNodeId && !draftGraph.nodes.some((node) => node.id === selectedGraphNodeId)) {
-      setSelectedGraphNodeId(null);
-      return;
-    }
-
-    if (!selectedGraphNodeId && !selectedGraphEdgeId) {
-      const entryNodeId = draftGraph.entryNodes[0] ?? draftGraph.nodes[0]?.id ?? null;
-      if (entryNodeId) {
-        setSelectedGraphNodeId(entryNodeId);
-      }
-    }
-  }, [draftGraph, selectedGraphEdgeId, selectedGraphNodeId]);
 
   const handleGraphNodesChange = (changes: NodeChange[]) => {
     updateDraftGraph((currentGraph) => {

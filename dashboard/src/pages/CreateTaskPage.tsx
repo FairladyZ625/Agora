@@ -207,14 +207,14 @@ export function CreateTaskPage() {
             </label>
 
             <label className="space-y-2">
-              <span className="field-label">所属 Project</span>
+              <span className="field-label">{createTaskCopy.projectLabel}</span>
               <select
-                aria-label="所属 Project"
+                aria-label={createTaskCopy.projectLabel}
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
                 className="input-shell"
               >
-                <option value="">不绑定 Project</option>
+                <option value="">{createTaskCopy.unboundProjectOption}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.name}</option>
                 ))}

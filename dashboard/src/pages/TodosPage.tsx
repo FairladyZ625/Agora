@@ -101,14 +101,14 @@ export function TodosPage() {
             />
           </label>
           <label className="space-y-2">
-            <span className="field-label">所属 Project</span>
+            <span className="field-label">{copy.projectLabel}</span>
             <select
-              aria-label="所属 Project"
+              aria-label={copy.projectLabel}
               value={projectId}
               onChange={(event) => setProjectId(event.target.value)}
               className="input-shell"
             >
-              <option value="">不绑定 Project</option>
+              <option value="">{copy.unboundProjectOption}</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
@@ -154,12 +154,12 @@ export function TodosPage() {
             </button>
           ))}
           <select
-            aria-label="Project 过滤"
+            aria-label={copy.projectFilterLabel}
             value={projectFilter ?? ''}
             onChange={(event) => setProjectFilter(event.target.value || null)}
             className="input-shell max-w-xs"
           >
-            <option value="">全部 Project</option>
+            <option value="">{copy.allProjectsOption}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>{project.name}</option>
             ))}
