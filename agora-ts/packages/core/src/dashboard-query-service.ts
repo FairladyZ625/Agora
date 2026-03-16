@@ -634,7 +634,11 @@ function buildCraftsmanRuntime(
   craftsmen: AgentsStatusDto['craftsmen'],
   tmuxRuntime: AgentsStatusDto['tmux_runtime'],
 ): AgentsStatusDto['craftsman_runtime'] {
-  const slots: AgentsStatusDto['craftsman_runtime']['slots'] = [];
+  type CraftsmanRuntime = NonNullable<AgentsStatusDto['craftsman_runtime']>;
+  type CraftsmanRuntimeSlot = CraftsmanRuntime['slots'][number];
+  type CraftsmanRuntimeProviderSummary = CraftsmanRuntime['providers'][number];
+
+  const slots: CraftsmanRuntimeSlot[] = [];
 
   if (tmuxRuntime) {
     for (const pane of tmuxRuntime.panes) {
@@ -688,7 +692,7 @@ function buildCraftsmanRuntime(
     return null;
   }
 
-  const providers = Array.from(slots.reduce((map, slot) => {
+  const providerMap = slots.reduce<Map<CraftsmanRuntimeProviderSummary['provider'], CraftsmanRuntimeProviderSummary>>((map, slot) => {
     const current = map.get(slot.provider) ?? {
       provider: slot.provider,
       session: slot.provider === 'tmux' ? tmuxRuntime?.session ?? null : null,
@@ -701,7 +705,9 @@ function buildCraftsmanRuntime(
     current.active_slots += slot.active ? 1 : 0;
     map.set(slot.provider, current);
     return map;
-  }, new Map<AgentsStatusDto['craftsman_runtime']['providers'][number]['provider'], AgentsStatusDto['craftsman_runtime']['providers'][number]>()).values());
+  }, new Map<CraftsmanRuntimeProviderSummary['provider'], CraftsmanRuntimeProviderSummary>());
+
+  const providers = Array.from(providerMap.values());
 
   return {
     providers,
@@ -711,7 +717,7 @@ function buildCraftsmanRuntime(
 
 function inferCraftsmanRuntimeProvider(
   execution: AgentsStatusDto['craftsmen'][number]['recent_executions'][number],
-): AgentsStatusDto['craftsman_runtime']['providers'][number]['provider'] {
+): NonNullable<AgentsStatusDto['craftsman_runtime']>['providers'][number]['provider'] {
   if (execution.session_id?.startsWith('acpx:') || execution.runtime_mode === 'acp' || execution.transport === 'acpx') {
     return 'acpx';
   }

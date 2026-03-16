@@ -8,6 +8,9 @@
   ],
   "scripts": {
     "build": "tsc -b tsconfig.workspace.build.json",
+    "dev:build:watch": "tsc -b -w tsconfig.workspace.build.json",
+    "dev:server:app": "npm run dev -w @agora-ts/server",
+    "dev:cli:app": "npm run dev -w @agora-ts/cli",
     "cli:install-global": "bash ./scripts/install-global-cli.sh",
     "check": "npm run lint && npm run build && npm run typecheck && npm test",
     "check:strict": "npm run check && npm run test:coverage",
@@ -16,8 +19,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "smoke:craftsman:acp": "npm run build && tsx scripts/smoke-craftsman-acp.ts",
-    "dev:server": "npm run build && npm run dev -w @agora-ts/server",
-    "dev:cli": "npm run dev -w @agora-ts/cli",
+    "dev:server": "concurrently -k -n build,server -c auto \"npm run dev:build:watch\" \"npm run dev:server:app\"",
+    "dev:cli": "concurrently -k -n build,cli -c auto \"npm run dev:build:watch\" \"npm run dev:cli:app\"",
     "scenario": "tsx packages/testing/src/cli.ts",
     "scenario:list": "tsx packages/testing/src/cli.ts list",
     "scenario:all": "tsx packages/testing/src/cli.ts all --json"
@@ -26,6 +29,7 @@
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@vitest/coverage-v8": "^4.0.8",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
