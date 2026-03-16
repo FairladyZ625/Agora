@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
@@ -13,14 +13,17 @@ const SUPPORTED_FORMATS = new Set(["json", "text", "quiet"]);
 const SUPPORTED_PERMISSION_FLAGS = new Set(["--approve-all", "--approve-reads", "--deny-all"]);
 const SUPPORTED_AUTH_POLICIES = new Set(["skip", "fail"]);
 const SUPPORTED_NON_INTERACTIVE_PERMISSIONS = new Set(["deny", "fail"]);
-const SUPPORTED_PROFILES = new Set(["claude-opus-safe", "claude-session-sonnet"]);
+const SUPPORTED_PROFILES = new Set(["claude-opus-safe", "claude-session-sonnet", "claude-session-opus-safe"]);
+const CLAUDE_CONFIG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const CLAUDE_CONFIG_MAX_DIRS = 32;
+const CLAUDE_SESSION_MANIFEST_VERSION = 1;
 
 function printUsage() {
   process.stderr.write(
     [
       "Usage:",
-      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet>] --agent <codex|claude|gemini> exec [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
-      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet>] --agent <codex|claude|gemini> session --session-name <name> [--fresh-session | --resume-session <id>] [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--no-wait] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
+      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>] --agent <codex|claude|gemini> exec [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
+      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>] --agent <codex|claude|gemini> session --session-name <name> [--fresh-session | --resume-session <id>] [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--no-wait] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
       "",
       "Notes:",
       "  - Uses local `acpx` when available, otherwise falls back to `npx -y acpx@latest`.",
@@ -53,7 +56,7 @@ export function parseArgs(argv) {
   };
 
   /** @type {{
-   * profile: "claude-opus-safe" | "claude-session-sonnet" | null,
+   * profile: "claude-opus-safe" | "claude-session-sonnet" | "claude-session-opus-safe" | null,
    * agent: "codex" | "claude" | "gemini" | null,
    * mode: "exec" | "session" | null,
    * cwd: string | null,
@@ -110,7 +113,7 @@ export function parseArgs(argv) {
     if (arg === "--profile") {
       const profile = args.shift() ?? fail("Missing value for --profile");
       if (!SUPPORTED_PROFILES.has(profile)) {
-        fail("Invalid --profile. Use claude-opus-safe or claude-session-sonnet.");
+        fail("Invalid --profile. Use claude-opus-safe, claude-session-sonnet, or claude-session-opus-safe.");
       }
       options.profile = profile;
       continue;
@@ -310,11 +313,40 @@ function applyProfileDefaults(options, explicit) {
       options.nonInteractivePermissions = "fail";
     }
   }
+
+  if (options.profile === "claude-session-opus-safe") {
+    if (!explicit.agent) {
+      options.agent = "claude";
+    }
+    if (!explicit.mode) {
+      options.mode = "session";
+    }
+    if (!explicit.model) {
+      options.model = "opus";
+    }
+    if (!explicit.permissionFlag) {
+      options.permissionFlag = "--approve-all";
+    }
+    if (!explicit.format) {
+      options.format = "text";
+    }
+    if (!explicit.authPolicy) {
+      options.authPolicy = "fail";
+    }
+    if (!explicit.nonInteractivePermissions) {
+      options.nonInteractivePermissions = "fail";
+    }
+    options.freshSession = true;
+  }
 }
 
 export async function readPrompt(options) {
   if (options.file) {
-    return null;
+    const prompt = readFileSync(resolve(options.file), "utf8").trim();
+    if (!prompt) {
+      fail("Prompt file is empty.");
+    }
+    return prompt;
   }
   if (options.prompt) {
     return options.prompt;
@@ -456,7 +488,7 @@ export function emitWrapperWarnings(options) {
       return;
     }
     if (!options.freshSession) {
-      process.stderr.write("[acpx-delegate] Warning: claude session + opus without --fresh-session may reuse an older session and drift away from Opus routing.\n");
+      process.stderr.write("[acpx-delegate] Info: claude session + opus follow-up will be allowed only for wrapper-tracked Opus sessions; otherwise use --fresh-session.\n");
     }
   }
   if (options.agent === "claude" && options.mode === "session" && options.model === "sonnet") {
@@ -464,12 +496,172 @@ export function emitWrapperWarnings(options) {
   }
 }
 
-export function shouldRetryClaudeSessionPrompt(options, runResult) {
+export function getClaudeConfigRoot(baseHome = homedir()) {
+  return resolve(baseHome, ".agora", "acpx-delegate", "claude-config");
+}
+
+export function getClaudeSessionManifestPath(baseHome = homedir()) {
+  return resolve(baseHome, ".agora", "acpx-delegate", "claude-session-manifest.json");
+}
+
+export function buildClaudeSessionScopeKey(options) {
+  const scope = JSON.stringify({
+    cwd: resolve(options.cwd ?? process.cwd()),
+    sessionName: options.sessionName ?? "__default__",
+  });
+  return createHash("sha1").update(scope).digest("hex").slice(0, 16);
+}
+
+export function readClaudeSessionManifest(baseHome = homedir()) {
+  const manifestPath = getClaudeSessionManifestPath(baseHome);
+  try {
+    const raw = readFileSync(manifestPath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== CLAUDE_SESSION_MANIFEST_VERSION || typeof parsed.sessions !== "object") {
+      return { version: CLAUDE_SESSION_MANIFEST_VERSION, sessions: {} };
+    }
+    return parsed;
+  } catch {
+    return { version: CLAUDE_SESSION_MANIFEST_VERSION, sessions: {} };
+  }
+}
+
+export function writeClaudeSessionManifest(manifest, baseHome = homedir()) {
+  const manifestPath = getClaudeSessionManifestPath(baseHome);
+  mkdirSync(dirname(manifestPath), { recursive: true });
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
+export function rememberClaudeSessionRouting(options, sessionRecord, baseHome = homedir()) {
+  if (!sessionRecord?.acpxRecordId || !sessionRecord?.acpSessionId || !options.sessionName || !options.model) {
+    return;
+  }
+  const manifest = readClaudeSessionManifest(baseHome);
+  manifest.sessions[buildClaudeSessionScopeKey(options)] = {
+    model: options.model,
+    cwd: resolve(options.cwd ?? process.cwd()),
+    sessionName: options.sessionName,
+    acpxRecordId: sessionRecord.acpxRecordId,
+    acpSessionId: sessionRecord.acpSessionId,
+    updatedAt: new Date().toISOString(),
+  };
+  writeClaudeSessionManifest(manifest, baseHome);
+}
+
+export function getRememberedClaudeSessionRouting(options, baseHome = homedir()) {
+  const manifest = readClaudeSessionManifest(baseHome);
+  return manifest.sessions[buildClaudeSessionScopeKey(options)] ?? null;
+}
+
+export function enforceClaudeOpusSessionGuardrail(options, rememberedSession = null) {
+  if (options.agent !== "claude" || options.mode !== "session" || options.model !== "opus") {
+    return;
+  }
+  if (options.freshSession || options.resumeSession) {
+    return;
+  }
+  if (!rememberedSession) {
+    throw new Error("Claude Opus named sessions must start with --fresh-session the first time so the wrapper can bind the session to an Opus bootstrap record.");
+  }
+  if (rememberedSession.model !== "opus") {
+    throw new Error("The remembered Claude session for this scope was not bootstrapped as Opus. Start again with --fresh-session --model opus.");
+  }
+}
+
+export function pruneClaudeConfigOverrides(rootDir = getClaudeConfigRoot(), keepDir = null, nowMs = Date.now()) {
+  let entries = [];
+  try {
+    entries = readdirSync(rootDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const dirPath = resolve(rootDir, entry.name);
+        const stats = statSync(dirPath);
+        return {
+          dirPath,
+          mtimeMs: stats.mtimeMs,
+        };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  } catch {
+    return;
+  }
+
+  entries.forEach((entry, index) => {
+    if (keepDir && entry.dirPath === keepDir) {
+      return;
+    }
+    const tooOld = nowMs - entry.mtimeMs > CLAUDE_CONFIG_MAX_AGE_MS;
+    const beyondLimit = index >= CLAUDE_CONFIG_MAX_DIRS;
+    if (tooOld || beyondLimit) {
+      rmSync(entry.dirPath, { recursive: true, force: true });
+    }
+  });
+}
+
+export function flattenClaudeSessionMessages(sessionRecord) {
+  if (!sessionRecord || !Array.isArray(sessionRecord.messages)) {
+    return [];
+  }
+  return sessionRecord.messages.flatMap((message) => {
+    if (message?.User?.content) {
+      const text = message.User.content
+        .filter((item) => typeof item.Text === "string")
+        .map((item) => item.Text)
+        .join("\n")
+        .trim();
+      return text ? [{ role: "user", text }] : [];
+    }
+    if (message?.Agent?.content) {
+      const text = message.Agent.content
+        .filter((item) => typeof item.Text === "string")
+        .map((item) => item.Text)
+        .join("\n")
+        .trim();
+      return text ? [{ role: "assistant", text }] : [];
+    }
+    return [];
+  });
+}
+
+export function promptSignature(prompt) {
+  return prompt.replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+export function classifyClaudeSessionPromptState(sessionRecord, prompt) {
+  const signature = promptSignature(prompt);
+  if (!signature) {
+    return "unknown";
+  }
+  const messages = flattenClaudeSessionMessages(sessionRecord);
+  let userIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "user") {
+      continue;
+    }
+    const messageSignature = promptSignature(message.text);
+    if (messageSignature === signature || signature.startsWith(messageSignature) || messageSignature.startsWith(signature)) {
+      userIndex = index;
+      break;
+    }
+  }
+  if (userIndex === -1) {
+    return "unknown";
+  }
+  for (let index = userIndex + 1; index < messages.length; index += 1) {
+    if (messages[index].role === "assistant" && messages[index].text.trim()) {
+      return "answered";
+    }
+  }
+  return "pending";
+}
+
+export function shouldRetryClaudeSessionPrompt(options, runResult, sessionRecord, prompt) {
   if (options.agent !== "claude" || options.mode !== "session" || runResult.code !== 0) {
     return false;
   }
-  const combinedOutput = `${runResult.stdout}\n${runResult.stderr}`;
-  return combinedOutput.includes("agent needs reconnect") && !combinedOutput.includes("[done] end_turn");
+  const state = classifyClaudeSessionPromptState(sessionRecord, prompt);
+  return state === "pending";
 }
 
 export function buildClaudeConfigOverride(options) {
@@ -484,10 +676,7 @@ export function buildClaudeConfigOverride(options) {
   });
   const digest = createHash("sha1").update(scope).digest("hex").slice(0, 12);
   const configDir = resolve(
-    homedir(),
-    ".agora",
-    "acpx-delegate",
-    "claude-config",
+    getClaudeConfigRoot(),
     digest,
   );
   const settingsPath = resolve(configDir, "settings.json");
@@ -509,6 +698,7 @@ export function prepareInvocationEnv(options) {
 
   mkdirSync(dirname(override.settingsPath), { recursive: true });
   writeFileSync(override.settingsPath, `${JSON.stringify(override.settings, null, 2)}\n`, "utf8");
+  pruneClaudeConfigOverrides(getClaudeConfigRoot(), override.configDir);
   env.CLAUDE_CONFIG_DIR = override.configDir;
   return env;
 }
@@ -566,10 +756,74 @@ export function spawnObserved(command, args, env = process.env) {
   });
 }
 
+export function spawnCaptured(command, args, env = process.env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    });
+
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`Process terminated by signal ${signal}`));
+        return;
+      }
+      resolve({
+        code: code ?? 1,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
+
+export async function readClaudeSessionRecord(acpx, options, env = process.env) {
+  if (options.agent !== "claude" || options.mode !== "session" || !options.sessionName) {
+    return null;
+  }
+  const args = [
+    ...acpx.args,
+    "--cwd", resolve(options.cwd ?? process.cwd()),
+    "--format", "json",
+    "--json-strict",
+    "claude",
+    "sessions",
+    "show",
+    options.sessionName,
+  ];
+  const result = await spawnCaptured(acpx.command, args, env);
+  if (result.code !== 0) {
+    return null;
+  }
+  const lines = result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(lines.at(-1));
+  } catch {
+    return null;
+  }
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   const prompt = await readPrompt(options);
   const acpx = resolveAcpxCommand();
+  enforceClaudeOpusSessionGuardrail(options, getRememberedClaudeSessionRouting(options));
   const invocationEnv = prepareInvocationEnv(options);
   const commonArgs = buildCommonArgs(options, {
     includeModel: options.mode !== "session",
@@ -583,6 +837,19 @@ export async function main(argv = process.argv.slice(2)) {
       const ensureCode = await spawnChecked(acpx.command, bootstrapArgs, invocationEnv);
       if (ensureCode !== 0) {
         process.exit(ensureCode);
+      }
+    }
+
+    const sessionRecord = await readClaudeSessionRecord(acpx, options, invocationEnv);
+    if (options.agent === "claude" && options.model) {
+      if (!options.freshSession && !options.resumeSession && options.model === "opus") {
+        const rememberedSession = getRememberedClaudeSessionRouting(options);
+        if (!rememberedSession || !sessionRecord || rememberedSession.acpxRecordId !== sessionRecord.acpxRecordId) {
+          throw new Error("Claude Opus follow-up refused because this session is not a wrapper-tracked Opus session. Recreate it with --fresh-session --model opus.");
+        }
+      }
+      if (sessionRecord) {
+        rememberClaudeSessionRouting(options, sessionRecord);
       }
     }
 
@@ -611,9 +878,17 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const firstRun = await spawnObserved(acpx.command, runArgs, invocationEnv);
-  if (shouldRetryClaudeSessionPrompt(options, firstRun)) {
+  const firstSessionRecord = await readClaudeSessionRecord(acpx, options, invocationEnv);
+  if (options.agent === "claude" && options.mode === "session" && options.model && firstSessionRecord) {
+    rememberClaudeSessionRouting(options, firstSessionRecord);
+  }
+  if (shouldRetryClaudeSessionPrompt(options, firstRun, firstSessionRecord, prompt)) {
     process.stderr.write("[acpx-delegate] Claude session reported reconnect on the first pass; retrying the prompt once.\n");
     const retryRun = await spawnObserved(acpx.command, runArgs, invocationEnv);
+    const retrySessionRecord = await readClaudeSessionRecord(acpx, options, invocationEnv);
+    if (options.agent === "claude" && options.mode === "session" && options.model && retrySessionRecord) {
+      rememberClaudeSessionRouting(options, retrySessionRecord);
+    }
     process.exit(retryRun.code);
   }
 

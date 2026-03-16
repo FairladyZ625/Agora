@@ -39,7 +39,9 @@ This skill adds Agora-local conventions:
 - Claude routing guardrails
 - explicit first-turn session strategy
 - wrapper-managed `CLAUDE_CONFIG_DIR` bootstrap for Claude session defaults
-- one automatic reconnect retry for Claude session first-turn bootstrap
+- structured Claude session inspection after each turn
+- one automatic retry when the latest structured Claude session state shows the prompt was not answered yet
+- wrapper-tracked Opus session manifests per `(cwd, sessionName)` scope
 - local caveats around Claude named sessions
 
 ## Command model
@@ -97,7 +99,7 @@ Output note:
 
 The Agora wrapper now exposes the ACPX controls that matter in practice:
 
-- `--profile <claude-opus-safe|claude-session-sonnet>`
+- `--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>`
 - `--fresh-session`
 - `--resume-session <id>`
 - `--no-wait` for queued persistent prompts
@@ -168,6 +170,43 @@ node /Users/lizeyu/Projects/Agora/scripts/acpx-delegate.mjs \
   --prompt "Now tighten the top 3 findings."
 ```
 
+### `claude-session-opus-safe`
+
+Use when you want a long Claude session but still want the first turn bootstrapped as Opus.
+
+Defaults:
+
+- `--agent claude`
+- `session`
+- `--model opus`
+- `--fresh-session`
+- `--approve-all`
+- `--format text`
+- `--auth-policy fail`
+- `--non-interactive-permissions fail`
+
+First turn example:
+
+```bash
+node /Users/lizeyu/Projects/Agora/scripts/acpx-delegate.mjs \
+  --profile claude-session-opus-safe \
+  --session-name architecture-opus \
+  --cwd /Users/lizeyu/Projects/Agora \
+  --prompt "Create an architecture plan."
+```
+
+Follow-up example:
+
+```bash
+node /Users/lizeyu/Projects/Agora/scripts/acpx-delegate.mjs \
+  --agent claude \
+  session \
+  --session-name architecture-opus \
+  --cwd /Users/lizeyu/Projects/Agora \
+  --model opus \
+  --prompt "Tighten the top 3 risks."
+```
+
 ## Session behavior
 
 Base ACPX session semantics are the upstream ones:
@@ -184,11 +223,15 @@ Agora wrapper behavior adds:
 - `--resume-session <id>` uses `sessions ensure --resume-session <id>`
 - for `claude + session + --model <id>`, the wrapper now bootstraps a wrapper-managed `CLAUDE_CONFIG_DIR` with `settings.json` so the session starts with the intended default model
 - the wrapper no longer relies on `session/set_config_option model=...` for Claude session routing
-- if the first Claude session prompt returns `agent needs reconnect`, the wrapper retries that prompt once automatically
+- the wrapper reads structured `acpx` session state after each Claude session turn instead of trusting terminal banners alone
+- if the latest structured Claude session state shows the prompt has not been answered yet, the wrapper retries that prompt once automatically
+- for Claude Opus named sessions, the wrapper remembers the bootstrapped session record and only allows non-fresh follow-up turns against a wrapper-tracked Opus session
+- wrapper-managed Claude config directories are pruned automatically over time
 
 This matters because Claude named sessions can drift:
 
-- old named sessions are the least reliable path for Opus routing
+- a fresh wrapper-tracked Opus session is now usable for follow-up turns on this machine
+- untracked old named sessions are still the least reliable path for Opus routing
 - `set model opus` on an old session is not proof that the prompt actually ran on Opus
 - if you care about deterministic Claude routing, prefer `exec`
 
@@ -217,7 +260,9 @@ Source of truth for aliases:
 Practical guidance:
 
 - prefer `claude + exec + --model opus` when you need the most reliable Opus routing
-- prefer `claude + session + --fresh-session` for iterative work
+- prefer `claude-session-opus-safe` for the first Opus long-session turn
+- prefer `claude + session + --model opus` only as a follow-up to a wrapper-tracked Opus session
+- prefer `claude + session + --fresh-session` for iterative Sonnet work
 - do not claim “Claude definitely used Opus” just because a named session exists
 - do not claim “Claude definitely used Opus” just because `set model opus` succeeded
 - prefer evidence from actual prompt completion, not only session creation
@@ -232,7 +277,9 @@ Practical guidance:
 `claude`
 
 - use ACPX aliases such as `opus` and `sonnet`
-- named sessions are currently the least stable path in this environment for Opus proof
+- `exec + opus` is still the strongest-model path
+- wrapper-tracked `fresh-session + opus` is now a usable long-session path on this machine
+- do not reuse an arbitrary old named session for Opus unless the wrapper created and tracked it
 
 `gemini`
 

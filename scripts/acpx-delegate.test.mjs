@@ -1,14 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 
 import {
+  buildClaudeSessionScopeKey,
   buildClaudeConfigOverride,
   buildCommonArgs,
   buildPromptPayloadArgs,
   buildSessionBootstrapArgs,
   buildSessionModelSetArgs,
+  classifyClaudeSessionPromptState,
+  enforceClaudeOpusSessionGuardrail,
+  flattenClaudeSessionMessages,
+  getClaudeConfigRoot,
+  getClaudeSessionManifestPath,
+  getRememberedClaudeSessionRouting,
   shouldRetryClaudeSessionPrompt,
+  pruneClaudeConfigOverrides,
   parseArgs,
+  readClaudeSessionManifest,
+  rememberClaudeSessionRouting,
+  writeClaudeSessionManifest,
 } from "./acpx-delegate.mjs";
 
 test("parseArgs requires agent and defaults to text/approve-all", () => {
@@ -59,6 +73,18 @@ test("parseArgs applies claude-session-sonnet profile defaults without forcing a
   assert.equal(parsed.mode, "session");
   assert.equal(parsed.model, "sonnet");
   assert.equal(parsed.sessionName, "review-auth");
+});
+
+test("parseArgs applies claude-session-opus-safe profile defaults", () => {
+  const parsed = parseArgs([
+    "--profile", "claude-session-opus-safe",
+    "--session-name", "review-auth",
+    "--prompt", "follow up",
+  ]);
+  assert.equal(parsed.agent, "claude");
+  assert.equal(parsed.mode, "session");
+  assert.equal(parsed.model, "opus");
+  assert.equal(parsed.freshSession, true);
 });
 
 test("parseArgs accepts extended ACPX flags", () => {
@@ -193,6 +219,132 @@ test("buildClaudeConfigOverride creates a stable Claude config scope for session
   }), null);
 });
 
+test("getClaudeConfigRoot and manifest path stay under ~/.agora/acpx-delegate", () => {
+  const root = getClaudeConfigRoot("/tmp/home");
+  const manifest = getClaudeSessionManifestPath("/tmp/home");
+  assert.equal(root, "/tmp/home/.agora/acpx-delegate/claude-config");
+  assert.equal(manifest, "/tmp/home/.agora/acpx-delegate/claude-session-manifest.json");
+});
+
+test("rememberClaudeSessionRouting persists scoped Opus session metadata", () => {
+  const home = mkdtempSync(resolve(tmpdir(), "acpx-delegate-home-"));
+  try {
+    const options = {
+      cwd: "/tmp/project",
+      sessionName: "review-auth",
+      model: "opus",
+    };
+    rememberClaudeSessionRouting(options, {
+      acpxRecordId: "record-1",
+      acpSessionId: "session-1",
+    }, home);
+    const manifest = readClaudeSessionManifest(home);
+    const key = buildClaudeSessionScopeKey(options);
+    assert.equal(manifest.sessions[key].model, "opus");
+    assert.equal(getRememberedClaudeSessionRouting(options, home).acpSessionId, "session-1");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("writeClaudeSessionManifest rewrites malformed state", () => {
+  const home = mkdtempSync(resolve(tmpdir(), "acpx-delegate-home-"));
+  try {
+    writeClaudeSessionManifest({
+      version: 1,
+      sessions: {
+        foo: { model: "sonnet" },
+      },
+    }, home);
+    const manifest = readClaudeSessionManifest(home);
+    assert.equal(manifest.sessions.foo.model, "sonnet");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("enforceClaudeOpusSessionGuardrail requires remembered fresh Opus bootstrap", () => {
+  assert.throws(() => enforceClaudeOpusSessionGuardrail({
+    agent: "claude",
+    mode: "session",
+    model: "opus",
+    freshSession: false,
+    resumeSession: null,
+  }, null), /must start with --fresh-session/);
+
+  assert.doesNotThrow(() => enforceClaudeOpusSessionGuardrail({
+    agent: "claude",
+    mode: "session",
+    model: "opus",
+    freshSession: true,
+    resumeSession: null,
+  }, null));
+
+  assert.doesNotThrow(() => enforceClaudeOpusSessionGuardrail({
+    agent: "claude",
+    mode: "session",
+    model: "opus",
+    freshSession: false,
+    resumeSession: null,
+  }, { model: "opus" }));
+});
+
+test("flattenClaudeSessionMessages and classifyClaudeSessionPromptState inspect structured session state", () => {
+  const sessionRecord = {
+    messages: [
+      {
+        User: {
+          content: [{ Text: "Reply with exactly ACPX opus session ok. Do not use tools." }],
+        },
+      },
+      {
+        Agent: {
+          content: [{ Text: "ACPX opus session ok." }],
+        },
+      },
+      {
+        User: {
+          content: [{ Text: "Reply with exactly ACPX second turn ok. Do not use tools." }],
+        },
+      },
+    ],
+  };
+  assert.deepEqual(flattenClaudeSessionMessages(sessionRecord), [
+    { role: "user", text: "Reply with exactly ACPX opus session ok. Do not use tools." },
+    { role: "assistant", text: "ACPX opus session ok." },
+    { role: "user", text: "Reply with exactly ACPX second turn ok. Do not use tools." },
+  ]);
+  assert.equal(
+    classifyClaudeSessionPromptState(sessionRecord, "Reply with exactly ACPX second turn ok. Do not use tools."),
+    "pending",
+  );
+  assert.equal(
+    classifyClaudeSessionPromptState(sessionRecord, "Reply with exactly ACPX opus session ok. Do not use tools."),
+    "answered",
+  );
+});
+
+test("pruneClaudeConfigOverrides removes stale config dirs and keeps the active one", () => {
+  const home = mkdtempSync(resolve(tmpdir(), "acpx-delegate-home-"));
+  const root = getClaudeConfigRoot(home);
+  const keepDir = resolve(root, "keep");
+  const staleDir = resolve(root, "stale");
+  const recentDir = resolve(root, "recent");
+  try {
+    mkdirSync(keepDir, { recursive: true });
+    mkdirSync(staleDir, { recursive: true });
+    mkdirSync(recentDir, { recursive: true });
+    const oldMs = Date.now() - (8 * 24 * 60 * 60 * 1000);
+    utimesSync(staleDir, oldMs / 1000, oldMs / 1000);
+    pruneClaudeConfigOverrides(root, keepDir, Date.now());
+    assert.doesNotThrow(() => statSync(keepDir));
+    assert.throws(() => statSync(staleDir));
+    assert.doesNotThrow(() => statSync(recentDir));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("buildSessionBootstrapArgs supports ensure, new, and resume-session", () => {
   const ensureArgs = buildSessionBootstrapArgs(["-y", "acpx@latest"], {
     agent: "claude",
@@ -261,7 +413,15 @@ test("shouldRetryClaudeSessionPrompt retries only on reconnect-only first pass",
     code: 0,
     stdout: "[acpx] session foo · agent needs reconnect",
     stderr: "",
-  }), true);
+  }, {
+    messages: [
+      {
+        User: {
+          content: [{ Text: "review auth" }],
+        },
+      },
+    ],
+  }, "review auth"), true);
 
   assert.equal(shouldRetryClaudeSessionPrompt({
     agent: "claude",
@@ -270,16 +430,46 @@ test("shouldRetryClaudeSessionPrompt retries only on reconnect-only first pass",
     code: 0,
     stdout: "ACPX session followup ok\n\n[done] end_turn",
     stderr: "",
-  }), false);
+  }, {
+    messages: [
+      {
+        User: {
+          content: [{ Text: "review auth" }],
+        },
+      },
+      {
+        Agent: {
+          content: [{ Text: "ACPX session followup ok" }],
+        },
+      },
+    ],
+  }, "review auth"), false);
+
+  assert.equal(shouldRetryClaudeSessionPrompt({
+    agent: "claude",
+    mode: "session",
+  }, {
+    code: 0,
+    stdout: "[acpx] agent needs reconnect",
+    stderr: "",
+  }, null, "review auth"), false);
 
   assert.equal(shouldRetryClaudeSessionPrompt({
     agent: "claude",
     mode: "exec",
   }, {
     code: 0,
-    stdout: "[acpx] agent needs reconnect",
+    stdout: "",
     stderr: "",
-  }), false);
+  }, {
+    messages: [
+      {
+        User: {
+          content: [{ Text: "review auth" }],
+        },
+      },
+    ],
+  }, "review auth"), false);
 });
 
 test("buildSessionModelSetArgs returns null when model sync is not needed", () => {
