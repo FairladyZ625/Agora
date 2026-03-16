@@ -721,7 +721,7 @@ describe('craftsman routes', () => {
     });
     const tailResponse = await app.inject({
       method: 'GET',
-      url: '/api/craftsmen/tmux/tail/codex?lines=20',
+      url: '/api/craftsmen/runtime/tail/codex?lines=20',
     });
     const identityResponse = await app.inject({
       method: 'POST',

@@ -9,6 +9,7 @@ vi.mock('@/lib/api', () => ({
   getAgentsStatus: vi.fn(),
   getAgentChannelDetail: vi.fn(),
   getTmuxTail: vi.fn(),
+  getCraftsmanRuntimeTail: vi.fn(),
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
   notifyArchiveJob: vi.fn(),
@@ -57,15 +58,15 @@ describe('dashboard expansion stores', () => {
       channelDetails: {},
       channelDetailFetchedAt: {},
       hostSummaries: [],
-      tmuxRuntime: null,
-      tmuxTailByAgent: {},
+      legacyRuntime: null,
+      runtimeTailByAgent: {},
       presenceFilter: 'all',
       craftsmenFilter: 'all',
       channelFilter: null,
       hostFilter: null,
       loading: false,
       channelDetailLoading: false,
-      tmuxTailLoadingByAgent: {},
+      runtimeTailLoadingByAgent: {},
       error: null,
       channelDetailError: null,
     });
@@ -212,10 +213,10 @@ describe('dashboard expansion stores', () => {
     expect(state.channelSummaries[0]?.history).toEqual([]);
     expect(state.channelSummaries[0]?.signalStatus).toBe('unknown');
     expect(state.hostSummaries[0]?.host).toBe('openclaw');
-    expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
-    expect(state.tmuxTailByAgent.codex).toBeNull();
-    expect(state.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
-    expect(state.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
+    expect(state.legacyRuntime?.session).toBe('agora-craftsmen');
+    expect(state.runtimeTailByAgent.codex).toBeNull();
+    expect(state.legacyRuntime?.panes[0]?.identitySource).toBe('session_file');
+    expect(state.legacyRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
     expect(state.craftsmen[0]?.recentExecutions[0]?.runtimeMode).toBe('tmux');
@@ -276,15 +277,15 @@ describe('dashboard expansion stores', () => {
     expect(state.channelDetailFetchedAt.discord).toBe(Date.parse('2026-03-09T12:00:00.000Z'));
   });
 
-  it('loads tmux tail on demand per agent', async () => {
-    vi.mocked(api.getTmuxTail).mockResolvedValue({ output: 'tail:codex' });
+  it('loads runtime tail on demand per agent', async () => {
+    vi.mocked(api.getCraftsmanRuntimeTail).mockResolvedValue({ output: 'tail:codex' });
 
-    const result = await useAgentStore.getState().fetchTmuxTail('codex', 20);
+    const result = await useAgentStore.getState().fetchRuntimeTail('codex', 20);
     const state = useAgentStore.getState();
 
     expect(result).toBe('live');
-    expect(state.tmuxTailByAgent.codex).toBe('tail:codex');
-    expect(state.tmuxTailLoadingByAgent.codex).toBe(false);
+    expect(state.runtimeTailByAgent.codex).toBe('tail:codex');
+    expect(state.runtimeTailLoadingByAgent.codex).toBe(false);
   });
 
   it('persists agent filters across refreshes', () => {

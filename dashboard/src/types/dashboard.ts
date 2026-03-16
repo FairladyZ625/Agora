@@ -177,7 +177,7 @@ export interface AgentsStatus {
   channelSummaries: AgentChannelSummary[];
   hostSummaries: AgentHostSummary[];
   craftsmanRuntime: CraftsmanRuntimeStatus | null;
-  tmuxRuntime: TmuxRuntimeStatus | null;
+  legacyRuntime: TmuxRuntimeStatus | null;
 }
 
 export type TodoFilter = 'all' | 'pending' | 'done';

@@ -53,7 +53,7 @@ export function CreateTaskPage() {
   const agents = useAgentStore((state) => state.agents);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const craftsmanRuntime = useAgentStore((state) => state.craftsmanRuntime);
-  const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
+  const legacyRuntime = useAgentStore((state) => state.legacyRuntime);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
@@ -85,7 +85,7 @@ export function CreateTaskPage() {
   }, [selectedTemplateId, selectTemplate, templates, type]);
 
   useEffect(() => {
-    const craftsmanInventory = buildCraftsmanInventory(craftsmanRuntime ?? tmuxRuntime);
+    const craftsmanInventory = buildCraftsmanInventory(craftsmanRuntime ?? legacyRuntime);
     const nextAssignments = buildInitialRoleAssignments(selectedTemplate, {
       agents,
       craftsmen: craftsmanInventory.map((id) => ({ id })),
@@ -101,10 +101,10 @@ export function CreateTaskPage() {
     if (!haveSameAssignments(assignments, nextState)) {
       setAssignments(nextState);
     }
-  }, [agents, assignments, craftsmanRuntime, selectedTemplate, tmuxRuntime]);
+  }, [agents, assignments, craftsmanRuntime, selectedTemplate, legacyRuntime]);
 
   const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
-  const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime ?? tmuxRuntime);
+  const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime ?? legacyRuntime);
   const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
   const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;
   const templateChoices = templates.length > 0

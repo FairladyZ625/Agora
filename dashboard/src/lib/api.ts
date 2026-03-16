@@ -597,12 +597,14 @@ export function getAgentChannelDetail(channel: string): Promise<ApiAgentChannelS
   return request<ApiAgentChannelSummaryDto>(`/agents/channels/${encodeURIComponent(channel)}`, agentChannelSummarySchema);
 }
 
-export function getTmuxTail(agent: string, lines = 20): Promise<{ output: string | null }> {
+export function getCraftsmanRuntimeTail(agent: string, lines = 20): Promise<{ output: string | null }> {
   return request<{ output: string | null }>(
-    `/craftsmen/tmux/tail/${encodeURIComponent(agent)}?lines=${encodeURIComponent(String(lines))}`,
+    `/craftsmen/runtime/tail/${encodeURIComponent(agent)}?lines=${encodeURIComponent(String(lines))}`,
     z.object({ output: z.string().nullable() }),
   );
 }
+
+export const getTmuxTail = getCraftsmanRuntimeTail;
 
 export function listArchiveJobs(filters?: { status?: string; taskId?: string }): Promise<ApiArchiveJobDto[]> {
   const params = new URLSearchParams();

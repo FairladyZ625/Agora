@@ -588,7 +588,7 @@ function renderMetrics(options: {
   }
 
   const tmuxPanes = options.tmuxRuntimeService?.status().panes.length ?? 0;
-  lines.push('# HELP agora_craftsmen_sessions_active Current active tmux panes observed by the server.');
+  lines.push('# HELP agora_craftsmen_sessions_active Current active legacy/runtime execution slots observed by the server.');
   lines.push('# TYPE agora_craftsmen_sessions_active gauge');
   lines.push(`agora_craftsmen_sessions_active ${tmuxPanes}`);
 
@@ -1931,12 +1931,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
-  app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
+  const getLegacyRuntimeTail = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!tmuxRuntimeService) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
-      reply.header('Deprecation', 'true');
       const params = request.params as { agent: string };
       const query = request.query as { lines?: string };
       const lines = query.lines ? Number(query.lines) : 40;
@@ -1948,6 +1947,15 @@ export function buildApp(options: BuildAppOptions = {}) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
+  };
+
+  app.get('/api/craftsmen/runtime/tail/:agent', async (request, reply) => {
+    return getLegacyRuntimeTail(request, reply);
+  });
+
+  app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
+    reply.header('Deprecation', 'true');
+    return getLegacyRuntimeTail(request, reply);
   });
 
   app.get('/api/inbox', async (request, reply) => {

@@ -179,7 +179,7 @@ describe('dashboard expansion api client', () => {
             }],
           };
         }
-        if (url.includes('/craftsmen/tmux/tail/')) {
+        if (url.includes('/craftsmen/runtime/tail/')) {
           return { output: 'tail:codex' };
         }
         if (/\/craftsmen\/executions\/[^/]+\/tail/.test(url)) {
@@ -296,6 +296,7 @@ describe('dashboard expansion api client', () => {
               todo: {
                 id: 3,
                 text: '补前端页面 v2',
+                project_id: null,
                 status: 'done',
                 due: null,
                 created_at: '2026-03-08T00:00:00.000Z',
@@ -310,6 +311,7 @@ describe('dashboard expansion api client', () => {
             return [{
               id: 3,
               text: '补前端页面',
+              project_id: null,
               status: 'pending',
               due: '2026-03-09',
               created_at: '2026-03-08T00:00:00.000Z',
@@ -322,6 +324,7 @@ describe('dashboard expansion api client', () => {
             return {
               id: 3,
               text: '补前端页面',
+              project_id: null,
               status: 'pending',
               due: '2026-03-09',
               created_at: '2026-03-08T00:00:00.000Z',
@@ -337,6 +340,7 @@ describe('dashboard expansion api client', () => {
             return {
               id: 3,
               text: '补前端页面 v2',
+              project_id: null,
               status: 'done',
               due: '2026-03-09',
               created_at: '2026-03-08T00:00:00.000Z',
@@ -424,7 +428,7 @@ describe('dashboard expansion api client', () => {
 
     await api.getAgentsStatus();
     await api.getAgentChannelDetail('discord');
-    await api.getTmuxTail('codex', 20);
+    await api.getCraftsmanRuntimeTail('codex', 20);
     await api.listArchiveJobs();
     await api.listArchiveJobs({ status: 'failed', taskId: 'OC-001' });
     await api.getArchiveJob(7);
@@ -449,7 +453,7 @@ describe('dashboard expansion api client', () => {
 
     expectFetchCall('/api/agents/status', { method: 'GET' });
     expectFetchCall('/api/agents/channels/discord', { method: 'GET' });
-    expectFetchCall('/api/craftsmen/tmux/tail/codex?lines=20', { method: 'GET' });
+    expectFetchCall('/api/craftsmen/runtime/tail/codex?lines=20', { method: 'GET' });
     expectFetchCall('/api/craftsmen/executions/exec-1/tail?lines=88', { method: 'GET' });
     expectFetchCall('/api/archive/jobs', { method: 'GET' });
     expectFetchCall('/api/archive/jobs?status=failed&task_id=OC-001', { method: 'GET' });
@@ -517,26 +521,38 @@ describe('dashboard expansion api client', () => {
 
     await api.listTodos();
     await api.listTodos('done');
-    await api.createTodo({ text: '补前端页面', due: '2026-03-09', tags: ['dashboard'] });
-    await api.updateTodo(3, { text: '补前端页面 v2', status: 'done' });
+    await api.listTodos(undefined, 'proj-alpha');
+    await api.createTodo({ text: '补前端页面', due: '2026-03-09', tags: ['dashboard'], project_id: 'proj-alpha' });
+    await api.updateTodo(3, { text: '补前端页面 v2', status: 'done', project_id: 'proj-alpha' });
     await api.deleteTodo(3);
     await api.promoteTodo(3, { type: 'quick', creator: 'archon', priority: 'high' });
 
     expectFetchCall('/api/todos', { method: 'GET' });
     expectFetchCall('/api/todos?status=done', { method: 'GET' });
+    expectFetchCall('/api/todos?project_id=proj-alpha', { method: 'GET' });
     expectFetchCall('/api/todos', {
       method: 'POST',
-      body: JSON.stringify({ text: '补前端页面', due: '2026-03-09', tags: ['dashboard'] }),
+      body: JSON.stringify({ text: '补前端页面', due: '2026-03-09', tags: ['dashboard'], project_id: 'proj-alpha' }),
     });
     expectFetchCall('/api/todos/3', {
       method: 'PATCH',
-      body: JSON.stringify({ text: '补前端页面 v2', status: 'done' }),
+      body: JSON.stringify({ text: '补前端页面 v2', status: 'done', project_id: 'proj-alpha' }),
     });
     expectFetchCall('/api/todos/3', { method: 'DELETE' });
     expectFetchCall('/api/todos/3/promote', {
       method: 'POST',
       body: JSON.stringify({ type: 'quick', creator: 'archon', priority: 'high' }),
     });
+  });
+
+  it('targets project list and detail routes', async () => {
+    const api = await import('@/lib/api');
+
+    await api.listProjects();
+    await api.getProjectWorkbench('proj-alpha');
+
+    expectFetchCall('/api/projects', { method: 'GET' });
+    expectFetchCall('/api/projects/proj-alpha', { method: 'GET' });
   });
 
   it('loads template summaries and full template details from the real backend routes', async () => {

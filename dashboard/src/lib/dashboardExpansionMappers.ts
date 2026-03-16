@@ -247,7 +247,7 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
     channelSummaries: dto.channel_summaries.map(mapChannelSummaryDto),
     hostSummaries: dto.host_summaries.map(mapHostSummaryDto),
     craftsmanRuntime: mapCraftsmanRuntime(dto.craftsman_runtime),
-    tmuxRuntime: mapTmuxRuntime(dto.tmux_runtime),
+    legacyRuntime: mapTmuxRuntime(dto.tmux_runtime),
   };
 }
 

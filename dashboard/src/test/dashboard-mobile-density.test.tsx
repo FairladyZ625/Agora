@@ -10,7 +10,7 @@ const resolveReview = vi.fn(async () => 'live');
 const showMessage = vi.fn();
 const fetchStatus = vi.fn(async () => 'live');
 const fetchChannelDetail = vi.fn(async () => 'live');
-const fetchTmuxTail = vi.fn(async () => 'live');
+const fetchRuntimeTail = vi.fn(async () => 'live');
 
 const liveTasks: Task[] = [
   {
@@ -331,7 +331,7 @@ const agentStoreState = {
       ],
     },
   ],
-  tmuxRuntime: {
+  legacyRuntime: {
     session: 'agora-craftsmen',
     panes: [
       {
@@ -352,7 +352,7 @@ const agentStoreState = {
       },
     ],
   },
-  tmuxTailByAgent: {
+  runtimeTailByAgent: {
     codex: 'tail:codex',
   },
   presenceFilter: 'all' as const,
@@ -362,10 +362,10 @@ const agentStoreState = {
   error: null,
   fetchStatus,
   fetchChannelDetail,
-  fetchTmuxTail,
+  fetchRuntimeTail,
   channelDetailLoading: false,
   channelDetailError: null,
-  tmuxTailLoadingByAgent: {},
+  runtimeTailLoadingByAgent: {},
   setPresenceFilter: vi.fn(),
   setCraftsmenFilter: vi.fn(),
   setChannelFilter: vi.fn(),

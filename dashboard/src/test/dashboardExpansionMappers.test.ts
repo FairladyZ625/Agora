@@ -180,12 +180,12 @@ describe('dashboard expansion mappers', () => {
     expect(status.channelSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(status.channelSummaries[0]?.signalStatus).toBe('degraded');
     expect(status.hostSummaries[0]?.host).toBe('openclaw');
-    expect(status.tmuxRuntime?.session).toBe('agora-craftsmen');
-    expect(status.tmuxRuntime?.panes[0]?.tailPreview).toBe('tail:codex');
-    expect(status.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
-    expect(status.tmuxRuntime?.panes[0]?.sessionReference).toBe('codex-session-123');
-    expect(status.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
-    expect(status.tmuxRuntime?.panes[0]?.sessionObservedAt).toBe('2026-03-08T23:01:00.000Z');
+    expect(status.legacyRuntime?.session).toBe('agora-craftsmen');
+    expect(status.legacyRuntime?.panes[0]?.tailPreview).toBe('tail:codex');
+    expect(status.legacyRuntime?.panes[0]?.identitySource).toBe('session_file');
+    expect(status.legacyRuntime?.panes[0]?.sessionReference).toBe('codex-session-123');
+    expect(status.legacyRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
+    expect(status.legacyRuntime?.panes[0]?.sessionObservedAt).toBe('2026-03-08T23:01:00.000Z');
     expect(status.channelSummaries[0]?.signals[0]?.kind).toBe('transport_error');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');

@@ -88,8 +88,8 @@ export function AgentsPage() {
   const channelDetailFetchedAt = useAgentStore((state) => state.channelDetailFetchedAt);
   const hostSummaries = useAgentStore((state) => state.hostSummaries);
   const craftsmanRuntime = useAgentStore((state) => state.craftsmanRuntime);
-  const tmuxRuntime = useAgentStore((state) => state.tmuxRuntime);
-  const tmuxTailByAgent = useAgentStore((state) => state.tmuxTailByAgent);
+  const legacyRuntime = useAgentStore((state) => state.legacyRuntime);
+  const runtimeTailByAgent = useAgentStore((state) => state.runtimeTailByAgent);
   const presenceFilter = useAgentStore((state) => state.presenceFilter);
   const craftsmenFilter = useAgentStore((state) => state.craftsmenFilter);
   const channelFilter = useAgentStore((state) => state.channelFilter);
@@ -97,10 +97,10 @@ export function AgentsPage() {
   const error = useAgentStore((state) => state.error);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const fetchChannelDetail = useAgentStore((state) => state.fetchChannelDetail);
-  const fetchTmuxTail = useAgentStore((state) => state.fetchTmuxTail);
+  const fetchRuntimeTail = useAgentStore((state) => state.fetchRuntimeTail);
   const channelDetailLoading = useAgentStore((state) => state.channelDetailLoading);
   const channelDetailError = useAgentStore((state) => state.channelDetailError);
-  const tmuxTailLoadingByAgent = useAgentStore((state) => state.tmuxTailLoadingByAgent);
+  const runtimeTailLoadingByAgent = useAgentStore((state) => state.runtimeTailLoadingByAgent);
   const setPresenceFilter = useAgentStore((state) => state.setPresenceFilter);
   const setCraftsmenFilter = useAgentStore((state) => state.setCraftsmenFilter);
   const setChannelFilter = useAgentStore((state) => state.setChannelFilter);
@@ -181,7 +181,7 @@ export function AgentsPage() {
   );
   const runtimeSlots = useMemo(() => (
     craftsmanRuntime?.slots
-      ?? tmuxRuntime?.panes.map((pane) => ({
+      ?? legacyRuntime?.panes.map((pane) => ({
         provider: 'tmux' as const,
         agent: pane.agent,
         sessionId: pane.transportSessionId,
@@ -199,7 +199,7 @@ export function AgentsPage() {
         title: null,
       }))
       ?? []
-  ), [craftsmanRuntime, tmuxRuntime]);
+  ), [craftsmanRuntime, legacyRuntime]);
 
   const runtimeSummary = useMemo(() => {
     const providerSummary = craftsmanRuntime?.providers ?? [];
@@ -207,7 +207,7 @@ export function AgentsPage() {
       ? providerSummary[0]?.session ?? providerSummary[0]?.provider ?? 'n/a'
       : providerSummary.length > 1
         ? `${providerSummary.length} providers`
-        : tmuxRuntime?.session ?? 'n/a';
+        : legacyRuntime?.session ?? 'n/a';
     return {
       session: sessionLabel,
       totalPanes: runtimeSlots.length,
@@ -217,7 +217,7 @@ export function AgentsPage() {
       failedCraftsmen: craftsmen.filter((item) => item.status === 'failed' || item.recentExecutions.some((execution) => execution.status === 'failed')).length,
       unhealthyPanes: runtimeSlots.filter((slot) => !slot.ready).length,
     };
-  }, [craftsmanRuntime, craftsmen, runtimeSlots, tmuxRuntime]);
+  }, [craftsmanRuntime, craftsmen, runtimeSlots, legacyRuntime]);
   const visibleCraftsmen = useMemo(() => {
     const filtered = craftsmenFilter === 'all'
       ? craftsmen
@@ -310,11 +310,11 @@ export function AgentsPage() {
     if (unhealthyPanes.length > 0) {
       groups.push({
         id: 'tmux-unhealthy',
-        label: copy.workspace.issueGroups.tmuxUnhealthy,
+        label: copy.workspace.issueGroups.runtimeUnhealthy,
         count: unhealthyPanes.length,
         severity: 'warning',
-        summary: copy.workspace.issueGroups.tmuxUnhealthySummary(unhealthyPanes.length),
-        detail: copy.workspace.issueGroups.tmuxUnhealthyDetail(unhealthyPanes[0].agent),
+        summary: copy.workspace.issueGroups.runtimeUnhealthySummary(unhealthyPanes.length),
+        detail: copy.workspace.issueGroups.runtimeUnhealthyDetail(unhealthyPanes[0].agent),
         action: () => {
           setActiveDrawer('execution');
         },
@@ -343,7 +343,7 @@ export function AgentsPage() {
       tone: criticalAgents.length + staleAgents.length > 0 ? 'warning' : 'success',
     },
     {
-      label: copy.workspace.signalLabels.tmuxUnready,
+      label: copy.workspace.signalLabels.runtimeUnready,
       value: runtimeSummary.unhealthyPanes,
       note: copy.workspace.signalNotes.readyPanes(runtimeSummary.readyPanes, runtimeSummary.totalPanes),
       tone: runtimeSummary.unhealthyPanes > 0 ? 'warning' : 'success',
@@ -961,12 +961,12 @@ export function AgentsPage() {
 
             <section className="space-y-4">
               <div className="section-title-row">
-                <h3 className="section-title">{copy.tmuxRuntimeTitle}</h3>
-                <span className="status-pill status-pill--neutral">{tmuxRuntime?.session ?? 'n/a'}</span>
+                <h3 className="section-title">{copy.runtimeTitle}</h3>
+                <span className="status-pill status-pill--neutral">{legacyRuntime?.session ?? 'n/a'}</span>
               </div>
               {runtimeSlots.length === 0 ? (
                 <div className="empty-state">
-                  <p className="type-body-sm">{copy.emptyTmuxRuntime}</p>
+                  <p className="type-body-sm">{copy.emptyRuntime}</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -991,14 +991,14 @@ export function AgentsPage() {
                         <span>execution: {pane.executionId ?? 'n/a'}</span>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <p className="type-text-xs">{copy.tailPreviewLabel}: {tmuxTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>
+                        <p className="type-text-xs">{copy.tailPreviewLabel}: {runtimeTailByAgent[pane.agent] ?? pane.tailPreview ?? 'n/a'}</p>
                         {pane.provider === 'tmux' ? (
                           <button
                             type="button"
                             className="status-pill status-pill--neutral"
-                            onClick={() => void fetchTmuxTail(pane.agent)}
+                            onClick={() => void fetchRuntimeTail(pane.agent)}
                           >
-                            {tmuxTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
+                            {runtimeTailLoadingByAgent[pane.agent] ? copy.loadingTailAction : copy.loadTailAction}
                           </button>
                         ) : null}
                       </div>

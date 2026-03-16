@@ -9,6 +9,7 @@ const navigate = vi.fn();
 const fetchTemplates = vi.fn(async () => 'live');
 const selectTemplate = vi.fn(async () => undefined);
 const fetchStatus = vi.fn(async () => 'live');
+const fetchProjects = vi.fn(async () => 'live');
 
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
@@ -22,6 +23,18 @@ vi.mock('@/stores/taskStore', () => ({
   useTaskStore: (selector: (state: {
     createTask: typeof createTask;
   }) => unknown) => selector({ createTask }),
+}));
+
+vi.mock('@/stores/projectStore', () => ({
+  useProjectStore: (selector: (state: {
+    projects: Array<{ id: string; name: string; status: string; owner: string | null; summary: string | null }>;
+    fetchProjects: typeof fetchProjects;
+  }) => unknown) => selector({
+    projects: [
+      { id: 'proj-alpha', name: 'Project Alpha', status: 'active', owner: 'archon', summary: 'primary project' },
+    ],
+    fetchProjects,
+  }),
 }));
 
 vi.mock('@/stores/feedbackStore', () => ({
@@ -110,7 +123,7 @@ vi.mock('@/stores/agentStore', () => ({
       lastSeenAt: string | null;
     }>;
     fetchStatus: typeof fetchStatus;
-    tmuxRuntime: {
+    legacyRuntime: {
       session: string | null;
       panes: Array<{
         agent: string;
@@ -173,7 +186,7 @@ vi.mock('@/stores/agentStore', () => ({
       },
     ],
     fetchStatus,
-    tmuxRuntime: {
+    legacyRuntime: {
       session: 'agora-craftsmen',
       panes: [
         {
@@ -231,6 +244,9 @@ describe('create task page', () => {
     fireEvent.change(screen.getByLabelText('任务描述'), {
       target: { value: '需要私有线程和定向 agent' },
     });
+    fireEvent.change(screen.getByLabelText('所属 Project'), {
+      target: { value: 'proj-alpha' },
+    });
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
@@ -243,6 +259,7 @@ describe('create task page', () => {
       expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
         title: '实现动态选人 create flow',
         type: 'coding',
+        project_id: 'proj-alpha',
         team_override: {
           members: [
             { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
@@ -258,6 +275,7 @@ describe('create task page', () => {
       }));
     });
     expect(fetchTemplates).toHaveBeenCalled();
+    expect(fetchProjects).toHaveBeenCalled();
     expect(fetchStatus).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/tasks/OC-200');
   });

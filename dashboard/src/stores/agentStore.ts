@@ -16,20 +16,20 @@ interface AgentStore {
   channelDetailFetchedAt: Record<string, number>;
   hostSummaries: AgentHostSummary[];
   craftsmanRuntime: CraftsmanRuntimeStatus | null;
-  tmuxRuntime: TmuxRuntimeStatus | null;
-  tmuxTailByAgent: Record<string, string | null>;
+  legacyRuntime: TmuxRuntimeStatus | null;
+  runtimeTailByAgent: Record<string, string | null>;
   presenceFilter: AgentPresenceFilter;
   craftsmenFilter: CraftsmenFilter;
   channelFilter: string | null;
   hostFilter: string | null;
   loading: boolean;
   channelDetailLoading: boolean;
-  tmuxTailLoadingByAgent: Record<string, boolean>;
+  runtimeTailLoadingByAgent: Record<string, boolean>;
   error: string | null;
   channelDetailError: string | null;
   fetchStatus: () => Promise<'live' | 'error'>;
   fetchChannelDetail: (channel: string) => Promise<'live' | 'error'>;
-  fetchTmuxTail: (agent: string, lines?: number) => Promise<'live' | 'error'>;
+  fetchRuntimeTail: (agent: string, lines?: number) => Promise<'live' | 'error'>;
   setPresenceFilter: (filter: AgentPresenceFilter) => void;
   setCraftsmenFilter: (filter: CraftsmenFilter) => void;
   setChannelFilter: (channel: string | null) => void;
@@ -48,15 +48,15 @@ export const useAgentStore = create<AgentStore>()(
       channelDetailFetchedAt: {},
       hostSummaries: [],
       craftsmanRuntime: null,
-      tmuxRuntime: null,
-      tmuxTailByAgent: {},
+      legacyRuntime: null,
+      runtimeTailByAgent: {},
       presenceFilter: 'all',
       craftsmenFilter: 'all',
       channelFilter: null,
       hostFilter: null,
       loading: false,
       channelDetailLoading: false,
-      tmuxTailLoadingByAgent: {},
+      runtimeTailLoadingByAgent: {},
       error: null,
       channelDetailError: null,
 
@@ -71,9 +71,9 @@ export const useAgentStore = create<AgentStore>()(
             channelSummaries: payload.channelSummaries,
             hostSummaries: payload.hostSummaries,
             craftsmanRuntime: payload.craftsmanRuntime,
-            tmuxRuntime: payload.tmuxRuntime,
-            tmuxTailByAgent: Object.fromEntries(
-              Object.entries((payload.craftsmanRuntime?.slots ?? payload.tmuxRuntime?.panes ?? []).reduce<Record<string, string | null>>((acc, pane) => {
+            legacyRuntime: payload.legacyRuntime,
+            runtimeTailByAgent: Object.fromEntries(
+              Object.entries((payload.craftsmanRuntime?.slots ?? payload.legacyRuntime?.panes ?? []).reduce<Record<string, string | null>>((acc, pane) => {
                 acc[pane.agent] = pane.tailPreview;
                 return acc;
               }, {}) ?? {}).map(([agent, tail]) => [agent, tail]),
@@ -89,8 +89,8 @@ export const useAgentStore = create<AgentStore>()(
             channelSummaries: [],
             hostSummaries: [],
             craftsmanRuntime: null,
-            tmuxRuntime: null,
-            tmuxTailByAgent: {},
+            legacyRuntime: null,
+            runtimeTailByAgent: {},
             loading: false,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -142,30 +142,30 @@ export const useAgentStore = create<AgentStore>()(
         }
       },
 
-      fetchTmuxTail: async (agent, lines = 20) => {
+      fetchRuntimeTail: async (agent, lines = 20) => {
         set((state) => ({
-          tmuxTailLoadingByAgent: {
-            ...state.tmuxTailLoadingByAgent,
+          runtimeTailLoadingByAgent: {
+            ...state.runtimeTailLoadingByAgent,
             [agent]: true,
           },
         }));
         try {
-          const payload = await api.getTmuxTail(agent, lines);
+          const payload = await api.getCraftsmanRuntimeTail(agent, lines);
           set((state) => ({
-            tmuxTailByAgent: {
-              ...state.tmuxTailByAgent,
+            runtimeTailByAgent: {
+              ...state.runtimeTailByAgent,
               [agent]: payload.output,
             },
-            tmuxTailLoadingByAgent: {
-              ...state.tmuxTailLoadingByAgent,
+            runtimeTailLoadingByAgent: {
+              ...state.runtimeTailLoadingByAgent,
               [agent]: false,
             },
           }));
           return 'live';
         } catch (error) {
           set((state) => ({
-            tmuxTailLoadingByAgent: {
-              ...state.tmuxTailLoadingByAgent,
+            runtimeTailLoadingByAgent: {
+              ...state.runtimeTailLoadingByAgent,
               [agent]: false,
             },
             error: error instanceof Error ? error.message : String(error),

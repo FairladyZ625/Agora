@@ -5,7 +5,7 @@ import { AgentsPage } from '@/pages/AgentsPage';
 
 const fetchStatus = vi.fn(async () => 'live');
 const fetchChannelDetail = vi.fn(async () => 'live');
-const fetchTmuxTail = vi.fn(async () => 'live');
+const fetchRuntimeTail = vi.fn(async () => 'live');
 
 const agentStoreState = {
   summary: {
@@ -208,7 +208,7 @@ const agentStoreState = {
       ],
     },
   ],
-  tmuxRuntime: {
+  legacyRuntime: {
     session: 'agora-craftsmen',
     panes: [
       {
@@ -229,7 +229,7 @@ const agentStoreState = {
       },
     ],
   },
-  tmuxTailByAgent: {
+  runtimeTailByAgent: {
     codex: 'tail:codex',
   },
   presenceFilter: 'all' as const,
@@ -239,10 +239,10 @@ const agentStoreState = {
   error: null,
   fetchStatus,
   fetchChannelDetail,
-  fetchTmuxTail,
+  fetchRuntimeTail,
   channelDetailLoading: false,
   channelDetailError: null,
-  tmuxTailLoadingByAgent: {},
+  runtimeTailLoadingByAgent: {},
   setPresenceFilter: vi.fn(),
   setCraftsmenFilter: vi.fn(),
   setChannelFilter: vi.fn(),
@@ -279,7 +279,7 @@ describe('agents workbench layout', () => {
   beforeEach(() => {
     fetchStatus.mockClear();
     fetchChannelDetail.mockClear();
-    fetchTmuxTail.mockClear();
+    fetchRuntimeTail.mockClear();
   });
 
   it('uses grouped anomaly queue rows and drawer-based detail axes', { timeout: 10_000 }, () => {
