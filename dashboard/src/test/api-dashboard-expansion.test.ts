@@ -113,23 +113,24 @@ describe('dashboard expansion api client', () => {
               presence_reason: 'stale_gateway_log',
               affected_agents: [],
             }],
-            tmux_runtime: {
-              session: 'agora-craftsmen',
-              panes: [{
+            craftsman_runtime: {
+              providers: [{ provider: 'tmux', session: 'agora-craftsmen', slot_count: 1, ready_slots: 1, active_slots: 1 }],
+              slots: [{
+                provider: 'tmux',
                 agent: 'codex',
-                pane_id: '%0',
-                current_command: 'bash',
-                active: true,
+                session_id: 'tmux:agora-craftsmen:codex',
+                runtime_mode: 'tmux',
+                transport: 'tmux-pane',
+                status: 'running',
                 ready: true,
+                active: true,
+                current_command: 'bash',
                 tail_preview: null,
-                continuity_backend: 'codex_session_file',
-                resume_capability: 'native_resume',
                 session_reference: 'codex-session-123',
-                identity_source: 'session_file',
-                identity_source_rank: 0,
-                identity_conflict_count: 0,
-                last_recovery_mode: 'resume_exact',
-                transport_session_id: 'tmux:agora-craftsmen:codex',
+                execution_id: null,
+                task_id: null,
+                subtask_id: null,
+                title: null,
               }],
             },
           };
@@ -177,6 +178,50 @@ describe('dashboard expansion api client', () => {
               severity: 'info',
               detail: 'Main ready',
             }],
+          };
+        }
+        if (url.endsWith('/projects')) {
+          return {
+            projects: [
+              {
+                id: 'proj-alpha',
+                name: 'Project Alpha',
+                summary: 'Core + brain baseline',
+                status: 'active',
+                owner: 'archon',
+                metadata: {},
+                created_at: '2026-03-16T00:00:00.000Z',
+                updated_at: '2026-03-16T01:00:00.000Z',
+              },
+            ],
+          };
+        }
+        if (url.includes('/projects/proj-alpha')) {
+          return {
+            project: {
+              id: 'proj-alpha',
+              name: 'Project Alpha',
+              summary: 'Core + brain baseline',
+              status: 'active',
+              owner: 'archon',
+              metadata: {},
+              created_at: '2026-03-16T00:00:00.000Z',
+              updated_at: '2026-03-16T01:00:00.000Z',
+            },
+            index: {
+              project_id: 'proj-alpha',
+              kind: 'index',
+              slug: 'index',
+              title: 'Project Alpha',
+              path: '/brain/projects/proj-alpha/index.md',
+              content: '# Project Alpha',
+              created_at: '2026-03-16T00:00:00.000Z',
+              updated_at: '2026-03-16T01:00:00.000Z',
+              source_task_ids: [],
+            },
+            recaps: [],
+            knowledge: [],
+            citizens: [],
           };
         }
         if (url.includes('/craftsmen/runtime/tail/')) {

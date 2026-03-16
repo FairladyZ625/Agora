@@ -9,7 +9,10 @@ import type {
   DashboardUserListResponseDto,
   FlowLogDto,
   HealthResponse,
+  ListProjectsResponseDto,
   PromoteTodoResultDto,
+  ProjectDto,
+  ProjectWorkbenchResponseDto,
   ProgressLogDto,
   SubtaskDto,
   TaskDto,
@@ -68,6 +71,9 @@ export type ApiDashboardSessionLoginDto = DashboardSessionLoginResponseDto;
 export type ApiDashboardSessionLogoutDto = DashboardSessionLogoutResponseDto;
 export type ApiDashboardUserListDto = DashboardUserListResponseDto;
 export type ApiTodoDto = TodoItemDto;
+export type ApiProjectDto = ProjectDto;
+export type ApiListProjectsResponseDto = ListProjectsResponseDto;
+export type ApiProjectWorkbenchDto = ProjectWorkbenchResponseDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;
 export type ApiTemplateDetailDto = TemplateDetailDto;
 export type ApiTemplateStageDto = NonNullable<ApiTemplateDetailDto['stages']>[number];

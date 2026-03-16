@@ -24,7 +24,6 @@ import type {
   TemplateGraphNode,
   TemplateStage,
   TemplateSummary,
-  TmuxRuntimeStatus,
   Todo,
 } from '@/types/dashboard';
 import { templateDetailSchema } from '@agora-ts/contracts';
@@ -88,31 +87,6 @@ function mapCraftsmanDto(item: ApiAgentsStatusDto['craftsmen'][number]): Craftsm
       transport: execution.transport,
       runtimeMode: execution.runtime_mode,
       startedAt: execution.started_at,
-    })),
-  };
-}
-
-function mapTmuxRuntime(dto: ApiAgentsStatusDto['tmux_runtime']): TmuxRuntimeStatus | null {
-  if (!dto) {
-    return null;
-  }
-  return {
-    session: dto.session,
-    panes: dto.panes.map((pane) => ({
-      agent: pane.agent,
-      paneId: pane.pane_id,
-      currentCommand: pane.current_command,
-      active: pane.active,
-      ready: pane.ready,
-      tailPreview: pane.tail_preview,
-      continuityBackend: pane.continuity_backend,
-      resumeCapability: pane.resume_capability,
-      sessionReference: pane.session_reference,
-      identitySource: pane.identity_source,
-      identityPath: pane.identity_path ?? null,
-      sessionObservedAt: pane.session_observed_at ?? null,
-      lastRecoveryMode: pane.last_recovery_mode,
-      transportSessionId: pane.transport_session_id,
     })),
   };
 }
@@ -247,7 +221,6 @@ export function mapAgentsStatusDto(dto: ApiAgentsStatusDto): AgentsStatus {
     channelSummaries: dto.channel_summaries.map(mapChannelSummaryDto),
     hostSummaries: dto.host_summaries.map(mapHostSummaryDto),
     craftsmanRuntime: mapCraftsmanRuntime(dto.craftsman_runtime),
-    legacyRuntime: mapTmuxRuntime(dto.tmux_runtime),
   };
 }
 
@@ -255,6 +228,7 @@ export function mapTodoDto(dto: ApiTodoDto): Todo {
   return {
     id: dto.id,
     text: dto.text,
+    projectId: dto.project_id,
     status: dto.status,
     due: dto.due,
     createdAt: dto.created_at,

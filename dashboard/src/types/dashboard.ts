@@ -117,28 +117,6 @@ export interface CraftsmanStatusItem {
   }>;
 }
 
-export interface TmuxRuntimePane {
-  agent: string;
-  paneId: string | null;
-  currentCommand: string | null;
-  active: boolean;
-  ready: boolean;
-  tailPreview: string | null;
-  continuityBackend: 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
-  resumeCapability: 'native_resume' | 'resume_last' | 'none';
-  sessionReference: string | null;
-  identitySource: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
-  identityPath: string | null;
-  sessionObservedAt: string | null;
-  lastRecoveryMode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
-  transportSessionId: string | null;
-}
-
-export interface TmuxRuntimeStatus {
-  session: string | null;
-  panes: TmuxRuntimePane[];
-}
-
 export interface CraftsmanRuntimeProviderSummary {
   provider: 'tmux' | 'acpx' | 'unknown';
   session: string | null;
@@ -177,7 +155,6 @@ export interface AgentsStatus {
   channelSummaries: AgentChannelSummary[];
   hostSummaries: AgentHostSummary[];
   craftsmanRuntime: CraftsmanRuntimeStatus | null;
-  legacyRuntime: TmuxRuntimeStatus | null;
 }
 
 export type TodoFilter = 'all' | 'pending' | 'done';
@@ -185,6 +162,7 @@ export type TodoFilter = 'all' | 'pending' | 'done';
 export interface Todo {
   id: number;
   text: string;
+  projectId: string | null;
   status: 'pending' | 'done' | string;
   due: string | null;
   createdAt: string;

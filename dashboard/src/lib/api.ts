@@ -10,7 +10,10 @@ import type {
   ApiDashboardUserListDto,
   ApiHealthDto,
   ApiObserveCraftsmanExecutionsResponseDto,
+  ApiListProjectsResponseDto,
   ApiPromoteTodoResultDto,
+  ApiProjectDto,
+  ApiProjectWorkbenchDto,
   ApiRuntimeDiagnosisResultDto,
   ApiRuntimeRecoveryActionDto,
   ApiTaskDto,
@@ -40,7 +43,9 @@ import {
   dashboardUserUpdatePasswordRequestSchema,
   duplicateTemplateRequestSchema,
   healthResponseSchema,
+  listProjectsResponseSchema,
   observeCraftsmanExecutionsResponseSchema,
+  projectWorkbenchResponseSchema,
   promoteTodoResultSchema,
   runtimeDiagnosisResultSchema,
   runtimeRecoveryActionSchema,
@@ -604,8 +609,6 @@ export function getCraftsmanRuntimeTail(agent: string, lines = 20): Promise<{ ou
   );
 }
 
-export const getTmuxTail = getCraftsmanRuntimeTail;
-
 export function listArchiveJobs(filters?: { status?: string; taskId?: string }): Promise<ApiArchiveJobDto[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set('status', filters.status);
@@ -663,13 +666,31 @@ export function scanArchiveJobReceipts(): Promise<{ processed: number; synced: n
   );
 }
 
-export function listTodos(status?: Exclude<TodoFilter, 'all'>): Promise<ApiTodoDto[]> {
+export function listProjects(status?: string): Promise<ApiProjectDto[]> {
   const params = status ? `?status=${encodeURIComponent(status)}` : '';
-  return request<ApiTodoDto[]>(`/todos${params}`, z.array(todoItemSchema));
+  return request<ApiListProjectsResponseDto>(`/projects${params}`, listProjectsResponseSchema)
+    .then((response) => response.projects);
+}
+
+export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {
+  return request<ApiProjectWorkbenchDto>(`/projects/${encodeURIComponent(projectId)}`, projectWorkbenchResponseSchema);
+}
+
+export function listTodos(status?: Exclude<TodoFilter, 'all'>, projectId?: string): Promise<ApiTodoDto[]> {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set('status', status);
+  }
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.toString();
+  return request<ApiTodoDto[]>(`/todos${query ? `?${query}` : ''}`, z.array(todoItemSchema));
 }
 
 export function createTodo(input: {
   text: string;
+  project_id?: string | null;
   due?: string | null;
   tags?: string[];
 }): Promise<ApiTodoDto> {
@@ -683,6 +704,7 @@ export function updateTodo(
   todoId: number,
   input: {
     text?: string;
+    project_id?: string | null;
     due?: string | null;
     tags?: string[];
     status?: 'pending' | 'done';

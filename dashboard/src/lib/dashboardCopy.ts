@@ -26,6 +26,7 @@ export function useShellCopy() {
     navItems: [
       { to: '/', key: 'overview', label: t('shell.nav.overview.label'), hint: t('shell.nav.overview.hint') },
       { to: '/board', key: 'board', label: t('shell.nav.board.label'), hint: t('shell.nav.board.hint') },
+      { to: '/projects', key: 'projects', label: t('shell.nav.projects.label'), hint: t('shell.nav.projects.hint') },
       { to: '/tasks', key: 'tasks', label: t('shell.nav.tasks.label'), hint: t('shell.nav.tasks.hint') },
       { to: '/agents', key: 'agents', label: t('shell.nav.agents.label'), hint: t('shell.nav.agents.hint') },
       { to: '/todos', key: 'todos', label: t('shell.nav.todos.label'), hint: t('shell.nav.todos.hint') },
@@ -44,6 +45,7 @@ export function usePageMetaCopy() {
   return {
     '/': { title: t('pageMeta.home.title') },
     '/board': { title: t('pageMeta.board.title') },
+    '/projects': { title: t('pageMeta.projects.title') },
     '/tasks': { title: t('pageMeta.tasks.title') },
     '/agents': { title: t('pageMeta.agents.title') },
     '/todos': { title: t('pageMeta.todos.title') },

@@ -19,6 +19,7 @@ describe('shared contracts drift guard', () => {
       todo: {
         id: 1,
         text: 'promote',
+        project_id: null,
         status: 'pending',
         due: null,
         created_at: '2026-03-08T00:00:00.000Z',

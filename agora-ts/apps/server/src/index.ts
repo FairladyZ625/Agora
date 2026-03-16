@@ -7,6 +7,8 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
     db: runtime.db,
     taskService: runtime.taskService,
     projectService: runtime.projectService,
+    projectBrainService: runtime.projectBrainService,
+    citizenService: runtime.citizenService,
     dashboardQueryService: runtime.dashboardQueryService,
     inboxService: runtime.inboxService,
     templateAuthoringService: runtime.templateAuthoringService,

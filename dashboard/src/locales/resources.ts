@@ -74,6 +74,7 @@ export const resources = {
         nav: {
           overview: { label: '概览', hint: '品牌主舞台' },
           board: { label: '看板', hint: '状态列视图' },
+          projects: { label: '项目', hint: 'Project 工作台' },
           tasks: { label: '任务', hint: '执行工作区' },
           agents: { label: 'Agent', hint: '负载与执行槽位' },
           todos: { label: 'Todo', hint: '待办与升级' },
@@ -90,6 +91,9 @@ export const resources = {
         },
         board: {
           title: '任务分布与流转总览',
+        },
+        projects: {
+          title: 'Project 工作台与知识面',
         },
         tasks: {
           title: '执行全景与阶段细节',
@@ -994,6 +998,7 @@ export const resources = {
         nav: {
           overview: { label: 'Overview', hint: 'Brand stage' },
           board: { label: 'Board', hint: 'State columns' },
+          projects: { label: 'Projects', hint: 'Project workbench' },
           tasks: { label: 'Tasks', hint: 'Execution workspace' },
           agents: { label: 'Agents', hint: 'Load and runtime slots' },
           todos: { label: 'Todos', hint: 'Inbox and promote' },
@@ -1010,6 +1015,9 @@ export const resources = {
         },
         board: {
           title: 'Task distribution and flow overview',
+        },
+        projects: {
+          title: 'Project workbench and knowledge surface',
         },
         tasks: {
           title: 'Execution overview and stage details',

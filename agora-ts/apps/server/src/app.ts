@@ -13,9 +13,6 @@ import {
   observeCraftsmanExecutionsRequestSchema,
   observeCraftsmanExecutionsResponseSchema,
   craftsmanRuntimeIdentityRequestSchema,
-  tmuxSendKeysRequestSchema,
-  tmuxSendTextRequestSchema,
-  tmuxSubmitChoiceRequestSchema,
   approveTaskRequestSchema,
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
@@ -91,7 +88,6 @@ import {
   type TemplateAuthoringService,
 } from '@agora-ts/core';
 import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
-import { z } from 'zod';
 
 export interface BuildAppOptions {
   db?: AgoraDatabase;
@@ -103,7 +99,10 @@ export interface BuildAppOptions {
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
-  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
+  tmuxRuntimeService?: Pick<
+    TmuxRuntimeService,
+    'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
+  >;
   taskContextBindingService?: TaskContextBindingService;
   taskConversationService?: TaskConversationService;
   taskParticipationService?: TaskParticipationService;
@@ -250,7 +249,7 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     || url === '/api/archive/jobs'
     || url.startsWith('/api/todos')
     || url.startsWith('/api/templates')
-    || url.startsWith('/api/craftsmen/tmux/')
+    || url.startsWith('/api/craftsmen/runtime/')
     || url.startsWith('/api/craftsmen/executions/')
     || url.startsWith('/api/craftsmen/tasks/');
 }
@@ -633,16 +632,6 @@ export function buildApp(options: BuildAppOptions = {}) {
     craftsmanCallbacksByStatus: new Map(),
   };
   const dashboardSessions = new Map<string, DashboardSession>();
-  const tmuxSendSchema = z.object({
-    agent: z.string().min(1),
-    command: z.string().min(1),
-  });
-  const tmuxTaskSchema = z.object({
-    agent: z.string().min(1),
-    prompt: z.string().min(1),
-    workdir: z.string().optional(),
-  });
-
   app.addHook('onRequest', async (request, reply) => {
     if (structuredLogs) {
       (request as typeof request & RequestTimingState).startedAtMs = Date.now();
@@ -1861,12 +1850,6 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
-  const markLegacyTmuxRoute = (reply: FastifyReply) => {
-    reply.header('Deprecation', 'true');
-    reply.header('X-Agora-Legacy-Surface', 'tmux');
-    reply.header('Warning', '299 Agora "legacy tmux debug surface; prefer ACP/runtime routes"');
-  };
-
   const getLegacyRuntimeStatus = async (_request: FastifyRequest, reply: FastifyReply) => {
     if (!tmuxRuntimeService) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
@@ -1885,102 +1868,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     return getLegacyRuntimeStatus(request, reply);
   });
 
-  app.get('/api/craftsmen/tmux/status', async (request, reply) => {
-    markLegacyTmuxRoute(reply);
-    return getLegacyRuntimeStatus(request, reply);
-  });
-
   app.get('/api/craftsmen/runtime/doctor', async (request, reply) => {
     return getLegacyRuntimeDoctor(request, reply);
-  });
-
-  app.get('/api/craftsmen/tmux/doctor', async (request, reply) => {
-    markLegacyTmuxRoute(reply);
-    return getLegacyRuntimeDoctor(request, reply);
-  });
-
-  app.post('/api/craftsmen/tmux/send', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
-    }
-    try {
-      markLegacyTmuxRoute(reply);
-      const payload = tmuxSendSchema.parse(request.body);
-      tmuxRuntimeService.send(payload.agent, payload.command);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/send-text', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
-    }
-    try {
-      markLegacyTmuxRoute(reply);
-      const payload = tmuxSendTextRequestSchema.parse(request.body);
-      tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/send-keys', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
-    }
-    try {
-      markLegacyTmuxRoute(reply);
-      const payload = tmuxSendKeysRequestSchema.parse(request.body);
-      tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/submit-choice', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
-    }
-    try {
-      markLegacyTmuxRoute(reply);
-      const payload = tmuxSubmitChoiceRequestSchema.parse(request.body);
-      tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/task', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
-    }
-    try {
-      markLegacyTmuxRoute(reply);
-      const payload = tmuxTaskSchema.parse(request.body);
-      return reply.send(tmuxRuntimeService.task(payload.agent, {
-        execution_id: `tmux-${Date.now()}`,
-        task_id: 'TMUX',
-        stage_id: 'dispatch',
-        subtask_id: `${payload.agent}-tmux-task`,
-        adapter: payload.agent,
-        mode: 'one_shot',
-        workdir: payload.workdir ?? process.cwd(),
-        prompt: payload.prompt,
-        brief_path: null,
-      }));
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
   });
 
   const getLegacyRuntimeTail = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -2002,11 +1891,6 @@ export function buildApp(options: BuildAppOptions = {}) {
   };
 
   app.get('/api/craftsmen/runtime/tail/:agent', async (request, reply) => {
-    return getLegacyRuntimeTail(request, reply);
-  });
-
-  app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
-    markLegacyTmuxRoute(reply);
     return getLegacyRuntimeTail(request, reply);
   });
 

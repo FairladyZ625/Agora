@@ -121,27 +121,26 @@ describe('dashboard expansion mappers', () => {
           ],
         },
       ],
-      tmux_runtime: {
-        session: 'agora-craftsmen',
-        panes: [
+      craftsman_runtime: {
+        providers: [{ provider: 'tmux', session: 'agora-craftsmen', slot_count: 1, ready_slots: 1, active_slots: 1 }],
+        slots: [
           {
+            provider: 'tmux',
             agent: 'codex',
-            pane_id: '%0',
-            current_command: 'bash',
-            active: true,
+            session_id: 'tmux:agora-craftsmen:codex',
+            runtime_mode: 'tmux',
+            transport: 'tmux-pane',
+            status: 'running',
             ready: true,
+            active: true,
+            current_command: 'bash',
             tail_preview: 'tail:codex',
-          continuity_backend: 'codex_session_file',
-          resume_capability: 'native_resume',
-          session_reference: 'codex-session-123',
-          identity_source: 'session_file',
-          identity_source_rank: 0,
-          identity_conflict_count: 0,
-          identity_path: '/tmp/codex/session.json',
-          session_observed_at: '2026-03-08T23:01:00.000Z',
-          last_recovery_mode: 'resume_exact',
-          transport_session_id: 'tmux:agora-craftsmen:codex',
-        },
+            session_reference: 'codex-session-123',
+            execution_id: null,
+            task_id: null,
+            subtask_id: null,
+            title: null,
+          },
         ],
       },
       craftsmen: [
@@ -180,12 +179,9 @@ describe('dashboard expansion mappers', () => {
     expect(status.channelSummaries[0]?.history[0]?.agentId).toBe('sonnet');
     expect(status.channelSummaries[0]?.signalStatus).toBe('degraded');
     expect(status.hostSummaries[0]?.host).toBe('openclaw');
-    expect(status.legacyRuntime?.session).toBe('agora-craftsmen');
-    expect(status.legacyRuntime?.panes[0]?.tailPreview).toBe('tail:codex');
-    expect(status.legacyRuntime?.panes[0]?.identitySource).toBe('session_file');
-    expect(status.legacyRuntime?.panes[0]?.sessionReference).toBe('codex-session-123');
-    expect(status.legacyRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
-    expect(status.legacyRuntime?.panes[0]?.sessionObservedAt).toBe('2026-03-08T23:01:00.000Z');
+    expect(status.craftsmanRuntime?.providers[0]?.session).toBe('agora-craftsmen');
+    expect(status.craftsmanRuntime?.slots[0]?.tailPreview).toBe('tail:codex');
+    expect(status.craftsmanRuntime?.slots[0]?.sessionReference).toBe('codex-session-123');
     expect(status.channelSummaries[0]?.signals[0]?.kind).toBe('transport_error');
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
@@ -204,6 +200,7 @@ describe('dashboard expansion mappers', () => {
     const dto: ApiTodoDto = {
       id: 3,
       text: '补页面',
+      project_id: 'proj-alpha',
       status: 'pending',
       due: '2026-03-09',
       created_at: '2026-03-07T09:00:00.000Z',
@@ -215,6 +212,7 @@ describe('dashboard expansion mappers', () => {
     const todo = mapTodoDto(dto);
 
     expect(todo.id).toBe(3);
+    expect(todo.projectId).toBe('proj-alpha');
     expect(todo.tagLabel).toBe('dashboard / frontend');
     expect(todo.promotedTo).toBe('OC-201');
   });

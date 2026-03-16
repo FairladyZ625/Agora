@@ -4,6 +4,7 @@ import {
   AcpCraftsmanInputPort,
   AcpCraftsmanProbePort,
   AcpCraftsmanTailPort,
+  CitizenService,
   AcpRuntimeRecoveryPort,
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
@@ -11,6 +12,7 @@ import {
   CraftsmanDispatcher,
   DirectAcpxRuntimePort,
   DashboardQueryService,
+  FilesystemProjectBrainQueryAdapter,
   FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
@@ -21,9 +23,12 @@ import {
   InventoryBackedAgentRuntimePort,
   LiveSessionStore,
   NotificationDispatcher,
+  OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
   HumanAccountService,
+  ProjectBrainService,
   ProjectService,
+  RolePackService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
   TmuxCraftsmanTailPort,
@@ -64,6 +69,8 @@ export interface ServerCompositionContext {
   runtimeEnv: RuntimeEnvironment;
   db: AgoraDatabase;
   templatesDir: string;
+  rolePackDir: string;
+  brainPackDir: string;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
 }
 
@@ -74,6 +81,8 @@ export interface ServerCompositionOptions {
 export interface ServerComposition {
   taskService: TaskService;
   projectService: ProjectService;
+  projectBrainService: ProjectBrainService;
+  citizenService: CitizenService;
   dashboardQueryService: DashboardQueryService;
   templateAuthoringService: TemplateAuthoringService;
   inboxService: InboxService;
@@ -146,6 +155,15 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: { projectKnowledgePort: ProjectKnowledgePort },
   ) => ProjectService;
+  createRolePackService: (context: ServerCompositionContext) => RolePackService;
+  createCitizenService: (
+    context: ServerCompositionContext,
+    deps: { projectService: ProjectService; rolePackService: RolePackService },
+  ) => CitizenService;
+  createProjectBrainService: (
+    context: ServerCompositionContext,
+    deps: { projectService: ProjectService; citizenService: CitizenService },
+  ) => ProjectBrainService;
   createTaskParticipationService: (
     context: ServerCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -156,7 +174,7 @@ export interface ServerCompositionFactories {
   createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
 }
 
-function ensureRuntimeBrainPackRoot(projectRoot: string): string {
+export function ensureRuntimeBrainPackRoot(projectRoot: string): string {
   const explicitRoot = process.env.AGORA_BRAIN_PACK_ROOT;
   const runtimeBrainPackDir = explicitRoot
     ? resolvePath(explicitRoot)
@@ -308,13 +326,29 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
-      brainPackRoot: ensureRuntimeBrainPackRoot(context.runtimeEnv.projectRoot),
+      brainPackRoot: context.brainPackDir,
     }),
     createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
-      brainPackRoot: ensureRuntimeBrainPackRoot(context.runtimeEnv.projectRoot),
+      brainPackRoot: context.brainPackDir,
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
+    }),
+    createRolePackService: (context) => new RolePackService({
+      db: context.db,
+      rolePacksDir: context.rolePackDir,
+    }),
+    createCitizenService: (context, deps) => new CitizenService(context.db, {
+      projectService: deps.projectService,
+      rolePackService: deps.rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    }),
+    createProjectBrainService: (context, deps) => new ProjectBrainService({
+      projectService: deps.projectService,
+      citizenService: deps.citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot: context.brainPackDir,
+      }),
     }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
@@ -367,6 +401,9 @@ export function buildServerComposition(
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
   const projectKnowledgePort = factories.createProjectKnowledgePort(context);
   const projectService = factories.createProjectService(context, { projectKnowledgePort });
+  const rolePackService = factories.createRolePackService(context);
+  const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
+  const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -406,6 +443,8 @@ export function buildServerComposition(
   return {
     taskService,
     projectService,
+    projectBrainService,
+    citizenService,
     dashboardQueryService,
     templateAuthoringService,
     inboxService,

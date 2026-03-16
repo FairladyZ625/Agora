@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createTaskDraft';
 import { buildCraftsmanInventory, isCraftsmanRole } from '@/lib/orchestrationRoles';
@@ -7,6 +7,7 @@ import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
 import { useAgentStore } from '@/stores/agentStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTemplateStore } from '@/stores/templateStore';
@@ -53,13 +54,16 @@ export function CreateTaskPage() {
   const agents = useAgentStore((state) => state.agents);
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const craftsmanRuntime = useAgentStore((state) => state.craftsmanRuntime);
-  const legacyRuntime = useAgentStore((state) => state.legacyRuntime);
+  const projects = useProjectStore((state) => state.projects);
+  const fetchProjects = useProjectStore((state) => state.fetchProjects);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<string>(selectedTemplateId ?? 'coding');
   const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal');
+  const [projectId, setProjectId] = useState('');
   const [assignments, setAssignments] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const priorities = ['low', 'normal', 'high'] as const;
@@ -68,7 +72,13 @@ export function CreateTaskPage() {
   useEffect(() => {
     void fetchTemplates();
     void fetchStatus();
-  }, [fetchStatus, fetchTemplates]);
+    void fetchProjects();
+  }, [fetchProjects, fetchStatus, fetchTemplates]);
+
+  useEffect(() => {
+    const nextProjectId = new URLSearchParams(location.search).get('project') ?? '';
+    setProjectId(nextProjectId);
+  }, [location.search]);
 
   useEffect(() => {
     if (!templates.length) {
@@ -85,7 +95,7 @@ export function CreateTaskPage() {
   }, [selectedTemplateId, selectTemplate, templates, type]);
 
   useEffect(() => {
-    const craftsmanInventory = buildCraftsmanInventory(craftsmanRuntime ?? legacyRuntime);
+    const craftsmanInventory = buildCraftsmanInventory(craftsmanRuntime);
     const nextAssignments = buildInitialRoleAssignments(selectedTemplate, {
       agents,
       craftsmen: craftsmanInventory.map((id) => ({ id })),
@@ -101,10 +111,10 @@ export function CreateTaskPage() {
     if (!haveSameAssignments(assignments, nextState)) {
       setAssignments(nextState);
     }
-  }, [agents, assignments, craftsmanRuntime, selectedTemplate, legacyRuntime]);
+  }, [agents, assignments, craftsmanRuntime, selectedTemplate]);
 
   const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
-  const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime ?? legacyRuntime);
+  const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime);
   const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
   const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;
   const templateChoices = templates.length > 0
@@ -125,6 +135,7 @@ export function CreateTaskPage() {
             description,
             priority,
             locale,
+            projectId: projectId || null,
             template: selectedTemplate,
             type,
             visibility,
@@ -193,6 +204,21 @@ export function CreateTaskPage() {
                 className="input-shell"
                 placeholder={createTaskCopy.titlePlaceholder}
               />
+            </label>
+
+            <label className="space-y-2">
+              <span className="field-label">所属 Project</span>
+              <select
+                aria-label="所属 Project"
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                className="input-shell"
+              >
+                <option value="">不绑定 Project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
+                ))}
+              </select>
             </label>
 
             <label className="space-y-2">

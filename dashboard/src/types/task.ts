@@ -360,6 +360,7 @@ export interface CreateTaskInput {
   description: string;
   priority: TaskPriority | string;
   locale?: 'zh-CN' | 'en-US';
+  project_id?: string | null;
   team_override?: {
     members: Array<{
       role: string;

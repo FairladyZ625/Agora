@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { DashboardQueryService, HumanAccountService, ProjectService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
+import { CitizenService, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, ProjectService, RolePackService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -19,6 +19,16 @@ function makeEmptyTemplatesDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-empty-templates-'));
   tempPaths.push(dir);
   mkdirSync(join(dir, 'tasks'), { recursive: true });
+  return dir;
+}
+
+function makeBrainPackDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-brain-pack-'));
+  tempPaths.push(dir);
+  mkdirSync(join(dir, 'projects'), { recursive: true });
+  cpSync(resolve(process.cwd(), '../agora-ai-brain/roles'), join(dir, 'roles'), {
+    recursive: true,
+  });
   return dir;
 }
 
@@ -179,6 +189,131 @@ describe('task routes', () => {
       projects: [
         expect.objectContaining({
           id: 'proj-api',
+        }),
+      ],
+    });
+  });
+
+  it('serves a project workbench detail bundle through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-workbench',
+      name: 'Project Workbench',
+      summary: 'dashboard surface',
+      owner: 'archon',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-workbench',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime adapters outside core.',
+      body: 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
+      source_task_ids: ['OC-WB-1'],
+    });
+    projectService.recordTaskRecap({
+      project_id: 'proj-workbench',
+      task_id: 'OC-WB-1',
+      title: 'Workbench recap',
+      state: 'done',
+      current_stage: 'ship',
+      controller_ref: 'opus',
+      workspace_path: join(brainPackRoot, 'projects', 'proj-workbench', 'tasks', 'OC-WB-1'),
+      completed_by: 'archon',
+      completed_at: '2026-03-16T12:00:00.000Z',
+      summary_lines: ['Task recap line'],
+    });
+    mkdirSync(join(brainPackRoot, 'projects', 'proj-workbench', 'recaps'), { recursive: true });
+    writeFileSync(
+      join(brainPackRoot, 'projects', 'proj-workbench', 'recaps', 'OC-WB-1.md'),
+      '# Workbench recap\n\nTask recap line\n',
+      'utf8',
+    );
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Keep runtime adapters outside core.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-workbench',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: [],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+        metadata: {},
+      },
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      projectBrainService,
+      citizenService,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-workbench',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      project: {
+        id: 'proj-workbench',
+        name: 'Project Workbench',
+      },
+      index: expect.objectContaining({
+        kind: 'index',
+      }),
+      recaps: [
+        expect.objectContaining({
+          task_id: 'OC-WB-1',
+        }),
+      ],
+      knowledge: [
+        expect.objectContaining({
+          kind: 'decision',
+          slug: 'runtime-boundary',
+        }),
+      ],
+      citizens: [
+        expect.objectContaining({
+          citizen_id: 'citizen-alpha',
         }),
       ],
     });

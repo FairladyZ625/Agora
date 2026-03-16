@@ -18,6 +18,7 @@ interface BuildCreateTaskInputParams {
   description: string;
   priority: TaskPriority | string;
   locale: 'zh-CN' | 'en-US';
+  projectId?: string | null;
   template: TemplateDetail;
   type: string;
   visibility: 'public' | 'private';
@@ -69,6 +70,7 @@ export function buildCreateTaskInput({
   description,
   priority,
   locale,
+  projectId,
   template,
   type,
   visibility,
@@ -88,6 +90,7 @@ export function buildCreateTaskInput({
     description: description.trim(),
     priority,
     locale,
+    ...(projectId ? { project_id: projectId } : {}),
     ...(members.length > 0
       ? {
           team_override: {
