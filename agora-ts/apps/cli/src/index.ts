@@ -213,6 +213,16 @@ function parseJsonFile(path: string, context: string): Record<string, unknown> {
   }
 }
 
+function readTextOption(raw: string | undefined, file: string | undefined, context: string) {
+  if (raw && file) {
+    throw new Error(`${context} accepts either inline text or --body-file, not both`);
+  }
+  if (file) {
+    return readFileSync(file, 'utf8');
+  }
+  return raw ?? '';
+}
+
 function addRedirectCommand(
   program: Command,
   name: string,
@@ -668,6 +678,129 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (index?.content) {
         writeLine(stdout, '');
         writeLine(stdout, index.content.trimEnd());
+      }
+    });
+
+  const projectKnowledge = projects
+    .command('knowledge')
+    .description('project knowledge CRUD');
+
+  projectKnowledge
+    .command('add')
+    .description('新增或更新 project knowledge doc')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'decision|fact|open_question|reference')
+    .requiredOption('--slug <slug>', 'knowledge doc slug')
+    .requiredOption('--title <title>', 'knowledge doc title')
+    .option('--summary <summary>', 'knowledge summary')
+    .option('--body <body>', 'knowledge body')
+    .option('--body-file <path>', 'load body from file')
+    .option('--source-task <taskId>', 'source task id', collectOption, [])
+    .action((options: {
+      project: string;
+      kind: 'decision' | 'fact' | 'open_question' | 'reference';
+      slug: string;
+      title: string;
+      summary?: string;
+      body?: string;
+      bodyFile?: string;
+      sourceTask?: string[];
+    }) => {
+      const body = readTextOption(options.body, options.bodyFile, 'projects knowledge add').trim();
+      if (!body) {
+        throw new Error('knowledge body is required');
+      }
+      const doc = projectService.upsertKnowledgeEntry({
+        project_id: options.project,
+        kind: options.kind,
+        slug: options.slug,
+        title: options.title,
+        body,
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.sourceTask && options.sourceTask.length > 0 ? { source_task_ids: options.sourceTask } : {}),
+      });
+      writeLine(stdout, `Knowledge 已写入: ${doc.path}`);
+      writeLine(stdout, `kind: ${doc.kind}`);
+      writeLine(stdout, `slug: ${doc.slug}`);
+    });
+
+  projectKnowledge
+    .command('list')
+    .description('列出 project knowledge docs')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--kind <kind>', 'decision|fact|open_question|reference')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind?: 'decision' | 'fact' | 'open_question' | 'reference';
+      json?: boolean;
+    }) => {
+      const docs = projectService.listKnowledgeEntries(options.project, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ knowledge: docs }, null, 2));
+        return;
+      }
+      if (docs.length === 0) {
+        writeLine(stdout, '没有找到 knowledge docs');
+        return;
+      }
+      for (const doc of docs) {
+        writeLine(stdout, `${doc.kind}\t${doc.slug}\t${doc.title ?? '-'}\t${doc.path}`);
+      }
+    });
+
+  projectKnowledge
+    .command('show')
+    .description('查看单个 knowledge doc')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'decision|fact|open_question|reference')
+    .requiredOption('--slug <slug>', 'knowledge doc slug')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind: 'decision' | 'fact' | 'open_question' | 'reference';
+      slug: string;
+      json?: boolean;
+    }) => {
+      const doc = projectService.getKnowledgeEntry(options.project, options.kind, options.slug);
+      if (!doc) {
+        throw new Error(`knowledge doc not found: ${options.kind}/${options.slug}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(doc, null, 2));
+        return;
+      }
+      writeLine(stdout, `${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+      writeLine(stdout, '');
+      writeLine(stdout, doc.content.trimEnd());
+    });
+
+  projects
+    .command('search')
+    .description('搜索 project knowledge / recap / index / timeline')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--query <query>', 'search query')
+    .option('--kind <kind>', 'decision|fact|open_question|reference|recap')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      query: string;
+      kind?: 'decision' | 'fact' | 'open_question' | 'reference' | 'recap';
+      json?: boolean;
+    }) => {
+      const results = projectService.searchProjectKnowledge(options.project, options.query, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ results }, null, 2));
+        return;
+      }
+      if (results.length === 0) {
+        writeLine(stdout, '没有匹配结果');
+        return;
+      }
+      for (const item of results) {
+        writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
+        writeLine(stdout, `  ${item.snippet}`);
       }
     });
 

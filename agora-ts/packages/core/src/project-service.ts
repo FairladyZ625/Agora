@@ -2,8 +2,11 @@ import { ProjectRepository, type AgoraDatabase, type StoredProject } from '@agor
 import { NotFoundError } from './errors.js';
 import type {
   ProjectKnowledgeDocument,
+  ProjectKnowledgeEntryInput,
+  ProjectKnowledgeKind,
   ProjectKnowledgePort,
   ProjectKnowledgeRecapSummary,
+  ProjectKnowledgeSearchResult,
 } from './project-knowledge-port.js';
 
 export interface CreateProjectInput {
@@ -97,5 +100,28 @@ export class ProjectService {
   listProjectRecaps(projectId: string): ProjectKnowledgeRecapSummary[] {
     this.requireProject(projectId);
     return this.knowledgePort?.listProjectRecaps(projectId) ?? [];
+  }
+
+  upsertKnowledgeEntry(input: ProjectKnowledgeEntryInput): ProjectKnowledgeDocument {
+    this.requireProject(input.project_id);
+    if (!this.knowledgePort) {
+      throw new Error('Project knowledge port is not configured');
+    }
+    return this.knowledgePort.upsertKnowledgeEntry(input);
+  }
+
+  listKnowledgeEntries(projectId: string, kind?: ProjectKnowledgeKind): ProjectKnowledgeDocument[] {
+    this.requireProject(projectId);
+    return this.knowledgePort?.listKnowledgeEntries(projectId, kind) ?? [];
+  }
+
+  getKnowledgeEntry(projectId: string, kind: ProjectKnowledgeKind, slug: string): ProjectKnowledgeDocument | null {
+    this.requireProject(projectId);
+    return this.knowledgePort?.getKnowledgeEntry(projectId, kind, slug) ?? null;
+  }
+
+  searchProjectKnowledge(projectId: string, query: string, kind?: ProjectKnowledgeKind | 'recap'): ProjectKnowledgeSearchResult[] {
+    this.requireProject(projectId);
+    return this.knowledgePort?.searchProjectKnowledge(projectId, query, kind) ?? [];
   }
 }

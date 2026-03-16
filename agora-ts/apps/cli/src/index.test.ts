@@ -371,6 +371,61 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('# Project Show');
   });
 
+  it('supports project knowledge CRUD and search through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-knowledge-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-knowledge',
+      name: 'Project Knowledge',
+      owner: 'archon',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'knowledge', 'add',
+      '--project', 'proj-knowledge',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+      '--title', 'Runtime Boundary',
+      '--summary', 'Keep runtime-specific logic out of core.',
+      '--body', 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
+      '--source-task', 'OC-100',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'knowledge', 'list',
+      '--project', 'proj-knowledge',
+      '--kind', 'decision',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'knowledge', 'show',
+      '--project', 'proj-knowledge',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'search',
+      '--project', 'proj-knowledge',
+      '--query', 'orchestration semantics',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Knowledge 已写入:');
+    expect(stdout.value).toContain('decision\truntime-boundary\tRuntime Boundary');
+    expect(stdout.value).toContain('decision/runtime-boundary');
+    expect(stdout.value).toContain('Core keeps orchestration semantics.');
+    expect(stdout.value).toContain('orchestration semantics');
+  });
+
   it('prints runtime diagnosis results through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

@@ -67,4 +67,51 @@ describe('project service', () => {
 
     expect(() => service.requireProject('proj-missing')).toThrow('Project not found: proj-missing');
   });
+
+  it('writes, lists, reads, and searches project knowledge docs', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    tempPaths.push(brainPackDir);
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createProject({
+      id: 'proj-knowledge',
+      name: 'Project Knowledge',
+      owner: 'archon',
+    });
+    const doc = service.upsertKnowledgeEntry({
+      project_id: 'proj-knowledge',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime-specific logic out of core.',
+      body: 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
+      source_task_ids: ['OC-100'],
+    });
+
+    expect(doc.path).toContain('knowledge/decisions/runtime-boundary.md');
+    expect(service.listKnowledgeEntries('proj-knowledge', 'decision')).toEqual([
+      expect.objectContaining({
+        slug: 'runtime-boundary',
+        title: 'Runtime Boundary',
+      }),
+    ]);
+    expect(service.getKnowledgeEntry('proj-knowledge', 'decision', 'runtime-boundary')?.content).toContain(
+      'Runtime adapters stay outside core.',
+    );
+    expect(service.searchProjectKnowledge('proj-knowledge', 'orchestration semantics')).toEqual([
+      expect.objectContaining({
+        kind: 'decision',
+        slug: 'runtime-boundary',
+      }),
+    ]);
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-knowledge', 'index.md'), 'utf8')).toContain(
+      '[[knowledge/decisions/runtime-boundary.md]]',
+    );
+  });
 });
