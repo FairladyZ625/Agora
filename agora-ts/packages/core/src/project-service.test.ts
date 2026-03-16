@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { ProjectService } from './project-service.js';
 
 const tempPaths: string[] = [];
@@ -26,7 +27,13 @@ describe('project service', () => {
   it('creates, lists, and resolves projects', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new ProjectService(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    tempPaths.push(brainPackDir);
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
 
     const created = service.createProject({
       id: 'proj-alpha',
@@ -49,6 +56,8 @@ describe('project service', () => {
         id: 'proj-alpha',
       }),
     ]);
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'))).toBe(true);
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
   });
 
   it('throws when requiring a missing project', () => {

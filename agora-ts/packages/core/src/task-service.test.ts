@@ -2,9 +2,10 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
+import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { LiveSessionStore } from './live-session-store.js';
 import { ProjectService } from './project-service.js';
@@ -732,15 +733,20 @@ describe('task service', () => {
   it('materializes task close recap into task and project scope for project-bound tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    new ProjectRepository(db).insertProject({
+    const brainPackDir = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
       id: 'proj-recap',
       name: 'Project Recap',
     });
-    const brainPackDir = makeBrainPackDir();
     const service = new TaskService(db, {
       templatesDir: makeEmptyTemplatesDir(),
       taskIdGenerator: () => 'OC-PROJECT-RECAP',
-      projectService: new ProjectService(db),
+      projectService,
       taskBrainBindingService: new TaskBrainBindingService(db, {
         idGenerator: () => 'brain-binding-recap',
       }),
@@ -775,9 +781,39 @@ describe('task service', () => {
     expect(done.state).toBe('done');
     expect(existsSync(taskRecapPath)).toBe(true);
     expect(existsSync(projectRecapPath)).toBe(true);
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'))).toBe(true);
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'))).toBe(true);
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('Project: proj-recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('任务已到达 done，已进入 archive 流程。');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');
+  });
+
+  it('promotes project-bound todos into tasks that keep the same project_id', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-promote',
+      name: 'Promote Project',
+    });
+    const todo = new TodoRepository(db).insertTodo({
+      text: 'promote into task',
+      project_id: 'proj-promote',
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TODO-PROJECT',
+    });
+
+    const promoted = service.promoteTodo(todo.id, {
+      type: 'coding',
+      creator: 'archon',
+      priority: 'high',
+    });
+
+    expect(promoted.todo.project_id).toBe('proj-promote');
+    expect(promoted.task.project_id).toBe('proj-promote');
   });
 
   it('rolls back task creation when brain workspace materialization fails', () => {

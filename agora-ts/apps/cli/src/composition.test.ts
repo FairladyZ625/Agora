@@ -136,6 +136,7 @@ describe('cli composition', () => {
               throw new Error('not used');
             },
             updateWorkspace: () => undefined,
+            writeTaskCloseRecap: () => undefined,
             destroyWorkspace: () => undefined,
           };
         },

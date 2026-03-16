@@ -20,6 +20,7 @@ export * from './live-session-store.js';
 export * from './mode-controller.js';
 export * from './notification-dispatcher.js';
 export * from './permission-service.js';
+export * from './project-knowledge-port.js';
 export * from './project-service.js';
 export * from './progress-service.js';
 export * from './role-pack-service.js';

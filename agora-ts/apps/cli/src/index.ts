@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
-import { deriveGraphFromStages, ProjectService as ProjectServiceImpl } from '@agora-ts/core';
+import { deriveGraphFromStages } from '@agora-ts/core';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
   DashboardQueryService,
@@ -328,7 +328,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
-  const projectService = createLazyObject(() => deps.projectService ?? new ProjectServiceImpl(resolveComposition().db));
+  const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const program = new Command();
 
   program
@@ -641,6 +641,34 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Project 已创建: ${project.id}`);
       writeLine(stdout, `名称: ${project.name}`);
       writeLine(stdout, `状态: ${project.status}`);
+    });
+
+  projects
+    .command('show')
+    .description('查看 project index 与 recent recaps')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const index = projectService.getProjectIndex(projectId);
+      const recaps = projectService.listProjectRecaps(projectId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project,
+          index,
+          recaps,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `${project.id} — ${project.name}`);
+      writeLine(stdout, `status: ${project.status}`);
+      writeLine(stdout, `owner: ${project.owner ?? '-'}`);
+      writeLine(stdout, `index: ${index?.path ?? '-'}`);
+      writeLine(stdout, `recaps: ${recaps.length}`);
+      if (index?.content) {
+        writeLine(stdout, '');
+        writeLine(stdout, index.content.trimEnd());
+      }
     });
 
   const templateRole = templates.command('role').description('template role CRUD');

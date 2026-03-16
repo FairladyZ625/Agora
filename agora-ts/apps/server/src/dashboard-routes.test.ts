@@ -7,6 +7,7 @@ import {
   runMigrations,
   ArchiveJobRepository,
   CraftsmanExecutionRepository,
+  ProjectRepository,
   SubtaskRepository,
   TaskRepository,
   TodoRepository,
@@ -220,6 +221,10 @@ describe('dashboard routes', () => {
     });
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-dashboard',
+      name: 'Dashboard Project',
+    });
 
     tasks.insertTask({
       id: 'OC-OLD',
@@ -244,7 +249,7 @@ describe('dashboard routes', () => {
     const createTodo = await app.inject({
       method: 'POST',
       url: '/api/todos',
-      payload: { text: '升级成任务', due: '2026-03-09', tags: ['triage'] },
+      payload: { text: '升级成任务', project_id: 'proj-dashboard', due: '2026-03-09', tags: ['triage'] },
     });
     const createdTodo = createTodo.json();
     const patchTodo = await app.inject({
@@ -286,19 +291,26 @@ describe('dashboard routes', () => {
       url: '/api/archive/jobs/scan-stale',
       payload: { timeout_ms: 1 },
     });
+    const projectTodos = await app.inject({
+      method: 'GET',
+      url: '/api/todos?project_id=proj-dashboard',
+    });
     const deleteTodo = await app.inject({
       method: 'DELETE',
       url: `/api/todos/${createdTodo.id}`,
     });
 
     expect(createTodo.statusCode).toBe(200);
+    expect(createTodo.json()).toMatchObject({ project_id: 'proj-dashboard' });
     expect(patchTodo.statusCode).toBe(200);
-    expect(patchTodo.json()).toMatchObject({ status: 'done', text: '升级成正式任务' });
+    expect(patchTodo.json()).toMatchObject({ status: 'done', text: '升级成正式任务', project_id: 'proj-dashboard' });
     expect(promoteTodo.statusCode).toBe(200);
     expect(promoteTodo.json()).toMatchObject({
-      todo: { promoted_to: 'OC-501' },
-      task: { id: 'OC-501', title: '升级成正式任务' },
+      todo: { promoted_to: 'OC-501', project_id: 'proj-dashboard' },
+      task: { id: 'OC-501', title: '升级成正式任务', project_id: 'proj-dashboard' },
     });
+    expect(projectTodos.statusCode).toBe(200);
+    expect(projectTodos.json()).toHaveLength(1);
     expect(retryArchive.statusCode).toBe(200);
     expect(retryArchive.json()).toMatchObject({ status: 'pending' });
     expect(notifyArchive.statusCode).toBe(200);

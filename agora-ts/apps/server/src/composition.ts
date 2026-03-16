@@ -6,6 +6,7 @@ import {
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
@@ -17,10 +18,12 @@ import {
   NotificationDispatcher,
   OsHostResourcePort,
   HumanAccountService,
+  ProjectService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
   TmuxCraftsmanTailPort,
   TmuxRuntimeRecoveryPort,
+  type ProjectKnowledgePort,
   type TaskBrainWorkspacePort,
   TaskBrainBindingService,
   StubIMMessagingPort,
@@ -61,6 +64,7 @@ export interface ServerCompositionOptions {
 
 export interface ServerComposition {
   taskService: TaskService;
+  projectService: ProjectService;
   dashboardQueryService: DashboardQueryService;
   templateAuthoringService: TemplateAuthoringService;
   inboxService: InboxService;
@@ -92,6 +96,7 @@ export interface ServerCompositionFactories {
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
@@ -122,6 +127,11 @@ export interface ServerCompositionFactories {
   createTaskContextBindingService: (context: ServerCompositionContext) => TaskContextBindingService;
   createTaskBrainBindingService: (context: ServerCompositionContext) => TaskBrainBindingService;
   createTaskBrainWorkspacePort: (context: ServerCompositionContext) => TaskBrainWorkspacePort;
+  createProjectKnowledgePort: (context: ServerCompositionContext) => ProjectKnowledgePort;
+  createProjectService: (
+    context: ServerCompositionContext,
+    deps: { projectKnowledgePort: ProjectKnowledgePort },
+  ) => ProjectService;
   createTaskParticipationService: (
     context: ServerCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -203,6 +213,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
+        projectService: deps.projectService,
         agentRuntimePort: deps.agentRuntimePort,
         runtimeRecoveryPort: deps.runtimeRecoveryPort,
         craftsmanInputPort: deps.craftsmanInputPort,
@@ -283,6 +294,12 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
       brainPackRoot: ensureRuntimeBrainPackRoot(context.runtimeEnv.projectRoot),
     }),
+    createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
+      brainPackRoot: ensureRuntimeBrainPackRoot(context.runtimeEnv.projectRoot),
+    }),
+    createProjectService: (context, deps) => new ProjectService(context.db, {
+      knowledgePort: deps.projectKnowledgePort,
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
     }),
@@ -327,6 +344,8 @@ export function buildServerComposition(
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
+  const projectKnowledgePort = factories.createProjectKnowledgePort(context);
+  const projectService = factories.createProjectService(context, { projectKnowledgePort });
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -341,6 +360,7 @@ export function buildServerComposition(
     taskBrainWorkspacePort,
     taskContextBindingService,
     taskParticipationService,
+    projectService,
     agentRuntimePort,
     craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
     craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
@@ -367,6 +387,7 @@ export function buildServerComposition(
 
   return {
     taskService,
+    projectService,
     dashboardQueryService,
     templateAuthoringService,
     inboxService,

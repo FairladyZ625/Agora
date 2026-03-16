@@ -17,12 +17,14 @@ import {
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
   OsHostResourcePort,
+  ProjectService,
   StubIMMessagingPort,
   RolePackService,
   TaskBrainBindingService,
@@ -30,6 +32,7 @@ import {
   TmuxCraftsmanProbePort,
   TmuxCraftsmanTailPort,
   TmuxRuntimeRecoveryPort,
+  type ProjectKnowledgePort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -65,6 +68,11 @@ export interface CliCompositionFactories {
   createIMMessagingPort: (context: CliCompositionContext) => IMMessagingPort;
   createIMProvisioningPort: (context: CliCompositionContext) => IMProvisioningPort | undefined;
   createTaskContextBindingService: (context: CliCompositionContext) => TaskContextBindingService;
+  createProjectKnowledgePort: (context: CliCompositionContext) => ProjectKnowledgePort;
+  createProjectService: (
+    context: CliCompositionContext,
+    deps: { projectKnowledgePort: ProjectKnowledgePort },
+  ) => ProjectService;
   createTaskParticipationService: (
     context: CliCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -79,6 +87,7 @@ export interface CliCompositionFactories {
       messagingPort: IMMessagingPort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: TmuxCraftsmanInputPort;
       craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
@@ -101,6 +110,7 @@ export interface CliComposition {
   config: AgoraConfig;
   db: AgoraDatabase;
   taskService: TaskService;
+  projectService: ProjectService;
   tmuxRuntimeService: TmuxRuntimeService;
   dashboardSessionClient: DashboardSessionClient;
   humanAccountService: HumanAccountService;
@@ -176,6 +186,12 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       return undefined;
     },
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
+      brainPackRoot: context.brainPackDir,
+    }),
+    createProjectService: (context, deps) => new ProjectService(context.db, {
+      knowledgePort: deps.projectKnowledgePort,
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
     }),
@@ -188,6 +204,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       imMessagingPort: deps.messagingPort,
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
+      projectService: deps.projectService,
       agentRuntimePort: deps.agentRuntimePort,
       runtimeRecoveryPort: deps.runtimeRecoveryPort,
       craftsmanInputPort: deps.craftsmanInputPort,
@@ -275,6 +292,8 @@ export function createCliComposition(
   const messagingPort = factories.createIMMessagingPort(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
   const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const projectKnowledgePort = factories.createProjectKnowledgePort(context);
+  const projectService = factories.createProjectService(context, { projectKnowledgePort });
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
@@ -292,6 +311,7 @@ export function createCliComposition(
     messagingPort,
     taskContextBindingService,
     taskParticipationService,
+    projectService,
     agentRuntimePort,
     runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   });
@@ -305,6 +325,7 @@ export function createCliComposition(
     config,
     db,
     taskService,
+    projectService,
     tmuxRuntimeService,
     dashboardSessionClient,
     humanAccountService,

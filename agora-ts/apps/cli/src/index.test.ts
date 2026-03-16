@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, FilesystemProjectKnowledgeAdapter, HumanAccountService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -290,8 +290,11 @@ describe('agora-ts cli', () => {
     runMigrations(db);
     const stdout = createBuffer();
     const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
     const program = createCliProgram({
-      projectService: new ProjectService(db),
+      projectService: new ProjectService(db, {
+        knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      }),
       stdout,
       stderr,
     }).exitOverride();
@@ -302,12 +305,17 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project 已创建: proj-alpha');
     expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
+    expect(readFileSync(join(brainPackRoot, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
   });
 
   it('creates a project-bound task through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    new ProjectService(db).createProject({
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-task-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
       id: 'proj-cli',
       name: 'CLI Project',
       owner: 'archon',
@@ -317,10 +325,11 @@ describe('agora-ts cli', () => {
     const taskService = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROJECT-CLI',
+      projectService,
     });
     const program = createCliProgram({
       taskService,
-      projectService: new ProjectService(db),
+      projectService,
       templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
       rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
       stdout,
@@ -332,6 +341,34 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project: proj-cli');
     expect(taskService.getTask('OC-PROJECT-CLI')?.project_id).toBe('proj-cli');
+  });
+
+  it('shows project knowledge through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-show-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-show',
+      name: 'Project Show',
+      owner: 'archon',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'show', 'proj-show'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('proj-show — Project Show');
+    expect(stdout.value).toContain('index:');
+    expect(stdout.value).toContain('# Project Show');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {

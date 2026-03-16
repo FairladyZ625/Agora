@@ -2128,10 +2128,13 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!dashboardQueryService) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
-    const query = request.query as { status?: string };
-    const filters: { status?: string } = {};
+    const query = request.query as { status?: string; project_id?: string };
+    const filters: { status?: string; project_id?: string } = {};
     if (query.status !== undefined) {
       filters.status = query.status;
+    }
+    if (query.project_id !== undefined) {
+      filters.project_id = query.project_id;
     }
     return reply.send(dashboardQueryService.listTodos(filters));
   });

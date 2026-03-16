@@ -125,6 +125,7 @@ describe('agora-ts contracts bootstrap', () => {
       todoItemSchema.parse({
         id: 1,
         text: '补 TS workspace',
+        project_id: 'proj-alpha',
         status: 'pending',
         due: null,
         created_at: '2026-03-07T00:00:00Z',

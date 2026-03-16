@@ -414,6 +414,16 @@ export class TaskService {
           metadata: brainWorkspaceBinding.metadata ?? null,
         });
       }
+      if (projectId) {
+        this.projectService.recordTaskBinding({
+          project_id: projectId,
+          task_id: taskId,
+          title: input.title,
+          state: TaskState.ACTIVE,
+          workspace_path: brainWorkspaceBinding?.workspace_path ?? null,
+          bound_at: new Date().toISOString(),
+        });
+      }
 
       this.db.exec('COMMIT');
     } catch (error) {
@@ -1740,6 +1750,7 @@ export class TaskService {
       description: '',
       priority: options.priority,
       locale: 'zh-CN',
+      ...(todo.project_id ? { project_id: todo.project_id } : {}),
     });
     const updatedTodo = this.todoRepository.updateTodo(todoId, {
       promoted_to: task.id,
@@ -2371,6 +2382,18 @@ export class TaskService {
       state: task.state,
       current_stage: task.current_stage,
       controller_ref: resolveControllerRef(task.team.members),
+      completed_by: actor,
+      completed_at: new Date().toISOString(),
+      summary_lines: summaryLines,
+    });
+    this.projectService.recordTaskRecap({
+      project_id: task.project_id,
+      task_id: task.id,
+      title: task.title,
+      state: task.state,
+      current_stage: task.current_stage,
+      controller_ref: resolveControllerRef(task.team.members),
+      workspace_path: binding.workspace_path,
       completed_by: actor,
       completed_at: new Date().toISOString(),
       summary_lines: summaryLines,

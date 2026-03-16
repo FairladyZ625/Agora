@@ -291,6 +291,7 @@ export type ArchiveJobReceiptScanResponseDto = z.infer<typeof archiveJobReceiptS
 export const todoItemSchema = z.object({
   id: z.number().int().nonnegative(),
   text: z.string(),
+  project_id: z.string().nullable(),
   status: z.string(),
   due: z.string().nullable(),
   created_at: z.string(),
@@ -308,6 +309,7 @@ export type PromoteTodoResultDto = z.infer<typeof promoteTodoResultSchema>;
 
 export const createTodoRequestSchema = z.object({
   text: z.string().min(1),
+  project_id: z.string().min(1).nullable().optional(),
   due: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -315,6 +317,7 @@ export type CreateTodoRequestDto = z.infer<typeof createTodoRequestSchema>;
 
 export const updateTodoRequestSchema = z.object({
   text: z.string().min(1).optional(),
+  project_id: z.string().min(1).nullable().optional(),
   due: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
   status: z.enum(['pending', 'done']).optional(),

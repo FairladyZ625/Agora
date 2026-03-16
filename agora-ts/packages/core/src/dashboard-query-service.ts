@@ -482,8 +482,10 @@ export class DashboardQueryService {
     return { processed, synced, failed };
   }
 
-  listTodos(filters: { status?: string } = {}) {
-    return this.todos.listTodos(filters.status);
+  listTodos(filters: { status?: string; project_id?: string } = {}) {
+    return this.todos.listTodos(filters.status).filter((todo) => (
+      filters.project_id === undefined ? true : todo.project_id === filters.project_id
+    ));
   }
 
   createTodo(input: CreateTodoRequestDto) {
