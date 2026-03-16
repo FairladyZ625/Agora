@@ -620,7 +620,7 @@ describe('craftsman routes', () => {
     });
   });
 
-  it('exposes tmux runtime status, doctor, send, task, and tail routes', async () => {
+  it('exposes runtime status/doctor plus legacy tmux debug routes', async () => {
     const app = buildApp({
       tmuxRuntimeService: {
         up: () => ({
@@ -696,11 +696,11 @@ describe('craftsman routes', () => {
 
     const statusResponse = await app.inject({
       method: 'GET',
-      url: '/api/craftsmen/tmux/status',
+      url: '/api/craftsmen/runtime/status',
     });
     const doctorResponse = await app.inject({
       method: 'GET',
-      url: '/api/craftsmen/tmux/doctor',
+      url: '/api/craftsmen/runtime/doctor',
     });
     const sendResponse = await app.inject({
       method: 'POST',
@@ -735,6 +735,7 @@ describe('craftsman routes', () => {
     });
 
     expect(statusResponse.statusCode).toBe(200);
+    expect(statusResponse.headers.deprecation).toBeUndefined();
     expect(statusResponse.json()).toEqual({
       session: 'agora-craftsmen',
       panes: [{
@@ -751,6 +752,7 @@ describe('craftsman routes', () => {
       }],
     });
     expect(doctorResponse.statusCode).toBe(200);
+    expect(doctorResponse.headers.deprecation).toBeUndefined();
     expect(doctorResponse.json()).toEqual({
       session: 'agora-craftsmen',
       panes: [{
@@ -768,8 +770,12 @@ describe('craftsman routes', () => {
       }],
     });
     expect(sendResponse.statusCode).toBe(200);
+    expect(sendResponse.headers.deprecation).toBe('true');
+    expect(sendResponse.headers['x-agora-legacy-surface']).toBe('tmux');
     expect(sendResponse.json()).toEqual({ ok: true });
     expect(taskResponse.statusCode).toBe(200);
+    expect(taskResponse.headers.deprecation).toBe('true');
+    expect(taskResponse.headers['x-agora-legacy-surface']).toBe('tmux');
     expect(taskResponse.json()).toMatchObject({
       status: 'running',
       session_id: 'tmux:agora-craftsmen:codex',
@@ -791,5 +797,21 @@ describe('craftsman routes', () => {
         transportSessionId: 'tmux:agora-craftsmen:codex',
       },
     });
+
+    const legacyStatusResponse = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/tmux/status',
+    });
+    const legacyDoctorResponse = await app.inject({
+      method: 'GET',
+      url: '/api/craftsmen/tmux/doctor',
+    });
+
+    expect(legacyStatusResponse.statusCode).toBe(200);
+    expect(legacyStatusResponse.headers.deprecation).toBe('true');
+    expect(legacyStatusResponse.headers['x-agora-legacy-surface']).toBe('tmux');
+    expect(legacyDoctorResponse.statusCode).toBe(200);
+    expect(legacyDoctorResponse.headers.deprecation).toBe('true');
+    expect(legacyDoctorResponse.headers['x-agora-legacy-surface']).toBe('tmux');
   });
 });

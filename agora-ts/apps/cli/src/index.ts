@@ -2011,7 +2011,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   const tmux = craftsman
     .command('tmux')
-    .description('legacy debug tmux runtime commands for craftsmen panes');
+    .description('legacy debug tmux commands for old craftsmen panes and recovery flows');
 
   const runtime = craftsman
     .command('runtime')
@@ -2103,11 +2103,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('start')
-    .description('启动指定 agent 的 interactive runtime')
+    .description('启动指定 agent 的 legacy interactive runtime')
     .argument('<agent>', 'agent pane name')
     .action((agent: string) => {
       const result = tmuxRuntimeService.start(agent, process.cwd());
-      writeLine(stdout, `tmux runtime 已启动: ${agent}`);
+      writeLine(stdout, `legacy runtime 已启动 (tmux): ${agent}`);
       writeLine(stdout, `pane: ${result.pane ?? '-'}`);
       writeLine(stdout, `mode: ${result.recoveryMode}`);
       writeLine(stdout, `command: ${result.command}`);
@@ -2115,12 +2115,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   tmux
     .command('resume')
-    .description('恢复指定 agent 的 interactive runtime')
+    .description('恢复指定 agent 的 legacy interactive runtime')
     .argument('<agent>', 'agent pane name')
     .argument('[sessionReference]', 'resume session reference')
     .action((agent: string, sessionReference?: string) => {
       const result = tmuxRuntimeService.resume(agent, sessionReference ?? null, process.cwd());
-      writeLine(stdout, `tmux runtime 已恢复: ${agent}`);
+      writeLine(stdout, `legacy runtime 已恢复 (tmux): ${agent}`);
       writeLine(stdout, `pane: ${result.pane ?? '-'}`);
       writeLine(stdout, `mode: ${result.recoveryMode}`);
       writeLine(stdout, `command: ${result.command}`);

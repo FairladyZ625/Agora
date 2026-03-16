@@ -48,6 +48,7 @@ import {
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
   listProjectsResponseSchema,
+  projectWorkbenchResponseSchema,
   promoteTodoRequestSchema,
   probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
@@ -78,7 +79,9 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
-  ProjectService,
+  type CitizenService,
+  type ProjectBrainService,
+  type ProjectService,
   ProjectService as ProjectServiceImpl,
   type TaskConversationService,
   type TaskParticipationService,
@@ -94,6 +97,8 @@ export interface BuildAppOptions {
   db?: AgoraDatabase;
   taskService?: TaskService;
   projectService?: ProjectService;
+  projectBrainService?: ProjectBrainService;
+  citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
@@ -601,6 +606,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
   const taskService = options.taskService;
   const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const projectBrainService = options.projectBrainService;
+  const citizenService = options.citizenService;
   const dashboardQueryService = options.dashboardQueryService;
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
@@ -1039,6 +1046,29 @@ export function buildApp(options: BuildAppOptions = {}) {
       const query = request.query as { status?: string };
       return reply.send(listProjectsResponseSchema.parse({
         projects: projectService.listProjects(query.status),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId', async (request, reply) => {
+    if (!projectService || !projectBrainService || !citizenService) {
+      return reply.status(503).send({ message: 'Project workbench services are not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      const project = projectService.getProject(params.projectId);
+      if (!project) {
+        return reply.status(404).send({ message: `Project ${params.projectId} not found` });
+      }
+      return reply.send(projectWorkbenchResponseSchema.parse({
+        project,
+        index: projectBrainService.getDocument(params.projectId, 'index'),
+        recaps: projectService.listProjectRecaps(params.projectId),
+        knowledge: projectService.listKnowledgeEntries(params.projectId),
+        citizens: citizenService.listCitizens(params.projectId),
       }));
     } catch (error) {
       const translated = translateError(error);
@@ -1831,20 +1861,42 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
-  app.get('/api/craftsmen/tmux/status', async (request, reply) => {
+  const markLegacyTmuxRoute = (reply: FastifyReply) => {
+    reply.header('Deprecation', 'true');
+    reply.header('X-Agora-Legacy-Surface', 'tmux');
+    reply.header('Warning', '299 Agora "legacy tmux debug surface; prefer ACP/runtime routes"');
+  };
+
+  const getLegacyRuntimeStatus = async (_request: FastifyRequest, reply: FastifyReply) => {
     if (!tmuxRuntimeService) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
-    reply.header('Deprecation', 'true');
     return reply.send(tmuxRuntimeService.status());
+  };
+
+  const getLegacyRuntimeDoctor = async (_request: FastifyRequest, reply: FastifyReply) => {
+    if (!tmuxRuntimeService) {
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
+    }
+    return reply.send(tmuxRuntimeService.doctor());
+  };
+
+  app.get('/api/craftsmen/runtime/status', async (request, reply) => {
+    return getLegacyRuntimeStatus(request, reply);
+  });
+
+  app.get('/api/craftsmen/tmux/status', async (request, reply) => {
+    markLegacyTmuxRoute(reply);
+    return getLegacyRuntimeStatus(request, reply);
+  });
+
+  app.get('/api/craftsmen/runtime/doctor', async (request, reply) => {
+    return getLegacyRuntimeDoctor(request, reply);
   });
 
   app.get('/api/craftsmen/tmux/doctor', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
-    }
-    reply.header('Deprecation', 'true');
-    return reply.send(tmuxRuntimeService.doctor());
+    markLegacyTmuxRoute(reply);
+    return getLegacyRuntimeDoctor(request, reply);
   });
 
   app.post('/api/craftsmen/tmux/send', async (request, reply) => {
@@ -1852,7 +1904,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
-      reply.header('Deprecation', 'true');
+      markLegacyTmuxRoute(reply);
       const payload = tmuxSendSchema.parse(request.body);
       tmuxRuntimeService.send(payload.agent, payload.command);
       return reply.send({ ok: true });
@@ -1867,7 +1919,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
-      reply.header('Deprecation', 'true');
+      markLegacyTmuxRoute(reply);
       const payload = tmuxSendTextRequestSchema.parse(request.body);
       tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
       return reply.send({ ok: true });
@@ -1882,7 +1934,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
-      reply.header('Deprecation', 'true');
+      markLegacyTmuxRoute(reply);
       const payload = tmuxSendKeysRequestSchema.parse(request.body);
       tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
       return reply.send({ ok: true });
@@ -1897,7 +1949,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
-      reply.header('Deprecation', 'true');
+      markLegacyTmuxRoute(reply);
       const payload = tmuxSubmitChoiceRequestSchema.parse(request.body);
       tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
       return reply.send({ ok: true });
@@ -1912,7 +1964,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
-      reply.header('Deprecation', 'true');
+      markLegacyTmuxRoute(reply);
       const payload = tmuxTaskSchema.parse(request.body);
       return reply.send(tmuxRuntimeService.task(payload.agent, {
         execution_id: `tmux-${Date.now()}`,
@@ -1954,7 +2006,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
-    reply.header('Deprecation', 'true');
+    markLegacyTmuxRoute(reply);
     return getLegacyRuntimeTail(request, reply);
   });
 

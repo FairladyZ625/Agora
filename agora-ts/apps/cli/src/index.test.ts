@@ -2072,7 +2072,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('write-tests\tdevelop\tgpt52\tpending\t-');
   });
 
-  it('supports tmux runtime management commands through the cli', async () => {
+  it('supports legacy tmux runtime management commands through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const tmuxRuntimeService = {
@@ -2186,9 +2186,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('tmux session 已就绪: agora-craftsmen');
     expect(stdout.value).toContain('%0\tcodex\tbash\tactive\tcodex_session_file\tsession_file\tcodex-session-123\t/tmp/codex/session.json\t2026-03-08T23:01:00.000Z');
     expect(stdout.value).toContain('tmux command 已发送: codex');
-    expect(stdout.value).toContain('tmux runtime 已启动: codex');
+    expect(stdout.value).toContain('legacy runtime 已启动 (tmux): codex');
     expect(stdout.value).toContain('command: codex -a never');
-    expect(stdout.value).toContain('tmux runtime 已恢复: codex');
+    expect(stdout.value).toContain('legacy runtime 已恢复 (tmux): codex');
     expect(stdout.value).toContain('command: codex resume -a never codex-session-123');
     expect(stdout.value).toContain('runtime identity 已回填: codex');
     expect(stdout.value).toContain('source: hook_event');
