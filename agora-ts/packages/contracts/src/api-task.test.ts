@@ -21,8 +21,19 @@ describe('task api contracts', () => {
         creator: 'archon',
         description: '给 API 加认证',
         priority: 'high',
+        project_id: 'proj-auth',
       }).type,
     ).toBe('coding');
+    expect(
+      createTaskRequestSchema.parse({
+        title: '实现认证中间件',
+        type: 'coding',
+        creator: 'archon',
+        description: '给 API 加认证',
+        priority: 'high',
+        project_id: 'proj-auth',
+      }).project_id,
+    ).toBe('proj-auth');
   });
 
   it('parses create task payloads with team/workflow/im target overrides', () => {
@@ -116,6 +127,7 @@ describe('task api contracts', () => {
           priority: 'normal',
           creator: 'archon',
           locale: 'zh-CN',
+          project_id: 'proj-alpha',
           state: 'active',
           archive_status: null,
           controller_ref: 'opus',
@@ -158,6 +170,7 @@ describe('task api contracts', () => {
         id: 'OC-001',
         archive_status: null,
         controller_ref: 'opus',
+        project_id: 'proj-alpha',
       },
       task_blueprint: {
         entry_nodes: ['develop'],

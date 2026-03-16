@@ -2,11 +2,12 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { LiveSessionStore } from './live-session-store.js';
+import { ProjectService } from './project-service.js';
 import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
@@ -683,6 +684,102 @@ describe('task service', () => {
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '02-roster.md'), 'utf8')).toContain('opus | architect | controller');
   });
 
+  it('creates a project-scoped brain workspace when task project binding is provided', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-alpha',
+      name: 'Project Alpha',
+      summary: 'project brain scope',
+    });
+    const brainPackDir = makeBrainPackDir();
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BRAIN-PROJECT',
+      projectService: new ProjectService(db),
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-project',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    const task = service.createTask({
+      title: 'Project scoped brain pack',
+      type: 'coding',
+      creator: 'archon',
+      description: 'materialize project workspace',
+      priority: 'high',
+      project_id: 'proj-alpha',
+    });
+
+    const binding = new TaskBrainBindingRepository(db).getActiveByTask(task.id);
+    const workspacePath = join(brainPackDir, 'projects', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT');
+    expect(task.project_id).toBe('proj-alpha');
+    expect(binding?.workspace_path).toBe(workspacePath);
+    expect(binding?.metadata).toMatchObject({
+      project_id: 'proj-alpha',
+    });
+    expect(existsSync(join(workspacePath, 'task.meta.yaml'))).toBe(true);
+    expect(readFileSync(join(workspacePath, 'task.meta.yaml'), 'utf8')).toContain('project_id: "proj-alpha"');
+    expect(readFileSync(join(workspacePath, '00-current.md'), 'utf8')).toContain('Project: proj-alpha');
+    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(
+      join(brainPackDir, 'roles', 'architect.md'),
+    );
+  });
+
+  it('materializes task close recap into task and project scope for project-bound tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-recap',
+      name: 'Project Recap',
+    });
+    const brainPackDir = makeBrainPackDir();
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-PROJECT-RECAP',
+      projectService: new ProjectService(db),
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-recap',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Project recap task',
+      type: 'project-thin-slice',
+      creator: 'archon',
+      description: 'recap writeback path',
+      priority: 'high',
+      project_id: 'proj-recap',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'command-only',
+        stages: [{ id: 'ship', mode: 'execute', gate: { type: 'command' } }],
+      },
+    });
+
+    const done = service.advanceTask('OC-PROJECT-RECAP', { callerId: 'archon' });
+    const workspacePath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'OC-PROJECT-RECAP');
+    const taskRecapPath = join(workspacePath, '07-outputs', 'task-close-recap.md');
+    const projectRecapPath = join(brainPackDir, 'projects', 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
+
+    expect(done.state).toBe('done');
+    expect(existsSync(taskRecapPath)).toBe(true);
+    expect(existsSync(projectRecapPath)).toBe(true);
+    expect(readFileSync(taskRecapPath, 'utf8')).toContain('Project: proj-recap');
+    expect(readFileSync(taskRecapPath, 'utf8')).toContain('任务已到达 done，已进入 archive 流程。');
+    expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
+  });
+
   it('rolls back task creation when brain workspace materialization fails', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -698,6 +795,7 @@ describe('task service', () => {
           throw new Error('brain workspace boom');
         },
         updateWorkspace: () => {},
+        writeTaskCloseRecap: () => {},
         destroyWorkspace: () => {},
       },
     });
@@ -711,6 +809,26 @@ describe('task service', () => {
     })).toThrow('brain workspace boom');
     expect(tasks.getTask('OC-BRAIN-FAIL')).toBeNull();
     expect(new TaskBrainBindingRepository(db).getActiveByTask('OC-BRAIN-FAIL')).toBeNull();
+  });
+
+  it('rejects task creation when a referenced project does not exist', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-MISSING',
+    });
+
+    expect(() => service.createTask({
+      title: 'Missing project task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-missing',
+    })).toThrow('Project not found: proj-missing');
+    expect(tasks.getTask('OC-PROJECT-MISSING')).toBeNull();
   });
 
   it('repairs stale database-backed templates with missing member_kind before building the task team', () => {

@@ -6,9 +6,17 @@ import { Command } from 'commander';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
-import { deriveGraphFromStages } from '@agora-ts/core';
+import { deriveGraphFromStages, ProjectService as ProjectServiceImpl } from '@agora-ts/core';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
-import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
+import type {
+  DashboardQueryService,
+  ProjectService,
+  RolePackService,
+  TaskConversationService,
+  TaskService,
+  TemplateAuthoringService,
+  TmuxRuntimeService,
+} from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanInteractionExpectationDto,
@@ -16,6 +24,7 @@ import type {
   CraftsmanExecutionStatusDto,
   CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
+  CreateProjectRequestDto,
   CreateSubtasksRequestDto,
   CreateTaskRequestDto,
   TaskPriority,
@@ -28,6 +37,7 @@ import {
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
   craftsmanExecutionTailResponseSchema,
+  createProjectRequestSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
   tmuxSendKeysRequestSchema,
@@ -48,8 +58,11 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
   locale?: 'zh-CN' | 'en-US';
 };
 
+type CreateProjectInputLike = CreateProjectRequestDto;
+
 export interface CliDependencies {
   taskService?: TaskService;
+  projectService?: ProjectService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
@@ -315,6 +328,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const projectService = createLazyObject(() => deps.projectService ?? new ProjectServiceImpl(resolveComposition().db));
   const program = new Command();
 
   program
@@ -375,6 +389,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--team-json <json>', 'team override JSON')
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
+    .option('--project-id <projectId>', 'bind task to an existing project')
     .option('--smoke-test', 'mark this task as smoke/test mode', false)
     .option('--controller <agentId>', 'controller agent override')
     .option('--bind <binding>', 'role binding override (role=agent)', collectOption, [])
@@ -386,6 +401,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       teamJson?: string;
       workflowJson?: string;
       imTargetJson?: string;
+      projectId?: string;
       smokeTest?: boolean;
       controller?: string;
       bind?: string[];
@@ -397,6 +413,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         description: '',
         priority: options.priority,
         locale: options.locale,
+        ...(options.projectId ? { project_id: options.projectId } : {}),
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
@@ -420,6 +437,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `任务已创建: ${task.id}`);
       writeLine(stdout, `标题: ${task.title}`);
       writeLine(stdout, `类型: ${task.type}`);
+      writeLine(stdout, `Project: ${task.project_id ?? '-'}`);
       writeLine(stdout, `状态: ${task.state}`);
       writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
     });
@@ -541,6 +559,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templates = program
     .command('templates')
     .description('template authoring commands');
+  const projects = program
+    .command('projects')
+    .description('project thin-slice commands');
 
   const graph = program
     .command('graph')
@@ -572,6 +593,54 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `${templateId} — ${template.name}`);
       writeLine(stdout, `roles: ${Object.keys(template.defaultTeam ?? {}).join(', ') || '-'}`);
       writeLine(stdout, `stages: ${(template.stages ?? []).map((stage) => stage.id).join(' -> ') || '-'}`);
+    });
+
+  projects
+    .command('list')
+    .description('列出 projects')
+    .option('--status <status>', 'active|archived')
+    .option('--json', '输出 JSON', false)
+    .action((options: { status?: string; json?: boolean }) => {
+      const items = projectService.listProjects(options.status);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ projects: items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 projects');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.id}\t${item.status}\t${item.name}\t${item.owner ?? '-'}`);
+      }
+    });
+
+  projects
+    .command('create')
+    .description('创建 project')
+    .requiredOption('--id <projectId>', 'project id')
+    .requiredOption('--name <name>', 'project name')
+    .option('--summary <summary>', 'project summary')
+    .option('--owner <owner>', 'project owner')
+    .option('--metadata-json <json>', 'project metadata JSON')
+    .action((options: {
+      id: string;
+      name: string;
+      summary?: string;
+      owner?: string;
+      metadataJson?: string;
+    }) => {
+      const input = createProjectRequestSchema.parse({
+        id: options.id,
+        name: options.name,
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.owner !== undefined ? { owner: options.owner } : {}),
+        ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
+      }) satisfies CreateProjectInputLike;
+      const project = projectService.createProject(input);
+      writeLine(stdout, `Project 已创建: ${project.id}`);
+      writeLine(stdout, `名称: ${project.name}`);
+      writeLine(stdout, `状态: ${project.status}`);
     });
 
   const templateRole = templates.command('role').description('template role CRUD');

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '../database.js';
+import { ProjectRepository } from './project.repository.js';
 import { TaskRepository } from './task.repository.js';
 
 const tempPaths: string[] = [];
@@ -65,5 +66,37 @@ describe('task repository', () => {
     expect(() => repository.updateTask('OC-GUARD-2', 1, {
       state: 'active',
     })).toThrow(/failed to retrieve task OC-GUARD-2 after update/i);
+  });
+
+  it('persists nullable project bindings on tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projects = new ProjectRepository(db);
+    const repository = new TaskRepository(db);
+
+    projects.insertProject({
+      id: 'proj-alpha',
+      name: 'Alpha',
+    });
+
+    const created = repository.insertTask({
+      id: 'OC-PROJ-1',
+      title: 'task with project',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      project_id: 'proj-alpha',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+
+    expect(created.project_id).toBe('proj-alpha');
+
+    const updated = repository.updateTask('OC-PROJ-1', created.version, {
+      project_id: null,
+    });
+
+    expect(updated.project_id).toBeNull();
   });
 });

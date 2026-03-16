@@ -34,6 +34,7 @@ import {
   dashboardUserListResponseSchema,
   dashboardUserUpdatePasswordRequestSchema,
   createInboxRequestSchema,
+  createProjectRequestSchema,
   createTaskRequestSchema,
   createSubtasksRequestSchema,
   createTaskContextBindingRequestSchema,
@@ -46,6 +47,7 @@ import {
   unifiedHealthSnapshotSchema,
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
+  listProjectsResponseSchema,
   promoteTodoRequestSchema,
   probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
@@ -76,6 +78,8 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
+  ProjectService,
+  ProjectService as ProjectServiceImpl,
   type TaskConversationService,
   type TaskParticipationService,
   type TaskContextBindingService,
@@ -89,6 +93,7 @@ import { z } from 'zod';
 export interface BuildAppOptions {
   db?: AgoraDatabase;
   taskService?: TaskService;
+  projectService?: ProjectService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
@@ -595,6 +600,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: false,
   });
   const taskService = options.taskService;
+  const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
   const dashboardQueryService = options.dashboardQueryService;
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
@@ -1002,6 +1008,40 @@ export function buildApp(options: BuildAppOptions = {}) {
     } catch (error) {
       const translated = translateError(error);
       recordTaskAction(metrics, 'create', 'error');
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const payload = createProjectRequestSchema.parse(request.body);
+      return reply.send(projectService.createProject({
+        id: payload.id,
+        name: payload.name,
+        summary: payload.summary,
+        ...(payload.owner ? { owner: payload.owner } : {}),
+        ...(payload.metadata ? { metadata: payload.metadata } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const query = request.query as { status?: string };
+      return reply.send(listProjectsResponseSchema.parse({
+        projects: projectService.listProjects(query.status),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
   });

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -283,6 +283,55 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Moved to: agora dashboard users');
     expect(stdout.value).toContain('agora dashboard users list');
+  });
+
+  it('creates and lists projects through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService: new ProjectService(db),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'create', '--id', 'proj-alpha', '--name', 'Project Alpha', '--owner', 'archon'], { from: 'user' });
+    await program.parseAsync(['projects', 'list'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已创建: proj-alpha');
+    expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
+  });
+
+  it('creates a project-bound task through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectService(db).createProject({
+      id: 'proj-cli',
+      name: 'CLI Project',
+      owner: 'archon',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-CLI',
+    });
+    const program = createCliProgram({
+      taskService,
+      projectService: new ProjectService(db),
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['create', 'project task', '--type', 'coding', '--project-id', 'proj-cli'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project: proj-cli');
+    expect(taskService.getTask('OC-PROJECT-CLI')?.project_id).toBe('proj-cli');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {

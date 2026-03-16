@@ -1,5 +1,6 @@
 export interface TaskBrainWorkspaceRequest {
   task_id: string;
+  project_id: string | null;
   locale: 'zh-CN' | 'en-US';
   title: string;
   description: string;
@@ -38,6 +39,19 @@ export interface TaskBrainWorkspaceResult {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface TaskBrainCloseRecapRequest {
+  task_id: string;
+  project_id: string | null;
+  locale: 'zh-CN' | 'en-US';
+  title: string;
+  state: string;
+  current_stage: string | null;
+  controller_ref: string | null;
+  completed_by: string;
+  completed_at: string;
+  summary_lines: string[];
+}
+
 export interface TaskBrainWorkspaceBindingRef {
   brain_pack_ref: string;
   brain_task_id: string;
@@ -48,5 +62,6 @@ export interface TaskBrainWorkspaceBindingRef {
 export interface TaskBrainWorkspacePort {
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult;
   updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void;
+  writeTaskCloseRecap(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainCloseRecapRequest): void;
   destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void;
 }

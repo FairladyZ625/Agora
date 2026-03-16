@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type {
+  TaskBrainCloseRecapRequest,
   TaskBrainWorkspaceBindingRef,
   TaskBrainWorkspacePort,
   TaskBrainWorkspaceRequest,
@@ -15,7 +16,11 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
   constructor(private readonly options: FilesystemTaskBrainWorkspaceAdapterOptions) {}
 
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult {
-    const workspacePath = resolve(this.options.brainPackRoot, 'tasks', input.task_id);
+    const workspacePath = resolve(
+      this.options.brainPackRoot,
+      ...(input.project_id ? ['projects', input.project_id, 'tasks'] : ['tasks']),
+      input.task_id,
+    );
     mkdirSync(workspacePath, { recursive: true });
     mkdirSync(join(workspacePath, '04-context'), { recursive: true });
     mkdirSync(join(workspacePath, '05-agents'), { recursive: true });
@@ -27,6 +32,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
       brain_task_id: input.task_id,
       workspace_path: workspacePath,
       metadata: {
+        project_id: input.project_id,
         controller_ref: input.controller_ref,
         current_stage: input.current_stage,
         control_mode: input.control_mode,
@@ -38,6 +44,18 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
   updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void {
     this.writeWorkspace(binding, input, { seedEmptyAgentNotes: false, seedContextFiles: false });
+  }
+
+  writeTaskCloseRecap(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainCloseRecapRequest): void {
+    const taskRecapPath = join(binding.workspace_path, '07-outputs', 'task-close-recap.md');
+    const recapBody = renderTaskCloseRecap(input);
+    writeFileSync(taskRecapPath, recapBody, 'utf8');
+
+    if (input.project_id) {
+      const projectRecapDir = resolve(this.options.brainPackRoot, 'projects', input.project_id, 'recaps');
+      mkdirSync(projectRecapDir, { recursive: true });
+      writeFileSync(join(projectRecapDir, `${input.task_id}.md`), recapBody, 'utf8');
+    }
   }
 
   destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void {
@@ -68,7 +86,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     for (const member of input.team_members) {
       const agentDir = join(workspacePath, '05-agents', member.agentId);
       mkdirSync(agentDir, { recursive: true });
-      const roleDocPath = resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`);
+      const roleDocPath = resolve(this.options.brainPackRoot, 'roles', `${member.role}.md`);
       const roleDoc = readRoleDocSummary(roleDocPath);
       writeFileSync(
         join(agentDir, '00-role-brief.md'),
@@ -91,11 +109,12 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWorkspaceResult) {
   const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
   return [
-      `task_id: "${input.task_id}"`,
-      `brain_task_id: "${binding.brain_task_id}"`,
-      `brain_pack_ref: "${binding.brain_pack_ref}"`,
-      `workspace_path: "${binding.workspace_path}"`,
-      `locale: "${input.locale}"`,
+    `task_id: "${input.task_id}"`,
+    `project_id: "${input.project_id ?? ''}"`,
+    `brain_task_id: "${binding.brain_task_id}"`,
+    `brain_pack_ref: "${binding.brain_pack_ref}"`,
+    `workspace_path: "${binding.workspace_path}"`,
+    `locale: "${input.locale}"`,
     `template_id: "${input.template_id}"`,
     `control_mode: "${input.control_mode}"`,
     `controller_ref: "${input.controller_ref ?? ''}"`,
@@ -114,6 +133,7 @@ function renderCurrent(
     `# ${brainText(input.locale, '当前状态', 'Current')}`,
     '',
     `- ${brainText(input.locale, '任务', 'Task')}: ${input.task_id}`,
+    `- ${brainText(input.locale, 'Project', 'Project')}: ${input.project_id ?? '-'}`,
     `- ${brainText(input.locale, '标题', 'Title')}: ${input.title}`,
     `- ${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
     `- ${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
@@ -134,6 +154,7 @@ function renderBootstrap(
     `# ${brainText(input.locale, '启动上下文', 'Bootstrap')}`,
     '',
     `${brainText(input.locale, '任务 ID', 'Task ID')}: ${input.task_id}`,
+    `${brainText(input.locale, 'Project', 'Project')}: ${input.project_id ?? '-'}`,
     `${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
     `${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
     `${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
@@ -279,6 +300,26 @@ function renderCitizenScaffold(
     `## ${brainText(input.locale, 'Recap Expectations', 'Recap Expectations')}`,
     '',
     ...recap.map((item) => `- ${item}`),
+    '',
+  ].join('\n');
+}
+
+function renderTaskCloseRecap(input: TaskBrainCloseRecapRequest) {
+  return [
+    `# ${brainText(input.locale, '任务收口回写', 'Task Close Recap')}`,
+    '',
+    `- ${brainText(input.locale, '任务', 'Task')}: ${input.task_id}`,
+    `- ${brainText(input.locale, 'Project', 'Project')}: ${input.project_id ?? '-'}`,
+    `- ${brainText(input.locale, '标题', 'Title')}: ${input.title}`,
+    `- ${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
+    `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `- ${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
+    `- ${brainText(input.locale, '完成人', 'Completed By')}: ${input.completed_by}`,
+    `- ${brainText(input.locale, '完成时间', 'Completed At')}: ${input.completed_at}`,
+    '',
+    `## ${brainText(input.locale, '摘要', 'Summary')}`,
+    '',
+    ...input.summary_lines.map((line) => `- ${line}`),
     '',
   ].join('\n');
 }

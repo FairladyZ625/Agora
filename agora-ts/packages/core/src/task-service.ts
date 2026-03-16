@@ -47,6 +47,7 @@ import { GateService } from './gate-service.js';
 import { ModeController } from './mode-controller.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
+import { ProjectService } from './project-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
@@ -106,6 +107,7 @@ export interface TaskServiceOptions {
   taskIdGenerator?: () => string;
   archonUsers?: string[];
   allowAgents?: Record<string, { canCall: string[]; canAdvance: boolean }>;
+  projectService?: ProjectService;
   craftsmanDispatcher?: CraftsmanDispatcher;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   imProvisioningPort?: IMProvisioningPort;
@@ -242,6 +244,7 @@ export class TaskService {
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
+  private readonly projectService: ProjectService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
@@ -286,6 +289,7 @@ export class TaskService {
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
+    this.projectService = options.projectService ?? new ProjectService(db);
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.craftsmanInputPort = options.craftsmanInputPort;
@@ -334,6 +338,7 @@ export class TaskService {
     }
     const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
+    const projectId = input.project_id ?? null;
     const firstStageId = workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;
     let active: StoredTask;
@@ -341,6 +346,9 @@ export class TaskService {
 
     this.db.exec('BEGIN');
     try {
+      if (projectId) {
+        this.projectService.requireProject(projectId);
+      }
       const draft = this.taskRepository.insertTask({
         id: taskId,
         title: input.title,
@@ -349,6 +357,7 @@ export class TaskService {
         priority: input.priority,
         creator: input.creator,
         locale: resolveTaskLocale(input.locale),
+        project_id: projectId,
         team,
         workflow,
         control: input.control ?? { mode: 'normal' },
@@ -718,6 +727,7 @@ export class TaskService {
         state: TaskState.DONE,
       });
       this.refreshTaskBrainWorkspace(done);
+      this.materializeTaskCloseRecap(done, actor);
       this.ensureArchiveJobForTask(task.id);
       this.flowLogRepository.insertFlowLog({
         task_id: task.id,
@@ -1537,6 +1547,8 @@ export class TaskService {
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
       });
+      this.refreshTaskBrainWorkspace(done);
+      this.materializeTaskCloseRecap(done, 'archon', options.reason);
       this.ensureArchiveJobForTask(taskId);
       this.flowLogRepository.insertFlowLog({
         task_id: taskId,
@@ -2034,6 +2046,7 @@ export class TaskService {
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
     return {
       task_id: task.id,
+      project_id: task.project_id ?? null,
       locale: task.locale,
       title: task.title,
       description: task.description ?? '',
@@ -2333,6 +2346,34 @@ export class TaskService {
             `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
             taskText(task, '请继续编排并推进到下一个阶段。', 'Resume orchestration and drive the next stage.'),
           ],
+    });
+  }
+
+  private materializeTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
+    if (!task.project_id || !this.taskBrainWorkspacePort || !this.taskBrainBindingService) {
+      return;
+    }
+    const binding = this.taskBrainBindingService.getActiveBinding(task.id);
+    if (!binding) {
+      return;
+    }
+    const summaryLines = [
+      taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
+      `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+      `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
+      ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
+    ];
+    this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
+      task_id: task.id,
+      project_id: task.project_id,
+      locale: task.locale,
+      title: task.title,
+      state: task.state,
+      current_stage: task.current_stage,
+      controller_ref: resolveControllerRef(task.team.members),
+      completed_by: actor,
+      completed_at: new Date().toISOString(),
+      summary_lines: summaryLines,
     });
   }
 

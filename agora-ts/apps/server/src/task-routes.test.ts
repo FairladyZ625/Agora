@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { DashboardQueryService, HumanAccountService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, HumanAccountService, ProjectService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -142,6 +142,83 @@ describe('task routes', () => {
           { id: 'build' },
         ],
       },
+    });
+  });
+
+  it('creates and lists projects through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const app = buildApp({
+      db,
+      projectService: new ProjectService(db),
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-api',
+        name: 'Project API',
+        summary: 'server thin slice',
+        owner: 'archon',
+      },
+    });
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects',
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json()).toMatchObject({
+      id: 'proj-api',
+      name: 'Project API',
+      status: 'active',
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      projects: [
+        expect.objectContaining({
+          id: 'proj-api',
+        }),
+      ],
+    });
+  });
+
+  it('creates a task bound to a project through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectService(db).createProject({
+      id: 'proj-api-task',
+      name: 'Project API Task',
+      owner: 'archon',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-200P',
+    });
+    const app = buildApp({
+      taskService,
+      projectService: new ProjectService(db),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'project bound task',
+        type: 'coding',
+        creator: 'archon',
+        description: 'project-aware create route',
+        priority: 'high',
+        project_id: 'proj-api-task',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-200P',
+      project_id: 'proj-api-task',
+      state: 'active',
     });
   });
 
