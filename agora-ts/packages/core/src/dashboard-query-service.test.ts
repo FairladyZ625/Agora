@@ -1060,7 +1060,7 @@ describe('dashboard query service', () => {
             },
             {
               id: '%1',
-              title: 'claude',
+              title: '✳ Claude Code',
               currentCommand: 'bash',
               active: false,
               continuityBackend: 'claude_session_id' as const,

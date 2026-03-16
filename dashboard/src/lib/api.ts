@@ -264,7 +264,7 @@ export function getCraftsmanExecutionTail(
   execution_id: string;
   available: boolean;
   output: string | null;
-  source: 'tmux' | 'unavailable';
+  source: 'tmux' | 'acpx' | 'unavailable';
 }> {
   return request(
     `/craftsmen/executions/${encodeURIComponent(executionId)}/tail?lines=${encodeURIComponent(String(lines))}`,
@@ -272,7 +272,7 @@ export function getCraftsmanExecutionTail(
       execution_id: z.string(),
       available: z.boolean(),
       output: z.string().nullable(),
-      source: z.enum(['tmux', 'unavailable']),
+      source: z.enum(['tmux', 'acpx', 'unavailable']),
     }),
   );
 }

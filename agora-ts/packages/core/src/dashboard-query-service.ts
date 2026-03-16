@@ -22,6 +22,7 @@ import type {
 } from './runtime-ports.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TmuxRuntimeService } from './tmux-runtime-service.js';
+import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
@@ -566,9 +567,10 @@ function buildTmuxRuntime(
   }
   const status = tmuxRuntimeService.status();
   const doctor = tmuxRuntimeService.doctor();
+  const statusByAgent = new Map(status.panes.map((item) => [normalizeTmuxRuntimeAgent(item.title), item]));
   const byAgent = new Map(doctor.panes.map((item) => [item.agent, item]));
   const agents = new Set<string>([
-    ...status.panes.map((item) => item.title),
+    ...status.panes.map((item) => normalizeTmuxRuntimeAgent(item.title)),
     ...doctor.panes.map((item) => item.agent),
   ]);
 
@@ -577,7 +579,7 @@ function buildTmuxRuntime(
     panes: Array.from(agents)
       .sort((left, right) => left.localeCompare(right))
       .map((agent) => {
-        const paneStatus = status.panes.find((item) => item.title === agent);
+        const paneStatus = statusByAgent.get(agent);
         const paneDoctor = byAgent.get(agent) ?? null;
         return {
           agent,
@@ -613,6 +615,15 @@ function safeTail(
   } catch {
     return null;
   }
+}
+
+function normalizeTmuxRuntimeAgent(value: string) {
+  const cleaned = value
+    .replace(/^[^A-Za-z0-9]+/u, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/gu, '_');
+  return normalizeCraftsmanAdapter(cleaned);
 }
 
 function toNullableString(value: unknown) {
