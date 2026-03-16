@@ -122,7 +122,8 @@ Citizens が議論  →  Archon が決定  →  Craftsmen が実行
 
 - Node.js 22+
 - npm 10+
-- tmux（craftsmen tmuxランタイムを使用する場合）
+- 既定の craftsmen runtime には `acpx` を推奨
+- tmux は archived legacy debug adapter 用の任意依存のみ
 
 ### ソースからインストール
 

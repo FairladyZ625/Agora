@@ -14,6 +14,14 @@ const SUPPORTED_PERMISSION_FLAGS = new Set(["--approve-all", "--approve-reads", 
 const SUPPORTED_AUTH_POLICIES = new Set(["skip", "fail"]);
 const SUPPORTED_NON_INTERACTIVE_PERMISSIONS = new Set(["deny", "fail"]);
 const SUPPORTED_PROFILES = new Set(["claude-opus-safe", "claude-session-sonnet", "claude-session-opus-safe"]);
+const SUPPORTED_RECIPES = new Set([
+  "review-with-claude-opus",
+  "plan-with-claude-opus",
+  "session-start-sonnet",
+  "session-continue-sonnet",
+  "session-start-opus",
+  "session-continue-opus",
+]);
 const CLAUDE_CONFIG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const CLAUDE_CONFIG_MAX_DIRS = 32;
 const CLAUDE_SESSION_MANIFEST_VERSION = 1;
@@ -22,8 +30,8 @@ function printUsage() {
   process.stderr.write(
     [
       "Usage:",
-      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>] --agent <codex|claude|gemini> exec [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
-      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>] --agent <codex|claude|gemini> session --session-name <name> [--fresh-session | --resume-session <id>] [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--no-wait] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
+      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>] [--recipe <review-with-claude-opus|plan-with-claude-opus|session-start-sonnet|session-continue-sonnet|session-start-opus|session-continue-opus>] --agent <codex|claude|gemini> exec [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
+      "  node scripts/acpx-delegate.mjs [--profile <claude-opus-safe|claude-session-sonnet|claude-session-opus-safe>] [--recipe <review-with-claude-opus|plan-with-claude-opus|session-start-sonnet|session-continue-sonnet|session-start-opus|session-continue-opus>] --agent <codex|claude|gemini> session --session-name <name> [--fresh-session | --resume-session <id>] [--cwd <path>] [--format <json|text|quiet>] [--model <id>] [--approve-all|--approve-reads|--deny-all] [--auth-policy <skip|fail>] [--non-interactive-permissions <deny|fail>] [--allowed-tools <list>] [--max-turns <count>] [--no-wait] [--timeout <seconds>] [--ttl <seconds>] [--file <path> | --prompt <text> | <text...>]",
       "",
       "Notes:",
       "  - Uses local `acpx` when available, otherwise falls back to `npx -y acpx@latest`.",
@@ -57,6 +65,7 @@ export function parseArgs(argv) {
 
   /** @type {{
    * profile: "claude-opus-safe" | "claude-session-sonnet" | "claude-session-opus-safe" | null,
+   * recipe: "review-with-claude-opus" | "plan-with-claude-opus" | "session-start-sonnet" | "session-continue-sonnet" | "session-start-opus" | "session-continue-opus" | null,
    * agent: "codex" | "claude" | "gemini" | null,
    * mode: "exec" | "session" | null,
    * cwd: string | null,
@@ -79,6 +88,7 @@ export function parseArgs(argv) {
    * }} */
   const options = {
     profile: null,
+    recipe: null,
     agent: null,
     mode: null,
     cwd: null,
@@ -116,6 +126,14 @@ export function parseArgs(argv) {
         fail("Invalid --profile. Use claude-opus-safe, claude-session-sonnet, or claude-session-opus-safe.");
       }
       options.profile = profile;
+      continue;
+    }
+    if (arg === "--recipe") {
+      const recipe = args.shift() ?? fail("Missing value for --recipe");
+      if (!SUPPORTED_RECIPES.has(recipe)) {
+        fail("Invalid --recipe. Use one of the documented ACPX recipes.");
+      }
+      options.recipe = recipe;
       continue;
     }
     if (arg === "--agent") {
@@ -228,6 +246,7 @@ export function parseArgs(argv) {
   }
 
   applyProfileDefaults(options, explicit);
+  applyRecipeDefaults(options, explicit);
   if (!options.agent) {
     fail("Missing --agent <codex|claude|gemini>.");
   }
@@ -240,6 +259,9 @@ export function parseArgs(argv) {
   }
   if (options.mode === "exec" && options.noWait) {
     fail("--no-wait is only valid in session mode.");
+  }
+  if (options.profile && options.recipe) {
+    fail("Use either --profile or --recipe, not both.");
   }
   if (options.freshSession && options.resumeSession) {
     fail("Use only one of --fresh-session or --resume-session.");
@@ -337,6 +359,59 @@ function applyProfileDefaults(options, explicit) {
       options.nonInteractivePermissions = "fail";
     }
     options.freshSession = true;
+  }
+}
+
+function applyRecipeDefaults(options, explicit) {
+  if (!options.recipe) {
+    return;
+  }
+
+  const applyClaudeDefaults = (mode, model, freshSession) => {
+    if (!explicit.agent) {
+      options.agent = "claude";
+    }
+    if (!explicit.mode) {
+      options.mode = mode;
+    }
+    if (!explicit.model) {
+      options.model = model;
+    }
+    if (!explicit.permissionFlag) {
+      options.permissionFlag = "--approve-all";
+    }
+    if (!explicit.format) {
+      options.format = "text";
+    }
+    if (!explicit.authPolicy) {
+      options.authPolicy = "fail";
+    }
+    if (!explicit.nonInteractivePermissions) {
+      options.nonInteractivePermissions = "fail";
+    }
+    if (freshSession) {
+      options.freshSession = true;
+    }
+  };
+
+  if (options.recipe === "review-with-claude-opus" || options.recipe === "plan-with-claude-opus") {
+    applyClaudeDefaults("exec", "opus", false);
+    return;
+  }
+  if (options.recipe === "session-start-sonnet") {
+    applyClaudeDefaults("session", "sonnet", true);
+    return;
+  }
+  if (options.recipe === "session-continue-sonnet") {
+    applyClaudeDefaults("session", "sonnet", false);
+    return;
+  }
+  if (options.recipe === "session-start-opus") {
+    applyClaudeDefaults("session", "opus", true);
+    return;
+  }
+  if (options.recipe === "session-continue-opus") {
+    applyClaudeDefaults("session", "opus", false);
   }
 }
 

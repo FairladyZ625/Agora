@@ -122,7 +122,8 @@ Citizens 讨论  →  Archon 裁决  →  Craftsmen 执行
 
 - Node.js 22+
 - npm 10+
-- tmux（若要使用 craftsmen tmux runtime）
+- 推荐安装 `acpx`，这是默认 craftsmen runtime 路径
+- tmux 现在只是 archived legacy debug adapter，可选
 
 ### 源码安装
 

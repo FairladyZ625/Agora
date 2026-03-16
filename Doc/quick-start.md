@@ -4,7 +4,8 @@
 
 - Node.js 22+
 - npm 10+
-- tmux if you want the craftsmen tmux runtime
+- `acpx` for the default craftsmen runtime
+- tmux only if you explicitly need the archived legacy debug adapter
 
 ## Fast Path
 

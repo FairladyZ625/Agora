@@ -181,7 +181,7 @@ if [ -f "$ENV_FILE" ]; then
 else
   echo -e "${DIM}未发现 .env，使用脚本默认端口${NC}"
 fi
-echo -e "  Craftsmen:    server=${CRAFTSMAN_SERVER_MODE} cli=${AGORA_CRAFTSMAN_CLI_MODE:-${AGORA_CRAFTSMAN_ADAPTER_MODE:-tmux}}"
+echo -e "  Craftsmen:    server=${CRAFTSMAN_SERVER_MODE} cli=${AGORA_CRAFTSMAN_CLI_MODE:-${AGORA_CRAFTSMAN_ADAPTER_MODE:-acp}}"
 echo -e "  后端 API:    http://localhost:${BACKEND_PORT}/api/health"
 echo -e "  前端页面:    http://localhost:${FRONTEND_PORT}/dashboard/"
 echo -e "  Dashboard:   http://localhost:${BACKEND_PORT}/dashboard/"

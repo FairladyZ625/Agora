@@ -87,6 +87,41 @@ test("parseArgs applies claude-session-opus-safe profile defaults", () => {
   assert.equal(parsed.freshSession, true);
 });
 
+test("parseArgs applies review-with-claude-opus recipe defaults", () => {
+  const parsed = parseArgs([
+    "--recipe", "review-with-claude-opus",
+    "--prompt", "review this patch",
+  ]);
+  assert.equal(parsed.agent, "claude");
+  assert.equal(parsed.mode, "exec");
+  assert.equal(parsed.model, "opus");
+  assert.equal(parsed.authPolicy, "fail");
+});
+
+test("parseArgs applies session-start-opus recipe defaults", () => {
+  const parsed = parseArgs([
+    "--recipe", "session-start-opus",
+    "--session-name", "review-auth",
+    "--prompt", "continue",
+  ]);
+  assert.equal(parsed.agent, "claude");
+  assert.equal(parsed.mode, "session");
+  assert.equal(parsed.model, "opus");
+  assert.equal(parsed.freshSession, true);
+});
+
+test("parseArgs applies session-continue-sonnet recipe defaults", () => {
+  const parsed = parseArgs([
+    "--recipe", "session-continue-sonnet",
+    "--session-name", "review-auth",
+    "--prompt", "continue",
+  ]);
+  assert.equal(parsed.agent, "claude");
+  assert.equal(parsed.mode, "session");
+  assert.equal(parsed.model, "sonnet");
+  assert.equal(parsed.freshSession, false);
+});
+
 test("parseArgs accepts extended ACPX flags", () => {
   const parsed = parseArgs([
     "--agent", "claude",
