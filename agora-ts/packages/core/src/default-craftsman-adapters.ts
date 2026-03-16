@@ -1,11 +1,13 @@
 import type { CraftsmanAdapter } from './craftsman-adapter.js';
+import type { AcpRuntimePort } from './acp-runtime-port.js';
 import { ShellCraftsmanAdapter, StubCraftsmanAdapter } from './craftsman-adapter.js';
-import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter, TmuxCraftsmanAdapter, WatchedProcessCraftsmanAdapter } from './adapters/index.js';
+import { AcpCraftsmanAdapter, ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, DirectAcpxRuntimePort, GeminiCraftsmanAdapter, TmuxCraftsmanAdapter, WatchedProcessCraftsmanAdapter } from './adapters/index.js';
 
 export interface CreateDefaultCraftsmanAdaptersOptions {
-  mode?: 'stub' | 'real' | 'watched' | 'tmux';
+  mode?: 'stub' | 'real' | 'watched' | 'tmux' | 'acp';
   callbackUrl?: string;
   apiToken?: string | null;
+  acpRuntime?: AcpRuntimePort;
 }
 
 export function createDefaultCraftsmanAdapters(
@@ -46,6 +48,30 @@ export function createDefaultCraftsmanAdapters(
       codex: new TmuxCraftsmanAdapter(new CodexCraftsmanAdapter()),
       claude: new TmuxCraftsmanAdapter(new ClaudeCraftsmanAdapter()),
       gemini: new TmuxCraftsmanAdapter(new GeminiCraftsmanAdapter()),
+    };
+  }
+  if (mode === 'acp') {
+    if (!options.callbackUrl) {
+      throw new Error('acp adapter mode requires callbackUrl');
+    }
+    const runtime = options.acpRuntime ?? new DirectAcpxRuntimePort();
+    return {
+      shell: new ShellCraftsmanAdapter(),
+      codex: new AcpCraftsmanAdapter('codex', {
+        runtime,
+        callbackUrl: options.callbackUrl,
+        apiToken: options.apiToken ?? null,
+      }),
+      claude: new AcpCraftsmanAdapter('claude', {
+        runtime,
+        callbackUrl: options.callbackUrl,
+        apiToken: options.apiToken ?? null,
+      }),
+      gemini: new AcpCraftsmanAdapter('gemini', {
+        runtime,
+        callbackUrl: options.callbackUrl,
+        apiToken: options.apiToken ?? null,
+      }),
     };
   }
 

@@ -9,6 +9,9 @@ describe('craftsman runtime mode', () => {
     expect(resolveCraftsmanRuntimeMode('cli', {
       AGORA_CRAFTSMAN_ADAPTER_MODE: 'real',
     })).toBe('real');
+    expect(resolveCraftsmanRuntimeMode('cli', {
+      AGORA_CRAFTSMAN_ADAPTER_MODE: 'acp',
+    })).toBe('acp');
   });
 
   it('prefers target-specific overrides over the shared fallback', () => {

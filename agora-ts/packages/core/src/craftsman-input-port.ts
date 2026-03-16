@@ -4,6 +4,7 @@ export interface CraftsmanInputPortExecution {
   executionId: string;
   adapter: string;
   sessionId: string | null;
+  workdir: string | null;
   taskId: string;
   subtaskId: string;
 }

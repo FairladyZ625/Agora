@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
+import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { LiveSessionStore } from './live-session-store.js';
 import { TaskService } from './task-service.js';
@@ -4383,6 +4384,63 @@ describe('task service', () => {
     });
   });
 
+  it('returns execution-scoped acpx tail when an acp tail port is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TAIL-ACP-1',
+      craftsmanExecutionTailPort: {
+        tail: (execution, lines) => ({
+          execution_id: execution.executionId,
+          available: true,
+          output: `acp-tail:${execution.adapter}:${execution.workdir}:${lines}`,
+          source: 'acpx',
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Execution tail route via acpx',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'tail-acp-subtask-1',
+      task_id: 'OC-TAIL-ACP-1',
+      stage_id: 'develop',
+      title: 'stream acp output',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'acpx:exec-tail-acp-1',
+      craftsman_workdir: '/tmp/acp-tail',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-tail-acp-1',
+      task_id: 'OC-TAIL-ACP-1',
+      subtask_id: 'tail-acp-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-tail-acp-1',
+      workdir: '/tmp/acp-tail',
+      status: 'running',
+      started_at: '2026-03-16T12:00:00.000Z',
+    });
+
+    expect(service.getCraftsmanExecutionTail('exec-tail-acp-1', 25)).toEqual({
+      execution_id: 'exec-tail-acp-1',
+      available: true,
+      output: 'acp-tail:claude:/tmp/acp-tail:25',
+      source: 'acpx',
+    });
+  });
+
   it('allows execution-scoped input for running continuous tmux executions', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -4436,5 +4494,279 @@ describe('task service', () => {
     expect(calls).toEqual([
       { kind: 'text', executionId: 'exec-continuous-1', payload: { text: 'Continue', submit: true } },
     ]);
+  });
+
+  it('allows execution-scoped input for running continuous acpx executions', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const calls: Array<{ kind: string; executionId: string; workdir: string | null; payload: unknown }> = [];
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-ACP-1',
+      craftsmanInputPort: {
+        sendText: (execution, text, submit = true) => {
+          calls.push({ kind: 'text', executionId: execution.executionId, workdir: execution.workdir, payload: { text, submit } });
+        },
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Continuous acpx craftsman input route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    subtasks.insertSubtask({
+      id: 'continuous-acp-subtask-1',
+      task_id: 'OC-CONTINUOUS-INPUT-ACP-1',
+      stage_id: 'develop',
+      title: 'continue interactive acpx session',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'acpx:exec-cont-acp-1',
+      craftsman_workdir: '/tmp/acp-input',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-cont-acp-1',
+      task_id: 'OC-CONTINUOUS-INPUT-ACP-1',
+      subtask_id: 'continuous-acp-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-cont-acp-1',
+      workdir: '/tmp/acp-input',
+      status: 'running',
+      started_at: '2026-03-16T12:00:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-cont-acp-1', 'Continue via acpx');
+
+    expect(calls).toEqual([
+      {
+        kind: 'text',
+        executionId: 'exec-cont-acp-1',
+        workdir: '/tmp/acp-input',
+        payload: { text: 'Continue via acpx', submit: true },
+      },
+    ]);
+  });
+
+  it('probes acpx executions after operator input and resumes the execution status loop', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-1',
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-ACP-1',
+      imProvisioningPort: provisioningPort,
+      imMessagingPort: provisioningPort,
+      taskContextBindingService: new TaskContextBindingService(db),
+      craftsmanInputPort: {
+        sendText: () => {},
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
+      craftsmanExecutionProbePort: {
+        probe: (execution) => ({
+          execution_id: execution.executionId,
+          status: 'running',
+          session_id: execution.sessionId,
+          payload: {
+            output: {
+              summary: 'claude resumed after operator input',
+              text: null,
+              stderr: null,
+              artifacts: [],
+              structured: { transport: 'acpx' },
+            },
+          },
+          error: null,
+          finished_at: null,
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+
+    service.createTask({
+      title: 'Probe acpx session after input',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', channel_ref: 'channel-1' },
+    });
+    bindings.insert({
+      id: 'binding-acp-probe-1',
+      task_id: 'OC-PROBE-ACP-1',
+      im_provider: 'discord',
+      thread_ref: 'thread-1',
+      conversation_ref: 'channel-1',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'probe-acp-subtask-1',
+      task_id: 'OC-PROBE-ACP-1',
+      stage_id: 'develop',
+      title: 'wait for acpx input then resume',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'needs_input',
+      craftsman_session: 'acpx:exec-probe-acp-1',
+      craftsman_workdir: '/tmp/acp-probe',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-probe-acp-1',
+      task_id: 'OC-PROBE-ACP-1',
+      subtask_id: 'probe-acp-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-probe-acp-1',
+      workdir: '/tmp/acp-probe',
+      status: 'needs_input',
+      started_at: '2026-03-16T12:00:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-probe-acp-1', 'Continue');
+
+    expect(service.getCraftsmanExecution('exec-probe-acp-1').status).toBe('running');
+    const subtask = new SubtaskRepository(db).listByTask('OC-PROBE-ACP-1').find((entry) => entry.id === 'probe-acp-subtask-1');
+    expect(subtask?.dispatch_status).toBe('running');
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const runningMessage = broadcasts.find((message) => message.kind === 'craftsman_running');
+    expect(runningMessage?.body).toContain('Status: running');
+  });
+
+  it('settles completed acpx sessions through observeCraftsmanExecutions and preserves callback notifications', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-1',
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-OBSERVE-ACP-DONE-1',
+      imProvisioningPort: provisioningPort,
+      imMessagingPort: provisioningPort,
+      taskContextBindingService: new TaskContextBindingService(db),
+      craftsmanExecutionProbePort: new AcpCraftsmanProbePort({
+        probeExecution: () => ({
+          sessionName: 'exec-observe-acp-done-1',
+          lifecycleState: 'dead',
+          agentSessionId: 'runtime-acp-done-1',
+          summary: 'queue owner exited cleanly',
+          lastPromptTime: '2026-03-16T12:02:00.000Z',
+          rawStatus: {
+            action: 'status_snapshot',
+            status: 'dead',
+            exitCode: 0,
+            signal: null,
+          },
+        }),
+        tailExecution: () => ({
+          execution_id: 'exec-observe-acp-done-1',
+          available: true,
+          output: 'Claude finished the ACP cutover patch',
+          source: 'acpx',
+        }),
+      } as never),
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+
+    service.createTask({
+      title: 'Observe finished acpx execution',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', channel_ref: 'channel-1' },
+    });
+    bindings.insert({
+      id: 'binding-observe-acp-done-1',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      im_provider: 'discord',
+      thread_ref: 'thread-1',
+      conversation_ref: 'channel-1',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'observe-acp-done-subtask-1',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      stage_id: 'develop',
+      title: 'watch acpx completion',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'acpx:exec-observe-acp-done-1',
+      craftsman_workdir: '/tmp/acp-observe-done',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-observe-acp-done-1',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      subtask_id: 'observe-acp-done-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-observe-acp-done-1',
+      workdir: '/tmp/acp-observe-done',
+      status: 'running',
+      started_at: '2026-03-16T12:00:00.000Z',
+      finished_at: null,
+    });
+
+    db.prepare(`
+      UPDATE craftsman_executions
+      SET updated_at = ?
+      WHERE execution_id = 'exec-observe-acp-done-1'
+    `).run('2026-03-16T12:00:00.000Z');
+
+    const result = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date('2026-03-16T12:05:00.000Z'),
+    });
+
+    expect(result).toMatchObject({
+      scanned: 1,
+      probed: 1,
+      progressed: 1,
+    });
+    expect(service.getCraftsmanExecution('exec-observe-acp-done-1').status).toBe('succeeded');
+    const subtask = new SubtaskRepository(db).listByTask('OC-OBSERVE-ACP-DONE-1')
+      .find((entry) => entry.id === 'observe-acp-done-subtask-1');
+    expect(subtask).toMatchObject({
+      status: 'done',
+      dispatch_status: 'succeeded',
+      output: 'Claude finished the ACP cutover patch',
+    });
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const completedMessage = broadcasts.find((message) => message.kind === 'craftsman_completed');
+    expect(completedMessage?.body).toContain('事件类型: craftsman_completed');
+    expect(completedMessage?.body).toContain('Claude finished the ACP cutover patch');
+    const statusConversation = new TaskConversationRepository(db)
+      .listByTask('OC-OBSERVE-ACP-DONE-1')
+      .find((entry) => entry.metadata?.event_type === 'craftsman_completed' && entry.author_ref === 'agora-bot');
+    expect(statusConversation?.metadata).toMatchObject({
+      event_type: 'craftsman_completed',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      current_stage: 'discuss',
+    });
   });
 });
