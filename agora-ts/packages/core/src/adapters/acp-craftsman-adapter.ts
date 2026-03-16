@@ -114,7 +114,7 @@ class AcpxExecProcessCraftsmanAdapter extends ProcessCraftsmanAdapter {
     };
   }
 
-  createInteractiveResumeSpec(_sessionReference: string | null): InteractiveResumeCommand {
+  createInteractiveResumeSpec(): InteractiveResumeCommand {
     return {
       recoveryMode: 'fresh_start',
       spec: this.createInteractiveStartSpec(),

@@ -133,6 +133,10 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     config,
     taskService,
   });
+  const dispose = () => {
+    composition.discordPresenceService?.stop();
+    observationScheduler.stop();
+  };
 
   return {
     config: config as AgoraConfig,
@@ -156,5 +160,6 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     dashboardDir: resolveDashboardDir(),
     observationScheduler,
     discordPresenceService: composition.discordPresenceService,
+    dispose,
   };
 }

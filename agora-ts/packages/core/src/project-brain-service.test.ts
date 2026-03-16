@@ -109,6 +109,14 @@ describe('project brain service', () => {
         expect.objectContaining({ kind: 'citizen_scaffold', slug: 'citizen-alpha' }),
       ]),
     );
+    expect(service.getDocument('proj-brain', 'decision', 'runtime-boundary')).toMatchObject({
+      kind: 'decision',
+      slug: 'runtime-boundary',
+    });
+    expect(service.getDocument('proj-brain', 'citizen_scaffold', 'citizen-alpha')).toMatchObject({
+      kind: 'citizen_scaffold',
+      slug: 'citizen-alpha',
+    });
     expect(service.queryDocuments('proj-brain', 'systems')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'citizen_scaffold', slug: 'citizen-alpha' }),

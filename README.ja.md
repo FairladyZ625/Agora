@@ -4,12 +4,12 @@
 
 <br/>
 
-<h1>⚡ Agora</h1>
+<h1>Agora</h1>
 
-<p><strong>エージェントが議論し、人間が決定し、マシンが実行する。</strong></p>
+<p><strong>エージェントが議論し、人間が裁決し、実行は統治される。</strong></p>
 
-<p>マルチエージェントAIシステムのための民主的オーケストレーション層。<br/>
-自由な議論を、信頼性が高く監査可能な本番ワークフローへ変換します。</p>
+<p>エージェント社会のためのオーケストレーションとガバナンスの層。<br/>
+Agora は自由な議論を、段階化された監査可能なデリバリーフローへ変換します。</p>
 
 [![GitHub stars](https://img.shields.io/github/stars/FairladyZ625/Agora?style=flat-square&logo=github&color=yellow)](https://github.com/FairladyZ625/Agora/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/FairladyZ625/Agora?style=flat-square&logo=github)](https://github.com/FairladyZ625/Agora/network)
@@ -17,119 +17,154 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen?style=flat-square&logo=node.js)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-## 誕生の背景
+## 問題は「ボットをもう一つ繋ぐこと」ではない
 
-すべては一つのシンプルな実験から始まりました。複数のAIエージェントを同じDiscordチャンネルに集め、互いに@メンションし合う様子を観察したのです。
+多くのエージェントを同じチャネルに入れると、確かに集合知は生まれます。ですが規模が上がると次の問題が出ます。
 
-その光景は魔法のようでした。エージェントたちは互いに疑問を呈し、誤りを指摘し、盲点を補い合いました。三人寄れば文殊の知恵——複数のエージェントが協力することで、単一モデルよりも安定した結論を導き出せることを初めて実感しました。
+- 議論ノイズがタスクを埋める
+- コーディネーターのコンテキストが汚染される
+- 人間承認が曖昧になる
+- 結論が固まる前に実行が始まる
+- チャットログが成果物にはならない
 
-そして、この魔法を生産性に変えようとしました。
+本当の問題は「Claude や Codex をどう接続するか」ではなく、
 
-問題はすぐに現れました。12のエージェントが一つのチャンネルで互いに@メンションし合い、メッセージが爆発的に増加。コーディネーターエージェントは全員から@メンションされ、コンテキストが繰り返しオーバーフロー。フロー全体がプロンプトに依存し、「議論してから実行する」という指示は時に守られ、時に無視されました。議論は活発でも、最終的に誰もコードを書かず、テストを実行せず、成果物を届けませんでした。
+**誰が、いつ、どの情報を見るべきかをどう設計するか**
 
-ジレンマに陥りました。自由な議論を許せば混乱を受け入れることになり、厳格な管理をすれば集合知を失うことになる。
-
-そこで [Edict](https://github.com/cft0808/edict) を発見しました——「三省六部」アーキテクチャでマルチエージェントオーケストレーションを実現するオープンソースプロジェクトです。これが一つの可能性を示してくれました：**民主主義と決定権を同時に持つことができる。** 自由な議論は保持しつつ、重要なポイントでは誰かが決断を下し、プロセスの推進はプロンプトへの祈りではなくコードで保証される。
-
-これがAgoraです。**Freedom of ideas. Discipline of execution.**
-
----
-
-## 問題の本質
-
-複数のエージェントを同じチャンネルに置くと、最初は魔法のようです。しかしエージェント数が増えると：
-
-- **メッセージ爆発** — タスクが会話に埋もれ、人間には追いきれない
-- **コンテキスト汚染** — コーディネーターが全員から@メンションされ、推論品質が急落
-- **予測不能な動作** — フローはプロンプト依存で、「議論してから実行」は保証ではなく提案
-- **議論の収束困難** — 明確な裁決ポイントがなく、エージェントは無限に議論できる
-- **実行のクローズドループなし** — チャット層からコード・テスト・レビューという実際の成果物は生まれない
-
-核心的な矛盾：自由な議論は創造性をもたらすが、混乱も招く。厳格な管理は秩序をもたらすが、集合知を殺す。
-
-**Agoraの答え：両方を手に入れる。** 議論フェーズは完全に自由。実行フェーズは完全に確定的。切り替えはステートマシンが制御します。
+です。Agora はそこを扱います。
 
 ---
 
-## 仕組み
+## Agora とは何か
 
-```
-Citizens が議論  →  Archon が決定  →  Craftsmen が実行
-  (自由な討論)       (人間によるレビュー)   (確定的な成果物)
+Agora は:
+
+- オーケストレーション層
+- ガバナンス層
+- タスクごとの隔離コンテキスト
+- 人間 gate による裁決
+- provider-neutral な実行制御面
+
+Agora は:
+
+- 単なる IM ボットではない
+- 単なる coding-agent launcher ではない
+- 低レベルの Claude/Codex session framework そのものではない
+
+低レベルの coding runtime は commodity として扱い、Agora は編排の真実を保持します。
+
+---
+
+## コアモデル
+
+```text
+Citizens が議論  ->  Archon が裁決  ->  Executors が実行
 ```
 
 | 概念 | 役割 |
-|------|------|
-| **Agora** | タスクアリーナ — タスクごとの隔離された議論空間（Discordスレッドまたはチャンネル） |
-| **Citizens** | 参加エージェント — 互いに可視で、互いに批判的 |
-| **Archon** | 人間レビュアー — Gateチェックポイントで最終決定を下す |
-| **Craftsmen** | 実行ツール — Claude Code、Codex、Gemini CLI、またはカスタムCLI |
-| **Decree** | Gate通過後に発行される確定的な指示 |
-| **Gate** | フェーズ遷移チェックポイント — 自動通過、人間承認、クォーラム投票として設定可能 |
+| --- | --- |
+| **Agora** | タスク広場。タスク、コンテキスト、参加者、通知、アーカイブを統括 |
+| **Citizens** | 議論参加者。互いに批判し、提案を洗練する |
+| **Archon** | 人間の裁決者。Gate で approve / reject / pause を行う |
+| **Craftsman** | 自作 runtime ではなく、統治された実行ロール |
+| **Gate** | 明示的なフェーズ遷移チェックポイント |
+| **Decree** | 実行に渡される curated brief / 採択済み決定 |
+
+中心となる考えは次の通りです。
+
+> 実行者にとって、多くの議論はノイズである。
+
+そのため Agora は実行参加形態を分けます。
+
+- `execution-only`
+- `dialogue-capable`
+
+両方とも存在できますが、露出ポリシーが異なります。
 
 ---
 
-## 主な特徴
+## 現在の実行モデル
 
-**議論優先** — 各タスクは隔離された議論空間を持ちます。エージェントは互いを見て仮定に疑問を呈することができ、グローバルチャンネルのノイズを汚染しません。
+Agora は旧来の tmux-based Craftsman パスを主役として扱いません。
 
-**確定的オーケストレーション** — タスクのライフサイクルはステートマシンで制御されます。作成・ディスパッチ・遷移・アーカイブはすべてコードで保証され、プロンプトに依存しません。
+現在は:
 
-**Archonレビュー** — すべてのGateは人間の承認を必要とするよう設定できます。議論の結論は実行前に承認が必要。コード出力は完了前に承認が必要。どのフェーズでも一時停止や差し戻しが可能です。
+- `ACPX` が既定の execution substrate
+- `CraftsmanAdapter` は Core-facing abstraction として維持
+- `Craftsman` はビジネス上の実行ロールとして維持
+- 旧 tmux public shell は削除済み
 
-**Craftsmen実行** — 議論が収束した後、実行ツールをディスパッチして実際の成果物を生産します：コード、テスト、レビュー。
+Agora が扱うのは:
 
-**動的コラボレーション** — 議論と実行は複数ラウンドにわたって交互に行えます。シンプルなタスクは直接実行へ。複雑なタスクは多ラウンドの議論をサポート。
+- いつ実行を許可するか
+- 誰が実行するか
+- 実行者を議論に参加させるか
+- 実行者に full log か brief を渡すか
+- 結果をどうタスク状態へ反映するか
 
-**プラガブルアダプター** — IMレイヤー（Discord、Feishu、Slack）、ランタイムレイヤー（OpenClaw、CrewAI）、Craftsmanレイヤー（Claude Code、Codex、Gemini）はすべて交換可能なアダプターです。コアオーケストレーションロジックはプラットフォームに依存しません。
+---
+
+## Claude をそのままチャネルに入れれば十分では？
+
+それは可能です。Agora はそれを否定しません。
+
+ただし IM 参加だけでは transport が解決するだけで、governance は解決しません。Agora は引き続き次を担います。
+
+- いつ参加させるか
+- いつ隠すか
+- 全議論を渡すか brief のみにするか
+- どこで人間承認を必須にするか
+- 出力をどうタスク状態に反映するか
 
 ---
 
 ## アーキテクチャ
 
-```
-┌─────────────────────────────────────────────┐
-│          IM / Channel Adapters               │
-│   Discord · Feishu · Slack · Dashboard       │
-└──────────────────┬──────────────────────────┘
-                   │
-┌──────────────────▼──────────────────────────┐
-│           Agora Core / Orchestrator          │
-│  Task · Context · Participant · Gate         │
-│  ステートマシン · Scheduler · Archive        │
-└──────────┬───────────────────┬──────────────┘
-           │                   │
-┌──────────▼──────┐   ┌────────▼──────────────┐
-│  Agent Runtime  │   │  Craftsman Adapters    │
-│  OpenClaw       │   │  Claude Code · Codex   │
-│  CrewAI         │   │  Gemini CLI · カスタム │
-└─────────────────┘   └───────────────────────┘
+```text
+IM / Entry Adapters
+Discord · Feishu · Slack · Dashboard · CLI · REST
+                |
+                v
+Agora Core / Orchestrator
+Task · Context · Participant · Gate · Approval
+Scheduler · Notification · Archive · Recovery
+                |
+                v
+Runtime / Execution Adapters
+OpenClaw · ACPX · future runtimes
 ```
 
-コア原則：オーケストレーションのセマンティクスは `packages/core` にのみ存在します。すべてのIM、ランタイム、Craftsmanはアダプターに過ぎません。
+原則:
+
+- `packages/core` が編排セマンティクスを持つ
+- IM、runtime、execution は adapter
+- provider 固有情報は Core の長期主モデルにしない
 
 ---
 
 ## クイックスタート
 
-### 前提条件
+### 前提
 
 - Node.js 22+
 - npm 10+
-- 既定の craftsmen runtime には `acpx` を推奨
-- tmux は archived legacy debug adapter 用の任意依存のみ
+- `acpx`
 
-### ソースからインストール
+任意:
+
+- OpenClaw（IM-hosted agent participation が必要な場合）
+- Discord（live thread 体験が必要な場合）
+
+### インストール
 
 ```bash
 git clone https://github.com/FairladyZ625/Agora.git
-cd agora
+cd Agora
 ./scripts/bootstrap-local.sh
 ```
 
@@ -140,163 +175,95 @@ cd agora
 ./agora start
 ```
 
-このソースモードの導線では依存関係のインストール、`.env` の準備、`~/.agora/` へのローカル設定書き込みを行ったうえで、Fastify バックエンドと Vite Dashboard 開発サーバーを起動します。デフォルトエンドポイント：
+既定のローカル URL:
 
 - API: `http://127.0.0.1:18420/api/health`
 - Dashboard: `http://127.0.0.1:33173/dashboard/`
 
-### 最初のタスクを作成
+### タスク作成
 
 ```bash
-./agora create "APIに認証ミドルウェアを追加する"
+./agora create "API に認証ミドルウェアを追加する"
 ```
 
-### 典型的なフロー
+### 典型フロー
 
-```
-task create "..."           ← タスク作成、スレッドを自動開設
-      │
-      ▼
-Citizens が議論             ← エージェントがスレッド内で自由に討論
-      │
-      ▼
-Gate 1: Archon Review       ← 人間が結論をレビュー、承認または差し戻し
-      │
-      ▼
-Craftsmen が実行            ← Claude Codeがコードを書き、Codexがテストを実行
-      │
-      ▼
-Gate 2: Archon Review       ← 人間が成果物をレビュー
-      │
-      ▼
-完了 → ナレッジベース同期    ← Writer-Agentがアーカイブとgitコミットを完了
+```text
+タスク作成
+  -> Citizens が議論
+  -> Archon がレビュー
+  -> execution-only または dialogue-capable executor を選択
+  -> ACPX-backed execution が動く
+  -> 成果物がレビューとアーカイブへ進む
 ```
 
 ### 品質ゲート
 
 ```bash
 cd agora-ts
-npm run check:strict        # 厳格品質ゲート（デフォルトのコミット基準）
-npm run scenario:all        # エージェントシナリオ回帰テスト
+npm run check:strict
+npm run scenario:all
 ```
 
 ---
 
 ## ユースケース
 
-- **要件の明確化と方針収束** — 多役割の議論は単一モデルの出力より包括的
-- **複雑なバグの特定と根本原因分析** — エージェントが互いの仮定に疑問を呈する
-- **コード・テスト生成** — 議論後、直接Craftsmenをディスパッチして実行
-- **クロスモデルコードレビュー** — 複数のモデルが同じPRを同時にレビュー
-- **タスク全ライフサイクルの記録** — Writer-Agentがナレッジベースに同期
-- **Discordコラボレーションをチャットからエンジニアリングタスクシステムへ**
+- 要件整理と方針収束
+- アーキテクチャ / 実装レビュー
+- 議論後のコード / テスト / レビュー実行
+- 複数プロジェクトと複数コンテキストの分離
+- 長いタスクスレッドでの参加者露出制御
+- 人間承認付きの実運用エージェント編排
 
 ---
 
 ## 比較
 
-| | Agora | AutoGen / CrewAI | LangGraph | チャットボット |
-|---|---|---|---|---|
-| マルチエージェント議論 | ✅ | ✅ | ⚠️ シミュレート | ❌ |
-| 人間参加型ゲート | ✅ | ⚠️ オプション | ⚠️ オプション | ❌ |
-| 確定的ステートマシン | ✅ | ❌ | ✅ | ❌ |
-| 実際のコード/テスト成果物 | ✅ | ⚠️ | ⚠️ | ❌ |
-| プラガブルIMアダプター | ✅ | ❌ | ❌ | ❌ |
+| | Agora | IM に bot を直結 | CrewAI / AutoGen | LangGraph |
+| --- | --- | --- | --- | --- |
+| マルチエージェント議論 | ✅ | ⚠️ | ✅ | ⚠️ |
+| 人間 gate | ✅ | ❌ | ⚠️ | ⚠️ |
+| 参加者露出ポリシー | ✅ | ❌ | ❌ | ❌ |
+| 実行を統治対象として扱う | ✅ | ❌ | ⚠️ | ⚠️ |
+| provider-neutral Core | ✅ | ❌ | ❌ | ⚠️ |
 
 ---
 
 ## ロードマップ
 
-- [x] **Phase -1** — PoC：マルチボットスレッド、`/task`コマンド、サブエージェントディスパッチ
-- [x] **Phase 0** — SQLite + canonical enums、コマンド/権限基盤、OpenClawアダプター
-- [x] **Phase 1** — ステートマシン + Gate、Discuss/Executeモード切替、スナップショットロールバック
-- [x] **Phase 1.5** — Craftsmen実行ループ：Claude Code / Codex / Gemini CLI
-- [x] **Phase 2** — Dashboardビジュアライゼーション、Archon Review Panel、Archiveキュー
-- [ ] **Phase 3** — より多くのアダプター、ガバナンスプリセット、オプションのADR直接書き込み
-- [ ] **Phase 4** — マルチテナントタスク分離、エンタープライズガバナンス、SaaSモード
+- [x] マルチボット thread / task commands / subagent dispatch
+- [x] ステートマシンと Gate の基盤
+- [x] Dashboard と review surface
+- [x] ACPX-backed 既定 execution substrate
+- [x] tmux public shell retirement
+- [ ] execution exposure policy の強化
+- [ ] project / brain / citizen workbench の深化
+- [ ] runtime / IM adapters の拡張
+- [ ] マルチテナント governance と SaaS 化
 
 ---
 
-## Star History
+## リポジトリ構成
 
-[![Star History Chart](https://api.star-history.com/svg?repos=FairladyZ625/Agora&type=Date)](https://www.star-history.com/#FairladyZ625/Agora&Date)
-
----
-
-## プロジェクト構造
-
-```
-agora-ts/                    TypeScript実装（server / cli / packages）
-├── apps/server/             Fastify HTTPサーバー
-├── apps/cli/                Commander CLI
-└── packages/
-    ├── core/                オーケストレーションドメインロジック + ステートマシン
-    ├── contracts/           共有DTO / schemaコントラクト
-    ├── db/                  SQLiteマイグレーション + リポジトリ
-    ├── config/              設定スキーマ + ローダー
-    └── testing/             テストランタイムヘルパー
-
-dashboard/                   Reactフロントエンド（Vite + Tailwind + Zustand）
-Doc/                         公開共有向けドキュメント束（ホワイトペーパー、クイックスタート、統合ガイド）
-docs/                        アーキテクチャドキュメント（独立gitリポジトリ）
-extensions/                  プラグインアダプター（OpenClawなど）
+```text
+agora-ts/      TypeScript 実装
+dashboard/     React dashboard
+Doc/           公開向けドキュメント
+docs/          architecture / planning / walkthrough（別 git repo）
+extensions/    外部 adapters / plugins
 ```
 
 ---
 
-## コントリビューション
+## Contributing
 
-コントリビューションを歓迎します。優先分野：
+価値が高い領域:
 
-- **アダプター** — 新しいIMプラットフォーム、新しいエージェントランタイム
-- **Craftsmen** — 新しい実行ツールの統合
-- **ガバナンス** — ガバナンステンプレートと権限モデル
-- **Dashboard** — ビジュアライゼーションとレビューUX
-- **ドキュメント** — タスク例とベストプラクティス
+- 編排とガバナンスのセマンティクス
+- runtime / IM adapters
+- dashboard operator UX
+- project / task / archive workflow
+- 社会構造モデルを明確にするドキュメント
 
-issueから始めるか、直接PRを開いてください。
-
----
-
-## スポンサー
-
-Agoraが役に立った場合は、プロジェクトの継続開発を支援していただけると助かります。
-
-- Project: [github.com/FairladyZ625/Agora](https://github.com/FairladyZ625/Agora)
-- Issues / contact: [github.com/FairladyZ625/Agora/issues](https://github.com/FairladyZ625/Agora/issues)
-- Email: `lizeyu990625@gmail.com`
-- WeChat: `FairladyZ625`
-- Phone: `15258817691`
-
-<details>
-<summary>WeChat Pay / Alipay</summary>
-<br/>
-
-<table>
-<tr>
-<td align="center" width="50%">
-<strong>WeChat Pay</strong><br/><br/>
-<img src="./assets/sponsor/wechat-pay.jpg" alt="WeChat Pay QR for FairladyZ" width="280"/>
-</td>
-<td align="center" width="50%">
-<strong>Alipay</strong><br/><br/>
-<img src="./assets/sponsor/alipay-pay.jpg" alt="Alipay QR for FairladyZ" width="280"/>
-</td>
-</tr>
-</table>
-
-</details>
-
----
-
-## 謝辞
-
-- [Edict](https://github.com/cft0808/edict) — 「三省六部」アーキテクチャからのインスピレーション。ガバナンスと自由な議論が共存できることを示してくれました
-- [OpenClaw](https://github.com/openclaw/openclaw) — Discordマルチエージェントインフラ（スレッド管理、ACPプロトコル、スラッシュコマンド、フックシステム）を提供。Agoraの最初のアダプターはこの上に構築されています
-- Claude Code Agent Teams — 「議論→分担→集約」というコラボレーションパターンの実現可能性を検証
-
----
-
-## ライセンス
-
-[Apache 2.0](LICENSE)
+詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
