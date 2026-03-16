@@ -4762,7 +4762,7 @@ describe('task service', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
-      im_target: { provider: 'discord', channel_ref: 'channel-1' },
+      im_target: { provider: 'discord', conversation_ref: 'channel-1' },
     });
     bindings.insert({
       id: 'binding-acp-probe-1',
@@ -4852,7 +4852,7 @@ describe('task service', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
-      im_target: { provider: 'discord', channel_ref: 'channel-1' },
+      im_target: { provider: 'discord', conversation_ref: 'channel-1' },
     });
     bindings.insert({
       id: 'binding-observe-acp-done-1',

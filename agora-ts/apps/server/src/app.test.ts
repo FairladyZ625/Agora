@@ -376,6 +376,134 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('uses the dashboard session username instead of a spoofed caller_id for task advance', async () => {
+    let capturedCallerId: string | null = null;
+    const app = buildApp({
+      taskService: {
+        advanceTask: (_taskId: string, options: { callerId: string }) => {
+          capturedCallerId = options.callerId;
+          return {
+            id: 'OC-ADVANCE',
+            state: 'active',
+            current_stage: 'write',
+          };
+        },
+      } as unknown as TaskService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-ADVANCE/advance',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+      payload: {
+        caller_id: 'spoofed-archon',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(capturedCallerId).toBe('lizeyu');
+  });
+
+  it('uses the dashboard session username instead of a spoofed caller_id for runtime recovery routes', async () => {
+    const captured: Array<{ route: 'diagnose' | 'restart'; callerId: string }> = [];
+    const app = buildApp({
+      taskService: {
+        requestRuntimeDiagnosis: (_taskId: string, payload: { caller_id: string }) => {
+          captured.push({ route: 'diagnose', callerId: payload.caller_id });
+          return {
+            operation: 'request_runtime_diagnosis',
+            task_id: 'OC-RUNTIME',
+            agent_ref: 'opus',
+            status: 'accepted',
+            health: 'healthy',
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: 'runtime-opus',
+            summary: 'runtime healthy',
+            detail: null,
+          };
+        },
+        restartCitizenRuntime: (_taskId: string, payload: { caller_id: string }) => {
+          captured.push({ route: 'restart', callerId: payload.caller_id });
+          return {
+            operation: 'restart_citizen_runtime',
+            status: 'unsupported',
+            task_id: 'OC-RUNTIME',
+            agent_ref: 'opus',
+            execution_id: null,
+            summary: 'restart unsupported',
+            detail: null,
+          };
+        },
+      } as unknown as TaskService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const headers = {
+      cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+    };
+
+    const diagnose = await app.inject({
+      method: 'POST',
+      url: '/api/runtime/diagnose',
+      headers,
+      payload: {
+        task_id: 'OC-RUNTIME',
+        agent_ref: 'opus',
+        caller_id: 'spoofed-archon',
+      },
+    });
+    const restart = await app.inject({
+      method: 'POST',
+      url: '/api/runtime/restart',
+      headers,
+      payload: {
+        task_id: 'OC-RUNTIME',
+        agent_ref: 'opus',
+        caller_id: 'spoofed-archon',
+      },
+    });
+
+    expect(diagnose.statusCode).toBe(200);
+    expect(restart.statusCode).toBe(200);
+    expect(captured).toEqual([
+      { route: 'diagnose', callerId: 'lizeyu' },
+      { route: 'restart', callerId: 'lizeyu' },
+    ]);
+  });
+
   it('returns 503 when task service routes are unconfigured', async () => {
     const app = buildApp();
 

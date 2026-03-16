@@ -3,7 +3,7 @@ import { createServerRuntime } from './runtime.js';
 import { resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 
 export function createAppFromRuntime(runtime: ReturnType<typeof createServerRuntime>) {
-  return buildApp({
+  const app = buildApp({
     db: runtime.db,
     taskService: runtime.taskService,
     projectService: runtime.projectService,
@@ -27,6 +27,10 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
     },
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });
+  app.addHook('onClose', async () => {
+    await runtime.dispose?.();
+  });
+  return app;
 }
 
 async function start() {

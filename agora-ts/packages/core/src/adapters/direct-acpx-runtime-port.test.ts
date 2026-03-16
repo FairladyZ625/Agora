@@ -6,7 +6,6 @@ function ok(stdout: string) {
     status: 0,
     stdout,
     stderr: '',
-    error: undefined,
     pid: 100,
     output: [null, stdout, ''],
     signal: null,

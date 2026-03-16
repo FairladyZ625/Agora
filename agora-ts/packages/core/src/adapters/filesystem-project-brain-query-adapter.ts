@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { ProjectKnowledgeKind } from '../project-knowledge-port.js';
 import type {
   ProjectBrainAppendInput,
@@ -11,7 +11,7 @@ import type {
 import { FilesystemProjectKnowledgeAdapter, type FilesystemProjectKnowledgeAdapterOptions } from './filesystem-project-knowledge-adapter.js';
 import { appendMarkdownBlock, extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './markdown-frontmatter.js';
 
-export interface FilesystemProjectBrainQueryAdapterOptions extends FilesystemProjectKnowledgeAdapterOptions {}
+export type FilesystemProjectBrainQueryAdapterOptions = FilesystemProjectKnowledgeAdapterOptions;
 
 export class FilesystemProjectBrainQueryAdapter implements ProjectBrainQueryPort {
   private readonly knowledge: FilesystemProjectKnowledgeAdapter;

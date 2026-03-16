@@ -390,9 +390,6 @@ function renderKnowledgeDocument(input: {
   created_at: string;
   updated_at: string;
 }) {
-  const taskIds = input.source_task_ids.length > 0
-    ? ['source_task_ids:', ...input.source_task_ids.map((id) => `  - ${id}`)]
-    : ['source_task_ids: []'];
   return [
     renderMarkdownFrontmatter({
       doc_type: 'project_knowledge',

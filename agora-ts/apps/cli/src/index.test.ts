@@ -444,6 +444,10 @@ describe('agora-ts cli', () => {
       summary: 'Design systems.',
       prompt_asset: 'roles/architect.md',
       source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      metadata: {},
       citizen_scaffold: {
         soul: 'Think in systems.',
         boundaries: ['Stay core-first.'],
@@ -523,6 +527,10 @@ describe('agora-ts cli', () => {
       summary: 'Design systems.',
       prompt_asset: 'roles/architect.md',
       source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      metadata: {},
       citizen_scaffold: {
         soul: 'Think in systems.',
         boundaries: ['Stay core-first.'],
@@ -545,10 +553,15 @@ describe('agora-ts cli', () => {
       project_id: 'proj-brain',
       role_id: 'architect',
       display_name: 'Alpha Architect',
+      persona: null,
       boundaries: ['Keep runtime adapters outside core.'],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
       runtime_projection: {
         adapter: 'openclaw',
         auto_provision: false,
+        metadata: {},
       },
     });
     const stdout = createBuffer();

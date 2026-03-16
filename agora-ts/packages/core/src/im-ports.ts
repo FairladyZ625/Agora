@@ -92,13 +92,14 @@ export interface IMProvisioningPort {
   archiveContext(input: IMArchiveContextRequest): Promise<void>;
 }
 
-export class StubIMProvisioningPort implements IMProvisioningPort {
+export class StubIMProvisioningPort implements IMProvisioningPort, IMMessagingPort {
   private readonly provisionedBinding: IMProvisionContextResult;
   readonly provisioned: IMProvisionContextRequest[] = [];
   readonly joined: IMJoinParticipantRequest[] = [];
   readonly removed: IMRemoveParticipantRequest[] = [];
   readonly published: IMPublishMessagesRequest[] = [];
   readonly archived: IMArchiveContextRequest[] = [];
+  readonly sent: Array<{ targetRef: string; payload: NotificationPayload }> = [];
 
   constructor(binding: {
     im_provider?: string;
@@ -140,5 +141,9 @@ export class StubIMProvisioningPort implements IMProvisioningPort {
 
   async archiveContext(input: IMArchiveContextRequest): Promise<void> {
     this.archived.push(input);
+  }
+
+  async sendNotification(targetRef: string, payload: NotificationPayload): Promise<void> {
+    this.sent.push({ targetRef, payload });
   }
 }

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, SubtaskRepository } from '@agora-ts/db';
 import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
@@ -171,6 +171,56 @@ describe('craftsman routes', () => {
       execution_id: 'exec-stop-route',
       status: 'accepted',
     });
+  });
+
+  it('uses the dashboard session username instead of a spoofed caller_id for craftsman stop', async () => {
+    const stopCraftsmanExecution = vi.fn((executionId: string, payload: { caller_id: string }) => ({
+      operation: 'stop_execution',
+      status: 'accepted',
+      task_id: 'OC-STOP',
+      agent_ref: 'claude',
+      execution_id: executionId,
+      summary: `stop requested by ${payload.caller_id}`,
+      detail: null,
+    }));
+    const app = buildApp({
+      taskService: {
+        stopCraftsmanExecution,
+      } as unknown as TaskService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/craftsmen/executions/exec-stop-route/stop',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+      payload: {
+        caller_id: 'spoofed-archon',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(stopCraftsmanExecution).toHaveBeenCalledWith(
+      'exec-stop-route',
+      expect.objectContaining({ caller_id: 'lizeyu' }),
+    );
   });
 
   it('rejects craftsmen dispatch for paused tasks', async () => {

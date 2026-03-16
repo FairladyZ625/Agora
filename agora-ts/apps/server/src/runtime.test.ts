@@ -176,6 +176,63 @@ describe('server runtime', () => {
     runtime.db.close();
   });
 
+  it('disposes runtime-owned services on shutdown', () => {
+    vi.useFakeTimers();
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+        },
+      }),
+    );
+
+    const stopPresence = vi.fn();
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => ({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      inbox_items: 0,
+    }));
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createDiscordPresenceService: () => ({
+          start: vi.fn(),
+          stop: stopPresence,
+          enabled: true,
+        }) as never,
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+      },
+    });
+
+    runtime.dispose();
+    vi.advanceTimersByTime(5_000);
+
+    expect(stopPresence).toHaveBeenCalledTimes(1);
+    expect(observeCraftsmanExecutions).not.toHaveBeenCalled();
+    expect(probeInactiveTasks).not.toHaveBeenCalled();
+
+    runtime.db.close();
+    vi.useRealTimers();
+  });
+
   it('runs startup recovery on boot when configured', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');

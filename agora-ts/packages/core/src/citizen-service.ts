@@ -3,7 +3,7 @@ import { CitizenRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type { CitizenProjectionPort } from './citizen-projection-port.js';
 import { ProjectService } from './project-service.js';
-import { RolePackService } from './role-pack-service.js';
+import type { RolePackService } from './role-pack-service.js';
 
 export interface CitizenServiceOptions {
   projectService?: ProjectService;

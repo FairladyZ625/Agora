@@ -78,7 +78,7 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
-  ProjectService,
+  type ProjectService,
   ProjectService as ProjectServiceImpl,
   type TaskConversationService,
   type TaskParticipationService,
@@ -399,6 +399,13 @@ function resolveHumanActor(
     role: account.role,
     source: 'im',
   };
+}
+
+function resolveDashboardSessionUsername(
+  request: FastifyRequest,
+  sessions: Map<string, DashboardSession>,
+) {
+  return getDashboardSession(request, sessions)?.session.username ?? null;
 }
 
 function appendDashboardHumanImParticipantRef(
@@ -1086,8 +1093,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = advanceTaskRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       const task = taskService.advanceTask(params.taskId, {
-        callerId: payload.caller_id,
+        callerId,
       });
       recordTaskAction(metrics, 'advance', 'success');
       emitStructuredLog(structuredLogs, {
@@ -1097,7 +1105,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         task_id: task.id,
         state: task.state,
         stage: task.current_stage,
-        actor: payload.caller_id,
+        actor: callerId,
       });
       return reply.send(task);
     } catch (error) {
@@ -1114,9 +1122,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = approveTaskRequestSchema.parse(request.body);
+      const approverId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.approver_id;
       return reply.send(
         taskService.approveTask(params.taskId, {
-          approverId: payload.approver_id,
+          approverId,
           comment: payload.comment,
         }),
       );
@@ -1133,9 +1142,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = rejectTaskRequestSchema.parse(request.body);
+      const rejectorId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.rejector_id;
       return reply.send(
         taskService.rejectTask(params.taskId, {
-          rejectorId: payload.rejector_id,
+          rejectorId,
           reason: payload.reason,
         }),
       );
@@ -1294,10 +1304,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = subtaskDoneRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.completeSubtask(params.taskId, {
           subtaskId: payload.subtask_id,
-          callerId: payload.caller_id,
+          callerId,
           output: payload.output,
         }),
       );
@@ -1314,10 +1325,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.completeSubtask(params.taskId, {
           subtaskId: params.subtaskId,
-          callerId: payload.caller_id,
+          callerId,
           output: payload.note,
         }),
       );
@@ -1334,10 +1346,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.archiveSubtask(params.taskId, {
           subtaskId: params.subtaskId,
-          callerId: payload.caller_id,
+          callerId,
           note: payload.note,
         }),
       );
@@ -1354,10 +1367,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.cancelSubtask(params.taskId, {
           subtaskId: params.subtaskId,
-          callerId: payload.caller_id,
+          callerId,
           note: payload.note,
         }),
       );
@@ -1568,7 +1582,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = runtimeRecoveryRequestSchema.parse(request.body ?? {});
-      return reply.send(runtimeDiagnosisResultSchema.parse(taskService.requestRuntimeDiagnosis(payload.task_id, payload)));
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      return reply.send(runtimeDiagnosisResultSchema.parse(taskService.requestRuntimeDiagnosis(payload.task_id, {
+        ...payload,
+        caller_id: callerId,
+      })));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1581,7 +1599,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = runtimeRecoveryRequestSchema.parse(request.body ?? {});
-      return reply.send(runtimeRecoveryActionSchema.parse(taskService.restartCitizenRuntime(payload.task_id, payload)));
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      return reply.send(runtimeRecoveryActionSchema.parse(taskService.restartCitizenRuntime(payload.task_id, {
+        ...payload,
+        caller_id: callerId,
+      })));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1594,16 +1616,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = craftsmanDispatchRequestSchema.parse(request.body);
-      const dispatched = taskService.dispatchCraftsman(payload);
-      recordCraftsmanDispatch(metrics, payload.adapter, 'success');
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      const dispatchPayload = {
+        ...payload,
+        caller_id: callerId,
+      };
+      const dispatched = taskService.dispatchCraftsman(dispatchPayload);
+      recordCraftsmanDispatch(metrics, dispatchPayload.adapter, 'success');
       emitStructuredLog(structuredLogs, {
         module: 'craftsman',
         msg: 'craftsman_dispatch',
-        task_id: payload.task_id,
-        subtask_id: payload.subtask_id,
-        caller_id: payload.caller_id,
-        adapter: payload.adapter,
-        mode: payload.mode,
+        task_id: dispatchPayload.task_id,
+        subtask_id: dispatchPayload.subtask_id,
+        caller_id: dispatchPayload.caller_id,
+        adapter: dispatchPayload.adapter,
+        mode: dispatchPayload.mode,
         execution_id: dispatched.execution.execution_id,
         status: dispatched.execution.status,
       });
@@ -1735,7 +1762,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { executionId: string };
       const payload = craftsmanStopExecutionRequestSchema.parse(request.body ?? {});
-      return reply.send(runtimeRecoveryActionSchema.parse(taskService.stopCraftsmanExecution(params.executionId, payload)));
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      return reply.send(runtimeRecoveryActionSchema.parse(taskService.stopCraftsmanExecution(params.executionId, {
+        ...payload,
+        caller_id: callerId,
+      })));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
