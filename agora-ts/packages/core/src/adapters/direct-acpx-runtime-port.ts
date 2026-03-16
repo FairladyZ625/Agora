@@ -15,7 +15,9 @@ import type {
 type SpawnSyncLike = (
   command: string,
   args: string[],
-  options: SpawnSyncOptions,
+  options: SpawnSyncOptions & {
+    encoding: 'utf8';
+  },
 ) => SpawnSyncReturns<string>;
 
 export interface DirectAcpxRuntimePortOptions {
@@ -32,7 +34,9 @@ export class DirectAcpxRuntimePort implements AcpRuntimePort {
   private readonly baseArgs: string[];
 
   constructor(options: DirectAcpxRuntimePortOptions = {}) {
-    this.runSync = options.spawnSync ?? spawnSync;
+    this.runSync = options.spawnSync ?? ((command, args, spawnOptions) => (
+      spawnSync(command, args, spawnOptions)
+    ));
     this.now = options.now ?? (() => new Date().toISOString());
     this.command = options.command ?? 'acpx';
     this.baseArgs = options.baseArgs ?? [];

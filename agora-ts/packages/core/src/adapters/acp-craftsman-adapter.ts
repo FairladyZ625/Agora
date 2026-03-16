@@ -1,19 +1,32 @@
 import type { CraftsmanAdapter, CraftsmanDispatchRequest, CraftsmanDispatchResult } from '../craftsman-adapter.js';
-import type { AcpRuntimeAgent, AcpRuntimePort } from '../acp-runtime-port.js';
+import type {
+  AcpRuntimeAgent,
+  AcpRuntimePermissionMode,
+  AcpRuntimePort,
+} from '../acp-runtime-port.js';
 import { ProcessCraftsmanAdapter, type InteractiveResumeCommand, type ProcessCraftsmanAdapterOptions } from './process-craftsman-adapter.js';
 import { WatchedProcessCraftsmanAdapter } from './watched-process-craftsman-adapter.js';
 import { buildAcpSessionId } from './acp-session-ref.js';
+
+export interface AcpCraftsmanSessionDefaults {
+  model?: string | null;
+  timeoutSeconds?: number | null;
+  ttlSeconds?: number | null;
+  permissionMode?: AcpRuntimePermissionMode;
+}
 
 export interface AcpCraftsmanAdapterOptions {
   runtime: AcpRuntimePort;
   callbackUrl: string;
   apiToken?: string | null;
   processOptions?: ProcessCraftsmanAdapterOptions;
+  sessionDefaults?: AcpCraftsmanSessionDefaults;
 }
 
 export class AcpCraftsmanAdapter implements CraftsmanAdapter {
   public readonly name: AcpRuntimeAgent;
   private readonly runtime: AcpRuntimePort;
+  private readonly sessionDefaults: AcpCraftsmanSessionDefaults;
   private readonly oneShotAdapter: WatchedProcessCraftsmanAdapter;
 
   constructor(
@@ -22,6 +35,7 @@ export class AcpCraftsmanAdapter implements CraftsmanAdapter {
   ) {
     this.name = agent;
     this.runtime = options.runtime;
+    this.sessionDefaults = options.sessionDefaults ?? {};
     this.oneShotAdapter = new WatchedProcessCraftsmanAdapter(
       new AcpxExecProcessCraftsmanAdapter(agent, options.processOptions),
       {
@@ -46,6 +60,10 @@ export class AcpCraftsmanAdapter implements CraftsmanAdapter {
       cwd,
       sessionName,
       prompt: request.prompt,
+      ...(this.sessionDefaults.model !== undefined ? { model: this.sessionDefaults.model } : {}),
+      ...(this.sessionDefaults.timeoutSeconds !== undefined ? { timeoutSeconds: this.sessionDefaults.timeoutSeconds } : {}),
+      ...(this.sessionDefaults.ttlSeconds !== undefined ? { ttlSeconds: this.sessionDefaults.ttlSeconds } : {}),
+      ...(this.sessionDefaults.permissionMode !== undefined ? { permissionMode: this.sessionDefaults.permissionMode } : {}),
     });
     return {
       status: 'running',

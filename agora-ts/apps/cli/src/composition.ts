@@ -289,7 +289,10 @@ export function createCliComposition(
   };
   const craftsmanMode = resolveCraftsmanRuntimeMode('cli');
   const acpRuntime = craftsmanMode === 'acp' ? new DirectAcpxRuntimePort() : undefined;
-  const craftsmanDispatcher = factories.createCraftsmanDispatcher(context, { acpRuntime });
+  const craftsmanDispatcher = factories.createCraftsmanDispatcher(
+    context,
+    acpRuntime ? { acpRuntime } : undefined,
+  );
   const agentRuntimePort = factories.createAgentRuntimePort(context);
   const messagingPort = factories.createIMMessagingPort(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);

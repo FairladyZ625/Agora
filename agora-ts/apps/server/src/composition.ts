@@ -340,7 +340,10 @@ export function buildServerComposition(
   const agentRuntimePort = factories.createAgentRuntimePort(context, { agentRegistry });
   const craftsmanMode = resolveCraftsmanRuntimeMode('server');
   const acpRuntime = craftsmanMode === 'acp' ? new DirectAcpxRuntimePort() : undefined;
-  const craftsmanDispatcher = factories.createCraftsmanDispatcher(context, { acpRuntime });
+  const craftsmanDispatcher = factories.createCraftsmanDispatcher(
+    context,
+    acpRuntime ? { acpRuntime } : undefined,
+  );
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);

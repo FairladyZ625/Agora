@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "smoke:craftsman:acp": "npm run build && tsx scripts/smoke-craftsman-acp.ts",
     "dev:server": "npm run build && npm run dev -w @agora-ts/server",
     "dev:cli": "npm run dev -w @agora-ts/cli",
     "scenario": "tsx packages/testing/src/cli.ts",

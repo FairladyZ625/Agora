@@ -35,7 +35,7 @@ export class AcpCraftsmanProbePort implements CraftsmanExecutionProbePort {
     if (status.lifecycleState === 'dead' || status.lifecycleState === 'no_session') {
       const tail = this.runtime.tailExecution(session, 40);
       const text = tail.output?.trim() || null;
-      const terminalStatus = resolveTerminalStatus(status.rawStatus);
+      const terminalStatus = resolveTerminalStatus(status.rawStatus, text);
       const callbackStatus = status.lifecycleState === 'dead' && terminalStatus === 'succeeded'
         ? 'succeeded'
         : 'failed';
@@ -80,11 +80,27 @@ export class AcpCraftsmanProbePort implements CraftsmanExecutionProbePort {
   }
 }
 
-function resolveTerminalStatus(rawStatus: Record<string, unknown> | null) {
+function resolveTerminalStatus(rawStatus: Record<string, unknown> | null, text: string | null) {
   const exitCode = typeof rawStatus?.exitCode === 'number' ? rawStatus.exitCode : null;
   const signal = typeof rawStatus?.signal === 'string' ? rawStatus.signal : null;
   if (exitCode === 0 && !signal) {
     return 'succeeded';
   }
+  if (typeof exitCode === 'number' && exitCode !== 0) {
+    return 'failed';
+  }
+  if (signal) {
+    return 'failed';
+  }
+  if (looksLikeSuccessfulTranscript(text)) {
+    return 'succeeded';
+  }
   return 'failed';
+}
+
+function looksLikeSuccessfulTranscript(text: string | null) {
+  if (!text) {
+    return false;
+  }
+  return text.includes('\tassistant\t') || text.includes('assistant:');
 }

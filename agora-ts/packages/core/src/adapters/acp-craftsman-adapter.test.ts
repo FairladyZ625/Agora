@@ -48,6 +48,48 @@ describe('ACP-backed craftsman transport', () => {
     });
   });
 
+  it('passes configured ACP session defaults into interactive dispatch', () => {
+    const runtime = {
+      startExecution: vi.fn(() => ({
+        executionId: 'exec-ttl-1',
+        sessionName: 'exec-ttl-1',
+        agentSessionId: 'runtime-ttl-1',
+        queued: true,
+        startedAt: '2026-03-16T10:05:00.000Z',
+      })),
+    } as const;
+    const adapter = new AcpCraftsmanAdapter('codex', {
+      runtime: runtime as never,
+      callbackUrl: 'http://127.0.0.1:18420/api/craftsmen/callback',
+      sessionDefaults: {
+        model: 'gpt-5-codex',
+        timeoutSeconds: 90,
+        ttlSeconds: 7,
+        permissionMode: 'deny_all',
+      },
+    });
+
+    adapter.dispatchTask({
+      execution_id: 'exec-ttl-1',
+      task_id: 'OC-ttl-1',
+      stage_id: 'develop',
+      subtask_id: 'sub-ttl-1',
+      adapter: 'codex',
+      mode: 'interactive',
+      workdir: '/tmp/project',
+      prompt: 'Reply with smoke ok',
+      brief_path: null,
+    });
+
+    expect(runtime.startExecution).toHaveBeenCalledWith(expect.objectContaining({
+      executionId: 'exec-ttl-1',
+      model: 'gpt-5-codex',
+      timeoutSeconds: 90,
+      ttlSeconds: 7,
+      permissionMode: 'deny_all',
+    }));
+  });
+
   it('routes text input, probe, tail, and stop through the ACP runtime', () => {
     const runtime = {
       sendText: vi.fn(),
@@ -170,6 +212,47 @@ describe('ACP-backed craftsman transport', () => {
           stderr: null,
         },
       },
+    });
+  });
+
+  it('treats dead acpx sessions with assistant transcript and no exit code as succeeded', () => {
+    const runtime = {
+      probeExecution: vi.fn(() => ({
+        sessionName: 'exec-4',
+        lifecycleState: 'dead',
+        agentSessionId: 'runtime-4',
+        summary: 'queue owner unavailable',
+        lastPromptTime: '2026-03-16T10:03:00.000Z',
+        rawStatus: {
+          status: 'dead',
+          exitCode: null,
+          signal: null,
+          disconnectReason: 'connection_close',
+        },
+      })),
+      tailExecution: vi.fn(() => ({
+        execution_id: 'exec-4',
+        available: true,
+        output: [
+          '2026-03-16T10:03:00.000Z\tuser\tReply with exactly ACPX smoke ok.',
+          '2026-03-16T10:03:01.000Z\tassistant\tACPX smoke ok',
+        ].join('\n'),
+        source: 'acpx',
+      })),
+    };
+
+    const probe = new AcpCraftsmanProbePort(runtime as never).probe({
+      executionId: 'exec-4',
+      adapter: 'claude',
+      sessionId: 'acpx:exec-4',
+      workdir: '/tmp/project',
+      status: 'running',
+    });
+
+    expect(probe).toMatchObject({
+      execution_id: 'exec-4',
+      status: 'succeeded',
+      error: null,
     });
   });
 });
