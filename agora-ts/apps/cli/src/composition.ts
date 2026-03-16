@@ -12,6 +12,7 @@ import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-t
 import { resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
+  CitizenService,
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
   createDefaultCraftsmanAdapters,
@@ -23,6 +24,7 @@ import {
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
+  OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
   ProjectService,
   StubIMMessagingPort,
@@ -73,6 +75,10 @@ export interface CliCompositionFactories {
     context: CliCompositionContext,
     deps: { projectKnowledgePort: ProjectKnowledgePort },
   ) => ProjectService;
+  createCitizenService: (
+    context: CliCompositionContext,
+    deps: { projectService: ProjectService; rolePackService: RolePackService },
+  ) => CitizenService;
   createTaskParticipationService: (
     context: CliCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -111,6 +117,7 @@ export interface CliComposition {
   db: AgoraDatabase;
   taskService: TaskService;
   projectService: ProjectService;
+  citizenService: CitizenService;
   tmuxRuntimeService: TmuxRuntimeService;
   dashboardSessionClient: DashboardSessionClient;
   humanAccountService: HumanAccountService;
@@ -191,6 +198,11 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
+    }),
+    createCitizenService: (context, deps) => new CitizenService(context.db, {
+      projectService: deps.projectService,
+      rolePackService: deps.rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
     }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
@@ -294,6 +306,8 @@ export function createCliComposition(
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const projectKnowledgePort = factories.createProjectKnowledgePort(context);
   const projectService = factories.createProjectService(context, { projectKnowledgePort });
+  const rolePackService = factories.createRolePackService(context);
+  const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
@@ -319,13 +333,13 @@ export function createCliComposition(
   const humanAccountService = factories.createHumanAccountService(context);
   const taskConversationService = factories.createTaskConversationService(context);
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
-  const rolePackService = factories.createRolePackService(context);
   const dashboardQueryService = factories.createDashboardQueryService(context);
   return {
     config,
     db,
     taskService,
     projectService,
+    citizenService,
     tmuxRuntimeService,
     dashboardSessionClient,
     humanAccountService,

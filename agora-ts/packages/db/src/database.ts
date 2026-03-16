@@ -73,6 +73,7 @@ export function runMigrations(db: AgoraDatabase): void {
     '014_task_locale.sql',
     '015_projects.sql',
     '016_todo_projects.sql',
+    '017_citizens.sql',
   ];
   const migrationsDir = resolveMigrationsDir();
 

@@ -1,4 +1,6 @@
 export * from './craftsman-adapter.js';
+export * from './citizen-projection-port.js';
+export * from './citizen-service.js';
 export * from './craftsman-dispatcher.js';
 export * from './craftsman-input-port.js';
 export * from './craftsman-probe-port.js';

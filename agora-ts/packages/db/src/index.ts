@@ -8,6 +8,7 @@ export * from './repositories/progress-log.repository.js';
 export * from './repositories/subtask.repository.js';
 export * from './repositories/task.repository.js';
 export * from './repositories/project.repository.js';
+export * from './repositories/citizen.repository.js';
 export * from './repositories/template.repository.js';
 export * from './repositories/todo.repository.js';
 export * from './repositories/archive-job.repository.js';

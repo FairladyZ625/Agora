@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, FilesystemProjectKnowledgeAdapter, HumanAccountService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -424,6 +424,67 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('decision/runtime-boundary');
     expect(stdout.value).toContain('Core keeps orchestration semantics.');
     expect(stdout.value).toContain('orchestration semantics');
+  });
+
+  it('supports citizen creation, listing, show, and preview through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-citizen',
+      name: 'Citizen Project',
+      owner: 'archon',
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Stay core-first.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      citizenService,
+      rolePackService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'citizens', 'create',
+      '--id', 'citizen-alpha',
+      '--project', 'proj-citizen',
+      '--role', 'architect',
+      '--name', 'Alpha Architect',
+      '--persona', 'Systems thinker',
+      '--boundary', 'Keep runtime adapters outside core.',
+      '--skill', 'system-design',
+    ], { from: 'user' });
+    await program.parseAsync(['citizens', 'list', '--project', 'proj-citizen'], { from: 'user' });
+    await program.parseAsync(['citizens', 'show', 'citizen-alpha'], { from: 'user' });
+    await program.parseAsync(['citizens', 'preview', 'citizen-alpha'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Citizen 已创建: citizen-alpha');
+    expect(stdout.value).toContain('citizen-alpha\tproj-citizen\tarchitect\tactive\tAlpha Architect');
+    expect(stdout.value).toContain('citizen-alpha — Alpha Architect');
+    expect(stdout.value).toContain('.openclaw/citizens/citizen-alpha/profile.json');
+    expect(stdout.value).toContain('.openclaw/citizens/citizen-alpha/brain/03-citizen-scaffold.md');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {

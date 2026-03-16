@@ -9,6 +9,7 @@ import { createCliComposition } from './composition.js';
 import { deriveGraphFromStages } from '@agora-ts/core';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
+  CitizenService,
   DashboardQueryService,
   ProjectService,
   RolePackService,
@@ -24,6 +25,7 @@ import type {
   CraftsmanExecutionStatusDto,
   CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
+  CreateCitizenRequestDto,
   CreateProjectRequestDto,
   CreateSubtasksRequestDto,
   CreateTaskRequestDto,
@@ -37,6 +39,7 @@ import {
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
   craftsmanExecutionTailResponseSchema,
+  createCitizenRequestSchema,
   createProjectRequestSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
@@ -59,10 +62,12 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
 };
 
 type CreateProjectInputLike = CreateProjectRequestDto;
+type CreateCitizenInputLike = CreateCitizenRequestDto;
 
 export interface CliDependencies {
   taskService?: TaskService;
   projectService?: ProjectService;
+  citizenService?: CitizenService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
@@ -339,6 +344,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
+  const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
   program
@@ -572,6 +578,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projects = program
     .command('projects')
     .description('project thin-slice commands');
+  const citizens = program
+    .command('citizens')
+    .description('citizen definition and projection preview commands');
 
   const graph = program
     .command('graph')
@@ -801,6 +810,110 @@ export function createCliProgram(deps: CliDependencies = {}) {
       for (const item of results) {
         writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
         writeLine(stdout, `  ${item.snippet}`);
+      }
+    });
+
+  citizens
+    .command('create')
+    .description('创建 citizen definition')
+    .requiredOption('--id <citizenId>', 'citizen id')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--role <roleId>', 'role id')
+    .requiredOption('--name <displayName>', 'display name')
+    .option('--persona <persona>', 'persona text')
+    .option('--boundary <line>', 'boundary line', collectOption, [])
+    .option('--skill <ref>', 'skill ref', collectOption, [])
+    .option('--channel-policies-json <json>', 'channel policies JSON')
+    .option('--adapter <adapter>', 'projection adapter', 'openclaw')
+    .option('--auto-provision', 'enable adapter-side auto provision', false)
+    .action((options: {
+      id: string;
+      project: string;
+      role: string;
+      name: string;
+      persona?: string;
+      boundary?: string[];
+      skill?: string[];
+      channelPoliciesJson?: string;
+      adapter: string;
+      autoProvision?: boolean;
+    }) => {
+      const citizen = citizenService.createCitizen(createCitizenRequestSchema.parse({
+        citizen_id: options.id,
+        project_id: options.project,
+        role_id: options.role,
+        display_name: options.name,
+        ...(options.persona !== undefined ? { persona: options.persona } : {}),
+        ...(options.boundary && options.boundary.length > 0 ? { boundaries: options.boundary } : {}),
+        ...(options.skill && options.skill.length > 0 ? { skills_ref: options.skill } : {}),
+        ...(options.channelPoliciesJson ? { channel_policies: parseJsonOption(options.channelPoliciesJson, '--channel-policies-json') } : {}),
+        runtime_projection: {
+          adapter: options.adapter,
+          auto_provision: Boolean(options.autoProvision),
+        },
+      }) satisfies CreateCitizenInputLike);
+      writeLine(stdout, `Citizen 已创建: ${citizen.citizen_id}`);
+      writeLine(stdout, `Project: ${citizen.project_id}`);
+      writeLine(stdout, `Role: ${citizen.role_id}`);
+    });
+
+  citizens
+    .command('list')
+    .description('列出 citizens')
+    .option('--project <projectId>', 'project id')
+    .option('--status <status>', 'active|archived')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project?: string;
+      status?: 'active' | 'archived';
+      json?: boolean;
+    }) => {
+      const items = citizenService.listCitizens(options.project, options.status);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ citizens: items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 citizens');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.citizen_id}\t${item.project_id}\t${item.role_id}\t${item.status}\t${item.display_name}`);
+      }
+    });
+
+  citizens
+    .command('show')
+    .description('查看 citizen definition')
+    .argument('<citizenId>', 'citizen id')
+    .option('--json', '输出 JSON', false)
+    .action((citizenId: string, options: { json?: boolean }) => {
+      const citizen = citizenService.requireCitizen(citizenId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(citizen, null, 2));
+        return;
+      }
+      writeLine(stdout, `${citizen.citizen_id} — ${citizen.display_name}`);
+      writeLine(stdout, `project: ${citizen.project_id}`);
+      writeLine(stdout, `role: ${citizen.role_id}`);
+      writeLine(stdout, `adapter: ${citizen.runtime_projection.adapter}`);
+      writeLine(stdout, `status: ${citizen.status}`);
+    });
+
+  citizens
+    .command('preview')
+    .description('预览 citizen projection adapter 输出')
+    .argument('<citizenId>', 'citizen id')
+    .option('--json', '输出 JSON', false)
+    .action((citizenId: string, options: { json?: boolean }) => {
+      const preview = citizenService.previewProjection(citizenId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(preview, null, 2));
+        return;
+      }
+      writeLine(stdout, preview.summary);
+      for (const file of preview.files) {
+        writeLine(stdout, file.path);
       }
     });
 
