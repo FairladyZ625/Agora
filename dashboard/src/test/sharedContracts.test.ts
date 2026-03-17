@@ -117,7 +117,7 @@ describe('shared contracts', () => {
           ],
         },
       ],
-      tmux_runtime: null,
+      craftsman_runtime: null,
     });
 
     expect(parsed.summary.active_tasks).toBe(1);
@@ -125,7 +125,7 @@ describe('shared contracts', () => {
     expect(parsed.host_summaries[0]?.host).toBe('openclaw');
   });
 
-  it('allows dashboard to parse tmux runtime continuity provenance fields', () => {
+  it('allows dashboard to parse provider-neutral craftsman runtime fields', () => {
     const parsed = agentsStatusSchema.parse({
       summary: {
         active_tasks: 0,
@@ -140,30 +140,30 @@ describe('shared contracts', () => {
       craftsmen: [],
       channel_summaries: [],
       host_summaries: [],
-      tmux_runtime: {
-        session: 'agora-craftsmen',
-        panes: [
+      craftsman_runtime: {
+        providers: [{ provider: 'tmux', session: 'agora-craftsmen', slot_count: 1, ready_slots: 1, active_slots: 1 }],
+        slots: [
           {
+            provider: 'tmux',
             agent: 'gemini',
-            pane_id: '%2',
-            current_command: 'gemini',
-            active: true,
+            session_id: 'tmux:agora-craftsmen:gemini',
+            runtime_mode: 'tmux',
+            transport: 'tmux-pane',
+            status: 'running',
             ready: true,
+            active: true,
+            current_command: 'gemini',
             tail_preview: 'tail',
-            continuity_backend: 'gemini_session_id',
-            resume_capability: 'native_resume',
             session_reference: '3d479f8c-ec0a-4b7f-9f92-123456789abc',
-            identity_source: 'chat_file',
-            identity_source_rank: 3,
-            identity_conflict_count: 0,
-            last_recovery_mode: 'resume_exact',
-            transport_session_id: 'tmux:agora-craftsmen:gemini',
+            execution_id: null,
+            task_id: null,
+            subtask_id: null,
+            title: null,
           },
         ],
       },
     });
 
-    expect(parsed.tmux_runtime?.panes[0]?.identity_source).toBe('chat_file');
-    expect(parsed.tmux_runtime?.panes[0]?.session_reference).toBe('3d479f8c-ec0a-4b7f-9f92-123456789abc');
+    expect(parsed.craftsman_runtime?.slots[0]?.session_reference).toBe('3d479f8c-ec0a-4b7f-9f92-123456789abc');
   });
 });

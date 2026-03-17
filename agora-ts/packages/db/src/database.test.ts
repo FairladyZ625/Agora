@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, listAppliedMigrations, runMigrations } from './database.js';
 import { ArchiveJobRepository } from './repositories/archive-job.repository.js';
 import { RoleDefinitionRepository } from './repositories/role-definition.repository.js';
+import { ProjectRepository } from './repositories/project.repository.js';
 import { TaskRepository } from './repositories/task.repository.js';
 import { TemplateRepository } from './repositories/template.repository.js';
 import { TodoRepository } from './repositories/todo.repository.js';
@@ -67,6 +68,9 @@ describe('agora-ts sqlite bootstrap', () => {
       '012_approval_requests.sql',
       '013_task_control.sql',
       '014_task_locale.sql',
+      '015_projects.sql',
+      '016_todo_projects.sql',
+      '017_citizens.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -96,6 +100,10 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'approval_requests'")
       .get() as { name: string } | undefined;
     expect(approvalRequestsTable?.name).toBe('approval_requests');
+    const projectsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
+      .get() as { name: string } | undefined;
+    expect(projectsTable?.name).toBe('projects');
   });
 
   it('can persist role definitions inside the single sqlite database', () => {
@@ -348,10 +356,16 @@ describe('agora-ts sqlite bootstrap', () => {
   it('supports todo CRUD and tag deserialization', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const projects = new ProjectRepository(db);
+    projects.insertProject({
+      id: 'proj-todo',
+      name: 'Todo Project',
+    });
     const todos = new TodoRepository(db);
 
     const created = todos.insertTodo({
       text: '补 ts lint',
+      project_id: 'proj-todo',
       due: '2026-03-12',
       tags: ['typescript', 'governance'],
     });
@@ -363,6 +377,7 @@ describe('agora-ts sqlite bootstrap', () => {
     const deleted = todos.deleteTodo(created.id);
 
     expect(created.tags).toEqual(['typescript', 'governance']);
+    expect(created.project_id).toBe('proj-todo');
     expect(updated.status).toBe('done');
     expect(listed).toHaveLength(1);
     expect(deleted).toBe(true);

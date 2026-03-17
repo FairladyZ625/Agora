@@ -10,7 +10,7 @@ const resolveReview = vi.fn(async () => 'live');
 const showMessage = vi.fn();
 const fetchStatus = vi.fn(async () => 'live');
 const fetchChannelDetail = vi.fn(async () => 'live');
-const fetchTmuxTail = vi.fn(async () => 'live');
+const fetchRuntimeTail = vi.fn(async () => 'live');
 
 const liveTasks: Task[] = [
   {
@@ -331,28 +331,29 @@ const agentStoreState = {
       ],
     },
   ],
-  tmuxRuntime: {
-    session: 'agora-craftsmen',
-    panes: [
+  craftsmanRuntime: {
+    providers: [{ provider: 'tmux' as const, session: 'agora-craftsmen', slotCount: 1, readySlots: 1, activeSlots: 1 }],
+    slots: [
       {
+        provider: 'tmux' as const,
         agent: 'codex',
-        paneId: '%0',
-        currentCommand: 'bash',
-        active: true,
+        sessionId: 'tmux:agora-craftsmen:codex',
+        runtimeMode: 'tmux',
+        transport: 'tmux-pane',
+        status: 'running',
         ready: true,
+        active: true,
+        currentCommand: 'bash',
         tailPreview: 'tail:codex',
-        continuityBackend: 'codex_session_file',
-        resumeCapability: 'native_resume',
         sessionReference: 'codex-session-123',
-        identitySource: 'session_file',
-        identityPath: '/tmp/codex/session.json',
-        sessionObservedAt: '2026-03-08T23:01:00.000Z',
-        lastRecoveryMode: 'resume_exact',
-        transportSessionId: 'tmux:agora-craftsmen:codex',
+        executionId: null,
+        taskId: null,
+        subtaskId: null,
+        title: null,
       },
     ],
   },
-  tmuxTailByAgent: {
+  runtimeTailByAgent: {
     codex: 'tail:codex',
   },
   presenceFilter: 'all' as const,
@@ -362,10 +363,10 @@ const agentStoreState = {
   error: null,
   fetchStatus,
   fetchChannelDetail,
-  fetchTmuxTail,
+  fetchRuntimeTail,
   channelDetailLoading: false,
   channelDetailError: null,
-  tmuxTailLoadingByAgent: {},
+  runtimeTailLoadingByAgent: {},
   setPresenceFilter: vi.fn(),
   setCraftsmenFilter: vi.fn(),
   setChannelFilter: vi.fn(),

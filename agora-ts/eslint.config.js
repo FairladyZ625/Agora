@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts', '**/*.tsbuildinfo', 'vitest.config.ts', 'eslint.config.js'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts', '**/*.tsbuildinfo', 'vitest.config.ts', 'eslint.config.js', 'scripts/smoke-craftsman-acp.ts'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

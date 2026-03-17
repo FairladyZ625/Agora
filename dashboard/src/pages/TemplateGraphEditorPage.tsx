@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router';
 import ReactFlow, {
@@ -23,8 +23,8 @@ import { useTemplatesPageCopy } from '@/lib/dashboardCopy';
 import { resolveGraphConnectionCandidate } from '@/lib/workflowGraphEditor';
 import { resolveWorkflowExecutionKindLabel, resolveWorkflowGateLabel } from '@/lib/workflowGraphLabels';
 import {
-  WORKFLOW_GRAPH_NODE_HEIGHT,
-  WORKFLOW_GRAPH_NODE_WIDTH,
+  COMPACT_WORKFLOW_GRAPH_METRICS,
+  DEFAULT_WORKFLOW_GRAPH_METRICS,
   layoutWorkflowSurfaceNodes,
 } from '@/lib/workflowGraphSurface';
 import { useTemplateStore } from '@/stores/templateStore';
@@ -83,7 +83,7 @@ const graphEdgeTypes = {
   workflow: WorkflowGraphEdge,
 };
 
-const GRAPH_EDITOR_FIT_VIEW_OPTIONS = { padding: 0.08, duration: 0 } as const;
+const GRAPH_EDITOR_FIT_VIEW_OPTIONS = { padding: 0.04, duration: 0 } as const;
 
 function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
   const graph = template.graph ?? deriveTemplateGraphFromStages(template.stages);
@@ -420,6 +420,7 @@ function TemplateGraphEditorContent() {
   const draftGraph = draft ? (draft.graph ?? deriveTemplateGraphFromStages(draft.stages)) : null;
   const graphValidationErrors = draftGraph ? validateTemplateGraphDraft(draftGraph) : [];
   const graphValidationMessages = graphValidationErrors.map((issue) => formatGraphValidationIssue(issue, copy));
+  const editorGraphMetrics = (draftGraph?.nodes.length ?? 0) <= 3 ? COMPACT_WORKFLOW_GRAPH_METRICS : DEFAULT_WORKFLOW_GRAPH_METRICS;
   const layoutReadyNodes = layoutWorkflowSurfaceNodes(
     (draftGraph?.nodes ?? []).map((node) => ({
       id: node.id,
@@ -427,6 +428,7 @@ function TemplateGraphEditorContent() {
       layout: node.layout,
     })),
     draftGraph?.edges ?? [],
+    editorGraphMetrics,
   );
   const graphNodes: Node<GraphStageNodeData>[] = (
     draftGraph?.nodes.map((node) => ({
@@ -442,8 +444,8 @@ function TemplateGraphEditorContent() {
       type: 'stage',
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
-      width: WORKFLOW_GRAPH_NODE_WIDTH,
-      height: WORKFLOW_GRAPH_NODE_HEIGHT,
+      width: editorGraphMetrics.nodeWidth,
+      height: editorGraphMetrics.nodeHeight,
     })) ?? []
   );
   const graphCanvasEdges: Edge[] = (
@@ -463,8 +465,16 @@ function TemplateGraphEditorContent() {
       },
     })) ?? []
   );
-  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
-  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
+  const activeSelectedGraphEdgeId = selectedGraphEdgeId && draftGraph?.edges.some((edge) => edge.id === selectedGraphEdgeId)
+    ? selectedGraphEdgeId
+    : null;
+  const activeSelectedGraphNodeId = selectedGraphNodeId && draftGraph?.nodes.some((node) => node.id === selectedGraphNodeId)
+    ? selectedGraphNodeId
+    : !activeSelectedGraphEdgeId
+      ? (draftGraph?.entryNodes[0] ?? draftGraph?.nodes[0]?.id ?? null)
+      : null;
+  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === activeSelectedGraphNodeId) ?? null;
+  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === activeSelectedGraphEdgeId) ?? null;
   const draftGraphNodes = draftGraph?.nodes ?? [];
   const selectedGraphNodeIndex = selectedGraphNode ? draftGraphNodes.findIndex((node) => node.id === selectedGraphNode.id) : -1;
   const advanceCandidates = selectedGraphNodeIndex >= 0
@@ -650,7 +660,17 @@ function TemplateGraphEditorContent() {
         </aside>
 
         <div className="surface-panel surface-panel--workspace">
-          <div className="template-graph-editor-canvas">
+          <div
+            className="template-graph-editor-canvas"
+            style={{
+              '--workflow-graph-node-width': `${editorGraphMetrics.nodeWidth}px`,
+              '--workflow-graph-node-height': `${editorGraphMetrics.nodeHeight}px`,
+              '--workflow-graph-edge-label-font-size': editorGraphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '10px' : '11px',
+              '--workflow-graph-edge-label-padding-y': editorGraphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '4px' : '5px',
+              '--workflow-graph-edge-label-padding-x': editorGraphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '9px' : '11px',
+              '--workflow-graph-pill-font-size': editorGraphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '10px' : '11px',
+            } as CSSProperties}
+          >
             <ReactFlow
               fitView
               fitViewOptions={GRAPH_EDITOR_FIT_VIEW_OPTIONS}

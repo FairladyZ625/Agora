@@ -1,6 +1,6 @@
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import type { ServerCompositionFactories, ServerCompositionOptions } from './composition.js';
-import { buildServerComposition } from './composition.js';
+import { buildServerComposition, ensureRuntimeBrainPackRoot } from './composition.js';
 import {
   ensureBundledAgoraAssetsInstalled,
   loadAgoraConfig,
@@ -113,11 +113,15 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const db = createAgoraDatabase({ dbPath: config.db_path, busyTimeoutMs: config.db_busy_timeout_ms });
   runMigrations(db);
   const templatesDir = new URL('../../../templates', import.meta.url).pathname;
+  const rolePackDir = new URL('../../../role-packs/agora-default', import.meta.url).pathname;
+  const brainPackDir = ensureRuntimeBrainPackRoot(runtimeEnv.projectRoot);
   const composition = buildServerComposition({
     config,
     runtimeEnv,
     db,
     templatesDir,
+    rolePackDir,
+    brainPackDir,
     ...(options.isCraftsmanSessionAlive ? { isCraftsmanSessionAlive: options.isCraftsmanSessionAlive } : {}),
   }, options.factories);
   const { taskService } = composition;
@@ -129,6 +133,10 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     config,
     taskService,
   });
+  const dispose = () => {
+    composition.discordPresenceService?.stop();
+    observationScheduler.stop();
+  };
 
   return {
     config: config as AgoraConfig,
@@ -152,5 +160,6 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     dashboardDir: resolveDashboardDir(),
     observationScheduler,
     discordPresenceService: composition.discordPresenceService,
+    dispose,
   };
 }

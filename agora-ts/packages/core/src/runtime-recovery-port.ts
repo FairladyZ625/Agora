@@ -21,6 +21,7 @@ export interface RuntimeRecoveryPort {
     executionId: string;
     adapter: string;
     sessionId: string | null;
+    workdir: string | null;
     reason?: string | null;
   }): RuntimeRecoveryActionDto;
 }

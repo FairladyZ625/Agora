@@ -13,9 +13,6 @@ import {
   observeCraftsmanExecutionsRequestSchema,
   observeCraftsmanExecutionsResponseSchema,
   craftsmanRuntimeIdentityRequestSchema,
-  tmuxSendKeysRequestSchema,
-  tmuxSendTextRequestSchema,
-  tmuxSubmitChoiceRequestSchema,
   approveTaskRequestSchema,
   advanceTaskRequestSchema,
   archonApproveTaskRequestSchema,
@@ -34,6 +31,7 @@ import {
   dashboardUserListResponseSchema,
   dashboardUserUpdatePasswordRequestSchema,
   createInboxRequestSchema,
+  createProjectRequestSchema,
   createTaskRequestSchema,
   createSubtasksRequestSchema,
   createTaskContextBindingRequestSchema,
@@ -46,6 +44,8 @@ import {
   unifiedHealthSnapshotSchema,
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
+  listProjectsResponseSchema,
+  projectWorkbenchResponseSchema,
   promoteTodoRequestSchema,
   probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
@@ -76,6 +76,10 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
+  type CitizenService,
+  type ProjectBrainService,
+  type ProjectService,
+  ProjectService as ProjectServiceImpl,
   type TaskConversationService,
   type TaskParticipationService,
   type TaskContextBindingService,
@@ -84,16 +88,21 @@ import {
   type TemplateAuthoringService,
 } from '@agora-ts/core';
 import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
-import { z } from 'zod';
 
 export interface BuildAppOptions {
   db?: AgoraDatabase;
   taskService?: TaskService;
+  projectService?: ProjectService;
+  projectBrainService?: ProjectBrainService;
+  citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
-  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'>;
+  tmuxRuntimeService?: Pick<
+    TmuxRuntimeService,
+    'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
+  >;
   taskContextBindingService?: TaskContextBindingService;
   taskConversationService?: TaskConversationService;
   taskParticipationService?: TaskParticipationService;
@@ -240,7 +249,7 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     || url === '/api/archive/jobs'
     || url.startsWith('/api/todos')
     || url.startsWith('/api/templates')
-    || url.startsWith('/api/craftsmen/tmux/')
+    || url.startsWith('/api/craftsmen/runtime/')
     || url.startsWith('/api/craftsmen/executions/')
     || url.startsWith('/api/craftsmen/tasks/');
 }
@@ -394,6 +403,13 @@ function resolveHumanActor(
     role: account.role,
     source: 'im',
   };
+}
+
+function resolveDashboardSessionUsername(
+  request: FastifyRequest,
+  sessions: Map<string, DashboardSession>,
+) {
+  return getDashboardSession(request, sessions)?.session.username ?? null;
 }
 
 function appendDashboardHumanImParticipantRef(
@@ -583,7 +599,7 @@ function renderMetrics(options: {
   }
 
   const tmuxPanes = options.tmuxRuntimeService?.status().panes.length ?? 0;
-  lines.push('# HELP agora_craftsmen_sessions_active Current active tmux panes observed by the server.');
+  lines.push('# HELP agora_craftsmen_sessions_active Current active legacy/runtime execution slots observed by the server.');
   lines.push('# TYPE agora_craftsmen_sessions_active gauge');
   lines.push(`agora_craftsmen_sessions_active ${tmuxPanes}`);
 
@@ -595,6 +611,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: false,
   });
   const taskService = options.taskService;
+  const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const projectBrainService = options.projectBrainService;
+  const citizenService = options.citizenService;
   const dashboardQueryService = options.dashboardQueryService;
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
@@ -620,16 +639,6 @@ export function buildApp(options: BuildAppOptions = {}) {
     craftsmanCallbacksByStatus: new Map(),
   };
   const dashboardSessions = new Map<string, DashboardSession>();
-  const tmuxSendSchema = z.object({
-    agent: z.string().min(1),
-    command: z.string().min(1),
-  });
-  const tmuxTaskSchema = z.object({
-    agent: z.string().min(1),
-    prompt: z.string().min(1),
-    workdir: z.string().optional(),
-  });
-
   app.addHook('onRequest', async (request, reply) => {
     if (structuredLogs) {
       (request as typeof request & RequestTimingState).startedAtMs = Date.now();
@@ -1006,6 +1015,63 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/projects', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const payload = createProjectRequestSchema.parse(request.body);
+      return reply.send(projectService.createProject({
+        id: payload.id,
+        name: payload.name,
+        summary: payload.summary,
+        ...(payload.owner ? { owner: payload.owner } : {}),
+        ...(payload.metadata ? { metadata: payload.metadata } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const query = request.query as { status?: string };
+      return reply.send(listProjectsResponseSchema.parse({
+        projects: projectService.listProjects(query.status),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId', async (request, reply) => {
+    if (!projectService || !projectBrainService || !citizenService) {
+      return reply.status(503).send({ message: 'Project workbench services are not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      const project = projectService.getProject(params.projectId);
+      if (!project) {
+        return reply.status(404).send({ message: `Project ${params.projectId} not found` });
+      }
+      return reply.send(projectWorkbenchResponseSchema.parse({
+        project,
+        index: projectBrainService.getDocument(params.projectId, 'index'),
+        recaps: projectService.listProjectRecaps(params.projectId),
+        knowledge: projectService.listKnowledgeEntries(params.projectId),
+        citizens: citizenService.listCitizens(params.projectId),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/tasks', async (request, reply) => {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
@@ -1046,8 +1112,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = advanceTaskRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       const task = taskService.advanceTask(params.taskId, {
-        callerId: payload.caller_id,
+        callerId,
       });
       recordTaskAction(metrics, 'advance', 'success');
       emitStructuredLog(structuredLogs, {
@@ -1057,7 +1124,7 @@ export function buildApp(options: BuildAppOptions = {}) {
         task_id: task.id,
         state: task.state,
         stage: task.current_stage,
-        actor: payload.caller_id,
+        actor: callerId,
       });
       return reply.send(task);
     } catch (error) {
@@ -1074,9 +1141,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = approveTaskRequestSchema.parse(request.body);
+      const approverId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.approver_id;
       return reply.send(
         taskService.approveTask(params.taskId, {
-          approverId: payload.approver_id,
+          approverId,
           comment: payload.comment,
         }),
       );
@@ -1093,9 +1161,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = rejectTaskRequestSchema.parse(request.body);
+      const rejectorId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.rejector_id;
       return reply.send(
         taskService.rejectTask(params.taskId, {
-          rejectorId: payload.rejector_id,
+          rejectorId,
           reason: payload.reason,
         }),
       );
@@ -1254,10 +1323,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = subtaskDoneRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.completeSubtask(params.taskId, {
           subtaskId: payload.subtask_id,
-          callerId: payload.caller_id,
+          callerId,
           output: payload.output,
         }),
       );
@@ -1274,10 +1344,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.completeSubtask(params.taskId, {
           subtaskId: params.subtaskId,
-          callerId: payload.caller_id,
+          callerId,
           output: payload.note,
         }),
       );
@@ -1294,10 +1365,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.archiveSubtask(params.taskId, {
           subtaskId: params.subtaskId,
-          callerId: payload.caller_id,
+          callerId,
           note: payload.note,
         }),
       );
@@ -1314,10 +1386,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string; subtaskId: string };
       const payload = subtaskLifecycleRequestSchema.parse(request.body);
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       return reply.send(
         taskService.cancelSubtask(params.taskId, {
           subtaskId: params.subtaskId,
-          callerId: payload.caller_id,
+          callerId,
           note: payload.note,
         }),
       );
@@ -1528,7 +1601,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = runtimeRecoveryRequestSchema.parse(request.body ?? {});
-      return reply.send(runtimeDiagnosisResultSchema.parse(taskService.requestRuntimeDiagnosis(payload.task_id, payload)));
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      return reply.send(runtimeDiagnosisResultSchema.parse(taskService.requestRuntimeDiagnosis(payload.task_id, {
+        ...payload,
+        caller_id: callerId,
+      })));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1541,7 +1618,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = runtimeRecoveryRequestSchema.parse(request.body ?? {});
-      return reply.send(runtimeRecoveryActionSchema.parse(taskService.restartCitizenRuntime(payload.task_id, payload)));
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      return reply.send(runtimeRecoveryActionSchema.parse(taskService.restartCitizenRuntime(payload.task_id, {
+        ...payload,
+        caller_id: callerId,
+      })));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1554,16 +1635,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = craftsmanDispatchRequestSchema.parse(request.body);
-      const dispatched = taskService.dispatchCraftsman(payload);
-      recordCraftsmanDispatch(metrics, payload.adapter, 'success');
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      const dispatchPayload = {
+        ...payload,
+        caller_id: callerId,
+      };
+      const dispatched = taskService.dispatchCraftsman(dispatchPayload);
+      recordCraftsmanDispatch(metrics, dispatchPayload.adapter, 'success');
       emitStructuredLog(structuredLogs, {
         module: 'craftsman',
         msg: 'craftsman_dispatch',
-        task_id: payload.task_id,
-        subtask_id: payload.subtask_id,
-        caller_id: payload.caller_id,
-        adapter: payload.adapter,
-        mode: payload.mode,
+        task_id: dispatchPayload.task_id,
+        subtask_id: dispatchPayload.subtask_id,
+        caller_id: dispatchPayload.caller_id,
+        adapter: dispatchPayload.adapter,
+        mode: dispatchPayload.mode,
         execution_id: dispatched.execution.execution_id,
         status: dispatched.execution.status,
       });
@@ -1695,7 +1781,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { executionId: string };
       const payload = craftsmanStopExecutionRequestSchema.parse(request.body ?? {});
-      return reply.send(runtimeRecoveryActionSchema.parse(taskService.stopCraftsmanExecution(params.executionId, payload)));
+      const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
+      return reply.send(runtimeRecoveryActionSchema.parse(taskService.stopCraftsmanExecution(params.executionId, {
+        ...payload,
+        caller_id: callerId,
+      })));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1771,7 +1861,7 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   app.post('/api/craftsmen/runtime/identity', async (request, reply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
       const payload = craftsmanRuntimeIdentityRequestSchema.parse(request.body);
@@ -1791,102 +1881,31 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
-  app.get('/api/craftsmen/tmux/status', async (request, reply) => {
+  const getLegacyRuntimeStatus = async (_request: FastifyRequest, reply: FastifyReply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     return reply.send(tmuxRuntimeService.status());
-  });
+  };
 
-  app.get('/api/craftsmen/tmux/doctor', async (request, reply) => {
+  const getLegacyRuntimeDoctor = async (_request: FastifyRequest, reply: FastifyReply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     return reply.send(tmuxRuntimeService.doctor());
+  };
+
+  app.get('/api/craftsmen/runtime/status', async (request, reply) => {
+    return getLegacyRuntimeStatus(request, reply);
   });
 
-  app.post('/api/craftsmen/tmux/send', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
-    }
-    try {
-      const payload = tmuxSendSchema.parse(request.body);
-      tmuxRuntimeService.send(payload.agent, payload.command);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
+  app.get('/api/craftsmen/runtime/doctor', async (request, reply) => {
+    return getLegacyRuntimeDoctor(request, reply);
   });
 
-  app.post('/api/craftsmen/tmux/send-text', async (request, reply) => {
+  const getLegacyRuntimeTail = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
-    }
-    try {
-      const payload = tmuxSendTextRequestSchema.parse(request.body);
-      tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/send-keys', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
-    }
-    try {
-      const payload = tmuxSendKeysRequestSchema.parse(request.body);
-      tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/submit-choice', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
-    }
-    try {
-      const payload = tmuxSubmitChoiceRequestSchema.parse(request.body);
-      tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
-      return reply.send({ ok: true });
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/craftsmen/tmux/task', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
-    }
-    try {
-      const payload = tmuxTaskSchema.parse(request.body);
-      return reply.send(tmuxRuntimeService.task(payload.agent, {
-        execution_id: `tmux-${Date.now()}`,
-        task_id: 'TMUX',
-        stage_id: 'dispatch',
-        subtask_id: `${payload.agent}-tmux-task`,
-        adapter: payload.agent,
-        mode: 'one_shot',
-        workdir: payload.workdir ?? process.cwd(),
-        prompt: payload.prompt,
-        brief_path: null,
-      }));
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.get('/api/craftsmen/tmux/tail/:agent', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Tmux runtime service is not configured' });
+      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
     }
     try {
       const params = request.params as { agent: string };
@@ -1900,6 +1919,10 @@ export function buildApp(options: BuildAppOptions = {}) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
+  };
+
+  app.get('/api/craftsmen/runtime/tail/:agent', async (request, reply) => {
+    return getLegacyRuntimeTail(request, reply);
   });
 
   app.get('/api/inbox', async (request, reply) => {
@@ -2088,10 +2111,13 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!dashboardQueryService) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
-    const query = request.query as { status?: string };
-    const filters: { status?: string } = {};
+    const query = request.query as { status?: string; project_id?: string };
+    const filters: { status?: string; project_id?: string } = {};
     if (query.status !== undefined) {
       filters.status = query.status;
+    }
+    if (query.project_id !== undefined) {
+      filters.project_id = query.project_id;
     }
     return reply.send(dashboardQueryService.listTodos(filters));
   });

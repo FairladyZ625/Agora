@@ -8,7 +8,18 @@ import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import { deriveGraphFromStages } from '@agora-ts/core';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
-import type { DashboardQueryService, RolePackService, TaskConversationService, TaskService, TemplateAuthoringService, TmuxRuntimeService } from '@agora-ts/core';
+import type {
+  CitizenService,
+  DashboardQueryService,
+  ProjectBrainAutomationService,
+  ProjectBrainService,
+  ProjectService,
+  RolePackService,
+  TaskConversationService,
+  TaskService,
+  TemplateAuthoringService,
+  TmuxRuntimeService,
+} from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
   CraftsmanInteractionExpectationDto,
@@ -16,6 +27,8 @@ import type {
   CraftsmanExecutionStatusDto,
   CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
+  CreateCitizenRequestDto,
+  CreateProjectRequestDto,
   CreateSubtasksRequestDto,
   CreateTaskRequestDto,
   TaskPriority,
@@ -28,11 +41,10 @@ import {
   craftsmanExecutionSendTextRequestSchema,
   craftsmanExecutionSubmitChoiceRequestSchema,
   craftsmanExecutionTailResponseSchema,
+  createCitizenRequestSchema,
+  createProjectRequestSchema,
   createSubtasksRequestSchema,
   createTaskRequestSchema,
-  tmuxSendKeysRequestSchema,
-  tmuxSendTextRequestSchema,
-  tmuxSubmitChoiceRequestSchema,
 } from '@agora-ts/contracts';
 import { runInitCommand } from './init-command.js';
 import { runStartCommand } from './start-command.js';
@@ -48,8 +60,15 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
   locale?: 'zh-CN' | 'en-US';
 };
 
+type CreateProjectInputLike = CreateProjectRequestDto;
+type CreateCitizenInputLike = CreateCitizenRequestDto;
+
 export interface CliDependencies {
   taskService?: TaskService;
+  projectService?: ProjectService;
+  projectBrainService?: ProjectBrainService;
+  projectBrainAutomationService?: ProjectBrainAutomationService;
+  citizenService?: CitizenService;
   tmuxRuntimeService?: TmuxRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
@@ -200,6 +219,16 @@ function parseJsonFile(path: string, context: string): Record<string, unknown> {
   }
 }
 
+function readTextOption(raw: string | undefined, file: string | undefined, context: string) {
+  if (raw && file) {
+    throw new Error(`${context} accepts either inline text or --body-file, not both`);
+  }
+  if (file) {
+    return readFileSync(file, 'utf8');
+  }
+  return raw ?? '';
+}
+
 function addRedirectCommand(
   program: Command,
   name: string,
@@ -315,6 +344,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
+  const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
+  const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
+  const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
   program
@@ -375,6 +408,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--team-json <json>', 'team override JSON')
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
+    .option('--project-id <projectId>', 'bind task to an existing project')
     .option('--smoke-test', 'mark this task as smoke/test mode', false)
     .option('--controller <agentId>', 'controller agent override')
     .option('--bind <binding>', 'role binding override (role=agent)', collectOption, [])
@@ -386,6 +420,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       teamJson?: string;
       workflowJson?: string;
       imTargetJson?: string;
+      projectId?: string;
       smokeTest?: boolean;
       controller?: string;
       bind?: string[];
@@ -397,6 +432,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         description: '',
         priority: options.priority,
         locale: options.locale,
+        ...(options.projectId ? { project_id: options.projectId } : {}),
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
@@ -420,6 +456,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `任务已创建: ${task.id}`);
       writeLine(stdout, `标题: ${task.title}`);
       writeLine(stdout, `类型: ${task.type}`);
+      writeLine(stdout, `Project: ${task.project_id ?? '-'}`);
       writeLine(stdout, `状态: ${task.state}`);
       writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
     });
@@ -541,6 +578,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templates = program
     .command('templates')
     .description('template authoring commands');
+  const projects = program
+    .command('projects')
+    .description('project thin-slice commands');
+  const citizens = program
+    .command('citizens')
+    .description('citizen definition and projection preview commands');
 
   const graph = program
     .command('graph')
@@ -549,10 +592,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .command('archive')
     .description('archive control commands');
 
-  addRedirectCommand(program, 'tmux', 'agora craftsman tmux', [
-    'agora craftsman tmux --help',
-    'agora craftsman tmux status',
-  ]);
   addRedirectCommand(program, 'users', 'agora dashboard users', [
     'agora dashboard users list',
     'agora dashboard users add --username alice --password secret',
@@ -572,6 +611,499 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `${templateId} — ${template.name}`);
       writeLine(stdout, `roles: ${Object.keys(template.defaultTeam ?? {}).join(', ') || '-'}`);
       writeLine(stdout, `stages: ${(template.stages ?? []).map((stage) => stage.id).join(' -> ') || '-'}`);
+    });
+
+  projects
+    .command('list')
+    .description('列出 projects')
+    .option('--status <status>', 'active|archived')
+    .option('--json', '输出 JSON', false)
+    .action((options: { status?: string; json?: boolean }) => {
+      const items = projectService.listProjects(options.status);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ projects: items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 projects');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.id}\t${item.status}\t${item.name}\t${item.owner ?? '-'}`);
+      }
+    });
+
+  projects
+    .command('create')
+    .description('创建 project')
+    .requiredOption('--id <projectId>', 'project id')
+    .requiredOption('--name <name>', 'project name')
+    .option('--summary <summary>', 'project summary')
+    .option('--owner <owner>', 'project owner')
+    .option('--metadata-json <json>', 'project metadata JSON')
+    .action((options: {
+      id: string;
+      name: string;
+      summary?: string;
+      owner?: string;
+      metadataJson?: string;
+    }) => {
+      const input = createProjectRequestSchema.parse({
+        id: options.id,
+        name: options.name,
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.owner !== undefined ? { owner: options.owner } : {}),
+        ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
+      }) satisfies CreateProjectInputLike;
+      const project = projectService.createProject(input);
+      writeLine(stdout, `Project 已创建: ${project.id}`);
+      writeLine(stdout, `名称: ${project.name}`);
+      writeLine(stdout, `状态: ${project.status}`);
+    });
+
+  projects
+    .command('show')
+    .description('查看 project index 与 recent recaps')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const index = projectService.getProjectIndex(projectId);
+      const recaps = projectService.listProjectRecaps(projectId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project,
+          index,
+          recaps,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `${project.id} — ${project.name}`);
+      writeLine(stdout, `status: ${project.status}`);
+      writeLine(stdout, `owner: ${project.owner ?? '-'}`);
+      writeLine(stdout, `index: ${index?.path ?? '-'}`);
+      writeLine(stdout, `recaps: ${recaps.length}`);
+      if (index?.content) {
+        writeLine(stdout, '');
+        writeLine(stdout, index.content.trimEnd());
+      }
+    });
+
+  const projectKnowledge = projects
+    .command('knowledge')
+    .description('project knowledge CRUD');
+  const projectBrain = projects
+    .command('brain')
+    .description('project brain query / append commands');
+
+  projectKnowledge
+    .command('add')
+    .description('新增或更新 project knowledge doc')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'decision|fact|open_question|reference')
+    .requiredOption('--slug <slug>', 'knowledge doc slug')
+    .requiredOption('--title <title>', 'knowledge doc title')
+    .option('--summary <summary>', 'knowledge summary')
+    .option('--body <body>', 'knowledge body')
+    .option('--body-file <path>', 'load body from file')
+    .option('--source-task <taskId>', 'source task id', collectOption, [])
+    .action((options: {
+      project: string;
+      kind: 'decision' | 'fact' | 'open_question' | 'reference';
+      slug: string;
+      title: string;
+      summary?: string;
+      body?: string;
+      bodyFile?: string;
+      sourceTask?: string[];
+    }) => {
+      const body = readTextOption(options.body, options.bodyFile, 'projects knowledge add').trim();
+      if (!body) {
+        throw new Error('knowledge body is required');
+      }
+      const doc = projectService.upsertKnowledgeEntry({
+        project_id: options.project,
+        kind: options.kind,
+        slug: options.slug,
+        title: options.title,
+        body,
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.sourceTask && options.sourceTask.length > 0 ? { source_task_ids: options.sourceTask } : {}),
+      });
+      writeLine(stdout, `Knowledge 已写入: ${doc.path}`);
+      writeLine(stdout, `kind: ${doc.kind}`);
+      writeLine(stdout, `slug: ${doc.slug}`);
+    });
+
+  projectKnowledge
+    .command('list')
+    .description('列出 project knowledge docs')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--kind <kind>', 'decision|fact|open_question|reference')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind?: 'decision' | 'fact' | 'open_question' | 'reference';
+      json?: boolean;
+    }) => {
+      const docs = projectService.listKnowledgeEntries(options.project, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ knowledge: docs }, null, 2));
+        return;
+      }
+      if (docs.length === 0) {
+        writeLine(stdout, '没有找到 knowledge docs');
+        return;
+      }
+      for (const doc of docs) {
+        writeLine(stdout, `${doc.kind}\t${doc.slug}\t${doc.title ?? '-'}\t${doc.path}`);
+      }
+    });
+
+  projectKnowledge
+    .command('show')
+    .description('查看单个 knowledge doc')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'decision|fact|open_question|reference')
+    .requiredOption('--slug <slug>', 'knowledge doc slug')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind: 'decision' | 'fact' | 'open_question' | 'reference';
+      slug: string;
+      json?: boolean;
+    }) => {
+      const doc = projectService.getKnowledgeEntry(options.project, options.kind, options.slug);
+      if (!doc) {
+        throw new Error(`knowledge doc not found: ${options.kind}/${options.slug}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(doc, null, 2));
+        return;
+      }
+      writeLine(stdout, `${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+      writeLine(stdout, '');
+      writeLine(stdout, doc.content.trimEnd());
+    });
+
+  projects
+    .command('search')
+    .description('搜索 project knowledge / recap / index / timeline')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--query <query>', 'search query')
+    .option('--kind <kind>', 'decision|fact|open_question|reference|recap')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      query: string;
+      kind?: 'decision' | 'fact' | 'open_question' | 'reference' | 'recap';
+      json?: boolean;
+    }) => {
+      const results = projectService.searchProjectKnowledge(options.project, options.query, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ results }, null, 2));
+        return;
+      }
+      if (results.length === 0) {
+        writeLine(stdout, '没有匹配结果');
+        return;
+      }
+      for (const item of results) {
+        writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
+        writeLine(stdout, `  ${item.snippet}`);
+      }
+    });
+
+  projectBrain
+    .command('list')
+    .description('列出 project brain docs')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind?: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      json?: boolean;
+    }) => {
+      const docs = projectBrainService.listDocuments(options.project, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ documents: docs }, null, 2));
+        return;
+      }
+      if (docs.length === 0) {
+        writeLine(stdout, '没有找到 brain docs');
+        return;
+      }
+      for (const doc of docs) {
+        writeLine(stdout, `${doc.kind}\t${doc.slug}\t${doc.title ?? '-'}\t${doc.path}`);
+      }
+    });
+
+  projectBrain
+    .command('show')
+    .description('查看单个 project brain doc')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--slug <slug>', 'doc slug; required for recap/knowledge/citizen_scaffold')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      slug?: string;
+      json?: boolean;
+    }) => {
+      const doc = projectBrainService.getDocument(options.project, options.kind, options.slug);
+      if (!doc) {
+        throw new Error(`brain doc not found: ${options.kind}${options.slug ? `/${options.slug}` : ''}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(doc, null, 2));
+        return;
+      }
+      writeLine(stdout, `${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+      writeLine(stdout, '');
+      writeLine(stdout, doc.content.trimEnd());
+    });
+
+  projectBrain
+    .command('query')
+    .description('搜索 project brain docs')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--query <query>', 'search query')
+    .option('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      query: string;
+      kind?: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      json?: boolean;
+    }) => {
+      const results = projectBrainService.queryDocuments(options.project, options.query, options.kind);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ results }, null, 2));
+        return;
+      }
+      if (results.length === 0) {
+        writeLine(stdout, '没有匹配结果');
+        return;
+      }
+      for (const item of results) {
+        writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
+        writeLine(stdout, `  ${item.snippet}`);
+      }
+    });
+
+  projectBrain
+    .command('bootstrap-context')
+    .description('生成 agent-facing project brain bootstrap context')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--audience <audience>', 'controller|citizen|craftsman', 'controller')
+    .option('--citizen <citizenId>', 'citizen id for citizen-scoped bootstrap')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
+      citizen?: string;
+      json?: boolean;
+    }) => {
+      const context = projectBrainAutomationService.buildBootstrapContext({
+        project_id: options.project,
+        audience: options.audience ?? 'controller',
+        ...(options.citizen ? { citizen_id: options.citizen } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(context, null, 2));
+        return;
+      }
+      writeLine(stdout, context.markdown.trimEnd());
+    });
+
+  projectBrain
+    .command('append')
+    .description('向 project brain 追加 Markdown 内容')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'timeline|decision|fact|open_question|reference')
+    .option('--slug <slug>', 'knowledge doc slug')
+    .option('--title <title>', 'knowledge doc title (required when creating a new knowledge doc)')
+    .option('--summary <summary>', 'knowledge summary')
+    .option('--heading <heading>', 'optional heading before appended content')
+    .option('--body <body>', 'markdown body')
+    .option('--body-file <path>', 'load body from file')
+    .option('--source-task <taskId>', 'source task id', collectOption, [])
+    .action((options: {
+      project: string;
+      kind: 'timeline' | 'decision' | 'fact' | 'open_question' | 'reference';
+      slug?: string;
+      title?: string;
+      summary?: string;
+      heading?: string;
+      body?: string;
+      bodyFile?: string;
+      sourceTask?: string[];
+    }) => {
+      const body = readTextOption(options.body, options.bodyFile, 'projects brain append').trim();
+      if (!body) {
+        throw new Error('brain append body is required');
+      }
+      const doc = projectBrainService.appendDocument({
+        project_id: options.project,
+        kind: options.kind,
+        ...(options.slug ? { slug: options.slug } : {}),
+        ...(options.title ? { title: options.title } : {}),
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.heading ? { heading: options.heading } : {}),
+        ...(options.sourceTask && options.sourceTask.length > 0 ? { source_task_ids: options.sourceTask } : {}),
+        body,
+      });
+      writeLine(stdout, `Brain 已追加: ${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+    });
+
+  projectBrain
+    .command('promote')
+    .description('显式提升内容到 stable project knowledge')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'decision|fact|open_question|reference')
+    .option('--slug <slug>', 'knowledge doc slug')
+    .option('--title <title>', 'knowledge doc title (required when creating a new knowledge doc)')
+    .option('--summary <summary>', 'knowledge summary')
+    .option('--heading <heading>', 'optional heading before appended content')
+    .option('--body <body>', 'markdown body')
+    .option('--body-file <path>', 'load body from file')
+    .option('--source-task <taskId>', 'source task id', collectOption, [])
+    .action((options: {
+      project: string;
+      kind: 'decision' | 'fact' | 'open_question' | 'reference';
+      slug?: string;
+      title?: string;
+      summary?: string;
+      heading?: string;
+      body?: string;
+      bodyFile?: string;
+      sourceTask?: string[];
+    }) => {
+      const body = readTextOption(options.body, options.bodyFile, 'projects brain promote').trim();
+      if (!body) {
+        throw new Error('brain promote body is required');
+      }
+      const doc = projectBrainAutomationService.promoteKnowledge({
+        project_id: options.project,
+        kind: options.kind,
+        ...(options.slug ? { slug: options.slug } : {}),
+        ...(options.title ? { title: options.title } : {}),
+        ...(options.summary !== undefined ? { summary: options.summary } : {}),
+        ...(options.heading ? { heading: options.heading } : {}),
+        ...(options.sourceTask && options.sourceTask.length > 0 ? { source_task_ids: options.sourceTask } : {}),
+        body,
+      });
+      writeLine(stdout, `Brain 已提升: ${doc.kind}/${doc.slug}`);
+      writeLine(stdout, `path: ${doc.path}`);
+    });
+
+  citizens
+    .command('create')
+    .description('创建 citizen definition')
+    .requiredOption('--id <citizenId>', 'citizen id')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--role <roleId>', 'role id')
+    .requiredOption('--name <displayName>', 'display name')
+    .option('--persona <persona>', 'persona text')
+    .option('--boundary <line>', 'boundary line', collectOption, [])
+    .option('--skill <ref>', 'skill ref', collectOption, [])
+    .option('--channel-policies-json <json>', 'channel policies JSON')
+    .option('--adapter <adapter>', 'projection adapter', 'openclaw')
+    .option('--auto-provision', 'enable adapter-side auto provision', false)
+    .action((options: {
+      id: string;
+      project: string;
+      role: string;
+      name: string;
+      persona?: string;
+      boundary?: string[];
+      skill?: string[];
+      channelPoliciesJson?: string;
+      adapter: string;
+      autoProvision?: boolean;
+    }) => {
+      const citizen = citizenService.createCitizen(createCitizenRequestSchema.parse({
+        citizen_id: options.id,
+        project_id: options.project,
+        role_id: options.role,
+        display_name: options.name,
+        ...(options.persona !== undefined ? { persona: options.persona } : {}),
+        ...(options.boundary && options.boundary.length > 0 ? { boundaries: options.boundary } : {}),
+        ...(options.skill && options.skill.length > 0 ? { skills_ref: options.skill } : {}),
+        ...(options.channelPoliciesJson ? { channel_policies: parseJsonOption(options.channelPoliciesJson, '--channel-policies-json') } : {}),
+        runtime_projection: {
+          adapter: options.adapter,
+          auto_provision: Boolean(options.autoProvision),
+        },
+      }) satisfies CreateCitizenInputLike);
+      writeLine(stdout, `Citizen 已创建: ${citizen.citizen_id}`);
+      writeLine(stdout, `Project: ${citizen.project_id}`);
+      writeLine(stdout, `Role: ${citizen.role_id}`);
+    });
+
+  citizens
+    .command('list')
+    .description('列出 citizens')
+    .option('--project <projectId>', 'project id')
+    .option('--status <status>', 'active|archived')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project?: string;
+      status?: 'active' | 'archived';
+      json?: boolean;
+    }) => {
+      const items = citizenService.listCitizens(options.project, options.status);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ citizens: items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 citizens');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.citizen_id}\t${item.project_id}\t${item.role_id}\t${item.status}\t${item.display_name}`);
+      }
+    });
+
+  citizens
+    .command('show')
+    .description('查看 citizen definition')
+    .argument('<citizenId>', 'citizen id')
+    .option('--json', '输出 JSON', false)
+    .action((citizenId: string, options: { json?: boolean }) => {
+      const citizen = citizenService.requireCitizen(citizenId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(citizen, null, 2));
+        return;
+      }
+      writeLine(stdout, `${citizen.citizen_id} — ${citizen.display_name}`);
+      writeLine(stdout, `project: ${citizen.project_id}`);
+      writeLine(stdout, `role: ${citizen.role_id}`);
+      writeLine(stdout, `adapter: ${citizen.runtime_projection.adapter}`);
+      writeLine(stdout, `status: ${citizen.status}`);
+    });
+
+  citizens
+    .command('preview')
+    .description('预览 citizen projection adapter 输出')
+    .argument('<citizenId>', 'citizen id')
+    .option('--json', '输出 JSON', false)
+    .action((citizenId: string, options: { json?: boolean }) => {
+      const preview = citizenService.previewProjection(citizenId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(preview, null, 2));
+        return;
+      }
+      writeLine(stdout, preview.summary);
+      for (const file of preview.files) {
+        writeLine(stdout, file.path);
+      }
     });
 
   const templateRole = templates.command('role').description('template role CRUD');
@@ -1539,10 +2071,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `craftsman choice 已提交: ${execution.executionId}`);
     });
 
-  const tmux = craftsman
-    .command('tmux')
-    .description('tmux runtime commands for craftsmen panes');
-
   const runtime = craftsman
     .command('runtime')
     .description('generic runtime identity and observability commands');
@@ -1552,161 +2080,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardUsers = dashboard
     .command('users')
     .description('dashboard human account commands');
-
-  tmux
-    .command('up')
-    .description('初始化 tmux craftsmen session')
-    .action(() => {
-      const result = tmuxRuntimeService.up();
-      writeLine(stdout, `tmux session 已就绪: ${result.session}`);
-      for (const pane of result.panes) {
-        writeLine(stdout, `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}`);
-      }
-    });
-
-  tmux
-    .command('status')
-    .description('查看 tmux pane 状态')
-    .action(() => {
-      const result = tmuxRuntimeService.status();
-      for (const pane of result.panes) {
-        writeLine(
-          stdout,
-          `${pane.id}\t${pane.title}\t${pane.currentCommand}\t${pane.active ? 'active' : 'idle'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}\t${pane.identityPath ?? '-'}\t${pane.sessionObservedAt ?? '-'}`,
-        );
-      }
-    });
-
-  tmux
-    .command('send')
-    .description('向指定 tmux pane 发送原始命令')
-    .argument('<agent>', 'agent pane name')
-    .argument('<command>', 'raw shell command')
-    .action((agent: string, command: string) => {
-      tmuxRuntimeService.send(agent, command);
-      writeLine(stdout, `tmux command 已发送: ${agent}`);
-    });
-
-  tmux
-    .command('send-text')
-    .description('向指定 tmux pane 发送文本输入')
-    .argument('<agent>', 'agent pane name')
-    .argument('<text>', 'text input')
-    .option('--no-submit', '发送后不自动回车')
-    .action((agent: string, text: string, options: { submit?: boolean }) => {
-      const payload = tmuxSendTextRequestSchema.parse({
-        agent,
-        text,
-        submit: options.submit ?? true,
-      });
-      tmuxRuntimeService.sendText(payload.agent, payload.text, payload.submit);
-      writeLine(stdout, `tmux text 已发送: ${agent}`);
-    });
-
-  tmux
-    .command('send-keys')
-    .description('向指定 tmux pane 发送结构化按键')
-    .argument('<agent>', 'agent pane name')
-    .argument('<keys...>', 'keys like Down Tab Enter')
-    .action((agent: string, keys: CraftsmanInputKeyDto[]) => {
-      const payload = tmuxSendKeysRequestSchema.parse({
-        agent,
-        keys,
-      });
-      tmuxRuntimeService.sendKeys(payload.agent, payload.keys);
-      writeLine(stdout, `tmux keys 已发送: ${agent}`);
-    });
-
-  tmux
-    .command('submit-choice')
-    .description('向指定 tmux pane 提交 choice，自动补 Enter')
-    .argument('<agent>', 'agent pane name')
-    .argument('[keys...]', 'optional navigation keys before submit')
-    .action((agent: string, keys: CraftsmanInputKeyDto[] = []) => {
-      const payload = tmuxSubmitChoiceRequestSchema.parse({
-        agent,
-        keys,
-      });
-      tmuxRuntimeService.submitChoice(payload.agent, payload.keys);
-      writeLine(stdout, `tmux choice 已提交: ${agent}`);
-    });
-
-  tmux
-    .command('start')
-    .description('启动指定 agent 的 interactive runtime')
-    .argument('<agent>', 'agent pane name')
-    .action((agent: string) => {
-      const result = tmuxRuntimeService.start(agent, process.cwd());
-      writeLine(stdout, `tmux runtime 已启动: ${agent}`);
-      writeLine(stdout, `pane: ${result.pane ?? '-'}`);
-      writeLine(stdout, `mode: ${result.recoveryMode}`);
-      writeLine(stdout, `command: ${result.command}`);
-    });
-
-  tmux
-    .command('resume')
-    .description('恢复指定 agent 的 interactive runtime')
-    .argument('<agent>', 'agent pane name')
-    .argument('[sessionReference]', 'resume session reference')
-    .action((agent: string, sessionReference?: string) => {
-      const result = tmuxRuntimeService.resume(agent, sessionReference ?? null, process.cwd());
-      writeLine(stdout, `tmux runtime 已恢复: ${agent}`);
-      writeLine(stdout, `pane: ${result.pane ?? '-'}`);
-      writeLine(stdout, `mode: ${result.recoveryMode}`);
-      writeLine(stdout, `command: ${result.command}`);
-    });
-
-  tmux
-    .command('task')
-    .description('通过 tmux pane 派发一条简短 CLI 任务')
-    .argument('<agent>', 'agent pane name')
-    .argument('<prompt>', 'prompt')
-    .option('--workdir <workdir>', '工作目录')
-    .action((agent: string, prompt: string, options: { workdir?: string }) => {
-      const result = tmuxRuntimeService.task(agent, {
-        execution_id: `tmux-${Date.now()}`,
-        task_id: 'TMUX',
-        stage_id: 'dispatch',
-        subtask_id: `${agent}-tmux-task`,
-        adapter: agent,
-        mode: 'one_shot',
-        workdir: options.workdir ?? process.cwd(),
-        prompt,
-        brief_path: null,
-      });
-      writeLine(stdout, `tmux task 已派发: ${result.session_id ?? '-'}`);
-    });
-
-  tmux
-    .command('tail')
-    .description('查看 tmux pane 最近输出')
-    .argument('<agent>', 'agent pane name')
-    .option('--lines <lines>', '输出行数', '40')
-    .action((agent: string, options: { lines: string }) => {
-      writeLine(stdout, tmuxRuntimeService.tail(agent, Number(options.lines)));
-    });
-
-  tmux
-    .command('doctor')
-    .description('查看 tmux pane readiness')
-    .action(() => {
-      const result = tmuxRuntimeService.doctor();
-      for (const pane of result.panes) {
-        writeLine(
-          stdout,
-          `${pane.agent}\t${pane.pane ?? '-'}\t${pane.command ?? '-'}\t${pane.ready ? 'ready' : 'missing'}\t${pane.continuityBackend}\t${pane.identitySource}\t${pane.sessionReference ?? '-'}\t${pane.identityPath ?? '-'}\t${pane.sessionObservedAt ?? '-'}`,
-        );
-      }
-    });
-
-  tmux
-    .command('down')
-    .description('关闭 tmux craftsmen session')
-    .action(() => {
-      const result = tmuxRuntimeService.status();
-      tmuxRuntimeService.down();
-      writeLine(stdout, `tmux session 已关闭: ${result.session}`);
-    });
 
   runtime
     .command('identity')

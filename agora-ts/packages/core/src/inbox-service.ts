@@ -59,6 +59,7 @@ export class InboxService {
     if (options.target === 'todo') {
       const todo = this.todoRepository.insertTodo({
         text: item.text,
+        project_id: null,
         tags: item.tags,
       });
       const inbox = this.inboxRepository.updateInboxItem(inboxId, {

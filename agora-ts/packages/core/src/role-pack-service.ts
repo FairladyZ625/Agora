@@ -26,6 +26,10 @@ export class RolePackService {
     return this.roleDefinitions.getRoleDefinition(roleId);
   }
 
+  saveRoleDefinition(definition: RoleDefinitionDto): ReturnType<RoleDefinitionRepository['saveRoleDefinition']> {
+    return this.roleDefinitions.saveRoleDefinition(definition);
+  }
+
   saveBinding(input: {
     id: string;
     role_id: string;

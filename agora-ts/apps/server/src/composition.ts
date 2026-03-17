@@ -1,11 +1,19 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import {
+  AcpCraftsmanInputPort,
+  AcpCraftsmanProbePort,
+  AcpCraftsmanTailPort,
+  CitizenService,
+  AcpRuntimeRecoveryPort,
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
+  DirectAcpxRuntimePort,
   DashboardQueryService,
+  FilesystemProjectBrainQueryAdapter,
+  FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
@@ -15,12 +23,21 @@ import {
   InventoryBackedAgentRuntimePort,
   LiveSessionStore,
   NotificationDispatcher,
+  OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
   HumanAccountService,
+  ProjectBrainService,
+  ProjectService,
+  RolePackService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
   TmuxCraftsmanTailPort,
   TmuxRuntimeRecoveryPort,
+  type ProjectKnowledgePort,
+  type CraftsmanInputPort,
+  type CraftsmanExecutionProbePort,
+  type CraftsmanExecutionTailPort,
+  type RuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   TaskBrainBindingService,
   StubIMMessagingPort,
@@ -52,6 +69,8 @@ export interface ServerCompositionContext {
   runtimeEnv: RuntimeEnvironment;
   db: AgoraDatabase;
   templatesDir: string;
+  rolePackDir: string;
+  brainPackDir: string;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
 }
 
@@ -61,6 +80,9 @@ export interface ServerCompositionOptions {
 
 export interface ServerComposition {
   taskService: TaskService;
+  projectService: ProjectService;
+  projectBrainService: ProjectBrainService;
+  citizenService: CitizenService;
   dashboardQueryService: DashboardQueryService;
   templateAuthoringService: TemplateAuthoringService;
   inboxService: InboxService;
@@ -79,7 +101,12 @@ export interface ServerCompositionFactories {
   createAgentRegistry: (context: ServerCompositionContext) => AgentInventorySource;
   createPresenceSource: (context: ServerCompositionContext) => PresenceSource;
   createAgentRuntimePort: (context: ServerCompositionContext, deps: { agentRegistry: AgentInventorySource }) => AgentRuntimePort;
-  createCraftsmanDispatcher: (context: ServerCompositionContext) => CraftsmanDispatcher;
+  createCraftsmanDispatcher: (
+    context: ServerCompositionContext,
+    deps?: {
+      acpRuntime?: DirectAcpxRuntimePort;
+    },
+  ) => CraftsmanDispatcher;
   createTmuxRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
   createTaskService: (
     context: ServerCompositionContext,
@@ -92,11 +119,12 @@ export interface ServerCompositionFactories {
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
-      craftsmanInputPort: TmuxCraftsmanInputPort;
-      craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
-      craftsmanExecutionTailPort: TmuxCraftsmanTailPort;
-      runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
+      craftsmanInputPort: CraftsmanInputPort;
+      craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
+      craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
+      runtimeRecoveryPort: RuntimeRecoveryPort;
       liveSessionStore: LiveSessionStore;
     },
   ) => TaskService;
@@ -122,6 +150,20 @@ export interface ServerCompositionFactories {
   createTaskContextBindingService: (context: ServerCompositionContext) => TaskContextBindingService;
   createTaskBrainBindingService: (context: ServerCompositionContext) => TaskBrainBindingService;
   createTaskBrainWorkspacePort: (context: ServerCompositionContext) => TaskBrainWorkspacePort;
+  createProjectKnowledgePort: (context: ServerCompositionContext) => ProjectKnowledgePort;
+  createProjectService: (
+    context: ServerCompositionContext,
+    deps: { projectKnowledgePort: ProjectKnowledgePort },
+  ) => ProjectService;
+  createRolePackService: (context: ServerCompositionContext) => RolePackService;
+  createCitizenService: (
+    context: ServerCompositionContext,
+    deps: { projectService: ProjectService; rolePackService: RolePackService },
+  ) => CitizenService;
+  createProjectBrainService: (
+    context: ServerCompositionContext,
+    deps: { projectService: ProjectService; citizenService: CitizenService },
+  ) => ProjectBrainService;
   createTaskParticipationService: (
     context: ServerCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -132,7 +174,7 @@ export interface ServerCompositionFactories {
   createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
 }
 
-function ensureRuntimeBrainPackRoot(projectRoot: string): string {
+export function ensureRuntimeBrainPackRoot(projectRoot: string): string {
   const explicitRoot = process.env.AGORA_BRAIN_PACK_ROOT;
   const runtimeBrainPackDir = explicitRoot
     ? resolvePath(explicitRoot)
@@ -166,14 +208,16 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
           },
     ),
     createAgentRuntimePort: (_context, deps) => new InventoryBackedAgentRuntimePort(deps.agentRegistry),
-    createCraftsmanDispatcher: (context) => {
+    createCraftsmanDispatcher: (context, deps) => {
       const adapterMode = resolveCraftsmanRuntimeMode('server');
+      const acpRuntime = adapterMode === 'acp' ? (deps?.acpRuntime ?? new DirectAcpxRuntimePort()) : undefined;
       const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
         maxConcurrentRunning: context.config.craftsmen.max_concurrent_running,
         adapters: createDefaultCraftsmanAdapters({
           mode: adapterMode,
           callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
           apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
+          ...(acpRuntime ? { acpRuntime } : {}),
         }),
       };
       if (context.config.craftsmen.isolate_git_worktrees) {
@@ -203,6 +247,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
+        projectService: deps.projectService,
         agentRuntimePort: deps.agentRuntimePort,
         runtimeRecoveryPort: deps.runtimeRecoveryPort,
         craftsmanInputPort: deps.craftsmanInputPort,
@@ -281,7 +326,29 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
-      brainPackRoot: ensureRuntimeBrainPackRoot(context.runtimeEnv.projectRoot),
+      brainPackRoot: context.brainPackDir,
+    }),
+    createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
+      brainPackRoot: context.brainPackDir,
+    }),
+    createProjectService: (context, deps) => new ProjectService(context.db, {
+      knowledgePort: deps.projectKnowledgePort,
+    }),
+    createRolePackService: (context) => new RolePackService({
+      db: context.db,
+      rolePacksDir: context.rolePackDir,
+    }),
+    createCitizenService: (context, deps) => new CitizenService(context.db, {
+      projectService: deps.projectService,
+      rolePackService: deps.rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    }),
+    createProjectBrainService: (context, deps) => new ProjectBrainService({
+      projectService: deps.projectService,
+      citizenService: deps.citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot: context.brainPackDir,
+      }),
     }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
@@ -322,11 +389,21 @@ export function buildServerComposition(
   const agentRegistry = factories.createAgentRegistry(context);
   const presenceSource = factories.createPresenceSource(context);
   const agentRuntimePort = factories.createAgentRuntimePort(context, { agentRegistry });
-  const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
+  const craftsmanMode = resolveCraftsmanRuntimeMode('server');
+  const acpRuntime = craftsmanMode === 'acp' ? new DirectAcpxRuntimePort() : undefined;
+  const craftsmanDispatcher = factories.createCraftsmanDispatcher(
+    context,
+    acpRuntime ? { acpRuntime } : undefined,
+  );
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
+  const projectKnowledgePort = factories.createProjectKnowledgePort(context);
+  const projectService = factories.createProjectService(context, { projectKnowledgePort });
+  const rolePackService = factories.createRolePackService(context);
+  const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
+  const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -341,11 +418,9 @@ export function buildServerComposition(
     taskBrainWorkspacePort,
     taskContextBindingService,
     taskParticipationService,
+    projectService,
     agentRuntimePort,
-    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
-    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
-    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
-    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
+    ...createCraftsmanTransportDeps(craftsmanMode, tmuxRuntimeService, acpRuntime),
   });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
@@ -367,6 +442,9 @@ export function buildServerComposition(
 
   return {
     taskService,
+    projectService,
+    projectBrainService,
+    citizenService,
     dashboardQueryService,
     templateAuthoringService,
     inboxService,
@@ -391,5 +469,32 @@ function defaultSessionAliveProbe(tmuxRuntimeService: TmuxRuntimeService) {
     } catch {
       return true;
     }
+  };
+}
+
+function createCraftsmanTransportDeps(
+  mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
+  tmuxRuntimeService: TmuxRuntimeService,
+  acpRuntime?: DirectAcpxRuntimePort,
+): {
+  craftsmanInputPort: CraftsmanInputPort;
+  craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
+  craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
+  runtimeRecoveryPort: RuntimeRecoveryPort;
+} {
+  if (mode === 'acp') {
+    const runtime = acpRuntime ?? new DirectAcpxRuntimePort();
+    return {
+      craftsmanInputPort: new AcpCraftsmanInputPort(runtime),
+      craftsmanExecutionProbePort: new AcpCraftsmanProbePort(runtime),
+      craftsmanExecutionTailPort: new AcpCraftsmanTailPort(runtime),
+      runtimeRecoveryPort: new AcpRuntimeRecoveryPort(runtime),
+    };
+  }
+  return {
+    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
+    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   };
 }

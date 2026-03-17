@@ -12,17 +12,29 @@ import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-t
 import { resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
+  CitizenService,
+  AcpCraftsmanInputPort,
+  AcpCraftsmanProbePort,
+  AcpCraftsmanTailPort,
+  AcpRuntimeRecoveryPort,
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
   createDefaultCraftsmanAdapters,
   CraftsmanDispatcher,
+  DirectAcpxRuntimePort,
   DashboardQueryService,
+  FilesystemProjectBrainQueryAdapter,
+  FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
+  OpenClawCitizenProjectionAdapter,
+  ProjectBrainAutomationService,
   OsHostResourcePort,
+  ProjectBrainService,
+  ProjectService,
   StubIMMessagingPort,
   RolePackService,
   TaskBrainBindingService,
@@ -30,6 +42,11 @@ import {
   TmuxCraftsmanProbePort,
   TmuxCraftsmanTailPort,
   TmuxRuntimeRecoveryPort,
+  type ProjectKnowledgePort,
+  type CraftsmanInputPort,
+  type CraftsmanExecutionProbePort,
+  type CraftsmanExecutionTailPort,
+  type RuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
   TaskContextBindingService,
@@ -60,11 +77,37 @@ export interface CliCompositionContext {
 }
 
 export interface CliCompositionFactories {
-  createCraftsmanDispatcher: (context: CliCompositionContext) => CraftsmanDispatcher;
+  createCraftsmanDispatcher: (
+    context: CliCompositionContext,
+    deps?: {
+      acpRuntime?: DirectAcpxRuntimePort;
+    },
+  ) => CraftsmanDispatcher;
   createAgentRuntimePort: (context: CliCompositionContext) => AgentRuntimePort;
   createIMMessagingPort: (context: CliCompositionContext) => IMMessagingPort;
   createIMProvisioningPort: (context: CliCompositionContext) => IMProvisioningPort | undefined;
   createTaskContextBindingService: (context: CliCompositionContext) => TaskContextBindingService;
+  createProjectKnowledgePort: (context: CliCompositionContext) => ProjectKnowledgePort;
+  createProjectService: (
+    context: CliCompositionContext,
+    deps: { projectKnowledgePort: ProjectKnowledgePort },
+  ) => ProjectService;
+  createProjectBrainService: (
+    context: CliCompositionContext,
+    deps: { projectService: ProjectService; citizenService: CitizenService },
+  ) => ProjectBrainService;
+  createProjectBrainAutomationService: (
+    context: CliCompositionContext,
+    deps: {
+      projectBrainService: ProjectBrainService;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
+    },
+  ) => ProjectBrainAutomationService;
+  createCitizenService: (
+    context: CliCompositionContext,
+    deps: { projectService: ProjectService; rolePackService: RolePackService },
+  ) => CitizenService;
   createTaskParticipationService: (
     context: CliCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -79,11 +122,13 @@ export interface CliCompositionFactories {
       messagingPort: IMMessagingPort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      projectBrainAutomationService: ProjectBrainAutomationService;
+      projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
-      craftsmanInputPort: TmuxCraftsmanInputPort;
-      craftsmanExecutionProbePort: TmuxCraftsmanProbePort;
-      craftsmanExecutionTailPort: TmuxCraftsmanTailPort;
-      runtimeRecoveryPort: TmuxRuntimeRecoveryPort;
+      craftsmanInputPort: CraftsmanInputPort;
+      craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
+      craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
+      runtimeRecoveryPort: RuntimeRecoveryPort;
     },
   ) => TaskService;
   createTmuxRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
@@ -101,6 +146,10 @@ export interface CliComposition {
   config: AgoraConfig;
   db: AgoraDatabase;
   taskService: TaskService;
+  projectService: ProjectService;
+  projectBrainService: ProjectBrainService;
+  projectBrainAutomationService: ProjectBrainAutomationService;
+  citizenService: CitizenService;
   tmuxRuntimeService: TmuxRuntimeService;
   dashboardSessionClient: DashboardSessionClient;
   humanAccountService: HumanAccountService;
@@ -126,13 +175,16 @@ function ensureRuntimeBrainPackRoot(projectRoot: string): string {
 
 export function createDefaultCliCompositionFactories(): CliCompositionFactories {
   return {
-    createCraftsmanDispatcher: (context) => {
+    createCraftsmanDispatcher: (context, deps) => {
+      const mode = resolveCraftsmanRuntimeMode('cli');
+      const acpRuntime = mode === 'acp' ? (deps?.acpRuntime ?? new DirectAcpxRuntimePort()) : undefined;
       const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
         maxConcurrentRunning: context.config.craftsmen.max_concurrent_running,
         adapters: createDefaultCraftsmanAdapters({
-          mode: resolveCraftsmanRuntimeMode('cli'),
+          mode,
           callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
           apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
+          ...(acpRuntime ? { acpRuntime } : {}),
         }),
       };
       if (context.config.craftsmen.isolate_git_worktrees) {
@@ -176,6 +228,29 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       return undefined;
     },
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
+      brainPackRoot: context.brainPackDir,
+    }),
+    createProjectService: (context, deps) => new ProjectService(context.db, {
+      knowledgePort: deps.projectKnowledgePort,
+    }),
+    createProjectBrainService: (context, deps) => new ProjectBrainService({
+      projectService: deps.projectService,
+      citizenService: deps.citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot: context.brainPackDir,
+      }),
+    }),
+    createCitizenService: (context, deps) => new CitizenService(context.db, {
+      projectService: deps.projectService,
+      rolePackService: deps.rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    }),
+    createProjectBrainAutomationService: (_context, deps) => new ProjectBrainAutomationService({
+      projectBrainService: deps.projectBrainService,
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,
     }),
@@ -188,6 +263,8 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       imMessagingPort: deps.messagingPort,
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
+      projectBrainAutomationService: deps.projectBrainAutomationService,
+      projectService: deps.projectService,
       agentRuntimePort: deps.agentRuntimePort,
       runtimeRecoveryPort: deps.runtimeRecoveryPort,
       craftsmanInputPort: deps.craftsmanInputPort,
@@ -270,41 +347,58 @@ export function createCliComposition(
     ...createDefaultCliCompositionFactories(),
     ...overrides,
   };
-  const craftsmanDispatcher = factories.createCraftsmanDispatcher(context);
+  const craftsmanMode = resolveCraftsmanRuntimeMode('cli');
+  const acpRuntime = craftsmanMode === 'acp' ? new DirectAcpxRuntimePort() : undefined;
+  const craftsmanDispatcher = factories.createCraftsmanDispatcher(
+    context,
+    acpRuntime ? { acpRuntime } : undefined,
+  );
   const agentRuntimePort = factories.createAgentRuntimePort(context);
   const messagingPort = factories.createIMMessagingPort(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
   const taskContextBindingService = factories.createTaskContextBindingService(context);
+  const projectKnowledgePort = factories.createProjectKnowledgePort(context);
+  const projectService = factories.createProjectService(context, { projectKnowledgePort });
+  const rolePackService = factories.createRolePackService(context);
+  const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
+  const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
   const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
+  const projectBrainAutomationService = factories.createProjectBrainAutomationService(context, {
+    projectBrainService,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
+  });
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
-    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
-    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
-    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
     taskBrainBindingService,
     taskBrainWorkspacePort,
     imProvisioningPort,
     messagingPort,
     taskContextBindingService,
     taskParticipationService,
+    projectBrainAutomationService,
+    projectService,
     agentRuntimePort,
-    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
+    ...createCraftsmanTransportDeps(craftsmanMode, tmuxRuntimeService, acpRuntime),
   });
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
   const humanAccountService = factories.createHumanAccountService(context);
   const taskConversationService = factories.createTaskConversationService(context);
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
-  const rolePackService = factories.createRolePackService(context);
   const dashboardQueryService = factories.createDashboardQueryService(context);
   return {
     config,
     db,
     taskService,
+    projectService,
+    projectBrainService,
+    projectBrainAutomationService,
+    citizenService,
     tmuxRuntimeService,
     dashboardSessionClient,
     humanAccountService,
@@ -313,5 +407,32 @@ export function createCliComposition(
     rolePackService,
     dashboardQueryService,
     taskBrainBindingService,
+  };
+}
+
+function createCraftsmanTransportDeps(
+  mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
+  tmuxRuntimeService: TmuxRuntimeService,
+  acpRuntime?: DirectAcpxRuntimePort,
+): {
+  craftsmanInputPort: CraftsmanInputPort;
+  craftsmanExecutionProbePort: CraftsmanExecutionProbePort;
+  craftsmanExecutionTailPort: CraftsmanExecutionTailPort;
+  runtimeRecoveryPort: RuntimeRecoveryPort;
+} {
+  if (mode === 'acp') {
+    const runtime = acpRuntime ?? new DirectAcpxRuntimePort();
+    return {
+      craftsmanInputPort: new AcpCraftsmanInputPort(runtime),
+      craftsmanExecutionProbePort: new AcpCraftsmanProbePort(runtime),
+      craftsmanExecutionTailPort: new AcpCraftsmanTailPort(runtime),
+      runtimeRecoveryPort: new AcpRuntimeRecoveryPort(runtime),
+    };
+  }
+  return {
+    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
+    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
   };
 }

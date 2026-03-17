@@ -10,7 +10,10 @@ import type {
   ApiDashboardUserListDto,
   ApiHealthDto,
   ApiObserveCraftsmanExecutionsResponseDto,
+  ApiListProjectsResponseDto,
   ApiPromoteTodoResultDto,
+  ApiProjectDto,
+  ApiProjectWorkbenchDto,
   ApiRuntimeDiagnosisResultDto,
   ApiRuntimeRecoveryActionDto,
   ApiTaskDto,
@@ -40,7 +43,9 @@ import {
   dashboardUserUpdatePasswordRequestSchema,
   duplicateTemplateRequestSchema,
   healthResponseSchema,
+  listProjectsResponseSchema,
   observeCraftsmanExecutionsResponseSchema,
+  projectWorkbenchResponseSchema,
   promoteTodoResultSchema,
   runtimeDiagnosisResultSchema,
   runtimeRecoveryActionSchema,
@@ -264,7 +269,7 @@ export function getCraftsmanExecutionTail(
   execution_id: string;
   available: boolean;
   output: string | null;
-  source: 'tmux' | 'unavailable';
+  source: 'tmux' | 'acpx' | 'unavailable';
 }> {
   return request(
     `/craftsmen/executions/${encodeURIComponent(executionId)}/tail?lines=${encodeURIComponent(String(lines))}`,
@@ -272,7 +277,7 @@ export function getCraftsmanExecutionTail(
       execution_id: z.string(),
       available: z.boolean(),
       output: z.string().nullable(),
-      source: z.enum(['tmux', 'unavailable']),
+      source: z.enum(['tmux', 'acpx', 'unavailable']),
     }),
   );
 }
@@ -597,9 +602,9 @@ export function getAgentChannelDetail(channel: string): Promise<ApiAgentChannelS
   return request<ApiAgentChannelSummaryDto>(`/agents/channels/${encodeURIComponent(channel)}`, agentChannelSummarySchema);
 }
 
-export function getTmuxTail(agent: string, lines = 20): Promise<{ output: string | null }> {
+export function getCraftsmanRuntimeTail(agent: string, lines = 20): Promise<{ output: string | null }> {
   return request<{ output: string | null }>(
-    `/craftsmen/tmux/tail/${encodeURIComponent(agent)}?lines=${encodeURIComponent(String(lines))}`,
+    `/craftsmen/runtime/tail/${encodeURIComponent(agent)}?lines=${encodeURIComponent(String(lines))}`,
     z.object({ output: z.string().nullable() }),
   );
 }
@@ -661,13 +666,31 @@ export function scanArchiveJobReceipts(): Promise<{ processed: number; synced: n
   );
 }
 
-export function listTodos(status?: Exclude<TodoFilter, 'all'>): Promise<ApiTodoDto[]> {
+export function listProjects(status?: string): Promise<ApiProjectDto[]> {
   const params = status ? `?status=${encodeURIComponent(status)}` : '';
-  return request<ApiTodoDto[]>(`/todos${params}`, z.array(todoItemSchema));
+  return request<ApiListProjectsResponseDto>(`/projects${params}`, listProjectsResponseSchema)
+    .then((response) => response.projects);
+}
+
+export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {
+  return request<ApiProjectWorkbenchDto>(`/projects/${encodeURIComponent(projectId)}`, projectWorkbenchResponseSchema);
+}
+
+export function listTodos(status?: Exclude<TodoFilter, 'all'>, projectId?: string): Promise<ApiTodoDto[]> {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set('status', status);
+  }
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.toString();
+  return request<ApiTodoDto[]>(`/todos${query ? `?${query}` : ''}`, z.array(todoItemSchema));
 }
 
 export function createTodo(input: {
   text: string;
+  project_id?: string | null;
   due?: string | null;
   tags?: string[];
 }): Promise<ApiTodoDto> {
@@ -681,6 +704,7 @@ export function updateTodo(
   todoId: number,
   input: {
     text?: string;
+    project_id?: string | null;
     due?: string | null;
     tags?: string[];
     status?: 'pending' | 'done';

@@ -1,4 +1,4 @@
-import type { TmuxRuntimeStatus } from '@/types/dashboard';
+import type { CraftsmanRuntimeStatus } from '@/types/dashboard';
 
 export type MemberKind = 'controller' | 'citizen' | 'craftsman';
 
@@ -31,11 +31,12 @@ export function normalizeRoleBindingId(role: string, value: string, memberKind?:
   return isCraftsmanRole(role, memberKind) ? normalizeCraftsmanId(value) : value;
 }
 
-export function buildCraftsmanInventory(tmuxRuntime: TmuxRuntimeStatus | null): string[] {
-  if (!tmuxRuntime) {
+export function buildCraftsmanInventory(runtime: CraftsmanRuntimeStatus | null): string[] {
+  if (!runtime) {
     return [];
   }
-  return Array.from(new Set(tmuxRuntime.panes.map((pane) => normalizeCraftsmanId(pane.agent)))).sort((left, right) => (
+  const agents = runtime.slots.map((slot) => slot.agent);
+  return Array.from(new Set(agents.map((agent) => normalizeCraftsmanId(agent)))).sort((left, right) => (
     left.localeCompare(right)
   ));
 }

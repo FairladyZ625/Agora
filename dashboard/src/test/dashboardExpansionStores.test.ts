@@ -8,7 +8,7 @@ import * as api from '@/lib/api';
 vi.mock('@/lib/api', () => ({
   getAgentsStatus: vi.fn(),
   getAgentChannelDetail: vi.fn(),
-  getTmuxTail: vi.fn(),
+  getCraftsmanRuntimeTail: vi.fn(),
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
   notifyArchiveJob: vi.fn(),
@@ -57,15 +57,14 @@ describe('dashboard expansion stores', () => {
       channelDetails: {},
       channelDetailFetchedAt: {},
       hostSummaries: [],
-      tmuxRuntime: null,
-      tmuxTailByAgent: {},
+      runtimeTailByAgent: {},
       presenceFilter: 'all',
       craftsmenFilter: 'all',
       channelFilter: null,
       hostFilter: null,
       loading: false,
       channelDetailLoading: false,
-      tmuxTailLoadingByAgent: {},
+      runtimeTailLoadingByAgent: {},
       error: null,
       channelDetailError: null,
     });
@@ -83,6 +82,7 @@ describe('dashboard expansion stores', () => {
       loading: false,
       error: null,
       filter: 'all',
+      projectFilter: null,
     });
     useTemplateStore.setState({
       templates: [],
@@ -175,28 +175,25 @@ describe('dashboard expansion stores', () => {
         presence_reason: 'stale_gateway_log',
         affected_agents: [],
       }],
-      tmux_runtime: {
-        session: 'agora-craftsmen',
-        panes: [
-          {
-            agent: 'codex',
-            pane_id: '%0',
-            current_command: 'bash',
-            active: true,
-            ready: true,
-            tail_preview: null,
-            continuity_backend: 'codex_session_file',
-            resume_capability: 'native_resume',
-            session_reference: 'codex-session-123',
-            identity_source: 'session_file',
-            identity_source_rank: 0,
-            identity_conflict_count: 0,
-            identity_path: '/tmp/codex/session.json',
-            session_observed_at: '2026-03-08T23:01:00.000Z',
-            last_recovery_mode: 'resume_exact',
-            transport_session_id: 'tmux:agora-craftsmen:codex',
-          },
-        ],
+      craftsman_runtime: {
+        providers: [{ provider: 'tmux', session: 'agora-craftsmen', slot_count: 1, ready_slots: 1, active_slots: 1 }],
+        slots: [{
+          provider: 'tmux',
+          agent: 'codex',
+          session_id: 'tmux:agora-craftsmen:codex',
+          runtime_mode: 'tmux',
+          transport: 'tmux-pane',
+          status: 'running',
+          ready: true,
+          active: true,
+          current_command: 'bash',
+          tail_preview: null,
+          session_reference: 'codex-session-123',
+          execution_id: null,
+          task_id: null,
+          subtask_id: null,
+          title: null,
+        }],
       },
     });
 
@@ -212,10 +209,9 @@ describe('dashboard expansion stores', () => {
     expect(state.channelSummaries[0]?.history).toEqual([]);
     expect(state.channelSummaries[0]?.signalStatus).toBe('unknown');
     expect(state.hostSummaries[0]?.host).toBe('openclaw');
-    expect(state.tmuxRuntime?.session).toBe('agora-craftsmen');
-    expect(state.tmuxTailByAgent.codex).toBeNull();
-    expect(state.tmuxRuntime?.panes[0]?.identitySource).toBe('session_file');
-    expect(state.tmuxRuntime?.panes[0]?.identityPath).toBe('/tmp/codex/session.json');
+    expect(state.runtimeTailByAgent.codex).toBeNull();
+    expect(state.craftsmanRuntime?.providers[0]?.session).toBe('agora-craftsmen');
+    expect(state.craftsmanRuntime?.slots[0]?.sessionReference).toBe('codex-session-123');
     expect(state.agents[0]?.id).toBe('sonnet');
     expect(state.agents[0]?.presence).toBe('online');
     expect(state.craftsmen[0]?.recentExecutions[0]?.runtimeMode).toBe('tmux');
@@ -276,15 +272,15 @@ describe('dashboard expansion stores', () => {
     expect(state.channelDetailFetchedAt.discord).toBe(Date.parse('2026-03-09T12:00:00.000Z'));
   });
 
-  it('loads tmux tail on demand per agent', async () => {
-    vi.mocked(api.getTmuxTail).mockResolvedValue({ output: 'tail:codex' });
+  it('loads runtime tail on demand per agent', async () => {
+    vi.mocked(api.getCraftsmanRuntimeTail).mockResolvedValue({ output: 'tail:codex' });
 
-    const result = await useAgentStore.getState().fetchTmuxTail('codex', 20);
+    const result = await useAgentStore.getState().fetchRuntimeTail('codex', 20);
     const state = useAgentStore.getState();
 
     expect(result).toBe('live');
-    expect(state.tmuxTailByAgent.codex).toBe('tail:codex');
-    expect(state.tmuxTailLoadingByAgent.codex).toBe(false);
+    expect(state.runtimeTailByAgent.codex).toBe('tail:codex');
+    expect(state.runtimeTailLoadingByAgent.codex).toBe(false);
   });
 
   it('persists agent filters across refreshes', () => {
@@ -473,6 +469,7 @@ describe('dashboard expansion stores', () => {
       {
         id: 3,
         text: '补前端',
+        project_id: 'proj-alpha',
         status: 'pending',
         due: null,
         created_at: '2026-03-07T09:00:00.000Z',
@@ -484,6 +481,7 @@ describe('dashboard expansion stores', () => {
     vi.mocked(api.createTodo).mockResolvedValue({
       id: 4,
       text: '补前端 v2',
+      project_id: 'proj-alpha',
       status: 'pending',
       due: null,
       created_at: '2026-03-07T10:00:00.000Z',
@@ -495,6 +493,7 @@ describe('dashboard expansion stores', () => {
       todo: {
         id: 4,
         text: '补前端 v2',
+        project_id: 'proj-alpha',
         status: 'pending',
         due: null,
         created_at: '2026-03-07T10:00:00.000Z',
@@ -508,7 +507,9 @@ describe('dashboard expansion stores', () => {
     } as never);
 
     await useTodoStore.getState().fetchTodos();
-    await useTodoStore.getState().createTodo({ text: '补前端 v2' });
+    useTodoStore.getState().setProjectFilter('proj-alpha');
+    await useTodoStore.getState().fetchTodos();
+    await useTodoStore.getState().createTodo({ text: '补前端 v2', project_id: 'proj-alpha' });
     const promoted = await useTodoStore.getState().promoteTodo(4, {
       type: 'quick',
       creator: 'archon',
@@ -516,6 +517,7 @@ describe('dashboard expansion stores', () => {
     });
 
     expect(useTodoStore.getState().todos[0]?.id).toBe(4);
+    expect(api.listTodos).toHaveBeenCalledWith(undefined, 'proj-alpha');
     expect(promoted.task.id).toBe('OC-401');
   });
 

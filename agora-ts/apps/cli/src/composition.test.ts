@@ -3,15 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskService } from '@agora-ts/core';
-import { StubIMProvisioningPort } from '@agora-ts/core';
+import { StubIMProvisioningPort, TaskService as CoreTaskService } from '@agora-ts/core';
 import type { TmuxRuntimeService } from '@agora-ts/core';
 import { createCliComposition } from './composition.js';
 
-const tempPaths: string[] = [];
+const tempDirs: string[] = [];
 
 function makeTempDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-composition-'));
-  tempPaths.push(dir);
+  tempDirs.push(dir);
   return dir;
 }
 
@@ -19,8 +19,10 @@ afterEach(() => {
   delete process.env.AGORA_BRAIN_PACK_ROOT;
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
-  while (tempPaths.length > 0) {
-    const dir = tempPaths.pop();
+  delete process.env.AGORA_CRAFTSMAN_CLI_MODE;
+  delete process.env.AGORA_OPENCLAW_CONFIG_PATH;
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
     if (dir) {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -136,6 +138,7 @@ describe('cli composition', () => {
               throw new Error('not used');
             },
             updateWorkspace: () => undefined,
+            writeTaskCloseRecap: () => undefined,
             destroyWorkspace: () => undefined,
           };
         },
@@ -164,6 +167,118 @@ describe('cli composition', () => {
     expect(readFileSync(join(agoraHomeDir, 'skills', 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     expect(readFileSync(join(agentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     expect(readFileSync(join(codexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
+    composition.db.close();
+  });
+
+  it('wires acp craftsman ports into cli composition when cli mode is acp', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_CRAFTSMAN_CLI_MODE = 'acp';
+
+    writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
+
+    let capturedDeps: Record<string, string> | null = null;
+    let dispatcherRuntime: object | undefined;
+    let inputRuntime: object | undefined;
+    const composition = createCliComposition(
+      { configPath, dbPath },
+      {
+        createTaskService: (context, deps) => {
+          capturedDeps = {
+            input: deps.craftsmanInputPort.constructor.name,
+            probe: deps.craftsmanExecutionProbePort.constructor.name,
+            tail: deps.craftsmanExecutionTailPort.constructor.name,
+            recovery: deps.runtimeRecoveryPort.constructor.name,
+          };
+          const adapters = Reflect.get(deps.craftsmanDispatcher as object, 'adapters') as Record<string, unknown> | undefined;
+          const adapter = adapters?.codex ?? adapters?.claude ?? adapters?.gemini;
+          dispatcherRuntime = adapter && typeof adapter === 'object'
+            ? Reflect.get(adapter, 'runtime') as object | undefined
+            : undefined;
+          inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
+          return new CoreTaskService(context.db, {
+            templatesDir: context.templatesDir,
+          });
+        },
+      },
+    );
+
+    expect(capturedDeps).toEqual({
+      input: 'AcpCraftsmanInputPort',
+      probe: 'AcpCraftsmanProbePort',
+      tail: 'AcpCraftsmanTailPort',
+      recovery: 'AcpRuntimeRecoveryPort',
+    });
+    expect(dispatcherRuntime).toBeDefined();
+    expect(inputRuntime).toBe(dispatcherRuntime);
+    composition.db.close();
+  });
+
+  it('creates a discord provisioning adapter with participant tokens from openclaw config', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    const openClawConfigPath = join(dir, 'openclaw.json');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_OPENCLAW_CONFIG_PATH = openClawConfigPath;
+    writeFileSync(openClawConfigPath, JSON.stringify({
+      channels: {
+        discord: {
+          accounts: {
+            main: { token: 'discord-bot-token' },
+            reviewer: { token: 'reviewer-token' },
+          },
+        },
+      },
+    }));
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-bot-token',
+          default_channel_id: 'discord-parent',
+        },
+      },
+    }));
+
+    const composition = createCliComposition({ configPath });
+    const provisioningPort = Reflect.get(composition.taskService as object, 'imProvisioningPort') as object | undefined;
+
+    expect(provisioningPort?.constructor.name).toBe('DiscordIMProvisioningAdapter');
+    expect(Reflect.get(provisioningPort as object, 'participantTokens')).toEqual({
+      main: 'discord-bot-token',
+      reviewer: 'reviewer-token',
+    });
+    expect(Reflect.get(provisioningPort as object, 'primaryAccountId')).toBe('main');
+    composition.db.close();
+  });
+
+  it('uses tmux craftsman transport ports and git worktree isolation when configured', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_CRAFTSMAN_CLI_MODE = 'tmux';
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      craftsmen: {
+        isolate_git_worktrees: true,
+        isolated_root: join(dir, 'isolated-worktrees'),
+      },
+    }));
+
+    const composition = createCliComposition({ configPath });
+    const taskService = composition.taskService as object;
+    const dispatcher = Reflect.get(taskService, 'craftsmanDispatcher') as object | undefined;
+
+    expect(Reflect.get(taskService, 'craftsmanInputPort')?.constructor.name).toBe('TmuxCraftsmanInputPort');
+    expect(Reflect.get(taskService, 'craftsmanExecutionProbePort')?.constructor.name).toBe('TmuxCraftsmanProbePort');
+    expect(Reflect.get(taskService, 'craftsmanExecutionTailPort')?.constructor.name).toBe('TmuxCraftsmanTailPort');
+    expect(Reflect.get(taskService, 'runtimeRecoveryPort')?.constructor.name).toBe('TmuxRuntimeRecoveryPort');
+    expect(Reflect.get(dispatcher as object, 'workdirIsolator')?.constructor.name).toBe('GitWorktreeWorkdirIsolator');
     composition.db.close();
   });
 });

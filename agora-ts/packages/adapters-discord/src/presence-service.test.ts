@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ActivityType } from 'discord.js';
-import { DiscordGatewayPresenceService, type DiscordGatewayPresenceClient } from './presence-service.js';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import {
+  DiscordGatewayPresenceService,
+  createDiscordGatewayWebSocketProxyAgent,
+  type DiscordGatewayPresenceClient,
+} from './presence-service.js';
 
 function createClientStub() {
   const readyListeners: Array<() => void> = [];
@@ -45,11 +49,13 @@ describe('DiscordGatewayPresenceService', () => {
 
     expect(stub.login).toHaveBeenCalledWith('discord-token');
     expect(stub.setPresence).toHaveBeenCalledWith({
+      since: null,
       status: 'online',
       activities: [{
         name: 'Agora',
-        type: ActivityType.Watching,
+        type: 3,
       }],
+      afk: false,
     });
   });
 
@@ -70,9 +76,10 @@ describe('DiscordGatewayPresenceService', () => {
   it('logs proxy enablement before login when proxy bootstrap is active', async () => {
     const stub = createClientStub();
     const info = vi.fn();
+    const clientFactory = vi.fn(() => stub.client);
     const service = new DiscordGatewayPresenceService({
       botToken: 'discord-token',
-      clientFactory: () => stub.client,
+      clientFactory,
       proxyBootstrap: () => ({
         enabled: true,
         httpsProxy: 'http://127.0.0.1:7897',
@@ -85,7 +92,41 @@ describe('DiscordGatewayPresenceService', () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(clientFactory).toHaveBeenCalledWith({
+      enabled: true,
+      httpsProxy: 'http://127.0.0.1:7897',
+      httpProxy: 'http://127.0.0.1:7897',
+    }, {
+      since: null,
+      status: 'online',
+      activities: [{ name: 'Agora', type: 3 }],
+      afk: false,
+    });
     expect(info).toHaveBeenCalledWith('[agora] discord gateway presence proxy enabled (http://127.0.0.1:7897)');
+  });
+
+  it('creates an https proxy agent for gateway websocket connections', () => {
+    const warn = vi.fn();
+    const agent = createDiscordGatewayWebSocketProxyAgent({
+      enabled: true,
+      httpsProxy: 'http://127.0.0.1:7897',
+      httpProxy: null,
+    }, { warn });
+
+    expect(agent).toBeInstanceOf(HttpsProxyAgent);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns when proxy scheme is unsupported for websocket injection', () => {
+    const warn = vi.fn();
+    const agent = createDiscordGatewayWebSocketProxyAgent({
+      enabled: true,
+      httpsProxy: 'socks5://127.0.0.1:1080',
+      httpProxy: null,
+    }, { warn });
+
+    expect(agent).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith('[agora] discord gateway presence proxy scheme unsupported for websocket (socks5:)');
   });
 
   it('destroys the client when stopped after start', () => {

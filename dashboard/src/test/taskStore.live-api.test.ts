@@ -246,7 +246,7 @@ describe('task store live API mode', () => {
       execution_id: 'exec-1',
       available: true,
       output: 'tail:exec-1',
-      source: 'tmux',
+      source: 'acpx',
     });
 
     const result = await useTaskStore.getState().fetchCraftsmanExecutionTail('exec-1', 66);
@@ -258,7 +258,7 @@ describe('task store live API mode', () => {
       available: true,
       fetchedAt: expect.any(String),
       output: 'tail:exec-1',
-      source: 'tmux',
+      source: 'acpx',
     });
     expect(state.executionTailLoadingById['exec-1']).toBe(false);
   });

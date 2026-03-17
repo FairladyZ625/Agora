@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServerRuntime } from './runtime.js';
 import { createAppFromRuntime } from './index.js';
 
@@ -43,5 +43,38 @@ describe('server index wiring', () => {
 
     expect(response.statusCode).not.toBe(503);
     runtime.db.close();
+  });
+
+  it('closes runtime-owned resources when the app closes', async () => {
+    const dispose = vi.fn(async () => {});
+    const app = createAppFromRuntime({
+      db: undefined,
+      taskService: undefined,
+      projectService: undefined,
+      dashboardQueryService: undefined,
+      inboxService: undefined,
+      templateAuthoringService: undefined,
+      liveSessionStore: undefined,
+      tmuxRuntimeService: undefined,
+      taskContextBindingService: undefined,
+      taskConversationService: undefined,
+      taskParticipationService: undefined,
+      humanAccountService: undefined,
+      notificationDispatcher: undefined,
+      apiAuth: undefined,
+      dashboardAuth: undefined,
+      rateLimit: undefined,
+      observability: {
+        ready_path: '/ready',
+        metrics_enabled: false,
+        structured_logs: false,
+      },
+      dashboardDir: undefined,
+      dispose,
+    } as unknown as ReturnType<typeof createServerRuntime>);
+
+    await app.close();
+
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,6 +4,7 @@ import {
   Bot,
   LayoutDashboard,
   Columns3,
+  FolderKanban,
   ListTodo,
   ShieldCheck,
   Settings,
@@ -29,6 +30,7 @@ interface SidebarProps {
 const navIcons = {
   overview: LayoutDashboard,
   board: Columns3,
+  projects: FolderKanban,
   tasks: ListTodo,
   agents: Bot,
   todos: ListTodo,

@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  COMPACT_WORKFLOW_GRAPH_METRICS,
+  DEFAULT_WORKFLOW_GRAPH_METRICS,
   buildWorkflowSurfaceEdgePath,
   getWorkflowSurfaceCanvasBounds,
   layoutWorkflowSurfaceNodes,
@@ -39,11 +41,23 @@ export function WorkflowGraphView({
   const markerId = useId().replaceAll(':', '');
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const layoutNodes = useMemo(() => layoutWorkflowSurfaceNodes(nodes, edges), [edges, nodes]);
-  const canvasBounds = useMemo(() => getWorkflowSurfaceCanvasBounds(layoutNodes), [layoutNodes]);
+  const graphMetrics = useMemo(
+    () => (nodes.length <= 4 ? COMPACT_WORKFLOW_GRAPH_METRICS : DEFAULT_WORKFLOW_GRAPH_METRICS),
+    [nodes.length],
+  );
+  const layoutNodes = useMemo(
+    () => layoutWorkflowSurfaceNodes(nodes, edges, graphMetrics),
+    [edges, graphMetrics, nodes],
+  );
+  const canvasBounds = useMemo(
+    () => getWorkflowSurfaceCanvasBounds(layoutNodes, graphMetrics),
+    [graphMetrics, layoutNodes],
+  );
   const availableWidth = Math.max(containerWidth - 16, 0);
   const rawScale = availableWidth > 0 ? availableWidth / canvasBounds.width : 1;
-  const scale = Math.min(1.28, Math.max(0.86, rawScale));
+  const maxScale = nodes.length <= 4 ? 1.08 : 1.18;
+  const minScale = nodes.length <= 4 ? 0.82 : 0.9;
+  const scale = Math.min(maxScale, Math.max(minScale, rawScale));
   const scaledWidth = canvasBounds.width * scale;
   const offsetX = containerWidth > 0 ? Math.max(0, (containerWidth - scaledWidth) / 2) : 0;
   const viewportHeight = Math.max(canvasBounds.height * scale + 12, 220);
@@ -55,6 +69,12 @@ export function WorkflowGraphView({
     '--workflow-graph-canvas-height': `${canvasBounds.height}px`,
     '--workflow-graph-scale': scale,
     '--workflow-graph-offset-x': `${offsetX / Math.max(scale, 0.001)}px`,
+    '--workflow-graph-node-width': `${graphMetrics.nodeWidth}px`,
+    '--workflow-graph-node-height': `${graphMetrics.nodeHeight}px`,
+    '--workflow-graph-edge-label-font-size': graphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '10px' : '11px',
+    '--workflow-graph-edge-label-padding-y': graphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '4px' : '5px',
+    '--workflow-graph-edge-label-padding-x': graphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '9px' : '11px',
+    '--workflow-graph-pill-font-size': graphMetrics === COMPACT_WORKFLOW_GRAPH_METRICS ? '10px' : '11px',
   } as CSSProperties;
 
   useEffect(() => {
@@ -87,7 +107,7 @@ export function WorkflowGraphView({
             </marker>
           </defs>
           {edges.map((edge, index) => {
-            const geometry = buildWorkflowSurfaceEdgePath(edge, layoutNodes);
+            const geometry = buildWorkflowSurfaceEdgePath(edge, layoutNodes, graphMetrics);
             if (!geometry) {
               return null;
             }
@@ -105,7 +125,7 @@ export function WorkflowGraphView({
 
         <div className="workflow-graph-view__edge-labels" aria-hidden="true">
           {edges.map((edge, index) => {
-            const geometry = buildWorkflowSurfaceEdgePath(edge, layoutNodes);
+            const geometry = buildWorkflowSurfaceEdgePath(edge, layoutNodes, graphMetrics);
             if (!geometry) {
               return null;
             }

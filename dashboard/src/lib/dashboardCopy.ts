@@ -26,6 +26,7 @@ export function useShellCopy() {
     navItems: [
       { to: '/', key: 'overview', label: t('shell.nav.overview.label'), hint: t('shell.nav.overview.hint') },
       { to: '/board', key: 'board', label: t('shell.nav.board.label'), hint: t('shell.nav.board.hint') },
+      { to: '/projects', key: 'projects', label: t('shell.nav.projects.label'), hint: t('shell.nav.projects.hint') },
       { to: '/tasks', key: 'tasks', label: t('shell.nav.tasks.label'), hint: t('shell.nav.tasks.hint') },
       { to: '/agents', key: 'agents', label: t('shell.nav.agents.label'), hint: t('shell.nav.agents.hint') },
       { to: '/todos', key: 'todos', label: t('shell.nav.todos.label'), hint: t('shell.nav.todos.hint') },
@@ -44,6 +45,7 @@ export function usePageMetaCopy() {
   return {
     '/': { title: t('pageMeta.home.title') },
     '/board': { title: t('pageMeta.board.title') },
+    '/projects': { title: t('pageMeta.projects.title') },
     '/tasks': { title: t('pageMeta.tasks.title') },
     '/agents': { title: t('pageMeta.agents.title') },
     '/todos': { title: t('pageMeta.todos.title') },
@@ -230,6 +232,8 @@ export function useCreateTaskPageCopy() {
     summary: t('createTask.summary'),
     titleLabel: t('createTask.titleLabel'),
     titlePlaceholder: t('createTask.titlePlaceholder'),
+    projectLabel: t('createTask.projectLabel'),
+    unboundProjectOption: t('createTask.unboundProjectOption'),
     descriptionLabel: t('createTask.descriptionLabel'),
     descriptionPlaceholder: t('createTask.descriptionPlaceholder'),
     typeLabel: t('createTask.typeLabel'),
@@ -454,7 +458,7 @@ export function useAgentsPageCopy() {
     channelTimelineTitle: t('agents.channelTimelineTitle'),
     channelSignalsTitle: t('agents.channelSignalsTitle'),
     runtimeSummaryTitle: t('agents.runtimeSummaryTitle'),
-    tmuxRuntimeTitle: t('agents.tmuxRuntimeTitle'),
+    runtimeTitle: t('agents.tmuxRuntimeTitle'),
     filtersTitle: t('agents.filtersTitle'),
     filterLabels: {
       all: t('agents.filterLabels.all'),
@@ -505,7 +509,7 @@ export function useAgentsPageCopy() {
     emptyChannelHistory: t('agents.emptyChannelHistory'),
     emptyChannelSignals: t('agents.emptyChannelSignals'),
     emptyHostSummary: t('agents.emptyHostSummary'),
-    emptyTmuxRuntime: t('agents.emptyTmuxRuntime'),
+    emptyRuntime: t('agents.emptyTmuxRuntime'),
     workspace: {
       overviewKicker: t('agents.workspace.overviewKicker'),
       overviewTitle: t('agents.workspace.overviewTitle'),
@@ -535,7 +539,7 @@ export function useAgentsPageCopy() {
         agentCritical: t('agents.workspace.issueGroups.agentCritical'),
         agentStale: t('agents.workspace.issueGroups.agentStale'),
         craftsmanFailed: t('agents.workspace.issueGroups.craftsmanFailed'),
-        tmuxUnhealthy: t('agents.workspace.issueGroups.tmuxUnhealthy'),
+        runtimeUnhealthy: t('agents.workspace.issueGroups.tmuxUnhealthy'),
         channelSummary: (count: number) => t('agents.workspace.issueGroups.channelSummary', { count }),
         channelDetail: (channel: string, presence: string, transportErrors: number) =>
           t('agents.workspace.issueGroups.channelDetail', { channel, presence, transportErrors }),
@@ -545,8 +549,8 @@ export function useAgentsPageCopy() {
         agentStaleDetail: (agent: string) => t('agents.workspace.issueGroups.agentStaleDetail', { agent }),
         craftsmanFailedSummary: (count: number) => t('agents.workspace.issueGroups.craftsmanFailedSummary', { count }),
         craftsmanFailedDetail: (craftsman: string) => t('agents.workspace.issueGroups.craftsmanFailedDetail', { craftsman }),
-        tmuxUnhealthySummary: (count: number) => t('agents.workspace.issueGroups.tmuxUnhealthySummary', { count }),
-        tmuxUnhealthyDetail: (agent: string) => t('agents.workspace.issueGroups.tmuxUnhealthyDetail', { agent }),
+        runtimeUnhealthySummary: (count: number) => t('agents.workspace.issueGroups.tmuxUnhealthySummary', { count }),
+        runtimeUnhealthyDetail: (agent: string) => t('agents.workspace.issueGroups.tmuxUnhealthyDetail', { agent }),
       },
       signalNotes: {
         channels: (count: number) => t('agents.workspace.signalNotes.channels', { count }),
@@ -558,7 +562,7 @@ export function useAgentsPageCopy() {
         channelIssues: t('agents.workspace.signalLabels.channelIssues'),
         craftsmanFailures: t('agents.workspace.signalLabels.craftsmanFailures'),
         agentIssues: t('agents.workspace.signalLabels.agentIssues'),
-        tmuxUnready: t('agents.workspace.signalLabels.tmuxUnready'),
+        runtimeUnready: t('agents.workspace.signalLabels.tmuxUnready'),
       },
       axis: {
         agentAction: t('agents.workspace.axis.agentAction'),
@@ -594,6 +598,10 @@ export function useTodosPageCopy() {
     summary: t('todos.summary'),
     inputLabel: t('todos.inputLabel'),
     inputPlaceholder: t('todos.inputPlaceholder'),
+    projectLabel: t('todos.projectLabel'),
+    unboundProjectOption: t('todos.unboundProjectOption'),
+    projectFilterLabel: t('todos.projectFilterLabel'),
+    allProjectsOption: t('todos.allProjectsOption'),
     dueLabel: t('todos.dueLabel'),
     tagsLabel: t('todos.tagsLabel'),
     tagsPlaceholder: t('todos.tagsPlaceholder'),

@@ -76,31 +76,37 @@ export const craftsmanStatusItemSchema = z.object({
   })),
 });
 
-export const tmuxRuntimePaneSchema = z.object({
+export const craftsmanRuntimeProviderSchema = z.enum(['tmux', 'acpx', 'unknown']);
+
+export const craftsmanRuntimeSlotSchema = z.object({
+  provider: craftsmanRuntimeProviderSchema,
   agent: z.string(),
-  pane_id: z.string().nullable(),
-  current_command: z.string().nullable(),
-  active: z.boolean(),
+  session_id: z.string().nullable(),
+  runtime_mode: z.string().nullable(),
+  transport: z.string().nullable(),
+  status: z.string(),
   ready: z.boolean(),
+  active: z.boolean(),
+  current_command: z.string().nullable(),
   tail_preview: z.string().nullable(),
-  continuity_backend: z.enum(['claude_session_id', 'codex_session_file', 'gemini_session_id', 'unknown']),
-  resume_capability: z.enum(['native_resume', 'resume_last', 'none']),
   session_reference: z.string().nullable(),
-  identity_source: z.enum(['registry_default', 'runtime_gateway', 'plugin_event', 'hook_event', 'session_file', 'chat_file', 'latest_fallback', 'manual', 'transport_session']),
-  identity_source_rank: z.number().int().nonnegative(),
-  identity_path: z.string().nullable().optional(),
-  session_observed_at: z.string().nullable().optional(),
-  identity_conflict_count: z.number().int().nonnegative(),
-  last_rejected_identity_source: z.enum(['registry_default', 'runtime_gateway', 'plugin_event', 'hook_event', 'session_file', 'chat_file', 'latest_fallback', 'manual', 'transport_session']).nullable().optional(),
-  last_rejected_session_reference: z.string().nullable().optional(),
-  last_rejected_observed_at: z.string().nullable().optional(),
-  last_recovery_mode: z.enum(['fresh_start', 'resume_exact', 'resume_latest', 'resume_last']).nullable(),
-  transport_session_id: z.string().nullable(),
+  execution_id: z.string().nullable(),
+  task_id: z.string().nullable(),
+  subtask_id: z.string().nullable(),
+  title: z.string().nullable(),
 });
 
-export const tmuxRuntimeSchema = z.object({
+export const craftsmanRuntimeProviderSummarySchema = z.object({
+  provider: craftsmanRuntimeProviderSchema,
   session: z.string().nullable(),
-  panes: z.array(tmuxRuntimePaneSchema),
+  slot_count: z.number().int().nonnegative(),
+  ready_slots: z.number().int().nonnegative(),
+  active_slots: z.number().int().nonnegative(),
+});
+
+export const craftsmanRuntimeSchema = z.object({
+  providers: z.array(craftsmanRuntimeProviderSummarySchema),
+  slots: z.array(craftsmanRuntimeSlotSchema),
 });
 
 export const agentAxisAffectedAgentSchema = z.object({
@@ -183,7 +189,7 @@ export const agentsStatusSchema = z.object({
   craftsmen: z.array(craftsmanStatusItemSchema),
   channel_summaries: z.array(agentChannelSummarySchema),
   host_summaries: z.array(agentHostSummarySchema),
-  tmux_runtime: tmuxRuntimeSchema.nullable(),
+  craftsman_runtime: craftsmanRuntimeSchema.nullable().optional(),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
 
@@ -291,6 +297,7 @@ export type ArchiveJobReceiptScanResponseDto = z.infer<typeof archiveJobReceiptS
 export const todoItemSchema = z.object({
   id: z.number().int().nonnegative(),
   text: z.string(),
+  project_id: z.string().nullable(),
   status: z.string(),
   due: z.string().nullable(),
   created_at: z.string(),
@@ -308,6 +315,7 @@ export type PromoteTodoResultDto = z.infer<typeof promoteTodoResultSchema>;
 
 export const createTodoRequestSchema = z.object({
   text: z.string().min(1),
+  project_id: z.string().min(1).nullable().optional(),
   due: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -315,6 +323,7 @@ export type CreateTodoRequestDto = z.infer<typeof createTodoRequestSchema>;
 
 export const updateTodoRequestSchema = z.object({
   text: z.string().min(1).optional(),
+  project_id: z.string().min(1).nullable().optional(),
   due: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
   status: z.enum(['pending', 'done']).optional(),

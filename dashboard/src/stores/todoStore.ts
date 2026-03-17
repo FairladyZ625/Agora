@@ -8,12 +8,14 @@ interface TodoStore {
   loading: boolean;
   error: string | null;
   filter: TodoFilter;
+  projectFilter: string | null;
   fetchTodos: () => Promise<'live' | 'error'>;
-  createTodo: (input: { text: string; due?: string | null; tags?: string[] }) => Promise<Todo>;
-  updateTodo: (id: number, input: { text?: string; due?: string | null; tags?: string[]; status?: 'pending' | 'done' }) => Promise<Todo>;
+  createTodo: (input: { text: string; project_id?: string | null; due?: string | null; tags?: string[] }) => Promise<Todo>;
+  updateTodo: (id: number, input: { text?: string; project_id?: string | null; due?: string | null; tags?: string[]; status?: 'pending' | 'done' }) => Promise<Todo>;
   deleteTodo: (id: number) => Promise<void>;
   promoteTodo: (id: number, input: { type?: string; creator?: string; priority?: string }) => Promise<PromoteTodoResult>;
   setFilter: (filter: TodoFilter) => void;
+  setProjectFilter: (projectId: string | null) => void;
   clearError: () => void;
 }
 
@@ -26,13 +28,14 @@ export const useTodoStore = create<TodoStore>()((set, get) => ({
   loading: false,
   error: null,
   filter: 'all',
+  projectFilter: null,
 
   fetchTodos: async () => {
     set({ loading: true, error: null });
     try {
       const currentFilter = get().filter;
       const filter = currentFilter === 'all' ? undefined : currentFilter;
-      const todos = (await api.listTodos(filter)).map(mapTodoDto);
+      const todos = (await api.listTodos(filter, get().projectFilter ?? undefined)).map(mapTodoDto);
       set({ todos, loading: false });
       return 'live';
     } catch (error) {
@@ -84,6 +87,7 @@ export const useTodoStore = create<TodoStore>()((set, get) => ({
   },
 
   setFilter: (filter) => set({ filter }),
+  setProjectFilter: (projectFilter) => set({ projectFilter }),
 
   clearError: () => set({ error: null }),
 }));

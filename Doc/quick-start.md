@@ -4,7 +4,12 @@
 
 - Node.js 22+
 - npm 10+
-- tmux if you want the craftsmen tmux runtime
+- `acpx`
+
+Optional:
+
+- OpenClaw if you want hosted IM participation
+- Discord if you want the live thread experience
 
 ## Fast Path
 
@@ -25,8 +30,8 @@ cd Agora
   - builds the TypeScript workspace
 - `./agora init`
   - writes local Agora config into `~/.agora/`
-  - lets you choose Discord or no IM provider
   - bootstraps the first dashboard admin
+  - prepares the default ACPX-backed execution path
 - `./agora start`
   - starts the Fastify backend
   - starts the Vite dashboard dev server
@@ -41,6 +46,23 @@ cd Agora
 ```bash
 ./agora create "Add authentication middleware to the API"
 ```
+
+## Operating Model
+
+```text
+Create task
+  -> Citizens discuss
+  -> Archon reviews
+  -> execution-only or dialogue-capable executor is selected
+  -> ACPX-backed execution runs
+  -> output is reviewed and archived
+```
+
+## Notes
+
+- Agora is no longer centered on the old tmux Craftsman shell.
+- Public execution entrypoints now use provider-neutral runtime surfaces.
+- `Craftsman` should be read as a governed execution role, not as a self-owned low-level runtime framework.
 
 ## Next Guides
 

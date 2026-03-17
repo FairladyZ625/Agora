@@ -975,8 +975,8 @@
     radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 36%),
     var(--color-surface-muted);
   width: 100%;
-  height: 70vh;
-  min-height: 640px;
+  height: 68vh;
+  min-height: 600px;
 }
 
 .template-graph-editor-canvas .react-flow {
@@ -987,7 +987,10 @@
 .template-graph-editor-canvas .react-flow__renderer {
   background:
     radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 42%),
+    radial-gradient(circle, color-mix(in srgb, var(--color-border-strong) 26%, transparent) 0.8px, transparent 0.8px),
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 92%, transparent), color-mix(in srgb, var(--color-surface-muted) 96%, transparent));
+  background-size: auto, 22px 22px, auto;
+  background-position: center top, 0 0, center;
 }
 
 .template-graph-editor-canvas .react-flow__edge-path {
@@ -1027,9 +1030,13 @@
   border-radius: calc(var(--radius-card) + 2px);
   background:
     radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 36%),
+    radial-gradient(circle, color-mix(in srgb, var(--color-border-strong) 22%, transparent) 0.7px, transparent 0.7px),
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, transparent), color-mix(in srgb, var(--color-surface-muted) 98%, transparent));
-  padding: 12px;
+  background-size: auto, 20px 20px, auto;
+  background-position: center top, 0 0, center;
+  padding: 14px;
   min-height: var(--workflow-graph-preview-height, 220px);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
 }
 
 .workflow-graph-view__canvas {
@@ -1059,7 +1066,7 @@
 
 .workflow-graph-view__node {
   position: absolute;
-  width: 236px;
+  width: var(--workflow-graph-node-width, 228px);
 }
 
 .workflow-graph-view__node--current {
@@ -1069,18 +1076,20 @@
 .template-graph-node {
   position: relative;
   display: flex;
-  min-height: 92px;
-  width: 236px;
+  min-height: var(--workflow-graph-node-height, 92px);
+  width: var(--workflow-graph-node-width, 228px);
   flex-direction: column;
   justify-content: space-between;
   gap: 12px;
   overflow: hidden;
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 92%, transparent);
   border-radius: var(--radius-card);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 98%, transparent), color-mix(in srgb, var(--color-surface-muted) 92%, transparent));
-  box-shadow: 0 16px 34px color-mix(in srgb, var(--color-shadow) 12%, transparent);
-  padding: 15px 16px 14px;
+    linear-gradient(180deg, color-mix(in srgb, white 94%, var(--color-surface)), color-mix(in srgb, var(--color-surface) 96%, var(--color-surface-muted)));
+  box-shadow:
+    0 16px 34px color-mix(in srgb, var(--color-shadow) 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 72%, transparent);
+  padding: 15px 15px 14px;
 }
 
 .template-graph-node::before {
@@ -1113,7 +1122,7 @@
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--workflow-graph-pill-font-size, 11px);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1123,22 +1132,22 @@
   height: 22px;
   padding: 0 8px;
   border: 1px solid var(--color-border);
-  background: var(--color-surface-muted);
+  background: color-mix(in srgb, var(--color-surface-muted) 86%, white);
   color: var(--color-text-secondary);
 }
 
 .template-graph-node__entry {
   height: 22px;
   padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 36%, transparent);
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
-  color: var(--color-accent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 16%, white);
+  color: color-mix(in srgb, var(--color-accent) 82%, var(--color-text-primary));
 }
 
 .template-graph-node__title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: color-mix(in srgb, var(--color-text-primary) 92%, black);
   line-height: 1.22;
 }
 
@@ -1146,8 +1155,8 @@
   align-self: flex-start;
   margin-top: 10px;
   padding: 4px 8px;
-  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-muted));
-  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-accent) 10%, white);
+  color: color-mix(in srgb, var(--color-text-secondary) 90%, var(--color-text-primary));
 }
 
 .template-graph-node__handle {
@@ -1176,8 +1185,8 @@
 
 .template-graph-overlay__path {
   fill: none;
-  stroke: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-strong));
-  stroke-width: 2.2;
+  stroke: color-mix(in srgb, var(--color-accent) 64%, var(--color-border-strong));
+  stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
   filter: drop-shadow(0 3px 12px color-mix(in srgb, var(--color-accent) 18%, transparent));
@@ -1225,8 +1234,8 @@
 }
 
 .template-graph-edge {
-  stroke: color-mix(in srgb, var(--color-accent) 52%, var(--color-border-strong));
-  stroke-width: 2.2;
+  stroke: color-mix(in srgb, var(--color-accent) 64%, var(--color-border-strong));
+  stroke-width: 2.4;
   fill: none;
   filter: drop-shadow(0 3px 12px color-mix(in srgb, var(--color-accent) 18%, transparent));
   transition: stroke 180ms ease, stroke-width 180ms ease, filter 180ms ease, opacity 180ms ease;
@@ -1245,15 +1254,15 @@
 
 .template-graph-edge__label {
   position: absolute;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface) 97%, transparent);
-  color: color-mix(in srgb, var(--color-accent) 28%, var(--color-text-primary));
-  font-size: 11px;
+  background: color-mix(in srgb, white 86%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-accent) 38%, var(--color-text-primary));
+  font-size: var(--workflow-graph-edge-label-font-size, 11px);
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1;
-  padding: 6px 12px;
+  padding: var(--workflow-graph-edge-label-padding-y, 5px) var(--workflow-graph-edge-label-padding-x, 11px);
   text-align: center;
   text-transform: uppercase;
   pointer-events: all;
@@ -1319,7 +1328,7 @@
   }
 
   .template-graph-editor-layout {
-    grid-template-columns: 200px minmax(0, 1fr) 280px;
+    grid-template-columns: 176px minmax(0, 1fr) 248px;
   }
 }
 

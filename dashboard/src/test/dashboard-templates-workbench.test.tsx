@@ -75,7 +75,7 @@ const templateStoreState = {
 const agentStoreState = {
   agents: [],
   fetchStatus,
-  tmuxRuntime: { session: null, panes: [] },
+  craftsmanRuntime: null,
 };
 
 vi.mock('@/stores/templateStore', () => ({

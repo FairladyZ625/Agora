@@ -2,11 +2,20 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
+import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
+import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
+import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
+import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
+import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
 import { LiveSessionStore } from './live-session-store.js';
+import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import { ProjectBrainService } from './project-brain-service.js';
+import { ProjectService } from './project-service.js';
+import { RolePackService } from './role-pack-service.js';
 import { TaskService } from './task-service.js';
 import { TaskBrainBindingService } from './task-brain-binding-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
@@ -683,6 +692,244 @@ describe('task service', () => {
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '02-roster.md'), 'utf8')).toContain('opus | architect | controller');
   });
 
+  it('creates a project-scoped brain workspace when task project binding is provided', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-alpha',
+      name: 'Project Alpha',
+      summary: 'project brain scope',
+    });
+    const brainPackDir = makeBrainPackDir();
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BRAIN-PROJECT',
+      projectService: new ProjectService(db),
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-project',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    const task = service.createTask({
+      title: 'Project scoped brain pack',
+      type: 'coding',
+      creator: 'archon',
+      description: 'materialize project workspace',
+      priority: 'high',
+      project_id: 'proj-alpha',
+    });
+
+    const binding = new TaskBrainBindingRepository(db).getActiveByTask(task.id);
+    const workspacePath = join(brainPackDir, 'projects', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT');
+    expect(task.project_id).toBe('proj-alpha');
+    expect(binding?.workspace_path).toBe(workspacePath);
+    expect(binding?.metadata).toMatchObject({
+      project_id: 'proj-alpha',
+    });
+    expect(existsSync(join(workspacePath, 'task.meta.yaml'))).toBe(true);
+    expect(readFileSync(join(workspacePath, 'task.meta.yaml'), 'utf8')).toContain('project_id: "proj-alpha"');
+    expect(readFileSync(join(workspacePath, '00-current.md'), 'utf8')).toContain('Project: proj-alpha');
+    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(
+      join(brainPackDir, 'roles', 'architect.md'),
+    );
+  });
+
+  it('materializes a bootstrap project brain context file for project-bound tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-bootstrap',
+      name: 'Project Bootstrap',
+      summary: 'Automation bootstrap context',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-bootstrap',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime adapters outside core.',
+      body: 'Runtime adapters stay outside core and expose provider-neutral ports.',
+      source_task_ids: ['OC-BOOT-0'],
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Keep runtime adapters outside core.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-bootstrap',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: [],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+        metadata: {},
+      },
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    const automationService = new ProjectBrainAutomationService({
+      projectBrainService,
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-BOOTSTRAP',
+      projectService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-bootstrap',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      projectBrainAutomationService: automationService,
+    });
+
+    service.createTask({
+      title: 'Project bootstrap task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'bootstrap project context',
+      priority: 'high',
+      project_id: 'proj-bootstrap',
+    });
+
+    const workspacePath = join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
+    const bootstrapContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+    expect(existsSync(bootstrapContextPath)).toBe(true);
+    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('Runtime Boundary');
+    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('citizen-alpha');
+    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(bootstrapContextPath);
+    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(bootstrapContextPath);
+  });
+
+  it('materializes task close recap into task and project scope for project-bound tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-recap',
+      name: 'Project Recap',
+    });
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-PROJECT-RECAP',
+      projectService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-recap',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Project recap task',
+      type: 'project-thin-slice',
+      creator: 'archon',
+      description: 'recap writeback path',
+      priority: 'high',
+      project_id: 'proj-recap',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'command-only',
+        stages: [{ id: 'ship', mode: 'execute', gate: { type: 'command' } }],
+      },
+    });
+
+    const done = service.advanceTask('OC-PROJECT-RECAP', { callerId: 'archon' });
+    const workspacePath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'OC-PROJECT-RECAP');
+    const taskRecapPath = join(workspacePath, '07-outputs', 'task-close-recap.md');
+    const projectRecapPath = join(brainPackDir, 'projects', 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
+
+    expect(done.state).toBe('done');
+    expect(existsSync(taskRecapPath)).toBe(true);
+    expect(existsSync(projectRecapPath)).toBe(true);
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'))).toBe(true);
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'))).toBe(true);
+    expect(readFileSync(taskRecapPath, 'utf8')).toContain('doc_type: task_recap');
+    expect(readFileSync(taskRecapPath, 'utf8')).toContain('Project: proj-recap');
+    expect(readFileSync(taskRecapPath, 'utf8')).toContain('任务已到达 done，已进入 archive 流程。');
+    expect(readFileSync(projectRecapPath, 'utf8')).toContain('doc_type: task_recap');
+    expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');
+  });
+
+  it('promotes project-bound todos into tasks that keep the same project_id', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-promote',
+      name: 'Promote Project',
+    });
+    const todo = new TodoRepository(db).insertTodo({
+      text: 'promote into task',
+      project_id: 'proj-promote',
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TODO-PROJECT',
+    });
+
+    const promoted = service.promoteTodo(todo.id, {
+      type: 'coding',
+      creator: 'archon',
+      priority: 'high',
+    });
+
+    expect(promoted.todo.project_id).toBe('proj-promote');
+    expect(promoted.task.project_id).toBe('proj-promote');
+  });
+
   it('rolls back task creation when brain workspace materialization fails', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -698,6 +945,7 @@ describe('task service', () => {
           throw new Error('brain workspace boom');
         },
         updateWorkspace: () => {},
+        writeTaskCloseRecap: () => {},
         destroyWorkspace: () => {},
       },
     });
@@ -711,6 +959,26 @@ describe('task service', () => {
     })).toThrow('brain workspace boom');
     expect(tasks.getTask('OC-BRAIN-FAIL')).toBeNull();
     expect(new TaskBrainBindingRepository(db).getActiveByTask('OC-BRAIN-FAIL')).toBeNull();
+  });
+
+  it('rejects task creation when a referenced project does not exist', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-MISSING',
+    });
+
+    expect(() => service.createTask({
+      title: 'Missing project task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-missing',
+    })).toThrow('Project not found: proj-missing');
+    expect(tasks.getTask('OC-PROJECT-MISSING')).toBeNull();
   });
 
   it('repairs stale database-backed templates with missing member_kind before building the task team', () => {
@@ -4383,6 +4651,63 @@ describe('task service', () => {
     });
   });
 
+  it('returns execution-scoped acpx tail when an acp tail port is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TAIL-ACP-1',
+      craftsmanExecutionTailPort: {
+        tail: (execution, lines) => ({
+          execution_id: execution.executionId,
+          available: true,
+          output: `acp-tail:${execution.adapter}:${execution.workdir}:${lines}`,
+          source: 'acpx',
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Execution tail route via acpx',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    subtasks.insertSubtask({
+      id: 'tail-acp-subtask-1',
+      task_id: 'OC-TAIL-ACP-1',
+      stage_id: 'develop',
+      title: 'stream acp output',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'acpx:exec-tail-acp-1',
+      craftsman_workdir: '/tmp/acp-tail',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-tail-acp-1',
+      task_id: 'OC-TAIL-ACP-1',
+      subtask_id: 'tail-acp-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-tail-acp-1',
+      workdir: '/tmp/acp-tail',
+      status: 'running',
+      started_at: '2026-03-16T12:00:00.000Z',
+    });
+
+    expect(service.getCraftsmanExecutionTail('exec-tail-acp-1', 25)).toEqual({
+      execution_id: 'exec-tail-acp-1',
+      available: true,
+      output: 'acp-tail:claude:/tmp/acp-tail:25',
+      source: 'acpx',
+    });
+  });
+
   it('allows execution-scoped input for running continuous tmux executions', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -4436,5 +4761,279 @@ describe('task service', () => {
     expect(calls).toEqual([
       { kind: 'text', executionId: 'exec-continuous-1', payload: { text: 'Continue', submit: true } },
     ]);
+  });
+
+  it('allows execution-scoped input for running continuous acpx executions', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const calls: Array<{ kind: string; executionId: string; workdir: string | null; payload: unknown }> = [];
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-ACP-1',
+      craftsmanInputPort: {
+        sendText: (execution, text, submit = true) => {
+          calls.push({ kind: 'text', executionId: execution.executionId, workdir: execution.workdir, payload: { text, submit } });
+        },
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Continuous acpx craftsman input route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    subtasks.insertSubtask({
+      id: 'continuous-acp-subtask-1',
+      task_id: 'OC-CONTINUOUS-INPUT-ACP-1',
+      stage_id: 'develop',
+      title: 'continue interactive acpx session',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'acpx:exec-cont-acp-1',
+      craftsman_workdir: '/tmp/acp-input',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-cont-acp-1',
+      task_id: 'OC-CONTINUOUS-INPUT-ACP-1',
+      subtask_id: 'continuous-acp-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-cont-acp-1',
+      workdir: '/tmp/acp-input',
+      status: 'running',
+      started_at: '2026-03-16T12:00:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-cont-acp-1', 'Continue via acpx');
+
+    expect(calls).toEqual([
+      {
+        kind: 'text',
+        executionId: 'exec-cont-acp-1',
+        workdir: '/tmp/acp-input',
+        payload: { text: 'Continue via acpx', submit: true },
+      },
+    ]);
+  });
+
+  it('probes acpx executions after operator input and resumes the execution status loop', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-1',
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-ACP-1',
+      imProvisioningPort: provisioningPort,
+      imMessagingPort: provisioningPort,
+      taskContextBindingService: new TaskContextBindingService(db),
+      craftsmanInputPort: {
+        sendText: () => {},
+        sendKeys: () => {},
+        submitChoice: () => {},
+      },
+      craftsmanExecutionProbePort: {
+        probe: (execution) => ({
+          execution_id: execution.executionId,
+          status: 'running',
+          session_id: execution.sessionId,
+          payload: {
+            output: {
+              summary: 'claude resumed after operator input',
+              text: null,
+              stderr: null,
+              artifacts: [],
+              structured: { transport: 'acpx' },
+            },
+          },
+          error: null,
+          finished_at: null,
+        }),
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+
+    service.createTask({
+      title: 'Probe acpx session after input',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', conversation_ref: 'channel-1' },
+    });
+    bindings.insert({
+      id: 'binding-acp-probe-1',
+      task_id: 'OC-PROBE-ACP-1',
+      im_provider: 'discord',
+      thread_ref: 'thread-1',
+      conversation_ref: 'channel-1',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'probe-acp-subtask-1',
+      task_id: 'OC-PROBE-ACP-1',
+      stage_id: 'develop',
+      title: 'wait for acpx input then resume',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'needs_input',
+      craftsman_session: 'acpx:exec-probe-acp-1',
+      craftsman_workdir: '/tmp/acp-probe',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-probe-acp-1',
+      task_id: 'OC-PROBE-ACP-1',
+      subtask_id: 'probe-acp-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-probe-acp-1',
+      workdir: '/tmp/acp-probe',
+      status: 'needs_input',
+      started_at: '2026-03-16T12:00:00.000Z',
+    });
+
+    service.sendCraftsmanInputText('exec-probe-acp-1', 'Continue');
+
+    expect(service.getCraftsmanExecution('exec-probe-acp-1').status).toBe('running');
+    const subtask = new SubtaskRepository(db).listByTask('OC-PROBE-ACP-1').find((entry) => entry.id === 'probe-acp-subtask-1');
+    expect(subtask?.dispatch_status).toBe('running');
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const runningMessage = broadcasts.find((message) => message.kind === 'craftsman_running');
+    expect(runningMessage?.body).toContain('Status: running');
+  });
+
+  it('settles completed acpx sessions through observeCraftsmanExecutions and preserves callback notifications', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-1',
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-OBSERVE-ACP-DONE-1',
+      imProvisioningPort: provisioningPort,
+      imMessagingPort: provisioningPort,
+      taskContextBindingService: new TaskContextBindingService(db),
+      craftsmanExecutionProbePort: new AcpCraftsmanProbePort({
+        probeExecution: () => ({
+          sessionName: 'exec-observe-acp-done-1',
+          lifecycleState: 'dead',
+          agentSessionId: 'runtime-acp-done-1',
+          summary: 'queue owner exited cleanly',
+          lastPromptTime: '2026-03-16T12:02:00.000Z',
+          rawStatus: {
+            action: 'status_snapshot',
+            status: 'dead',
+            exitCode: 0,
+            signal: null,
+          },
+        }),
+        tailExecution: () => ({
+          execution_id: 'exec-observe-acp-done-1',
+          available: true,
+          output: 'Claude finished the ACP cutover patch',
+          source: 'acpx',
+        }),
+      } as never),
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+
+    service.createTask({
+      title: 'Observe finished acpx execution',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', conversation_ref: 'channel-1' },
+    });
+    bindings.insert({
+      id: 'binding-observe-acp-done-1',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      im_provider: 'discord',
+      thread_ref: 'thread-1',
+      conversation_ref: 'channel-1',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'observe-acp-done-subtask-1',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      stage_id: 'develop',
+      title: 'watch acpx completion',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'acpx:exec-observe-acp-done-1',
+      craftsman_workdir: '/tmp/acp-observe-done',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-observe-acp-done-1',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      subtask_id: 'observe-acp-done-subtask-1',
+      adapter: 'claude',
+      mode: 'interactive',
+      session_id: 'acpx:exec-observe-acp-done-1',
+      workdir: '/tmp/acp-observe-done',
+      status: 'running',
+      started_at: '2026-03-16T12:00:00.000Z',
+      finished_at: null,
+    });
+
+    db.prepare(`
+      UPDATE craftsman_executions
+      SET updated_at = ?
+      WHERE execution_id = 'exec-observe-acp-done-1'
+    `).run('2026-03-16T12:00:00.000Z');
+
+    const result = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date('2026-03-16T12:05:00.000Z'),
+    });
+
+    expect(result).toMatchObject({
+      scanned: 1,
+      probed: 1,
+      progressed: 1,
+    });
+    expect(service.getCraftsmanExecution('exec-observe-acp-done-1').status).toBe('succeeded');
+    const subtask = new SubtaskRepository(db).listByTask('OC-OBSERVE-ACP-DONE-1')
+      .find((entry) => entry.id === 'observe-acp-done-subtask-1');
+    expect(subtask).toMatchObject({
+      status: 'done',
+      dispatch_status: 'succeeded',
+      output: 'Claude finished the ACP cutover patch',
+    });
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const completedMessage = broadcasts.find((message) => message.kind === 'craftsman_completed');
+    expect(completedMessage?.body).toContain('事件类型: craftsman_completed');
+    expect(completedMessage?.body).toContain('Claude finished the ACP cutover patch');
+    const statusConversation = new TaskConversationRepository(db)
+      .listByTask('OC-OBSERVE-ACP-DONE-1')
+      .find((entry) => entry.metadata?.event_type === 'craftsman_completed' && entry.author_ref === 'agora-bot');
+    expect(statusConversation?.metadata).toMatchObject({
+      event_type: 'craftsman_completed',
+      task_id: 'OC-OBSERVE-ACP-DONE-1',
+      current_stage: 'discuss',
+    });
   });
 });

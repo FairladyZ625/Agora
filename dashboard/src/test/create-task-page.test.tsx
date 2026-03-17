@@ -9,6 +9,7 @@ const navigate = vi.fn();
 const fetchTemplates = vi.fn(async () => 'live');
 const selectTemplate = vi.fn(async () => undefined);
 const fetchStatus = vi.fn(async () => 'live');
+const fetchProjects = vi.fn(async () => 'live');
 
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
@@ -22,6 +23,18 @@ vi.mock('@/stores/taskStore', () => ({
   useTaskStore: (selector: (state: {
     createTask: typeof createTask;
   }) => unknown) => selector({ createTask }),
+}));
+
+vi.mock('@/stores/projectStore', () => ({
+  useProjectStore: (selector: (state: {
+    projects: Array<{ id: string; name: string; status: string; owner: string | null; summary: string | null }>;
+    fetchProjects: typeof fetchProjects;
+  }) => unknown) => selector({
+    projects: [
+      { id: 'proj-alpha', name: 'Project Alpha', status: 'active', owner: 'archon', summary: 'primary project' },
+    ],
+    fetchProjects,
+  }),
 }));
 
 vi.mock('@/stores/feedbackStore', () => ({
@@ -110,23 +123,30 @@ vi.mock('@/stores/agentStore', () => ({
       lastSeenAt: string | null;
     }>;
     fetchStatus: typeof fetchStatus;
-    tmuxRuntime: {
-      session: string | null;
-      panes: Array<{
+    craftsmanRuntime: {
+      providers: Array<{
+        provider: 'tmux' | 'acpx' | 'unknown';
+        session: string | null;
+        slotCount: number;
+        readySlots: number;
+        activeSlots: number;
+      }>;
+      slots: Array<{
+        provider: 'tmux' | 'acpx' | 'unknown';
         agent: string;
-        paneId: string | null;
-        currentCommand: string | null;
-        active: boolean;
+        sessionId: string | null;
+        runtimeMode: string | null;
+        transport: string | null;
+        status: string;
         ready: boolean;
+        active: boolean;
+        currentCommand: string | null;
         tailPreview: string | null;
-        continuityBackend: 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
-        resumeCapability: 'native_resume' | 'resume_last' | 'none';
         sessionReference: string | null;
-        identitySource: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
-        identityPath: string | null;
-        sessionObservedAt: string | null;
-        lastRecoveryMode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
-        transportSessionId: string | null;
+        executionId: string | null;
+        taskId: string | null;
+        subtaskId: string | null;
+        title: string | null;
       }>;
     } | null;
   }) => unknown) => selector({
@@ -173,40 +193,42 @@ vi.mock('@/stores/agentStore', () => ({
       },
     ],
     fetchStatus,
-    tmuxRuntime: {
-      session: 'agora-craftsmen',
-      panes: [
+    craftsmanRuntime: {
+      providers: [{ provider: 'tmux' as const, session: 'agora-craftsmen', slotCount: 2, readySlots: 2, activeSlots: 2 }],
+      slots: [
         {
+          provider: 'tmux' as const,
           agent: 'claude',
-          paneId: '%0',
-          currentCommand: 'claude',
-          active: true,
+          sessionId: 'tmux:agora-craftsmen:claude',
+          runtimeMode: 'tmux',
+          transport: 'tmux-pane',
+          status: 'running',
           ready: true,
+          active: true,
+          currentCommand: 'claude',
           tailPreview: null,
-          continuityBackend: 'claude_session_id',
-          resumeCapability: 'native_resume',
           sessionReference: 'claude-session-1',
-          identitySource: 'session_file',
-          identityPath: null,
-          sessionObservedAt: null,
-          lastRecoveryMode: 'resume_exact',
-          transportSessionId: 'tmux:agora-craftsmen:claude',
+          executionId: null,
+          taskId: null,
+          subtaskId: null,
+          title: null,
         },
         {
+          provider: 'tmux' as const,
           agent: 'codex',
-          paneId: '%1',
-          currentCommand: 'codex',
-          active: true,
+          sessionId: 'tmux:agora-craftsmen:codex',
+          runtimeMode: 'tmux',
+          transport: 'tmux-pane',
+          status: 'running',
           ready: true,
+          active: true,
+          currentCommand: 'codex',
           tailPreview: null,
-          continuityBackend: 'codex_session_file',
-          resumeCapability: 'native_resume',
           sessionReference: 'codex-session-1',
-          identitySource: 'session_file',
-          identityPath: null,
-          sessionObservedAt: null,
-          lastRecoveryMode: 'resume_exact',
-          transportSessionId: 'tmux:agora-craftsmen:codex',
+          executionId: null,
+          taskId: null,
+          subtaskId: null,
+          title: null,
         },
       ],
     },
@@ -231,6 +253,9 @@ describe('create task page', () => {
     fireEvent.change(screen.getByLabelText('任务描述'), {
       target: { value: '需要私有线程和定向 agent' },
     });
+    fireEvent.change(screen.getByLabelText('所属 Project'), {
+      target: { value: 'proj-alpha' },
+    });
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
@@ -243,6 +268,7 @@ describe('create task page', () => {
       expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
         title: '实现动态选人 create flow',
         type: 'coding',
+        project_id: 'proj-alpha',
         team_override: {
           members: [
             { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
@@ -258,6 +284,7 @@ describe('create task page', () => {
       }));
     });
     expect(fetchTemplates).toHaveBeenCalled();
+    expect(fetchProjects).toHaveBeenCalled();
     expect(fetchStatus).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/tasks/OC-200');
   });

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTodosPageCopy } from '@/lib/dashboardCopy';
 import { useFeedbackStore } from '@/stores/feedbackStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useTodoStore } from '@/stores/todoStore';
 import type { TodoFilter } from '@/types/dashboard';
 
@@ -17,14 +18,20 @@ export function TodosPage() {
   const deleteTodo = useTodoStore((state) => state.deleteTodo);
   const promoteTodo = useTodoStore((state) => state.promoteTodo);
   const setFilter = useTodoStore((state) => state.setFilter);
+  const projectFilter = useTodoStore((state) => state.projectFilter);
+  const setProjectFilter = useTodoStore((state) => state.setProjectFilter);
+  const projects = useProjectStore((state) => state.projects);
+  const fetchProjects = useProjectStore((state) => state.fetchProjects);
   const { showMessage } = useFeedbackStore();
   const [text, setText] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [due, setDue] = useState('');
   const [tags, setTags] = useState('');
 
   useEffect(() => {
     void fetchTodos();
-  }, [fetchTodos, filter]);
+    void fetchProjects();
+  }, [fetchProjects, fetchTodos, filter, projectFilter]);
 
   const submitTodo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -32,6 +39,7 @@ export function TodosPage() {
     try {
       await createTodo({
         text: text.trim(),
+        project_id: projectId || null,
         due: due || null,
         tags: tags
           .split(',')
@@ -39,6 +47,7 @@ export function TodosPage() {
           .filter(Boolean),
       });
       setText('');
+      setProjectId('');
       setDue('');
       setTags('');
     } catch (todoError) {
@@ -92,6 +101,20 @@ export function TodosPage() {
             />
           </label>
           <label className="space-y-2">
+            <span className="field-label">{copy.projectLabel}</span>
+            <select
+              aria-label={copy.projectLabel}
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+              className="input-shell"
+            >
+              <option value="">{copy.unboundProjectOption}</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2">
             <span className="field-label">{copy.dueLabel}</span>
             <input
               type="date"
@@ -130,6 +153,17 @@ export function TodosPage() {
               {copy.filters[item]}
             </button>
           ))}
+          <select
+            aria-label={copy.projectFilterLabel}
+            value={projectFilter ?? ''}
+            onChange={(event) => setProjectFilter(event.target.value || null)}
+            className="input-shell max-w-xs"
+          >
+            <option value="">{copy.allProjectsOption}</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>{project.name}</option>
+            ))}
+          </select>
         </div>
 
         <div className="space-y-3">
@@ -146,6 +180,7 @@ export function TodosPage() {
                     <span className="status-pill status-pill--neutral">{todo.status}</span>
                   </div>
                   <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                    {todo.projectId ? <span>{projects.find((project) => project.id === todo.projectId)?.name ?? todo.projectId}</span> : null}
                     {todo.due ? <span>{todo.due}</span> : null}
                     <span>{todo.tagLabel}</span>
                     {todo.promotedTo ? <span>{copy.promotedPrefix} {todo.promotedTo}</span> : null}

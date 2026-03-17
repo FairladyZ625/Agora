@@ -47,6 +47,7 @@ import { GateService } from './gate-service.js';
 import { ModeController } from './mode-controller.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
+import { ProjectService } from './project-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
@@ -59,6 +60,7 @@ import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
+import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
 
@@ -106,6 +108,7 @@ export interface TaskServiceOptions {
   taskIdGenerator?: () => string;
   archonUsers?: string[];
   allowAgents?: Record<string, { canCall: string[]; canAdvance: boolean }>;
+  projectService?: ProjectService;
   craftsmanDispatcher?: CraftsmanDispatcher;
   isCraftsmanSessionAlive?: (sessionId: string) => boolean;
   imProvisioningPort?: IMProvisioningPort;
@@ -114,6 +117,7 @@ export interface TaskServiceOptions {
   taskBrainBindingService?: TaskBrainBindingService;
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
+  projectBrainAutomationService?: ProjectBrainAutomationService;
   agentRuntimePort?: AgentRuntimePort;
   runtimeRecoveryPort?: RuntimeRecoveryPort;
   craftsmanInputPort?: CraftsmanInputPort;
@@ -242,6 +246,7 @@ export class TaskService {
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
+  private readonly projectService: ProjectService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
@@ -256,6 +261,7 @@ export class TaskService {
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -286,6 +292,7 @@ export class TaskService {
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
+    this.projectService = options.projectService ?? new ProjectService(db);
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.craftsmanInputPort = options.craftsmanInputPort;
@@ -302,6 +309,7 @@ export class TaskService {
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
+    this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.agentRuntimePort = options.agentRuntimePort;
     this.runtimeRecoveryPort = options.runtimeRecoveryPort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
@@ -334,6 +342,7 @@ export class TaskService {
     }
     const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
+    const projectId = input.project_id ?? null;
     const firstStageId = workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;
     let active: StoredTask;
@@ -341,6 +350,9 @@ export class TaskService {
 
     this.db.exec('BEGIN');
     try {
+      if (projectId) {
+        this.projectService.requireProject(projectId);
+      }
       const draft = this.taskRepository.insertTask({
         id: taskId,
         title: input.title,
@@ -349,6 +361,7 @@ export class TaskService {
         priority: input.priority,
         creator: input.creator,
         locale: resolveTaskLocale(input.locale),
+        project_id: projectId,
         team,
         workflow,
         control: input.control ?? { mode: 'normal' },
@@ -403,6 +416,16 @@ export class TaskService {
           brain_task_id: brainWorkspaceBinding.brain_task_id,
           workspace_path: brainWorkspaceBinding.workspace_path,
           metadata: brainWorkspaceBinding.metadata ?? null,
+        });
+      }
+      if (projectId) {
+        this.projectService.recordTaskBinding({
+          project_id: projectId,
+          task_id: taskId,
+          title: input.title,
+          state: TaskState.ACTIVE,
+          workspace_path: brainWorkspaceBinding?.workspace_path ?? null,
+          bound_at: new Date().toISOString(),
         });
       }
 
@@ -718,6 +741,7 @@ export class TaskService {
         state: TaskState.DONE,
       });
       this.refreshTaskBrainWorkspace(done);
+      this.materializeTaskCloseRecap(done, actor);
       this.ensureArchiveJobForTask(task.id);
       this.flowLogRepository.insertFlowLog({
         task_id: task.id,
@@ -1129,6 +1153,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       status: execution.status,
     }, lines) ?? {
       execution_id: execution.execution_id,
@@ -1391,6 +1416,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       reason: options.reason ?? null,
     });
     this.flowLogRepository.insertFlowLog({
@@ -1461,6 +1487,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       status: execution.status,
     });
     if (!callback) {
@@ -1537,6 +1564,8 @@ export class TaskService {
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
       });
+      this.refreshTaskBrainWorkspace(done);
+      this.materializeTaskCloseRecap(done, 'archon', options.reason);
       this.ensureArchiveJobForTask(taskId);
       this.flowLogRepository.insertFlowLog({
         task_id: taskId,
@@ -1728,6 +1757,7 @@ export class TaskService {
       description: '',
       priority: options.priority,
       locale: 'zh-CN',
+      ...(todo.project_id ? { project_id: todo.project_id } : {}),
     });
     const updatedTodo = this.todoRepository.updateTodo(todoId, {
       promoted_to: task.id,
@@ -2032,8 +2062,15 @@ export class TaskService {
   }
 
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
+    const projectBrainContext = task.project_id && this.projectBrainAutomationService
+      ? this.projectBrainAutomationService.buildBootstrapContext({
+          project_id: task.project_id,
+          audience: 'controller',
+        })
+      : null;
     return {
       task_id: task.id,
+      project_id: task.project_id ?? null,
       locale: task.locale,
       title: task.title,
       description: task.description ?? '',
@@ -2061,6 +2098,15 @@ export class TaskService {
         ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
         ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
       })),
+      ...(projectBrainContext
+        ? {
+            project_brain_context: {
+              audience: projectBrainContext.audience,
+              source_documents: projectBrainContext.source_documents,
+              markdown: projectBrainContext.markdown,
+            },
+          }
+        : {}),
     } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
   }
 
@@ -2333,6 +2379,59 @@ export class TaskService {
             `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
             taskText(task, '请继续编排并推进到下一个阶段。', 'Resume orchestration and drive the next stage.'),
           ],
+    });
+  }
+
+  private materializeTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
+    if (this.projectBrainAutomationService) {
+      this.projectBrainAutomationService.recordTaskCloseRecap(task, actor, reason);
+    } else if (task.project_id && this.taskBrainWorkspacePort && this.taskBrainBindingService) {
+      const binding = this.taskBrainBindingService.getActiveBinding(task.id);
+      if (binding) {
+        const summaryLines = [
+          taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
+          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+          `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
+          ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
+        ];
+        this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
+          task_id: task.id,
+          project_id: task.project_id,
+          locale: task.locale,
+          title: task.title,
+          state: task.state,
+          current_stage: task.current_stage,
+          controller_ref: resolveControllerRef(task.team.members),
+          completed_by: actor,
+          completed_at: new Date().toISOString(),
+          summary_lines: summaryLines,
+        });
+      }
+    }
+    if (!task.project_id || !this.taskBrainBindingService) {
+      return;
+    }
+    const binding = this.taskBrainBindingService.getActiveBinding(task.id);
+    if (!binding) {
+      return;
+    }
+    const summaryLines = [
+      taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
+      `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
+      `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
+      ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
+    ];
+    this.projectService.recordTaskRecap({
+      project_id: task.project_id,
+      task_id: task.id,
+      title: task.title,
+      state: task.state,
+      current_stage: task.current_stage,
+      controller_ref: resolveControllerRef(task.team.members),
+      workspace_path: binding.workspace_path,
+      completed_by: actor,
+      completed_at: new Date().toISOString(),
+      summary_lines: summaryLines,
     });
   }
 
@@ -3663,7 +3762,7 @@ export class TaskService {
     const isWaiting = ['needs_input', 'awaiting_choice'].includes(execution.status);
     const isContinuousInteractive = execution.status === 'running'
       && execution.mode === 'interactive'
-      && execution.session_id?.startsWith('tmux:');
+      && execution.session_id !== null;
     if (!isWaiting && !isContinuousInteractive) {
       throw new Error(`Craftsman execution ${executionId} is not waiting for input or running as an interactive session (status=${execution.status})`);
     }
@@ -3671,6 +3770,7 @@ export class TaskService {
       executionId: execution.execution_id,
       adapter: execution.adapter,
       sessionId: execution.session_id,
+      workdir: execution.workdir,
       taskId: execution.task_id,
       subtaskId: execution.subtask_id,
     };

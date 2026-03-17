@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import { CraftsmanDispatcher, DashboardQueryService, HumanAccountService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainAutomationService, ProjectBrainService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -245,26 +245,6 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('create [options] <taskId>');
   });
 
-  it('renders redirect help for agora tmux --help', async () => {
-    const stdout = createBuffer();
-    const stderr = createBuffer();
-    const program = createCliProgram({
-      configPath: '/definitely/missing/agora.json',
-      stdout,
-      stderr,
-    }).exitOverride();
-
-    try {
-      await program.parseAsync(['tmux', '--help'], { from: 'user' });
-    } catch {
-      // Commander may surface help as an exit signal.
-    }
-
-    expect(stderr.value).toBe('');
-    expect(stdout.value).toContain('Moved to: agora craftsman tmux');
-    expect(stdout.value).toContain('agora craftsman tmux status');
-  });
-
   it('renders redirect help for agora users --help', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -283,6 +263,419 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Moved to: agora dashboard users');
     expect(stdout.value).toContain('agora dashboard users list');
+  });
+
+  it('creates and lists projects through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const program = createCliProgram({
+      projectService: new ProjectService(db, {
+        knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      }),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'create', '--id', 'proj-alpha', '--name', 'Project Alpha', '--owner', 'archon'], { from: 'user' });
+    await program.parseAsync(['projects', 'list'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已创建: proj-alpha');
+    expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
+    expect(readFileSync(join(brainPackRoot, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+  });
+
+  it('creates a project-bound task through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-task-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-cli',
+      name: 'CLI Project',
+      owner: 'archon',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-CLI',
+      projectService,
+    });
+    const program = createCliProgram({
+      taskService,
+      projectService,
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['create', 'project task', '--type', 'coding', '--project-id', 'proj-cli'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project: proj-cli');
+    expect(taskService.getTask('OC-PROJECT-CLI')?.project_id).toBe('proj-cli');
+  });
+
+  it('shows project knowledge through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-show-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-show',
+      name: 'Project Show',
+      owner: 'archon',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'show', 'proj-show'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('proj-show — Project Show');
+    expect(stdout.value).toContain('index:');
+    expect(stdout.value).toContain('# Project Show');
+  });
+
+  it('supports project knowledge CRUD and search through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-knowledge-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-knowledge',
+      name: 'Project Knowledge',
+      owner: 'archon',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'knowledge', 'add',
+      '--project', 'proj-knowledge',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+      '--title', 'Runtime Boundary',
+      '--summary', 'Keep runtime-specific logic out of core.',
+      '--body', 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
+      '--source-task', 'OC-100',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'knowledge', 'list',
+      '--project', 'proj-knowledge',
+      '--kind', 'decision',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'knowledge', 'show',
+      '--project', 'proj-knowledge',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'search',
+      '--project', 'proj-knowledge',
+      '--query', 'orchestration semantics',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Knowledge 已写入:');
+    expect(stdout.value).toContain('decision\truntime-boundary\tRuntime Boundary');
+    expect(stdout.value).toContain('decision/runtime-boundary');
+    expect(stdout.value).toContain('Core keeps orchestration semantics.');
+    expect(stdout.value).toContain('orchestration semantics');
+  });
+
+  it('supports citizen creation, listing, show, and preview through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-citizen-brain-');
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-citizen',
+      name: 'Citizen Project',
+      owner: 'archon',
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Stay core-first.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      projectBrainService,
+      citizenService,
+      rolePackService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'citizens', 'create',
+      '--id', 'citizen-alpha',
+      '--project', 'proj-citizen',
+      '--role', 'architect',
+      '--name', 'Alpha Architect',
+      '--persona', 'Systems thinker',
+      '--boundary', 'Keep runtime adapters outside core.',
+      '--skill', 'system-design',
+    ], { from: 'user' });
+    await program.parseAsync(['citizens', 'list', '--project', 'proj-citizen'], { from: 'user' });
+    await program.parseAsync(['citizens', 'show', 'citizen-alpha'], { from: 'user' });
+    await program.parseAsync(['citizens', 'preview', 'citizen-alpha'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Citizen 已创建: citizen-alpha');
+    expect(stdout.value).toContain('citizen-alpha\tproj-citizen\tarchitect\tactive\tAlpha Architect');
+    expect(stdout.value).toContain('citizen-alpha — Alpha Architect');
+    expect(stdout.value).toContain('.openclaw/citizens/citizen-alpha/profile.json');
+    expect(stdout.value).toContain('.openclaw/citizens/citizen-alpha/brain/03-citizen-scaffold.md');
+  });
+
+  it('supports project brain query and append through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-brain',
+      name: 'Brain Project',
+      owner: 'archon',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-brain',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime-specific logic out of core.',
+      body: 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
+      source_task_ids: ['OC-100'],
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Stay core-first.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Summarize next step.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-brain',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: ['Keep runtime adapters outside core.'],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+        metadata: {},
+      },
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      projectBrainService,
+      citizenService,
+      rolePackService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'query',
+      '--project', 'proj-brain',
+      '--query', 'runtime',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'append',
+      '--project', 'proj-brain',
+      '--kind', 'reference',
+      '--slug', 'obsidian-notes',
+      '--title', 'Obsidian Notes',
+      '--body', 'Append this note into the project brain.',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('citizen_scaffold');
+    expect(stdout.value).toContain('runtime-boundary');
+    expect(stdout.value).toContain('Brain 已追加');
+  });
+
+  it('supports project brain bootstrap-context and promote through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-bootstrap-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-bootstrap',
+      name: 'Bootstrap Project',
+      owner: 'archon',
+      summary: 'Project bootstrap summary',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-bootstrap',
+      kind: 'fact',
+      slug: 'core-first',
+      title: 'Core First',
+      summary: 'Keep orchestration inside core.',
+      body: 'Core keeps orchestration semantics.',
+      source_task_ids: ['OC-BOOT-1'],
+    });
+    const rolePackService = new RolePackService({ db });
+    rolePackService.saveRoleDefinition({
+      id: 'architect',
+      name: 'Architect',
+      member_kind: 'citizen',
+      summary: 'Design systems.',
+      prompt_asset: 'roles/architect.md',
+      source: 'test',
+      source_ref: null,
+      default_model_preference: null,
+      allowed_target_kinds: ['runtime_agent'],
+      citizen_scaffold: {
+        soul: 'Think in systems.',
+        boundaries: ['Keep adapters outside core.'],
+        heartbeat: ['Restate objective.'],
+        recap_expectations: ['Capture next steps.'],
+      },
+      metadata: {},
+    });
+    const citizenService = new CitizenService(db, {
+      projectService,
+      rolePackService,
+      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+    });
+    citizenService.createCitizen({
+      citizen_id: 'citizen-alpha',
+      project_id: 'proj-bootstrap',
+      role_id: 'architect',
+      display_name: 'Alpha Architect',
+      persona: null,
+      boundaries: [],
+      skills_ref: [],
+      channel_policies: {},
+      brain_scaffold_mode: 'role_default',
+      runtime_projection: {
+        adapter: 'openclaw',
+        auto_provision: false,
+        metadata: {},
+      },
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    const projectBrainAutomationService = new ProjectBrainAutomationService({
+      projectBrainService,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      projectService,
+      projectBrainService,
+      projectBrainAutomationService,
+      citizenService,
+      rolePackService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'bootstrap-context',
+      '--project', 'proj-bootstrap',
+      '--audience', 'controller',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'promote',
+      '--project', 'proj-bootstrap',
+      '--kind', 'decision',
+      '--slug', 'obsidian-adapter',
+      '--title', 'Obsidian Adapter',
+      '--body', 'Obsidian stays optional.',
+      '--source-task', 'OC-BOOT-1',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('project_brain_bootstrap_context');
+    expect(stdout.value).toContain('Alpha Architect');
+    expect(stdout.value).toContain('Brain 已提升');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {
@@ -1773,171 +2166,6 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('auto-dispatched executions: exec-cli-subtask-1');
     expect(stdout.value).toContain('build-api\tdevelop\tsonnet\tin_progress\tcodex');
     expect(stdout.value).toContain('write-tests\tdevelop\tgpt52\tpending\t-');
-  });
-
-  it('supports tmux runtime management commands through the cli', async () => {
-    const stdout = createBuffer();
-    const stderr = createBuffer();
-    const tmuxRuntimeService = {
-      up: () => ({
-        session: 'agora-craftsmen',
-        panes: [{
-          id: '%0',
-          title: 'codex',
-          currentCommand: 'bash',
-          active: true,
-          continuityBackend: 'codex_session_file' as const,
-          resumeCapability: 'native_resume' as const,
-          sessionReference: 'codex-session-123',
-          identitySource: 'session_file' as const,
-          identityPath: '/tmp/codex/session.json',
-          sessionObservedAt: '2026-03-08T23:01:00.000Z',
-          workspaceRoot: '/tmp/codex',
-          lastRecoveryMode: 'resume_exact' as const,
-          transportSessionId: 'tmux:agora-craftsmen:codex',
-        }],
-      }),
-      status: () => ({
-        session: 'agora-craftsmen',
-        panes: [{
-          id: '%0',
-          title: 'codex',
-          currentCommand: 'bash',
-          active: true,
-          continuityBackend: 'codex_session_file' as const,
-          resumeCapability: 'native_resume' as const,
-          sessionReference: 'codex-session-123',
-          identitySource: 'session_file' as const,
-          identityPath: '/tmp/codex/session.json',
-          sessionObservedAt: '2026-03-08T23:01:00.000Z',
-          workspaceRoot: '/tmp/codex',
-          lastRecoveryMode: 'resume_exact' as const,
-          transportSessionId: 'tmux:agora-craftsmen:codex',
-        }],
-      }),
-      send: () => {},
-      sendText: () => {},
-      sendKeys: () => {},
-      submitChoice: () => {},
-      recordIdentity: () => ({
-        continuityBackend: 'codex_session_file' as const,
-        resumeCapability: 'native_resume' as const,
-        sessionReference: 'codex-session-456',
-        identitySource: 'hook_event' as const,
-        identityPath: null,
-        sessionObservedAt: '2026-03-08T23:02:00.000Z',
-        workspaceRoot: '/tmp/codex',
-        lastRecoveryMode: 'resume_exact' as const,
-        transportSessionId: 'tmux:agora-craftsmen:codex',
-      }),
-      start: () => ({
-        pane: '%0',
-        command: 'codex -a never',
-        recoveryMode: 'fresh_start' as const,
-      }),
-      resume: () => ({
-        pane: '%0',
-        command: 'codex resume -a never codex-session-123',
-        recoveryMode: 'resume_exact' as const,
-      }),
-      task: () => ({
-        status: 'running' as const,
-        session_id: 'tmux:agora-craftsmen:codex',
-        started_at: '2026-03-08T22:00:00.000Z',
-      }),
-      tail: () => 'tail output',
-      doctor: () => ({
-        session: 'agora-craftsmen',
-        panes: [{
-          agent: 'codex',
-          pane: '%0',
-          command: 'bash',
-          active: true,
-          ready: true,
-          continuityBackend: 'codex_session_file' as const,
-          resumeCapability: 'native_resume' as const,
-          sessionReference: 'codex-session-123',
-          identitySource: 'session_file' as const,
-          identityPath: '/tmp/codex/session.json',
-          sessionObservedAt: '2026-03-08T23:01:00.000Z',
-          workspaceRoot: '/tmp/codex',
-          lastRecoveryMode: 'resume_exact' as const,
-          transportSessionId: 'tmux:agora-craftsmen:codex',
-        }],
-      }),
-      down: () => {},
-    };
-    const program = createCliProgram({
-      stdout,
-      stderr,
-      tmuxRuntimeService,
-      dashboardQueryService: createDashboardQueryServiceStub(),
-    }).exitOverride();
-
-    await program.parseAsync(['craftsman', 'tmux', 'up'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'status'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'send', 'codex', 'echo hello'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'start', 'codex'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'resume', 'codex', 'codex-session-123'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'runtime', 'identity', 'codex', '--identity-source', 'hook_event', '--session-reference', 'codex-session-456', '--workspace-root', '/tmp/codex'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'task', 'codex', 'Implement this'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'tail', 'codex', '--lines', '20'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'doctor'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'down'], { from: 'user' });
-
-    expect(stderr.value).toBe('');
-    expect(stdout.value).toContain('tmux session 已就绪: agora-craftsmen');
-    expect(stdout.value).toContain('%0\tcodex\tbash\tactive\tcodex_session_file\tsession_file\tcodex-session-123\t/tmp/codex/session.json\t2026-03-08T23:01:00.000Z');
-    expect(stdout.value).toContain('tmux command 已发送: codex');
-    expect(stdout.value).toContain('tmux runtime 已启动: codex');
-    expect(stdout.value).toContain('command: codex -a never');
-    expect(stdout.value).toContain('tmux runtime 已恢复: codex');
-    expect(stdout.value).toContain('command: codex resume -a never codex-session-123');
-    expect(stdout.value).toContain('runtime identity 已回填: codex');
-    expect(stdout.value).toContain('source: hook_event');
-    expect(stdout.value).toContain('session: codex-session-456');
-    expect(stdout.value).toContain('tmux task 已派发: tmux:agora-craftsmen:codex');
-    expect(stdout.value).toContain('tail output');
-    expect(stdout.value).toContain('codex\t%0\tbash\tready\tcodex_session_file\tsession_file\tcodex-session-123\t/tmp/codex/session.json\t2026-03-08T23:01:00.000Z');
-    expect(stdout.value).toContain('tmux session 已关闭: agora-craftsmen');
-  });
-
-  it('supports tmux structured input commands through the cli', async () => {
-    const stdout = createBuffer();
-    const stderr = createBuffer();
-    const calls: Array<{ kind: string; agent: string; payload: unknown }> = [];
-    const tmuxRuntimeService = {
-      ...createTmuxRuntimeServiceStub(),
-      sendText: (agent: string, text: string, submit = true) => {
-        calls.push({ kind: 'text', agent, payload: { text, submit } });
-      },
-      sendKeys: (agent: string, keys: string[]) => {
-        calls.push({ kind: 'keys', agent, payload: keys });
-      },
-      submitChoice: (agent: string, keys: string[]) => {
-        calls.push({ kind: 'choice', agent, payload: keys });
-      },
-    };
-    const program = createCliProgram({
-      stdout,
-      stderr,
-      tmuxRuntimeService,
-      dashboardQueryService: createDashboardQueryServiceStub(),
-    }).exitOverride();
-
-    await program.parseAsync(['craftsman', 'tmux', 'send-text', 'codex', 'Need approval', '--no-submit'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'send-keys', 'codex', 'Down', 'Tab'], { from: 'user' });
-    await program.parseAsync(['craftsman', 'tmux', 'submit-choice', 'codex', 'Down'], { from: 'user' });
-
-    expect(stderr.value).toBe('');
-    expect(calls).toEqual([
-      { kind: 'text', agent: 'codex', payload: { text: 'Need approval', submit: false } },
-      { kind: 'keys', agent: 'codex', payload: ['Down', 'Tab'] },
-      { kind: 'choice', agent: 'codex', payload: ['Down'] },
-    ]);
-    expect(stdout.value).toContain('tmux text 已发送: codex');
-    expect(stdout.value).toContain('tmux keys 已发送: codex');
-    expect(stdout.value).toContain('tmux choice 已提交: codex');
   });
 
   it('supports execution-scoped craftsman input commands through the cli', async () => {

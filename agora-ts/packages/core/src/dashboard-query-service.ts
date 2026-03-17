@@ -22,6 +22,8 @@ import type {
 } from './runtime-ports.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TmuxRuntimeService } from './tmux-runtime-service.js';
+import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
+import { parseAcpSessionId } from './adapters/acp-session-ref.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
@@ -133,6 +135,10 @@ export class DashboardQueryService {
       ? (options.includeChannelDetails ? this.presenceSource.listSignals() : [])
       : [];
 
+    const tmuxRuntime = buildTmuxRuntime(this.tmuxRuntimeService, {
+      includeTailPreview: options.includeTmuxTailPreview,
+    });
+
     return {
       summary: {
         active_tasks: activeTaskCount,
@@ -151,9 +157,7 @@ export class DashboardQueryService {
       host_summaries: buildHostSummaries(allAgents, {
         includeAffectedAgents: options.includeHostAffectedAgents,
       }),
-      tmux_runtime: buildTmuxRuntime(this.tmuxRuntimeService, {
-        includeTailPreview: options.includeTmuxTailPreview,
-      }),
+      craftsman_runtime: buildCraftsmanRuntime(craftsmen, tmuxRuntime),
     };
   }
 
@@ -482,8 +486,10 @@ export class DashboardQueryService {
     return { processed, synced, failed };
   }
 
-  listTodos(filters: { status?: string } = {}) {
-    return this.todos.listTodos(filters.status);
+  listTodos(filters: { status?: string; project_id?: string } = {}) {
+    return this.todos.listTodos(filters.status).filter((todo) => (
+      filters.project_id === undefined ? true : todo.project_id === filters.project_id
+    ));
   }
 
   createTodo(input: CreateTodoRequestDto) {
@@ -557,18 +563,44 @@ export class DashboardQueryService {
   }
 }
 
+type LegacyTmuxRuntimeView = {
+  session: string | null;
+  panes: Array<{
+    agent: string;
+    pane_id: string | null;
+    current_command: string | null;
+    active: boolean;
+    ready: boolean;
+    tail_preview: string | null;
+    continuity_backend: 'claude_session_id' | 'codex_session_file' | 'gemini_session_id' | 'unknown';
+    resume_capability: 'native_resume' | 'resume_last' | 'none';
+    session_reference: string | null;
+    identity_source: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session';
+    identity_source_rank: number;
+    identity_path?: string | null;
+    session_observed_at?: string | null;
+    identity_conflict_count: number;
+    last_rejected_identity_source?: 'registry_default' | 'runtime_gateway' | 'plugin_event' | 'hook_event' | 'session_file' | 'chat_file' | 'latest_fallback' | 'manual' | 'transport_session' | null;
+    last_rejected_session_reference?: string | null;
+    last_rejected_observed_at?: string | null;
+    last_recovery_mode: 'fresh_start' | 'resume_exact' | 'resume_latest' | 'resume_last' | null;
+    transport_session_id: string | null;
+  }>;
+} | null;
+
 function buildTmuxRuntime(
   tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
   options: { includeTailPreview: boolean },
-): AgentsStatusDto['tmux_runtime'] {
+): LegacyTmuxRuntimeView {
   if (!tmuxRuntimeService) {
     return null;
   }
   const status = tmuxRuntimeService.status();
   const doctor = tmuxRuntimeService.doctor();
+  const statusByAgent = new Map(status.panes.map((item) => [normalizeTmuxRuntimeAgent(item.title), item]));
   const byAgent = new Map(doctor.panes.map((item) => [item.agent, item]));
   const agents = new Set<string>([
-    ...status.panes.map((item) => item.title),
+    ...status.panes.map((item) => normalizeTmuxRuntimeAgent(item.title)),
     ...doctor.panes.map((item) => item.agent),
   ]);
 
@@ -577,7 +609,7 @@ function buildTmuxRuntime(
     panes: Array.from(agents)
       .sort((left, right) => left.localeCompare(right))
       .map((agent) => {
-        const paneStatus = status.panes.find((item) => item.title === agent);
+        const paneStatus = statusByAgent.get(agent);
         const paneDoctor = byAgent.get(agent) ?? null;
         return {
           agent,
@@ -613,6 +645,112 @@ function safeTail(
   } catch {
     return null;
   }
+}
+
+function normalizeTmuxRuntimeAgent(value: string) {
+  const cleaned = value
+    .replace(/^[^A-Za-z0-9]+/u, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/gu, '_');
+  return normalizeCraftsmanAdapter(cleaned);
+}
+
+function buildCraftsmanRuntime(
+  craftsmen: AgentsStatusDto['craftsmen'],
+  tmuxRuntime: LegacyTmuxRuntimeView,
+): AgentsStatusDto['craftsman_runtime'] {
+  type CraftsmanRuntime = NonNullable<AgentsStatusDto['craftsman_runtime']>;
+  type CraftsmanRuntimeSlot = CraftsmanRuntime['slots'][number];
+  type CraftsmanRuntimeProviderSummary = CraftsmanRuntime['providers'][number];
+
+  const slots: CraftsmanRuntimeSlot[] = [];
+
+  if (tmuxRuntime) {
+    for (const pane of tmuxRuntime.panes) {
+      slots.push({
+        provider: 'tmux',
+        agent: pane.agent,
+        session_id: pane.transport_session_id,
+        runtime_mode: 'tmux',
+        transport: 'tmux-pane',
+        status: pane.active ? 'running' : pane.ready ? 'idle' : 'unready',
+        ready: pane.ready,
+        active: pane.active,
+        current_command: pane.current_command,
+        tail_preview: pane.tail_preview,
+        session_reference: pane.session_reference,
+        execution_id: null,
+        task_id: null,
+        subtask_id: null,
+        title: null,
+      });
+    }
+  }
+
+  for (const craftsman of craftsmen) {
+    for (const execution of craftsman.recent_executions) {
+      const provider = inferCraftsmanRuntimeProvider(execution);
+      if (provider === 'tmux' && tmuxRuntime) {
+        continue;
+      }
+      slots.push({
+        provider,
+        agent: normalizeCraftsmanAdapter(craftsman.id),
+        session_id: execution.session_id,
+        runtime_mode: execution.runtime_mode,
+        transport: execution.transport,
+        status: execution.status,
+        ready: execution.status !== 'queued' && execution.status !== 'failed',
+        active: execution.status === 'running' || execution.status === 'needs_input' || execution.status === 'awaiting_choice',
+        current_command: null,
+        tail_preview: null,
+        session_reference: provider === 'acpx' ? parseAcpSessionId(execution.session_id) : execution.session_id,
+        execution_id: execution.execution_id,
+        task_id: craftsman.task_id,
+        subtask_id: craftsman.subtask_id,
+        title: craftsman.title,
+      });
+    }
+  }
+
+  if (slots.length === 0) {
+    return null;
+  }
+
+  const providerMap = slots.reduce<Map<CraftsmanRuntimeProviderSummary['provider'], CraftsmanRuntimeProviderSummary>>((map, slot) => {
+    const current = map.get(slot.provider) ?? {
+      provider: slot.provider,
+      session: slot.provider === 'tmux' ? tmuxRuntime?.session ?? null : null,
+      slot_count: 0,
+      ready_slots: 0,
+      active_slots: 0,
+    };
+    current.slot_count += 1;
+    current.ready_slots += slot.ready ? 1 : 0;
+    current.active_slots += slot.active ? 1 : 0;
+    map.set(slot.provider, current);
+    return map;
+  }, new Map<CraftsmanRuntimeProviderSummary['provider'], CraftsmanRuntimeProviderSummary>());
+
+  const providers = Array.from(providerMap.values());
+
+  return {
+    providers,
+    slots: slots.sort((left, right) => left.agent.localeCompare(right.agent)),
+  };
+}
+
+function inferCraftsmanRuntimeProvider(
+  execution: AgentsStatusDto['craftsmen'][number]['recent_executions'][number],
+): NonNullable<AgentsStatusDto['craftsman_runtime']>['providers'][number]['provider'] {
+  if (execution.session_id?.startsWith('acpx:') || execution.runtime_mode === 'acp' || execution.transport === 'acpx') {
+    return 'acpx';
+  }
+  if (execution.session_id?.startsWith('tmux:') || execution.runtime_mode === 'tmux' || execution.transport === 'tmux-pane') {
+    return 'tmux';
+  }
+  return 'unknown';
 }
 
 function toNullableString(value: unknown) {

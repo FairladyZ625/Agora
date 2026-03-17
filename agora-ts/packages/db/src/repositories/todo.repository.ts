@@ -4,6 +4,7 @@ import { parseJsonValue, stringifyJsonValue } from './json.js';
 export interface StoredTodo {
   id: number;
   text: string;
+  project_id: string | null;
   status: string;
   due: string | null;
   created_at: string;
@@ -17,11 +18,16 @@ type SqlValue = string | number | bigint | Uint8Array | null;
 export class TodoRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
-  insertTodo(input: { text: string; due?: string | null | undefined; tags?: string[] | undefined }): StoredTodo {
+  insertTodo(input: {
+    text: string;
+    project_id?: string | null | undefined;
+    due?: string | null | undefined;
+    tags?: string[] | undefined;
+  }): StoredTodo {
     const info = this.db.prepare(`
-      INSERT INTO todos (text, status, due, tags)
-      VALUES (?, 'pending', ?, ?)
-    `).run(input.text, input.due ?? null, stringifyJsonValue(input.tags ?? []));
+      INSERT INTO todos (text, project_id, status, due, tags)
+      VALUES (?, ?, 'pending', ?, ?)
+    `).run(input.text, input.project_id ?? null, input.due ?? null, stringifyJsonValue(input.tags ?? []));
     return this.getTodo(Number(info.lastInsertRowid))!;
   }
 
@@ -69,6 +75,7 @@ export class TodoRepository {
     return {
       id: Number(row.id),
       text: String(row.text),
+      project_id: row.project_id === null || row.project_id === undefined ? null : String(row.project_id),
       status: String(row.status),
       due: row.due === null ? null : String(row.due),
       created_at: String(row.created_at),

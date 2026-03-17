@@ -12,6 +12,7 @@ export interface StoredTask {
   priority: string;
   creator: string;
   locale: TaskLocaleDto;
+  project_id?: string | null;
   state: string;
   archive_status: string | null;
   current_stage: string | null;
@@ -35,6 +36,7 @@ export interface InsertTaskInput {
   priority: string;
   creator: string;
   locale?: TaskLocaleDto;
+  project_id?: string | null;
   team: TeamDto;
   workflow: WorkflowDto;
   control?: TaskControlDto | null;
@@ -45,6 +47,7 @@ export interface UpdateTaskInput {
   description?: string | null;
   priority?: string;
   locale?: TaskLocaleDto;
+  project_id?: string | null;
   state?: string;
   current_stage?: string | null;
   team?: TeamDto;
@@ -76,8 +79,8 @@ export class TaskRepository {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO tasks (
-        id, title, description, type, priority, creator, locale, state, team, workflow, created_at, updated_at, control
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+        id, title, description, type, priority, creator, locale, project_id, state, team, workflow, created_at, updated_at, control
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.title,
@@ -86,6 +89,7 @@ export class TaskRepository {
       input.priority,
       input.creator,
       input.locale ?? 'zh-CN',
+      input.project_id ?? null,
       stringifyJsonValue(input.team),
       stringifyJsonValue(input.workflow),
       now,
@@ -113,6 +117,7 @@ export class TaskRepository {
     if (updates.description !== undefined) push('description', updates.description);
     if (updates.priority !== undefined) push('priority', updates.priority);
     if (updates.locale !== undefined) push('locale', updates.locale);
+    if (updates.project_id !== undefined) push('project_id', updates.project_id);
     if (updates.state !== undefined) push('state', updates.state);
     if (updates.current_stage !== undefined) push('current_stage', updates.current_stage);
     if (updates.team !== undefined) push('team', stringifyJsonValue(updates.team));
@@ -169,6 +174,7 @@ export class TaskRepository {
       priority: String(row.priority),
       creator: String(row.creator),
       locale: String(row.locale ?? 'zh-CN') as TaskLocaleDto,
+      project_id: row.project_id === null || row.project_id === undefined ? null : String(row.project_id),
       state: String(row.state),
       archive_status: row.archive_status === null || row.archive_status === undefined ? null : String(row.archive_status),
       current_stage: row.current_stage === null ? null : String(row.current_stage),

@@ -19,6 +19,7 @@ function makeTempDir() {
 function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
   vi.doMock('node:fs', () => ({
     existsSync: vi.fn(existsSyncImpl),
+    mkdirSync: vi.fn(),
   }));
   vi.doMock('@agora-ts/config', () => ({
     loadAgoraConfig: vi.fn(() => ({
@@ -61,7 +62,13 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
       installedSkillTargets: [],
       userBrainPackDir: '/tmp/agora-home/agora-ai-brain',
     })),
-    resolveAgoraRuntimeEnvironmentFromConfigPackage: vi.fn(() => ({})),
+    agoraDataDirPath: vi.fn(() => '/tmp/agora-home'),
+    hasInstalledBrainPack: vi.fn(() => true),
+    syncBundledBrainPackContents: vi.fn(),
+    resolveAgoraRuntimeEnvironmentFromConfigPackage: vi.fn(() => ({
+      apiBaseUrl: 'http://127.0.0.1:3000',
+      projectRoot: '/tmp/agora-project',
+    })),
   }));
   vi.doMock('@agora-ts/db', () => ({
     createAgoraDatabase: vi.fn(() => ({ close: vi.fn() })),
@@ -83,25 +90,30 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     NotificationDispatcher: class NotificationDispatcher {},
     HumanAccountService: class HumanAccountService {},
   }));
-  vi.doMock('./composition.js', () => ({
-    buildServerComposition: vi.fn(() => ({
-      taskService: { startupRecoveryScan: vi.fn() },
-      dashboardQueryService: {},
-      inboxService: {},
-      liveSessionStore: {},
-      taskConversationService: {},
-      taskContextBindingService: {},
-      taskParticipationService: {},
-      notificationDispatcher: {},
-      humanAccountService: {},
-    })),
-  }));
+  vi.doMock('./composition.js', async (importOriginal) => {
+    const actual = await importOriginal() as Record<string, unknown>;
+    return {
+      ...actual,
+      buildServerComposition: vi.fn(() => ({
+        taskService: { startupRecoveryScan: vi.fn() },
+        dashboardQueryService: {},
+        inboxService: {},
+        liveSessionStore: {},
+        taskConversationService: {},
+        taskContextBindingService: {},
+        taskParticipationService: {},
+        notificationDispatcher: {},
+        humanAccountService: {},
+      })),
+    };
+  });
 }
 
 afterEach(() => {
   delete process.env.AGORA_BRAIN_PACK_ROOT;
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
+  delete process.env.AGORA_CRAFTSMAN_SERVER_MODE;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -173,6 +185,63 @@ describe('server runtime', () => {
 
     expect(start).toHaveBeenCalledTimes(1);
     runtime.db.close();
+  });
+
+  it('disposes runtime-owned services on shutdown', () => {
+    vi.useFakeTimers();
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+        },
+      }),
+    );
+
+    const stopPresence = vi.fn();
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => ({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      inbox_items: 0,
+    }));
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createDiscordPresenceService: () => ({
+          start: vi.fn(),
+          stop: stopPresence,
+          enabled: true,
+        }) as never,
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+      },
+    });
+
+    runtime.dispose();
+    vi.advanceTimersByTime(5_000);
+
+    expect(stopPresence).toHaveBeenCalledTimes(1);
+    expect(observeCraftsmanExecutions).not.toHaveBeenCalled();
+    expect(probeInactiveTasks).not.toHaveBeenCalled();
+
+    runtime.db.close();
+    vi.useRealTimers();
   });
 
   it('runs startup recovery on boot when configured', () => {
@@ -345,6 +414,57 @@ describe('server runtime', () => {
     expect(runtime.liveSessionStore).toBe(liveSessionStore);
     expect(runtime.tmuxRuntimeService).toBe(tmuxRuntimeService);
     runtime.db.close();
+  });
+
+  it('wires acp craftsman ports into server composition when server mode is acp', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_CRAFTSMAN_SERVER_MODE = 'acp';
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+      }),
+    );
+
+    let capturedDeps: Record<string, string> | null = null;
+    let dispatcherRuntime: object | undefined;
+    let inputRuntime: object | undefined;
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: (context, deps) => {
+          capturedDeps = {
+            input: deps.craftsmanInputPort.constructor.name,
+            probe: deps.craftsmanExecutionProbePort.constructor.name,
+            tail: deps.craftsmanExecutionTailPort.constructor.name,
+            recovery: deps.runtimeRecoveryPort.constructor.name,
+          };
+          const adapters = Reflect.get(deps.craftsmanDispatcher as object, 'adapters') as Record<string, unknown> | undefined;
+          const adapter = adapters?.codex ?? adapters?.claude ?? adapters?.gemini;
+          dispatcherRuntime = adapter && typeof adapter === 'object'
+            ? Reflect.get(adapter, 'runtime') as object | undefined
+            : undefined;
+          inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
+          return new TaskService(context.db, {
+            templatesDir: context.templatesDir,
+          });
+        },
+      },
+    });
+
+    expect(capturedDeps).toEqual({
+      input: 'AcpCraftsmanInputPort',
+      probe: 'AcpCraftsmanProbePort',
+      tail: 'AcpCraftsmanTailPort',
+      recovery: 'AcpRuntimeRecoveryPort',
+    });
+    expect(dispatcherRuntime).toBeDefined();
+    expect(inputRuntime).toBe(dispatcherRuntime);
+    runtime.db.close();
+    delete process.env.AGORA_CRAFTSMAN_SERVER_MODE;
   });
 
   it('self-heals bundled bootstrap skill into runtime-visible skill roots on startup', () => {

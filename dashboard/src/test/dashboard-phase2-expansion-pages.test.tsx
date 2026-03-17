@@ -158,28 +158,29 @@ const agentStoreState = {
       ],
     },
   ],
-  tmuxRuntime: {
-    session: 'agora-craftsmen',
-    panes: [
+  craftsmanRuntime: {
+    providers: [{ provider: 'tmux' as const, session: 'agora-craftsmen', slotCount: 1, readySlots: 1, activeSlots: 1 }],
+    slots: [
       {
+        provider: 'tmux' as const,
         agent: 'codex',
-        paneId: '%0',
-        currentCommand: 'bash',
-        active: true,
+        sessionId: 'tmux:agora-craftsmen:codex',
+        runtimeMode: 'tmux',
+        transport: 'tmux-pane',
+        status: 'running',
         ready: true,
+        active: true,
+        currentCommand: 'bash',
         tailPreview: 'tail:codex',
-        continuityBackend: 'codex_session_file',
-        resumeCapability: 'native_resume',
         sessionReference: 'codex-session-123',
-        identitySource: 'session_file',
-        identityPath: '/tmp/codex/session.json',
-        sessionObservedAt: '2026-03-08T23:01:00.000Z',
-        lastRecoveryMode: 'resume_exact',
-        transportSessionId: 'tmux:agora-craftsmen:codex',
+        executionId: null,
+        taskId: null,
+        subtaskId: null,
+        title: null,
       },
     ],
   },
-  tmuxTailByAgent: {
+  runtimeTailByAgent: {
     codex: 'tail:codex',
   },
   agents: [
@@ -226,7 +227,7 @@ const agentStoreState = {
   ],
   loading: false,
   channelDetailLoading: false,
-  tmuxTailLoadingByAgent: {},
+  runtimeTailLoadingByAgent: {},
   error: null,
   channelDetailError: null,
   presenceFilter: 'all' as const,
@@ -235,7 +236,7 @@ const agentStoreState = {
   hostFilter: null as string | null,
   fetchStatus: vi.fn(async () => 'live'),
   fetchChannelDetail: vi.fn(async () => 'live'),
-  fetchTmuxTail: vi.fn(async () => 'live'),
+  fetchRuntimeTail: vi.fn(async () => 'live'),
   setPresenceFilter: vi.fn((filter) => {
     agentStoreState.presenceFilter = filter;
   }),
@@ -260,8 +261,8 @@ function makeAgentStoreSnapshot() {
     channelDetails: { ...agentStoreState.channelDetails },
     channelDetailFetchedAt: { ...agentStoreState.channelDetailFetchedAt },
     hostSummaries: [...agentStoreState.hostSummaries],
-    tmuxTailByAgent: { ...agentStoreState.tmuxTailByAgent },
-    tmuxTailLoadingByAgent: { ...agentStoreState.tmuxTailLoadingByAgent },
+    runtimeTailByAgent: { ...agentStoreState.runtimeTailByAgent },
+    runtimeTailLoadingByAgent: { ...agentStoreState.runtimeTailLoadingByAgent },
     agents: [...agentStoreState.agents],
     craftsmen: [...agentStoreState.craftsmen],
   };
@@ -509,7 +510,7 @@ describe('dashboard expansion routes', () => {
   beforeEach(() => {
     agentStoreState.fetchStatus.mockClear();
     agentStoreState.fetchChannelDetail.mockClear();
-    agentStoreState.fetchTmuxTail.mockClear();
+    agentStoreState.fetchRuntimeTail.mockClear();
     agentStoreState.presenceFilter = 'all';
     agentStoreState.craftsmenFilter = 'all';
     agentStoreState.channelFilter = null;
@@ -715,7 +716,7 @@ describe('dashboard expansion routes', () => {
     fireEvent.click(screen.getByRole('button', { name: /Execution 执行运行态/i }));
     fireEvent.click(screen.getByRole('button', { name: /加载输出/i }));
 
-    expect(agentStoreState.fetchTmuxTail).toHaveBeenCalledWith('codex');
+    expect(agentStoreState.fetchRuntimeTail).toHaveBeenCalledWith('codex');
   });
 
   it('polls summary refresh on the configured interval and pauses while hidden', () => {
