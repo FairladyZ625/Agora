@@ -20,6 +20,7 @@ afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
   delete process.env.AGORA_CRAFTSMAN_CLI_MODE;
+  delete process.env.AGORA_OPENCLAW_CONFIG_PATH;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -212,6 +213,72 @@ describe('cli composition', () => {
     });
     expect(dispatcherRuntime).toBeDefined();
     expect(inputRuntime).toBe(dispatcherRuntime);
+    composition.db.close();
+  });
+
+  it('creates a discord provisioning adapter with participant tokens from openclaw config', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    const openClawConfigPath = join(dir, 'openclaw.json');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_OPENCLAW_CONFIG_PATH = openClawConfigPath;
+    writeFileSync(openClawConfigPath, JSON.stringify({
+      channels: {
+        discord: {
+          accounts: {
+            main: { token: 'discord-bot-token' },
+            reviewer: { token: 'reviewer-token' },
+          },
+        },
+      },
+    }));
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-bot-token',
+          default_channel_id: 'discord-parent',
+        },
+      },
+    }));
+
+    const composition = createCliComposition({ configPath });
+    const provisioningPort = Reflect.get(composition.taskService as object, 'imProvisioningPort') as object | undefined;
+
+    expect(provisioningPort?.constructor.name).toBe('DiscordIMProvisioningAdapter');
+    expect(Reflect.get(provisioningPort as object, 'participantTokens')).toEqual({
+      main: 'discord-bot-token',
+      reviewer: 'reviewer-token',
+    });
+    expect(Reflect.get(provisioningPort as object, 'primaryAccountId')).toBe('main');
+    composition.db.close();
+  });
+
+  it('uses tmux craftsman transport ports and git worktree isolation when configured', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_CRAFTSMAN_CLI_MODE = 'tmux';
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      craftsmen: {
+        isolate_git_worktrees: true,
+        isolated_root: join(dir, 'isolated-worktrees'),
+      },
+    }));
+
+    const composition = createCliComposition({ configPath });
+    const taskService = composition.taskService as object;
+    const dispatcher = Reflect.get(taskService, 'craftsmanDispatcher') as object | undefined;
+
+    expect(Reflect.get(taskService, 'craftsmanInputPort')?.constructor.name).toBe('TmuxCraftsmanInputPort');
+    expect(Reflect.get(taskService, 'craftsmanExecutionProbePort')?.constructor.name).toBe('TmuxCraftsmanProbePort');
+    expect(Reflect.get(taskService, 'craftsmanExecutionTailPort')?.constructor.name).toBe('TmuxCraftsmanTailPort');
+    expect(Reflect.get(taskService, 'runtimeRecoveryPort')?.constructor.name).toBe('TmuxRuntimeRecoveryPort');
+    expect(Reflect.get(dispatcher as object, 'workdirIsolator')?.constructor.name).toBe('GitWorktreeWorkdirIsolator');
     composition.db.close();
   });
 });
