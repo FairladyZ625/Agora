@@ -285,4 +285,5 @@ High-value areas:
 - project / task / archive workflows
 - docs that clarify the social model
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+If you are reading `AGENTS.md` without access to the private `docs/` repo, use the public mirror in [Doc/agents-contributor-reference.md](Doc/agents-contributor-reference.md).

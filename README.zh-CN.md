@@ -277,4 +277,5 @@ extensions/    外部 adapters / plugins
 - project / task / archive 工作流
 - 更清楚表达社会结构模型的文档
 
-见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+先看 [CONTRIBUTING.md](CONTRIBUTING.md)。
+如果你在读 `AGENTS.md`，但没有私有 `docs/` 仓权限，请改看公开镜像 [Doc/agents-contributor-reference.md](Doc/agents-contributor-reference.md)。

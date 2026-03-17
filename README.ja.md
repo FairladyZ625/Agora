@@ -266,4 +266,5 @@ extensions/    外部 adapters / plugins
 - project / task / archive workflow
 - 社会構造モデルを明確にするドキュメント
 
-詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+まず [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。
+`AGENTS.md` を読んでいて private な `docs/` repo にアクセスできない場合は、公開ミラーの [Doc/agents-contributor-reference.md](Doc/agents-contributor-reference.md) を使ってください。

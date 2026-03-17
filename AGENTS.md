@@ -102,6 +102,11 @@
 
 ## 5. Task-Type Reading Matrix
 
+- 对外部贡献者说明：
+  - 若你没有私有 `docs/` 仓访问权限，先读根目录 `CONTRIBUTING.md`
+  - 再读公开镜像 `Doc/agents-contributor-reference.md`
+  - 下列私有 `docs/` 路径仍是维护者内部权威入口；公开参考以 `Doc/reference/` 为准
+
 - 架构 / adapter / runtime / IM / craftsman 相关任务：
   - 先读 [docs/11-REFERENCE/agora-core-decoupling-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/agora-core-decoupling-standard.md)
   - 再读 [docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md](/Users/lizeyu/Projects/Agora/docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md)

@@ -11,8 +11,11 @@ It is intentionally smaller than the internal `docs/` repository. Only public-fa
 - [architecture-overview.md](./architecture-overview.md)
 - [discord-setup.md](./discord-setup.md)
 - [openclaw-local-setup.md](./openclaw-local-setup.md)
+- [agents-contributor-reference.md](./agents-contributor-reference.md)
+- [reference/README.md](./reference/README.md)
 
 ## Scope rules
 
 - Put tutorials, whitepapers, architecture overviews, and onboarding guides here.
+- Put contributor-facing rule summaries and public reference mirrors here.
 - Keep planning logs, walkthroughs, internal reviews, and governance work in the separate `docs/` repo.
