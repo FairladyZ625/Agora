@@ -8,10 +8,15 @@ External contributors do not need direct access to that internal SSoT to contrib
 
 ## What Contributors Should Do Instead
 
+- Use [../Agora-Implementation-SSoT-Template.md](../Agora-Implementation-SSoT-Template.md) if you need a public implementation schedule or control-tower note for a large contribution.
 - Keep PR descriptions precise.
-- Link issues, design notes, or public docs that explain the change.
+- Link issues, design notes, planning docs, or public walkthroughs that explain the change.
 - State what was verified.
 - Avoid introducing parallel roadmap or status files in the repository root.
+- Prefer the mirrored public structure:
+  - `Doc/09-PLANNING/`
+  - `Doc/10-WALKTHROUGH/`
+  - `Doc/11-REFERENCE/`
 
 ## Why This Exists
 

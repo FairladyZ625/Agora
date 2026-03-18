@@ -43,6 +43,7 @@ This repository intentionally exposes two documentation surfaces:
 
 - `Doc/`
   - Public, shareable contributor and onboarding docs.
+  - Includes a mirrored `00-11` documentation structure, public planning templates, and walkthrough examples.
 - `docs/`
   - A separate private repository for planning logs, walkthroughs, internal governance details, and deeper implementation records.
 
@@ -117,6 +118,7 @@ Please update docs when you change:
 Use these locations:
 
 - public-facing contributor or onboarding material -> `Doc/`
+- non-trivial public planning or handoff docs -> `Doc/09-PLANNING/` and `Doc/10-WALKTHROUGH/`
 - code-specific docs in the active codebase -> keep them near the relevant package when appropriate
 - private planning, walkthrough, or internal governance records -> maintainers will handle those in the private `docs/` repo
 
@@ -132,5 +134,6 @@ Use these locations:
 
 If `AGENTS.md` points to a private internal doc you cannot access, use the public mirror here instead:
 
+- [Doc/README.md](./Doc/README.md)
 - [Doc/agents-contributor-reference.md](./Doc/agents-contributor-reference.md)
-- [Doc/reference/README.md](./Doc/reference/README.md)
+- [Doc/11-REFERENCE/README.md](./Doc/11-REFERENCE/README.md)
