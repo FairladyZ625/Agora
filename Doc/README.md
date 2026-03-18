@@ -36,6 +36,7 @@ It now mirrors the private `docs/` information architecture so external contribu
 ## Key Entry Points
 
 - [whitepaper.md](./whitepaper.md)
+- [06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
 - [quick-start.md](./quick-start.md)
 - [architecture-overview.md](./architecture-overview.md)
 - [agents-contributor-reference.md](./agents-contributor-reference.md)

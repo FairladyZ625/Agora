@@ -4,9 +4,26 @@
 
 Before running `./agora init`, collect:
 
-- a Discord Bot Token
+- an Agora Discord Bot Token
 - a default channel ID
 - an optional admin Discord user ID
+- if you also run OpenClaw in Discord: the separate OpenClaw-managed bot/account roster
+
+## One Bot vs Two Bots
+
+For Agora-only setups, one Agora Discord bot is enough.
+
+For Agora + OpenClaw setups, treat the roles separately:
+
+- Agora bot:
+  - task governance
+  - thread creation
+  - lifecycle-facing messaging
+- OpenClaw / 龙虾 bots:
+  - hosted agent participation
+  - channel/account policy owned by OpenClaw
+
+Do not assume `./agora init` will rewrite the OpenClaw bot roster or Discord channel policy for you. That remains a documented manual step.
 
 ## Create The Bot
 
@@ -62,3 +79,5 @@ If OpenClaw is also consuming the same Discord surface, the recommended first-wa
 - `requireMention: true`
 
 This avoids uncontrolled bot reply loops while still allowing task threads to be shared.
+
+Those values belong to OpenClaw Discord policy, not Agora plugin wiring. Agora may wire the plugin automatically, but it intentionally does not overwrite these behavior rules.

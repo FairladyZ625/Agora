@@ -194,6 +194,14 @@ cd Agora
 ./agora start
 ```
 
+If OpenClaw is detected, `./agora init` can now optionally build and wire the local Agora plugin into `openclaw.json`.
+It only automates safe plugin registration and Agora server wiring.
+It does **not** rewrite OpenClaw Discord policy such as bot rosters, `allowBots`, `requireMention`, or guild/channel allowlists.
+
+For the end-to-end bootstrap guide, see:
+
+- [Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
+
 Default local endpoints:
 
 - API: `http://127.0.0.1:18420/api/health`
