@@ -1,8 +1,8 @@
-# Public Reference Index
+# 11-REFERENCE
 
-These documents are the public reference mirror for the rules most often cited from `AGENTS.md`.
+This folder is the public mirror of the private `docs/11-REFERENCE/` slot.
 
-They are intentionally shorter than the private internal docs. Their job is to help external contributors understand the operating model without requiring access to the private `docs/` repository.
+Use it as the canonical public reference surface for contributor rules cited by `AGENTS.md`.
 
 ## Included References
 
