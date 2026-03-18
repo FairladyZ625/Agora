@@ -32,6 +32,7 @@ cd Agora
   - writes local Agora config into `~/.agora/`
   - bootstraps the first dashboard admin
   - prepares the default ACPX-backed execution path
+  - if OpenClaw is detected, can optionally build and wire the local Agora plugin into `openclaw.json`
 - `./agora start`
   - starts the Fastify backend
   - starts the Vite dashboard dev server
@@ -63,9 +64,11 @@ Create task
 - Agora is no longer centered on the old tmux Craftsman shell.
 - Public execution entrypoints now use provider-neutral runtime surfaces.
 - `Craftsman` should be read as a governed execution role, not as a self-owned low-level runtime framework.
+- `./agora init` only automates safe OpenClaw plugin wiring. It does **not** rewrite OpenClaw Discord behavior policy such as bot rosters, `allowBots`, `requireMention`, or guild/channel allowlists.
 
 ## Next Guides
 
+- [06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
 - [discord-setup.md](./discord-setup.md)
 - [openclaw-local-setup.md](./openclaw-local-setup.md)
 - [architecture-overview.md](./architecture-overview.md)

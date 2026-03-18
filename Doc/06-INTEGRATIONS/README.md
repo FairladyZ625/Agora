@@ -6,3 +6,4 @@ Current public entry points:
 
 - [discord/README.md](./discord/README.md)
 - [openclaw/README.md](./openclaw/README.md)
+- [openclaw/agora-openclaw-bootstrap-whitepaper.md](./openclaw/agora-openclaw-bootstrap-whitepaper.md)

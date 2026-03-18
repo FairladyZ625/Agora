@@ -4,4 +4,5 @@ Use this folder for public OpenClaw setup notes, compatibility guidance, and ada
 
 See also:
 
+- [./agora-openclaw-bootstrap-whitepaper.md](./agora-openclaw-bootstrap-whitepaper.md)
 - [../../openclaw-local-setup.md](../../openclaw-local-setup.md)

@@ -186,6 +186,14 @@ cd Agora
 ./agora start
 ```
 
+如果本机检测到 OpenClaw，`./agora init` 现在可以选择性地自动完成本地 Agora 插件构建与 `openclaw.json` 接线。
+它只会自动处理安全的插件注册和 Agora server 连接信息。
+它**不会**自动改 OpenClaw 的 Discord 行为策略，比如 bot roster、`allowBots`、`requireMention`、guild/channel allowlist。
+
+完整从零跑通指南见：
+
+- [Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
+
 默认本地地址：
 
 - API：`http://127.0.0.1:18420/api/health`
