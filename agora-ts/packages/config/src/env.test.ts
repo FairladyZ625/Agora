@@ -23,6 +23,11 @@ function makeAgoraRoot() {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.QDRANT_URL;
+  delete process.env.AGORA_DB_PATH;
+  delete process.env.AGORA_CONFIG_PATH;
+  delete process.env.AGORA_CLEAN_LEGACY_PORTS;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -81,6 +86,24 @@ describe('agora runtime env', () => {
     expect(resolved.backendPort).toBe(20420);
     expect(resolved.frontendPort).toBe(34173);
     expect(resolved.apiBaseUrl).toBe('http://127.0.0.1:20420');
+  });
+
+  it('hydrates non-runtime .env entries into process env without overriding explicit env', () => {
+    const root = makeAgoraRoot();
+    const appDir = join(root, 'agora-ts');
+    writeFileSync(
+      join(root, '.env'),
+      [
+        'OPENAI_API_KEY=file-key',
+        'QDRANT_URL=http://127.0.0.1:6333',
+      ].join('\n'),
+    );
+    vi.stubEnv('QDRANT_URL', 'http://127.0.0.1:7333');
+
+    resolveAgoraRuntimeEnvironment(appDir);
+
+    expect(process.env.OPENAI_API_KEY).toBe('file-key');
+    expect(process.env.QDRANT_URL).toBe('http://127.0.0.1:7333');
   });
 
   it('can discover the repo root from nested package directories', () => {

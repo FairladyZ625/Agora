@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { workflowStageRosterSchema } from './workflow-roster.js';
 
 const allowedGraphNodeKinds = ['stage', 'terminal'] as const;
 const allowedGraphEdgeKinds = ['advance', 'reject', 'timeout', 'branch', 'complete'] as const;
@@ -15,6 +16,7 @@ export const templateGraphNodeSchema = z.object({
   kind: templateGraphNodeKindSchema.default('stage'),
   execution_kind: z.string().min(1).optional(),
   allowed_actions: z.array(z.string().min(1)).optional(),
+  roster: workflowStageRosterSchema.optional(),
   gate: z.object({
     type: z.string().min(1).optional(),
     approver: z.string().min(1).optional(),

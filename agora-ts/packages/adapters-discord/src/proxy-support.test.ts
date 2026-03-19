@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  configureDiscordProxySupportForTests,
   type DiscordProxyEnvironment,
   ensureDiscordGatewayProxy,
   resetDiscordGatewayProxyBootstrapForTests,
@@ -46,5 +47,27 @@ describe('proxy-support', () => {
 
   it('sanitizes credentials in proxy logs', () => {
     expect(sanitizeProxyForLogs('http://user:secret@127.0.0.1:7897')).toBe('http://127.0.0.1:7897');
+  });
+
+  it('auto-detects a local proxy from macOS PAC when env vars are absent', async () => {
+    configureDiscordProxySupportForTests({
+      platform: () => 'darwin',
+      execFileSync: ((file: string) => {
+        if (file === 'scutil') {
+          return `ProxyAutoConfigEnable : 1\nProxyAutoConfigURLString : http://127.0.0.1:33331/commands/pac\n`;
+        }
+        if (file === 'curl') {
+          return 'function FindProxyForURL(url, host) { return "PROXY 127.0.0.1:7897; SOCKS5 127.0.0.1:7897; DIRECT;"; }';
+        }
+        throw new Error(`unexpected command: ${file}`);
+      }) as never,
+    });
+
+    expect(resolveDiscordProxyEnvironment({})).toEqual({
+      enabled: true,
+      httpsProxy: 'http://127.0.0.1:7897',
+      httpProxy: 'http://127.0.0.1:7897',
+      noProxy: null,
+    });
   });
 });

@@ -13,7 +13,7 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
     inboxService: runtime.inboxService,
     templateAuthoringService: runtime.templateAuthoringService,
     liveSessionStore: runtime.liveSessionStore,
-    tmuxRuntimeService: runtime.tmuxRuntimeService,
+    legacyRuntimeService: runtime.legacyRuntimeService,
     taskContextBindingService: runtime.taskContextBindingService,
     taskConversationService: runtime.taskConversationService,
     taskParticipationService: runtime.taskParticipationService,

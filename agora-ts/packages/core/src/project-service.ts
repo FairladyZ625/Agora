@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { ProjectRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type {
@@ -10,7 +11,7 @@ import type {
 } from './project-knowledge-port.js';
 
 export interface CreateProjectInput {
-  id: string;
+  id?: string | null | undefined;
   name: string;
   summary?: string | null | undefined;
   owner?: string | null | undefined;
@@ -31,8 +32,9 @@ export class ProjectService {
   }
 
   createProject(input: CreateProjectInput): StoredProject {
+    const projectId = input.id?.trim() || this.generateProjectId(input.name);
     const project = this.projects.insertProject({
-      id: input.id,
+      id: projectId,
       name: input.name,
       ...(input.summary !== undefined ? { summary: input.summary } : {}),
       ...(input.owner !== undefined ? { owner: input.owner } : {}),
@@ -124,4 +126,36 @@ export class ProjectService {
     this.requireProject(projectId);
     return this.knowledgePort?.searchProjectKnowledge(projectId, query, kind) ?? [];
   }
+
+  private generateProjectId(name: string) {
+    const slug = slugifyProjectName(name);
+    const base = slug ? `proj-${slug}` : 'proj-auto';
+    const normalizedBase = trimProjectId(base);
+    if (!this.projects.getProject(normalizedBase)) {
+      return normalizedBase;
+    }
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      const suffix = randomBytes(3).toString('hex');
+      const candidate = trimProjectId(`${normalizedBase}-${suffix}`);
+      if (!this.projects.getProject(candidate)) {
+        return candidate;
+      }
+    }
+    throw new Error(`Failed to generate unique project id for ${name}`);
+  }
+}
+
+function slugifyProjectName(input: string) {
+  return input
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+}
+
+function trimProjectId(input: string) {
+  const trimmed = input.replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
+  return (trimmed.slice(0, 63).replace(/-+$/g, '') || 'proj-auto');
 }

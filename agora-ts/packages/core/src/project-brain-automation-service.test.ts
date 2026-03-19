@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
 import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
@@ -159,5 +159,172 @@ describe('project brain automation service', () => {
     expect(promoted.kind).toBe('decision');
     expect(promoted.slug).toBe('obsidian-adapter');
     expect(promoted.content).toContain('Obsidian stays an optional adapter.');
+  });
+
+  it('passes task-aware bootstrap inputs into the policy when task context is provided', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-automation',
+      name: 'Automation Project',
+      summary: 'Brain automation baseline',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-automation',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime-specific logic out of core.',
+      body: 'Core keeps orchestration semantics and adapters stay outside it.',
+      source_task_ids: ['OC-100'],
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    const policy = {
+      selectBootstrapDocuments: vi.fn((documents: unknown[]) => documents),
+    };
+    const service = new ProjectBrainAutomationService({
+      projectBrainService,
+      policy: policy as never,
+    });
+
+    service.buildBootstrapContext({
+      project_id: 'proj-automation',
+      task_id: 'OC-100',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'controller',
+    });
+
+    expect(policy.selectBootstrapDocuments).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({
+        task_id: 'OC-100',
+        task_title: 'Implement hybrid retrieval',
+        task_description: 'Need vector recall and lexical rerank.',
+        allowed_citizen_ids: ['citizen-alpha'],
+        audience: 'controller',
+      }),
+    );
+  });
+
+  it('uses hybrid retrieval candidates for task-aware bootstrap and falls back to lexical docs', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-automation',
+      name: 'Automation Project',
+      summary: 'Brain automation baseline',
+    });
+    projectService.recordTaskBinding({
+      project_id: 'proj-automation',
+      task_id: 'OC-100',
+      title: 'Hybrid retrieval task',
+      state: 'active',
+      workspace_path: join(brainPackRoot, 'projects', 'proj-automation', 'tasks', 'OC-100'),
+      bound_at: '2026-03-16T08:00:00.000Z',
+    });
+    projectService.upsertKnowledgeEntry({
+      project_id: 'proj-automation',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      summary: 'Keep runtime-specific logic out of core.',
+      body: 'Core keeps orchestration semantics and adapters stay outside it.',
+      source_task_ids: ['OC-100'],
+    });
+    const projectBrainService = new ProjectBrainService({
+      projectService,
+      citizenService: {
+        listCitizens: vi.fn().mockReturnValue([
+          {
+            citizen_id: 'citizen-alpha',
+            project_id: 'proj-automation',
+            display_name: 'Citizen Alpha',
+            created_at: '2026-03-16T08:00:00.000Z',
+            updated_at: '2026-03-16T08:00:00.000Z',
+          },
+        ]),
+        requireCitizen: vi.fn().mockReturnValue({
+          citizen_id: 'citizen-alpha',
+          project_id: 'proj-automation',
+          display_name: 'Citizen Alpha',
+          created_at: '2026-03-16T08:00:00.000Z',
+          updated_at: '2026-03-16T08:00:00.000Z',
+        }),
+        previewProjection: vi.fn().mockReturnValue({
+          adapter: 'openclaw',
+          files: [
+            {
+              path: '/brain/citizen/citizen-alpha.md',
+              content: '# Citizen Alpha\n\nScaffold',
+            },
+          ],
+        }),
+      } as never,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+    });
+    const retrievalService = {
+      searchTaskContext: vi.fn().mockResolvedValue([
+        {
+          project_id: 'proj-automation',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          snippet: 'Keep runtime-specific logic out of core.',
+          retrieval_mode: 'hybrid',
+        },
+        {
+          project_id: 'proj-automation',
+          kind: 'citizen_scaffold',
+          slug: 'citizen-alpha',
+          title: 'Citizen Alpha',
+          path: '/brain/citizen/citizen-alpha.md',
+          snippet: 'Citizen Alpha scaffold',
+          retrieval_mode: 'hybrid',
+        },
+      ]),
+    };
+    const service = new ProjectBrainAutomationService({
+      projectBrainService,
+      policy: new ProjectBrainAutomationPolicy(),
+      retrievalService: retrievalService as never,
+    });
+
+    const context = await service.buildBootstrapContextAsync({
+      project_id: 'proj-automation',
+      task_id: 'OC-100',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'craftsman',
+    });
+
+    expect(retrievalService.searchTaskContext).toHaveBeenCalledWith({
+      task_id: 'OC-100',
+      audience: 'craftsman',
+      query: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
+      max_results: 6,
+    });
+    expect(context.source_documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'index', slug: 'index' }),
+        expect.objectContaining({ kind: 'timeline', slug: 'timeline' }),
+        expect.objectContaining({ kind: 'decision', slug: 'runtime-boundary' }),
+        expect.objectContaining({ kind: 'citizen_scaffold', slug: 'citizen-alpha' }),
+      ]),
+    );
   });
 });

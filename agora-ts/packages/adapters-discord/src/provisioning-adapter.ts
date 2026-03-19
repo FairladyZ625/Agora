@@ -174,6 +174,11 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     if (!token) {
       throw new Error(`no discord token configured for participant ${participantRef}`);
     }
+    const decodedUserId = decodeDiscordTokenUserId(token);
+    if (decodedUserId) {
+      this.participantUserIds.set(participantRef, decodedUserId);
+      return decodedUserId;
+    }
     const client = new DiscordHttpClient({ botToken: token });
     const user = await client.getCurrentUser();
     this.participantUserIds.set(participantRef, user.id);
@@ -194,4 +199,19 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
 
 function looksLikeDiscordUserId(value: string) {
   return /^[0-9]{15,25}$/.test(value);
+}
+
+function decodeDiscordTokenUserId(token: string): string | null {
+  const [rawPrefix] = token.split('.');
+  if (!rawPrefix) {
+    return null;
+  }
+  try {
+    const normalized = rawPrefix.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+    const decoded = Buffer.from(`${normalized}${padding}`, 'base64').toString('utf8').trim();
+    return looksLikeDiscordUserId(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
 }

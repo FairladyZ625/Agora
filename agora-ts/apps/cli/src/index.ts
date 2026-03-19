@@ -12,6 +12,8 @@ import type {
   CitizenService,
   DashboardQueryService,
   ProjectBrainAutomationService,
+  ProjectBrainIndexService,
+  ProjectBrainRetrievalService,
   ProjectBrainService,
   ProjectService,
   RolePackService,
@@ -68,8 +70,11 @@ export interface CliDependencies {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   projectBrainAutomationService?: ProjectBrainAutomationService;
+  projectBrainIndexService?: ProjectBrainIndexService;
+  projectBrainRetrievalService?: ProjectBrainRetrievalService;
   citizenService?: CitizenService;
-  tmuxRuntimeService?: TmuxRuntimeServiceLike;
+  legacyRuntimeService?: LegacyRuntimeServiceLike;
+  tmuxRuntimeService?: LegacyRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
   taskConversationService?: TaskConversationService;
@@ -86,7 +91,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type TmuxRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
+type LegacyRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
@@ -113,6 +118,30 @@ function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
     bindings.set(role, target);
   }
   return bindings;
+}
+
+function parseRoleSkillBindings(rawBindings: string[] = []): Record<string, string[]> {
+  const bindings: Record<string, string[]> = {};
+  for (const raw of rawBindings) {
+    const [role, skillRef] = raw.split('=');
+    if (!role || !skillRef) {
+      throw new Error(`invalid --role-skill value: ${raw}. Expected role=skill.`);
+    }
+    bindings[role] = [...(bindings[role] ?? []), skillRef];
+  }
+  return bindings;
+}
+
+function buildSkillPolicy(skillRefs: string[] = [], rawRoleSkills: string[] = []) {
+  const roleRefs = parseRoleSkillBindings(rawRoleSkills);
+  if (skillRefs.length === 0 && Object.keys(roleRefs).length === 0) {
+    return undefined;
+  }
+  return {
+    global_refs: skillRefs,
+    role_refs: roleRefs,
+    enforcement: 'required' as const,
+  };
 }
 
 function buildTemplateMembers(
@@ -337,7 +366,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     return composition;
   }
   const taskService = createLazyObject(() => deps.taskService ?? resolveComposition().taskService);
-  const tmuxRuntimeService = createLazyObject(() => deps.tmuxRuntimeService ?? resolveComposition().tmuxRuntimeService);
+  const legacyRuntimeService = createLazyObject(() => deps.legacyRuntimeService ?? deps.tmuxRuntimeService ?? resolveComposition().tmuxRuntimeService);
   const dashboardSessionClient = createLazyObject(() => deps.dashboardSessionClient ?? resolveComposition().dashboardSessionClient);
   const humanAccountService = createLazyObject(() => deps.humanAccountService ?? resolveComposition().humanAccountService);
   const taskConversationService = createLazyObject(() => deps.taskConversationService ?? resolveComposition().taskConversationService);
@@ -347,6 +376,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
+  const getProjectBrainIndexService = () => deps.projectBrainIndexService ?? resolveComposition().projectBrainIndexService;
+  const getProjectBrainRetrievalService = () => deps.projectBrainRetrievalService ?? resolveComposition().projectBrainRetrievalService;
   const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
@@ -410,6 +441,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--im-target-json <json>', 'IM target override JSON')
     .option('--project-id <projectId>', 'bind task to an existing project')
     .option('--smoke-test', 'mark this task as smoke/test mode', false)
+    .option('--skill <ref>', 'global skill ref', collectOption, [])
+    .option('--role-skill <binding>', 'role-scoped skill ref (role=skill)', collectOption, [])
     .option('--controller <agentId>', 'controller agent override')
     .option('--bind <binding>', 'role binding override (role=agent)', collectOption, [])
     .action((title: string, options: {
@@ -422,9 +455,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
       imTargetJson?: string;
       projectId?: string;
       smokeTest?: boolean;
+      skill?: string[];
+      roleSkill?: string[];
       controller?: string;
       bind?: string[];
     }) => {
+      const skillPolicy = buildSkillPolicy(options.skill, options.roleSkill);
       const input = createTaskRequestSchema.parse({
         title,
         type: options.type,
@@ -436,6 +472,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
+        ...(skillPolicy ? { skill_policy: skillPolicy } : {}),
         ...(options.smokeTest ? { control: { mode: 'smoke_test' } } : {}),
       });
       const template = (() => {
@@ -581,6 +618,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projects = program
     .command('projects')
     .description('project thin-slice commands');
+  const skills = program
+    .command('skills')
+    .description('local skill catalog commands');
   const citizens = program
     .command('citizens')
     .description('citizen definition and projection preview commands');
@@ -686,6 +726,25 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (index?.content) {
         writeLine(stdout, '');
         writeLine(stdout, index.content.trimEnd());
+      }
+    });
+
+  skills
+    .command('list')
+    .description('列出本机可解析的 skills')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const items = dashboardQueryService.listSkills();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ skills: items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        writeLine(stdout, '没有找到 skills');
+        return;
+      }
+      for (const item of items) {
+        writeLine(stdout, `${item.skill_ref}\t${item.source_label}\t${item.relative_path}\t${item.resolved_path}`);
       }
     });
 
@@ -870,19 +929,84 @@ export function createCliProgram(deps: CliDependencies = {}) {
   projectBrain
     .command('query')
     .description('搜索 project brain docs')
-    .requiredOption('--project <projectId>', 'project id')
+    .option('--project <projectId>', 'project id')
+    .option('--task <taskId>', 'task id for task-aware query')
+    .option('--audience <audience>', 'controller|citizen|craftsman', 'controller')
     .requiredOption('--query <query>', 'search query')
+    .option('--mode <mode>', 'auto|hybrid|raw', 'raw')
     .option('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
     .option('--json', '输出 JSON', false)
-    .action((options: {
-      project: string;
+    .action(async (options: {
+      project?: string;
+      task?: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
       query: string;
+      mode?: 'auto' | 'hybrid' | 'raw';
       kind?: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
       json?: boolean;
     }) => {
+      if (options.task) {
+        const projectBrainRetrievalService = getProjectBrainRetrievalService();
+        const shouldUseHybrid = options.mode !== 'raw' && !!projectBrainRetrievalService;
+        if (shouldUseHybrid) {
+          const results = await projectBrainRetrievalService.searchTaskContext({
+            task_id: options.task,
+            audience: options.audience ?? 'controller',
+            query: options.query,
+            max_results: 5,
+          });
+          if (options.json) {
+            writeLine(stdout, JSON.stringify({
+              retrieval_mode: results[0]?.retrieval_mode ?? 'hybrid',
+              results,
+            }, null, 2));
+            return;
+          }
+          if (results.length === 0) {
+            writeLine(stdout, '没有匹配结果');
+            return;
+          }
+          for (const item of results) {
+            writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
+            writeLine(stdout, `  ${item.snippet}`);
+          }
+          return;
+        }
+        const task = taskService.getTask(options.task);
+        if (!task?.project_id) {
+          throw new Error(`task ${options.task} is not bound to a project`);
+        }
+        const rawResults = projectBrainService.queryDocuments(task.project_id, options.query, options.kind);
+        const results = rawResults.map((result) => ({
+          ...result,
+          retrieval_mode: 'raw',
+        }));
+        if (options.json) {
+          writeLine(stdout, JSON.stringify({ retrieval_mode: 'raw', results }, null, 2));
+          return;
+        }
+        if (results.length === 0) {
+          writeLine(stdout, '没有匹配结果');
+          return;
+        }
+        for (const item of results) {
+          writeLine(stdout, `${item.kind}\t${item.slug}\t${item.title ?? '-'}\t${item.path}`);
+          writeLine(stdout, `  ${item.snippet}`);
+        }
+        return;
+      }
+      if (!options.project) {
+        throw new Error('brain query requires either --project or --task');
+      }
       const results = projectBrainService.queryDocuments(options.project, options.query, options.kind);
       if (options.json) {
-        writeLine(stdout, JSON.stringify({ results }, null, 2));
+        writeLine(stdout, JSON.stringify({
+          retrieval_mode: 'raw',
+          results: results.map((result) => ({
+            ...result,
+            retrieval_mode: 'raw',
+          })),
+        }, null, 2));
         return;
       }
       if (results.length === 0) {
@@ -895,24 +1019,194 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
     });
 
-  projectBrain
-    .command('bootstrap-context')
-    .description('生成 agent-facing project brain bootstrap context')
+  const projectBrainIndex = projectBrain
+    .command('index')
+    .description('project brain vector index management commands');
+
+  projectBrainIndex
+    .command('rebuild')
     .requiredOption('--project <projectId>', 'project id')
-    .option('--audience <audience>', 'controller|citizen|craftsman', 'controller')
-    .option('--citizen <citizenId>', 'citizen id for citizen-scoped bootstrap')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: { project: string; json?: boolean }) => {
+      const projectBrainIndexService = getProjectBrainIndexService();
+      if (projectBrainIndexService) {
+        const result = await projectBrainIndexService.rebuildProjectIndex(options.project);
+        if (options.json) {
+          writeLine(stdout, JSON.stringify(result, null, 2));
+          return;
+        }
+        writeLine(stdout, `project ${result.project_id} rebuilt: ${result.indexed_documents} docs / ${result.indexed_chunks} chunks`);
+        return;
+      }
+      const payload = {
+        project_id: options.project,
+        status: 'not_wired',
+        message: 'project brain index rebuild is not wired yet',
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, payload.message);
+    });
+
+  projectBrainIndex
+    .command('sync')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .option('--slug <slug>', 'doc slug')
     .option('--json', '输出 JSON', false)
     .action((options: {
       project: string;
+      kind?: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      slug?: string;
+      json?: boolean;
+    }) => {
+      const projectBrainIndexService = getProjectBrainIndexService();
+      if (projectBrainIndexService) {
+        return projectBrainIndexService.syncProjectIndex({
+          project_id: options.project,
+          ...(options.kind ? { kind: options.kind } : {}),
+          ...(options.slug ? { slug: options.slug } : {}),
+        }).then((result) => {
+          if (options.json) {
+            writeLine(stdout, JSON.stringify(result, null, 2));
+            return;
+          }
+          writeLine(stdout, `project ${result.project_id} synced: ${result.indexed_documents} docs / ${result.indexed_chunks} chunks`);
+        });
+      }
+      const payload = {
+        project_id: options.project,
+        kind: options.kind ?? null,
+        slug: options.slug ?? null,
+        status: 'not_wired',
+        message: 'project brain index sync is not wired yet',
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, payload.message);
+    });
+
+  projectBrainIndex
+    .command('status')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: { project: string; json?: boolean }) => {
+      const projectBrainIndexService = getProjectBrainIndexService();
+      if (projectBrainIndexService) {
+        const result = await projectBrainIndexService.getProjectIndexStatus(options.project);
+        if (options.json) {
+          writeLine(stdout, JSON.stringify(result, null, 2));
+          return;
+        }
+        writeLine(stdout, `provider=${result.provider} healthy=${result.healthy} chunks=${result.chunk_count ?? 0}`);
+        return;
+      }
+      const payload = {
+        project_id: options.project,
+        status: 'not_wired',
+        message: 'project brain index status is not wired yet',
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, payload.message);
+    });
+
+  const projectBrainChunk = projectBrain
+    .command('chunk')
+    .description('project brain chunk inspection commands');
+
+  projectBrainChunk
+    .command('inspect')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--kind <kind>', 'index|timeline|recap|decision|fact|open_question|reference|citizen_scaffold')
+    .requiredOption('--slug <slug>', 'doc slug')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      project: string;
+      kind: 'index' | 'timeline' | 'recap' | 'decision' | 'fact' | 'open_question' | 'reference' | 'citizen_scaffold';
+      slug: string;
+      json?: boolean;
+    }) => {
+      const projectBrainIndexService = getProjectBrainIndexService();
+      if (projectBrainIndexService) {
+        return Promise.resolve(projectBrainIndexService.inspectDocumentChunks({
+          project_id: options.project,
+          kind: options.kind,
+          slug: options.slug,
+        })).then((result) => {
+          if (options.json) {
+            writeLine(stdout, JSON.stringify(result, null, 2));
+            return;
+          }
+          writeLine(stdout, `chunks: ${result.chunks.length}`);
+        });
+      }
+      const payload = {
+        project_id: options.project,
+        kind: options.kind,
+        slug: options.slug,
+        status: 'not_wired',
+        message: 'project brain chunk inspection is not wired yet',
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, payload.message);
+    });
+
+  projectBrain
+    .command('bootstrap-context')
+    .description('生成 agent-facing project brain bootstrap context')
+    .option('--project <projectId>', 'project id')
+    .option('--task <taskId>', 'task id for task-aware bootstrap')
+    .option('--audience <audience>', 'controller|citizen|craftsman', 'controller')
+    .option('--citizen <citizenId>', 'citizen id for citizen-scoped bootstrap')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project?: string;
+      task?: string;
       audience?: 'controller' | 'citizen' | 'craftsman';
       citizen?: string;
       json?: boolean;
     }) => {
-      const context = projectBrainAutomationService.buildBootstrapContext({
-        project_id: options.project,
+      let projectId = options.project;
+      let taskTitle: string | undefined;
+      let taskDescription: string | undefined;
+      let allowedCitizenIds: string[] = [];
+      if (options.task) {
+        const task = taskService.getTask(options.task);
+        if (!task?.project_id) {
+          throw new Error(`task ${options.task} is not bound to a project`);
+        }
+        projectId = task.project_id;
+        taskTitle = task.title;
+        taskDescription = task.description ?? undefined;
+        allowedCitizenIds = task.team.members
+          .filter((member) => member.member_kind === 'citizen')
+          .map((member) => member.agentId);
+      }
+      if (!projectId) {
+        throw new Error('brain bootstrap-context requires either --project or --task');
+      }
+      const bootstrapInput = {
+        project_id: projectId,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
         audience: options.audience ?? 'controller',
         ...(options.citizen ? { citizen_id: options.citizen } : {}),
-      });
+      };
+      const context = options.task
+        ? await projectBrainAutomationService.buildBootstrapContextAsync(bootstrapInput)
+        : projectBrainAutomationService.buildBootstrapContext(bootstrapInput);
       if (options.json) {
         writeLine(stdout, JSON.stringify(context, null, 2));
         return;
@@ -2097,7 +2391,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       sessionObservedAt?: string;
       workspaceRoot?: string;
     }) => {
-      const result = tmuxRuntimeService.recordIdentity(agent, {
+      const result = legacyRuntimeService.recordIdentity(agent, {
         sessionReference: options.sessionReference ?? null,
         identitySource: options.identitySource,
         identityPath: options.identityPath ?? null,

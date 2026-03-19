@@ -37,6 +37,7 @@ describe('agora-ts scenario cli', () => {
     expect(stdout.value).toContain('authoring-smoke');
     expect(stdout.value).toContain('control-plane-loop');
     expect(stdout.value).toContain('graph-driven-path');
+    expect(stdout.value).toContain('project-brain-bootstrap');
   });
 
   it('runs a single scenario and prints json output', async () => {
@@ -93,6 +94,7 @@ describe('agora-ts scenario cli', () => {
         'craftsman-workdir-isolation',
         'control-plane-loop',
         'graph-driven-path',
+        'project-brain-bootstrap',
       ]),
     );
   }, 30000);

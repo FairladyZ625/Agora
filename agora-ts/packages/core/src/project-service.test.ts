@@ -62,6 +62,28 @@ describe('project service', () => {
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'timeline.md'), 'utf8')).toContain('doc_type: project_timeline');
   });
 
+  it('auto-generates a persisted project id when the caller omits one', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    tempPaths.push(brainPackDir);
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    const created = service.createProject({
+      name: '中文 Project Alpha',
+      summary: 'auto id',
+      owner: 'archon',
+    });
+
+    expect(created.id).toMatch(/^proj-[a-z0-9-]+$/);
+    expect(service.requireProject(created.id).name).toBe('中文 Project Alpha');
+    expect(existsSync(join(brainPackDir, 'projects', created.id, 'index.md'))).toBe(true);
+  });
+
   it('throws when requiring a missing project', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

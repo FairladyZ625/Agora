@@ -18,6 +18,7 @@ export type TaskPriority = 'low' | 'normal' | 'high';
 export interface Task {
   id: string;
   version: number;
+  projectId?: string | null;
   title: string;
   description: string | null;
   type: string;
@@ -337,6 +338,18 @@ export interface TaskBlueprint {
   }>;
 }
 
+export interface CurrentStageRoster {
+  stageId: string;
+  roster?: {
+    include_roles?: string[];
+    include_agents?: string[];
+    exclude_agents?: string[];
+    keep_controller?: boolean;
+  } | null;
+  desiredParticipantRefs: string[];
+  joinedParticipantRefs: string[];
+}
+
 export interface TaskStatus {
   task: Task;
   flow_log: FlowLogEntry[];
@@ -345,6 +358,7 @@ export interface TaskStatus {
   subtaskExecutions?: Record<string, CraftsmanExecution[]>;
   governanceSnapshot?: CraftsmanGovernanceSnapshot | null;
   taskBlueprint?: TaskBlueprint;
+  currentStageRoster?: CurrentStageRoster;
   conversationSummary?: TaskConversationSummary;
   conversation?: TaskConversationEntry[];
 }
@@ -361,6 +375,11 @@ export interface CreateTaskInput {
   priority: TaskPriority | string;
   locale?: 'zh-CN' | 'en-US';
   project_id?: string | null;
+  skill_policy?: {
+    global_refs: string[];
+    role_refs: Record<string, string[]>;
+    enforcement: 'required' | 'advisory';
+  };
   team_override?: {
     members: Array<{
       role: string;

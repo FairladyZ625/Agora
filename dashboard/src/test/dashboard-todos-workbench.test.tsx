@@ -67,7 +67,7 @@ vi.mock('@/stores/projectStore', () => ({
 
 function renderPage() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={['/todos?project=proj-alpha']}>
       <TodosPage />
     </MemoryRouter>,
   );
@@ -93,5 +93,6 @@ describe('todos workbench layout', () => {
     expect(queuePanel).toBeInTheDocument();
     expect(within(queuePanel).getByText('补前端页面')).toBeInTheDocument();
     expect(within(queuePanel).getAllByText('Project Alpha').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('所属 Project')).toHaveValue('proj-alpha');
   });
 });

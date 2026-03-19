@@ -200,6 +200,7 @@ function normalizeTemplateGraphPayload(template: TemplateDetailDto): TemplateDet
         kind: 'stage',
         ...(stage.execution_kind ? { execution_kind: stage.execution_kind } : {}),
         ...(stage.allowed_actions ? { allowed_actions: stage.allowed_actions } : {}),
+        ...(stage.roster ? { roster: stage.roster } : {}),
         ...(stage.gate ? { gate: stage.gate } : {}),
         layout: {
           x: index * 280,

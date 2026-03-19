@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join, resolve } from 'node:path';
 import type {
   TaskBrainCloseRecapRequest,
+  TaskExecutionBriefRequest,
+  TaskExecutionBriefResult,
   TaskBrainWorkspaceBindingRef,
   TaskBrainWorkspacePort,
   TaskBrainWorkspaceRequest,
@@ -45,6 +47,14 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
   updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void {
     this.writeWorkspace(binding, input, { seedEmptyAgentNotes: false, seedContextFiles: false });
+  }
+
+  writeExecutionBrief(binding: TaskBrainWorkspaceBindingRef, input: TaskExecutionBriefRequest): TaskExecutionBriefResult {
+    const briefsDir = join(binding.workspace_path, '06-artifacts', 'briefs');
+    mkdirSync(briefsDir, { recursive: true });
+    const briefPath = join(briefsDir, `${input.subtask_id}-execution-brief.md`);
+    writeFileSync(briefPath, renderExecutionBrief(input), 'utf8');
+    return { brief_path: briefPath };
   }
 
   writeTaskCloseRecap(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainCloseRecapRequest): void {
@@ -199,10 +209,30 @@ function renderTaskBrief(input: TaskBrainWorkspaceRequest) {
 }
 
 function renderRoster(input: TaskBrainWorkspaceRequest) {
+  const currentStageParticipants = input.current_stage_participants ?? [];
+  const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
   const rows = input.team_members.map((member) => (
     `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'} | ${member.agent_origin ?? 'user_managed'} | ${member.briefing_mode ?? 'overlay_full'}`
   ));
-  return [`# ${brainText(input.locale, '成员清单', 'Roster')}`, '', ...rows, ''].join('\n');
+  const rosterLines = currentStage?.roster
+    ? [
+        `${brainText(input.locale, '阶段筛选规则', 'Stage Roster Rules')}:`,
+        ...(currentStage.roster.include_roles?.length ? [`- include_roles: ${currentStage.roster.include_roles.join(', ')}`] : []),
+        ...(currentStage.roster.include_agents?.length ? [`- include_agents: ${currentStage.roster.include_agents.join(', ')}`] : []),
+        ...(currentStage.roster.exclude_agents?.length ? [`- exclude_agents: ${currentStage.roster.exclude_agents.join(', ')}`] : []),
+        `- keep_controller: ${currentStage.roster.keep_controller !== false}`,
+        '',
+      ]
+    : [];
+  return [
+    `# ${brainText(input.locale, '成员清单', 'Roster')}`,
+    '',
+    `${brainText(input.locale, '当前阶段目标成员', 'Current Stage Desired Participants')}: ${currentStageParticipants.join(', ') || '-'}`,
+    '',
+    ...rosterLines,
+    ...rows,
+    '',
+  ].join('\n');
 }
 
 function renderStageState(
@@ -274,6 +304,40 @@ function renderRoleBrief(
     `${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
     `${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
     `${brainText(input.locale, '控制模式', 'Control Mode')}: ${input.control_mode}`,
+    '',
+  ].join('\n');
+}
+
+function renderExecutionBrief(input: TaskExecutionBriefRequest) {
+  return [
+    '# Execution Brief',
+    '',
+    `Task: ${input.task_id} — ${input.title}`,
+    `Subtask: ${input.subtask_id} — ${input.subtask_title}`,
+    `Assignee: ${input.assignee}`,
+    `Adapter: ${input.adapter}`,
+    `Mode: ${input.mode}`,
+    `Controller: ${input.controller_ref ?? '-'}`,
+    `Current Stage: ${input.current_stage ?? '-'}`,
+    `Current Stage Participants: ${input.current_stage_participants.join(', ') || '-'}`,
+    '',
+    'Use this brief as the canonical execution input.',
+    'Do not assume the full discussion thread is authoritative; off-stage discussion may contain noise.',
+    '',
+    'Task Goal:',
+    input.description.trim() || '(empty description)',
+    '',
+    'Controller Request:',
+    input.prompt?.trim() || '(no explicit controller prompt)',
+    '',
+    'References:',
+    `- Current: ${input.references.current_path}`,
+    `- Task Brief: ${input.references.task_brief_path}`,
+    `- Roster: ${input.references.roster_path}`,
+    `- Stage State: ${input.references.stage_state_path}`,
+    ...(input.references.role_brief_path ? [`- Role Brief: ${input.references.role_brief_path}`] : []),
+    ...(input.references.project_brain_context_path ? [`- Project Brain Context: ${input.references.project_brain_context_path}`] : []),
+    ...(input.workdir ? ['', `Suggested Workdir: ${input.workdir}`] : []),
     '',
   ].join('\n');
 }

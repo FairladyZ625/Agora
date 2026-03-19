@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
-import { mapProjectDto, mapProjectWorkbenchDto } from '@/lib/projectMappers';
+import { mapProjectDto, mapProjectTaskSummaryDto, mapProjectTodoSummaryDto, mapProjectWorkbenchDto } from '@/lib/projectMappers';
 import type { ProjectSummary, ProjectWorkbench } from '@/types/project';
 
 interface ProjectStore {
@@ -9,8 +9,10 @@ interface ProjectStore {
   selectedProject: ProjectWorkbench | null;
   loading: boolean;
   detailLoading: boolean;
+  creating: boolean;
   error: string | null;
   fetchProjects: () => Promise<'live' | 'error'>;
+  createProject: (input: { id?: string; name: string; owner: string; summary?: string | null }) => Promise<ProjectSummary>;
   selectProject: (projectId: string | null) => Promise<void>;
   clearError: () => void;
 }
@@ -21,6 +23,7 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
   selectedProject: null,
   loading: false,
   detailLoading: false,
+  creating: false,
   error: null,
 
   fetchProjects: async () => {
@@ -39,6 +42,24 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
     }
   },
 
+  createProject: async (input) => {
+    set({ creating: true, error: null });
+    try {
+      const project = mapProjectDto(await api.createProject(input));
+      set((state) => ({
+        projects: [project, ...state.projects.filter((item) => item.id !== project.id)],
+        creating: false,
+      }));
+      return project;
+    } catch (error) {
+      set({
+        creating: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  },
+
   selectProject: async (projectId) => {
     if (!projectId) {
       set({ selectedProjectId: null, selectedProject: null });
@@ -46,8 +67,20 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
     }
     set({ selectedProjectId: projectId, detailLoading: true, error: null });
     try {
-      const detail = mapProjectWorkbenchDto(await api.getProjectWorkbench(projectId));
-      set({ selectedProject: detail, detailLoading: false });
+      const [workbenchDto, tasksDto, todosDto] = await Promise.all([
+        api.getProjectWorkbench(projectId),
+        api.listTasks(undefined, projectId),
+        api.listTodos(undefined, projectId),
+      ]);
+      const detail = mapProjectWorkbenchDto(workbenchDto);
+      set({
+        selectedProject: {
+          ...detail,
+          tasks: tasksDto.map(mapProjectTaskSummaryDto),
+          todos: todosDto.map(mapProjectTodoSummaryDto),
+        },
+        detailLoading: false,
+      });
     } catch (error) {
       set({
         selectedProject: null,

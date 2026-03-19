@@ -101,6 +101,14 @@ function cloneTemplateDetail(template: TemplateDetail): TemplateDetail {
       nodes: graph.nodes.map((node) => ({
         ...node,
         allowedActions: [...node.allowedActions],
+        roster: node.roster
+          ? {
+              includeRoles: [...node.roster.includeRoles],
+              includeAgents: [...node.roster.includeAgents],
+              excludeAgents: [...node.roster.excludeAgents],
+              keepController: node.roster.keepController,
+            }
+          : null,
         layout: node.layout ? { ...node.layout } : null,
       })),
       edges: graph.edges.map((edge) => ({ ...edge })),
@@ -121,6 +129,7 @@ function deriveTemplateGraphFromStages(stages: TemplateDetail['stages'], existin
         kind: 'stage' as const,
         executionKind: existing?.executionKind ?? null,
         allowedActions: existing?.allowedActions ?? [],
+        roster: existing?.roster ?? stage.roster ?? null,
         gateType: stage.gateType ?? null,
         gateApprover: stage.gateApprover ?? null,
         gateRequired: stage.gateRequired ?? null,
@@ -187,6 +196,7 @@ function deriveStagesFromTemplateGraph(graph: TemplateGraph): TemplateDetail['st
       id: node.id,
       name: node.name,
       mode: node.executionKind === 'citizen_execute' || node.executionKind === 'craftsman_dispatch' ? 'execute' : 'discuss',
+      roster: node.roster ?? null,
       gateType: node.gateType ?? null,
       gateApprover: node.gateApprover ?? null,
       gateRequired: node.gateRequired ?? null,
@@ -378,8 +388,15 @@ function TemplateGraphEditorContent() {
   const selectTemplate = useTemplateStore((state) => state.selectTemplate);
   const saveSelectedTemplate = useTemplateStore((state) => state.saveSelectedTemplate);
   const [draftState, setDraftState] = useState<TemplateDetail | null>(null);
-  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null);
-  const [selectedGraphEdgeId, setSelectedGraphEdgeId] = useState<string | null>(null);
+  const [selectionState, setSelectionState] = useState<{
+    templateId: string | null;
+    nodeId: string | null;
+    edgeId: string | null;
+  }>({
+    templateId: null,
+    nodeId: null,
+    edgeId: null,
+  });
   const [graphSaveError, setGraphSaveError] = useState(false);
 
   useEffect(() => {
@@ -465,16 +482,16 @@ function TemplateGraphEditorContent() {
       },
     })) ?? []
   );
-  const activeSelectedGraphEdgeId = selectedGraphEdgeId && draftGraph?.edges.some((edge) => edge.id === selectedGraphEdgeId)
-    ? selectedGraphEdgeId
+  const rawSelectedGraphNodeId = selectionState.templateId === (templateId ?? null) ? selectionState.nodeId : null;
+  const rawSelectedGraphEdgeId = selectionState.templateId === (templateId ?? null) ? selectionState.edgeId : null;
+  const selectedGraphEdgeId = rawSelectedGraphEdgeId && draftGraph?.edges.some((edge) => edge.id === rawSelectedGraphEdgeId)
+    ? rawSelectedGraphEdgeId
     : null;
-  const activeSelectedGraphNodeId = selectedGraphNodeId && draftGraph?.nodes.some((node) => node.id === selectedGraphNodeId)
-    ? selectedGraphNodeId
-    : !activeSelectedGraphEdgeId
-      ? (draftGraph?.entryNodes[0] ?? draftGraph?.nodes[0]?.id ?? null)
-      : null;
-  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === activeSelectedGraphNodeId) ?? null;
-  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === activeSelectedGraphEdgeId) ?? null;
+  const selectedGraphNodeId = rawSelectedGraphNodeId && draftGraph?.nodes.some((node) => node.id === rawSelectedGraphNodeId)
+    ? rawSelectedGraphNodeId
+    : (!selectedGraphEdgeId ? (draftGraph?.entryNodes[0] ?? draftGraph?.nodes[0]?.id ?? null) : null);
+  const selectedGraphNode = draftGraph?.nodes.find((node) => node.id === selectedGraphNodeId) ?? null;
+  const selectedGraphEdge = draftGraph?.edges.find((edge) => edge.id === selectedGraphEdgeId) ?? null;
   const draftGraphNodes = draftGraph?.nodes ?? [];
   const selectedGraphNodeIndex = selectedGraphNode ? draftGraphNodes.findIndex((node) => node.id === selectedGraphNode.id) : -1;
   const advanceCandidates = selectedGraphNodeIndex >= 0
@@ -531,7 +548,11 @@ function TemplateGraphEditorContent() {
         kind: edge.label === 'reject' ? 'reject' : 'advance',
       })) as TemplateGraph['edges'],
     }));
-    setSelectedGraphEdgeId(`${candidate.source}__${candidate.kind}__${candidate.target}`);
+    setSelectionState({
+      templateId: templateId ?? null,
+      nodeId: null,
+      edgeId: `${candidate.source}__${candidate.kind}__${candidate.target}`,
+    });
   };
 
   const handleSave = async () => {
@@ -629,8 +650,11 @@ function TemplateGraphEditorContent() {
                 aria-label={`graph node ${node.id}`}
                 className="data-row w-full text-left"
                 onClick={() => {
-                  setSelectedGraphNodeId(node.id);
-                  setSelectedGraphEdgeId(null);
+                  setSelectionState({
+                    templateId: templateId ?? null,
+                    nodeId: node.id,
+                    edgeId: null,
+                  });
                 }}
               >
                 <span className="type-heading-xs">{node.name}</span>
@@ -647,8 +671,11 @@ function TemplateGraphEditorContent() {
                 aria-label={`graph edge ${edge.from} ${edge.to}`}
                 className="data-row w-full text-left"
                 onClick={() => {
-                  setSelectedGraphEdgeId(edge.id);
-                  setSelectedGraphNodeId(null);
+                  setSelectionState({
+                    templateId: templateId ?? null,
+                    nodeId: null,
+                    edgeId: edge.id,
+                  });
                 }}
               >
                 <span className="type-mono-xs">{`${edge.from} -> ${edge.to}`}</span>
@@ -693,8 +720,11 @@ function TemplateGraphEditorContent() {
               }}
               proOptions={{ hideAttribution: true }}
               onNodeClick={(_, node) => {
-                setSelectedGraphNodeId(node.id);
-                setSelectedGraphEdgeId(null);
+                setSelectionState({
+                  templateId: templateId ?? null,
+                  nodeId: node.id,
+                  edgeId: null,
+                });
               }}
             >
               <Controls showInteractive={false} />
@@ -790,6 +820,55 @@ function TemplateGraphEditorContent() {
                 </select>
               </label>
               <label className="space-y-2">
+                <span className="field-label">{copy.graphRosterRolesLabel}</span>
+                <input
+                  aria-label={`graph node ${selectedGraphNode.id} roster roles`}
+                  className="input-shell"
+                  type="text"
+                  value={selectedGraphNode.roster?.includeRoles.join(', ') ?? ''}
+                  onChange={(event) => updateDraftGraph((currentGraph) => ({
+                    ...currentGraph,
+                    nodes: currentGraph.nodes.map((node) => (
+                      node.id === selectedGraphNode.id
+                        ? {
+                            ...node,
+                            roster: {
+                              includeRoles: event.target.value.split(',').map((value) => value.trim()).filter((value) => value.length > 0),
+                              includeAgents: node.roster?.includeAgents ?? [],
+                              excludeAgents: node.roster?.excludeAgents ?? [],
+                              keepController: node.roster?.keepController ?? false,
+                            },
+                          }
+                        : node
+                    )),
+                  }))}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="field-label">{copy.graphRosterKeepControllerLabel}</span>
+                <input
+                  aria-label={`graph node ${selectedGraphNode.id} keep controller`}
+                  type="checkbox"
+                  checked={selectedGraphNode.roster?.keepController ?? false}
+                  onChange={(event) => updateDraftGraph((currentGraph) => ({
+                    ...currentGraph,
+                    nodes: currentGraph.nodes.map((node) => (
+                      node.id === selectedGraphNode.id
+                        ? {
+                            ...node,
+                            roster: {
+                              includeRoles: node.roster?.includeRoles ?? [],
+                              includeAgents: node.roster?.includeAgents ?? [],
+                              excludeAgents: node.roster?.excludeAgents ?? [],
+                              keepController: event.target.checked,
+                            },
+                          }
+                        : node
+                    )),
+                  }))}
+                />
+              </label>
+              <label className="space-y-2">
                 <span className="field-label">{copy.graphNextStageLabel}</span>
                 <select
                   aria-label={`graph node ${selectedGraphNode.id} next stage`}
@@ -879,7 +958,11 @@ function TemplateGraphEditorContent() {
                     entryNodes: currentGraph.entryNodes.filter((entryId) => entryId !== selectedGraphNode.id),
                     edges: currentGraph.edges.filter((edge) => edge.from !== selectedGraphNode.id && edge.to !== selectedGraphNode.id),
                   }));
-                  setSelectedGraphNodeId(null);
+                  setSelectionState({
+                    templateId: templateId ?? null,
+                    nodeId: null,
+                    edgeId: null,
+                  });
                 }}
               >
                 {copy.graphDeleteNodeAction}
@@ -917,7 +1000,11 @@ function TemplateGraphEditorContent() {
                     ...currentGraph,
                     edges: currentGraph.edges.filter((edge) => edge.id !== selectedGraphEdge.id),
                   }));
-                  setSelectedGraphEdgeId(null);
+                  setSelectionState({
+                    templateId: templateId ?? null,
+                    nodeId: null,
+                    edgeId: null,
+                  });
                 }}
               >
                 {copy.graphDeleteEdgeAction}

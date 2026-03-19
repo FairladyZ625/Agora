@@ -16,6 +16,7 @@ import type {
   ApiProjectWorkbenchDto,
   ApiRuntimeDiagnosisResultDto,
   ApiRuntimeRecoveryActionDto,
+  ApiSkillCatalogEntryDto,
   ApiTaskDto,
   ApiTaskConversationListResponseDto,
   ApiTaskConversationSummaryDto,
@@ -45,10 +46,12 @@ import {
   healthResponseSchema,
   listProjectsResponseSchema,
   observeCraftsmanExecutionsResponseSchema,
+  projectSchema,
   projectWorkbenchResponseSchema,
   promoteTodoResultSchema,
   runtimeDiagnosisResultSchema,
   runtimeRecoveryActionSchema,
+  skillCatalogListResponseSchema,
   taskSchema,
   taskConversationListResponseSchema,
   taskConversationMarkReadRequestSchema,
@@ -141,9 +144,16 @@ function resolveRequestUrl(input: string) {
 
 // ── Task APIs ────────────────────────────────────
 
-export function listTasks(state?: string): Promise<ApiTaskDto[]> {
-  const params = state ? `?state=${encodeURIComponent(state)}` : '';
-  return request<ApiTaskDto[]>(`/tasks${params}`, z.array(taskSchema));
+export function listTasks(state?: string, projectId?: string): Promise<ApiTaskDto[]> {
+  const params = new URLSearchParams();
+  if (state) {
+    params.set('state', state);
+  }
+  if (projectId) {
+    params.set('project_id', projectId);
+  }
+  const query = params.toString();
+  return request<ApiTaskDto[]>(`/tasks${query ? `?${query}` : ''}`, z.array(taskSchema));
 }
 
 export function getTask(taskId: string): Promise<ApiTaskDto> {
@@ -398,6 +408,10 @@ export function createTask(input: CreateTaskInput): Promise<ApiTaskDto> {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export function listSkills(): Promise<ApiSkillCatalogEntryDto[]> {
+  return request('/skills', skillCatalogListResponseSchema).then((response) => response.skills);
 }
 
 // ── Task Operations ──────────────────────────────
@@ -670,6 +684,20 @@ export function listProjects(status?: string): Promise<ApiProjectDto[]> {
   const params = status ? `?status=${encodeURIComponent(status)}` : '';
   return request<ApiListProjectsResponseDto>(`/projects${params}`, listProjectsResponseSchema)
     .then((response) => response.projects);
+}
+
+export function createProject(input: {
+  id?: string;
+  name: string;
+  owner: string;
+  summary?: string | null;
+  status?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<ApiProjectDto> {
+  return request<ApiProjectDto>('/projects', projectSchema, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {

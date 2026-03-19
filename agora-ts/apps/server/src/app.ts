@@ -81,6 +81,7 @@ import {
   type ProjectService,
   ProjectService as ProjectServiceImpl,
   type TaskConversationService,
+  type TaskInboundService,
   type TaskParticipationService,
   type TaskContextBindingService,
   type TaskService,
@@ -99,12 +100,17 @@ export interface BuildAppOptions {
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
+  legacyRuntimeService?: Pick<
+    TmuxRuntimeService,
+    'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
+  >;
   tmuxRuntimeService?: Pick<
     TmuxRuntimeService,
     'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
   >;
   taskContextBindingService?: TaskContextBindingService;
   taskConversationService?: TaskConversationService;
+  taskInboundService?: TaskInboundService;
   taskParticipationService?: TaskParticipationService;
   notificationDispatcher?: NotificationDispatcher;
   humanAccountService?: HumanAccountService;
@@ -405,6 +411,18 @@ function resolveHumanActor(
   };
 }
 
+function shouldRequireHumanActor(options: {
+  apiAuth: BuildAppOptions['apiAuth'] | undefined;
+  dashboardAuth: BuildAppOptions['dashboardAuth'] | undefined;
+  humanAccountService: HumanAccountService | undefined;
+}) {
+  return Boolean(
+    options.apiAuth?.enabled
+      || options.dashboardAuth?.enabled
+      || options.humanAccountService?.hasAccounts(),
+  );
+}
+
 function resolveDashboardSessionUsername(
   request: FastifyRequest,
   sessions: Map<string, DashboardSession>,
@@ -553,7 +571,7 @@ function recordCraftsmanCallback(metrics: MetricsState, status: string) {
 function renderMetrics(options: {
   metrics: MetricsState;
   taskService: TaskService | undefined;
-  tmuxRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
+  legacyRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
 }) {
   const lines: string[] = [
     '# HELP agora_http_requests_total Total HTTP requests served by agora-ts server.',
@@ -598,7 +616,7 @@ function renderMetrics(options: {
     lines.push(`agora_craftsman_callbacks_total{status="${status}"} ${value}`);
   }
 
-  const tmuxPanes = options.tmuxRuntimeService?.status().panes.length ?? 0;
+  const tmuxPanes = options.legacyRuntimeService?.status().panes.length ?? 0;
   lines.push('# HELP agora_craftsmen_sessions_active Current active legacy/runtime execution slots observed by the server.');
   lines.push('# TYPE agora_craftsmen_sessions_active gauge');
   lines.push(`agora_craftsmen_sessions_active ${tmuxPanes}`);
@@ -611,6 +629,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: false,
   });
   const taskService = options.taskService;
+  app.addHook('onClose', async () => {
+    await taskService?.drainBackgroundOperations?.();
+  });
   const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
   const projectBrainService = options.projectBrainService;
   const citizenService = options.citizenService;
@@ -618,10 +639,11 @@ export function buildApp(options: BuildAppOptions = {}) {
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
   const liveSessionStore = options.liveSessionStore;
-  const tmuxRuntimeService = options.tmuxRuntimeService;
+  const legacyRuntimeService = options.legacyRuntimeService ?? options.tmuxRuntimeService;
   const taskContextBindingService = options.taskContextBindingService;
   const taskParticipationService = options.taskParticipationService;
   const taskConversationService = options.taskConversationService;
+  const taskInboundService = options.taskInboundService;
   const notificationDispatcher = options.notificationDispatcher;
   const apiAuth = options.apiAuth;
   const dashboardAuth = options.dashboardAuth;
@@ -735,7 +757,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     app.get('/metrics', async (request, reply) => {
       return reply
         .type('text/plain; version=0.0.4; charset=utf-8')
-        .send(renderMetrics({ metrics, taskService, tmuxRuntimeService }));
+        .send(renderMetrics({ metrics, taskService, legacyRuntimeService }));
     });
   }
 
@@ -1022,7 +1044,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const payload = createProjectRequestSchema.parse(request.body);
       return reply.send(projectService.createProject({
-        id: payload.id,
+        ...(payload.id ? { id: payload.id } : {}),
         name: payload.name,
         summary: payload.summary,
         ...(payload.owner ? { owner: payload.owner } : {}),
@@ -1062,6 +1084,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(projectWorkbenchResponseSchema.parse({
         project,
         index: projectBrainService.getDocument(params.projectId, 'index'),
+        timeline: projectBrainService.getDocument(params.projectId, 'timeline'),
         recaps: projectService.listProjectRecaps(params.projectId),
         knowledge: projectService.listKnowledgeEntries(params.projectId),
         citizens: citizenService.listCitizens(params.projectId),
@@ -1076,8 +1099,8 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
-    const query = request.query as { state?: string };
-    return reply.send(taskService.listTasks(query.state));
+    const query = request.query as { state?: string; project_id?: string };
+    return reply.send(taskService.listTasks(query.state, query.project_id));
   });
 
   app.get('/api/tasks/:taskId', async (request, reply) => {
@@ -1115,6 +1138,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       const callerId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.caller_id;
       const task = taskService.advanceTask(params.taskId, {
         callerId,
+        ...(payload.next_stage_id ? { nextStageId: payload.next_stage_id } : {}),
       });
       recordTaskAction(metrics, 'advance', 'success');
       emitStructuredLog(structuredLogs, {
@@ -1141,7 +1165,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = approveTaskRequestSchema.parse(request.body);
-      const approverId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.approver_id;
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
+      }
+      const approverId = humanActor?.username ?? payload.approver_id;
       return reply.send(
         taskService.approveTask(params.taskId, {
           approverId,
@@ -1161,7 +1189,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { taskId: string };
       const payload = rejectTaskRequestSchema.parse(request.body);
-      const rejectorId = resolveDashboardSessionUsername(request, dashboardSessions) ?? payload.rejector_id;
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
+      }
+      const rejectorId = humanActor?.username ?? payload.rejector_id;
       return reply.send(
         taskService.rejectTask(params.taskId, {
           rejectorId,
@@ -1197,8 +1229,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         return reply.status(400).send({ message: 'current stage does not accept human approval' });
       }
       const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
-      if (stage.gate.type === 'archon_review' && humanAccountService?.hasAccounts() && !humanActor) {
-        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
       const actorId = humanActor?.username ?? payload.actor_id;
       if (!actorId) {
@@ -1244,8 +1276,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         return reply.status(400).send({ message: 'current stage does not accept human rejection' });
       }
       const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
-      if (stage.gate.type === 'archon_review' && humanAccountService?.hasAccounts() && !humanActor) {
-        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
       const actorId = humanActor?.username ?? payload.actor_id;
       if (!actorId) {
@@ -1276,8 +1308,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { taskId: string };
       const payload = archonApproveTaskRequestSchema.parse(request.body);
       const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
-      if (humanAccountService?.hasAccounts() && !humanActor) {
-        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
       const reviewerId = humanActor?.username ?? payload.reviewer_id;
       return reply.send(
@@ -1300,8 +1332,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { taskId: string };
       const payload = archonRejectTaskRequestSchema.parse(request.body);
       const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
-      if (humanAccountService?.hasAccounts() && !humanActor) {
-        return reply.status(403).send({ message: 'missing authenticated human reviewer' });
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
       const reviewerId = humanActor?.username ?? payload.reviewer_id;
       return reply.send(
@@ -1860,14 +1892,14 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.post('/api/craftsmen/runtime/identity', async (request, reply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
+    if (!legacyRuntimeService) {
+      return reply.status(503).send({ message: 'Legacy runtime transport is not configured' });
     }
     try {
       const payload = craftsmanRuntimeIdentityRequestSchema.parse(request.body);
       return reply.send({
         ok: true,
-        identity: tmuxRuntimeService.recordIdentity(payload.agent, {
+        identity: legacyRuntimeService.recordIdentity(payload.agent, {
           sessionReference: payload.session_reference ?? null,
           identitySource: payload.identity_source,
           identityPath: payload.identity_path ?? null,
@@ -1882,17 +1914,17 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   const getLegacyRuntimeStatus = async (_request: FastifyRequest, reply: FastifyReply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
+    if (!legacyRuntimeService) {
+      return reply.status(503).send({ message: 'Legacy runtime transport is not configured' });
     }
-    return reply.send(tmuxRuntimeService.status());
+    return reply.send(legacyRuntimeService.status());
   };
 
   const getLegacyRuntimeDoctor = async (_request: FastifyRequest, reply: FastifyReply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
+    if (!legacyRuntimeService) {
+      return reply.status(503).send({ message: 'Legacy runtime transport is not configured' });
     }
-    return reply.send(tmuxRuntimeService.doctor());
+    return reply.send(legacyRuntimeService.doctor());
   };
 
   app.get('/api/craftsmen/runtime/status', async (request, reply) => {
@@ -1904,8 +1936,8 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   const getLegacyRuntimeTail = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!tmuxRuntimeService) {
-      return reply.status(503).send({ message: 'Legacy tmux runtime service is not configured' });
+    if (!legacyRuntimeService) {
+      return reply.status(503).send({ message: 'Legacy runtime transport is not configured' });
     }
     try {
       const params = request.params as { agent: string };
@@ -1914,7 +1946,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!Number.isFinite(lines) || lines <= 0) {
         throw new Error('lines must be a positive number');
       }
-      return reply.send({ output: tmuxRuntimeService.tail(params.agent, lines) });
+      return reply.send({ output: legacyRuntimeService.tail(params.agent, lines) });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1997,6 +2029,15 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
     return reply.send(dashboardQueryService.getAgentsStatus());
+  });
+
+  app.get('/api/skills', async (_request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    return reply.send({
+      skills: dashboardQueryService.listSkills(),
+    });
   });
 
   app.get('/api/agents/channels/:channel', async (request, reply) => {
@@ -2399,11 +2440,16 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const body = ingestTaskConversationEntryRequestSchema.parse(request.body);
-      const entry = taskConversationService.ingest(body);
-      if (!entry) {
+      const result = taskInboundService
+        ? taskInboundService.ingest(body)
+        : { entry: taskConversationService.ingest(body), task_action_result: null };
+      if (!result.entry) {
         return reply.status(202).send({ accepted: false });
       }
-      return reply.status(201).send(entry);
+      return reply.status(201).send({
+        ...result.entry,
+        ...(result.task_action_result ? { task_action_result: result.task_action_result } : {}),
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -71,6 +71,9 @@ describe('agora-ts sqlite bootstrap', () => {
       '015_projects.sql',
       '016_todo_projects.sql',
       '017_citizens.sql',
+      '018_binding_reconcile_reasoning.sql',
+      '019_runtime_session_reconcile_state.sql',
+      '020_task_skill_policy.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -104,6 +107,19 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
       .get() as { name: string } | undefined;
     expect(projectsTable?.name).toBe('projects');
+    const taskColumns = db.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
+    expect(taskColumns.map((column) => column.name)).toContain('skill_policy');
+  });
+
+  it('records the task skill policy migration without replaying sql when the column already exists', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+
+    db.prepare("DELETE FROM schema_migrations WHERE name = '020_task_skill_policy.sql'").run();
+    db.prepare("INSERT INTO schema_migrations (name) VALUES ('018_task_skill_policy.sql')").run();
+
+    expect(() => runMigrations(db)).not.toThrow();
+    expect(listAppliedMigrations(db)).toContain('020_task_skill_policy.sql');
   });
 
   it('can persist role definitions inside the single sqlite database', () => {

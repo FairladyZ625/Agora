@@ -1,5 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
-import type { TaskControlDto, TaskLocaleDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
+import type { TaskControlDto, TaskLocaleDto, TaskSkillPolicyDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -16,6 +16,7 @@ export interface StoredTask {
   state: string;
   archive_status: string | null;
   current_stage: string | null;
+  skill_policy: TaskSkillPolicyDto | null;
   team: TeamDto;
   workflow: WorkflowDto;
   control: TaskControlDto | null;
@@ -37,6 +38,7 @@ export interface InsertTaskInput {
   creator: string;
   locale?: TaskLocaleDto;
   project_id?: string | null;
+  skill_policy?: TaskSkillPolicyDto | null;
   team: TeamDto;
   workflow: WorkflowDto;
   control?: TaskControlDto | null;
@@ -50,6 +52,7 @@ export interface UpdateTaskInput {
   project_id?: string | null;
   state?: string;
   current_stage?: string | null;
+  skill_policy?: TaskSkillPolicyDto | null;
   team?: TeamDto;
   workflow?: WorkflowDto;
   control?: TaskControlDto | null;
@@ -79,8 +82,8 @@ export class TaskRepository {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO tasks (
-        id, title, description, type, priority, creator, locale, project_id, state, team, workflow, created_at, updated_at, control
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+        id, title, description, type, priority, creator, locale, project_id, state, skill_policy, team, workflow, created_at, updated_at, control
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.title,
@@ -90,6 +93,7 @@ export class TaskRepository {
       input.creator,
       input.locale ?? 'zh-CN',
       input.project_id ?? null,
+      stringifyJsonValue(input.skill_policy ?? null),
       stringifyJsonValue(input.team),
       stringifyJsonValue(input.workflow),
       now,
@@ -120,6 +124,7 @@ export class TaskRepository {
     if (updates.project_id !== undefined) push('project_id', updates.project_id);
     if (updates.state !== undefined) push('state', updates.state);
     if (updates.current_stage !== undefined) push('current_stage', updates.current_stage);
+    if (updates.skill_policy !== undefined) push('skill_policy', stringifyJsonValue(updates.skill_policy));
     if (updates.team !== undefined) push('team', stringifyJsonValue(updates.team));
     if (updates.workflow !== undefined) push('workflow', stringifyJsonValue(updates.workflow));
     if (updates.control !== undefined) push('control', stringifyJsonValue(updates.control));
@@ -149,10 +154,20 @@ export class TaskRepository {
     return this.requireTask(taskId, 'update');
   }
 
-  listTasks(state?: string): StoredTask[] {
-    const rows = state
-      ? (this.db.prepare(`${this.baseSelect} WHERE t.state = ? ORDER BY t.created_at DESC`).all(state) as Record<string, unknown>[])
-      : (this.db.prepare(`${this.baseSelect} WHERE t.state != 'draft' ORDER BY t.created_at DESC`).all() as Record<string, unknown>[]);
+  listTasks(state?: string, projectId?: string): StoredTask[] {
+    const clauses: string[] = [];
+    const values: SQLInputValue[] = [];
+    if (state) {
+      clauses.push('t.state = ?');
+      values.push(state);
+    } else {
+      clauses.push("t.state != 'draft'");
+    }
+    if (projectId) {
+      clauses.push('t.project_id = ?');
+      values.push(projectId);
+    }
+    const rows = this.db.prepare(`${this.baseSelect} WHERE ${clauses.join(' AND ')} ORDER BY t.created_at DESC`).all(...values) as Record<string, unknown>[];
     return rows.map((row) => this.parseTaskRow(row));
   }
 
@@ -178,6 +193,7 @@ export class TaskRepository {
       state: String(row.state),
       archive_status: row.archive_status === null || row.archive_status === undefined ? null : String(row.archive_status),
       current_stage: row.current_stage === null ? null : String(row.current_stage),
+      skill_policy: row.skill_policy ? parseJsonValue<TaskSkillPolicyDto | null>(row.skill_policy, null) : null,
       team: parseJsonValue<TeamDto>(row.team, { members: [] }),
       workflow: parseJsonValue<WorkflowDto>(row.workflow, {}),
       control: row.control ? parseJsonValue<TaskControlDto>(row.control, { mode: 'normal' }) : null,

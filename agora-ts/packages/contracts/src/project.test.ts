@@ -2,14 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { createProjectRequestSchema, listProjectsResponseSchema, projectSchema } from './project.js';
 
 describe('project contracts', () => {
-  it('parses create project payloads', () => {
+  it('parses create project payloads without requiring a caller-provided id', () => {
     expect(createProjectRequestSchema.parse({
-      id: 'proj-alpha',
       name: 'Alpha',
       summary: 'Thin slice',
       owner: 'archon',
     })).toMatchObject({
-      id: 'proj-alpha',
       name: 'Alpha',
       owner: 'archon',
     });

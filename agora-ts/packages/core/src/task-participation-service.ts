@@ -17,6 +17,16 @@ export interface TaskParticipationServiceOptions {
   agentRuntimePort?: AgentRuntimePort;
 }
 
+export interface ParticipantExposureStateInput {
+  agent_ref: string;
+  desired_exposure: 'in_thread' | 'hidden';
+  exposure_reason: string;
+}
+
+function desiredRuntimePresence(desiredExposure: ParticipantExposureStateInput['desired_exposure']) {
+  return desiredExposure === 'in_thread' ? 'attached' : 'detached';
+}
+
 function defaultId(prefix: string) {
   return `${prefix}-${randomUUID()}`;
 }
@@ -83,6 +93,24 @@ export class TaskParticipationService {
     this.participants.updateJoinState(participant.id, joinStatus, timestamps);
   }
 
+  applyExposureStates(taskId: string, stageId: string, exposures: ParticipantExposureStateInput[]): void {
+    const participants = this.participants.listByTask(taskId);
+    const byAgent = new Map(participants.map((participant) => [participant.agent_ref, participant]));
+    const reconciledAt = new Date().toISOString();
+    for (const exposure of exposures) {
+      const participant = byAgent.get(exposure.agent_ref);
+      if (!participant) {
+        continue;
+      }
+      this.participants.updateExposureState(participant.id, {
+        desired_exposure: exposure.desired_exposure,
+        exposure_reason: exposure.exposure_reason,
+        exposure_stage_id: stageId,
+        reconciled_at: reconciledAt,
+      });
+    }
+  }
+
   syncLiveSession(session: LiveSessionDto): { matched_participant_ids: string[]; matched_task_ids: string[] } {
     const matchedBindings = this.findMatchingTaskBindings(session);
     const matchedParticipantIds: string[] = [];
@@ -120,6 +148,10 @@ export class TaskParticipationService {
         runtime_actor_ref: session.agent_id,
         continuity_ref: continuityRef,
         presence_state: session.status,
+        binding_reason: participant.exposure_reason ?? 'live_session_match',
+        desired_runtime_presence: desiredRuntimePresence(participant.desired_exposure as 'in_thread' | 'hidden'),
+        reconcile_stage_id: participant.exposure_stage_id,
+        reconciled_at: participant.reconciled_at,
         last_seen_at: session.last_event_at,
       });
     }
@@ -128,6 +160,25 @@ export class TaskParticipationService {
       matched_participant_ids: matchedParticipantIds,
       matched_task_ids: Array.from(matchedTaskIds),
     };
+  }
+
+  reconcileRuntimeSessions(taskId: string, stageId: string, exposures: ParticipantExposureStateInput[]): void {
+    const participants = this.participants.listByTask(taskId);
+    const byAgent = new Map(participants.map((participant) => [participant.agent_ref, participant]));
+    const reconciledAt = new Date().toISOString();
+
+    for (const exposure of exposures) {
+      const participant = byAgent.get(exposure.agent_ref);
+      if (!participant) {
+        continue;
+      }
+      this.runtimeSessions.reconcileByParticipant(participant.id, {
+        binding_reason: exposure.exposure_reason,
+        desired_runtime_presence: desiredRuntimePresence(exposure.desired_exposure),
+        reconcile_stage_id: stageId,
+        reconciled_at: reconciledAt,
+      });
+    }
   }
 
   private findMatchingTaskBindings(session: LiveSessionDto) {

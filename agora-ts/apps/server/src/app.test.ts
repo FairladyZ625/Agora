@@ -123,6 +123,40 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('serves the shared skill catalog endpoint', async () => {
+    const app = buildApp({
+      dashboardQueryService: {
+        listSkills: () => [
+          {
+            skill_ref: 'planning-with-files',
+            relative_path: 'planning-with-files',
+            resolved_path: '/tmp/skills/planning-with-files/SKILL.md',
+            source_root: '/tmp/skills',
+            source_label: 'agora',
+            precedence: 0,
+            mtime: '2026-03-19T12:00:00.000Z',
+            shadowed_paths: [],
+          },
+        ],
+      } as any,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/skills',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      skills: [
+        expect.objectContaining({
+          skill_ref: 'planning-with-files',
+          source_label: 'agora',
+        }),
+      ],
+    });
+  });
+
   it('serves runtime diagnosis and restart routes', async () => {
     const app = buildApp({
       taskService: {
@@ -376,6 +410,38 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('waits for task service background operations when the app closes', async () => {
+    let releaseDrain: (() => void) | null = null;
+    let drainStarted = false;
+    const app = buildApp({
+      taskService: {
+        async drainBackgroundOperations() {
+          drainStarted = true;
+          await new Promise<void>((resolve) => {
+            releaseDrain = resolve;
+          });
+        },
+      } as unknown as TaskService,
+    });
+
+    let closed = false;
+    const closePromise = app.close().then(() => {
+      closed = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(drainStarted).toBe(true);
+    expect(closed).toBe(false);
+
+    const drainRelease = releaseDrain ?? (() => {
+      throw new Error('expected releaseDrain to be set before closing the app');
+    });
+    drainRelease();
+    await closePromise;
+
+    expect(closed).toBe(true);
+  });
+
   it('uses the dashboard session username instead of a spoofed caller_id for task advance', async () => {
     let capturedCallerId: string | null = null;
     const app = buildApp({
@@ -609,7 +675,7 @@ describe('agora-ts server bootstrap', () => {
         readyPath: '/ready',
         metricsEnabled: true,
       },
-      tmuxRuntimeService: {
+      legacyRuntimeService: {
         up: () => ({ session: 'agora-craftsmen', panes: [] }),
         status: () => ({
           session: 'agora-craftsmen',

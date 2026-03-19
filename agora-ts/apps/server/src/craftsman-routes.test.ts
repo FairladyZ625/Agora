@@ -606,9 +606,9 @@ describe('craftsman routes', () => {
     });
   });
 
-  it('exposes provider-neutral runtime status, doctor, tail, and identity routes', async () => {
+  it('exposes legacy runtime transport status, doctor, tail, and identity routes', async () => {
     const app = buildApp({
-      tmuxRuntimeService: {
+      legacyRuntimeService: {
         up: () => ({ session: 'agora-craftsmen', panes: [] }),
         status: () => ({
           session: 'agora-craftsmen',
@@ -641,7 +641,7 @@ describe('craftsman routes', () => {
           lastRecoveryMode: 'resume_exact' as const,
           transportSessionId: 'tmux:agora-craftsmen:codex',
         }),
-        tail: () => 'tmux tail output',
+        tail: () => 'legacy runtime tail output',
         doctor: () => ({
           session: 'agora-craftsmen',
           panes: [{
@@ -721,7 +721,7 @@ describe('craftsman routes', () => {
       }],
     });
     expect(tailResponse.statusCode).toBe(200);
-    expect(tailResponse.json()).toEqual({ output: 'tmux tail output' });
+    expect(tailResponse.json()).toEqual({ output: 'legacy runtime tail output' });
     expect(identityResponse.statusCode).toBe(200);
     expect(identityResponse.json()).toEqual({
       ok: true,

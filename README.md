@@ -110,6 +110,7 @@ Agora no longer treats its old tmux-based Craftsman path as the primary executio
 Current position:
 
 - `ACPX` is the default execution substrate.
+- `tmux` remains available only as a legacy fallback/debug adapter.
 - `CraftsmanAdapter` remains a Core-facing abstraction.
 - `Craftsman` remains a business role in orchestration.
 - The old tmux public shell has been removed.
@@ -155,7 +156,8 @@ Scheduler · Notification · Archive · Recovery
                 |
                 v
 Runtime / Execution Adapters
-OpenClaw · ACPX · future runtimes
+Hosted runtimes: OpenClaw · future hosts
+Execution substrates: ACPX (default) · tmux (legacy fallback)
 ```
 
 Core rule:
@@ -163,6 +165,7 @@ Core rule:
 - `packages/core` owns orchestration semantics.
 - IM, runtime, and execution systems are adapters.
 - Provider-specific details must not become the long-term Core model.
+- Current runtime posture is single-core, dual-adapter: ACPX is the default path, while tmux stays as a legacy adapter.
 
 ---
 
@@ -178,6 +181,7 @@ Optional:
 
 - OpenClaw, if you want IM-hosted agent participation
 - Discord, if you want the live thread experience
+- Docker plus an embedding API, if you want `project brain` hybrid retrieval instead of raw lexical search
 
 ### Install
 
@@ -198,10 +202,36 @@ If OpenClaw is detected, `./agora init` can now optionally build and wire the lo
 It only automates safe plugin registration and Agora server wiring.
 It does **not** rewrite OpenClaw Discord policy such as bot rosters, `allowBots`, `requireMention`, or guild/channel allowlists.
 
+If you want semantic `project brain` retrieval, `./agora init` now offers an optional setup phase that:
+
+- collects your embedding API settings
+- verifies the embedding endpoint with a real probe request
+- reuses a healthy local Qdrant on `127.0.0.1:6333` when available
+- otherwise starts `qdrant/qdrant:latest` locally through Docker
+- writes the verified vector config into the repo-root `.env`
+
+That is the primary product path. Manual `.env` editing remains available as a fallback:
+
+```bash
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSION=
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_API_KEY=
+```
+
+With that configured, these commands switch from raw lexical search to hybrid retrieval:
+
+```bash
+./agora projects brain index rebuild --project <project_id>
+./agora projects brain query --task <task_id> --audience craftsman --query "runtime boundary" --mode auto
+./agora projects brain bootstrap-context --task <task_id> --audience craftsman
+```
+
 For the end-to-end bootstrap guide, see:
 
 - [Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
-
 Default local endpoints:
 
 - API: `http://127.0.0.1:18420/api/health`

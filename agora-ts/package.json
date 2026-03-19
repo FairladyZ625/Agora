@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "smoke:craftsman:acp": "npm run build && tsx scripts/smoke-craftsman-acp.ts",
+    "smoke:hybrid:init": "npm run build && tsx scripts/smoke-hybrid-init.ts",
+    "smoke:discord:inbound-action": "npm run build && tsx scripts/smoke-discord-inbound-action.ts",
     "dev:server": "concurrently -k -n build,server -c auto \"npm run dev:build:watch\" \"npm run dev:server:app\"",
     "dev:cli": "concurrently -k -n build,cli -c auto \"npm run dev:build:watch\" \"npm run dev:cli:app\"",
     "scenario": "tsx packages/testing/src/cli.ts",

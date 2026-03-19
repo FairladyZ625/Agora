@@ -29,7 +29,14 @@ export class DiscordHttpClient {
       Authorization: `Bot ${options.botToken}`,
       'Content-Type': 'application/json',
     };
-    this.dispatcher = resolveDiscordProxyEnvironment().enabled ? new EnvHttpProxyAgent() : undefined;
+    const proxy = resolveDiscordProxyEnvironment();
+    this.dispatcher = proxy.enabled
+      ? new EnvHttpProxyAgent({
+          ...(proxy.httpProxy ? { httpProxy: proxy.httpProxy } : {}),
+          ...(proxy.httpsProxy ? { httpsProxy: proxy.httpsProxy } : {}),
+          ...(proxy.noProxy ? { noProxy: proxy.noProxy } : {}),
+        })
+      : undefined;
   }
 
   async createThread(channelId: string, name: string, message: string, visibility: 'public' | 'private' = 'public'): Promise<string> {

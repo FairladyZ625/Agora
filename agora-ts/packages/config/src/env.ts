@@ -6,6 +6,14 @@ export const DEFAULT_AGORA_HOST = '127.0.0.1';
 export const DEFAULT_AGORA_BACKEND_PORT = 18420;
 export const DEFAULT_AGORA_FRONTEND_PORT = 33173;
 
+const RUNTIME_ENV_KEYS = new Set([
+  'AGORA_SERVER_HOST',
+  'AGORA_BACKEND_PORT',
+  'AGORA_FRONTEND_PORT',
+  'AGORA_SERVER_URL',
+  'VITE_API_BASE_URL',
+]);
+
 function parseEnvFile(content: string): Record<string, string> {
   const entries: Record<string, string> = {};
 
@@ -57,6 +65,18 @@ export function loadAgoraDotEnv(projectRoot: string): Record<string, string> {
   return parseEnvFile(readFileSync(envPath, 'utf8'));
 }
 
+function hydrateProcessEnv(fileEnv: Record<string, string>, envOverrides: Record<string, string | undefined>) {
+  for (const [key, value] of Object.entries(fileEnv)) {
+    if (RUNTIME_ENV_KEYS.has(key)) {
+      continue;
+    }
+    if (process.env[key] !== undefined || envOverrides[key] !== undefined) {
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
+
 export type AgoraRuntimeEnvironment = {
   projectRoot: string;
   backendPort: number;
@@ -72,6 +92,7 @@ export function resolveAgoraRuntimeEnvironment(
 ): AgoraRuntimeEnvironment {
   const projectRoot = findAgoraProjectRoot(startDir);
   const fileEnv = loadAgoraDotEnv(projectRoot);
+  hydrateProcessEnv(fileEnv, envOverrides);
   const mergedEnv = { ...fileEnv, ...process.env, ...envOverrides };
 
   const host = mergedEnv.AGORA_SERVER_HOST?.trim() || DEFAULT_AGORA_HOST;

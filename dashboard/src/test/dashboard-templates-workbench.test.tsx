@@ -20,17 +20,17 @@ const baseSelectedTemplate = {
   governance: 'standard',
   stageCount: 4,
   stages: [
-    { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null },
-    { id: 'develop', name: '开发', mode: 'execute', gateType: null },
-    { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop' },
+    { id: 'discuss', name: '讨论', mode: 'discuss', gateType: null, roster: null },
+    { id: 'develop', name: '开发', mode: 'execute', gateType: null, roster: null },
+    { id: 'review', name: '审查', mode: 'discuss', gateType: 'approval', gateApprover: 'reviewer', rejectTarget: 'develop', roster: null },
   ],
   graph: {
     graphVersion: 1,
     entryNodes: ['discuss'],
     nodes: [
-      { id: 'discuss', name: '讨论', kind: 'stage', executionKind: 'citizen_discuss', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 0, y: 0 } },
-      { id: 'develop', name: '开发', kind: 'stage', executionKind: 'citizen_execute', allowedActions: [], gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 260, y: 0 } },
-      { id: 'review', name: '审查', kind: 'stage', executionKind: 'human_approval', allowedActions: [], gateType: 'approval', gateApprover: 'reviewer', gateRequired: null, gateTimeoutSec: null, layout: { x: 520, y: 0 } },
+      { id: 'discuss', name: '讨论', kind: 'stage', executionKind: 'citizen_discuss', allowedActions: [], roster: null, gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 0, y: 0 } },
+      { id: 'develop', name: '开发', kind: 'stage', executionKind: 'citizen_execute', allowedActions: [], roster: null, gateType: null, gateApprover: null, gateRequired: null, gateTimeoutSec: null, layout: { x: 260, y: 0 } },
+      { id: 'review', name: '审查', kind: 'stage', executionKind: 'human_approval', allowedActions: [], roster: null, gateType: 'approval', gateApprover: 'reviewer', gateRequired: null, gateTimeoutSec: null, layout: { x: 520, y: 0 } },
     ],
     edges: [
       { id: 'discuss__advance__develop', from: 'discuss', to: 'develop', kind: 'advance' },
@@ -214,6 +214,44 @@ describe('templates workflow surfaces', () => {
           }),
         ]),
       }),
+    }));
+  });
+
+  it('edits stage roster semantics through the graph inspector', () => {
+    renderGraphEditor();
+
+    fireEvent.click(screen.getByLabelText('graph node review'));
+    fireEvent.change(screen.getByLabelText('graph node review roster roles'), {
+      target: { value: 'reviewer, architect' },
+    });
+    fireEvent.click(screen.getByLabelText('graph node review keep controller'));
+    fireEvent.click(screen.getByRole('button', { name: '保存流程' }));
+
+    expect(saveSelectedTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      graph: expect.objectContaining({
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'review',
+            roster: {
+              includeRoles: ['reviewer', 'architect'],
+              includeAgents: [],
+              excludeAgents: [],
+              keepController: true,
+            },
+          }),
+        ]),
+      }),
+      stages: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'review',
+          roster: {
+            includeRoles: ['reviewer', 'architect'],
+            includeAgents: [],
+            excludeAgents: [],
+            keepController: true,
+          },
+        }),
+      ]),
     }));
   });
 

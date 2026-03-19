@@ -3,15 +3,23 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
 import {
+  CitizenService,
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
   CraftsmanDispatcher,
   DashboardQueryService,
+  FilesystemProjectBrainQueryAdapter,
+  FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
   GeminiCraftsmanAdapter,
   InboxService,
+  OpenClawCitizenProjectionAdapter,
+  ProjectBrainAutomationService,
+  ProjectBrainService,
+  ProjectService,
+  RolePackService,
   ShellCraftsmanAdapter,
   StubCraftsmanAdapter,
   TaskBrainBindingService,
@@ -48,6 +56,11 @@ export interface TestRuntime {
   archiveReceiptDir: string;
   brainPackDir: string;
   taskService: TaskService;
+  projectService: ProjectService;
+  rolePackService: RolePackService;
+  citizenService: CitizenService;
+  projectBrainService: ProjectBrainService;
+  projectBrainAutomationService: ProjectBrainAutomationService;
   dashboardQueryService: DashboardQueryService;
   inboxService: InboxService;
   templateAuthoringService: TemplateAuthoringService;
@@ -65,6 +78,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
   const sourceTemplatesDir = options.templatesDir ?? resolve(process.cwd(), 'templates');
+  const rolePacksDir = resolve(process.cwd(), 'role-packs/agora-default');
   const templatesDir = join(dir, 'templates');
   const archiveOutboxDir = join(dir, 'archive-outbox');
   const archiveReceiptDir = join(dir, 'archive-receipts');
@@ -78,6 +92,23 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   mkdirSync(tmuxRegistryDir, { recursive: true });
   cpSync(sourceTemplatesDir, templatesDir, { recursive: true });
   cpSync(sourceBrainPackDir, brainPackDir, { recursive: true });
+  const rolePackService = new RolePackService({ db, rolePacksDir });
+  const projectService = new ProjectService(db, {
+    knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot: brainPackDir }),
+  });
+  const citizenService = new CitizenService(db, {
+    projectService,
+    rolePackService,
+    projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+  });
+  const projectBrainService = new ProjectBrainService({
+    projectService,
+    citizenService,
+    projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot: brainPackDir }),
+  });
+  const projectBrainAutomationService = new ProjectBrainAutomationService({
+    projectBrainService,
+  });
   const taskServiceOptions: { templatesDir: string; taskIdGenerator?: () => string } = {
     templatesDir,
   };
@@ -120,6 +151,8 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({ brainPackRoot: brainPackDir }),
     taskContextBindingService,
     taskParticipationService,
+    projectService,
+    projectBrainAutomationService,
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
   };
   if (options.isCraftsmanSessionAlive !== undefined) {
@@ -155,6 +188,11 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     archiveReceiptDir,
     brainPackDir,
     taskService,
+    projectService,
+    rolePackService,
+    citizenService,
+    projectBrainService,
+    projectBrainAutomationService,
     dashboardQueryService,
     inboxService,
     templateAuthoringService,

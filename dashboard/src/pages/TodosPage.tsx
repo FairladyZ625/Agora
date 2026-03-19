@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useTodosPageCopy } from '@/lib/dashboardCopy';
 import { useFeedbackStore } from '@/stores/feedbackStore';
@@ -7,6 +8,7 @@ import { useTodoStore } from '@/stores/todoStore';
 import type { TodoFilter } from '@/types/dashboard';
 
 export function TodosPage() {
+  const location = useLocation();
   const { t } = useTranslation();
   const copy = useTodosPageCopy();
   const todos = useTodoStore((state) => state.todos);
@@ -24,7 +26,7 @@ export function TodosPage() {
   const fetchProjects = useProjectStore((state) => state.fetchProjects);
   const { showMessage } = useFeedbackStore();
   const [text, setText] = useState('');
-  const [projectId, setProjectId] = useState('');
+  const [projectIdOverride, setProjectIdOverride] = useState<string | null>(null);
   const [due, setDue] = useState('');
   const [tags, setTags] = useState('');
 
@@ -32,6 +34,9 @@ export function TodosPage() {
     void fetchTodos();
     void fetchProjects();
   }, [fetchProjects, fetchTodos, filter, projectFilter]);
+
+  const presetProjectId = new URLSearchParams(location.search).get('project') ?? '';
+  const projectId = projectIdOverride ?? presetProjectId;
 
   const submitTodo = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -47,7 +52,7 @@ export function TodosPage() {
           .filter(Boolean),
       });
       setText('');
-      setProjectId('');
+      setProjectIdOverride(null);
       setDue('');
       setTags('');
     } catch (todoError) {
@@ -105,10 +110,10 @@ export function TodosPage() {
             <select
               aria-label={copy.projectLabel}
               value={projectId}
-              onChange={(event) => setProjectId(event.target.value)}
+              onChange={(event) => setProjectIdOverride(event.target.value)}
               className="input-shell"
             >
-              <option value="">{copy.unboundProjectOption}</option>
+              <option value="">{copy.noProjectOption}</option>
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -52,6 +53,7 @@ import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
+import type { SkillCatalogEntry, SkillCatalogPort } from './skill-catalog-port.js';
 import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
@@ -61,8 +63,10 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import { StageRosterService } from './stage-roster-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
+import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAlignment, validateTemplateGraph } from './template-graph-service.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -125,6 +129,7 @@ export interface TaskServiceOptions {
   craftsmanExecutionTailPort?: CraftsmanExecutionTailPort;
   hostResourcePort?: HostResourcePort;
   liveSessionStore?: LiveSessionStore;
+  skillCatalogPort?: SkillCatalogPort;
   craftsmanGovernance?: {
     maxConcurrentRunning?: number | null;
     maxConcurrentPerAgent?: number | null;
@@ -144,6 +149,7 @@ export interface TaskServiceOptions {
 
 export interface AdvanceTaskOptions {
   callerId: string;
+  nextStageId?: string;
 }
 
 export interface ApproveTaskOptions {
@@ -262,14 +268,17 @@ export class TaskService {
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
   private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
+  private readonly stageRosterService: StageRosterService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
   private readonly craftsmanExecutionTailPort: CraftsmanExecutionTailPort | undefined;
   private readonly hostResourcePort: HostResourcePort | undefined;
   private readonly liveSessionStore: LiveSessionStore | undefined;
+  private readonly skillCatalogPort: SkillCatalogPort | undefined;
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
   private readonly escalationPolicy: EscalationPolicy;
+  private readonly pendingBackgroundOperations = new Set<Promise<void>>();
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -310,12 +319,14 @@ export class TaskService {
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
+    this.stageRosterService = new StageRosterService();
     this.agentRuntimePort = options.agentRuntimePort;
     this.runtimeRecoveryPort = options.runtimeRecoveryPort;
     this.craftsmanExecutionProbePort = options.craftsmanExecutionProbePort;
     this.craftsmanExecutionTailPort = options.craftsmanExecutionTailPort;
     this.hostResourcePort = options.hostResourcePort;
     this.liveSessionStore = options.liveSessionStore;
+    this.skillCatalogPort = options.skillCatalogPort;
     this.craftsmanGovernance = {
       maxConcurrentRunning: options.craftsmanGovernance?.maxConcurrentRunning ?? null,
       maxConcurrentPerAgent: options.craftsmanGovernance?.maxConcurrentPerAgent ?? null,
@@ -333,6 +344,12 @@ export class TaskService {
     };
   }
 
+  async drainBackgroundOperations(): Promise<void> {
+    while (this.pendingBackgroundOperations.size > 0) {
+      await Promise.allSettled([...this.pendingBackgroundOperations]);
+    }
+  }
+
   createTask(input: CreateTaskInputLike): StoredTask {
     const template = this.tryLoadTemplate(input.type);
     const workflow = input.workflow_override ?? (template ? this.buildWorkflow(template) : null);
@@ -340,10 +357,20 @@ export class TaskService {
     if (!workflow || !requestedTeam) {
       throw new NotFoundError(`Template not found: ${input.type}`);
     }
+    if (workflow.graph) {
+      const graphErrors = [
+        ...validateTemplateGraph(workflow.graph),
+        ...validateRuntimeWorkflowGraphAlignment(workflow.stages, workflow.graph),
+        ...validateRuntimeSupportedGraphSemantics(workflow.graph),
+      ];
+      if (graphErrors.length > 0) {
+        throw new Error(`workflow graph violates runtime-supported graph semantics: ${graphErrors.join('; ')}`);
+      }
+    }
     const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
     const projectId = input.project_id ?? null;
-    const firstStageId = workflow.stages?.[0]?.id ?? null;
+    const firstStageId = workflow.graph?.entry_nodes[0] ?? workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;
     let active: StoredTask;
     let brainWorkspaceBinding: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null = null;
@@ -362,6 +389,7 @@ export class TaskService {
         creator: input.creator,
         locale: resolveTaskLocale(input.locale),
         project_id: projectId,
+        skill_policy: input.skill_policy ?? null,
         team,
         workflow,
         control: input.control ?? { mode: 'normal' },
@@ -408,6 +436,11 @@ export class TaskService {
       }
 
       this.taskParticipationService?.seedParticipants(taskId, team);
+      if (firstStageId) {
+        const firstStage = workflow.stages?.[0] ?? null;
+        const exposureStates = this.stageRosterService.resolveExposureDecisions(team, firstStage ?? undefined);
+        this.taskParticipationService?.applyExposureStates(taskId, firstStageId, exposureStates);
+      }
       if (this.taskBrainWorkspacePort && this.taskBrainBindingService) {
         brainWorkspaceBinding = this.taskBrainWorkspacePort.createWorkspace(this.buildTaskBrainWorkspaceRequest(active, input.type));
         this.taskBrainBindingService.createBinding({
@@ -442,15 +475,18 @@ export class TaskService {
       throw error;
     }
 
-    const imParticipantRefs = this.collectImParticipantRefs(team, input.im_target?.participant_refs);
     const createdTask = active!;
+    const initialStage = createdTask.current_stage
+      ? this.getStageByIdOrThrow(createdTask, createdTask.current_stage)
+      : null;
+    const imParticipantRefs = this.collectImParticipantRefs(createdTask, initialStage, input.im_target?.participant_refs);
     const brainWorkspace = brainWorkspaceBinding;
 
     // Fire-and-forget: provision IM thread (non-blocking, failure doesn't block task creation)
     if (this.imProvisioningPort && this.taskContextBindingService) {
       const bindingService = this.taskContextBindingService;
       const provisioningPort = this.imProvisioningPort;
-      void provisioningPort.provisionContext({
+      this.trackBackgroundOperation(provisioningPort.provisionContext({
         task_id: taskId,
         title: input.title,
         target: input.im_target
@@ -503,7 +539,7 @@ export class TaskService {
         }
       }).catch((err: unknown) => {
         console.error(`[TaskService] IM provisioning failed for task ${taskId}:`, err);
-      });
+      }));
     }
 
     return createdTask;
@@ -514,8 +550,8 @@ export class TaskService {
     return task ? this.withControllerRef(task) : null;
   }
 
-  listTasks(state?: string): StoredTask[] {
-    return this.taskRepository.listTasks(state).map((task) => this.withControllerRef(task));
+  listTasks(state?: string, projectId?: string): StoredTask[] {
+    return this.taskRepository.listTasks(state, projectId).map((task) => this.withControllerRef(task));
   }
 
   getTaskStatus(taskId: string): TaskStatusDto {
@@ -523,6 +559,7 @@ export class TaskService {
     return {
       task: this.withControllerRef(task) as TaskStatusDto['task'],
       task_blueprint: this.buildTaskBlueprint(task),
+      current_stage_roster: this.buildCurrentStageRoster(task),
       flow_log: this.flowLogRepository.listByTask(taskId),
       progress_log: this.progressLogRepository.listByTask(taskId),
       subtasks: this.subtaskRepository.listByTask(taskId),
@@ -539,6 +576,7 @@ export class TaskService {
     }
 
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+    this.assertStageRosterAction(task, currentStage, options.callerId, 'advance');
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
     if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
       const refreshed = this.getTaskOrThrow(taskId);
@@ -565,12 +603,13 @@ export class TaskService {
       );
     }
 
-    return this.advanceSatisfiedStage(task, options.callerId);
+    return this.advanceSatisfiedStage(task, options.callerId, options.nextStageId);
   }
 
   approveTask(taskId: string, options: ApproveTaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
     const stage = this.getCurrentStageOrThrow(task);
+    this.assertStageRosterAction(task, stage, options.approverId, 'approve');
     this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
     const approverRole = this.getApproverRole(stage);
     this.gateService.recordApproval(taskId, stage.id, approverRole, options.approverId, options.comment);
@@ -604,6 +643,7 @@ export class TaskService {
   rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
     const stage = this.getCurrentStageOrThrow(task);
+    this.assertStageRosterAction(task, stage, options.rejectorId, 'reject');
     this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
@@ -646,6 +686,7 @@ export class TaskService {
   archonApproveTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
     const stage = this.getCurrentStageOrThrow(task);
+    this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-approve');
     this.gateService.routeGateCommand(task, stage, 'archon-approve', options.reviewerId);
     this.gateService.recordArchonReview(taskId, stage.id, 'approved', options.reviewerId, options.comment ?? '');
     this.flowLogRepository.insertFlowLog({
@@ -685,6 +726,7 @@ export class TaskService {
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
     const stage = this.getCurrentStageOrThrow(task);
+    this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-reject');
     this.gateService.routeGateCommand(task, stage, 'archon-reject', options.reviewerId);
     this.gateService.recordArchonReview(taskId, stage.id, 'rejected', options.reviewerId, options.reason ?? '');
     this.flowLogRepository.insertFlowLog({
@@ -725,14 +767,14 @@ export class TaskService {
     return rewound;
   }
 
-  private advanceSatisfiedStage(task: StoredTask, actor: string): StoredTask {
+  private advanceSatisfiedStage(task: StoredTask, actor: string, nextStageId?: string): StoredTask {
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
     }
     if (!task.current_stage) {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
-    const advance = this.stateMachine.advance(task.workflow, task.current_stage);
+    const advance = this.stateMachine.advance(task.workflow, task.current_stage, nextStageId);
     this.reconcileStageExitSubtasks(task.id, advance.currentStage.id, 'archived', 'stage_advanced');
     this.exitStage(task.id, advance.currentStage.id, 'advance');
 
@@ -813,6 +855,7 @@ export class TaskService {
           ...this.buildSmokeStageEntryCommands(updated, nextStage),
         ],
       });
+      this.reconcileStageParticipants(updated, nextStage);
     }
     return updated;
   }
@@ -1019,7 +1062,16 @@ export class TaskService {
           mode: subtask.craftsman.mode,
           workdir: subtask.craftsman.workdir ?? null,
           prompt: subtask.craftsman.prompt ?? null,
-          brief_path: subtask.craftsman.brief_path ?? null,
+          brief_path: subtask.craftsman.brief_path
+            ?? this.materializeExecutionBrief(task, {
+              subtask_id: subtask.id,
+              subtask_title: subtask.title,
+              assignee: subtask.assignee,
+              adapter: subtask.craftsman.adapter,
+              mode: subtask.craftsman.mode,
+              prompt: subtask.craftsman.prompt ?? null,
+              workdir: subtask.craftsman.workdir ?? null,
+            }),
         },
       } : {}),
     }));
@@ -1113,7 +1165,16 @@ export class TaskService {
       mode: input.mode,
       workdir: input.workdir ?? subtask.craftsman_workdir,
       prompt: subtask.craftsman_prompt,
-      brief_path: input.brief_path ?? null,
+      brief_path: input.brief_path
+        ?? this.materializeExecutionBrief(task, {
+          subtask_id: subtask.id,
+          subtask_title: subtask.title,
+          assignee: subtask.assignee,
+          adapter: normalizedAdapter,
+          mode: input.mode,
+          prompt: subtask.craftsman_prompt,
+          workdir: input.workdir ?? subtask.craftsman_workdir,
+        }),
     });
     this.publishTaskStatusBroadcast(task, {
       kind: 'craftsman_started',
@@ -1609,6 +1670,7 @@ export class TaskService {
           to_stage: nextStage.id,
         },
       });
+      this.reconcileStageParticipants(updated, nextStage);
     }
     return updated;
   }
@@ -1616,6 +1678,7 @@ export class TaskService {
   confirmTask(taskId: string, options: ConfirmTaskOptions): StoredTask & { quorum: { approved: number; total: number } } {
     const task = this.getTaskOrThrow(taskId);
     const stage = this.getCurrentStageOrThrow(task);
+    this.assertStageRosterAction(task, stage, options.voterId, 'confirm');
     this.gateService.routeGateCommand(task, stage, 'confirm', options.voterId);
     const quorum = this.gateService.recordQuorumVote(taskId, stage.id, options.voterId, options.vote, options.comment);
     this.flowLogRepository.insertFlowLog({
@@ -1987,10 +2050,11 @@ export class TaskService {
           mode: resolveStageModeFromExecutionKind(node.execution_kind ?? null),
           execution_kind: node.execution_kind ?? null,
           ...(node.allowed_actions?.length ? { allowed_actions: node.allowed_actions } : {}),
+          ...(node.roster ? { roster: node.roster } : {}),
           gate_type: node.gate?.type ?? null,
         })),
         edges: graph.edges
-          .filter((edge): edge is typeof edge & { kind: 'advance' | 'reject' } => edge.kind === 'advance' || edge.kind === 'reject')
+          .filter((edge): edge is typeof edge & { kind: 'advance' | 'reject' | 'branch' | 'complete' } => edge.kind === 'advance' || edge.kind === 'reject' || edge.kind === 'branch' || edge.kind === 'complete')
           .map((edge) => ({
             from: edge.from,
             to: edge.to,
@@ -2012,6 +2076,7 @@ export class TaskService {
       mode: stage.mode ?? null,
       execution_kind: resolveStageExecutionKind(stage),
       ...(resolveAllowedActions(stage).length > 0 ? { allowed_actions: resolveAllowedActions(stage) } : {}),
+      ...(stage.roster ? { roster: stage.roster } : {}),
       gate_type: stage.gate?.type ?? null,
     }));
 
@@ -2065,6 +2130,12 @@ export class TaskService {
     const projectBrainContext = task.project_id && this.projectBrainAutomationService
       ? this.projectBrainAutomationService.buildBootstrapContext({
           project_id: task.project_id,
+          task_id: task.id,
+          task_title: task.title,
+          ...(task.description ? { task_description: task.description } : {}),
+          allowed_citizen_ids: task.team.members
+            .filter((member) => member.member_kind === 'citizen')
+            .map((member) => member.agentId),
           audience: 'controller',
         })
       : null;
@@ -2082,12 +2153,17 @@ export class TaskService {
       state: task.state,
       controller_ref: resolveControllerRef(task.team.members),
       current_stage: task.current_stage,
+      current_stage_participants: this.stageRosterService.resolveDesiredRefs(
+        task.team,
+        task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : undefined,
+      ),
       workflow_stages: (task.workflow.stages ?? []).map((stage) => ({
         id: stage.id,
         ...(stage.name ? { name: stage.name } : {}),
         ...(stage.mode ? { mode: stage.mode } : {}),
         ...(stage.execution_kind ? { execution_kind: stage.execution_kind } : {}),
         ...(stage.allowed_actions ? { allowed_actions: stage.allowed_actions } : {}),
+        ...(stage.roster ? { roster: stage.roster } : {}),
         ...(stage.gate ? { gate: { ...(stage.gate.type ? { type: stage.gate.type } : {}) } } : {}),
       })),
       team_members: task.team.members.map((member) => ({
@@ -2124,6 +2200,66 @@ export class TaskService {
       workspace_path: binding.workspace_path,
       metadata: binding.metadata,
     }, this.buildTaskBrainWorkspaceRequest(task, task.type));
+  }
+
+  private materializeExecutionBrief(
+    task: StoredTask,
+    input: {
+      subtask_id: string;
+      subtask_title: string;
+      assignee: string;
+      adapter: string;
+      mode: 'one_shot' | 'interactive';
+      prompt: string | null;
+      workdir: string | null;
+    },
+  ): string | null {
+    if (!this.taskBrainWorkspacePort || !this.taskBrainBindingService) {
+      return null;
+    }
+    const binding = this.taskBrainBindingService.getActiveBinding(task.id);
+    if (!binding) {
+      return null;
+    }
+    const workspacePath = binding.workspace_path;
+    const roleBriefPath = join(workspacePath, '05-agents', input.assignee, '00-role-brief.md');
+    const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+    const currentStage = task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : null;
+    const controllerRef = resolveControllerRef(task.team.members);
+    const currentStageParticipants = this.stageRosterService.resolveDesiredRefs(task.team, currentStage ?? undefined);
+    const orderedParticipants = controllerRef && currentStageParticipants.includes(controllerRef)
+      ? [controllerRef, ...currentStageParticipants.filter((participantRef) => participantRef !== controllerRef)]
+      : currentStageParticipants;
+    return this.taskBrainWorkspacePort.writeExecutionBrief({
+      brain_pack_ref: binding.brain_pack_ref,
+      brain_task_id: binding.brain_task_id,
+      workspace_path: binding.workspace_path,
+      metadata: binding.metadata,
+    }, {
+      task_id: task.id,
+      project_id: task.project_id ?? null,
+      locale: task.locale,
+      title: task.title,
+      description: task.description ?? '',
+      controller_ref: controllerRef,
+      current_stage: task.current_stage,
+      current_stage_participants: orderedParticipants,
+      subtask_id: input.subtask_id,
+      subtask_title: input.subtask_title,
+      assignee: input.assignee,
+      adapter: input.adapter,
+      mode: input.mode,
+      prompt: input.prompt,
+      workdir: input.workdir,
+      references: {
+        current_path: join(workspacePath, '00-current.md'),
+        task_brief_path: join(workspacePath, '01-task-brief.md'),
+        roster_path: join(workspacePath, '02-roster.md'),
+        stage_state_path: join(workspacePath, '03-stage-state.md'),
+        role_brief_path: existsSync(roleBriefPath) ? roleBriefPath : null,
+        project_brain_context_path: existsSync(projectBrainContextPath) ? projectBrainContextPath : null,
+      },
+    }).brief_path;
   }
 
   private enrichTeam(team: StoredTask['team']): StoredTask['team'] {
@@ -2180,6 +2316,23 @@ export class TaskService {
     return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
   }
 
+  private assertStageRosterAction(
+    task: StoredTask,
+    stage: WorkflowStageLike,
+    callerId: string,
+    action: 'advance' | 'approve' | 'reject' | 'confirm' | 'archon-approve' | 'archon-reject',
+  ) {
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (this.permissions.isArchon(callerId) || (controllerRef !== null && callerId === controllerRef)) {
+      return;
+    }
+    const desiredRefs = this.stageRosterService.resolveDesiredRefs(task.team, stage);
+    if (desiredRefs.includes(callerId)) {
+      return;
+    }
+    throw new PermissionDeniedError(`caller ${callerId} is outside current stage roster for ${action}`);
+  }
+
   private getStageByIdOrThrow(task: StoredTask, stageId: string) {
     const stage = (task.workflow.stages ?? []).find((item) => item.id === stageId);
     if (!stage) {
@@ -2199,6 +2352,10 @@ export class TaskService {
     const stage = this.getStageByIdOrThrow(task, task.current_stage);
     const controllerRef = resolveControllerRef(task.team.members);
     const workspacePath = brainWorkspace?.workspace_path ?? null;
+    const skillCatalog = new Map<string, SkillCatalogEntry>(
+      (this.skillCatalogPort?.listSkills({ refresh: true }) ?? []).map((entry) => [entry.skill_ref, entry]),
+    );
+    const globalSkillLines = this.renderResolvedSkillLines(task.skill_policy?.global_refs ?? [], skillCatalog);
     const mentionMapLines = task.team.members
       .filter(isInteractiveParticipant)
       .map((member) => `- ${member.agentId}: {{participant:${member.agentId}}}`);
@@ -2229,6 +2386,13 @@ export class TaskService {
                 `- ${join(workspacePath, '01-task-brief.md')}`,
                 `- ${join(workspacePath, '02-roster.md')}`,
                 `- ${join(workspacePath, '03-stage-state.md')}`,
+              ]
+            : []),
+          ...(globalSkillLines.length > 0
+            ? [
+                '',
+                `${taskText(task, 'Task Skills', 'Task Skills')}:`,
+                ...globalSkillLines,
               ]
             : []),
         ].join('\n'),
@@ -2288,11 +2452,15 @@ export class TaskService {
       },
     ];
     const messages: IMPublishMessageInput[] = [...rootMessages];
+    const initialBriefRecipients = new Set(imParticipantRefs);
 
-    for (const member of task.team.members.filter(isInteractiveParticipant)) {
+    for (const member of task.team.members.filter((candidate) => (
+      isInteractiveParticipant(candidate) && initialBriefRecipients.has(candidate.agentId)
+    ))) {
       const roleBriefPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '00-role-brief.md') : null;
       const citizenScaffoldPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md') : null;
       const roleDocPath = workspacePath ? resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`) : null;
+      const roleSkillLines = this.renderResolvedSkillLines(task.skill_policy?.role_refs?.[member.role] ?? [], skillCatalog);
       messages.push({
         kind: 'role_brief',
         participant_refs: [member.agentId],
@@ -2326,11 +2494,29 @@ export class TaskService {
             : [taskText(task, '该 Agent 应在行动前加载完整的 Agora 角色覆盖上下文。', 'This agent should load the full Agora role overlay before acting.')]),
           ...(citizenScaffoldPath ? [`${taskText(task, '阅读 Citizen Scaffold', 'Read citizen scaffold')}: ${citizenScaffoldPath}`] : []),
           ...(roleBriefPath ? [`${taskText(task, '阅读角色简报', 'Read role brief')}: ${roleBriefPath}`] : []),
+          ...(roleSkillLines.length > 0
+            ? [
+                `${taskText(task, 'Role Skills', 'Role Skills')}:`,
+                ...roleSkillLines,
+              ]
+            : []),
         ].join('\n'),
       });
     }
 
     return messages;
+  }
+
+  private renderResolvedSkillLines(skillRefs: string[], catalog: Map<string, SkillCatalogEntry>) {
+    if (skillRefs.length === 0) {
+      return [];
+    }
+    return skillRefs.map((skillRef) => {
+      const resolved = catalog.get(skillRef);
+      return resolved
+        ? `- ${skillRef} -> ${resolved.resolved_path}`
+        : `- ${skillRef} -> (unresolved)`;
+    });
   }
 
   private publishGateDecisionBroadcast(
@@ -2537,7 +2723,7 @@ export class TaskService {
       return;
     }
     const envelope = this.buildTaskStatusBroadcastEnvelope(task, input);
-    void this.imProvisioningPort.publishMessages({
+    this.trackBackgroundOperation(this.imProvisioningPort.publishMessages({
       binding_id: binding.id,
       conversation_ref: binding.conversation_ref,
       thread_ref: binding.thread_ref,
@@ -2548,7 +2734,7 @@ export class TaskService {
       }],
     }).catch((error: unknown) => {
       console.error(`[TaskService] Task status broadcast failed for task ${task.id}:`, error);
-    });
+    }));
     this.taskConversationRepository.insert({
       id: randomUUID(),
       task_id: task.id,
@@ -2838,17 +3024,63 @@ export class TaskService {
       actor,
     });
     this.refreshTaskBrainWorkspace(updated);
+    this.reconcileStageParticipants(updated, rejectStage);
     return updated;
   }
 
   private collectImParticipantRefs(
-    team: StoredTask['team'],
+    task: Pick<StoredTask, 'team'>,
+    stage: WorkflowStageLike | null,
     explicitRefs?: string[] | null,
   ): string[] {
+    const rosterRefs = this.stageRosterService.resolveDesiredRefs(task.team, stage ?? undefined);
     return Array.from(new Set([
-      ...team.members.filter(isInteractiveParticipant).map((member) => member.agentId),
+      ...rosterRefs,
       ...(explicitRefs ?? []),
     ]));
+  }
+
+  private buildCurrentStageRoster(task: StoredTask): TaskStatusDto['current_stage_roster'] {
+    if (!task.current_stage) {
+      return undefined;
+    }
+    const stage = this.getStageByIdOrThrow(task, task.current_stage);
+    const desiredParticipantRefs = this.stageRosterService.resolveDesiredRefs(task.team, stage);
+    const controllerRef = resolveControllerRef(task.team.members);
+    const orderedDesiredParticipantRefs = controllerRef && desiredParticipantRefs.includes(controllerRef)
+      ? [controllerRef, ...desiredParticipantRefs.filter((participantRef) => participantRef !== controllerRef)]
+      : desiredParticipantRefs;
+    const participants = this.taskParticipationService?.listParticipants(task.id) ?? [];
+    const joinedParticipantRefs = participants
+      .filter((participant) => participant.join_status === 'joined')
+      .map((participant) => participant.agent_ref)
+      .filter((participantRef) => orderedDesiredParticipantRefs.includes(participantRef));
+    const runtimeSessions = this.taskParticipationService?.listRuntimeSessions(task.id) ?? [];
+    const runtimeByParticipantId = new Map(runtimeSessions.map((session) => [session.participant_binding_id, session]));
+    return {
+      stage_id: stage.id,
+      roster: stage.roster ?? undefined,
+      desired_participant_refs: orderedDesiredParticipantRefs,
+      joined_participant_refs: joinedParticipantRefs,
+      participant_states: participants.map((participant) => {
+        const runtime = runtimeByParticipantId.get(participant.id);
+        return {
+          agent_ref: participant.agent_ref,
+          task_role: participant.task_role,
+          join_status: participant.join_status,
+          desired_exposure: participant.desired_exposure as 'in_thread' | 'hidden',
+          exposure_reason: participant.exposure_reason,
+          runtime_provider: runtime?.runtime_provider ?? participant.runtime_provider,
+          runtime_session_ref: runtime?.runtime_session_ref ?? null,
+          presence_state: runtime?.presence_state ?? null,
+          runtime_binding_reason: runtime?.binding_reason ?? null,
+          desired_runtime_presence: (runtime?.desired_runtime_presence as 'attached' | 'detached' | null | undefined) ?? null,
+          runtime_reconcile_stage_id: runtime?.reconcile_stage_id ?? null,
+          runtime_reconciled_at: runtime?.reconciled_at ?? null,
+          runtime_closed_at: runtime?.closed_at ?? null,
+        };
+      }),
+    };
   }
 
   private getApproverRole(stage: NonNullable<StoredTask['workflow']['stages']>[number]) {
@@ -3517,7 +3749,7 @@ export class TaskService {
     if (!mode) {
       return;
     }
-    void this.imProvisioningPort.archiveContext({
+    this.trackBackgroundOperation(this.imProvisioningPort.archiveContext({
       binding_id: binding.id,
       conversation_ref: binding.conversation_ref,
       thread_ref: binding.thread_ref,
@@ -3532,7 +3764,7 @@ export class TaskService {
     }).catch((err: unknown) => {
       console.error(`[TaskService] IM context transition failed for task ${taskId}:`, err);
       this.taskContextBindingService?.updateStatus(binding.id, 'failed');
-    });
+    }));
   }
 
   private resolveImContextModeForStateTransition(
@@ -3651,6 +3883,88 @@ export class TaskService {
       joined_at: new Date().toISOString(),
       left_at: null,
     });
+  }
+
+  private markParticipantBindingLeft(taskId: string, participantRef: string) {
+    this.taskParticipationService?.markParticipantJoinState(taskId, participantRef, 'left', {
+      left_at: new Date().toISOString(),
+    });
+  }
+
+  private reconcileStageParticipants(task: StoredTask, stage: WorkflowStageLike | null) {
+    if (!stage || !this.imProvisioningPort || !this.taskParticipationService) {
+      return;
+    }
+    const binding = this.taskContextBindingRepository.getActiveByTask(task.id);
+    if (!binding) {
+      return;
+    }
+    const exposureStates = this.stageRosterService.resolveExposureDecisions(task.team, stage);
+    this.taskParticipationService.applyExposureStates(task.id, stage.id, exposureStates);
+    this.taskParticipationService.reconcileRuntimeSessions(task.id, stage.id, exposureStates);
+    const desiredRefs = exposureStates
+      .filter((decision) => decision.desired_exposure === 'in_thread')
+      .map((decision) => decision.agent_ref);
+    const participants = this.taskParticipationService.listParticipants(task.id);
+    const interactiveRefs = new Set(task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId));
+    const joinedRefs = new Set(
+      participants
+        .filter((participant) => participant.join_status === 'joined')
+        .map((participant) => participant.agent_ref),
+    );
+    const toJoin = desiredRefs.filter((participantRef) => !joinedRefs.has(participantRef));
+    const toLeave = participants
+      .filter((participant) => participant.join_status === 'joined' && interactiveRefs.has(participant.agent_ref))
+      .map((participant) => participant.agent_ref)
+      .filter((participantRef, index, values) => values.indexOf(participantRef) === index)
+      .filter((participantRef) => !desiredRefs.includes(participantRef));
+
+    if (toJoin.length === 0 && toLeave.length === 0) {
+      return;
+    }
+
+    this.trackBackgroundOperation(Promise.all([
+      ...toJoin.map(async (participantRef) => {
+        try {
+          const result = await this.imProvisioningPort?.joinParticipant({
+            binding_id: binding.id,
+            participant_ref: participantRef,
+            conversation_ref: binding.conversation_ref,
+            thread_ref: binding.thread_ref,
+          });
+          if (result?.status === 'joined' || result?.status === 'ignored') {
+            this.markParticipantBindingJoined(task.id, participantRef);
+          }
+        } catch (error: unknown) {
+          console.error(`[TaskService] stage roster join failed for task ${task.id} participant ${participantRef}:`, error);
+        }
+      }),
+      ...toLeave.map(async (participantRef) => {
+        try {
+          const result = await this.imProvisioningPort?.removeParticipant({
+            binding_id: binding.id,
+            participant_ref: participantRef,
+            conversation_ref: binding.conversation_ref,
+            thread_ref: binding.thread_ref,
+          });
+          if (result?.status === 'removed' || result?.status === 'ignored') {
+            this.markParticipantBindingLeft(task.id, participantRef);
+          }
+        } catch (error: unknown) {
+          console.error(`[TaskService] stage roster remove failed for task ${task.id} participant ${participantRef}:`, error);
+        }
+      }),
+    ]));
+  }
+
+  private trackBackgroundOperation<T>(operation: Promise<T>): Promise<T> {
+    const tracked = Promise.resolve(operation)
+      .then(() => undefined, () => undefined)
+      .finally(() => {
+        this.pendingBackgroundOperations.delete(tracked);
+      });
+    this.pendingBackgroundOperations.add(tracked);
+    return operation;
   }
 
   private enterStage(taskId: string, stageId: string) {

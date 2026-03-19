@@ -115,6 +115,33 @@ describe('task api contracts', () => {
     ).toBe('controller');
   });
 
+  it('parses create task payloads with global and role-scoped skill policy', () => {
+    expect(
+      createTaskRequestSchema.parse({
+        title: 'task with skill policy',
+        type: 'coding',
+        creator: 'archon',
+        description: 'inject required skills into briefing',
+        priority: 'normal',
+        skill_policy: {
+          global_refs: ['planning-with-files', 'agora-bootstrap'],
+          role_refs: {
+            architect: ['brainstorming'],
+            developer: ['refactoring-ui'],
+          },
+          enforcement: 'required',
+        },
+      }).skill_policy,
+    ).toEqual({
+      global_refs: ['planning-with-files', 'agora-bootstrap'],
+      role_refs: {
+        architect: ['brainstorming'],
+        developer: ['refactoring-ui'],
+      },
+      enforcement: 'required',
+    });
+  });
+
   it('parses task status responses with nested flow/progress/subtasks', () => {
     expect(
       taskStatusSchema.parse({
@@ -132,6 +159,13 @@ describe('task api contracts', () => {
           archive_status: null,
           controller_ref: 'opus',
           current_stage: 'develop',
+          skill_policy: {
+            global_refs: ['planning-with-files'],
+            role_refs: {
+              developer: ['refactoring-ui'],
+            },
+            enforcement: 'required',
+          },
           team: { members: [] },
           workflow: { stages: [] },
           scheduler: null,
@@ -161,6 +195,47 @@ describe('task api contracts', () => {
             { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
           ],
         },
+        current_stage_roster: {
+          stage_id: 'develop',
+          roster: {
+            include_roles: ['developer'],
+            keep_controller: true,
+          },
+          desired_participant_refs: ['opus', 'sonnet'],
+          joined_participant_refs: ['opus'],
+          participant_states: [
+            {
+              agent_ref: 'opus',
+              task_role: 'architect',
+              join_status: 'joined',
+              desired_exposure: 'in_thread',
+              exposure_reason: 'controller_preserved',
+              runtime_provider: 'openclaw',
+              runtime_session_ref: 'session-opus',
+              presence_state: 'active',
+              runtime_binding_reason: 'controller_preserved',
+              desired_runtime_presence: 'attached',
+              runtime_reconcile_stage_id: 'develop',
+              runtime_reconciled_at: '2026-03-17T10:00:00Z',
+              runtime_closed_at: null,
+            },
+            {
+              agent_ref: 'sonnet',
+              task_role: 'developer',
+              join_status: 'pending',
+              desired_exposure: 'in_thread',
+              exposure_reason: 'stage_roster_selected',
+              runtime_provider: null,
+              runtime_session_ref: null,
+              presence_state: null,
+              runtime_binding_reason: null,
+              desired_runtime_presence: null,
+              runtime_reconcile_stage_id: null,
+              runtime_reconciled_at: null,
+              runtime_closed_at: null,
+            },
+          ],
+        },
         flow_log: [],
         progress_log: [],
         subtasks: [],
@@ -171,10 +246,31 @@ describe('task api contracts', () => {
         archive_status: null,
         controller_ref: 'opus',
         project_id: 'proj-alpha',
+        skill_policy: {
+          global_refs: ['planning-with-files'],
+          role_refs: {
+            developer: ['refactoring-ui'],
+          },
+          enforcement: 'required',
+        },
       },
       task_blueprint: {
         entry_nodes: ['develop'],
         controller_ref: 'opus',
+      },
+      current_stage_roster: {
+        stage_id: 'develop',
+        desired_participant_refs: ['opus', 'sonnet'],
+        joined_participant_refs: ['opus'],
+        participant_states: expect.arrayContaining([
+          expect.objectContaining({
+            agent_ref: 'opus',
+            desired_exposure: 'in_thread',
+            exposure_reason: 'controller_preserved',
+            runtime_binding_reason: 'controller_preserved',
+            desired_runtime_presence: 'attached',
+          }),
+        ]),
       },
     });
   });
@@ -451,5 +547,44 @@ describe('task api contracts', () => {
         },
       ],
     })).toThrow(/execution_target/i);
+  });
+
+  it('accepts stage roster semantics and rejects empty roster objects', () => {
+    expect(
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['reviewer'],
+              include_agents: ['opus'],
+              exclude_agents: ['sonnet'],
+              keep_controller: true,
+            },
+            gate: { type: 'approval', approver: 'reviewer' },
+          },
+        ],
+      }).stages?.[0]?.roster,
+    ).toMatchObject({
+      include_roles: ['reviewer'],
+      include_agents: ['opus'],
+      exclude_agents: ['sonnet'],
+      keep_controller: true,
+    });
+
+    expect(() =>
+      workflowSchema.parse({
+        type: 'linear',
+        stages: [
+          {
+            id: 'review',
+            roster: {},
+            gate: { type: 'command' },
+          },
+        ],
+      }),
+    ).toThrow(/stage roster must declare/i);
   });
 });

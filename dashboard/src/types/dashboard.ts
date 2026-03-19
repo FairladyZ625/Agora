@@ -211,6 +211,12 @@ export interface TemplateStage {
   id: string;
   name: string;
   mode: string;
+  roster?: {
+    includeRoles: string[];
+    includeAgents: string[];
+    excludeAgents: string[];
+    keepController: boolean;
+  } | null;
   gateType: string | null;
   gateApprover?: string | null;
   gateRequired?: number | null;
@@ -224,6 +230,12 @@ export interface TemplateGraphNode {
   kind: 'stage' | 'terminal';
   executionKind: string | null;
   allowedActions: string[];
+  roster?: {
+    includeRoles: string[];
+    includeAgents: string[];
+    excludeAgents: string[];
+    keepController: boolean;
+  } | null;
   gateType: string | null;
   gateApprover: string | null;
   gateRequired: number | null;

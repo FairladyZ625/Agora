@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HumanAccountService, TaskService, TaskContextBindingService } from '@agora-ts/core';
 import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository, NotificationOutboxRepository, TaskConversationRepository } from '@agora-ts/db';
@@ -34,6 +34,7 @@ export const scenarioNames = [
   'task-conversation-read-cursor',
   'control-plane-loop',
   'graph-driven-path',
+  'project-brain-bootstrap',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -61,6 +62,8 @@ export interface ScenarioResult {
   conversationBodies?: string[];
   unreadBefore?: number;
   unreadAfter?: number;
+  bootstrapContextPath?: string;
+  bootstrapContextContains?: string[];
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -121,6 +124,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runControlPlaneLoopScenario(runtime);
     case 'graph-driven-path':
       return runGraphDrivenPathScenario(runtime);
+    case 'project-brain-bootstrap':
+      return runProjectBrainBootstrapScenario(runtime);
   }
 }
 
@@ -171,6 +176,75 @@ function runHappyPathScenario(runtime: TestRuntime): ScenarioResult {
   });
 
   return buildScenarioResult(runtime, 'happy-path', task.id);
+}
+
+function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult {
+  runtime.projectService.createProject({
+    id: 'proj-bootstrap',
+    name: 'Project Bootstrap',
+    summary: 'Scenario project brain bootstrap coverage',
+  });
+  runtime.citizenService.createCitizen({
+    citizen_id: 'citizen-alpha',
+    project_id: 'proj-bootstrap',
+    role_id: 'architect',
+    display_name: 'Alpha Architect',
+    persona: null,
+    boundaries: [],
+    skills_ref: [],
+    channel_policies: {},
+    brain_scaffold_mode: 'role_default',
+    runtime_projection: {
+      adapter: 'openclaw',
+      auto_provision: false,
+      metadata: {},
+    },
+  });
+  runtime.projectService.upsertKnowledgeEntry({
+    project_id: 'proj-bootstrap',
+    kind: 'decision',
+    slug: 'runtime-boundary',
+    title: 'Runtime Boundary',
+    summary: 'Keep runtime adapters outside core.',
+    body: 'Runtime adapters stay outside core and expose provider-neutral ports.',
+    source_task_ids: ['OC-SCENARIO-BOOTSTRAP'],
+  });
+
+  const task = runtime.taskService.createTask({
+    title: 'Scenario bootstrap task',
+    type: 'coding',
+    creator: 'archon',
+    description: 'Bootstrap project context with explicit citizen binding',
+    priority: 'high',
+    project_id: 'proj-bootstrap',
+    team_override: {
+      members: [
+        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        { role: 'citizen', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+      ],
+    },
+  });
+
+  const bootstrapContextPath = join(
+    runtime.brainPackDir,
+    'projects',
+    'proj-bootstrap',
+    'tasks',
+    task.id,
+    '04-context',
+    'project-brain-context.md',
+  );
+  const bootstrapContext = existsSync(bootstrapContextPath) ? readFileSync(bootstrapContextPath, 'utf8') : '';
+
+  return {
+    ...buildScenarioResult(runtime, 'project-brain-bootstrap', task.id),
+    bootstrapContextPath,
+    bootstrapContextContains: [
+      'project_brain_bootstrap_context',
+      'Runtime Boundary',
+      'citizen-alpha',
+    ].filter((needle) => bootstrapContext.includes(needle)),
+  };
 }
 
 function runRejectReworkScenario(runtime: TestRuntime): ScenarioResult {

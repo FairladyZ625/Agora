@@ -19,6 +19,8 @@ interface BuildCreateTaskInputParams {
   priority: TaskPriority | string;
   locale: 'zh-CN' | 'en-US';
   projectId?: string | null;
+  globalSkillRefs?: string[];
+  roleSkillRefs?: Record<string, string[]>;
   template: TemplateDetail;
   type: string;
   visibility: 'public' | 'private';
@@ -71,6 +73,8 @@ export function buildCreateTaskInput({
   priority,
   locale,
   projectId,
+  globalSkillRefs = [],
+  roleSkillRefs = {},
   template,
   type,
   visibility,
@@ -91,6 +95,15 @@ export function buildCreateTaskInput({
     priority,
     locale,
     ...(projectId ? { project_id: projectId } : {}),
+    ...(globalSkillRefs.length > 0 || Object.keys(roleSkillRefs).length > 0
+      ? {
+          skill_policy: {
+            global_refs: globalSkillRefs,
+            role_refs: roleSkillRefs,
+            enforcement: 'required' as const,
+          },
+        }
+      : {}),
     ...(members.length > 0
       ? {
           team_override: {

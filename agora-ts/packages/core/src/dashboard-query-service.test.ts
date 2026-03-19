@@ -30,6 +30,35 @@ afterEach(() => {
 });
 
 describe('dashboard query service', () => {
+  it('lists locally resolved skills through the injected catalog port', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const queries = new DashboardQueryService(db, {
+      templatesDir,
+      skillCatalogPort: {
+        listSkills: () => [
+          {
+            skill_ref: 'planning-with-files',
+            relative_path: 'planning-with-files',
+            resolved_path: '/tmp/skills/planning-with-files/SKILL.md',
+            source_root: '/tmp/skills',
+            source_label: 'agora',
+            precedence: 0,
+            mtime: '2026-03-19T12:00:00.000Z',
+            shadowed_paths: [],
+          },
+        ],
+      },
+    });
+
+    expect(queries.listSkills()).toEqual([
+      expect.objectContaining({
+        skill_ref: 'planning-with-files',
+        source_label: 'agora',
+      }),
+    ]);
+  });
+
   it('aggregates active agents, craftsmen, and template summaries', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -845,7 +874,7 @@ describe('dashboard query service', () => {
     ]);
   });
 
-  it('builds channel detail without querying tmux runtime or craftsman execution history', () => {
+  it('builds channel detail without querying the legacy runtime transport or craftsman execution history', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const taskService = new TaskService(db, {
@@ -854,7 +883,7 @@ describe('dashboard query service', () => {
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const tmuxRuntimeService = {
+    const legacyRuntimeService = {
       status: vi.fn(() => ({
         session: 'agora-craftsmen',
         panes: [],
@@ -901,7 +930,7 @@ describe('dashboard query service', () => {
     const queries = new DashboardQueryService(db, {
       templatesDir,
       presenceSource,
-      tmuxRuntimeService,
+      legacyRuntimeService,
     });
     const listBySubtaskSpy = vi.spyOn(
       (queries as unknown as { executions: CraftsmanExecutionRepository }).executions,
@@ -957,8 +986,8 @@ describe('dashboard query service', () => {
         }),
       ],
     });
-    expect(tmuxRuntimeService.status).not.toHaveBeenCalled();
-    expect(tmuxRuntimeService.doctor).not.toHaveBeenCalled();
+    expect(legacyRuntimeService.status).not.toHaveBeenCalled();
+    expect(legacyRuntimeService.doctor).not.toHaveBeenCalled();
     expect(listBySubtaskSpy).not.toHaveBeenCalled();
   });
 
@@ -1036,13 +1065,13 @@ describe('dashboard query service', () => {
     expect(listBySubtaskSpy).not.toHaveBeenCalled();
   });
 
-  it('merges tmux runtime panes into the agents read model', () => {
+  it('merges legacy runtime transport panes into the agents read model', () => {
     const tail = (agent: string) => `tail:${agent}`;
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const queries = new DashboardQueryService(db, {
       templatesDir,
-      tmuxRuntimeService: {
+      legacyRuntimeService: {
         status: () => ({
           session: 'agora-craftsmen',
           panes: [

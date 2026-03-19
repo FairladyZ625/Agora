@@ -69,11 +69,21 @@ describe('template authoring service', () => {
       defaultWorkflow: 'brainstorm-review',
       stages: [
         { id: 'brainstorm', name: '脑暴', mode: 'discuss', gate: { type: 'command' } },
-        { id: 'review', name: '评审', mode: 'discuss', gate: { type: 'archon_review' } },
+        {
+          id: 'review',
+          name: '评审',
+          mode: 'discuss',
+          roster: { include_roles: ['reviewer'], keep_controller: true },
+          gate: { type: 'archon_review' },
+        },
       ],
     });
     expect(workflowUpdated.template.defaultWorkflow).toBe('brainstorm-review');
     expect(workflowUpdated.template.stages).toHaveLength(2);
+    expect(workflowUpdated.template.stages?.[1]?.roster).toMatchObject({
+      include_roles: ['reviewer'],
+      keep_controller: true,
+    });
 
     const duplicated = service.duplicateTemplate('brainwave', {
       new_id: 'brainwave_copy',
@@ -252,7 +262,13 @@ describe('template authoring service', () => {
       governance: 'lean',
       stages: [
         { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
-        { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' }, reject_target: 'draft' },
+        {
+          id: 'review',
+          mode: 'discuss',
+          roster: { include_roles: ['reviewer'], keep_controller: true },
+          gate: { type: 'approval', approver: 'reviewer' },
+          reject_target: 'draft',
+        },
       ],
     });
 
@@ -265,6 +281,15 @@ describe('template authoring service', () => {
         expect.objectContaining({ kind: 'reject', from: 'review', to: 'draft' }),
       ],
     });
+    expect(result.normalized?.graph?.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'review',
+        roster: expect.objectContaining({
+          include_roles: ['reviewer'],
+          keep_controller: true,
+        }),
+      }),
+    ]));
   });
 
   it('normalizes templates to include canonical graph payloads even when authored from stages only', () => {
@@ -366,5 +391,156 @@ describe('template authoring service', () => {
     });
     expect(duplicateStages.valid).toBe(false);
     expect(duplicateStages.errors.join(' ')).toContain('duplicate');
+  });
+
+  it('rejects graph edge kinds that runtime execution still does not support yet', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const invalid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['draft'],
+      nodes: [
+        { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+        { id: 'wait', kind: 'stage', gate: { type: 'auto_timeout', timeout_sec: 60 } },
+      ],
+      edges: [
+        { id: 'draft__timeout__wait', from: 'draft', to: 'wait', kind: 'timeout' },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join(' ')).toContain('unsupported graph edge kind');
+  });
+
+  it('rejects graph stages with ambiguous multiple advance or reject edges', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const invalid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['draft'],
+      nodes: [
+        { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+        { id: 'review-a', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+        { id: 'review-b', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+      ],
+      edges: [
+        { id: 'draft__advance__review-a', from: 'draft', to: 'review-a', kind: 'advance' },
+        { id: 'draft__advance__review-b', from: 'draft', to: 'review-b', kind: 'advance' },
+        { id: 'review-a__reject__draft', from: 'review-a', to: 'draft', kind: 'reject' },
+        { id: 'review-a__reject__review-b', from: 'review-a', to: 'review-b', kind: 'reject' },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join(' ')).toContain('multiple advance edges');
+    expect(invalid.errors.join(' ')).toContain('multiple reject edges');
+  });
+
+  it('rejects graph payloads that declare multiple entry stages or forward-only reject edges', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const invalid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['draft', 'review'],
+      nodes: [
+        { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+        { id: 'review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+        { id: 'ship', kind: 'stage', gate: { type: 'command' } },
+      ],
+      edges: [
+        { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
+        { id: 'review__advance__ship', from: 'review', to: 'ship', kind: 'advance' },
+        { id: 'review__reject__ship', from: 'review', to: 'ship', kind: 'reject' },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join(' ')).toContain('exactly one entry node');
+    expect(invalid.errors.join(' ')).toContain('must reference an earlier stage');
+  });
+
+  it('accepts explicit branch edges only when they do not mix with advance edges on the same node', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const valid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['triage'],
+      nodes: [
+        { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+        { id: 'fast-path', kind: 'stage', gate: { type: 'command' } },
+        { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+      ],
+      edges: [
+        { id: 'triage__branch__fast-path', from: 'triage', to: 'fast-path', kind: 'branch' },
+        { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+      ],
+    });
+
+    expect(valid.valid).toBe(true);
+
+    const invalid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['triage'],
+      nodes: [
+        { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+        { id: 'fast-path', kind: 'stage', gate: { type: 'command' } },
+        { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+      ],
+      edges: [
+        { id: 'triage__advance__fast-path', from: 'triage', to: 'fast-path', kind: 'advance' },
+        { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join(' ')).toContain('cannot mix advance and branch edges');
+  });
+
+  it('accepts terminal completion edges only when they point into terminal nodes', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const templatesDir = makeTemplatesDir();
+    const service = new TemplateAuthoringService({ db, templatesDir });
+
+    const valid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['implement'],
+      nodes: [
+        { id: 'implement', kind: 'stage', gate: { type: 'command' } },
+        { id: 'done', kind: 'terminal' },
+      ],
+      edges: [
+        { id: 'implement__complete__done', from: 'implement', to: 'done', kind: 'complete' },
+      ],
+    });
+
+    expect(valid.valid).toBe(true);
+
+    const invalid = service.validateGraph({
+      graph_version: 1,
+      entry_nodes: ['implement'],
+      nodes: [
+        { id: 'implement', kind: 'stage', gate: { type: 'command' } },
+        { id: 'ship', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+      ],
+      edges: [
+        { id: 'implement__complete__ship', from: 'implement', to: 'ship', kind: 'complete' },
+      ],
+    });
+
+    expect(invalid.valid).toBe(false);
+    expect(invalid.errors.join(' ')).toContain('complete edges must target terminal nodes');
   });
 });

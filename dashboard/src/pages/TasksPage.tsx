@@ -80,6 +80,20 @@ function displayAgentId(agentId: string) {
   return normalizeCraftsmanId(agentId);
 }
 
+function formatStageRosterRules(status: TaskStatus | null | undefined, copy: ReturnType<typeof useTasksPageCopy>) {
+  const roster = status?.currentStageRoster?.roster;
+  if (!roster) {
+    return copy.stageRosterRulesNone;
+  }
+  const parts = [
+    roster.include_roles && roster.include_roles.length > 0 ? `roles: ${roster.include_roles.join(', ')}` : null,
+    roster.include_agents && roster.include_agents.length > 0 ? `agents: ${roster.include_agents.map(displayAgentId).join(', ')}` : null,
+    roster.exclude_agents && roster.exclude_agents.length > 0 ? `exclude: ${roster.exclude_agents.map(displayAgentId).join(', ')}` : null,
+    roster.keep_controller ? copy.stageRosterRulesKeepController : null,
+  ].filter((value): value is string => Boolean(value));
+  return parts.length > 0 ? parts.join(' / ') : copy.stageRosterRulesNone;
+}
+
 function TaskBlueprintSection({
   blueprint,
   copy,
@@ -1362,6 +1376,40 @@ export function TasksPage() {
                     <p className="type-body-sm">{tasksPageCopy.conversationEmpty}</p>
                   )}
                 </div>
+              </section>
+
+              <section className="sheet-section">
+                <h4 className="section-title">{tasksPageCopy.stageRosterTitle}</h4>
+                {routeTaskStatus?.currentStageRoster ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="type-label-sm">{routeTaskStatus.currentStageRoster.stageId}</p>
+                        <p className="type-text-xs mt-2">
+                          {tasksPageCopy.stageRosterRulesLabel}: {formatStageRosterRules(routeTaskStatus, tasksPageCopy)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="type-label-sm">{tasksPageCopy.stageRosterDesiredLabel}</p>
+                        <p className="type-body-sm mt-2">
+                          {routeTaskStatus.currentStageRoster.desiredParticipantRefs.map(displayAgentId).join(', ') || tasksPageCopy.stageFallback}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="data-row">
+                      <div className="min-w-0 flex-1">
+                        <p className="type-label-sm">{tasksPageCopy.stageRosterJoinedLabel}</p>
+                        <p className="type-body-sm mt-2">
+                          {routeTaskStatus.currentStageRoster.joinedParticipantRefs.map(displayAgentId).join(', ') || tasksPageCopy.stageFallback}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="type-body-sm mt-4">{tasksPageCopy.stageRosterRulesNone}</p>
+                )}
               </section>
 
               <section className="sheet-section">

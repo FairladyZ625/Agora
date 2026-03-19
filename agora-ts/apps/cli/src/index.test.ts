@@ -108,6 +108,7 @@ function createTmuxRuntimeServiceStub() {
 
 function createDashboardQueryServiceStub(): DashboardQueryService {
   return {
+    listSkills: () => [],
     listArchiveJobs: () => [],
     getArchiveJob: () => { throw new Error('unused'); },
     retryArchiveJob: () => { throw new Error('unused'); },
@@ -223,6 +224,36 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('runtime: available=true active=1 idle=0 closed=0 status=healthy');
     expect(stdout.value).toContain('craftsman: active=1 running=0 waiting_input=1 awaiting_choice=0 status=degraded');
     expect(stdout.value).toContain('escalation: controller=1 roster=0 inbox=0 runtime_unhealthy=false status=degraded');
+  });
+
+  it('lists locally resolved skills through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      dashboardQueryService: {
+        ...createDashboardQueryServiceStub(),
+        listSkills: () => [
+          {
+            skill_ref: 'planning-with-files',
+            relative_path: 'planning-with-files',
+            resolved_path: '/tmp/skills/planning-with-files/SKILL.md',
+            source_root: '/tmp/skills',
+            source_label: 'agora',
+            precedence: 0,
+            mtime: '2026-03-19T12:00:00.000Z',
+            shadowed_paths: [],
+          },
+        ],
+      } as unknown as DashboardQueryService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['skills', 'list'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('planning-with-files');
+    expect(stdout.value).toContain('/tmp/skills/planning-with-files/SKILL.md');
   });
 
   it('renders subcommand help without touching runtime composition', async () => {
@@ -678,6 +709,390 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Brain 已提升');
   });
 
+  it('exposes project brain hybrid query and index commands through the cli', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainRetrievalService = {
+      searchTaskContext: vi.fn().mockResolvedValue([]),
+    };
+    const projectBrainIndexService = {
+      rebuildProjectIndex: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        indexed_documents: 2,
+        indexed_chunks: 5,
+      }),
+      syncProjectIndex: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        kind: 'decision',
+        slug: 'runtime-boundary',
+        indexed_documents: 1,
+        indexed_chunks: 3,
+      }),
+      getProjectIndexStatus: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        provider: 'qdrant',
+        healthy: true,
+        chunk_count: 5,
+      }),
+      inspectDocumentChunks: vi.fn().mockReturnValue({
+        document: {
+          project_id: 'proj-brain',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          content: 'Keep runtime-specific logic out of core.',
+        },
+        chunks: [
+          {
+            chunk_id: 'proj-brain:decision:runtime-boundary:0',
+            project_id: 'proj-brain',
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            ordinal: 0,
+            title: 'Runtime Boundary',
+            content: 'Keep runtime-specific logic out of core.',
+            search_text: 'Runtime Boundary Keep runtime-specific logic out of core.',
+            path: '/brain/decision/runtime-boundary.md',
+          },
+        ],
+      }),
+    };
+    const program = createCliProgram({
+      taskService: {
+        getTask: vi.fn().mockReturnValue({
+          id: 'OC-HYBRID-1',
+          project_id: 'proj-brain',
+        }),
+      } as never,
+      projectBrainService: {
+        queryDocuments: vi.fn().mockReturnValue([]),
+      } as never,
+      projectBrainRetrievalService: projectBrainRetrievalService as never,
+      projectBrainIndexService: projectBrainIndexService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'query',
+      '--task', 'OC-HYBRID-1',
+      '--audience', 'craftsman',
+      '--query', 'vector recall',
+      '--mode', 'auto',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'index', 'rebuild',
+      '--project', 'proj-brain',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'index', 'sync',
+      '--project', 'proj-brain',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'index', 'status',
+      '--project', 'proj-brain',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'chunk', 'inspect',
+      '--project', 'proj-brain',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainRetrievalService.searchTaskContext).toHaveBeenCalledWith({
+      task_id: 'OC-HYBRID-1',
+      audience: 'craftsman',
+      query: 'vector recall',
+      max_results: 5,
+    });
+    expect(projectBrainIndexService.rebuildProjectIndex).toHaveBeenCalledWith('proj-brain');
+    expect(projectBrainIndexService.syncProjectIndex).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+    });
+    expect(projectBrainIndexService.getProjectIndexStatus).toHaveBeenCalledWith('proj-brain');
+    expect(projectBrainIndexService.inspectDocumentChunks).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+    });
+    expect(stdout.value).toContain('没有匹配结果');
+    expect(stdout.value).toContain('project proj-brain rebuilt: 2 docs / 5 chunks');
+    expect(stdout.value).toContain('project proj-brain synced: 1 docs / 3 chunks');
+    expect(stdout.value).toContain('provider=qdrant healthy=true chunks=5');
+    expect(stdout.value).toContain('chunks: 1');
+  });
+
+  it('routes project brain index commands through an injected index service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainIndexService = {
+      rebuildProjectIndex: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        indexed_documents: 2,
+        indexed_chunks: 3,
+      }),
+      syncProjectIndex: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        kind: 'decision',
+        slug: 'runtime-boundary',
+        indexed_documents: 1,
+        indexed_chunks: 1,
+      }),
+      getProjectIndexStatus: vi.fn().mockResolvedValue({
+        healthy: true,
+        provider: 'qdrant',
+        chunk_count: 3,
+      }),
+      inspectDocumentChunks: vi.fn().mockResolvedValue({
+        document: {
+          project_id: 'proj-brain',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+        },
+        chunks: [
+          { chunk_id: 'proj-brain:decision:runtime-boundary:0' },
+        ],
+      }),
+    };
+    const program = createCliProgram({
+      projectBrainIndexService: projectBrainIndexService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'index', 'rebuild',
+      '--project', 'proj-brain',
+      '--json',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'index', 'sync',
+      '--project', 'proj-brain',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+      '--json',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'index', 'status',
+      '--project', 'proj-brain',
+      '--json',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'brain', 'chunk', 'inspect',
+      '--project', 'proj-brain',
+      '--kind', 'decision',
+      '--slug', 'runtime-boundary',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainIndexService.rebuildProjectIndex).toHaveBeenCalledWith('proj-brain');
+    expect(projectBrainIndexService.syncProjectIndex).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+    });
+    expect(projectBrainIndexService.getProjectIndexStatus).toHaveBeenCalledWith('proj-brain');
+    expect(projectBrainIndexService.inspectDocumentChunks).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+    });
+    expect(stdout.value).toContain('"indexed_chunks": 3');
+    expect(stdout.value).toContain('"provider": "qdrant"');
+    expect(stdout.value).toContain('"chunk_id": "proj-brain:decision:runtime-boundary:0"');
+  });
+
+  it('routes project brain task query through an injected retrieval service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainRetrievalService = {
+      searchTaskContext: vi.fn().mockResolvedValue([
+        {
+          project_id: 'proj-brain',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          snippet: 'Keep runtime-specific logic out of core.',
+          retrieval_mode: 'hybrid',
+          chunk_id: 'proj-brain:decision:runtime-boundary:0',
+        },
+      ]),
+    };
+    const program = createCliProgram({
+      projectBrainRetrievalService: projectBrainRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'query',
+      '--task', 'OC-HYBRID-1',
+      '--audience', 'craftsman',
+      '--query', 'runtime boundary',
+      '--mode', 'auto',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainRetrievalService.searchTaskContext).toHaveBeenCalledWith({
+      task_id: 'OC-HYBRID-1',
+      audience: 'craftsman',
+      query: 'runtime boundary',
+      max_results: 5,
+    });
+    expect(stdout.value).toContain('"retrieval_mode": "hybrid"');
+    expect(stdout.value).toContain('"chunk_id": "proj-brain:decision:runtime-boundary:0"');
+  });
+
+  it('keeps task query on the raw path when mode=raw', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-HYBRID-1',
+        project_id: 'proj-brain',
+      }),
+    };
+    const projectBrainService = {
+      queryDocuments: vi.fn().mockReturnValue([
+        {
+          project_id: 'proj-brain',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          snippet: 'Keep runtime-specific logic out of core.',
+        },
+      ]),
+    };
+    const projectBrainRetrievalService = {
+      searchTaskContext: vi.fn(),
+    };
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectBrainService: projectBrainService as never,
+      projectBrainRetrievalService: projectBrainRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'query',
+      '--task', 'OC-HYBRID-1',
+      '--query', 'runtime boundary',
+      '--mode', 'raw',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-HYBRID-1');
+    expect(projectBrainRetrievalService.searchTaskContext).not.toHaveBeenCalled();
+    expect(projectBrainService.queryDocuments).toHaveBeenCalledWith('proj-brain', 'runtime boundary', undefined);
+    expect(stdout.value).toContain('"retrieval_mode": "raw"');
+  });
+
+  it('keeps project query on the existing raw path even when hybrid services are present', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainService = {
+      queryDocuments: vi.fn().mockReturnValue([
+        {
+          project_id: 'proj-brain',
+          kind: 'fact',
+          slug: 'core-first',
+          title: 'Core First',
+          path: '/brain/fact/core-first.md',
+          snippet: 'Keep orchestration inside core.',
+        },
+      ]),
+    };
+    const projectBrainRetrievalService = {
+      searchTaskContext: vi.fn(),
+    };
+    const program = createCliProgram({
+      projectBrainService: projectBrainService as never,
+      projectBrainRetrievalService: projectBrainRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'query',
+      '--project', 'proj-brain',
+      '--query', 'core first',
+      '--mode', 'auto',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainRetrievalService.searchTaskContext).not.toHaveBeenCalled();
+    expect(projectBrainService.queryDocuments).toHaveBeenCalledWith('proj-brain', 'core first', undefined);
+    expect(stdout.value).toContain('"retrieval_mode": "raw"');
+  });
+
+  it('routes task-aware bootstrap-context through task metadata when task is provided', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-HYBRID-1',
+        title: 'Implement hybrid retrieval',
+        description: 'Need vector recall and lexical rerank.',
+        project_id: 'proj-brain',
+        team: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller' },
+            { role: 'citizen', agentId: 'citizen-alpha', member_kind: 'citizen' },
+          ],
+        },
+      }),
+    };
+    const projectBrainAutomationService = {
+      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        audience: 'controller',
+        markdown: '# Project Brain Bootstrap Context',
+        source_documents: [],
+      }),
+      buildBootstrapContext: vi.fn().mockReturnValue({
+        project_id: 'proj-brain',
+        audience: 'controller',
+        markdown: '# Project Brain Bootstrap Context',
+        source_documents: [],
+      }),
+    };
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectBrainAutomationService: projectBrainAutomationService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'bootstrap-context',
+      '--task', 'OC-HYBRID-1',
+      '--audience', 'controller',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      task_id: 'OC-HYBRID-1',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'controller',
+    });
+  });
+
   it('prints runtime diagnosis results through the cli', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -900,6 +1315,39 @@ describe('agora-ts cli', () => {
     const created = taskService.getTask('OC-300SMOKE');
     expect(stderr.value).toBe('');
     expect(created?.control?.mode).toBe('smoke_test');
+  });
+
+  it('creates tasks with global and role-scoped skill policy through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-300SKILL',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync([
+      'create',
+      'skill aware create',
+      '--type', 'coding',
+      '--skill', 'planning-with-files',
+      '--skill', 'agora-bootstrap',
+      '--role-skill', 'architect=brainstorming',
+      '--role-skill', 'developer=refactoring-ui',
+    ], { from: 'user' });
+
+    const created = taskService.getTask('OC-300SKILL');
+    expect(stderr.value).toBe('');
+    expect(created?.skill_policy).toEqual({
+      global_refs: ['planning-with-files', 'agora-bootstrap'],
+      role_refs: {
+        architect: ['brainstorming'],
+        developer: ['refactoring-ui'],
+      },
+      enforcement: 'required',
+    });
   });
 
   it('lists roles and stores scoped bindings through the cli', async () => {
@@ -1245,7 +1693,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('已解除阻塞');
   });
 
-  it('runs dashboard session commands through the cli', async () => {
+  it('runs dashboard session commands through the cli with the legacy runtime transport shim', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const program = createCliProgram({
@@ -1254,7 +1702,7 @@ describe('agora-ts cli', () => {
           throw new Error('unused');
         },
       } as unknown as TaskService,
-      tmuxRuntimeService: {
+      legacyRuntimeService: {
         up: () => {
           throw new Error('unused');
         },
@@ -1322,7 +1770,7 @@ describe('agora-ts cli', () => {
           throw new Error('unused');
         },
       } as unknown as TaskService,
-      tmuxRuntimeService: {
+      legacyRuntimeService: {
         up: () => {
           throw new Error('unused');
         },

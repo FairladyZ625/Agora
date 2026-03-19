@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { NavLink } from 'react-router';
 import {
   Archive,
@@ -51,6 +52,59 @@ export function Sidebar({
   const { t } = useTranslation();
   const shellCopy = useShellCopy();
   const effectiveCollapsed = isMobile ? false : collapsed;
+  const sidebarRef = useRef<HTMLElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // M5: focus trap for mobile sidebar overlay
+  useEffect(() => {
+    if (!isMobile) return;
+
+    if (mobileOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+
+      const sidebar = sidebarRef.current;
+      if (!sidebar) return;
+
+      const focusableSelector =
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+      const getFocusable = () =>
+        Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector));
+
+      // Focus first element when sidebar opens
+      const focusable = getFocusable();
+      if (focusable.length > 0) focusable[0].focus();
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key !== 'Tab') return;
+        const focusable = getFocusable();
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      };
+
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    } else {
+      // Restore focus when sidebar closes
+      if (previousFocusRef.current) {
+        previousFocusRef.current.focus();
+        previousFocusRef.current = null;
+      }
+    }
+  }, [mobileOpen, isMobile]);
 
   return (
     <>
@@ -64,6 +118,7 @@ export function Sidebar({
       )}
 
       <aside
+        ref={sidebarRef}
         className={cn(
           'app-sidebar fixed inset-y-3 left-3 z-40 flex transition-[transform,width,opacity] duration-300 md:static md:inset-auto md:translate-x-0',
           isMobile ? 'app-sidebar--mobile' : effectiveCollapsed ? 'app-sidebar--collapsed' : 'app-sidebar--expanded',

@@ -87,6 +87,30 @@ describe('agora-ts state machine', () => {
     ).toBe('c');
   });
 
+  it('requires an explicit next_stage_id when the current stage branches and resolves the selected branch target', () => {
+    const sm = new StateMachine();
+    const workflow = {
+      stages: [
+        { id: 'triage' },
+        { id: 'fast-path' },
+        { id: 'deep-review' },
+      ],
+      graph: {
+        graph_version: 1,
+        entry_nodes: ['triage'],
+        nodes: [{ id: 'triage' }, { id: 'fast-path' }, { id: 'deep-review' }],
+        edges: [
+          { from: 'triage', to: 'fast-path', kind: 'branch' },
+          { from: 'triage', to: 'deep-review', kind: 'branch' },
+        ],
+      },
+    };
+
+    expect(() => sm.getNextStage(workflow, 'triage')).toThrow(/next_stage_id/);
+    expect(sm.getNextStage(workflow, 'triage', 'deep-review')?.id).toBe('deep-review');
+    expect(() => sm.getNextStage(workflow, 'triage', 'unknown')).toThrow(/does not match a branch target/);
+  });
+
   it('resolves reject stage from graph edges when workflow graph is present', () => {
     const sm = new StateMachine();
 
@@ -114,6 +138,32 @@ describe('agora-ts state machine', () => {
     ).toBe('draft');
   });
 
+  it('rejects graph reject edges that point forward instead of rewinding to an earlier stage', () => {
+    const sm = new StateMachine();
+
+    expect(() =>
+      sm.getRejectStage(
+        {
+          stages: [
+            { id: 'draft' },
+            { id: 'review' },
+            { id: 'ship' },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['draft'],
+            nodes: [{ id: 'draft' }, { id: 'review' }, { id: 'ship' }],
+            edges: [
+              { from: 'draft', to: 'review', kind: 'advance' },
+              { from: 'review', to: 'ship', kind: 'reject' },
+            ],
+          },
+        },
+        'review',
+      ),
+    ).toThrow(/must reference an earlier stage/);
+  });
+
   it('computes advance results for in-progress and terminal stages', () => {
     const sm = new StateMachine();
 
@@ -124,6 +174,39 @@ describe('agora-ts state machine', () => {
     });
     expect(sm.advance(buildTask().workflow, 'review')).toMatchObject({
       currentStage: { id: 'review' },
+      nextStage: null,
+      completesTask: true,
+    });
+  });
+
+  it('treats complete edges into terminal nodes as task completion', () => {
+    const sm = new StateMachine();
+
+    expect(
+      sm.advance(
+        {
+          stages: [
+            { id: 'implement' },
+            { id: 'review' },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['implement'],
+            nodes: [
+              { id: 'implement' },
+              { id: 'review' },
+              { id: 'done' },
+            ],
+            edges: [
+              { from: 'implement', to: 'done', kind: 'complete' },
+              { from: 'implement', to: 'review', kind: 'advance' },
+            ],
+          },
+        },
+        'implement',
+      ),
+    ).toMatchObject({
+      currentStage: { id: 'implement' },
       nextStage: null,
       completesTask: true,
     });

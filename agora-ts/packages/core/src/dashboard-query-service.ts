@@ -20,6 +20,7 @@ import type {
   AgentProviderSignalEvent,
   PresenceSource,
 } from './runtime-ports.js';
+import type { SkillCatalogPort } from './skill-catalog-port.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TmuxRuntimeService } from './tmux-runtime-service.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
@@ -34,7 +35,9 @@ export interface DashboardQueryServiceOptions {
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
+  legacyRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
   tmuxRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
+  skillCatalogPort?: SkillCatalogPort;
   agentsStatusCacheTtlMs?: number;
   now?: () => Date;
 }
@@ -53,7 +56,8 @@ export class DashboardQueryService {
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
-  private readonly tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined;
+  private readonly legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined;
+  private readonly skillCatalogPort: SkillCatalogPort | undefined;
   private readonly agentsStatusCacheTtlMs: number;
   private readonly now: () => Date;
   private agentsStatusCache: { value: AgentsStatusDto; expiresAtMs: number } | null = null;
@@ -79,9 +83,14 @@ export class DashboardQueryService {
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
     this.presenceSource = options.presenceSource;
-    this.tmuxRuntimeService = options.tmuxRuntimeService;
+    this.legacyRuntimeService = options.legacyRuntimeService ?? options.tmuxRuntimeService;
+    this.skillCatalogPort = options.skillCatalogPort;
     this.agentsStatusCacheTtlMs = options.agentsStatusCacheTtlMs ?? 3_000;
     this.now = options.now ?? (() => new Date());
+  }
+
+  listSkills(refresh = false) {
+    return this.skillCatalogPort?.listSkills({ refresh }) ?? [];
   }
 
   getAgentsStatus(): AgentsStatusDto {
@@ -92,7 +101,7 @@ export class DashboardQueryService {
     const value = this.buildAgentsStatus({
       includeChannelDetails: false,
       includeHostAffectedAgents: false,
-      includeTmuxTailPreview: false,
+      includeLegacyTailPreview: false,
     });
     this.agentsStatusCache = {
       value,
@@ -123,7 +132,7 @@ export class DashboardQueryService {
   private buildAgentsStatus(options: {
     includeChannelDetails: boolean;
     includeHostAffectedAgents: boolean;
-    includeTmuxTailPreview: boolean;
+    includeLegacyTailPreview: boolean;
   }): AgentsStatusDto {
     const { activeTaskCount, allAgents, craftsmen } = this.buildAgentReadModel({
       includeCraftsmen: true,
@@ -135,8 +144,8 @@ export class DashboardQueryService {
       ? (options.includeChannelDetails ? this.presenceSource.listSignals() : [])
       : [];
 
-    const tmuxRuntime = buildTmuxRuntime(this.tmuxRuntimeService, {
-      includeTailPreview: options.includeTmuxTailPreview,
+    const legacyRuntime = buildLegacyRuntimeView(this.legacyRuntimeService, {
+      includeTailPreview: options.includeLegacyTailPreview,
     });
 
     return {
@@ -157,7 +166,7 @@ export class DashboardQueryService {
       host_summaries: buildHostSummaries(allAgents, {
         includeAffectedAgents: options.includeHostAffectedAgents,
       }),
-      craftsman_runtime: buildCraftsmanRuntime(craftsmen, tmuxRuntime),
+      craftsman_runtime: buildCraftsmanRuntime(craftsmen, legacyRuntime),
     };
   }
 
@@ -563,7 +572,7 @@ export class DashboardQueryService {
   }
 }
 
-type LegacyTmuxRuntimeView = {
+type LegacyRuntimeTransportView = {
   session: string | null;
   panes: Array<{
     agent: string;
@@ -588,19 +597,19 @@ type LegacyTmuxRuntimeView = {
   }>;
 } | null;
 
-function buildTmuxRuntime(
-  tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
+function buildLegacyRuntimeView(
+  legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
   options: { includeTailPreview: boolean },
-): LegacyTmuxRuntimeView {
-  if (!tmuxRuntimeService) {
+): LegacyRuntimeTransportView {
+  if (!legacyRuntimeService) {
     return null;
   }
-  const status = tmuxRuntimeService.status();
-  const doctor = tmuxRuntimeService.doctor();
-  const statusByAgent = new Map(status.panes.map((item) => [normalizeTmuxRuntimeAgent(item.title), item]));
+  const status = legacyRuntimeService.status();
+  const doctor = legacyRuntimeService.doctor();
+  const statusByAgent = new Map(status.panes.map((item) => [normalizeLegacyRuntimeAgent(item.title), item]));
   const byAgent = new Map(doctor.panes.map((item) => [item.agent, item]));
   const agents = new Set<string>([
-    ...status.panes.map((item) => normalizeTmuxRuntimeAgent(item.title)),
+    ...status.panes.map((item) => normalizeLegacyRuntimeAgent(item.title)),
     ...doctor.panes.map((item) => item.agent),
   ]);
 
@@ -617,7 +626,7 @@ function buildTmuxRuntime(
           current_command: paneStatus?.currentCommand ?? paneDoctor?.command ?? null,
           active: paneStatus?.active ?? paneDoctor?.active ?? false,
           ready: paneDoctor?.ready ?? paneStatus !== undefined,
-          tail_preview: options.includeTailPreview ? safeTail(tmuxRuntimeService, agent) : null,
+          tail_preview: options.includeTailPreview ? safeTail(legacyRuntimeService, agent) : null,
           continuity_backend: paneStatus?.continuityBackend ?? paneDoctor?.continuityBackend ?? 'unknown',
           resume_capability: paneStatus?.resumeCapability ?? paneDoctor?.resumeCapability ?? 'none',
           session_reference: paneStatus?.sessionReference ?? paneDoctor?.sessionReference ?? null,
@@ -637,17 +646,17 @@ function buildTmuxRuntime(
 }
 
 function safeTail(
-  tmuxRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>,
+  legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>,
   agent: string,
 ) {
   try {
-    return tmuxRuntimeService.tail(agent, 20);
+    return legacyRuntimeService.tail(agent, 20);
   } catch {
     return null;
   }
 }
 
-function normalizeTmuxRuntimeAgent(value: string) {
+function normalizeLegacyRuntimeAgent(value: string) {
   const cleaned = value
     .replace(/^[^A-Za-z0-9]+/u, '')
     .trim()
@@ -658,7 +667,7 @@ function normalizeTmuxRuntimeAgent(value: string) {
 
 function buildCraftsmanRuntime(
   craftsmen: AgentsStatusDto['craftsmen'],
-  tmuxRuntime: LegacyTmuxRuntimeView,
+  legacyRuntime: LegacyRuntimeTransportView,
 ): AgentsStatusDto['craftsman_runtime'] {
   type CraftsmanRuntime = NonNullable<AgentsStatusDto['craftsman_runtime']>;
   type CraftsmanRuntimeSlot = CraftsmanRuntime['slots'][number];
@@ -666,8 +675,8 @@ function buildCraftsmanRuntime(
 
   const slots: CraftsmanRuntimeSlot[] = [];
 
-  if (tmuxRuntime) {
-    for (const pane of tmuxRuntime.panes) {
+  if (legacyRuntime) {
+    for (const pane of legacyRuntime.panes) {
       slots.push({
         provider: 'tmux',
         agent: pane.agent,
@@ -691,7 +700,7 @@ function buildCraftsmanRuntime(
   for (const craftsman of craftsmen) {
     for (const execution of craftsman.recent_executions) {
       const provider = inferCraftsmanRuntimeProvider(execution);
-      if (provider === 'tmux' && tmuxRuntime) {
+      if (provider === 'tmux' && legacyRuntime) {
         continue;
       }
       slots.push({
@@ -721,7 +730,7 @@ function buildCraftsmanRuntime(
   const providerMap = slots.reduce<Map<CraftsmanRuntimeProviderSummary['provider'], CraftsmanRuntimeProviderSummary>>((map, slot) => {
     const current = map.get(slot.provider) ?? {
       provider: slot.provider,
-      session: slot.provider === 'tmux' ? tmuxRuntime?.session ?? null : null,
+      session: slot.provider === 'tmux' ? legacyRuntime?.session ?? null : null,
       slot_count: 0,
       ready_slots: 0,
       active_slots: 0,

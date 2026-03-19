@@ -21,6 +21,12 @@ afterEach(() => {
   delete process.env.AGORA_SKILL_TARGET_DIRS;
   delete process.env.AGORA_CRAFTSMAN_CLI_MODE;
   delete process.env.AGORA_OPENCLAW_CONFIG_PATH;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.OPENAI_EMBEDDING_MODEL;
+  delete process.env.OPENAI_EMBEDDING_DIMENSION;
+  delete process.env.QDRANT_URL;
+  delete process.env.QDRANT_API_KEY;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -30,7 +36,7 @@ afterEach(() => {
 });
 
 describe('cli composition', () => {
-  it('loads config and builds task/tmux runtime services', () => {
+  it('loads config and builds task/legacy runtime services', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
@@ -41,11 +47,12 @@ describe('cli composition', () => {
 
     expect(composition.config.db_path).toBe(dbPath);
     expect(composition.taskService).toBeDefined();
-    expect(composition.tmuxRuntimeService).toBeDefined();
+    expect(composition.legacyRuntimeService).toBeDefined();
+    expect(composition.tmuxRuntimeService).toBe(composition.legacyRuntimeService);
     composition.db.close();
   });
 
-  it('accepts composition factory overrides for task and tmux services', () => {
+  it('accepts composition factory overrides for task and legacy runtime services', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
@@ -55,7 +62,7 @@ describe('cli composition', () => {
     const overriddenTaskService = {
       listTasks: () => [],
     } as unknown as TaskService;
-    const overriddenTmuxRuntimeService = {
+    const overriddenLegacyRuntimeService = {
       status: () => ({ session: 'override', panes: [] }),
     } as unknown as TmuxRuntimeService;
 
@@ -63,12 +70,13 @@ describe('cli composition', () => {
       { configPath },
       {
         createTaskService: () => overriddenTaskService,
-        createTmuxRuntimeService: () => overriddenTmuxRuntimeService,
+        createLegacyRuntimeService: () => overriddenLegacyRuntimeService,
       },
     );
 
     expect(composition.taskService).toBe(overriddenTaskService);
-    expect(composition.tmuxRuntimeService).toBe(overriddenTmuxRuntimeService);
+    expect(composition.legacyRuntimeService).toBe(overriddenLegacyRuntimeService);
+    expect(composition.tmuxRuntimeService).toBe(overriddenLegacyRuntimeService);
     composition.db.close();
   });
 
@@ -138,6 +146,7 @@ describe('cli composition', () => {
               throw new Error('not used');
             },
             updateWorkspace: () => undefined,
+            writeExecutionBrief: () => ({ brief_path: '/tmp/unused-brief.md' }),
             writeTaskCloseRecap: () => undefined,
             destroyWorkspace: () => undefined,
           };
@@ -279,6 +288,29 @@ describe('cli composition', () => {
     expect(Reflect.get(taskService, 'craftsmanExecutionTailPort')?.constructor.name).toBe('TmuxCraftsmanTailPort');
     expect(Reflect.get(taskService, 'runtimeRecoveryPort')?.constructor.name).toBe('TmuxRuntimeRecoveryPort');
     expect(Reflect.get(dispatcher as object, 'workdirIsolator')?.constructor.name).toBe('GitWorktreeWorkdirIsolator');
+    composition.db.close();
+  });
+
+  it('wires project brain hybrid retrieval services when vector env is configured', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.OPENAI_API_KEY = 'test-key';
+    process.env.OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
+    process.env.OPENAI_EMBEDDING_DIMENSION = '8';
+    process.env.QDRANT_URL = 'http://127.0.0.1:6333';
+    writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
+
+    const composition = createCliComposition({ configPath });
+
+    expect(composition.projectBrainIndexService?.constructor.name).toBe('ProjectBrainIndexService');
+    expect(composition.projectBrainRetrievalService?.constructor.name).toBe('ProjectBrainRetrievalService');
+    expect(Reflect.get(composition.projectBrainAutomationService as object, 'options')).toEqual(
+      expect.objectContaining({
+        retrievalService: composition.projectBrainRetrievalService,
+      }),
+    );
     composition.db.close();
   });
 });

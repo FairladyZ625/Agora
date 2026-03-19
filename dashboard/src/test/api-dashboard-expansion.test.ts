@@ -180,6 +180,18 @@ describe('dashboard expansion api client', () => {
             }],
           };
         }
+        if (url.endsWith('/projects') && method === 'POST') {
+          return {
+            id: 'proj-beta',
+            name: 'Project Beta',
+            summary: 'New project',
+            status: 'active',
+            owner: 'archon',
+            metadata: {},
+            created_at: '2026-03-16T02:00:00.000Z',
+            updated_at: '2026-03-16T02:00:00.000Z',
+          };
+        }
         if (url.endsWith('/projects')) {
           return {
             projects: [
@@ -218,6 +230,17 @@ describe('dashboard expansion api client', () => {
               created_at: '2026-03-16T00:00:00.000Z',
               updated_at: '2026-03-16T01:00:00.000Z',
               source_task_ids: [],
+            },
+            timeline: {
+              project_id: 'proj-alpha',
+              kind: 'timeline',
+              slug: 'timeline',
+              title: 'Project Alpha Timeline',
+              path: '/brain/projects/proj-alpha/timeline.md',
+              content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
+              created_at: '2026-03-16T00:00:00.000Z',
+              updated_at: '2026-03-16T01:30:00.000Z',
+              source_task_ids: ['OC-100'],
             },
             recaps: [],
             knowledge: [],
@@ -272,6 +295,16 @@ describe('dashboard expansion api client', () => {
         }
         if (/\/tasks\/[^/]+\/subtasks\/[^/]+\/(close|archive|cancel)$/.test(url)) {
           return buildTaskResponse();
+        }
+        if (url.includes('/tasks?')) {
+          return [
+            {
+              ...buildTaskResponse(),
+              id: 'OC-201',
+              title: 'Project task',
+              project_id: 'proj-alpha',
+            },
+          ];
         }
         if (/\/craftsmen\/tasks\/[^/]+\/subtasks\/[^/]+\/executions$/.test(url)) {
           return [{
@@ -594,10 +627,22 @@ describe('dashboard expansion api client', () => {
     const api = await import('@/lib/api');
 
     await api.listProjects();
-    await api.getProjectWorkbench('proj-alpha');
+    const workbench = await api.getProjectWorkbench('proj-alpha');
+    await api.createProject({ name: 'Project Beta', owner: 'archon', summary: 'New project' });
+    await api.listTasks(undefined, 'proj-alpha');
+
+    expect(workbench.timeline).toMatchObject({
+      kind: 'timeline',
+      slug: 'timeline',
+    });
 
     expectFetchCall('/api/projects', { method: 'GET' });
     expectFetchCall('/api/projects/proj-alpha', { method: 'GET' });
+    expectFetchCall('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Project Beta', owner: 'archon', summary: 'New project' }),
+    });
+    expectFetchCall('/api/tasks?project_id=proj-alpha', { method: 'GET' });
   });
 
   it('loads template summaries and full template details from the real backend routes', async () => {

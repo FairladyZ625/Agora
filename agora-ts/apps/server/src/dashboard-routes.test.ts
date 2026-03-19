@@ -741,7 +741,7 @@ describe('dashboard routes', () => {
   });
 
   it('keeps runtime gateway identity over weaker plugin and discovery signals across route and dashboard reads', async () => {
-    const tmuxRuntimeService = new TmuxRuntimeService({
+    const legacyRuntimeService = new TmuxRuntimeService({
       exec: createTmuxExec(),
       registryDir: join(mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-tmux-')), 'registry'),
       adapters: {},
@@ -756,8 +756,8 @@ describe('dashboard routes', () => {
     });
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir, tmuxRuntimeService });
-    const app = buildApp({ dashboardQueryService: dashboardQueries, tmuxRuntimeService });
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir, legacyRuntimeService });
+    const app = buildApp({ dashboardQueryService: dashboardQueries, legacyRuntimeService });
 
     const runtimeIdentity = await app.inject({
       method: 'POST',

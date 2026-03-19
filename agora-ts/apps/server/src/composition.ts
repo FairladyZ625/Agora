@@ -12,6 +12,7 @@ import {
   CraftsmanDispatcher,
   DirectAcpxRuntimePort,
   DashboardQueryService,
+  FilesystemSkillCatalogAdapter,
   FilesystemProjectBrainQueryAdapter,
   FilesystemProjectKnowledgeAdapter,
   FilesystemTaskBrainWorkspaceAdapter,
@@ -42,6 +43,7 @@ import {
   TaskBrainBindingService,
   StubIMMessagingPort,
   TaskConversationService,
+  TaskInboundService,
   TaskContextBindingService,
   TaskParticipationService,
   resolveCraftsmanRuntimeMode,
@@ -87,12 +89,14 @@ export interface ServerComposition {
   templateAuthoringService: TemplateAuthoringService;
   inboxService: InboxService;
   liveSessionStore: LiveSessionStore;
+  legacyRuntimeService: TmuxRuntimeService;
   tmuxRuntimeService: TmuxRuntimeService;
   taskContextBindingService: TaskContextBindingService;
   taskParticipationService: TaskParticipationService;
   humanAccountService: HumanAccountService;
   notificationDispatcher: NotificationDispatcher;
   taskConversationService: TaskConversationService;
+  taskInboundService: TaskInboundService;
   discordPresenceService?: DiscordGatewayPresenceService;
 }
 
@@ -107,12 +111,13 @@ export interface ServerCompositionFactories {
       acpRuntime?: DirectAcpxRuntimePort;
     },
   ) => CraftsmanDispatcher;
-  createTmuxRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
+  createLegacyRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
+  createTmuxRuntimeService?: (context: ServerCompositionContext) => TmuxRuntimeService;
   createTaskService: (
     context: ServerCompositionContext,
     deps: {
       craftsmanDispatcher: CraftsmanDispatcher;
-      tmuxRuntimeService: TmuxRuntimeService;
+      legacyRuntimeService: TmuxRuntimeService;
       imProvisioningPort: IMProvisioningPort | undefined;
       messagingPort: IMMessagingPort;
       taskBrainBindingService: TaskBrainBindingService;
@@ -136,7 +141,7 @@ export interface ServerCompositionFactories {
       liveSessionStore: LiveSessionStore;
       agentRegistry: AgentInventorySource;
       presenceSource: PresenceSource;
-      tmuxRuntimeService: TmuxRuntimeService;
+      legacyRuntimeService: TmuxRuntimeService;
       archiveJobNotifier: FileArchiveJobNotifier | undefined;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor | undefined;
       imProvisioningPort: IMProvisioningPort | undefined;
@@ -171,6 +176,10 @@ export interface ServerCompositionFactories {
   createHumanAccountService: (context: ServerCompositionContext) => HumanAccountService;
   createNotificationDispatcher: (context: ServerCompositionContext, deps: { messagingPort: IMMessagingPort }) => NotificationDispatcher;
   createTaskConversationService: (context: ServerCompositionContext) => TaskConversationService;
+  createTaskInboundService: (
+    context: ServerCompositionContext,
+    deps: { taskConversationService: TaskConversationService; taskContextBindingService: TaskContextBindingService; taskService: TaskService },
+  ) => TaskInboundService;
   createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
 }
 
@@ -227,6 +236,13 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       }
       return new CraftsmanDispatcher(context.db, dispatcherOptions);
     },
+    createLegacyRuntimeService: () => new TmuxRuntimeService({
+      adapters: {
+        codex: new CodexCraftsmanAdapter(),
+        claude: new ClaudeCraftsmanAdapter(),
+        gemini: new GeminiCraftsmanAdapter(),
+      },
+    }),
     createTmuxRuntimeService: () => new TmuxRuntimeService({
       adapters: {
         codex: new CodexCraftsmanAdapter(),
@@ -241,7 +257,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         archonUsers: context.config.permissions.archonUsers,
         allowAgents: context.config.permissions.allowAgents,
         craftsmanDispatcher: deps.craftsmanDispatcher,
-        isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.tmuxRuntimeService),
+        isCraftsmanSessionAlive: context.isCraftsmanSessionAlive ?? defaultSessionAliveProbe(deps.legacyRuntimeService),
         imMessagingPort: deps.messagingPort,
         taskBrainBindingService: deps.taskBrainBindingService,
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
@@ -291,7 +307,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       liveSessions: deps.liveSessionStore,
       agentRegistry: deps.agentRegistry,
       presenceSource: deps.presenceSource,
-      tmuxRuntimeService: deps.tmuxRuntimeService,
+      legacyRuntimeService: deps.legacyRuntimeService,
+      skillCatalogPort: new FilesystemSkillCatalogAdapter(),
     }),
     createTemplateAuthoringService: (context) => new TemplateAuthoringService({
       db: context.db,
@@ -356,6 +373,11 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createHumanAccountService: (context) => new HumanAccountService(context.db),
     createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
     createTaskConversationService: (context) => new TaskConversationService(context.db),
+    createTaskInboundService: (_context, deps) => new TaskInboundService(
+      deps.taskConversationService,
+      deps.taskContextBindingService,
+      deps.taskService,
+    ),
     createDiscordPresenceService: (context) => {
       const { im } = context.config;
       if (im.provider !== 'discord' || !im.discord?.bot_token) {
@@ -395,7 +417,15 @@ export function buildServerComposition(
     context,
     acpRuntime ? { acpRuntime } : undefined,
   );
-  const tmuxRuntimeService = factories.createTmuxRuntimeService(context);
+  const legacyRuntimeServiceFactory = overrides.createLegacyRuntimeService
+    ?? overrides.createTmuxRuntimeService
+    ?? factories.createLegacyRuntimeService
+    ?? factories.createTmuxRuntimeService;
+  if (!legacyRuntimeServiceFactory) {
+    throw new Error('legacy runtime service factory is not configured');
+  }
+  const legacyRuntimeService = legacyRuntimeServiceFactory(context);
+  const tmuxRuntimeService = legacyRuntimeService;
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const taskBrainBindingService = factories.createTaskBrainBindingService(context);
   const taskBrainWorkspacePort = factories.createTaskBrainWorkspacePort(context);
@@ -410,7 +440,7 @@ export function buildServerComposition(
   const messagingPort = factories.createIMMessagingPort(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
-    tmuxRuntimeService,
+    legacyRuntimeService,
     imProvisioningPort,
     messagingPort,
     liveSessionStore,
@@ -420,7 +450,7 @@ export function buildServerComposition(
     taskParticipationService,
     projectService,
     agentRuntimePort,
-    ...createCraftsmanTransportDeps(craftsmanMode, tmuxRuntimeService, acpRuntime),
+    ...createCraftsmanTransportDeps(craftsmanMode, legacyRuntimeService, acpRuntime),
   });
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
@@ -428,7 +458,7 @@ export function buildServerComposition(
     liveSessionStore,
     agentRegistry,
     presenceSource,
-    tmuxRuntimeService,
+    legacyRuntimeService,
     archiveJobNotifier,
     archiveJobReceiptIngestor,
     imProvisioningPort,
@@ -438,6 +468,11 @@ export function buildServerComposition(
   const inboxService = factories.createInboxService(context, { taskService });
   const notificationDispatcher = factories.createNotificationDispatcher(context, { messagingPort });
   const taskConversationService = factories.createTaskConversationService(context);
+  const taskInboundService = factories.createTaskInboundService(context, {
+    taskConversationService,
+    taskContextBindingService,
+    taskService,
+  });
   const discordPresenceService = factories.createDiscordPresenceService(context);
 
   return {
@@ -449,23 +484,25 @@ export function buildServerComposition(
     templateAuthoringService,
     inboxService,
     liveSessionStore,
+    legacyRuntimeService,
     tmuxRuntimeService,
     taskContextBindingService,
     taskParticipationService,
     humanAccountService,
     notificationDispatcher,
     taskConversationService,
+    taskInboundService,
     ...(discordPresenceService ? { discordPresenceService } : {}),
   };
 }
 
-function defaultSessionAliveProbe(tmuxRuntimeService: TmuxRuntimeService) {
+function defaultSessionAliveProbe(legacyRuntimeService: TmuxRuntimeService) {
   return (sessionId: string) => {
     if (!sessionId.startsWith('tmux:')) {
       return true;
     }
     try {
-      return tmuxRuntimeService.status().panes.some((pane) => pane.transportSessionId === sessionId);
+      return legacyRuntimeService.status().panes.some((pane) => pane.transportSessionId === sessionId);
     } catch {
       return true;
     }
@@ -474,7 +511,7 @@ function defaultSessionAliveProbe(tmuxRuntimeService: TmuxRuntimeService) {
 
 function createCraftsmanTransportDeps(
   mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
-  tmuxRuntimeService: TmuxRuntimeService,
+  legacyRuntimeService: TmuxRuntimeService,
   acpRuntime?: DirectAcpxRuntimePort,
 ): {
   craftsmanInputPort: CraftsmanInputPort;
@@ -492,9 +529,9 @@ function createCraftsmanTransportDeps(
     };
   }
   return {
-    craftsmanInputPort: new TmuxCraftsmanInputPort(tmuxRuntimeService),
-    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(tmuxRuntimeService),
-    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(tmuxRuntimeService),
-    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(tmuxRuntimeService),
+    craftsmanInputPort: new TmuxCraftsmanInputPort(legacyRuntimeService),
+    craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(legacyRuntimeService),
+    craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(legacyRuntimeService),
+    runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(legacyRuntimeService),
   };
 }

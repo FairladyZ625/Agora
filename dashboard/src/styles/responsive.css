@@ -67,7 +67,7 @@
   }
 
   .login-shell__title {
-    font-size: 44px;
+    font-size: clamp(2rem, 8vw, var(--font-size-hero-title-desktop, 2.857rem));
   }
 
   .login-shell__copy-frame,

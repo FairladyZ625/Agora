@@ -21,7 +21,7 @@ const tempPaths: string[] = [];
 vi.mock('@inquirer/prompts', () => ({
   input: vi.fn(async () => promptState.inputs.shift() ?? ''),
   select: vi.fn(async () => promptState.selectValue),
-  confirm: vi.fn(async () => promptState.confirmValues.shift() ?? true),
+  confirm: vi.fn(async () => promptState.confirmValues.shift() ?? false),
 }));
 
 vi.mock('@agora-ts/config', async () => {
@@ -55,6 +55,7 @@ describe('runInitCommand', () => {
 
   it('writes the unified default db path when bootstrapping the first admin', async () => {
     promptState.inputs = ['admin', 'secret-pass'];
+    promptState.confirmValues = [false];
     const bootstrapAdmin = vi.fn();
     const bundledSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-src-'));
     const bundledBrainPackDir = mkdtempSync(join(tmpdir(), 'agora-init-brain-src-'));
@@ -78,19 +79,6 @@ describe('runInitCommand', () => {
       bundledBrainPackDir,
       userAgoraDir,
       userSkillDirs: [userAgentsSkillsDir, userCodexSkillsDir],
-      runtimeEnvironment: {
-        projectRoot: '/repo',
-        serverUrl: 'http://127.0.0.1:18420',
-      },
-      detectOpenClawSetupEnvironment: vi.fn(async () => ({
-        openClawCommandAvailable: false,
-        openClawConfigPath: '/tmp/openclaw.json',
-        openClawConfigExists: false,
-        pluginSourcePath: '/repo/extensions/agora-plugin',
-        pluginSourceExists: true,
-        pluginPackagePath: '/repo/extensions/agora-plugin/package.json',
-      })),
-      setupOpenClawPlugin: vi.fn(),
     });
 
     expect(configState.saved).toMatchObject({
@@ -114,100 +102,95 @@ describe('runInitCommand', () => {
     expect(readFileSync(join(userCodexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
   });
 
-  it('preserves the discord init path and can trigger optional openclaw setup', async () => {
-    promptState.inputs = ['admin', 'secret-pass', 'discord-bot-token', 'discord-parent', 'discord-user-1'];
-    promptState.selectValue = 'discord';
-    promptState.confirmValues = [true, true];
-    const bootstrapAdmin = vi.fn();
-    const bindIdentity = vi.fn();
-    const detectOpenClawSetupEnvironment = vi.fn(async () => ({
-      openClawCommandAvailable: true,
-      openClawConfigPath: '/tmp/openclaw.json',
-      openClawConfigExists: true,
-      pluginSourcePath: '/repo/extensions/agora-plugin',
-      pluginSourceExists: true,
-      pluginPackagePath: '/repo/extensions/agora-plugin/package.json',
-    }));
-    const setupOpenClawPlugin = vi.fn(async () => ({
-      openClawConfigPath: '/tmp/openclaw.json',
-      backupPath: '/tmp/openclaw.json.bak',
-      configCreated: false,
-      pluginVersion: '0.1.0',
-    }));
+  it('skips hybrid retrieval setup when the user declines the optional prompt', async () => {
+    promptState.inputs = ['admin', 'secret-pass'];
+    promptState.confirmValues = [false];
+    const setupHybridRetrieval = vi.fn();
 
     await runInitCommand({
-      humanAccountService: {
-        bootstrapAdmin,
-        bindIdentity,
-      } as never,
       runtimeEnvironment: {
         projectRoot: '/repo',
         serverUrl: 'http://127.0.0.1:18420',
       },
-      detectOpenClawSetupEnvironment,
-      setupOpenClawPlugin,
+      setupHybridRetrieval,
     });
 
-    expect(configState.saved).toMatchObject({
-      im: {
-        provider: 'discord',
-        discord: {
-          bot_token: 'discord-bot-token',
-          default_channel_id: 'discord-parent',
-          notify_on_task_create: true,
-        },
+    expect(setupHybridRetrieval).not.toHaveBeenCalled();
+  });
+
+  it('can configure hybrid retrieval and persist vector env through the helper', async () => {
+    promptState.inputs = [
+      'admin',
+      'secret-pass',
+      'glm-key',
+      'https://open.bigmodel.cn/api/paas/v4',
+      'embedding-3',
+      '2048',
+    ];
+    promptState.confirmValues = [true];
+    const setupHybridRetrieval = vi.fn(async () => ({
+      envPath: '/repo/.env',
+      qdrant: {
+        url: 'http://127.0.0.1:6333',
+        containerName: 'agora-qdrant',
+        reused: false,
       },
+      embedding: {
+        probed: true as const,
+        model: 'embedding-3',
+      },
+    }));
+
+    await runInitCommand({
+      runtimeEnvironment: {
+        projectRoot: '/repo',
+        serverUrl: 'http://127.0.0.1:18420',
+      },
+      setupHybridRetrieval,
     });
-    expect(bootstrapAdmin).toHaveBeenCalledWith({
-      username: 'admin',
-      password: 'secret-pass',
-    });
-    expect(bindIdentity).toHaveBeenCalledWith({
-      username: 'admin',
-      provider: 'discord',
-      externalUserId: 'discord-user-1',
-    });
-    expect(detectOpenClawSetupEnvironment).toHaveBeenCalledWith({
-      openClawConfigPath: undefined,
-      pluginSourcePath: '/repo/extensions/agora-plugin',
-    });
-    expect(setupOpenClawPlugin).toHaveBeenCalledWith({
-      openClawConfigPath: '/tmp/openclaw.json',
-      pluginSourcePath: '/repo/extensions/agora-plugin',
-      serverUrl: 'http://127.0.0.1:18420',
-      apiToken: null,
+
+    expect(setupHybridRetrieval).toHaveBeenCalledWith({
+      envPath: '/repo/.env',
+      embedding: {
+        apiKey: 'glm-key',
+        baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        model: 'embedding-3',
+        dimension: '2048',
+      },
     });
   });
 
-  it('prints guidance instead of mutating openclaw when the local plugin source is missing', async () => {
-    promptState.inputs = ['admin', 'secret-pass'];
+  it('keeps base init successful when hybrid retrieval setup fails', async () => {
+    promptState.inputs = [
+      'admin',
+      'secret-pass',
+      'glm-key',
+      'https://open.bigmodel.cn/api/paas/v4',
+      'embedding-3',
+      '2048',
+    ];
+    promptState.confirmValues = [true];
+    const setupHybridRetrieval = vi.fn(async () => {
+      throw new Error('docker is unavailable');
+    });
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const detectOpenClawSetupEnvironment = vi.fn(async () => ({
-      openClawCommandAvailable: true,
-      openClawConfigPath: '/tmp/openclaw.json',
-      openClawConfigExists: true,
-      pluginSourcePath: '/repo/extensions/agora-plugin',
-      pluginSourceExists: false,
-      pluginPackagePath: '/repo/extensions/agora-plugin/package.json',
-    }));
-    const setupOpenClawPlugin = vi.fn();
 
-    let output = '';
     try {
       await runInitCommand({
         runtimeEnvironment: {
           projectRoot: '/repo',
           serverUrl: 'http://127.0.0.1:18420',
         },
-        detectOpenClawSetupEnvironment,
-        setupOpenClawPlugin,
+        setupHybridRetrieval,
       });
-      output = consoleSpy.mock.calls.flat().join('\n');
     } finally {
       consoleSpy.mockRestore();
     }
 
-    expect(setupOpenClawPlugin).not.toHaveBeenCalled();
-    expect(output).toContain('未检测到本地 Agora plugin 源码');
+    expect(configState.saved).toMatchObject({
+      db_path: defaultAgoraDbPath(),
+      im: { provider: 'none' },
+    });
+    expect(setupHybridRetrieval).toHaveBeenCalledTimes(1);
   });
 });

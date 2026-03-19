@@ -59,16 +59,3 @@ Agora is currently distributed as source-first software:
 - start the local stack
 
 This keeps the system easy to inspect and modify while the product surface is still converging.
-
-## Running It End To End
-
-If you want the practical bootstrap guide for Agora + OpenClaw + Discord, use:
-
-- [06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
-
-That guide explains:
-
-- which system owns which responsibility
-- why one-bot and two-bot setups differ
-- what `./agora init` can safely automate
-- what still requires human configuration

@@ -105,7 +105,7 @@
 - 对外部贡献者说明：
   - 若你没有私有 `docs/` 仓访问权限，先读根目录 `CONTRIBUTING.md`
   - 再读公开镜像 `Doc/agents-contributor-reference.md`
-  - 下列私有 `docs/` 路径仍是维护者内部权威入口；公开参考以 `Doc/11-REFERENCE/` 为准
+  - 下列私有 `docs/` 路径仍是维护者内部权威入口；公开参考以 `Doc/reference/` 为准
 
 - 架构 / adapter / runtime / IM / craftsman 相关任务：
   - 先读 [docs/11-REFERENCE/agora-core-decoupling-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/agora-core-decoupling-standard.md)
@@ -140,6 +140,15 @@
 
 - 当前默认实现口径是 `agora-ts/`，旧 Python 只作 legacy 参考。
 - 默认运行时数据库路径是 `~/.agora/agora.db`。
+- `project brain` hybrid retrieval 现在依赖两类外部运行时：
+  - embedding provider：`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_EMBEDDING_MODEL`、`OPENAI_EMBEDDING_DIMENSION`
+  - vector index：`QDRANT_URL`、可选 `QDRANT_API_KEY`
+- 默认产品路径是 `./agora init` 的可选 hybrid retrieval setup：
+  - 收集 embedding 配置
+  - probe embedding API
+  - 复用或通过 Docker 拉起本机 `Qdrant`
+  - 成功后写入仓库根目录 `.env`
+- 这些变量仍从仓库根目录 `.env` 注入；若你修改这条能力线，必须同步更新 `.env.example`、README 与 public whitepaper。
 - 当前仍处于高频重构阶段，默认优先级：
   - 先把模型做对
   - 再考虑兼容

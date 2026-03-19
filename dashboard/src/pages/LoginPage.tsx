@@ -97,7 +97,7 @@ export function LoginPage() {
               </label>
 
               {(localError ?? error) ? (
-                <div className="inline-alert inline-alert--danger">{localError ?? error}</div>
+                <div role="alert" className="inline-alert inline-alert--danger">{localError ?? error}</div>
               ) : null}
 
               <button type="submit" className="button-primary login-shell__submit" disabled={submitting || status === 'loading'}>
