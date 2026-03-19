@@ -2,6 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ProjectBrainChunk } from '../project-brain-chunk.js';
 import { QdrantProjectBrainVectorIndexAdapter } from './qdrant-project-brain-vector-index-adapter.js';
 
+function makeClient() {
+  return {
+    getCollections: vi.fn().mockResolvedValue({ collections: [] }),
+    createCollection: vi.fn().mockResolvedValue(undefined),
+    upsert: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+    search: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue({ count: 0 }),
+  };
+}
+
 function makeChunk(overrides: Partial<ProjectBrainChunk> = {}): ProjectBrainChunk {
   return {
     chunk_id: 'proj-brain:decision:runtime-boundary:0',
@@ -15,16 +26,13 @@ function makeChunk(overrides: Partial<ProjectBrainChunk> = {}): ProjectBrainChun
     text: 'Keep runtime-specific logic out of core.',
     search_text: 'Runtime Boundary Runtime Boundary /brain/decision/runtime-boundary.md decision runtime-boundary Decision Decision Keep runtime-specific logic out of core.',
     updated_at: '2026-03-19T12:00:00.000Z',
+    ...overrides,
   };
 }
 
 describe('qdrant project brain vector index adapter', () => {
   it('creates the collection on first use and upserts chunks', async () => {
-    const client = {
-      getCollections: vi.fn().mockResolvedValue({ collections: [] }),
-      createCollection: vi.fn().mockResolvedValue(undefined),
-      upsert: vi.fn().mockResolvedValue(undefined),
-    };
+    const client = makeClient();
     const adapter = new QdrantProjectBrainVectorIndexAdapter({
       client,
       collectionName: 'project_brain_chunks',
@@ -61,10 +69,8 @@ describe('qdrant project brain vector index adapter', () => {
   });
 
   it('deletes chunks by document scope', async () => {
-    const client = {
-      getCollections: vi.fn().mockResolvedValue({ collections: [{ name: 'project_brain_chunks' }] }),
-      delete: vi.fn().mockResolvedValue(undefined),
-    };
+    const client = makeClient();
+    client.getCollections.mockResolvedValue({ collections: [{ name: 'project_brain_chunks' }] });
     const adapter = new QdrantProjectBrainVectorIndexAdapter({
       client,
       collectionName: 'project_brain_chunks',
@@ -86,17 +92,16 @@ describe('qdrant project brain vector index adapter', () => {
   });
 
   it('searches similar chunks and reports index status', async () => {
-    const client = {
-      getCollections: vi.fn().mockResolvedValue({ collections: [{ name: 'project_brain_chunks' }] }),
-      search: vi.fn().mockResolvedValue([
+    const client = makeClient();
+    client.getCollections.mockResolvedValue({ collections: [{ name: 'project_brain_chunks' }] });
+    client.search.mockResolvedValue([
         {
           id: 'proj-brain:decision:runtime-boundary:0',
           score: 0.92,
           payload: makeChunk(),
         },
-      ]),
-      count: vi.fn().mockResolvedValue({ count: 7 }),
-    };
+      ]);
+    client.count.mockResolvedValue({ count: 7 });
     const adapter = new QdrantProjectBrainVectorIndexAdapter({
       client,
       collectionName: 'project_brain_chunks',

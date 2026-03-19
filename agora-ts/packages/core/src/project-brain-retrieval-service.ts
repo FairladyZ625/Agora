@@ -1,7 +1,7 @@
 import type { StoredTask } from '@agora-ts/db';
 import type { ProjectBrainChunk } from './project-brain-chunk.js';
 import type { ProjectBrainEmbeddingPort } from './project-brain-embedding-port.js';
-import type { ProjectBrainDocumentKind, ProjectBrainSearchResult } from './project-brain-query-port.js';
+import type { ProjectBrainSearchResult } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';
 import type { ProjectBrainVectorIndexPort } from './project-brain-vector-index-port.js';
 

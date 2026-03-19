@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { TaskService } from '@agora-ts/core';
+import type { DashboardQueryService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -138,7 +139,7 @@ describe('agora-ts server bootstrap', () => {
             shadowed_paths: [],
           },
         ],
-      } as any,
+      } as unknown as DashboardQueryService,
     });
 
     const response = await app.inject({

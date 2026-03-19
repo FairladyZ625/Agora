@@ -3264,8 +3264,8 @@ describe('task service', () => {
       priority: 'normal',
       team_override: {
         members: [
-          { role: 'architect', agentId: 'opus', member_kind: 'controller' },
-          { role: 'analyst', agentId: 'gpt52', member_kind: 'citizen' },
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'analyst', agentId: 'gpt52', member_kind: 'citizen', model_preference: 'analysis' },
         ],
       },
       workflow_override: {

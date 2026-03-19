@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ProjectBrainChunk } from './project-brain-chunk.js';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
 import { ProjectBrainChunkingPolicy } from './project-brain-chunking-policy.js';
 import { ProjectBrainIndexService } from './project-brain-index-service.js';

@@ -15,6 +15,7 @@ function makeTask(overrides: Partial<StoredTask> = {}): StoredTask {
     creator: 'archon',
     locale: 'zh-CN',
     project_id: 'proj-brain',
+    skill_policy: null,
     state: 'active',
     archive_status: null,
     current_stage: 'implement',
