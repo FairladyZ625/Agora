@@ -9,6 +9,7 @@ import { useThemeStore, type ThemeMode } from '@/stores/themeStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import IntelligenceCanvas from '@/components/ui/IntelligenceCanvas';
 import { useSessionStore } from '@/stores/sessionStore';
 
 const themeCycle: ThemeMode[] = ['light', 'dark', 'system'];
@@ -180,14 +181,12 @@ export function TopNav({
               </div>
             </>
           ) : (
-            <div className="topbar-intelligence" aria-hidden="true">
-              <span className={`topbar-intelligence__dot topbar-intelligence__dot--1${activeCount > 0 ? ' signal-pulse' : ''}`} />
-              <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
-              <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
-              <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
-              <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
-              <span className="topbar-intelligence__carrier signal-travel" />
-            </div>
+            <IntelligenceCanvas
+              activeCount={activeCount}
+              reviewCount={reviewCount}
+              hasError={!!error}
+              className="topbar-intelligence"
+            />
           )}
         </div>
 
