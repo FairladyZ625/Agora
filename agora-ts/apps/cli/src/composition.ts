@@ -4,6 +4,7 @@ import {
   ensureBundledAgoraAssetsInstalled,
   hasInstalledBrainPack,
   loadAgoraConfig,
+  normalizePathLikeEnvValue,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   syncBundledBrainPackContents,
   type AgoraConfig,
@@ -385,10 +386,10 @@ export function createCliComposition(
   options: CreateCliCompositionOptions = {},
   overrides: Partial<CliCompositionFactories> = {},
 ): CliComposition {
-  const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
+  const config = loadAgoraConfig(options.configPath ?? normalizePathLikeEnvValue('AGORA_CONFIG_PATH', process.env.AGORA_CONFIG_PATH) ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const db = createAgoraDatabase({
-    dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path,
+    dbPath: options.dbPath ?? normalizePathLikeEnvValue('AGORA_DB_PATH', process.env.AGORA_DB_PATH) ?? config.db_path,
     busyTimeoutMs: config.db_busy_timeout_ms,
   });
   runMigrations(db);

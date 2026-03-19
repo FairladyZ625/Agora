@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -104,6 +104,23 @@ describe('agora runtime env', () => {
 
     expect(process.env.OPENAI_API_KEY).toBe('file-key');
     expect(process.env.QDRANT_URL).toBe('http://127.0.0.1:7333');
+  });
+
+  it('normalizes path-like env entries from .env before hydrating process env', () => {
+    const root = makeAgoraRoot();
+    const appDir = join(root, 'agora-ts');
+    writeFileSync(
+      join(root, '.env'),
+      [
+        'AGORA_DB_PATH=$HOME/.agora/agora.db',
+        'AGORA_CONFIG_PATH=~/.agora/agora.json',
+      ].join('\n'),
+    );
+
+    resolveAgoraRuntimeEnvironment(appDir);
+
+    expect(process.env.AGORA_DB_PATH).toBe(join(homedir(), '.agora', 'agora.db'));
+    expect(process.env.AGORA_CONFIG_PATH).toBe(join(homedir(), '.agora', 'agora.json'));
   });
 
   it('can discover the repo root from nested package directories', () => {

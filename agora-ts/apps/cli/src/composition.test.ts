@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import process from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskService } from '@agora-ts/core';
 import { StubIMProvisioningPort, TaskService as CoreTaskService } from '@agora-ts/core';
@@ -8,6 +9,8 @@ import type { TmuxRuntimeService } from '@agora-ts/core';
 import { createCliComposition } from './composition.js';
 
 const tempDirs: string[] = [];
+const originalCwd = process.cwd();
+const originalHome = process.env.HOME;
 
 function makeTempDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-composition-'));
@@ -16,11 +19,19 @@ function makeTempDir() {
 }
 
 afterEach(() => {
+  process.chdir(originalCwd);
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
   delete process.env.AGORA_BRAIN_PACK_ROOT;
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
   delete process.env.AGORA_CRAFTSMAN_CLI_MODE;
   delete process.env.AGORA_OPENCLAW_CONFIG_PATH;
+  delete process.env.AGORA_DB_PATH;
+  delete process.env.AGORA_CONFIG_PATH;
   delete process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_BASE_URL;
   delete process.env.OPENAI_EMBEDDING_MODEL;
@@ -312,5 +323,23 @@ describe('cli composition', () => {
       }),
     );
     composition.db.close();
+  });
+
+  it('normalizes AGORA_DB_PATH loaded from root .env before opening sqlite', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const expectedDbPath = join(dir, 'expected-home', '.agora', 'agora.db');
+    const repoLocalDbPath = join(dir, '$HOME', '.agora', 'agora.db');
+    process.chdir(dir);
+    process.env.HOME = join(dir, 'expected-home');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    process.env.AGORA_DB_PATH = '$HOME/.agora/agora.db';
+    writeFileSync(configPath, JSON.stringify({ db_path: join(dir, 'config.db') }));
+
+    const composition = createCliComposition({ configPath });
+
+    composition.db.close();
+    expect(existsSync(expectedDbPath)).toBe(true);
+    expect(existsSync(repoLocalDbPath)).toBe(false);
   });
 });

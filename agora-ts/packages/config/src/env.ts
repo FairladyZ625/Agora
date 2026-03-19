@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +13,11 @@ const RUNTIME_ENV_KEYS = new Set([
   'AGORA_FRONTEND_PORT',
   'AGORA_SERVER_URL',
   'VITE_API_BASE_URL',
+]);
+
+const PATH_LIKE_ENV_KEYS = new Set([
+  'AGORA_DB_PATH',
+  'AGORA_CONFIG_PATH',
 ]);
 
 function parseEnvFile(content: string): Record<string, string> {
@@ -30,7 +36,7 @@ function parseEnvFile(content: string): Record<string, string> {
 
     const key = line.slice(0, separator).trim();
     const value = line.slice(separator + 1).trim().replace(/^['"]|['"]$/gu, '');
-    entries[key] = value;
+    entries[key] = normalizePathLikeEnvValue(key, value) ?? value;
   }
 
   return entries;
@@ -65,6 +71,27 @@ export function loadAgoraDotEnv(projectRoot: string): Record<string, string> {
   return parseEnvFile(readFileSync(envPath, 'utf8'));
 }
 
+export function normalizePathLikeEnvValue(key: string, value: string | undefined): string | undefined {
+  if (!value) {
+    return value;
+  }
+  if (!PATH_LIKE_ENV_KEYS.has(key)) {
+    return value;
+  }
+
+  const home = process.env.HOME?.trim() || homedir();
+  if (value === '$HOME') {
+    return home;
+  }
+  if (value.startsWith('$HOME/')) {
+    return resolve(home, value.slice('$HOME/'.length));
+  }
+  if (value.startsWith('~/')) {
+    return resolve(home, value.slice(2));
+  }
+  return value;
+}
+
 function hydrateProcessEnv(fileEnv: Record<string, string>, envOverrides: Record<string, string | undefined>) {
   for (const [key, value] of Object.entries(fileEnv)) {
     if (RUNTIME_ENV_KEYS.has(key)) {
@@ -73,7 +100,7 @@ function hydrateProcessEnv(fileEnv: Record<string, string>, envOverrides: Record
     if (process.env[key] !== undefined || envOverrides[key] !== undefined) {
       continue;
     }
-    process.env[key] = value;
+    process.env[key] = normalizePathLikeEnvValue(key, value) ?? value;
   }
 }
 
