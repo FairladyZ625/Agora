@@ -386,7 +386,7 @@ describe('server runtime', () => {
     vi.useRealTimers();
   });
 
-  it('accepts composition factory overrides for runtime dependencies', () => {
+  it('accepts composition factory overrides for legacy runtime dependencies', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
@@ -399,7 +399,7 @@ describe('server runtime', () => {
     );
 
     const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
-    const tmuxRuntimeService = {
+    const legacyRuntimeService = {
       status: () => ({ session: 'override', panes: [] }),
     } as unknown as TmuxRuntimeService;
 
@@ -407,12 +407,13 @@ describe('server runtime', () => {
       configPath,
       factories: {
         createLiveSessionStore: () => liveSessionStore,
-        createTmuxRuntimeService: () => tmuxRuntimeService,
+        createLegacyRuntimeService: () => legacyRuntimeService,
       },
     });
 
     expect(runtime.liveSessionStore).toBe(liveSessionStore);
-    expect(runtime.tmuxRuntimeService).toBe(tmuxRuntimeService);
+    expect(runtime.legacyRuntimeService).toBe(legacyRuntimeService);
+    expect(runtime.tmuxRuntimeService).toBe(legacyRuntimeService);
     runtime.db.close();
   });
 

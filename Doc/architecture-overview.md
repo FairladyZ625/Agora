@@ -35,6 +35,21 @@ Core concepts include:
 - agent runtimes such as OpenClaw or future alternatives
 - craftsmen such as Codex, Claude Code, Gemini, or other execution engines
 
+Current runtime posture:
+
+```text
+Agora Core / Orchestrator
+        |
+        v
+Runtime / Execution Adapters
+Hosted runtimes: OpenClaw · future hosts
+Execution substrates: ACPX (default) · tmux (legacy fallback)
+```
+
+- ACPX is the default execution substrate.
+- tmux remains available only as a legacy fallback/debug adapter.
+- Both sit behind the same Core-facing adapter seam.
+
 ## Non-Negotiable Rule
 
 The core cannot depend on a specific provider.

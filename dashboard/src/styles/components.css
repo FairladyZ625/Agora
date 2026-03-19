@@ -287,6 +287,11 @@
   cursor: pointer;
 }
 
+.topbar-user-chip__action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
 .topbar-user-chip--compact {
   padding: 0 10px;
 }
@@ -473,8 +478,11 @@
 
 .experience-notice__close {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .toggle {

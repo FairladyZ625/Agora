@@ -17,6 +17,14 @@ There are four moving parts:
 
 If you merge these roles mentally, setup becomes confusing fast.
 
+There is now a fifth optional dependency surface for semantic `project brain` retrieval:
+
+- an embedding API
+- a vector database such as Qdrant
+
+If you only want orchestration, dashboard, and IM wiring, you can skip that stack.
+If you want `projects brain index/query/bootstrap-context --task` to use hybrid retrieval, the primary path is now to let `./agora init` provision the local stack for you.
+
 ## Why Two Bots Exist
 
 In the common Discord deployment, you usually have two bot roles:
@@ -136,6 +144,31 @@ What this does not do:
 - install OpenClaw
 - configure Discord
 - wire the Agora plugin into OpenClaw
+- install your embedding API credentials
+
+### Step 1.5: Optional hybrid retrieval prerequisites
+
+If you want semantic `project brain` retrieval, prepare one embedding provider credential.
+`./agora init` can then probe that provider and install or reuse local Qdrant automatically.
+
+Manual fallback values remain:
+
+```bash
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSION=
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_API_KEY=
+```
+
+Operational notes:
+
+- `./agora init` first checks whether `127.0.0.1:6333` already serves a healthy Qdrant.
+- If not, it attempts to start `qdrant/qdrant:latest` locally through Docker as `agora-qdrant`.
+- `QDRANT_URL` may still point at a custom local process, a container, or another operator-managed endpoint if you do not use the default init path.
+- Without these variables, `project brain` still works in raw lexical mode, but semantic query/bootstrap and vector indexing stay unavailable.
+- `./scripts/bootstrap-local.sh` creates `.env` from `.env.example`; `./agora init` is now the preferred way to populate the vector section.
 
 ### Step 2: Run `./agora init`
 
@@ -155,6 +188,18 @@ If you accept it, Agora will:
 - write only the minimum safe plugin registration and Agora server wiring
 
 If you decline it, nothing in OpenClaw is changed.
+
+After the base Agora prompts, `./agora init` also offers an optional hybrid retrieval phase.
+
+If you accept it, Agora will:
+
+- collect `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_EMBEDDING_MODEL`, and optional `OPENAI_EMBEDDING_DIMENSION`
+- probe the embedding API with a real embeddings request
+- reuse a healthy local Qdrant on `127.0.0.1:6333` when present
+- otherwise pull and run `qdrant/qdrant:latest` through Docker
+- write the verified vector settings into the repo-root `.env`
+
+If this phase fails, Agora still finishes the base init and tells you to rerun `./agora init` after fixing Docker or the embedding credentials.
 
 ### Step 3: Apply manual OpenClaw Discord policy
 
@@ -186,6 +231,22 @@ Check:
 
 - API: `http://127.0.0.1:18420/api/health`
 - Dashboard: `http://127.0.0.1:33173/dashboard/`
+
+### Step 4.5: Validate hybrid retrieval if enabled
+
+Run:
+
+```bash
+./agora projects brain index rebuild --project <project_id>
+./agora projects brain query --task <task_id> --audience craftsman --query "runtime boundary" --mode auto
+./agora projects brain bootstrap-context --task <task_id> --audience craftsman
+```
+
+Expected outcome:
+
+- index rebuild reports indexed docs/chunks instead of `not_wired`
+- task-aware query reports `retrieval_mode=hybrid`
+- bootstrap context includes the selected `source_documents`
 
 ### Step 5: Validate OpenClaw plugin wiring
 
@@ -263,4 +324,3 @@ Review:
 - [../../quick-start.md](../../quick-start.md)
 - [../../discord-setup.md](../../discord-setup.md)
 - [../../openclaw-local-setup.md](../../openclaw-local-setup.md)
-

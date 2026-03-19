@@ -4,6 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreateTaskPage } from '@/pages/CreateTaskPage';
 
 const createTask = vi.fn(async () => ({ id: 'OC-200' }));
+const apiMocks = vi.hoisted(() => ({
+  listSkills: vi.fn(async () => ([
+    {
+      skill_ref: 'planning-with-files',
+      resolved_path: '/tmp/skills/planning-with-files/SKILL.md',
+    },
+    {
+      skill_ref: 'refactoring-ui',
+      resolved_path: '/tmp/skills/refactoring-ui/SKILL.md',
+    },
+  ])),
+}));
 const showMessage = vi.fn();
 const navigate = vi.fn();
 const fetchTemplates = vi.fn(async () => 'live');
@@ -18,6 +30,10 @@ vi.mock('react-router', async (importOriginal) => {
     useNavigate: () => navigate,
   };
 });
+
+vi.mock('@/lib/api', () => ({
+  listSkills: apiMocks.listSkills,
+}));
 
 vi.mock('@/stores/taskStore', () => ({
   useTaskStore: (selector: (state: {
@@ -247,6 +263,10 @@ describe('create task page', () => {
       </MemoryRouter>,
     );
 
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
     fireEvent.change(screen.getByLabelText('任务标题'), {
       target: { value: '实现动态选人 create flow' },
     });
@@ -259,9 +279,11 @@ describe('create task page', () => {
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'refactoring-ui' }));
     const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
     expect(craftsmanCard).not.toBeNull();
     fireEvent.click(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'planning-with-files' })[0]);
     fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
 
     await waitFor(() => {
@@ -269,6 +291,13 @@ describe('create task page', () => {
         title: '实现动态选人 create flow',
         type: 'coding',
         project_id: 'proj-alpha',
+        skill_policy: {
+          global_refs: ['planning-with-files'],
+          role_refs: {
+            developer: ['refactoring-ui'],
+          },
+          enforcement: 'required',
+        },
         team_override: {
           members: [
             { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
@@ -289,24 +318,56 @@ describe('create task page', () => {
     expect(navigate).toHaveBeenCalledWith('/tasks/OC-200');
   });
 
-  it('renders template choices from the live template catalog instead of a hardcoded subset', () => {
+  it('hydrates source context from project brain query params and prepends it to the task draft', async () => {
+    render(
+      <MemoryRouter initialEntries={['/tasks/new?project=proj-alpha&source_kind=knowledge&source_title=Runtime+Boundary&source_ref=knowledge%2Fdecision%2Fruntime-boundary&source_task_ids=OC-100%2COC-101&source_snippet=Keep+runtime+adapters+outside+core.']}>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('来源上下文')).toBeInTheDocument();
+    expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('来源上下文')).getByText(/OC-100, OC-101/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/Keep runtime adapters outside core\./)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('任务标题'), {
+      target: { value: '基于 brain context 创建任务' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
+
+    await waitFor(() => {
+      expect(createTask).toHaveBeenCalledWith(expect.objectContaining({
+        project_id: 'proj-alpha',
+        description: expect.stringContaining('Runtime Boundary'),
+      }));
+    });
+  });
+  it('renders template choices from the live template catalog instead of a hardcoded subset', async () => {
     render(
       <MemoryRouter>
         <CreateTaskPage />
       </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
 
     expect(screen.getByRole('button', { name: '头脑风暴' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '大型编码任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '调研任务' })).toBeInTheDocument();
   });
 
-  it('renders craftsman selectors from tmux runtime inventory instead of citizen agents', () => {
+  it('renders craftsman selectors from tmux runtime inventory instead of citizen agents', async () => {
     render(
       <MemoryRouter>
         <CreateTaskPage />
       </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
 
     const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
     expect(craftsmanCard).not.toBeNull();
@@ -315,12 +376,16 @@ describe('create task page', () => {
     expect(within(craftsmanCard as HTMLElement).queryByRole('button', { name: 'sonnet' })).not.toBeInTheDocument();
   });
 
-  it('shows the selected controller agent in the provisioning summary', () => {
+  it('shows the selected controller agent in the provisioning summary', async () => {
     render(
       <MemoryRouter>
         <CreateTaskPage />
       </MemoryRouter>,
     );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
 
     const provisioning = screen.getByTestId('create-task-provisioning');
     expect(within(provisioning).getByText('主控 Agent')).toBeInTheDocument();

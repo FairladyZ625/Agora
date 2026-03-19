@@ -15,6 +15,7 @@ export interface ProjectKnowledgeRecapSummary {
   task_id: string;
   path: string;
   title: string | null;
+  content: string;
   updated_at: string | null;
 }
 

@@ -17,10 +17,21 @@ export interface ProjectIndexDoc {
   updatedAt: string | null;
 }
 
+export interface ProjectTimelineDoc {
+  kind: 'timeline';
+  slug: 'timeline';
+  title: string | null;
+  path: string;
+  content: string;
+  sourceTaskIds: string[];
+  updatedAt: string | null;
+}
+
 export interface ProjectRecap {
   taskId: string;
   title: string | null;
   summaryPath: string;
+  content: string;
   updatedAt: string | null;
 }
 
@@ -39,12 +50,36 @@ export interface ProjectCitizen {
   roleId: string;
   displayName: string;
   status: string;
+  persona: string | null;
+  boundaries: string[];
+  skillsRef: string[];
+  channelPolicies: Record<string, unknown>;
+  brainScaffoldMode: 'role_default' | 'custom';
+  runtimeAdapter: string;
+  runtimeMetadata: Record<string, unknown>;
+}
+
+export interface ProjectTaskSummary {
+  id: string;
+  title: string;
+  state: string;
+  projectId: string | null;
+}
+
+export interface ProjectTodoSummary {
+  id: number;
+  text: string;
+  status: string;
+  projectId: string | null;
 }
 
 export interface ProjectWorkbench {
   project: ProjectSummary;
   index: ProjectIndexDoc | null;
+  timeline: ProjectTimelineDoc | null;
   recaps: ProjectRecap[];
   knowledge: ProjectKnowledgeDoc[];
   citizens: ProjectCitizen[];
+  tasks: ProjectTaskSummary[];
+  todos: ProjectTodoSummary[];
 }

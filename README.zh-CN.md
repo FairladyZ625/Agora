@@ -102,6 +102,7 @@ Agora 不再把旧的 tmux-based Craftsman 路径当成默认执行模型。
 当前口径是：
 
 - `ACPX` 是默认 execution substrate
+- `tmux` 只作为 legacy fallback / debug adapter 保留
 - `CraftsmanAdapter` 仍然保留为 Core-facing abstraction
 - `Craftsman` 保留为业务语义里的执行角色
 - 旧 tmux public shell 已经退出
@@ -147,7 +148,8 @@ Scheduler · Notification · Archive · Recovery
                 |
                 v
 Runtime / Execution Adapters
-OpenClaw · ACPX · future runtimes
+Hosted runtimes: OpenClaw · future hosts
+Execution substrates: ACPX（默认） · tmux（legacy fallback）
 ```
 
 核心原则：
@@ -155,6 +157,7 @@ OpenClaw · ACPX · future runtimes
 - `packages/core` 只负责编排语义
 - IM、runtime、execution 都是 adapter
 - provider-specific 细节不能反灌成长期 Core 主模型
+- 当前 runtime 口径是单核双 adapter：ACPX 是默认路径，tmux 是保留中的 legacy adapter
 
 ---
 
@@ -170,6 +173,7 @@ OpenClaw · ACPX · future runtimes
 
 - OpenClaw，如果你要做 IM-hosted agent participation
 - Discord，如果你要 live thread 体验
+- Docker + embedding API，如果你要让 `project brain` 走 hybrid retrieval，而不是纯 lexical 搜索
 
 ### 安装
 
@@ -190,10 +194,36 @@ cd Agora
 它只会自动处理安全的插件注册和 Agora server 连接信息。
 它**不会**自动改 OpenClaw 的 Discord 行为策略，比如 bot roster、`allowBots`、`requireMention`、guild/channel allowlist。
 
+如果你要启用语义化 `project brain` 检索，`./agora init` 现在会提供一个可选安装阶段，自动完成：
+
+- 收集 embedding API 配置
+- 用真实请求探测 embedding API 是否可用
+- 如果本机 `127.0.0.1:6333` 已有健康的 Qdrant，则直接复用
+- 否则通过 Docker 本地拉起 `qdrant/qdrant:latest`
+- 把验证通过后的向量配置写入仓库根目录 `.env`
+
+这是默认产品路径。手改 `.env` 仍然保留为 fallback：
+
+```bash
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_EMBEDDING_DIMENSION=
+QDRANT_URL=http://127.0.0.1:6333
+QDRANT_API_KEY=
+```
+
+配好后，这三条命令会从 raw lexical 路径切到 hybrid retrieval：
+
+```bash
+./agora projects brain index rebuild --project <project_id>
+./agora projects brain query --task <task_id> --audience craftsman --query "runtime boundary" --mode auto
+./agora projects brain bootstrap-context --task <task_id> --audience craftsman
+```
+
 完整从零跑通指南见：
 
 - [Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
-
 默认本地地址：
 
 - API：`http://127.0.0.1:18420/api/health`

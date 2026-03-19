@@ -25,6 +25,87 @@ afterEach(() => {
 });
 
 describe('human review auth', () => {
+  it('allows approve and reject from a dashboard session without trusting payload actor fields', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccounts = new HumanAccountService(db);
+    humanAccounts.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HUMAN-SESSION',
+      archonUsers: ['lizeyu'],
+    });
+    taskService.createTask({
+      title: 'dashboard session approve',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    taskService.archonApproveTask('OC-HUMAN-SESSION', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-SESSION');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-SESSION', 'review');
+    const app = buildApp({
+      taskService,
+      humanAccountService: humanAccounts,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const headers = {
+      cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+    };
+
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-SESSION/approve',
+      headers,
+      payload: {
+        approver_id: 'spoofed-approver',
+        comment: 'approved by session user',
+      },
+    });
+    const reject = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-SESSION/reject',
+      headers,
+      payload: {
+        rejector_id: 'spoofed-rejector',
+        reason: 'rejected by session user',
+      },
+    });
+    expect(login.statusCode).toBe(200);
+    expect(approve.statusCode).toBe(200);
+    expect(reject.statusCode).toBe(200);
+
+    const reviewStatus = taskService.getTaskStatus('OC-HUMAN-SESSION');
+    expect(reviewStatus.flow_log).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'gate_passed', actor: 'lizeyu' }),
+        expect.objectContaining({ event: 'rejected', actor: 'lizeyu' }),
+      ]),
+    );
+  });
+
   it('allows archon approval from a dashboard session without trusting reviewer_id in the payload', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -154,5 +235,68 @@ describe('human review auth', () => {
         }),
       ]),
     );
+  });
+
+  it('rejects bare bearer-token calls for human-only approve and reject routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccounts = new HumanAccountService(db);
+    humanAccounts.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HUMAN-BEARER',
+      archonUsers: ['lizeyu'],
+    });
+    taskService.createTask({
+      title: 'bearer approve reject auth',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    taskService.archonApproveTask('OC-HUMAN-BEARER', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-BEARER');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-BEARER', 'review');
+    const app = buildApp({
+      taskService,
+      humanAccountService: humanAccounts,
+      apiAuth: {
+        enabled: true,
+        token: 'test-token',
+      },
+    });
+
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-BEARER/approve',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+      payload: {
+        approver_id: 'spoofed-approver',
+        comment: 'approved from bearer',
+      },
+    });
+    const reject = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-BEARER/reject',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+      payload: {
+        rejector_id: 'spoofed-rejector',
+        reason: 'rejected from bearer',
+      },
+    });
+    expect(approve.statusCode).toBe(403);
+    expect(approve.json()).toEqual({ message: 'missing authenticated human actor' });
+    expect(reject.statusCode).toBe(403);
+    expect(reject.json()).toEqual({ message: 'missing authenticated human actor' });
   });
 });

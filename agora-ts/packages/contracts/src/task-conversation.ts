@@ -9,6 +9,24 @@ export type TaskConversationAuthorKind = z.infer<typeof taskConversationAuthorKi
 export const taskConversationBodyFormatSchema = z.enum(['plain_text', 'markdown', 'structured']);
 export type TaskConversationBodyFormat = z.infer<typeof taskConversationBodyFormatSchema>;
 
+export const taskConversationInboundActionKindSchema = z.enum([
+  'approve_current',
+  'reject_current',
+  'advance_current',
+  'confirm_current',
+]);
+export type TaskConversationInboundActionKind = z.infer<typeof taskConversationInboundActionKindSchema>;
+
+export const taskConversationInboundActionSchema = z.object({
+  kind: taskConversationInboundActionKindSchema,
+  actor_ref: z.string().min(1),
+  next_stage_id: z.string().min(1).optional(),
+  comment: z.string().optional(),
+  reason: z.string().optional(),
+  vote: z.enum(['approve', 'reject']).optional(),
+});
+export type TaskConversationInboundActionDto = z.infer<typeof taskConversationInboundActionSchema>;
+
 export const taskConversationEntrySchema = z.object({
   id: z.string(),
   task_id: z.string(),
@@ -43,6 +61,7 @@ export const ingestTaskConversationEntryRequestSchema = z.object({
   body_format: taskConversationBodyFormatSchema.optional(),
   occurred_at: z.string(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  task_action: taskConversationInboundActionSchema.optional(),
 });
 
 export type IngestTaskConversationEntryRequestDto = z.infer<typeof ingestTaskConversationEntryRequestSchema>;

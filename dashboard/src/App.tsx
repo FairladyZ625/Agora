@@ -7,6 +7,7 @@ import { DashboardHome } from '@/pages/DashboardHome';
 import { BoardPage } from '@/pages/BoardPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
+import { ProjectBrainPage } from '@/pages/ProjectBrainPage';
 import { TasksPage } from '@/pages/TasksPage';
 import { CreateTaskPage } from '@/pages/CreateTaskPage';
 import { AgentsPage } from '@/pages/AgentsPage';
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/board" element={<BoardPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="/projects/:projectId/brain" element={<ProjectBrainPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/todos" element={<TodosPage />} />
         <Route path="/archive" element={<ArchivePage />} />

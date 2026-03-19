@@ -16,7 +16,7 @@ export const projectSchema = z.object({
 export type ProjectDto = z.infer<typeof projectSchema>;
 
 export const createProjectRequestSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).optional(),
   name: z.string().min(1),
   summary: z.string().default(''),
   owner: z.string().min(1).optional(),
@@ -45,11 +45,25 @@ export const projectBrainIndexSchema = z.object({
 });
 export type ProjectBrainIndexDto = z.infer<typeof projectBrainIndexSchema>;
 
+export const projectBrainTimelineSchema = z.object({
+  project_id: z.string().min(1),
+  kind: z.literal('timeline'),
+  slug: z.literal('timeline'),
+  title: z.string().nullable(),
+  path: z.string().min(1),
+  content: z.string(),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
+  source_task_ids: z.array(z.string()),
+});
+export type ProjectBrainTimelineDto = z.infer<typeof projectBrainTimelineSchema>;
+
 export const projectRecapSummarySchema = z.object({
   project_id: z.string().min(1),
   task_id: z.string().min(1),
   path: z.string().min(1),
   title: z.string().nullable(),
+  content: z.string(),
   updated_at: z.string().nullable(),
 });
 export type ProjectRecapSummaryDto = z.infer<typeof projectRecapSummarySchema>;
@@ -70,6 +84,7 @@ export type ProjectKnowledgeDocumentDto = z.infer<typeof projectKnowledgeDocumen
 export const projectWorkbenchResponseSchema = z.object({
   project: projectSchema,
   index: projectBrainIndexSchema.nullable(),
+  timeline: projectBrainTimelineSchema.nullable(),
   recaps: z.array(projectRecapSummarySchema),
   knowledge: z.array(projectKnowledgeDocumentSchema),
   citizens: z.array(z.object({

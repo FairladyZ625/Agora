@@ -363,6 +363,15 @@ describe('task store live API mode', () => {
           title: '来自 status 的标题',
           current_stage: 'develop',
         }),
+        current_stage_roster: {
+          stage_id: 'develop',
+          roster: {
+            include_roles: ['developer'],
+            keep_controller: true,
+          },
+          desired_participant_refs: ['opus', 'sonnet'],
+          joined_participant_refs: ['opus'],
+        },
       }),
     );
     vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto());
@@ -409,6 +418,15 @@ describe('task store live API mode', () => {
     expect(state.selectedTaskStatus?.conversationSummary?.unread_count).toBe(0);
     expect(state.selectedTaskStatus?.governanceSnapshot?.activeExecutions).toBe(1);
     expect(state.selectedTaskStatus?.subtaskExecutions).toEqual({});
+    expect(state.selectedTaskStatus?.currentStageRoster).toEqual({
+      stageId: 'develop',
+      roster: {
+        include_roles: ['developer'],
+        keep_controller: true,
+      },
+      desiredParticipantRefs: ['opus', 'sonnet'],
+      joinedParticipantRefs: ['opus'],
+    });
   });
 
   it('surfaces conversation read sync failures without dropping loaded task detail', async () => {

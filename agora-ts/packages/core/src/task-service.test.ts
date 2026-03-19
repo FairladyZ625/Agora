@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CitizenService } from './citizen-service.js';
@@ -544,14 +544,25 @@ describe('task service', () => {
         type: 'custom',
         stages: [
           { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
-          { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: { include_roles: ['reviewer'], keep_controller: true },
+            gate: { type: 'approval', approver: 'reviewer' },
+          },
         ],
         graph: {
           graph_version: 1,
           entry_nodes: ['draft'],
           nodes: [
             { id: 'draft', kind: 'stage', execution_kind: 'citizen_discuss', gate: { type: 'command' } },
-            { id: 'review', kind: 'stage', execution_kind: 'human_approval', gate: { type: 'approval', approver: 'reviewer' } },
+            {
+              id: 'review',
+              kind: 'stage',
+              execution_kind: 'human_approval',
+              roster: { include_roles: ['reviewer'], keep_controller: true },
+              gate: { type: 'approval', approver: 'reviewer' },
+            },
           ],
           edges: [
             { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
@@ -567,12 +578,163 @@ describe('task service', () => {
       entry_nodes: ['draft'],
       nodes: [
         { id: 'draft', execution_kind: 'citizen_discuss' },
-        { id: 'review', execution_kind: 'human_approval', gate_type: 'approval' },
+        {
+          id: 'review',
+          execution_kind: 'human_approval',
+          gate_type: 'approval',
+          roster: { include_roles: ['reviewer'], keep_controller: true },
+        },
       ],
       edges: [
         { from: 'draft', to: 'review', kind: 'advance' },
         { from: 'review', to: 'draft', kind: 'reject' },
       ],
+    });
+  });
+
+  it('retains branch and complete edges in task blueprints for graph-backed workflows', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GRAPH-BLUEPRINT-2',
+    });
+
+    const task = service.createTask({
+      title: 'Graph blueprint branch+complete',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'fast-path', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          { id: 'deep-review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['triage'],
+          nodes: [
+            { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+            { id: 'fast-path', kind: 'stage', execution_kind: 'citizen_execute', gate: { type: 'all_subtasks_done' } },
+            { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'triage__branch__fast-path', from: 'triage', to: 'fast-path', kind: 'branch' },
+            { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+            { id: 'fast-path__complete__done', from: 'fast-path', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    });
+
+    const status = service.getTaskStatus(task.id);
+    expect(status.task_blueprint?.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ from: 'triage', to: 'fast-path', kind: 'branch' }),
+        expect.objectContaining({ from: 'fast-path', to: 'done', kind: 'complete' }),
+      ]),
+    );
+  });
+
+  it('uses workflow.graph entry_nodes[0] as the initial current stage for graph-backed tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GRAPH-ENTRY-1',
+    });
+
+    const task = service.createTask({
+      title: 'Graph entry stage',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+          { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['draft'],
+          nodes: [
+            { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+            { id: 'review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          edges: [
+            { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
+            { id: 'review__reject__draft', from: 'review', to: 'draft', kind: 'reject' },
+          ],
+        },
+      },
+    });
+
+    expect(task.current_stage).toBe('draft');
+  });
+
+  it('marks graph-backed tasks done when advance follows a complete edge into a terminal node', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GRAPH-COMPLETE-1',
+      archonUsers: ['archon'],
+    });
+
+    service.createTask({
+      title: 'Graph complete edge',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'deliver', mode: 'execute', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['deliver'],
+          nodes: [
+            { id: 'deliver', kind: 'stage', gate: { type: 'command' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'deliver__complete__done', from: 'deliver', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    });
+
+    const advanced = service.advanceTask('OC-GRAPH-COMPLETE-1', {
+      callerId: 'archon',
+    });
+
+    expect(advanced).toMatchObject({
+      id: 'OC-GRAPH-COMPLETE-1',
+      state: 'done',
+      current_stage: 'deliver',
     });
   });
 
@@ -690,6 +852,60 @@ describe('task service', () => {
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '03-citizen-scaffold.md'), 'utf8')).toContain('Soul');
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '05-agents', 'opus', '03-citizen-scaffold.md'), 'utf8')).toContain('Clarify system shape');
     expect(readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-100', '02-roster.md'), 'utf8')).toContain('opus | architect | controller');
+  });
+
+  it('materializes current stage desired roster into the brain workspace', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BRAIN-ROSTER-1',
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-roster-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Brain roster materialization',
+      type: 'custom',
+      creator: 'archon',
+      description: 'show current stage roster',
+      priority: 'high',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'draft',
+            mode: 'discuss',
+            roster: { include_roles: ['developer'], keep_controller: true },
+            gate: { type: 'command' },
+          },
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: { include_roles: ['reviewer'], keep_controller: true },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    const rosterDoc = readFileSync(join(brainPackDir, 'tasks', 'OC-BRAIN-ROSTER-1', '02-roster.md'), 'utf8');
+    expect(rosterDoc).toContain('当前阶段目标成员');
+    expect(rosterDoc).toContain('opus');
+    expect(rosterDoc).toContain('sonnet');
+    expect(rosterDoc).not.toContain('glm5 | current_stage_target');
   });
 
   it('creates a project-scoped brain workspace when task project binding is provided', () => {
@@ -830,6 +1046,12 @@ describe('task service', () => {
       description: 'bootstrap project context',
       priority: 'high',
       project_id: 'proj-bootstrap',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+          { role: 'citizen', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+        ],
+      },
     });
 
     const workspacePath = join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
@@ -840,6 +1062,67 @@ describe('task service', () => {
     expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('citizen-alpha');
     expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(bootstrapContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(bootstrapContextPath);
+  });
+
+  it('passes task context into project brain bootstrap generation for project-bound tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-bootstrap',
+      name: 'Project Bootstrap',
+    });
+    const buildBootstrapContext = vi.fn().mockReturnValue({
+      project_id: 'proj-bootstrap',
+      audience: 'controller',
+      markdown: '# Bootstrap',
+      source_documents: [],
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-CTX',
+      projectService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-binding-bootstrap',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      projectBrainAutomationService: {
+        buildBootstrapContext,
+        promoteKnowledge: vi.fn(),
+        recordTaskCloseRecap: vi.fn(),
+      } as unknown as ProjectBrainAutomationService,
+    });
+
+    service.createTask({
+      title: 'Project bootstrap task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'bootstrap project context',
+      priority: 'high',
+      project_id: 'proj-bootstrap',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+          { role: 'citizen', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+        ],
+      },
+    });
+
+    expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 'proj-bootstrap',
+      task_id: 'OC-PROJECT-CTX',
+      task_title: 'Project bootstrap task',
+      task_description: 'bootstrap project context',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'controller',
+    }));
   });
 
   it('materializes task close recap into task and project scope for project-bound tasks', () => {
@@ -945,6 +1228,7 @@ describe('task service', () => {
           throw new Error('brain workspace boom');
         },
         updateWorkspace: () => {},
+        writeExecutionBrief: () => ({ brief_path: '/tmp/unused-brief.md' }),
         writeTaskCloseRecap: () => {},
         destroyWorkspace: () => {},
       },
@@ -1165,6 +1449,117 @@ describe('task service', () => {
       'caller opus has canAdvance=false for /task advance',
     );
     expect(service.advanceTask('OC-104', { callerId: 'archon' }).state).toBe('done');
+  });
+
+  it('requires advance callers to be active in the current stage roster unless they are controller or archon', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STAGE-ADVANCE-1',
+      archonUsers: ['archon'],
+      allowAgents: {
+        opus: { canCall: [], canAdvance: true },
+        glm5: { canCall: [], canAdvance: true },
+        '*': { canCall: [], canAdvance: false },
+      },
+    });
+
+    service.createTask({
+      title: 'stage advance permissions',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+          { role: 'reviewer', agentId: 'glm5', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'draft',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['developer'],
+              keep_controller: false,
+            },
+            gate: { type: 'command' },
+          },
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['reviewer'],
+              keep_controller: true,
+            },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+    });
+
+    expect(() => service.advanceTask('OC-STAGE-ADVANCE-1', { callerId: 'glm5' })).toThrow(
+      'caller glm5 is outside current stage roster for advance',
+    );
+
+    expect(service.advanceTask('OC-STAGE-ADVANCE-1', { callerId: 'opus' }).current_stage).toBe('review');
+  });
+
+  it('requires next_stage_id when advancing from a branching stage and follows the selected branch', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BRANCH-ADVANCE-1',
+      archonUsers: ['archon'],
+    });
+
+    service.createTask({
+      title: 'branching advance',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'fast-path', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          { id: 'deep-review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['triage'],
+          nodes: [
+            { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+            { id: 'fast-path', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+            { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          edges: [
+            { id: 'triage__branch__fast-path', from: 'triage', to: 'fast-path', kind: 'branch' },
+            { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+          ],
+        },
+      },
+    });
+
+    expect(() => service.advanceTask('OC-BRANCH-ADVANCE-1', { callerId: 'archon' })).toThrow(/next_stage_id/);
+
+    const advanced = service.advanceTask('OC-BRANCH-ADVANCE-1', {
+      callerId: 'archon',
+      nextStageId: 'deep-review',
+    });
+    expect(advanced.current_stage).toBe('deep-review');
   });
 
   it('records archon approval, subtask completion, approval, and force advance actions', () => {
@@ -1556,6 +1951,112 @@ describe('task service', () => {
         'cancelled',
       ]),
     );
+  });
+
+  it('requires quorum voters to be active in the current stage roster unless they are archon', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STAGE-CONFIRM-1',
+      archonUsers: ['archon'],
+    });
+    const tasks = new TaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-STAGE-CONFIRM-1',
+      title: 'stage confirm permissions',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'gpt52', model_preference: 'review' },
+        ],
+      },
+      workflow: {
+        type: 'quorum-only',
+        stages: [
+          {
+            id: 'vote',
+            gate: { type: 'quorum', required: 1 },
+            roster: {
+              include_agents: ['opus'],
+              keep_controller: false,
+            },
+          },
+        ],
+      },
+    });
+    tasks.updateTask('OC-STAGE-CONFIRM-1', 1, { state: 'created' });
+    tasks.updateTask('OC-STAGE-CONFIRM-1', 2, { state: 'active', current_stage: 'vote' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-STAGE-CONFIRM-1', 'vote');
+
+    expect(() => service.confirmTask('OC-STAGE-CONFIRM-1', {
+      voterId: 'gpt52',
+      vote: 'approve',
+      comment: 'out of stage',
+    })).toThrow('caller gpt52 is outside current stage roster for confirm');
+
+    expect(service.confirmTask('OC-STAGE-CONFIRM-1', {
+      voterId: 'archon',
+      vote: 'approve',
+      comment: 'override',
+    }).quorum).toMatchObject({ approved: 1, total: 1 });
+  });
+
+  it('requires approval reviewers to be active in the current stage roster unless they are archon', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STAGE-APPROVE-1',
+      archonUsers: ['archon'],
+    });
+    const tasks = new TaskRepository(db);
+
+    tasks.insertTask({
+      id: 'OC-STAGE-APPROVE-1',
+      title: 'stage approval permissions',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'gpt52', model_preference: 'review' },
+        ],
+      },
+      workflow: {
+        type: 'approval-only',
+        stages: [
+          {
+            id: 'review',
+            gate: { type: 'approval', approver: 'reviewer' },
+            roster: {
+              include_agents: ['opus'],
+              keep_controller: false,
+            },
+          },
+        ],
+      },
+    });
+    tasks.updateTask('OC-STAGE-APPROVE-1', 1, { state: 'created' });
+    tasks.updateTask('OC-STAGE-APPROVE-1', 2, { state: 'active', current_stage: 'review' });
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-STAGE-APPROVE-1', 'review');
+
+    expect(() => service.approveTask('OC-STAGE-APPROVE-1', {
+      approverId: 'gpt52',
+      comment: 'not on roster',
+    })).toThrow('caller gpt52 is outside current stage roster for approve');
+
+    expect(service.approveTask('OC-STAGE-APPROVE-1', {
+      approverId: 'archon',
+      comment: 'override approval',
+    }).state).toBe('done');
   });
 
   it('supports unblock retry by resetting failed subtasks in the current stage', () => {
@@ -2428,6 +2929,76 @@ describe('task service', () => {
     );
   });
 
+  it('drains pending detached IM provisioning work before returning', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    let releasePublish: (() => void) | null = null;
+    let publishStarted = false;
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-drain-1',
+    });
+    const originalPublish = provisioningPort.publishMessages.bind(provisioningPort);
+    provisioningPort.publishMessages = async (input) => {
+      publishStarted = true;
+      await new Promise<void>((resolve) => {
+        releasePublish = resolve;
+      });
+      await originalPublish(input);
+    };
+    const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-drain-1', 'pb-drain-2', 'pb-drain-3', 'pb-drain-4'];
+        return () => ids.shift() ?? 'pb-drain-x';
+      })(),
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROV-DRAIN-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+    });
+
+    service.createTask({
+      title: 'Provisioning Drain Test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(publishStarted).toBe(true);
+
+    let drained = false;
+    const drainPromise = service.drainBackgroundOperations().then(() => {
+      drained = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(drained).toBe(false);
+
+    const publishRelease = releasePublish ?? (() => {
+      throw new Error('expected releasePublish to be set before draining background operations');
+    });
+    publishRelease();
+    await drainPromise;
+
+    expect(drained).toBe(true);
+    expect(provisioningPort.published).toHaveLength(1);
+  });
+
   it('publishes bootstrap root and per-agent directed briefs when IM and brain services are configured', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -2473,6 +3044,40 @@ describe('task service', () => {
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
       }),
+      skillCatalogPort: {
+        listSkills: () => [
+          {
+            skill_ref: 'planning-with-files',
+            relative_path: 'planning-with-files',
+            resolved_path: '/tmp/skills/planning-with-files/SKILL.md',
+            source_root: '/tmp/skills',
+            source_label: 'agora',
+            precedence: 0,
+            mtime: '2026-03-19T12:00:00.000Z',
+            shadowed_paths: [],
+          },
+          {
+            skill_ref: 'brainstorming',
+            relative_path: 'brainstorming',
+            resolved_path: '/tmp/skills/brainstorming/SKILL.md',
+            source_root: '/tmp/skills',
+            source_label: 'agora',
+            precedence: 0,
+            mtime: '2026-03-19T12:00:00.000Z',
+            shadowed_paths: [],
+          },
+          {
+            skill_ref: 'refactoring-ui',
+            relative_path: 'refactoring-ui',
+            resolved_path: '/tmp/skills/refactoring-ui/SKILL.md',
+            source_root: '/tmp/skills',
+            source_label: 'agora',
+            precedence: 0,
+            mtime: '2026-03-19T12:00:00.000Z',
+            shadowed_paths: [],
+          },
+        ],
+      },
     });
 
     service.createTask({
@@ -2481,6 +3086,14 @@ describe('task service', () => {
       creator: 'archon',
       description: 'bootstrap everyone into context',
       priority: 'normal',
+      skill_policy: {
+        global_refs: ['planning-with-files'],
+        role_refs: {
+          architect: ['brainstorming'],
+          developer: ['refactoring-ui'],
+        },
+        enforcement: 'required',
+      },
       im_target: {
         provider: 'discord',
         visibility: 'private',
@@ -2528,6 +3141,8 @@ describe('task service', () => {
     expect(rootBrief?.body).toContain('主控: opus');
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
+    expect(rootBrief?.body).toContain('Task Skills:');
+    expect(rootBrief?.body).toContain('planning-with-files -> /tmp/skills/planning-with-files/SKILL.md');
     expect(runbookBrief?.body).toContain('Craftsman 循环:');
     expect(runbookBrief?.body).toContain('快速决策表:');
     expect(runbookBrief?.body).toContain('常用命令:');
@@ -2551,10 +3166,13 @@ describe('task service', () => {
     expect(opusBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(opusBrief?.body).toContain('Discord 提及规则：使用真实 `<@USER_ID>` mention');
     expect(opusBrief?.body).toContain('成员 mention: {{participant:opus}}');
+    expect(opusBrief?.body).toContain('Role Skills:');
+    expect(opusBrief?.body).toContain('brainstorming -> /tmp/skills/brainstorming/SKILL.md');
     expect(opusBrief?.body).not.toContain('Read role doc:');
     const sonnetBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
     expect(sonnetBrief?.body).toContain('简报模式: overlay_full');
     expect(sonnetBrief?.body).toContain('阅读角色文档:');
+    expect(sonnetBrief?.body).toContain('refactoring-ui -> /tmp/skills/refactoring-ui/SKILL.md');
     const conversations = new TaskConversationRepository(db);
     const entries = conversations.listByTask('OC-BOOTSTRAP-1');
     expect(entries.map((entry) => entry.body)).toEqual(
@@ -2566,6 +3184,121 @@ describe('task service', () => {
         expect.stringContaining('角色简报 glm5'),
       ]),
     );
+  });
+
+  it('refreshes the skill catalog before rendering bootstrap skill paths', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-bootstrap-refresh-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const runtimePort = {
+      resolveAgent(agentRef: string) {
+        return {
+          agent_ref: agentRef,
+          runtime_provider: 'openclaw',
+          runtime_actor_ref: agentRef,
+        };
+      },
+    };
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-refresh-1', 'pb-refresh-2'];
+        return () => ids.shift() ?? 'pb-refresh-x';
+      })(),
+      agentRuntimePort: runtimePort,
+    });
+    const listSkills = vi.fn((input?: { refresh?: boolean }) => (
+      input?.refresh
+        ? [
+            {
+              skill_ref: 'agent-reach',
+              relative_path: 'agent-reach',
+              resolved_path: '/tmp/skills/agent-reach/SKILL.md',
+              source_root: '/tmp/skills',
+              source_label: 'agents',
+              precedence: 1,
+              mtime: '2026-03-19T12:00:00.000Z',
+              shadowed_paths: [],
+            },
+            {
+              skill_ref: 'lizeyu-writing',
+              relative_path: 'lizeyu-writing',
+              resolved_path: '/tmp/skills/lizeyu-writing/SKILL.md',
+              source_root: '/tmp/skills',
+              source_label: 'agents',
+              precedence: 1,
+              mtime: '2026-03-19T12:00:00.000Z',
+              shadowed_paths: [],
+            },
+          ]
+        : []
+    ));
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-BOOTSTRAP-REFRESH-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+      agentRuntimePort: runtimePort,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-bootstrap-refresh-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      skillCatalogPort: {
+        listSkills,
+      },
+    });
+
+    service.createTask({
+      title: 'Bootstrap Refresh Task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'refresh bootstrap skill catalog before publish',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'analyst', agentId: 'gpt52', member_kind: 'citizen', model_preference: 'analysis' },
+        ],
+      },
+      workflow_override: {
+        stages: [{
+          id: 'brainstorm',
+          mode: 'discuss',
+          gate: { type: 'command' },
+          execution_kind: 'citizen_discuss',
+          allowed_actions: ['discuss'],
+        }],
+      },
+      skill_policy: {
+        global_refs: ['agent-reach'],
+        role_refs: {
+          architect: ['lizeyu-writing'],
+        },
+        enforcement: 'required',
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(listSkills).toHaveBeenCalledWith({ refresh: true });
+    const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
+    const opusBrief = provisioningPort.published[0]?.messages.find((message) => (
+      message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus'
+    ));
+    expect(rootBrief?.body).toContain('agent-reach -> /tmp/skills/agent-reach/SKILL.md');
+    expect(opusBrief?.body).toContain('lizeyu-writing -> /tmp/skills/lizeyu-writing/SKILL.md');
   });
 
   it('adds smoke-mode guidance only when task control mode is smoke_test', async () => {
@@ -2923,6 +3656,440 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({ participant_ref: 'opus' }),
         expect.objectContaining({ participant_ref: 'discord-user-123' }),
+      ]),
+    );
+  });
+
+  it('reconciles IM roster on stage create and advance using workflow stage roster rules', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-roster-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-roster-1', 'pb-roster-2', 'pb-roster-3'];
+        return () => ids.shift() ?? 'pb-roster-x';
+      })(),
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-ROSTER-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+    });
+
+    service.createTask({
+      title: 'Stage roster task',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'draft',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['developer'],
+              keep_controller: true,
+            },
+            gate: { type: 'command' },
+          },
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['reviewer'],
+              keep_controller: true,
+            },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'opus' }),
+        expect.objectContaining({ participant_ref: 'sonnet' }),
+      ]),
+    );
+    expect(provisioningPort.joined).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'glm5' }),
+      ]),
+    );
+
+    provisioningPort.joined.length = 0;
+    provisioningPort.removed.length = 0;
+
+    service.advanceTask('OC-ROSTER-1', { callerId: 'archon' });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(provisioningPort.removed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'sonnet' }),
+      ]),
+    );
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'glm5' }),
+      ]),
+    );
+    expect(provisioningPort.removed).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'opus' }),
+      ]),
+    );
+    const currentStageRoster = service.getTaskStatus('OC-ROSTER-1').current_stage_roster;
+    expect(currentStageRoster).toMatchObject({
+      stage_id: 'review',
+      roster: {
+        include_roles: ['reviewer'],
+        keep_controller: true,
+      },
+    });
+    expect(currentStageRoster?.desired_participant_refs.slice().sort()).toEqual(['glm5', 'opus']);
+    expect(currentStageRoster?.joined_participant_refs.slice().sort()).toEqual(['glm5', 'opus']);
+    const roleBriefRefs = provisioningPort.published[0]?.messages
+      .filter((message) => message.kind === 'role_brief')
+      .map((message) => message.participant_refs?.[0]);
+    expect(roleBriefRefs).toEqual(['opus', 'sonnet']);
+  });
+
+  it('surfaces reasoned participant reconcile state in current stage roster status', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-roster-status-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-status-1', 'pb-status-2', 'pb-status-3'];
+        return () => ids.shift() ?? 'pb-status-x';
+      })(),
+      runtimeSessionIdGenerator: () => 'rs-status-1',
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-STAGE-STATUS-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+    });
+
+    service.createTask({
+      title: 'Reasoned stage roster status',
+      type: 'custom',
+      creator: 'archon',
+      description: 'show why roster members are in or out',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'draft',
+            mode: 'discuss',
+            roster: { include_roles: ['developer'], keep_controller: true },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    taskParticipation.syncLiveSession({
+      source: 'openclaw',
+      agent_id: 'opus',
+      session_key: 'agent:opus:discord:thread:status',
+      channel: 'discord',
+      conversation_id: 'reasoned',
+      thread_id: 'discord-thread-roster-status-1',
+      status: 'active',
+      last_event: 'session_start',
+      last_event_at: '2026-03-17T11:00:00.000Z',
+      metadata: {},
+    });
+
+    const status = service.getTaskStatus('OC-STAGE-STATUS-1');
+
+    expect(status.current_stage_roster).toMatchObject({
+      stage_id: 'draft',
+      desired_participant_refs: ['opus', 'sonnet'],
+      participant_states: expect.arrayContaining([
+        expect.objectContaining({
+          agent_ref: 'opus',
+          desired_exposure: 'in_thread',
+          exposure_reason: 'controller_preserved',
+          runtime_provider: 'openclaw',
+          runtime_session_ref: 'agent:opus:discord:thread:status',
+          presence_state: 'active',
+          runtime_binding_reason: 'controller_preserved',
+          desired_runtime_presence: 'attached',
+        }),
+        expect.objectContaining({
+          agent_ref: 'sonnet',
+          desired_exposure: 'in_thread',
+          exposure_reason: 'stage_roster_selected',
+        }),
+        expect.objectContaining({
+          agent_ref: 'glm5',
+          desired_exposure: 'hidden',
+          exposure_reason: 'stage_roster_excluded',
+        }),
+      ]),
+    });
+  });
+
+  it('reconciles IM roster when force advancing into the next stage', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-force-roster-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-force-1', 'pb-force-2', 'pb-force-3'];
+        return () => ids.shift() ?? 'pb-force-x';
+      })(),
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-FORCE-ROSTER-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+    });
+
+    service.createTask({
+      title: 'Force advance roster task',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'draft',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['developer'],
+              keep_controller: true,
+            },
+            gate: { type: 'command' },
+          },
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['reviewer'],
+              keep_controller: true,
+            },
+            gate: { type: 'command' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.joined.length = 0;
+    provisioningPort.removed.length = 0;
+    taskParticipation.syncLiveSession({
+      source: 'openclaw',
+      agent_id: 'sonnet',
+      session_key: 'agent:sonnet:discord:thread:force-roster',
+      channel: 'discord',
+      conversation_id: 'force-roster',
+      thread_id: 'discord-thread-force-roster-1',
+      status: 'active',
+      last_event: 'session_start',
+      last_event_at: '2026-03-17T12:10:00.000Z',
+      metadata: {},
+    });
+
+    service.forceAdvanceTask('OC-FORCE-ROSTER-1', { reason: 'operator override' });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(provisioningPort.removed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'sonnet' }),
+      ]),
+    );
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'glm5' }),
+      ]),
+    );
+    expect(service.getTaskStatus('OC-FORCE-ROSTER-1').current_stage_roster).toMatchObject({
+      stage_id: 'review',
+      participant_states: expect.arrayContaining([
+        expect.objectContaining({
+          agent_ref: 'sonnet',
+          desired_exposure: 'hidden',
+          exposure_reason: 'stage_roster_excluded',
+          runtime_session_ref: 'agent:sonnet:discord:thread:force-roster',
+          runtime_binding_reason: 'stage_roster_excluded',
+          desired_runtime_presence: 'detached',
+          runtime_reconcile_stage_id: 'review',
+        }),
+      ]),
+    });
+  });
+
+  it('reconciles IM roster back to the reject target stage when review is rejected', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-reject-roster-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskParticipation = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-reject-1', 'pb-reject-2', 'pb-reject-3'];
+        return () => ids.shift() ?? 'pb-reject-x';
+      })(),
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REJECT-ROSTER-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskParticipationService: taskParticipation,
+      archonUsers: ['admin'],
+    });
+
+    service.createTask({
+      title: 'Reject roster task',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'draft',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['developer'],
+              keep_controller: true,
+            },
+            gate: { type: 'command' },
+          },
+          {
+            id: 'review',
+            mode: 'discuss',
+            roster: {
+              include_roles: ['reviewer'],
+              keep_controller: true,
+            },
+            gate: { type: 'approval', approver: 'reviewer' },
+            reject_target: 'draft',
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    service.advanceTask('OC-REJECT-ROSTER-1', { callerId: 'admin' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    provisioningPort.joined.length = 0;
+    provisioningPort.removed.length = 0;
+
+    service.rejectTask('OC-REJECT-ROSTER-1', {
+      rejectorId: 'glm5',
+      reason: 'needs author rework',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(provisioningPort.removed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'glm5' }),
+      ]),
+    );
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'sonnet' }),
+      ]),
+    );
+    expect(provisioningPort.removed).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'opus' }),
       ]),
     );
   });
@@ -3330,6 +4497,194 @@ describe('task service', () => {
       subtask_id: 'sub-allowed-alias-1',
       adapter: 'claude',
     });
+  });
+
+  it('materializes a controller-aware execution brief for manual craftsman dispatch when no brief_path is provided', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const captured: Array<{ brief_path: string | null; prompt: string | null }> = [];
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-auto-brief-1',
+      adapters: {
+        claude: {
+          name: 'claude',
+          dispatchTask(request) {
+            captured.push({ brief_path: request.brief_path, prompt: request.prompt });
+            return {
+              status: 'running',
+              session_id: `claude:${request.execution_id}`,
+              started_at: '2026-03-17T10:00:00.000Z',
+              payload: null,
+            };
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-BRIEF-1',
+      craftsmanDispatcher: dispatcher,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-brief-binding-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Dispatch with execution brief',
+      type: 'custom',
+      creator: 'archon',
+      description: 'dispatch should get a curated execution brief',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            roster: { include_roles: ['developer'], keep_controller: true },
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-brief-1',
+      task_id: 'OC-DISPATCH-BRIEF-1',
+      stage_id: 'implement',
+      title: 'Implement auth adapter',
+      assignee: 'claude',
+      status: 'pending',
+      craftsman_type: 'claude',
+      craftsman_prompt: 'Implement the auth adapter and report blockers.',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-BRIEF-1',
+      subtask_id: 'sub-brief-1',
+      caller_id: 'opus',
+      adapter: 'claude',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: '/tmp/brief-dispatch',
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.brief_path).toBeTruthy();
+    expect(result.execution.brief_path).toBe(captured[0]?.brief_path ?? null);
+    expect(existsSync(captured[0]!.brief_path!)).toBe(true);
+    const briefBody = readFileSync(captured[0]!.brief_path!, 'utf8');
+    expect(briefBody).toContain('Execution Brief');
+    expect(briefBody).toContain('OC-DISPATCH-BRIEF-1');
+    expect(briefBody).toContain('sub-brief-1');
+    expect(briefBody).toContain('Implement auth adapter');
+    expect(briefBody).toContain('Controller: opus');
+    expect(briefBody).toContain('Current Stage: implement');
+    expect(briefBody).toContain('Current Stage Participants: opus, sonnet');
+  });
+
+  it('auto-dispatches craftsman subtasks with a materialized execution brief when no brief_path is provided', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const captured: Array<{ brief_path: string | null; prompt: string | null }> = [];
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-auto-brief-2',
+      adapters: {
+        claude: {
+          name: 'claude',
+          dispatchTask(request) {
+            captured.push({ brief_path: request.brief_path, prompt: request.prompt });
+            return {
+              status: 'running',
+              session_id: `claude:${request.execution_id}`,
+              started_at: '2026-03-17T10:05:00.000Z',
+              payload: null,
+            };
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SUBTASK-BRIEF-1',
+      craftsmanDispatcher: dispatcher,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-brief-binding-2',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Auto dispatch with execution brief',
+      type: 'custom',
+      creator: 'archon',
+      description: 'createSubtasks should generate a curated execution brief',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            roster: { include_roles: ['developer'], keep_controller: true },
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+
+    service.createSubtasks('OC-SUBTASK-BRIEF-1', {
+      caller_id: 'opus',
+      subtasks: [
+        {
+          id: 'sub-auto-brief-1',
+          title: 'Implement execution brief path',
+          assignee: 'claude',
+          execution_target: 'craftsman',
+          craftsman: {
+            adapter: 'claude',
+            mode: 'one_shot',
+            interaction_expectation: 'one_shot',
+            prompt: 'Implement the execution brief path.',
+          },
+        },
+      ],
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.brief_path).toBeTruthy();
+    expect(existsSync(captured[0]!.brief_path!)).toBe(true);
+    const briefBody = readFileSync(captured[0]!.brief_path!, 'utf8');
+    expect(briefBody).toContain('Execution Brief');
+    expect(briefBody).toContain('OC-SUBTASK-BRIEF-1');
+    expect(briefBody).toContain('sub-auto-brief-1');
+    expect(briefBody).toContain('Implement execution brief path');
+    expect(briefBody).toContain('Current Stage Participants: opus, sonnet');
   });
 
   it('rejects craftsman dispatch when the caller is not the controller', () => {
@@ -4351,6 +5706,124 @@ describe('task service', () => {
         { id: 'deliver', mode: 'execute', gate: { type: 'all_subtasks_done' } },
       ],
     });
+  });
+
+  it('persists task skill policy when creating a task', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SKILL-POLICY-1',
+    });
+
+    const created = service.createTask({
+      title: 'Create task with skill policy',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      skill_policy: {
+        global_refs: ['planning-with-files'],
+        role_refs: {
+          architect: ['brainstorming'],
+          developer: ['refactoring-ui'],
+        },
+        enforcement: 'required',
+      },
+    });
+
+    expect(created.skill_policy).toEqual({
+      global_refs: ['planning-with-files'],
+      role_refs: {
+        architect: ['brainstorming'],
+        developer: ['refactoring-ui'],
+      },
+      enforcement: 'required',
+    });
+  });
+
+  it('rejects workflow overrides whose graph semantics are not runtime-supported', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GRAPH-INVALID-1',
+    });
+
+    expect(() => service.createTask({
+      title: 'Invalid graph override',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+          { id: 'ship', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['draft', 'review'],
+          nodes: [
+            { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+            { id: 'review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+            { id: 'ship', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+          ],
+          edges: [
+            { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
+            { id: 'review__advance__ship', from: 'review', to: 'ship', kind: 'advance' },
+            { id: 'review__reject__ship', from: 'review', to: 'ship', kind: 'reject' },
+          ],
+        },
+      },
+    })).toThrow(/runtime-supported graph semantics/);
+  });
+
+  it('rejects graph-backed workflow overrides whose graph nodes and stages are out of sync', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-GRAPH-ALIGN-1',
+    });
+
+    expect(() => service.createTask({
+      title: 'Misaligned graph workflow',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['draft'],
+          nodes: [
+            { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+            { id: 'ship', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+          ],
+          edges: [
+            { id: 'draft__advance__ship', from: 'draft', to: 'ship', kind: 'advance' },
+          ],
+        },
+      },
+    })).toThrow(/missing from graph nodes|missing from workflow stages/);
   });
 
   it('broadcasts an immediate thread status update when a craftsman callback settles against an active context binding', async () => {

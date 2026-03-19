@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createTaskDraft';
+import { listSkills } from '@/lib/api';
 import { buildCraftsmanInventory, isCraftsmanRole } from '@/lib/orchestrationRoles';
+import { buildProjectBrainDraftPreamble, parseProjectBrainSourceContext } from '@/lib/projectBrainContext';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
@@ -41,6 +43,29 @@ function reconcileAssignments(
   }, {});
 }
 
+function toggleSkillRef(current: string[], skillRef: string) {
+  return current.includes(skillRef)
+    ? current.filter((item) => item !== skillRef)
+    : [...current, skillRef];
+}
+
+function toggleRoleSkillRef(
+  current: Record<string, string[]>,
+  role: string,
+  skillRef: string,
+) {
+  const nextRefs = toggleSkillRef(current[role] ?? [], skillRef);
+  if (nextRefs.length === 0) {
+    const rest = { ...current };
+    delete rest[role];
+    return rest;
+  }
+  return {
+    ...current,
+    [role]: nextRefs,
+  };
+}
+
 export function CreateTaskPage() {
   const { t } = useTranslation();
   const { locale } = useLocale();
@@ -65,20 +90,62 @@ export function CreateTaskPage() {
   const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal');
   const [projectId, setProjectId] = useState('');
   const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [availableSkills, setAvailableSkills] = useState<Array<{ skill_ref: string; resolved_path: string }>>([]);
+  const [globalSkillRefs, setGlobalSkillRefs] = useState<string[]>([]);
+  const [roleSkillRefs, setRoleSkillRefs] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
   const priorities = ['low', 'normal', 'high'] as const;
   const visibility = 'private' as const;
+  const sourceContext = useMemo(() => parseProjectBrainSourceContext(location.search), [location.search]);
+  const sourceContextPreamble = useMemo(() => {
+    if (!sourceContext) {
+      return '';
+    }
+    return buildProjectBrainDraftPreamble(sourceContext, {
+      sourceContextTitle: createTaskCopy.sourceContextTitle,
+      sourceKindLabel: createTaskCopy.sourceKindLabel,
+      sourceTitleLabel: createTaskCopy.sourceTitleFieldLabel,
+      sourceRefLabel: createTaskCopy.sourceRefLabel,
+      sourceTaskIdsLabel: createTaskCopy.sourceTaskIdsLabel,
+      sourceSnippetLabel: createTaskCopy.sourceSnippetLabel,
+      sourceKindLabels: {
+        knowledge: createTaskCopy.sourceKindLabels.knowledge,
+        recap: createTaskCopy.sourceKindLabels.recap,
+        citizen: createTaskCopy.sourceKindLabels.citizen,
+      },
+    });
+  }, [
+    createTaskCopy.sourceContextTitle,
+    createTaskCopy.sourceKindLabel,
+    createTaskCopy.sourceKindLabels.citizen,
+    createTaskCopy.sourceKindLabels.knowledge,
+    createTaskCopy.sourceKindLabels.recap,
+    createTaskCopy.sourceRefLabel,
+    createTaskCopy.sourceSnippetLabel,
+    createTaskCopy.sourceTaskIdsLabel,
+    createTaskCopy.sourceTitleFieldLabel,
+    sourceContext,
+  ]);
 
   useEffect(() => {
     void fetchTemplates();
     void fetchStatus();
     void fetchProjects();
+    void listSkills().then((skills) => {
+      setAvailableSkills(skills.map((item) => ({
+        skill_ref: item.skill_ref,
+        resolved_path: item.resolved_path,
+      })));
+    }).catch(() => {
+      setAvailableSkills([]);
+    });
   }, [fetchProjects, fetchStatus, fetchTemplates]);
 
   useEffect(() => {
     const nextProjectId = new URLSearchParams(location.search).get('project') ?? '';
     setProjectId(nextProjectId);
-  }, [location.search]);
+    setDescription(sourceContextPreamble);
+  }, [location.search, sourceContextPreamble]);
 
   useEffect(() => {
     if (!templates.length) {
@@ -129,13 +196,15 @@ export function CreateTaskPage() {
     if (!title.trim()) return;
     setSubmitting(true);
     try {
-      const task = await createTask(selectedTemplate
+          const task = await createTask(selectedTemplate
         ? buildCreateTaskInput({
             title,
             description,
             priority,
             locale,
             projectId: projectId || null,
+            globalSkillRefs,
+            roleSkillRefs,
             template: selectedTemplate,
             type,
             visibility,
@@ -147,6 +216,15 @@ export function CreateTaskPage() {
             creator: 'archon',
             description: description.trim(),
             priority,
+            ...(globalSkillRefs.length > 0 || Object.keys(roleSkillRefs).length > 0
+              ? {
+                  skill_policy: {
+                    global_refs: globalSkillRefs,
+                    role_refs: roleSkillRefs,
+                    enforcement: 'required' as const,
+                  },
+                }
+              : {}),
           });
       showMessage(
         t('feedback.taskCreatedTitle'),
@@ -214,7 +292,7 @@ export function CreateTaskPage() {
                 onChange={(event) => setProjectId(event.target.value)}
                 className="input-shell"
               >
-                <option value="">{createTaskCopy.unboundProjectOption}</option>
+                <option value="">{createTaskCopy.noProjectOption}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.name}</option>
                 ))}
@@ -231,6 +309,42 @@ export function CreateTaskPage() {
                 placeholder={createTaskCopy.descriptionPlaceholder}
               />
             </label>
+
+            {sourceContext ? (
+              <section className="detail-card" aria-label={createTaskCopy.sourceContextTitle}>
+                <div className="space-y-1">
+                  <strong className="type-heading-sm">{createTaskCopy.sourceContextTitle}</strong>
+                  <p className="type-body-sm">{createTaskCopy.sourceContextSummary}</p>
+                </div>
+                <div className="mt-4 space-y-2">
+                  <p className="type-text-xs">
+                    <span className="field-label">{createTaskCopy.sourceKindLabel}</span>
+                    {' '}
+                    {createTaskCopy.sourceKindLabels[sourceContext.kind]}
+                  </p>
+                  <p className="type-text-xs">
+                    <span className="field-label">{createTaskCopy.sourceTitleFieldLabel}</span>
+                    {' '}
+                    {sourceContext.title}
+                  </p>
+                  {sourceContext.sourceTaskIds.length > 0 ? (
+                    <p className="type-text-xs">
+                      <span className="field-label">{createTaskCopy.sourceTaskIdsLabel}</span>
+                      {' '}
+                      {sourceContext.sourceTaskIds.join(', ')}
+                    </p>
+                  ) : null}
+                  <p className="type-text-xs break-all">
+                    <span className="field-label">{createTaskCopy.sourceRefLabel}</span>
+                    {' '}
+                    {sourceContext.sourceRef}
+                  </p>
+                  {sourceContext.snippet ? (
+                    <p className="type-body-sm whitespace-pre-wrap">{sourceContext.snippet}</p>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
 
             <div>
               <span className="field-label">{createTaskCopy.typeLabel}</span>
@@ -264,6 +378,25 @@ export function CreateTaskPage() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            <div>
+              <span className="field-label">{createTaskCopy.globalSkillsLabel}</span>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {availableSkills.length > 0
+                  ? availableSkills.map((skill) => (
+                      <button
+                        key={skill.skill_ref}
+                        type="button"
+                        aria-pressed={globalSkillRefs.includes(skill.skill_ref)}
+                        onClick={() => setGlobalSkillRefs((current) => toggleSkillRef(current, skill.skill_ref))}
+                        className={globalSkillRefs.includes(skill.skill_ref) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                      >
+                        {skill.skill_ref}
+                      </button>
+                    ))
+                  : <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>}
               </div>
             </div>
 
@@ -303,6 +436,16 @@ export function CreateTaskPage() {
                 <span className="type-body-sm">{controllerRef}</span>
               </div>
             ) : null}
+            {globalSkillRefs.length > 0 ? (
+              <div className="detail-card">
+                <span className="detail-card__label">{createTaskCopy.globalSkillsLabel}</span>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {globalSkillRefs.map((skillRef) => (
+                    <span key={skillRef} className="choice-pill choice-pill--active">{skillRef}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {selectedTemplate?.defaultTeam.length ? (
               <div className="space-y-3">
@@ -331,6 +474,24 @@ export function CreateTaskPage() {
                               </button>
                             ))
                           : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
+                      </div>
+                      <div className="mt-3">
+                        <span className="detail-card__label">{createTaskCopy.roleSkillsLabel}</span>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {availableSkills.length > 0
+                            ? availableSkills.map((skill) => (
+                                <button
+                                  key={`${member.role}-${skill.skill_ref}`}
+                                  type="button"
+                                  aria-pressed={(roleSkillRefs[member.role] ?? []).includes(skill.skill_ref)}
+                                  onClick={() => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skill.skill_ref))}
+                                  className={(roleSkillRefs[member.role] ?? []).includes(skill.skill_ref) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                                >
+                                  {skill.skill_ref}
+                                </button>
+                              ))
+                            : <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>}
+                        </div>
                       </div>
                     </div>
                   </div>

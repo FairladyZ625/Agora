@@ -10,6 +10,7 @@ import {
   mapAgentsStatusDto,
   mapArchiveJobDto,
   mapTemplateDetailDto,
+  mapTemplateDetailToDto,
   mapTemplateSummaryDto,
   mapTodoDto,
 } from '@/lib/dashboardExpansionMappers';
@@ -288,7 +289,13 @@ describe('dashboard expansion mappers', () => {
         },
       },
       stages: [
-        { id: 'discuss', name: '讨论', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        {
+          id: 'discuss',
+          name: '讨论',
+          mode: 'discuss',
+          roster: { include_roles: ['architect'], keep_controller: true },
+          gate: { type: 'approval', approver: 'reviewer' },
+        },
         { id: 'develop', name: '开发', mode: 'execute', gate: { type: 'quorum', required: 2 }, reject_target: 'discuss' },
         { id: 'wait', name: '等待', mode: 'discuss', gate: { type: 'auto_timeout', timeout_sec: 600 } },
       ],
@@ -313,6 +320,12 @@ describe('dashboard expansion mappers', () => {
       modelPreference: null,
       suggested: ['codex'],
     });
+    expect(detail.stages[0]?.roster).toEqual({
+      includeRoles: ['architect'],
+      includeAgents: [],
+      excludeAgents: [],
+      keepController: true,
+    });
     expect(detail.stages[0]).toMatchObject({
       gateType: 'approval',
       gateApprover: 'reviewer',
@@ -325,6 +338,11 @@ describe('dashboard expansion mappers', () => {
     expect(detail.stages[2]).toMatchObject({
       gateType: 'auto_timeout',
       gateTimeoutSec: 600,
+    });
+    const roundTripped = mapTemplateDetailToDto(detail);
+    expect(roundTripped.stages?.[0]?.roster).toEqual({
+      include_roles: ['architect'],
+      keep_controller: true,
     });
   });
 });

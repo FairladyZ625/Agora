@@ -8,6 +8,10 @@ const createTask = vi.fn(async () => ({ id: 'OC-009' }));
 const fetchTemplates = vi.fn(async () => 'live');
 const selectTemplate = vi.fn(async () => undefined);
 const fetchStatus = vi.fn(async () => 'live');
+const fetchProjects = vi.fn(async () => 'live');
+const apiMocks = vi.hoisted(() => ({
+  listSkills: vi.fn(async () => []),
+}));
 const showMessage = vi.fn();
 const setMode = vi.fn();
 const setApiConfig = vi.fn();
@@ -77,6 +81,21 @@ vi.mock('@/stores/agentStore', () => ({
     selector ? selector(agentStoreState) : agentStoreState,
 }));
 
+vi.mock('@/stores/projectStore', () => ({
+  useProjectStore: (selector?: (state: {
+    projects: Array<{ id: string; name: string; status: string; owner: string | null; summary: string | null }>;
+    fetchProjects: typeof fetchProjects;
+  }) => unknown) => {
+    const state = {
+      projects: [
+        { id: 'proj-alpha', name: 'Project Alpha', status: 'active', owner: 'archon', summary: 'primary project' },
+      ],
+      fetchProjects,
+    };
+    return selector ? selector(state) : state;
+  },
+}));
+
 vi.mock('@/stores/feedbackStore', () => ({
   useFeedbackStore: () => ({
     showMessage,
@@ -135,6 +154,7 @@ vi.mock('@/components/settings/HumanAccountsPanel', () => ({
 
 vi.mock('@/lib/api', () => ({
   healthCheck: vi.fn(async () => ({ status: 'ok' })),
+  listSkills: apiMocks.listSkills,
 }));
 
 vi.mock('@/lib/i18n', async () => {
@@ -158,6 +178,8 @@ describe('authoring workbench layout', () => {
     fetchTemplates.mockClear();
     selectTemplate.mockClear();
     fetchStatus.mockClear();
+    fetchProjects.mockClear();
+    apiMocks.listSkills.mockClear();
     showMessage.mockClear();
     setMode.mockClear();
     setApiConfig.mockClear();

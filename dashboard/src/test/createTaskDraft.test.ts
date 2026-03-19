@@ -129,4 +129,33 @@ describe('create task draft helpers', () => {
       { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: '' },
     ]);
   });
+
+  it('includes task skill policy when global or role-scoped skills are selected', () => {
+    const payload = buildCreateTaskInput({
+      title: 'skill-aware payload',
+      description: '',
+      priority: 'normal',
+      locale: 'zh-CN',
+      globalSkillRefs: ['planning-with-files'],
+      roleSkillRefs: {
+        developer: ['refactoring-ui'],
+      },
+      template: buildTemplate(),
+      type: 'coding',
+      visibility: 'private',
+      assignments: {
+        architect: 'opus',
+        developer: 'sonnet',
+        craftsman: 'claude',
+      },
+    });
+
+    expect(payload.skill_policy).toEqual({
+      global_refs: ['planning-with-files'],
+      role_refs: {
+        developer: ['refactoring-ui'],
+      },
+      enforcement: 'required',
+    });
+  });
 });

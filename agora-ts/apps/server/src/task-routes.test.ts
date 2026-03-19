@@ -84,6 +84,11 @@ describe('task routes', () => {
       task: {
         id: 'OC-200',
       },
+      current_stage_roster: {
+        stage_id: 'discuss',
+        desired_participant_refs: expect.any(Array),
+        joined_participant_refs: expect.any(Array),
+      },
       task_blueprint: {
         entry_nodes: ['discuss'],
         nodes: expect.any(Array),
@@ -155,6 +160,110 @@ describe('task routes', () => {
     });
   });
 
+  it('rejects create-task overrides whose graph semantics are not runtime-supported', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-200C',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'invalid graph override',
+        type: 'custom',
+        creator: 'archon',
+        description: 'graph should fail closed',
+        priority: 'normal',
+        team_override: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          ],
+        },
+        workflow_override: {
+          type: 'custom',
+          stages: [
+            { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+            { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+            { id: 'ship', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['draft', 'review'],
+            nodes: [
+              { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+              { id: 'review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+              { id: 'ship', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+            ],
+            edges: [
+              { id: 'draft__advance__review', from: 'draft', to: 'review', kind: 'advance' },
+              { id: 'review__advance__ship', from: 'review', to: 'ship', kind: 'advance' },
+              { id: 'review__reject__ship', from: 'review', to: 'ship', kind: 'reject' },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: expect.stringContaining('runtime-supported graph semantics'),
+    });
+  });
+
+  it('rejects create-task overrides whose graph nodes and workflow stages are out of sync', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-200D',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'misaligned graph override',
+        type: 'custom',
+        creator: 'archon',
+        description: 'graph and stages should align',
+        priority: 'normal',
+        team_override: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          ],
+        },
+        workflow_override: {
+          type: 'custom',
+          stages: [
+            { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+            { id: 'review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['draft'],
+            nodes: [
+              { id: 'draft', kind: 'stage', gate: { type: 'command' } },
+              { id: 'ship', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+            ],
+            edges: [
+              { id: 'draft__advance__ship', from: 'draft', to: 'ship', kind: 'advance' },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: expect.stringMatching(/missing from graph nodes|missing from workflow stages/),
+    });
+  });
+
   it('creates and lists projects through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -167,7 +276,6 @@ describe('task routes', () => {
       method: 'POST',
       url: '/api/projects',
       payload: {
-        id: 'proj-api',
         name: 'Project API',
         summary: 'server thin slice',
         owner: 'archon',
@@ -180,15 +288,15 @@ describe('task routes', () => {
 
     expect(createResponse.statusCode).toBe(200);
     expect(createResponse.json()).toMatchObject({
-      id: 'proj-api',
       name: 'Project API',
       status: 'active',
     });
+    expect(createResponse.json().id).toMatch(/^proj-[a-z0-9-]+$/);
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json()).toMatchObject({
       projects: [
         expect.objectContaining({
-          id: 'proj-api',
+          name: 'Project API',
         }),
       ],
     });
@@ -300,9 +408,14 @@ describe('task routes', () => {
       index: expect.objectContaining({
         kind: 'index',
       }),
+      timeline: expect.objectContaining({
+        kind: 'timeline',
+        slug: 'timeline',
+      }),
       recaps: [
         expect.objectContaining({
           task_id: 'OC-WB-1',
+          content: expect.stringContaining('Task recap line'),
         }),
       ],
       knowledge: [
@@ -354,6 +467,58 @@ describe('task routes', () => {
       id: 'OC-200P',
       project_id: 'proj-api-task',
       state: 'active',
+    });
+  });
+
+  it('filters task list by project through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-api-a',
+      name: 'Project A',
+      owner: 'archon',
+    });
+    projectService.createProject({
+      id: 'proj-api-b',
+      name: 'Project B',
+      owner: 'archon',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: (() => {
+        let index = 0;
+        return () => `OC-20${++index}`;
+      })(),
+    });
+    taskService.createTask({
+      title: 'project a task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'belongs to project a',
+      priority: 'high',
+      project_id: 'proj-api-a',
+    });
+    taskService.createTask({
+      title: 'project b task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'belongs to project b',
+      priority: 'high',
+      project_id: 'proj-api-b',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/tasks?project_id=proj-api-a',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveLength(1);
+    expect(response.json()[0]).toMatchObject({
+      title: 'project a task',
+      project_id: 'proj-api-a',
     });
   });
 
@@ -492,6 +657,78 @@ describe('task routes', () => {
     );
   });
 
+  it('adds the IM-resolved human discord identity to private-thread participants', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'stub-thread-OC-200D',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-200D',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+    const humanAccountService = new HumanAccountService(db);
+    humanAccountService.createUser({
+      username: 'alice',
+      password: 'secret-pass',
+      role: 'member',
+    });
+    humanAccountService.bindIdentity({
+      username: 'alice',
+      provider: 'discord',
+      externalUserId: 'discord-user-123',
+    });
+    const app = buildApp({
+      taskService,
+      humanAccountService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: {
+        'x-agora-human-provider': 'discord',
+        'x-agora-human-external-id': 'discord-user-123',
+      },
+      payload: {
+        title: 'route adds im human discord identity',
+        type: 'coding',
+        creator: 'archon',
+        description: 'custom team',
+        priority: 'normal',
+        im_target: {
+          provider: 'discord',
+          visibility: 'private',
+          participant_refs: ['opus'],
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(response.statusCode).toBe(200);
+    expect(provisioningPort.provisioned[0]?.participant_refs).toEqual(
+      expect.arrayContaining(['opus', 'discord-user-123']),
+    );
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'opus' }),
+        expect.objectContaining({ participant_ref: 'discord-user-123' }),
+      ]),
+    );
+  });
+
   it('returns 403 on advance when gate is not satisfied', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -519,6 +756,120 @@ describe('task routes', () => {
     expect(response.statusCode).toBe(403);
     expect(response.json()).toMatchObject({
       message: "Gate check failed for stage 'discuss' (gate type: archon_review)",
+    });
+  });
+
+  it('accepts next_stage_id on advance when the current stage branches', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-201B',
+      archonUsers: ['archon'],
+    });
+    taskService.createTask({
+      title: 'branching advance route',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'fast-path', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          { id: 'deep-review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['triage'],
+          nodes: [
+            { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+            { id: 'fast-path', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+            { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          edges: [
+            { id: 'triage__branch__fast-path', from: 'triage', to: 'fast-path', kind: 'branch' },
+            { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+          ],
+        },
+      },
+    });
+
+    const app = buildApp({ taskService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-201B/advance',
+      payload: {
+        caller_id: 'archon',
+        next_stage_id: 'deep-review',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-201B',
+      current_stage: 'deep-review',
+    });
+  });
+
+  it('marks graph-backed tasks done when advance follows a complete edge into a terminal node', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-201C',
+      archonUsers: ['archon'],
+    });
+    taskService.createTask({
+      title: 'complete edge advance route',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'deliver', mode: 'execute', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['deliver'],
+          nodes: [
+            { id: 'deliver', kind: 'stage', gate: { type: 'command' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'deliver__complete__done', from: 'deliver', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    });
+
+    const app = buildApp({ taskService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-201C/advance',
+      payload: {
+        caller_id: 'archon',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-201C',
+      state: 'done',
+      current_stage: 'deliver',
     });
   });
 
@@ -578,24 +929,17 @@ describe('task routes', () => {
       },
     });
 
-    const approveCurrent = await app.inject({
+    const approveCurrentSpoofed = await app.inject({
       method: 'POST',
       url: '/api/im/tasks/current/approve',
       headers: {
-        'x-agora-human-provider': 'discord',
-        'x-agora-human-external-id': 'discord-user-123',
+        authorization: 'Bearer test-token',
       },
       payload: {
         provider: 'discord',
         thread_ref: 'thread-current-approve-1',
-        comment: 'looks good',
+        comment: 'spoofed',
       },
-    });
-
-    expect(approveCurrent.statusCode).toBe(200);
-    expect(approveCurrent.json()).toMatchObject({
-      id: 'OC-CURRENT-1',
-      current_stage: 'develop',
     });
 
     const secondProvisioningPort = new StubIMProvisioningPort({
@@ -636,8 +980,33 @@ describe('task routes', () => {
       assignee: 'glm5',
       status: 'done',
     });
-    secondTaskService.advanceTask('OC-CURRENT-2', { callerId: 'opus' });
+    secondTaskService.advanceTask('OC-CURRENT-2', { callerId: 'alice' });
 
+    const rejectCurrentSpoofed = await app.inject({
+      method: 'POST',
+      url: '/api/im/tasks/current/reject',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+      payload: {
+        provider: 'discord',
+        thread_ref: 'thread-current-reject-2',
+        reason: 'spoofed',
+      },
+    });
+    const approveCurrent = await app.inject({
+      method: 'POST',
+      url: '/api/im/tasks/current/approve',
+      headers: {
+        'x-agora-human-provider': 'discord',
+        'x-agora-human-external-id': 'discord-user-123',
+      },
+      payload: {
+        provider: 'discord',
+        thread_ref: 'thread-current-approve-1',
+        comment: 'looks good',
+      },
+    });
     const rejectCurrent = await app.inject({
       method: 'POST',
       url: '/api/im/tasks/current/reject',
@@ -652,6 +1021,15 @@ describe('task routes', () => {
       },
     });
 
+    expect(approveCurrentSpoofed.statusCode).toBe(403);
+    expect(approveCurrentSpoofed.json()).toEqual({ message: 'missing authenticated human actor' });
+    expect(rejectCurrentSpoofed.statusCode).toBe(403);
+    expect(rejectCurrentSpoofed.json()).toEqual({ message: 'missing authenticated human actor' });
+    expect(approveCurrent.statusCode).toBe(200);
+    expect(approveCurrent.json()).toMatchObject({
+      id: 'OC-CURRENT-1',
+      current_stage: 'develop',
+    });
     expect(rejectCurrent.statusCode).toBe(200);
     expect(rejectCurrent.json()).toMatchObject({
       id: 'OC-CURRENT-2',
@@ -988,6 +1366,47 @@ describe('task routes', () => {
           stage_id: 'develop',
         },
       ],
+    });
+  });
+
+  it('creates tasks with skill policy through the task routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-ROUTE-SKILL',
+    });
+    const app = buildApp({ taskService });
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'route skill create',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'normal',
+        skill_policy: {
+          global_refs: ['planning-with-files'],
+          role_refs: {
+            developer: ['refactoring-ui'],
+          },
+          enforcement: 'required',
+        },
+      },
+    });
+
+    expect(create.statusCode).toBe(200);
+    expect(create.json()).toMatchObject({
+      id: 'OC-ROUTE-SKILL',
+      skill_policy: {
+        global_refs: ['planning-with-files'],
+        role_refs: {
+          developer: ['refactoring-ui'],
+        },
+        enforcement: 'required',
+      },
     });
   });
 

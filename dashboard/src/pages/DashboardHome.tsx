@@ -372,7 +372,7 @@ export function DashboardHome() {
           </div>
 
           {error ? (
-            <div className="inline-alert inline-alert--danger home-os__error">{homeCopy.syncErrorMessage}</div>
+            <div role="alert" className="inline-alert inline-alert--danger home-os__error">{homeCopy.syncErrorMessage}</div>
           ) : null}
 
           <div className="home-os__main-section">
@@ -412,7 +412,7 @@ export function DashboardHome() {
 
             <div className="home-os__authority surface-panel surface-panel--muted">
               <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
-              <h4 className="home-os__authority-title">{authorityTitle}</h4>
+              <h3 className="home-os__authority-title">{authorityTitle}</h3>
               <div className="home-os__authority-grid">
                 <div className="home-os__authority-stat">
                   <span className="page-kicker">{homeCopy.resolutionMeta.gate}</span>
@@ -695,14 +695,14 @@ export function DashboardHome() {
                     <div className="mt-4 space-y-2">
                       <p className="field-label">{homeCopy.governance.assigneeTitle}</p>
                       {governanceSnapshot.activeByAssignee.length > 0 ? (
-                        <div className="space-y-2">
+                        <ul className="space-y-2">
                           {governanceSnapshot.activeByAssignee.map((item) => (
-                            <div key={item.assignee} className="data-row">
+                            <li key={item.assignee} className="data-row">
                               <span className="type-mono-xs">{item.assignee}</span>
                               <span className="status-pill status-pill--neutral">{item.count}</span>
-                            </div>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       ) : (
                         <p className="type-body-sm">{homeCopy.governance.emptyAssignee}</p>
                       )}
@@ -710,13 +710,13 @@ export function DashboardHome() {
                     <div className="mt-4 space-y-2">
                       <p className="field-label">{homeCopy.governance.warningsTitle}</p>
                       {(governanceSnapshot.warnings ?? []).length > 0 ? (
-                        <div className="space-y-2">
+                        <ul className="space-y-2">
                           {(governanceSnapshot.warnings ?? []).map((warning) => (
-                            <div key={warning} className="data-row">
+                            <li key={warning} className="data-row">
                               <span className="type-body-sm">{warning}</span>
-                            </div>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       ) : (
                         <p className="type-body-sm">{homeCopy.governance.emptyWarnings}</p>
                       )}
@@ -724,9 +724,9 @@ export function DashboardHome() {
                     <div className="mt-4 space-y-2">
                       <p className="field-label">{homeCopy.governance.executionDetailsTitle}</p>
                       {(governanceSnapshot.activeExecutionDetails ?? []).length > 0 ? (
-                        <div className="space-y-2">
+                        <ul className="space-y-2">
                           {(governanceSnapshot.activeExecutionDetails ?? []).slice(0, 4).map((detail) => (
-                            <div key={detail.executionId} className="data-row">
+                            <li key={detail.executionId} className="data-row">
                               <div className="min-w-0 flex-1">
                                 <p className="type-mono-xs">{detail.executionId}</p>
                                 <p className="type-text-xs mt-1">
@@ -738,9 +738,9 @@ export function DashboardHome() {
                                 </p>
                               </div>
                               <span className="status-pill status-pill--neutral">{detail.subtaskId}</span>
-                            </div>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       ) : (
                         <p className="type-body-sm">{homeCopy.governance.emptyExecutionDetails}</p>
                       )}

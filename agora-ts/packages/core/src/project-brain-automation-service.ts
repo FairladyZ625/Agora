@@ -3,6 +3,7 @@ import { renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './adapters/
 import type { ProjectKnowledgeKind } from './project-knowledge-port.js';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';
+import type { ProjectBrainRetrievalService } from './project-brain-retrieval-service.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import { resolveControllerRef } from './team-member-kind.js';
@@ -27,6 +28,10 @@ export interface BuildProjectBrainBootstrapContextInput {
   project_id: string;
   audience: ProjectBrainAutomationAudience;
   citizen_id?: string | null;
+  task_id?: string;
+  task_title?: string;
+  task_description?: string;
+  allowed_citizen_ids?: string[];
 }
 
 export interface PromoteProjectBrainKnowledgeInput {
@@ -45,6 +50,7 @@ export interface ProjectBrainAutomationServiceOptions {
   policy?: ProjectBrainAutomationPolicy;
   taskBrainBindingService?: TaskBrainBindingService;
   taskBrainWorkspacePort?: TaskBrainWorkspacePort;
+  retrievalService?: Pick<ProjectBrainRetrievalService, 'searchTaskContext'>;
 }
 
 export class ProjectBrainAutomationService {
@@ -55,11 +61,46 @@ export class ProjectBrainAutomationService {
   }
 
   buildBootstrapContext(input: BuildProjectBrainBootstrapContextInput): ProjectBrainBootstrapContext {
+    const documents = this.options.projectBrainService.listDocuments(input.project_id);
+    const preferredDocumentKeys = this.buildLexicalPreferredDocumentKeys(input);
+    return this.renderBootstrapContext(documents, input, preferredDocumentKeys);
+  }
+
+  async buildBootstrapContextAsync(input: BuildProjectBrainBootstrapContextInput): Promise<ProjectBrainBootstrapContext> {
+    const documents = this.options.projectBrainService.listDocuments(input.project_id);
+    const query = buildTaskAwareQuery(input);
+    if (input.task_id && query && this.options.retrievalService) {
+      try {
+        const results = await this.options.retrievalService.searchTaskContext({
+          task_id: input.task_id,
+          audience: input.audience,
+          query,
+          max_results: 6,
+        });
+        const preferredDocumentKeys = results.map((result) => `${result.kind}:${result.slug}`);
+        return this.renderBootstrapContext(documents, input, preferredDocumentKeys);
+      } catch {
+        // fall through to synchronous lexical fallback
+      }
+    }
+    return this.renderBootstrapContext(documents, input, this.buildLexicalPreferredDocumentKeys(input));
+  }
+
+  private renderBootstrapContext(
+    documents: ProjectBrainDocument[],
+    input: BuildProjectBrainBootstrapContextInput,
+    preferredDocumentKeys: string[],
+  ): ProjectBrainBootstrapContext {
     const selected = this.policy.selectBootstrapDocuments(
-      this.options.projectBrainService.listDocuments(input.project_id),
+      documents,
       {
         audience: input.audience,
         ...(input.citizen_id ? { citizen_id: input.citizen_id } : {}),
+        ...(input.task_id ? { task_id: input.task_id } : {}),
+        ...(input.task_title ? { task_title: input.task_title } : {}),
+        ...(input.task_description ? { task_description: input.task_description } : {}),
+        ...(input.allowed_citizen_ids && input.allowed_citizen_ids.length > 0 ? { allowed_citizen_ids: input.allowed_citizen_ids } : {}),
+        ...(preferredDocumentKeys.length > 0 ? { preferred_document_keys: preferredDocumentKeys } : {}),
       },
     );
     return {
@@ -73,6 +114,16 @@ export class ProjectBrainAutomationService {
       })),
       markdown: renderBootstrapMarkdown(input.project_id, input.audience, selected),
     };
+  }
+
+  private buildLexicalPreferredDocumentKeys(input: BuildProjectBrainBootstrapContextInput) {
+    const query = buildTaskAwareQuery(input);
+    if (!query) {
+      return [];
+    }
+    return this.options.projectBrainService
+      .queryDocuments(input.project_id, query)
+      .map((result) => `${result.kind}:${result.slug}`);
   }
 
   promoteKnowledge(input: PromoteProjectBrainKnowledgeInput) {
@@ -149,6 +200,14 @@ function renderBootstrapMarkdown(
   }
 
   return `${frontmatter}${sections.join('\n').trimEnd()}\n`;
+}
+
+function buildTaskAwareQuery(input: BuildProjectBrainBootstrapContextInput) {
+  const parts = [input.task_title?.trim(), input.task_description?.trim()].filter((part): part is string => Boolean(part));
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts.join('\n\n');
 }
 
 function excerptDocument(document: ProjectBrainDocument) {

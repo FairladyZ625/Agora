@@ -285,6 +285,14 @@ function mapTemplateStage(stage: NonNullable<ApiTemplateDetailDto['stages']>[num
     id: stage.id,
     name: stage.name ?? stage.id,
     mode: stage.mode ?? 'custom',
+    roster: stage.roster
+      ? {
+          includeRoles: [...(stage.roster.include_roles ?? [])],
+          includeAgents: [...(stage.roster.include_agents ?? [])],
+          excludeAgents: [...(stage.roster.exclude_agents ?? [])],
+          keepController: stage.roster.keep_controller === true,
+        }
+      : null,
     gateType: stage.gate?.type ?? null,
     gateApprover: stage.gate?.approver ?? null,
     gateRequired: stage.gate?.required ?? null,
@@ -303,6 +311,7 @@ function deriveTemplateGraphFromStages(stages: TemplateStage[]): TemplateGraph {
       kind: 'stage',
       executionKind: null,
       allowedActions: [],
+      roster: stage.roster ?? null,
       gateType: stage.gateType ?? null,
       gateApprover: stage.gateApprover ?? null,
       gateRequired: stage.gateRequired ?? null,
@@ -346,6 +355,14 @@ function mapTemplateGraph(dto: ApiTemplateDetailDto, stages: TemplateStage[]): T
       kind: node.kind,
       executionKind: node.execution_kind ?? null,
       allowedActions: node.allowed_actions ?? [],
+      roster: node.roster
+        ? {
+            includeRoles: [...(node.roster.include_roles ?? [])],
+            includeAgents: [...(node.roster.include_agents ?? [])],
+            excludeAgents: [...(node.roster.exclude_agents ?? [])],
+            keepController: node.roster.keep_controller === true,
+          }
+        : null,
       gateType: node.gate?.type ?? null,
       gateApprover: node.gate?.approver ?? node.gate?.approver_role ?? null,
       gateRequired: node.gate?.required ?? null,
@@ -440,6 +457,16 @@ export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetai
         id: stage.id,
         name: stage.name,
         mode: stage.mode,
+        ...(stage.roster
+          ? {
+              roster: {
+                ...(stage.roster.includeRoles.length > 0 ? { include_roles: stage.roster.includeRoles } : {}),
+                ...(stage.roster.includeAgents.length > 0 ? { include_agents: stage.roster.includeAgents } : {}),
+                ...(stage.roster.excludeAgents.length > 0 ? { exclude_agents: stage.roster.excludeAgents } : {}),
+                ...(stage.roster.keepController ? { keep_controller: true } : {}),
+              },
+            }
+          : {}),
         ...(gate ? { gate } : {}),
         ...(stage.rejectTarget ? { reject_target: stage.rejectTarget } : {}),
       };
@@ -453,6 +480,16 @@ export function mapTemplateDetailToDto(detail: TemplateDetail): ApiTemplateDetai
         kind: node.kind,
         ...(node.executionKind ? { execution_kind: node.executionKind } : {}),
         ...(node.allowedActions.length > 0 ? { allowed_actions: node.allowedActions } : {}),
+        ...(node.roster
+          ? {
+              roster: {
+                ...(node.roster.includeRoles.length > 0 ? { include_roles: node.roster.includeRoles } : {}),
+                ...(node.roster.includeAgents.length > 0 ? { include_agents: node.roster.includeAgents } : {}),
+                ...(node.roster.excludeAgents.length > 0 ? { exclude_agents: node.roster.excludeAgents } : {}),
+                ...(node.roster.keepController ? { keep_controller: true } : {}),
+              },
+            }
+          : {}),
         ...((node.gateType || node.gateApprover || typeof node.gateRequired === 'number' || typeof node.gateTimeoutSec === 'number')
           ? {
               gate: {

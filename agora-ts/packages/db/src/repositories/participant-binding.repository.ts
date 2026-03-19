@@ -9,6 +9,10 @@ export interface StoredParticipantBinding {
   task_role: string;
   source: string;
   join_status: string;
+  desired_exposure: string;
+  exposure_reason: string | null;
+  exposure_stage_id: string | null;
+  reconciled_at: string | null;
   created_at: string;
   joined_at: string | null;
   left_at: string | null;
@@ -26,6 +30,10 @@ export class ParticipantBindingRepository {
     task_role: string;
     source?: string;
     join_status?: string;
+    desired_exposure?: string;
+    exposure_reason?: string | null;
+    exposure_stage_id?: string | null;
+    reconciled_at?: string | null;
     created_at?: string;
     joined_at?: string | null;
     left_at?: string | null;
@@ -33,9 +41,11 @@ export class ParticipantBindingRepository {
     const createdAt = input.created_at ?? new Date().toISOString();
     this.db.prepare(`
       INSERT INTO participant_bindings (
-        id, task_id, binding_id, agent_ref, runtime_provider, task_role, source, join_status, created_at, joined_at, left_at
+        id, task_id, binding_id, agent_ref, runtime_provider, task_role, source, join_status,
+        desired_exposure, exposure_reason, exposure_stage_id, reconciled_at,
+        created_at, joined_at, left_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.task_id,
@@ -45,6 +55,10 @@ export class ParticipantBindingRepository {
       input.task_role,
       input.source ?? 'template',
       input.join_status ?? 'pending',
+      input.desired_exposure ?? 'hidden',
+      input.exposure_reason ?? null,
+      input.exposure_stage_id ?? null,
+      input.reconciled_at ?? null,
       createdAt,
       input.joined_at ?? null,
       input.left_at ?? null,
@@ -94,6 +108,28 @@ export class ParticipantBindingRepository {
     );
   }
 
+  updateExposureState(
+    id: string,
+    input: {
+      desired_exposure: string;
+      exposure_reason?: string | null;
+      exposure_stage_id?: string | null;
+      reconciled_at?: string | null;
+    },
+  ): void {
+    this.db.prepare(`
+      UPDATE participant_bindings
+      SET desired_exposure = ?, exposure_reason = ?, exposure_stage_id = ?, reconciled_at = ?
+      WHERE id = ?
+    `).run(
+      input.desired_exposure,
+      input.exposure_reason ?? null,
+      input.exposure_stage_id ?? null,
+      input.reconciled_at ?? new Date().toISOString(),
+      id,
+    );
+  }
+
   private parseRow(row: Record<string, unknown>): StoredParticipantBinding {
     return {
       id: String(row.id),
@@ -104,10 +140,13 @@ export class ParticipantBindingRepository {
       task_role: String(row.task_role),
       source: String(row.source),
       join_status: String(row.join_status),
+      desired_exposure: row.desired_exposure === undefined ? 'hidden' : String(row.desired_exposure),
+      exposure_reason: row.exposure_reason === null || row.exposure_reason === undefined ? null : String(row.exposure_reason),
+      exposure_stage_id: row.exposure_stage_id === null || row.exposure_stage_id === undefined ? null : String(row.exposure_stage_id),
+      reconciled_at: row.reconciled_at === null || row.reconciled_at === undefined ? null : String(row.reconciled_at),
       created_at: String(row.created_at),
       joined_at: row.joined_at === null ? null : String(row.joined_at),
       left_at: row.left_at === null ? null : String(row.left_at),
     };
   }
 }
-

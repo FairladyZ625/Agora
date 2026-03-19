@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { bootstrap as bootstrapGlobalAgent } from 'global-agent';
 
 export interface DiscordProxyEnvironment {
@@ -29,9 +30,14 @@ type GlobalAgentShape = {
 };
 
 let globalAgentBootstrapped = false;
+let cachedAutoProxy: { httpProxy: string | null; httpsProxy: string | null; noProxy: string | null } | null = null;
+const proxySupportHooks = {
+  execFileSync,
+  platform: () => process.platform,
+};
 
 export function resolveDiscordProxyEnvironment(env: DiscordProxyEnvironment = process.env): Omit<DiscordGatewayProxyBootstrapResult, 'bootstrapped' | 'enabled'> & { enabled: boolean } {
-  const httpsProxy = firstProxyValue([
+  let httpsProxy = firstProxyValue([
     env.https_proxy,
     env.HTTPS_PROXY,
     env.all_proxy,
@@ -39,7 +45,7 @@ export function resolveDiscordProxyEnvironment(env: DiscordProxyEnvironment = pr
     env.http_proxy,
     env.HTTP_PROXY,
   ]);
-  const httpProxy = firstProxyValue([
+  let httpProxy = firstProxyValue([
     env.http_proxy,
     env.HTTP_PROXY,
     env.all_proxy,
@@ -51,6 +57,11 @@ export function resolveDiscordProxyEnvironment(env: DiscordProxyEnvironment = pr
     env.no_proxy,
     env.NO_PROXY,
   ]);
+  if (!httpsProxy && !httpProxy) {
+    const autoDetected = detectMacOSProxyFallback();
+    httpsProxy = autoDetected.httpsProxy;
+    httpProxy = autoDetected.httpProxy;
+  }
   return {
     enabled: Boolean(httpProxy || httpsProxy),
     httpProxy,
@@ -125,12 +136,15 @@ export function sanitizeProxyForLogs(proxyUrl: string | null): string | null {
 
 export function resetDiscordGatewayProxyBootstrapForTests() {
   globalAgentBootstrapped = false;
+  cachedAutoProxy = null;
   const globalAgent = getGlobalAgent();
   if (globalAgent) {
     delete globalAgent.HTTP_PROXY;
     delete globalAgent.HTTPS_PROXY;
     delete globalAgent.NO_PROXY;
   }
+  proxySupportHooks.execFileSync = execFileSync;
+  proxySupportHooks.platform = () => process.platform;
 }
 
 function firstProxyValue(values: Array<string | undefined>) {
@@ -144,4 +158,64 @@ function firstProxyValue(values: Array<string | undefined>) {
 
 function getGlobalAgent() {
   return (globalThis as typeof globalThis & { GLOBAL_AGENT?: GlobalAgentShape }).GLOBAL_AGENT;
+}
+
+function detectMacOSProxyFallback() {
+  if (cachedAutoProxy) {
+    return cachedAutoProxy;
+  }
+  cachedAutoProxy = detectMacOSProxyFallbackUncached();
+  return cachedAutoProxy;
+}
+
+function detectMacOSProxyFallbackUncached() {
+  if (proxySupportHooks.platform() !== 'darwin') {
+    return { httpProxy: null, httpsProxy: null, noProxy: null };
+  }
+  try {
+    const scutilOutput = proxySupportHooks.execFileSync('scutil', ['--proxy'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const pacUrl = matchScutilValue(scutilOutput, 'ProxyAutoConfigURLString');
+    const pacEnabled = matchScutilValue(scutilOutput, 'ProxyAutoConfigEnable') === '1';
+    if (!pacEnabled || !pacUrl || !/^http:\/\/127\.0\.0\.1:\d+\//.test(pacUrl)) {
+      return { httpProxy: null, httpsProxy: null, noProxy: null };
+    }
+    const pacBody = proxySupportHooks.execFileSync('curl', ['--silent', '--show-error', '--max-time', '2', pacUrl], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const match = pacBody.match(/\bPROXY\s+([0-9.]+:\d+)/i) ?? pacBody.match(/\bSOCKS5?\s+([0-9.]+:\d+)/i);
+    if (!match?.[1]) {
+      return { httpProxy: null, httpsProxy: null, noProxy: null };
+    }
+    const proxy = `http://${match[1]}`;
+    return {
+      httpProxy: proxy,
+      httpsProxy: proxy,
+      noProxy: null,
+    };
+  } catch {
+    return { httpProxy: null, httpsProxy: null, noProxy: null };
+  }
+}
+
+function matchScutilValue(body: string, key: string) {
+  const pattern = new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`, 'm');
+  const match = body.match(pattern);
+  return match?.[1]?.trim() ?? null;
+}
+
+export function configureDiscordProxySupportForTests(overrides: {
+  execFileSync?: typeof execFileSync;
+  platform?: () => NodeJS.Platform;
+}) {
+  if (overrides.execFileSync) {
+    proxySupportHooks.execFileSync = overrides.execFileSync;
+  }
+  if (overrides.platform) {
+    proxySupportHooks.platform = overrides.platform;
+  }
+  cachedAutoProxy = null;
 }

@@ -77,6 +77,15 @@ describe('task mappers', () => {
   it('preserves live status logs while mapping nested task data', () => {
     const statusDto: ApiTaskStatusDto = {
       task: buildTaskDto({ current_stage: 'review' }),
+      current_stage_roster: {
+        stage_id: 'review',
+        roster: {
+          include_roles: ['reviewer'],
+          keep_controller: true,
+        },
+        desired_participant_refs: ['opus', 'glm5'],
+        joined_participant_refs: ['opus'],
+      },
       flow_log: [
         {
           id: 1,
@@ -119,6 +128,15 @@ describe('task mappers', () => {
 
     expect(status.task.state).toBe('gate_waiting');
     expect(status.task.controllerRef).toBe('opus');
+    expect(status.currentStageRoster).toEqual({
+      stageId: 'review',
+      roster: {
+        include_roles: ['reviewer'],
+        keep_controller: true,
+      },
+      desiredParticipantRefs: ['opus', 'glm5'],
+      joinedParticipantRefs: ['opus'],
+    });
     expect(status.flow_log).toHaveLength(1);
     expect(status.flow_log[0]?.event).toBe('archon_review_entered');
     expect(status.taskBlueprint).toEqual({

@@ -150,6 +150,46 @@ describe('dashboard mobile workbench routes', () => {
     expect(screen.getByText('当前任务详情不可用')).toBeInTheDocument();
   });
 
+  it('renders current stage roster visibility in the task detail sheet when status data includes it', async () => {
+    const taskStatus = getMockTaskStatus('TSK-001');
+    if (!taskStatus) {
+      throw new Error('mock task status missing for TSK-001');
+    }
+    taskStoreState.selectedTaskId = 'TSK-001';
+    taskStoreState.selectedTaskStatus = {
+      ...taskStatus,
+      currentStageRoster: {
+        stageId: 'review',
+        roster: {
+          include_roles: ['reviewer'],
+          keep_controller: true,
+        },
+        desiredParticipantRefs: ['opus', 'glm5'],
+        joinedParticipantRefs: ['opus'],
+      },
+    };
+
+    renderWithRoutes(
+      ['/tasks/TSK-001'],
+      <>
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:taskId" element={<TasksPage />} />
+      </>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: '任务详情面板' })).toBeInTheDocument();
+    });
+
+    const detailSheet = screen.getByRole('dialog', { name: '任务详情面板' });
+    expect(within(detailSheet).getByText('当前阶段成员')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('review')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('目标成员')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('已在场成员')).toBeInTheDocument();
+    expect(within(detailSheet).getByText('opus, glm5')).toBeInTheDocument();
+    expect(within(detailSheet).getByText(/^opus$/)).toBeInTheDocument();
+  });
+
   it('opens review detail as a sheet on mobile instead of keeping the inspector mounted inline', async () => {
     taskStoreState.selectedTaskId = 'TSK-002';
     taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-002');

@@ -40,6 +40,7 @@ describe('agora-ts testing scenarios', () => {
       'task-conversation-read-cursor',
       'control-plane-loop',
       'graph-driven-path',
+      'project-brain-bootstrap',
     ]);
   });
 
@@ -117,6 +118,24 @@ describe('agora-ts testing scenarios', () => {
       'stage_rewound',
     ]));
     expect(result.templateChecks?.validated).toBe(true);
+  });
+
+  it('runs a project brain bootstrap scenario and materializes the project context artifact', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-SCENARIO-BOOTSTRAP',
+    });
+
+    const result = runScenario(runtime, 'project-brain-bootstrap');
+
+    expect(result.name).toBe('project-brain-bootstrap');
+    expect(result.bootstrapContextPath).toContain('project-brain-context.md');
+    expect(result.bootstrapContextContains).toEqual(
+      expect.arrayContaining([
+        'project_brain_bootstrap_context',
+        'Runtime Boundary',
+        'citizen-alpha',
+      ]),
+    );
   });
 
   it('runs a quorum scenario and advances after the required votes are met', () => {

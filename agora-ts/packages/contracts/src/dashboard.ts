@@ -3,6 +3,7 @@ import { validateWorkflowStages } from './workflow-rules.js';
 import { taskSchema } from './task-api.js';
 import { taskPrioritySchema } from './task.js';
 import { templateGraphSchema } from './template-graph.js';
+import { workflowStageRosterSchema } from './workflow-roster.js';
 
 const allowedGovernancePresets = ['lean', 'standard', 'strict', 'custom'] as const;
 const allowedTemplateRoles = ['architect', 'developer', 'reviewer', 'writer', 'researcher', 'analyst', 'executor', 'craftsman'] as const;
@@ -192,6 +193,23 @@ export const agentsStatusSchema = z.object({
   craftsman_runtime: craftsmanRuntimeSchema.nullable().optional(),
 });
 export type AgentsStatusDto = z.infer<typeof agentsStatusSchema>;
+
+export const skillCatalogEntrySchema = z.object({
+  skill_ref: z.string().min(1),
+  relative_path: z.string().min(1),
+  resolved_path: z.string().min(1),
+  source_root: z.string().min(1),
+  source_label: z.string().min(1),
+  precedence: z.number().int().nonnegative(),
+  mtime: z.string().nullable(),
+  shadowed_paths: z.array(z.string()),
+});
+export type SkillCatalogEntryDto = z.infer<typeof skillCatalogEntrySchema>;
+
+export const skillCatalogListResponseSchema = z.object({
+  skills: z.array(skillCatalogEntrySchema),
+});
+export type SkillCatalogListResponseDto = z.infer<typeof skillCatalogListResponseSchema>;
 
 export const dashboardSessionLoginRequestSchema = z.object({
   username: z.string().min(1),
@@ -385,6 +403,7 @@ export const templateStageSchema = z.object({
   execution_kind: templateExecutionKindSchema.optional(),
   allowed_actions: z.array(templateActionSchema).optional(),
   reject_target: z.string().min(1).optional(),
+  roster: workflowStageRosterSchema.optional(),
   gate: z.object({
     type: templateGateTypeSchema.optional(),
     approver: templateRoleSchema.optional(),

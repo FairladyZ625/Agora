@@ -1,3 +1,5 @@
+import type { WorkflowStageRosterDto } from '@agora-ts/contracts';
+
 export interface TaskBrainWorkspaceRequest {
   task_id: string;
   project_id: string | null;
@@ -12,12 +14,14 @@ export interface TaskBrainWorkspaceRequest {
   state: string;
   controller_ref: string | null;
   current_stage: string | null;
+  current_stage_participants?: string[];
   workflow_stages: Array<{
     id: string;
     name?: string;
     mode?: string;
     execution_kind?: string;
     allowed_actions?: string[];
+    roster?: WorkflowStageRosterDto;
     gate?: {
       type?: string;
     } | null;
@@ -62,6 +66,36 @@ export interface TaskBrainCloseRecapRequest {
   summary_lines: string[];
 }
 
+export interface TaskExecutionBriefRequest {
+  task_id: string;
+  project_id: string | null;
+  locale: 'zh-CN' | 'en-US';
+  title: string;
+  description: string;
+  controller_ref: string | null;
+  current_stage: string | null;
+  current_stage_participants: string[];
+  subtask_id: string;
+  subtask_title: string;
+  assignee: string;
+  adapter: string;
+  mode: 'one_shot' | 'interactive';
+  prompt: string | null;
+  workdir: string | null;
+  references: {
+    current_path: string;
+    task_brief_path: string;
+    roster_path: string;
+    stage_state_path: string;
+    role_brief_path?: string | null;
+    project_brain_context_path?: string | null;
+  };
+}
+
+export interface TaskExecutionBriefResult {
+  brief_path: string;
+}
+
 export interface TaskBrainWorkspaceBindingRef {
   brain_pack_ref: string;
   brain_task_id: string;
@@ -72,6 +106,7 @@ export interface TaskBrainWorkspaceBindingRef {
 export interface TaskBrainWorkspacePort {
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult;
   updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void;
+  writeExecutionBrief(binding: TaskBrainWorkspaceBindingRef, input: TaskExecutionBriefRequest): TaskExecutionBriefResult;
   writeTaskCloseRecap(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainCloseRecapRequest): void;
   destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void;
 }

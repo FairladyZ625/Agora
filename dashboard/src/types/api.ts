@@ -14,6 +14,8 @@ import type {
   ProjectDto,
   ProjectWorkbenchResponseDto,
   ProgressLogDto,
+  SkillCatalogEntryDto,
+  SkillCatalogListResponseDto,
   SubtaskDto,
   TaskDto,
   TaskConversationEntryDto,
@@ -74,6 +76,8 @@ export type ApiTodoDto = TodoItemDto;
 export type ApiProjectDto = ProjectDto;
 export type ApiListProjectsResponseDto = ListProjectsResponseDto;
 export type ApiProjectWorkbenchDto = ProjectWorkbenchResponseDto;
+export type ApiSkillCatalogEntryDto = SkillCatalogEntryDto;
+export type ApiSkillCatalogListResponseDto = SkillCatalogListResponseDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;
 export type ApiTemplateDetailDto = TemplateDetailDto;
 export type ApiTemplateStageDto = NonNullable<ApiTemplateDetailDto['stages']>[number];

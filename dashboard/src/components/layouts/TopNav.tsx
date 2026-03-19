@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Gauge, Languages, LogOut, Menu, Monitor, Moon, RefreshCw, Sun, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -18,7 +18,7 @@ function formatClockValue() {
   return `${new Date().toISOString().slice(11, 19)} UTC`;
 }
 
-function TopbarClock({ label }: { label: string }) {
+const TopbarClock = React.memo(function TopbarClock({ label }: { label: string }) {
   const [clock, setClock] = useState(() => formatClockValue());
 
   useEffect(() => {
@@ -35,7 +35,7 @@ function TopbarClock({ label }: { label: string }) {
       <span className="topbar-clock-value">{clock}</span>
     </div>
   );
-}
+});
 
 function IconButton({
   onClick,
@@ -181,7 +181,7 @@ export function TopNav({
             </>
           ) : (
             <div className="topbar-intelligence" aria-hidden="true">
-              <span className="topbar-intelligence__dot topbar-intelligence__dot--1 signal-pulse" />
+              <span className={`topbar-intelligence__dot topbar-intelligence__dot--1${activeCount > 0 ? ' signal-pulse' : ''}`} />
               <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
               <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
               <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />

@@ -19,6 +19,7 @@ Use this skill when you are brought into a fresh Agora task thread, group, or su
 5. What actions are allowed in this stage?
 6. Where is the task workspace in the Agora AI Brain Pack?
 7. If craftsmen are needed, what is the formal execution surface for this task?
+8. If this task uses `project brain`, what bootstrap context and source documents are already available?
 
 ## Required reads
 
@@ -31,11 +32,13 @@ Use this skill when you are brought into a fresh Agora task thread, group, or su
 ## Working rules
 
 - Do not assume the main conversation context is available. Use the task briefing and task workspace as the source of truth.
+- If the task workspace already contains `04-context/project-brain-context.md`, read it before issuing new retrieval commands.
 - Treat the controller as the owner of stage progression unless the current stage is explicitly a human approval node.
 - Do not dispatch craftsmen unless the active stage explicitly allows `craftsman_dispatch`.
 - Use real Discord mentions in the form `<@USER_ID>`. Do not rely on display-name mentions like `@Opus`.
 - Treat `subtask` as the formal execution binding object. Do not invent ad hoc craftsman work outside subtasks.
 - Treat `execution_id` as the continuation handle for waiting craftsmen. Do not operate raw tmux panes unless you are explicitly debugging the transport layer.
+- If the existing bootstrap context is thin or stale, refresh it through `agora projects brain bootstrap-context` or run a task-aware `agora projects brain query` before guessing from chat history.
 - When choosing a craftsman execution mode, prefer the explicit names:
   - `one_shot` for single prompt -> result runs
   - `interactive` for `needs_input` / `awaiting_choice` loops
@@ -45,14 +48,16 @@ Use this skill when you are brought into a fresh Agora task thread, group, or su
 
 1. Read the thread bootstrap message.
 2. Read your role brief in the task workspace.
-3. Confirm the active stage and allowed actions.
-4. If the stage is an execute node, check whether work should be decomposed into subtasks before any craftsman work begins.
-5. If craftsmen are needed, use the formal subtask/execution flow:
+3. Read `04-context/project-brain-context.md` if the task workspace already has it.
+4. Confirm the active stage and allowed actions.
+5. If the stage is an execute node, check whether work should be decomposed into subtasks before any craftsman work begins.
+6. If the task needs more background, use task-aware `project brain` retrieval before asking for more chat recap.
+7. If craftsmen are needed, use the formal subtask/execution flow:
    - create or inspect subtasks
    - dispatch a craftsman against a subtask
    - continue the execution through `execution_id` if it enters `needs_input` or `awaiting_choice`
-6. If needed, inspect the task workspace and use Agora CLI instead of guessing.
-7. Only then discuss, execute, dispatch, or escalate.
+8. If needed, inspect the task workspace and use Agora CLI instead of guessing.
+9. Only then discuss, execute, dispatch, or escalate.
 
 ## Quick runbook
 
@@ -63,6 +68,8 @@ Use this skill when you are brought into a fresh Agora task thread, group, or su
 | Execution pauses with `needs_input` | `agora craftsman input-text <executionId> "<text>"` |
 | Execution pauses with `awaiting_choice` | `agora craftsman input-keys <executionId> Down Enter` or `agora craftsman submit-choice <executionId> Down` |
 | Need the freshest execution state | `agora craftsman probe <executionId>` |
+| Need the current task bootstrap context | `agora projects brain bootstrap-context --task <taskId> --audience <role>` |
+| Need more project knowledge for the current task | `agora projects brain query --task <taskId> --audience <role> --query "..." --mode auto` |
 
 ## Mention runbook
 

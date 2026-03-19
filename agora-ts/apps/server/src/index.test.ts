@@ -55,6 +55,7 @@ describe('server index wiring', () => {
       inboxService: undefined,
       templateAuthoringService: undefined,
       liveSessionStore: undefined,
+      legacyRuntimeService: undefined,
       tmuxRuntimeService: undefined,
       taskContextBindingService: undefined,
       taskConversationService: undefined,

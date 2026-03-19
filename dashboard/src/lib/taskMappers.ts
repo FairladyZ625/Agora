@@ -18,6 +18,7 @@ import type {
   Task,
   CraftsmanExecution,
   CraftsmanGovernanceSnapshot,
+  CurrentStageRoster,
   RuntimeDiagnosisResult,
   RuntimeRecoveryAction,
   TaskBlueprint,
@@ -85,6 +86,7 @@ export function mapTaskDto(task: ApiTaskDto): Task {
   return {
     id: task.id,
     version: task.version,
+    projectId: task.project_id ?? null,
     title: task.title,
     description: task.description,
     type: task.type,
@@ -350,6 +352,18 @@ function mapTaskBlueprint(status: ApiTaskStatusDto): TaskBlueprint | undefined {
   };
 }
 
+function mapCurrentStageRoster(status: ApiTaskStatusDto): CurrentStageRoster | undefined {
+  if (!status.current_stage_roster) {
+    return undefined;
+  }
+  return {
+    stageId: status.current_stage_roster.stage_id,
+    roster: status.current_stage_roster.roster ?? null,
+    desiredParticipantRefs: [...status.current_stage_roster.desired_participant_refs],
+    joinedParticipantRefs: [...status.current_stage_roster.joined_participant_refs],
+  };
+}
+
 export function mapTaskConversationEntryDto(entry: ApiTaskConversationEntryDto): TaskConversationEntry {
   return {
     ...entry,
@@ -368,6 +382,7 @@ export function mapTaskStatusDto(status: ApiTaskStatusDto): TaskStatus {
     progress_log: status.progress_log.map(mapProgressLogEntry),
     subtasks: status.subtasks.map(mapSubtask),
     taskBlueprint: mapTaskBlueprint(status),
+    currentStageRoster: mapCurrentStageRoster(status),
   };
 }
 

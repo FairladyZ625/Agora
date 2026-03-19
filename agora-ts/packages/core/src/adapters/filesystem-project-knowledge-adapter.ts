@@ -90,6 +90,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
           task_id: basename(name, '.md'),
           path,
           title: extractMarkdownHeading(content) ?? parsed.attributes.title ?? null,
+          content,
           updated_at: updatedAt,
         } satisfies ProjectKnowledgeRecapSummary;
       })

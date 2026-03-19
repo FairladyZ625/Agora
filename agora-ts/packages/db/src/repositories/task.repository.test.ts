@@ -99,4 +99,54 @@ describe('task repository', () => {
 
     expect(updated.project_id).toBeNull();
   });
+
+  it('persists task skill policy on insert and update', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repository = new TaskRepository(db);
+
+    const created = repository.insertTask({
+      id: 'OC-SKILL-1',
+      title: 'task with skills',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      skill_policy: {
+        global_refs: ['planning-with-files'],
+        role_refs: {
+          developer: ['refactoring-ui'],
+        },
+        enforcement: 'required',
+      },
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+
+    expect(created.skill_policy).toEqual({
+      global_refs: ['planning-with-files'],
+      role_refs: {
+        developer: ['refactoring-ui'],
+      },
+      enforcement: 'required',
+    });
+
+    const updated = repository.updateTask('OC-SKILL-1', created.version, {
+      skill_policy: {
+        global_refs: ['agora-bootstrap'],
+        role_refs: {
+          architect: ['brainstorming'],
+        },
+        enforcement: 'advisory',
+      },
+    });
+
+    expect(updated.skill_policy).toEqual({
+      global_refs: ['agora-bootstrap'],
+      role_refs: {
+        architect: ['brainstorming'],
+      },
+      enforcement: 'advisory',
+    });
+  });
 });

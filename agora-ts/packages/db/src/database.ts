@@ -54,6 +54,18 @@ export function listAppliedMigrations(db: AgoraDatabase): string[] {
   return rows.map((row) => row.name);
 }
 
+function hasColumn(db: AgoraDatabase, tableName: string, columnName: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === columnName);
+}
+
+function shouldSkipMigrationSql(db: AgoraDatabase, fileName: string): boolean {
+  if (fileName === '020_task_skill_policy.sql') {
+    return hasColumn(db, 'tasks', 'skill_policy');
+  }
+  return false;
+}
+
 export function runMigrations(db: AgoraDatabase): void {
   const applied = new Set(listAppliedMigrations(db));
   const migrationFiles = [
@@ -74,13 +86,18 @@ export function runMigrations(db: AgoraDatabase): void {
     '015_projects.sql',
     '016_todo_projects.sql',
     '017_citizens.sql',
+    '018_binding_reconcile_reasoning.sql',
+    '019_runtime_session_reconcile_state.sql',
+    '020_task_skill_policy.sql',
   ];
   const migrationsDir = resolveMigrationsDir();
 
   for (const fileName of migrationFiles) {
     if (applied.has(fileName)) continue;
-    const sql = readFileSync(join(migrationsDir, fileName), 'utf8');
-    db.exec(sql);
+    if (!shouldSkipMigrationSql(db, fileName)) {
+      const sql = readFileSync(join(migrationsDir, fileName), 'utf8');
+      db.exec(sql);
+    }
     db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(fileName);
   }
 }

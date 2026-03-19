@@ -3,6 +3,10 @@ import { DiscordHttpClient } from './discord-http-client.js';
 import { DiscordIMProvisioningAdapter } from './provisioning-adapter.js';
 import { DiscordIMMessagingAdapter } from './messaging-adapter.js';
 
+function makeParticipantToken(userId: string) {
+  return `${Buffer.from(userId, 'utf8').toString('base64url')}.fixture.signature`;
+}
+
 describe('DiscordHttpClient', () => {
   it('uses a proxy-aware dispatcher when proxy env is configured', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
@@ -379,6 +383,47 @@ describe('DiscordIMProvisioningAdapter', () => {
     vi.unstubAllGlobals();
   });
 
+  it('joinParticipant decodes the participant user id from the discord token prefix before calling users/@me', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: '1475474396008419490' }]),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantTokens: {
+        sonnet: makeParticipantToken('1475474396008419490'),
+      },
+    });
+
+    const result = await adapter.joinParticipant({
+      binding_id: 'bind-token-decode-1',
+      participant_ref: 'sonnet',
+      thread_ref: 'thread-token-decode',
+    });
+
+    expect(result).toEqual({ status: 'joined', detail: null });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/channels/thread-token-decode/thread-members/1475474396008419490',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+      }),
+    );
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      'https://discord.com/api/v10/users/@me',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('joinParticipant treats member-list verification failures as joined with detail', async () => {
     const mockFetch = vi
       .fn()
@@ -629,6 +674,47 @@ describe('DiscordIMProvisioningAdapter', () => {
     expect(secondBody.content).toContain('<@discord-user-opus>');
     expect(secondBody.content).toContain('Controller brief');
     expect(secondBody.content).toContain('Roster mention: <@discord-user-opus>');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('publishMessages decodes participant mentions from discord token prefixes without lookup requests', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantTokens: {
+        opus: makeParticipantToken('1475474563445035048'),
+      },
+    });
+
+    await adapter.publishMessages({
+      binding_id: 'bind-bootstrap-token-1',
+      thread_ref: 'thread-bootstrap-token-1',
+      messages: [
+        {
+          kind: 'bootstrap_root',
+          participant_refs: ['opus'],
+          body: 'Wake {{participant:opus}}',
+        },
+      ],
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/channels/thread-bootstrap-token-1/messages',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { content: string };
+    expect(body.content).toContain('<@1475474563445035048>');
+    expect(body.content).toContain('Wake <@1475474563445035048>');
 
     vi.unstubAllGlobals();
   });

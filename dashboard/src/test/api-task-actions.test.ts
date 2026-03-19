@@ -116,6 +116,43 @@ describe('dashboard task action api client', () => {
     });
   });
 
+  it('posts task skill policy to the real backend route', async () => {
+    const api = await import('@/lib/api');
+
+    await api.createTask({
+      title: '实现 skill aware task',
+      type: 'coding',
+      creator: 'archon',
+      description: '补 skill policy',
+      priority: 'high',
+      skill_policy: {
+        global_refs: ['planning-with-files'],
+        role_refs: {
+          developer: ['refactoring-ui'],
+        },
+        enforcement: 'required',
+      },
+    });
+
+    expectFetchCall('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: '实现 skill aware task',
+        type: 'coding',
+        creator: 'archon',
+        description: '补 skill policy',
+        priority: 'high',
+        skill_policy: {
+          global_refs: ['planning-with-files'],
+          role_refs: {
+            developer: ['refactoring-ui'],
+          },
+          enforcement: 'required',
+        },
+      }),
+    });
+  });
+
   it('targets the remaining task action routes with the expected payloads', async () => {
     const api = await import('@/lib/api');
 

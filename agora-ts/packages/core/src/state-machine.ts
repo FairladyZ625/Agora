@@ -1,5 +1,6 @@
 import type { AgoraDatabase } from '@agora-ts/db';
 import { GateType, TaskState } from './enums.js';
+import { orderedRuntimeGraphStageIds } from './template-graph-service.js';
 
 type WorkflowStage = {
   id: string;
@@ -50,11 +51,25 @@ export class StateMachine {
     return stage;
   }
 
-  getNextStage(workflow: WorkflowDefinition, currentStageId: string): WorkflowStage | null {
+  getNextStage(workflow: WorkflowDefinition, currentStageId: string, nextStageId?: string): WorkflowStage | null {
     const stages = workflow.stages ?? [];
     const currentIndex = stages.findIndex((item) => item.id === currentStageId);
     if (currentIndex === -1) {
       throw new Error(`Stage '${currentStageId}' not found in workflow`);
+    }
+    const graphCompleteTarget = resolveGraphNextStageId(workflow, currentStageId, 'complete');
+    if (graphCompleteTarget) {
+      return null;
+    }
+    const branchTargets = resolveGraphBranchTargets(workflow, currentStageId);
+    if (branchTargets.length > 0) {
+      if (!nextStageId) {
+        throw new Error(`Stage '${currentStageId}' branches and requires next_stage_id`);
+      }
+      if (!branchTargets.includes(nextStageId)) {
+        throw new Error(`next_stage_id '${nextStageId}' does not match a branch target for stage '${currentStageId}'`);
+      }
+      return stages.find((item) => item.id === nextStageId) ?? null;
     }
     const graphNextId = resolveGraphNextStageId(workflow, currentStageId, 'advance');
     if (graphNextId) {
@@ -75,6 +90,7 @@ export class StateMachine {
     }
     const graphRejectId = resolveGraphNextStageId(workflow, currentStageId, 'reject');
     if (graphRejectId) {
+      assertGraphRejectRewindsToEarlierStage(workflow, currentStageId, graphRejectId);
       return stages.find((item) => item.id === graphRejectId) ?? null;
     }
     const current = stages[currentIndex]!;
@@ -92,13 +108,13 @@ export class StateMachine {
     return stages[targetIndex] ?? null;
   }
 
-  advance(workflow: WorkflowDefinition, currentStageId: string): {
+  advance(workflow: WorkflowDefinition, currentStageId: string, nextStageId?: string): {
     currentStage: WorkflowStage;
     nextStage: WorkflowStage | null;
     completesTask: boolean;
   } {
     const currentStage = this.getCurrentStage(workflow, currentStageId);
-    const nextStage = this.getNextStage(workflow, currentStageId);
+    const nextStage = this.getNextStage(workflow, currentStageId, nextStageId);
     return {
       currentStage,
       nextStage,
@@ -189,7 +205,7 @@ export class StateMachine {
 function resolveGraphNextStageId(
   workflow: WorkflowDefinition,
   currentStageId: string,
-  kind: 'advance' | 'reject',
+  kind: 'advance' | 'reject' | 'complete',
 ) {
   const graph = workflow.graph;
   if (!graph) {
@@ -197,4 +213,34 @@ function resolveGraphNextStageId(
   }
   const edge = graph.edges.find((candidate) => candidate.from === currentStageId && candidate.kind === kind);
   return edge?.to ?? null;
+}
+
+function resolveGraphBranchTargets(workflow: WorkflowDefinition, currentStageId: string) {
+  const graph = workflow.graph;
+  if (!graph) {
+    return [];
+  }
+  return graph.edges
+    .filter((candidate) => candidate.from === currentStageId && candidate.kind === 'branch')
+    .map((edge) => edge.to);
+}
+
+function assertGraphRejectRewindsToEarlierStage(
+  workflow: WorkflowDefinition,
+  currentStageId: string,
+  targetStageId: string,
+) {
+  const graph = workflow.graph;
+  if (!graph) {
+    return;
+  }
+  const orderedIds = orderedRuntimeGraphStageIds(graph);
+  const currentIndex = orderedIds.indexOf(currentStageId);
+  const targetIndex = orderedIds.indexOf(targetStageId);
+  if (currentIndex === -1 || targetIndex === -1) {
+    return;
+  }
+  if (targetIndex >= currentIndex) {
+    throw new Error(`graph reject target '${targetStageId}' for stage '${currentStageId}' must reference an earlier stage`);
+  }
 }

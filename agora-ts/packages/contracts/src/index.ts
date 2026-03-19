@@ -12,6 +12,7 @@ export * from './participant-binding.js';
 export * from './runtime-session-binding.js';
 export * from './task-conversation.js';
 export * from './template-graph.js';
+export * from './workflow-roster.js';
 export * from './roles.js';
 export * from './runtime-recovery.js';
 export * from './project.js';

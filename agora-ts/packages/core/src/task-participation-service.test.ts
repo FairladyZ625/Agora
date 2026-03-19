@@ -174,6 +174,159 @@ describe('task participation service', () => {
         runtime_actor_ref: 'sonnet',
         continuity_ref: 'cont-92',
         presence_state: 'active',
+        binding_reason: 'live_session_match',
+        desired_runtime_presence: 'detached',
+        reconcile_stage_id: null,
+        reconciled_at: null,
+      }),
+    ]);
+  });
+
+  it('stores participant exposure reasoning for the active stage', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const service = new TaskParticipationService(db, {
+      participantIdGenerator: (() => {
+        const ids = ['pb-exp-1', 'pb-exp-2'];
+        return () => ids.shift() ?? 'pb-exp-x';
+      })(),
+    });
+
+    tasks.insertTask({
+      id: 'OC-PART-3',
+      title: 'exposure',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+        ],
+      },
+      workflow: { stages: [] },
+    });
+
+    service.seedParticipants('OC-PART-3', {
+      members: [
+        { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+      ],
+    });
+
+    service.applyExposureStates('OC-PART-3', 'develop', [
+      { agent_ref: 'opus', desired_exposure: 'in_thread', exposure_reason: 'controller_preserved' },
+      { agent_ref: 'sonnet', desired_exposure: 'hidden', exposure_reason: 'stage_roster_excluded' },
+    ]);
+
+    expect(service.listParticipants('OC-PART-3')).toEqual([
+      expect.objectContaining({
+        agent_ref: 'opus',
+        desired_exposure: 'in_thread',
+        exposure_reason: 'controller_preserved',
+        exposure_stage_id: 'develop',
+      }),
+      expect.objectContaining({
+        agent_ref: 'sonnet',
+        desired_exposure: 'hidden',
+        exposure_reason: 'stage_roster_excluded',
+        exposure_stage_id: 'develop',
+      }),
+    ]);
+  });
+
+  it('reconciles runtime session bindings against the active stage exposure state', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+    const service = new TaskParticipationService(db, {
+      participantIdGenerator: () => 'pb-runtime-1',
+      runtimeSessionIdGenerator: () => 'rs-runtime-1',
+      agentRuntimePort: {
+        resolveAgent(agentRef) {
+          return {
+            agent_ref: agentRef,
+            runtime_provider: 'openclaw',
+            runtime_actor_ref: agentRef,
+          };
+        },
+      },
+    });
+
+    tasks.insertTask({
+      id: 'OC-PART-4',
+      title: 'runtime reconcile',
+      description: '',
+      type: 'custom',
+      priority: 'normal',
+      creator: 'archon',
+      team: {
+        members: [
+          { role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' },
+        ],
+      },
+      workflow: { stages: [] },
+    });
+    service.seedParticipants('OC-PART-4', {
+      members: [{ role: 'developer', agentId: 'sonnet', model_preference: 'fast_coding' }],
+    });
+    bindings.insert({
+      id: 'binding-runtime-1',
+      task_id: 'OC-PART-4',
+      im_provider: 'discord',
+      thread_ref: 'thread-runtime-1',
+      status: 'active',
+    });
+
+    service.syncLiveSession({
+      source: 'openclaw',
+      agent_id: 'sonnet',
+      session_key: 'agent:sonnet:discord:thread:runtime',
+      channel: 'discord',
+      conversation_id: 'runtime',
+      thread_id: 'thread-runtime-1',
+      status: 'active',
+      last_event: 'session_start',
+      last_event_at: '2026-03-17T12:00:00.000Z',
+      metadata: {},
+    });
+
+    service.applyExposureStates('OC-PART-4', 'develop', [
+      { agent_ref: 'sonnet', desired_exposure: 'in_thread', exposure_reason: 'stage_roster_selected' },
+    ]);
+    service.reconcileRuntimeSessions('OC-PART-4', 'develop', [
+      { agent_ref: 'sonnet', desired_exposure: 'in_thread', exposure_reason: 'stage_roster_selected' },
+    ]);
+
+    expect(service.listRuntimeSessions('OC-PART-4')).toEqual([
+      expect.objectContaining({
+        participant_binding_id: 'pb-runtime-1',
+        desired_runtime_presence: 'attached',
+        binding_reason: 'stage_roster_selected',
+        reconcile_stage_id: 'develop',
+        reconciled_at: expect.any(String),
+      }),
+    ]);
+
+    service.applyExposureStates('OC-PART-4', 'review', [
+      { agent_ref: 'sonnet', desired_exposure: 'hidden', exposure_reason: 'stage_roster_excluded' },
+    ]);
+    service.reconcileRuntimeSessions('OC-PART-4', 'review', [
+      { agent_ref: 'sonnet', desired_exposure: 'hidden', exposure_reason: 'stage_roster_excluded' },
+    ]);
+
+    expect(service.listRuntimeSessions('OC-PART-4')).toEqual([
+      expect.objectContaining({
+        participant_binding_id: 'pb-runtime-1',
+        runtime_session_ref: 'agent:sonnet:discord:thread:runtime',
+        presence_state: 'active',
+        desired_runtime_presence: 'detached',
+        binding_reason: 'stage_roster_excluded',
+        reconcile_stage_id: 'review',
+        reconciled_at: expect.any(String),
       }),
     ]);
   });
