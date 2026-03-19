@@ -30,6 +30,7 @@ export * from './project-brain-chunk.js';
 export * from './project-brain-chunking-policy.js';
 export * from './project-brain-embedding-port.js';
 export * from './project-brain-index-service.js';
+export * from './project-brain-index-queue-service.js';
 export * from './project-brain-query-port.js';
 export * from './project-brain-retrieval-service.js';
 export * from './project-brain-service.js';

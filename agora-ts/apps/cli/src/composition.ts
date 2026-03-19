@@ -36,6 +36,7 @@ import {
   OpenClawCitizenProjectionAdapter,
   ProjectBrainAutomationService,
   ProjectBrainChunkingPolicy,
+  ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainRetrievalService,
   OsHostResourcePort,
@@ -266,6 +267,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
     createProjectBrainService: (context, deps) => new ProjectBrainService({
       projectService: deps.projectService,
@@ -273,6 +275,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: context.brainPackDir,
       }),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
     createCitizenService: (context, deps) => new CitizenService(context.db, {
       projectService: deps.projectService,

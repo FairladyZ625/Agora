@@ -27,6 +27,7 @@ import {
   OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
   HumanAccountService,
+  ProjectBrainIndexQueueService,
   ProjectBrainService,
   ProjectService,
   RolePackService,
@@ -350,6 +351,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
     createRolePackService: (context) => new RolePackService({
       db: context.db,
@@ -366,6 +368,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: context.brainPackDir,
       }),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
       agentRuntimePort: deps.agentRuntimePort,

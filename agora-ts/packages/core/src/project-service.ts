@@ -9,6 +9,7 @@ import type {
   ProjectKnowledgeRecapSummary,
   ProjectKnowledgeSearchResult,
 } from './project-knowledge-port.js';
+import type { ProjectBrainIndexQueueService } from './project-brain-index-queue-service.js';
 
 export interface CreateProjectInput {
   id?: string | null | undefined;
@@ -20,15 +21,18 @@ export interface CreateProjectInput {
 
 export interface ProjectServiceOptions {
   knowledgePort?: ProjectKnowledgePort;
+  projectBrainIndexQueueService?: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'>;
 }
 
 export class ProjectService {
   private readonly projects: ProjectRepository;
   private readonly knowledgePort: ProjectKnowledgePort | undefined;
+  private readonly projectBrainIndexQueueService: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'> | undefined;
 
   constructor(db: AgoraDatabase, options: ProjectServiceOptions = {}) {
     this.projects = new ProjectRepository(db);
     this.knowledgePort = options.knowledgePort;
+    this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }
 
   createProject(input: CreateProjectInput): StoredProject {
@@ -76,6 +80,18 @@ export class ProjectService {
   }): void {
     this.requireProject(input.project_id);
     this.knowledgePort?.recordTaskBinding(input);
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: 'timeline',
+      document_slug: 'timeline',
+      reason: 'task_binding',
+    });
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: 'index',
+      document_slug: 'index',
+      reason: 'task_binding',
+    });
   }
 
   recordTaskRecap(input: {
@@ -92,6 +108,24 @@ export class ProjectService {
   }): void {
     this.requireProject(input.project_id);
     this.knowledgePort?.recordTaskRecap(input);
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: 'timeline',
+      document_slug: 'timeline',
+      reason: 'task_recap',
+    });
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: 'index',
+      document_slug: 'index',
+      reason: 'task_recap',
+    });
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: 'recap',
+      document_slug: input.task_id,
+      reason: 'task_recap',
+    });
   }
 
   getProjectIndex(projectId: string): ProjectKnowledgeDocument | null {
@@ -109,7 +143,20 @@ export class ProjectService {
     if (!this.knowledgePort) {
       throw new Error('Project knowledge port is not configured');
     }
-    return this.knowledgePort.upsertKnowledgeEntry(input);
+    const document = this.knowledgePort.upsertKnowledgeEntry(input);
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: input.kind,
+      document_slug: input.slug,
+      reason: 'knowledge_upsert',
+    });
+    this.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: input.project_id,
+      document_kind: 'index',
+      document_slug: 'index',
+      reason: 'knowledge_upsert',
+    });
+    return document;
   }
 
   listKnowledgeEntries(projectId: string, kind?: ProjectKnowledgeKind): ProjectKnowledgeDocument[] {
