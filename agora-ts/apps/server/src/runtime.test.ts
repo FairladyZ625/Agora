@@ -114,6 +114,12 @@ afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
   delete process.env.AGORA_CRAFTSMAN_SERVER_MODE;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.OPENAI_EMBEDDING_MODEL;
+  delete process.env.OPENAI_EMBEDDING_DIMENSION;
+  delete process.env.QDRANT_URL;
+  delete process.env.QDRANT_API_KEY;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
