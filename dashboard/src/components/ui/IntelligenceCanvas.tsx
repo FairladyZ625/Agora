@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface IntelligenceCanvasProps {
   activeCount: number;
@@ -42,6 +42,10 @@ function hexToRgb(hex: string): [number, number, number] {
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
   return [r, g, b];
+}
+
+function readThemeColor(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 function compileShader(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
@@ -180,17 +184,11 @@ export function IntelligenceCanvas({
       // Determine target color
       let color: [number, number, number];
       if (err) {
-        color = hexToRgb('#ef4444');
+        color = hexToRgb(readThemeColor('--intelligence-error-color'));
       } else if (rc > 0) {
-        color = hexToRgb('#f59e0b');
+        color = hexToRgb(readThemeColor('--intelligence-review-color'));
       } else {
-        // Try to read CSS variable, fall back to default blue
-        const cssColor = getComputedStyle(document.documentElement)
-          .getPropertyValue('--color-primary')
-          .trim();
-        color = cssColor.startsWith('#') && cssColor.length === 7
-          ? hexToRgb(cssColor)
-          : hexToRgb('#0284c7');
+        color = hexToRgb(readThemeColor('--intelligence-active-color'));
       }
 
       glContext.uniform3f(uColor, color[0], color[1], color[2]);
@@ -309,18 +307,16 @@ export function IntelligenceCanvas({
 const IntelligenceCanvasWithFallback = React.memo(function IntelligenceCanvasWithFallback(
   props: IntelligenceCanvasProps,
 ) {
-  // Check WebGL2 support once at module evaluation time via a lazy ref pattern
-  const supportsWebGL2 = useRef<boolean | null>(null);
-  if (supportsWebGL2.current === null) {
+  const [supportsWebGL2] = useState(() => {
     try {
       const testCanvas = document.createElement('canvas');
-      supportsWebGL2.current = !!testCanvas.getContext('webgl2');
+      return !!testCanvas.getContext('webgl2');
     } catch {
-      supportsWebGL2.current = false;
+      return false;
     }
-  }
+  });
 
-  if (!supportsWebGL2.current) {
+  if (!supportsWebGL2) {
     return <CssFallback className={props.className} />;
   }
 

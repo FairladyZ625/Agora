@@ -6,23 +6,28 @@ const FONT_BOLD = `bold ${FONT}`;
 const PADDING_X = 12;
 const PADDING_TOP = 8;
 
-const ANSI_COLORS: Record<number, string> = {
-  30: '#4a4a4a', 31: '#ef4444', 32: '#22c55e', 33: '#f59e0b',
-  34: '#3b82f6', 35: '#a855f7', 36: '#06b6d4', 37: '#d1d5db',
-  90: '#6b7280', 91: '#f87171', 92: '#4ade80', 93: '#fbbf24',
-  94: '#60a5fa', 95: '#c084fc', 96: '#22d3ee', 97: '#f9fafb',
+const ANSI_COLOR_VARS: Record<number, string> = {
+  30: '--runtime-log-ansi-30', 31: '--runtime-log-ansi-31', 32: '--runtime-log-ansi-32', 33: '--runtime-log-ansi-33',
+  34: '--runtime-log-ansi-34', 35: '--runtime-log-ansi-35', 36: '--runtime-log-ansi-36', 37: '--runtime-log-ansi-37',
+  90: '--runtime-log-ansi-90', 91: '--runtime-log-ansi-91', 92: '--runtime-log-ansi-92', 93: '--runtime-log-ansi-93',
+  94: '--runtime-log-ansi-94', 95: '--runtime-log-ansi-95', 96: '--runtime-log-ansi-96', 97: '--runtime-log-ansi-97',
 };
 
-const DEFAULT_COLOR = '#d1d5db';
-const ANSI_RE = /\x1b\[([0-9;]*)m/g;
+const DEFAULT_COLOR_VAR = '--runtime-log-ansi-37';
+const ANSI_ESCAPE = String.fromCharCode(27);
+const ANSI_RE = new RegExp(`${ANSI_ESCAPE}\\[([0-9;]*)m`, 'g');
 
 type Segment = { text: string; color: string; bold: boolean };
 type ParsedLine = Segment[];
 
+function readThemeColor(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 function parseAnsi(raw: string): ParsedLine {
   const segments: Segment[] = [];
   let lastIndex = 0;
-  let currentColor = DEFAULT_COLOR;
+  let currentColor = readThemeColor(DEFAULT_COLOR_VAR);
   let bold = false;
 
   ANSI_RE.lastIndex = 0;
@@ -33,16 +38,16 @@ function parseAnsi(raw: string): ParsedLine {
     }
     const codes = match[1].split(';').map(Number);
     for (const code of codes) {
-      if (code === 0) { currentColor = DEFAULT_COLOR; bold = false; }
+      if (code === 0) { currentColor = readThemeColor(DEFAULT_COLOR_VAR); bold = false; }
       else if (code === 1) { bold = true; }
-      else if (ANSI_COLORS[code] !== undefined) { currentColor = ANSI_COLORS[code]; }
+      else if (ANSI_COLOR_VARS[code] !== undefined) { currentColor = readThemeColor(ANSI_COLOR_VARS[code]); }
     }
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < raw.length) {
     segments.push({ text: raw.slice(lastIndex), color: currentColor, bold });
   }
-  return segments.length > 0 ? segments : [{ text: raw, color: DEFAULT_COLOR, bold: false }];
+  return segments.length > 0 ? segments : [{ text: raw, color: readThemeColor(DEFAULT_COLOR_VAR), bold: false }];
 }
 
 export interface RuntimeLogViewerProps {
@@ -77,7 +82,7 @@ export function RuntimeLogViewer({ output, loading, className, maxLines = 500 }:
     const scrollTop = scrollTopRef.current;
     const totalHeight = lines.length * LINE_HEIGHT + PADDING_TOP * 2;
 
-    ctx.fillStyle = '#0f1117';
+    ctx.fillStyle = readThemeColor('--runtime-log-bg');
     ctx.fillRect(0, 0, width, height);
 
     const firstLine = Math.max(0, Math.floor((scrollTop - PADDING_TOP) / LINE_HEIGHT));
@@ -104,14 +109,14 @@ export function RuntimeLogViewer({ output, loading, className, maxLines = 500 }:
       const trackH = height - 8;
       const thumbH = Math.max(20, (height / totalHeight) * trackH);
       const thumbY = 4 + (scrollTop / (totalHeight - height)) * (trackH - thumbH);
-      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillStyle = readThemeColor('--runtime-log-thumb');
       ctx.beginPath();
       ctx.roundRect(width - 6, thumbY, 4, thumbH, 2);
       ctx.fill();
     }
 
     // Line count badge
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillStyle = readThemeColor('--runtime-log-line-count');
     ctx.font = '10px ui-monospace, monospace';
     ctx.textAlign = 'right';
     ctx.fillText(`${lines.length} lines`, width - 12, height - 14);

@@ -523,7 +523,7 @@
   height: 240px;
   border-radius: 6px;
   overflow: hidden;
-  background: #0f1117;
+  background: var(--runtime-log-bg);
   cursor: text;
   user-select: none;
   touch-action: none;
@@ -541,15 +541,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 17, 23, 0.8);
+  background: var(--runtime-log-overlay);
   z-index: 1;
 }
 
 .runtime-log-viewer__spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-top-color: rgba(255, 255, 255, 0.6);
+  border: 2px solid var(--runtime-log-spinner-track);
+  border-top-color: var(--runtime-log-spinner-head);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -560,7 +560,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--runtime-log-empty-color);
   font: 11px ui-monospace, monospace;
   letter-spacing: 0.05em;
 }
