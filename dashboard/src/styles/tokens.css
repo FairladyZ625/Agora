@@ -36,7 +36,7 @@
   --motion-flow-duration: 2800ms;
   --motion-travel-duration: 3200ms;
   --motion-terminal-duration: 520ms;
-  --motion-page-duration: 420ms;
+  --motion-page-duration: 560ms;
   --motion-stagger-duration: 160ms;
   --motion-loop-play-state: running;
   --space-1: 4px;
@@ -296,7 +296,7 @@
   --motion-flow-duration: 5600ms;
   --motion-travel-duration: 4800ms;
   --motion-terminal-duration: 320ms;
-  --motion-page-duration: 220ms;
+  --motion-page-duration: 320ms;
   --motion-stagger-duration: 120ms;
   --motion-loop-play-state: paused;
 }
