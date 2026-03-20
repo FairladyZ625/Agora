@@ -56,8 +56,7 @@ function toggleRoleSkillRef(
 ) {
   const nextRefs = toggleSkillRef(current[role] ?? [], skillRef);
   if (nextRefs.length === 0) {
-    const rest = { ...current };
-    delete rest[role];
+    const { [role]: _removed, ...rest } = current;
     return rest;
   }
   return {
