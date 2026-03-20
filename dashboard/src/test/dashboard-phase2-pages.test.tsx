@@ -189,6 +189,14 @@ describe('dashboard phase 2 routes', () => {
 
   it('shows task action controls for actionable live task details', () => {
     taskStoreState.selectedTaskId = 'OC-001';
+    taskStoreState.executionTailById = {
+      'exec-1': {
+        output: '\u001b[32mBuild passed\u001b[0m\nNext step ready',
+        available: true,
+        fetchedAt: '2026-03-07T00:15:00.000Z',
+        live: true,
+      },
+    };
     taskStoreState.selectedTaskStatus = {
       task: {
         ...taskStoreState.tasks[0],
@@ -333,6 +341,7 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
     expect(screen.getByText('执行控制面')).toBeInTheDocument();
     expect(screen.getAllByText('Please provide the next coding instruction.').length).toBeGreaterThan(0);
+    expect(screen.getByRole('log', { name: 'Agent runtime output' })).toBeInTheDocument();
   });
 
   it('exposes orphan cleanup from the settings surface', () => {

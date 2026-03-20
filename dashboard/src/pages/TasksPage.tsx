@@ -11,6 +11,7 @@ import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import { StaggeredItem } from '@/components/ui/StaggeredItem';
+import { RuntimeLogViewer } from '@/components/ui/RuntimeLogViewer';
 import { normalizeCraftsmanId } from '@/lib/orchestrationRoles';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
@@ -974,15 +975,18 @@ export function TasksPage() {
                                 </p>
                               ) : null}
                               <div className="task-tail-card">
-                                <pre className="task-tail-pre">
-                                  {selectedExecutionTail
-                                    ? (
-                                        selectedExecutionTail.available
-                                          ? (selectedExecutionTail.output ?? tasksPageCopy.executionTailEmpty)
-                                          : tasksPageCopy.executionTailUnavailable
-                                      )
-                                    : tasksPageCopy.executionTailEmpty}
-                                </pre>
+                                <RuntimeLogViewer
+                                  output={
+                                    selectedExecutionTail
+                                      ? (
+                                          selectedExecutionTail.available
+                                            ? (selectedExecutionTail.output ?? tasksPageCopy.executionTailEmpty)
+                                            : tasksPageCopy.executionTailUnavailable
+                                        )
+                                      : tasksPageCopy.executionTailEmpty
+                                  }
+                                  loading={selectedExecutionTailLoading}
+                                />
                               </div>
                             </div>
                             {selectedExecution.callbackPayload?.inputRequest?.transport === 'text' ? (
