@@ -386,6 +386,64 @@ describe('server runtime', () => {
     vi.useRealTimers();
   });
 
+  it('drains project brain index jobs during observation ticks when an index worker is provided', () => {
+    vi.useFakeTimers();
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+          startup_recovery_on_boot: false,
+        },
+      }),
+    );
+
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 0,
+      probed: 0,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => ({
+      scanned_tasks: 0,
+      controller_pings: 0,
+      roster_pings: 0,
+      inbox_items: 0,
+    }));
+    const drainPendingJobs = vi.fn().mockResolvedValue({
+      processed: 1,
+      succeeded: 1,
+      failed: 0,
+      pending: 0,
+    });
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+        createProjectBrainIndexWorkerService: () => ({
+          drainPendingJobs,
+        }) as never,
+      },
+    });
+
+    vi.advanceTimersByTime(5000);
+
+    expect(drainPendingJobs).toHaveBeenCalledWith({ limit: 25 });
+    runtime.observationScheduler.stop();
+    runtime.db.close();
+    vi.useRealTimers();
+  });
+
   it('accepts composition factory overrides for legacy runtime dependencies', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');

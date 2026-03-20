@@ -6,13 +6,21 @@ import { Command } from 'commander';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
-import { deriveGraphFromStages } from '@agora-ts/core';
+import {
+  deriveGraphFromStages,
+  OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  ProjectBrainDoctorService,
+  ProjectBrainIndexQueueService,
+  ProjectBrainIndexWorkerService,
+} from '@agora-ts/core';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
   CitizenService,
   DashboardQueryService,
   ProjectBrainAutomationService,
+  ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   ProjectBrainIndexService,
+  ProjectBrainIndexWorkerService as ProjectBrainIndexWorkerServiceContract,
   ProjectBrainRetrievalService,
   ProjectBrainService,
   ProjectService,
@@ -72,6 +80,8 @@ export interface CliDependencies {
   projectBrainAutomationService?: ProjectBrainAutomationService;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
+  projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
+  projectBrainIndexWorkerService?: ProjectBrainIndexWorkerServiceContract;
   citizenService?: CitizenService;
   legacyRuntimeService?: LegacyRuntimeServiceLike;
   tmuxRuntimeService?: LegacyRuntimeServiceLike;
@@ -378,6 +388,57 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
   const getProjectBrainIndexService = () => deps.projectBrainIndexService ?? resolveComposition().projectBrainIndexService;
   const getProjectBrainRetrievalService = () => deps.projectBrainRetrievalService ?? resolveComposition().projectBrainRetrievalService;
+  let projectBrainDoctorService: ProjectBrainDoctorServiceContract | null | undefined;
+  let projectBrainIndexWorkerService: ProjectBrainIndexWorkerServiceContract | null | undefined;
+  const getProjectBrainDoctorService = () => {
+    if (deps.projectBrainDoctorService) {
+      return deps.projectBrainDoctorService;
+    }
+    if (projectBrainDoctorService !== undefined) {
+      return projectBrainDoctorService ?? undefined;
+    }
+    const composition = resolveComposition();
+    const embeddingPort = process.env.OPENAI_API_KEY
+      ? new OpenAiCompatibleProjectBrainEmbeddingAdapter()
+      : undefined;
+    projectBrainDoctorService = new ProjectBrainDoctorService({
+      dbPath: deps.dbPath ?? composition.config.db_path,
+      projectBrainService: composition.projectBrainService,
+      queueService: new ProjectBrainIndexQueueService(composition.db),
+      ...(composition.projectBrainIndexService ? { indexService: composition.projectBrainIndexService } : {}),
+      ...(embeddingPort ? { embeddingPort } : {}),
+    });
+    return projectBrainDoctorService;
+  };
+  const getProjectBrainIndexWorkerService = () => {
+    if (deps.projectBrainIndexWorkerService) {
+      return deps.projectBrainIndexWorkerService;
+    }
+    if (projectBrainIndexWorkerService !== undefined) {
+      return projectBrainIndexWorkerService ?? undefined;
+    }
+    const composition = resolveComposition();
+    if (!composition.projectBrainIndexService) {
+      projectBrainIndexWorkerService = null;
+      return undefined;
+    }
+    projectBrainIndexWorkerService = new ProjectBrainIndexWorkerService({
+      queueService: new ProjectBrainIndexQueueService(composition.db),
+      indexService: composition.projectBrainIndexService,
+    });
+    return projectBrainIndexWorkerService;
+  };
+  const maybeDrainProjectBrainIndexJobs = async (limit = 5) => {
+    const worker = getProjectBrainIndexWorkerService();
+    if (!worker) {
+      return;
+    }
+    try {
+      await worker.drainPendingJobs({ limit });
+    } catch (error) {
+      writeLine(stderr, `[agora] project brain index auto-drain failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
   const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
@@ -766,7 +827,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--body <body>', 'knowledge body')
     .option('--body-file <path>', 'load body from file')
     .option('--source-task <taskId>', 'source task id', collectOption, [])
-    .action((options: {
+    .action(async (options: {
       project: string;
       kind: 'decision' | 'fact' | 'open_question' | 'reference';
       slug: string;
@@ -792,6 +853,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Knowledge 已写入: ${doc.path}`);
       writeLine(stdout, `kind: ${doc.kind}`);
       writeLine(stdout, `slug: ${doc.slug}`);
+      await maybeDrainProjectBrainIndexJobs();
     });
 
   projectKnowledge
@@ -1215,6 +1277,38 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   projectBrain
+    .command('doctor')
+    .description('诊断 project brain embedding/vector/queue 状态')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: { project: string; json?: boolean }) => {
+      const doctorService = getProjectBrainDoctorService();
+      if (doctorService) {
+        const result = await doctorService.diagnoseProject(options.project);
+        if (options.json) {
+          writeLine(stdout, JSON.stringify(result, null, 2));
+          return;
+        }
+        writeLine(stdout, `project=${result.project_id} db=${result.db_path}`);
+        writeLine(stdout, `embedding configured=${result.embedding.configured} healthy=${result.embedding.healthy} provider=${result.embedding.provider} model=${result.embedding.model ?? '-'}`);
+        writeLine(stdout, `vector configured=${result.vector_index.configured} healthy=${result.vector_index.healthy} provider=${result.vector_index.provider} chunks=${result.vector_index.chunk_count ?? 0}`);
+        writeLine(stdout, `jobs pending=${result.jobs.pending} running=${result.jobs.running} failed=${result.jobs.failed} succeeded=${result.jobs.succeeded}`);
+        writeLine(stdout, `drift detected=${result.drift.detected} documents_without_jobs=${result.drift.documents_without_jobs}`);
+        return;
+      }
+      const payload = {
+        project_id: options.project,
+        status: 'not_wired',
+        message: 'project brain doctor is not wired yet',
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, payload.message);
+    });
+
+  projectBrain
     .command('append')
     .description('向 project brain 追加 Markdown 内容')
     .requiredOption('--project <projectId>', 'project id')
@@ -1226,7 +1320,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--body <body>', 'markdown body')
     .option('--body-file <path>', 'load body from file')
     .option('--source-task <taskId>', 'source task id', collectOption, [])
-    .action((options: {
+    .action(async (options: {
       project: string;
       kind: 'timeline' | 'decision' | 'fact' | 'open_question' | 'reference';
       slug?: string;
@@ -1253,6 +1347,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
       writeLine(stdout, `Brain 已追加: ${doc.kind}/${doc.slug}`);
       writeLine(stdout, `path: ${doc.path}`);
+      await maybeDrainProjectBrainIndexJobs();
     });
 
   projectBrain
@@ -1267,7 +1362,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--body <body>', 'markdown body')
     .option('--body-file <path>', 'load body from file')
     .option('--source-task <taskId>', 'source task id', collectOption, [])
-    .action((options: {
+    .action(async (options: {
       project: string;
       kind: 'decision' | 'fact' | 'open_question' | 'reference';
       slug?: string;
@@ -1294,6 +1389,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
       writeLine(stdout, `Brain 已提升: ${doc.kind}/${doc.slug}`);
       writeLine(stdout, `path: ${doc.path}`);
+      await maybeDrainProjectBrainIndexJobs();
     });
 
   citizens
