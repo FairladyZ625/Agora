@@ -251,10 +251,10 @@ export function TasksPage() {
   }, [filteredTasks, selectedTaskId, selectTask, taskId]);
 
   const activeTask =
-    filteredTasks.find((task) => task.id === (taskId ?? selectedTaskId)) ??
     ((taskId || selectedTaskId) && selectedTaskStatus?.task.id === (taskId ?? selectedTaskId)
       ? selectedTaskStatus.task
       : null) ??
+    filteredTasks.find((task) => task.id === (taskId ?? selectedTaskId)) ??
     filteredTasks[0] ??
     null;
 
@@ -277,6 +277,7 @@ export function TasksPage() {
   const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
   const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
   const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
+  const canRunGateActions = activeTask?.sourceState === 'active';
   const activeBlueprint = activeStatus?.taskBlueprint;
   const activeTimeline = useMemo(() => buildTaskTimeline(activeStatus), [activeStatus]);
   const activeSubtasks = activeStatus?.subtasks ?? [];
@@ -1152,7 +1153,7 @@ export function TasksPage() {
                         </button>
                       </>
                     ) : null}
-                    {activeGateType === 'approval' ? (
+                    {canRunGateActions && activeGateType === 'approval' ? (
                       <>
                         <button type="button" className="button-primary" onClick={() => void runAction('approve')}>
                           {tasksPageCopy.approveAction}
@@ -1163,7 +1164,7 @@ export function TasksPage() {
                       </>
                     ) : null}
 
-                    {activeGateType === 'quorum' ? (
+                    {canRunGateActions && activeGateType === 'quorum' ? (
                       <>
                         <button type="button" className="button-primary" onClick={() => void runAction('confirm', { vote: 'approve' })}>
                           {tasksPageCopy.confirmApproveAction}

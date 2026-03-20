@@ -608,6 +608,7 @@ export class TaskService {
 
   approveTask(taskId: string, options: ApproveTaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.approverId, 'approve');
     this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
@@ -642,6 +643,7 @@ export class TaskService {
 
   rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.rejectorId, 'reject');
     this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
@@ -685,6 +687,7 @@ export class TaskService {
 
   archonApproveTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-approve');
     this.gateService.routeGateCommand(task, stage, 'archon-approve', options.reviewerId);
@@ -725,6 +728,7 @@ export class TaskService {
 
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-reject');
     this.gateService.routeGateCommand(task, stage, 'archon-reject', options.reviewerId);
@@ -781,6 +785,7 @@ export class TaskService {
     if (advance.completesTask) {
       const done = this.taskRepository.updateTask(task.id, task.version, {
         state: TaskState.DONE,
+        current_stage: null,
       });
       this.refreshTaskBrainWorkspace(done);
       this.materializeTaskCloseRecap(done, actor);
@@ -1624,6 +1629,7 @@ export class TaskService {
     if (advance.completesTask) {
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
+        current_stage: null,
       });
       this.refreshTaskBrainWorkspace(done);
       this.materializeTaskCloseRecap(done, 'archon', options.reason);
@@ -1677,6 +1683,7 @@ export class TaskService {
 
   confirmTask(taskId: string, options: ConfirmTaskOptions): StoredTask & { quorum: { approved: number; total: number } } {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.voterId, 'confirm');
     this.gateService.routeGateCommand(task, stage, 'confirm', options.voterId);
@@ -2314,6 +2321,12 @@ export class TaskService {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
     return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+  }
+
+  private assertTaskActive(task: StoredTask) {
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
+    }
   }
 
   private assertStageRosterAction(

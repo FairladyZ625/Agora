@@ -734,7 +734,7 @@ describe('task service', () => {
     expect(advanced).toMatchObject({
       id: 'OC-GRAPH-COMPLETE-1',
       state: 'done',
-      current_stage: 'deliver',
+      current_stage: null,
     });
   });
 
@@ -1639,7 +1639,7 @@ describe('task service', () => {
     expect(approved).toMatchObject({
       id: 'OC-102',
       state: 'done',
-      current_stage: 'review',
+      current_stage: null,
     });
     expect(status.subtasks).toMatchObject([
       {
@@ -2634,6 +2634,54 @@ describe('task service', () => {
       writer_agent: 'writer-agent',
     });
     expect(archiveJobs[0]?.target_path).toContain('OC-114');
+  });
+
+  it('clears current_stage and blocks further gate decisions after force advancing a terminal stage to done', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DONE-GATE-1',
+      archonUsers: ['archon'],
+    });
+
+    service.createTask({
+      title: 'terminal gate closeout',
+      type: 'brainstorm',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: '' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: '' },
+        ],
+      },
+      workflow_override: {
+        type: 'brainstorm-summarize',
+        stages: [
+          { id: 'brainstorm', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'summarize', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+      },
+    });
+
+    service.advanceTask('OC-DONE-GATE-1', { callerId: 'archon' });
+    const done = service.forceAdvanceTask('OC-DONE-GATE-1', { reason: 'operator override' });
+
+    expect(done).toMatchObject({
+      id: 'OC-DONE-GATE-1',
+      state: 'done',
+      current_stage: null,
+    });
+    expect(() => service.approveTask('OC-DONE-GATE-1', {
+      approverId: 'archon',
+      comment: 'too late',
+    })).toThrow("Task OC-DONE-GATE-1 is in state 'done', expected 'active'");
+    expect(() => service.rejectTask('OC-DONE-GATE-1', {
+      rejectorId: 'archon',
+      reason: 'too late',
+    })).toThrow("Task OC-DONE-GATE-1 is in state 'done', expected 'active'");
   });
 
   it('fails running craftsmen work on resume when the session is no longer alive', () => {

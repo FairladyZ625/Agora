@@ -1774,11 +1774,11 @@ describe('agora-ts cli', () => {
     });
     tasks.updateTask('OC-302', 1, { state: 'created' });
     tasks.updateTask('OC-302', 2, { state: 'active', current_stage: 'vote' });
-    tasks.updateTask('OC-302', 3, { state: 'blocked' });
     db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-302', 'vote');
 
     await program.parseAsync(['confirm', 'OC-302', '--voter-id', 'opus', '--vote', 'approve', '--comment', 'first'], { from: 'user' });
     await program.parseAsync(['confirm', 'OC-302', '--voter-id', 'gpt52', '--vote', 'approve', '--comment', 'second'], { from: 'user' });
+    tasks.updateTask('OC-302', 3, { state: 'blocked' });
     await program.parseAsync(['unblock', 'OC-302', '--reason', 'dependency cleared'], { from: 'user' });
 
     expect(stderr.value).toBe('');

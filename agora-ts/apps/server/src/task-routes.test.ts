@@ -869,7 +869,7 @@ describe('task routes', () => {
     expect(response.json()).toMatchObject({
       id: 'OC-201C',
       state: 'done',
-      current_stage: 'deliver',
+      current_stage: null,
     });
   });
 

@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { AppShell } from '@/components/layouts/AppShell';
 import { DashboardHome } from '@/pages/DashboardHome';
 import { TasksPage } from '@/pages/TasksPage';
@@ -166,6 +166,39 @@ describe('dashboard visual rescue target structure', () => {
     expect(screen.getByRole('button', { name: /打开裁决详情/i })).toBeInTheDocument();
     expect(screen.getByText('裁决说明')).toBeInTheDocument();
     expect(screen.getByText('当前正在操作真实裁决接口。')).toBeInTheDocument();
+  });
+
+  it('routes review approval through the live resolveReview action', async () => {
+    taskStoreState.selectedTaskId = 'TSK-002';
+    taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-002');
+    renderWithRouter(<ReviewsPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '批准执行' }));
+      await Promise.resolve();
+    });
+    expect(resolveReview).toHaveBeenCalledWith('TSK-002', 'approve', '');
+  });
+
+  it('hides review decision controls when the selected task is no longer gate_waiting', () => {
+    taskStoreState.selectedTaskId = 'TSK-002';
+    taskStoreState.selectedTaskStatus = {
+      ...getMockTaskStatus('TSK-002')!,
+      task: {
+        ...getMockTaskStatus('TSK-002')!.task,
+        state: 'completed',
+        sourceState: 'done',
+      },
+    };
+    renderWithRouter(
+      <Routes>
+        <Route path="/reviews/:reviewId" element={<ReviewsPage />} />
+      </Routes>,
+      ['/reviews/TSK-002'],
+    );
+
+    expect(screen.queryByRole('button', { name: '批准执行' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '驳回' })).not.toBeInTheDocument();
   });
 
   it('opens a secondary task detail sheet on nested task routes', () => {

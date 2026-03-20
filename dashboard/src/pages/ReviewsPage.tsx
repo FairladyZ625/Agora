@@ -86,7 +86,6 @@ export function ReviewsPage() {
   }, [currentSelectedId, selectTask]);
 
   const selected =
-    filteredQueue.find((item) => item.id === currentSelectedId) ??
     ((currentSelectedId || reviewId) && selectedTaskStatus?.task.id === currentSelectedId
       ? {
           id: selectedTaskStatus.task.id,
@@ -102,6 +101,7 @@ export function ReviewsPage() {
           state: selectedTaskStatus.task.state,
         }
       : null) ??
+    filteredQueue.find((item) => item.id === currentSelectedId) ??
     filteredQueue[0] ??
     null;
   const selectedStatus =
@@ -109,6 +109,7 @@ export function ReviewsPage() {
       ? selectedTaskStatus
       : null;
   const activeFilterCount = priorityFilter.length + gateFilter.length + creatorFilter.length;
+  const canResolveSelected = selected?.state === 'gate_waiting';
 
   const handleDecision = async (decision: 'approve' | 'reject') => {
     if (!selected) return;
@@ -359,18 +360,20 @@ export function ReviewsPage() {
                   />
                 </div>
 
-                <div className="review-inspector__section">
-                  <div className="review-inspector__actions">
-                    <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
-                      <XCircle size={16} />
-                      {reviewsPageCopy.rejectAction}
-                    </button>
-                    <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
-                      <CheckCircle2 size={16} />
-                      {reviewsPageCopy.approveAction}
-                    </button>
+                {canResolveSelected ? (
+                  <div className="review-inspector__section">
+                    <div className="review-inspector__actions">
+                      <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
+                        <XCircle size={16} />
+                        {reviewsPageCopy.rejectAction}
+                      </button>
+                      <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
+                        <CheckCircle2 size={16} />
+                        {reviewsPageCopy.approveAction}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <div className="review-inspector__section review-inspector__section--meta">
                   <button

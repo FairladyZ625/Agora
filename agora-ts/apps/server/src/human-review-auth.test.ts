@@ -35,7 +35,10 @@ describe('human review auth', () => {
     });
     const taskService = new TaskService(db, {
       templatesDir,
-      taskIdGenerator: () => 'OC-HUMAN-SESSION',
+      taskIdGenerator: (() => {
+        const ids = ['OC-HUMAN-SESSION-APPROVE', 'OC-HUMAN-SESSION-REJECT'];
+        return () => ids.shift() ?? 'OC-HUMAN-SESSION-FALLBACK';
+      })(),
       archonUsers: ['lizeyu'],
     });
     taskService.createTask({
@@ -45,12 +48,25 @@ describe('human review auth', () => {
       description: '',
       priority: 'normal',
     });
-    taskService.archonApproveTask('OC-HUMAN-SESSION', {
+    taskService.archonApproveTask('OC-HUMAN-SESSION-APPROVE', {
       reviewerId: 'lizeyu',
       comment: 'outline ok',
     });
-    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-SESSION');
-    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-SESSION', 'review');
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-SESSION-APPROVE');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-SESSION-APPROVE', 'review');
+    taskService.createTask({
+      title: 'dashboard session reject',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    taskService.archonApproveTask('OC-HUMAN-SESSION-REJECT', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-SESSION-REJECT');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-SESSION-REJECT', 'review');
     const app = buildApp({
       taskService,
       humanAccountService: humanAccounts,
@@ -77,7 +93,7 @@ describe('human review auth', () => {
 
     const approve = await app.inject({
       method: 'POST',
-      url: '/api/tasks/OC-HUMAN-SESSION/approve',
+      url: '/api/tasks/OC-HUMAN-SESSION-APPROVE/approve',
       headers,
       payload: {
         approver_id: 'spoofed-approver',
@@ -86,7 +102,7 @@ describe('human review auth', () => {
     });
     const reject = await app.inject({
       method: 'POST',
-      url: '/api/tasks/OC-HUMAN-SESSION/reject',
+      url: '/api/tasks/OC-HUMAN-SESSION-REJECT/reject',
       headers,
       payload: {
         rejector_id: 'spoofed-rejector',
@@ -97,12 +113,13 @@ describe('human review auth', () => {
     expect(approve.statusCode).toBe(200);
     expect(reject.statusCode).toBe(200);
 
-    const reviewStatus = taskService.getTaskStatus('OC-HUMAN-SESSION');
-    expect(reviewStatus.flow_log).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ event: 'gate_passed', actor: 'lizeyu' }),
-        expect.objectContaining({ event: 'rejected', actor: 'lizeyu' }),
-      ]),
+    const approveStatus = taskService.getTaskStatus('OC-HUMAN-SESSION-APPROVE');
+    const rejectStatus = taskService.getTaskStatus('OC-HUMAN-SESSION-REJECT');
+    expect(approveStatus.flow_log).toEqual(
+      expect.arrayContaining([expect.objectContaining({ event: 'gate_passed', actor: 'lizeyu' })]),
+    );
+    expect(rejectStatus.flow_log).toEqual(
+      expect.arrayContaining([expect.objectContaining({ event: 'rejected', actor: 'lizeyu' })]),
     );
   });
 

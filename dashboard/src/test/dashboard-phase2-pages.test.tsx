@@ -344,6 +344,36 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('log', { name: 'Agent runtime output' })).toBeInTheDocument();
   });
 
+  it('hides gate action controls when the selected task is no longer active', () => {
+    taskStoreState.selectedTaskId = 'OC-001';
+    taskStoreState.selectedTaskStatus = {
+      task: {
+        ...taskStoreState.tasks[0],
+        state: 'completed',
+        sourceState: 'done',
+        gateType: 'approval',
+        current_stage: 'review',
+        teamMembers: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'glm5', model_preference: 'chinese_strong' },
+        ],
+      },
+      flow_log: [],
+      progress_log: [],
+      subtasks: [],
+      currentStageRoster: undefined,
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/tasks/OC-001']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Reviewer 通过' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reviewer 打回' })).not.toBeInTheDocument();
+  });
+
   it('exposes orphan cleanup from the settings surface', () => {
     render(
       <MemoryRouter initialEntries={['/settings']}>
