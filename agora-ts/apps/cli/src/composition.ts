@@ -308,6 +308,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       craftsmanExecutionProbePort: deps.craftsmanExecutionProbePort,
       craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
       hostResourcePort: new OsHostResourcePort(),
+      skillCatalogPort: new FilesystemSkillCatalogAdapter(),
       craftsmanGovernance: {
         maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
         hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,

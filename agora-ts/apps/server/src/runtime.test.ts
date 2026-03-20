@@ -148,6 +148,8 @@ describe('server runtime', () => {
     expect(runtime.dashboardQueryService).toBeDefined();
     expect(runtime.liveSessionStore).toBeDefined();
     expect(runtime.taskConversationService).toBeDefined();
+    expect(Reflect.get(runtime.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
+    expect(Reflect.get(runtime.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(readFileSync(join(process.env.AGORA_BRAIN_PACK_ROOT!, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     runtime.db.close();
   });

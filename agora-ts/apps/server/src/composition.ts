@@ -272,6 +272,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
         hostResourcePort: new OsHostResourcePort(),
         liveSessionStore: deps.liveSessionStore,
+        skillCatalogPort: new FilesystemSkillCatalogAdapter(),
         craftsmanGovernance: {
           maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
           hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,
