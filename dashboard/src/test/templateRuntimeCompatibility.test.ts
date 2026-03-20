@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { evaluateTemplateRuntimeCompatibility } from '@/lib/templateRuntimeCompatibility';
 import type { AgentStatusItem, TemplateTeamPresetMember } from '@/types/dashboard';
 
-function buildAgent(id: string, presence: AgentStatusItem['presence'] = 'online'): AgentStatusItem {
+function buildAgent(
+  id: string,
+  presence: AgentStatusItem['presence'] = 'online',
+  selectability: 'selectable' | 'restricted' = 'selectable',
+): AgentStatusItem & { selectability: 'selectable' | 'restricted'; selectabilityReason: string | null } {
   return {
     id,
     role: null,
     status: 'idle',
     presence,
     presenceReason: null,
+    selectability,
+    selectabilityReason: selectability === 'selectable' ? 'inventory_launchable' : 'provider_disconnected',
     channelProviders: ['discord'],
     hostFramework: 'openclaw',
     inventorySources: ['discord', 'openclaw'],
@@ -48,6 +54,27 @@ describe('template runtime compatibility', () => {
       {
         role: 'craftsman',
         compatibleSuggested: ['claude', 'gemini'],
+        unavailableSuggested: [],
+        missingSuggested: [],
+      },
+    ]);
+  });
+
+  it('treats offline but selectable agents as compatible suggestions', () => {
+    const members: TemplateTeamPresetMember[] = [
+      { role: 'architect', modelPreference: null, suggested: ['opus'] },
+    ];
+
+    const compatibility = evaluateTemplateRuntimeCompatibility(
+      members,
+      [buildAgent('opus', 'offline', 'selectable')],
+      [],
+    );
+
+    expect(compatibility).toEqual([
+      {
+        role: 'architect',
+        compatibleSuggested: ['opus'],
         unavailableSuggested: [],
         missingSuggested: [],
       },

@@ -13,6 +13,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTemplateStore } from '@/stores/templateStore';
+import type { AgentStatusItem } from '@/types/dashboard';
 
 function haveSameAssignments(left: Record<string, string>, right: Record<string, string>) {
   const leftKeys = Object.keys(left);
@@ -62,6 +63,13 @@ function toggleRoleSkillRef(
     ...current,
     [role]: nextRefs,
   };
+}
+
+function isSelectableAgent(agent: AgentStatusItem) {
+  if (agent.selectability) {
+    return agent.selectability !== 'restricted';
+  }
+  return agent.presence !== 'offline' && agent.presence !== 'disconnected';
 }
 
 export function CreateTaskPage() {
@@ -178,7 +186,7 @@ export function CreateTaskPage() {
     }
   }, [agents, assignments, craftsmanRuntime, selectedTemplate]);
 
-  const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
+  const availableAgents = agents.filter(isSelectableAgent);
   const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime);
   const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
   const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;

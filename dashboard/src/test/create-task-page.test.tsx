@@ -123,6 +123,8 @@ vi.mock('@/stores/agentStore', () => ({
       role: string | null;
       status: string;
       presence: 'online' | 'offline' | 'disconnected' | 'stale';
+      selectability: 'selectable' | 'restricted';
+      selectabilityReason: string | null;
       presenceReason: string | null;
       channelProviders: string[];
       hostFramework: string | null;
@@ -172,6 +174,8 @@ vi.mock('@/stores/agentStore', () => ({
         role: null,
         status: 'idle',
         presence: 'online',
+        selectability: 'selectable',
+        selectabilityReason: 'live_session',
         presenceReason: null,
         channelProviders: ['discord'],
         hostFramework: 'openclaw',
@@ -191,8 +195,10 @@ vi.mock('@/stores/agentStore', () => ({
         id: 'sonnet',
         role: null,
         status: 'idle',
-        presence: 'online',
-        presenceReason: null,
+        presence: 'offline',
+        selectability: 'selectable',
+        selectabilityReason: 'inventory_launchable',
+        presenceReason: 'inventory_only',
         channelProviders: ['discord'],
         hostFramework: 'openclaw',
         inventorySources: ['discord', 'openclaw'],
@@ -390,5 +396,21 @@ describe('create task page', () => {
     const provisioning = screen.getByTestId('create-task-provisioning');
     expect(within(provisioning).getByText('主控 Agent')).toBeInTheDocument();
     expect(within(provisioning).getAllByText('opus').length).toBeGreaterThan(0);
+  });
+
+  it('keeps offline but selectable agents available in role assignment choices', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    expect(within(developerCard as HTMLElement).getByRole('button', { name: 'sonnet' })).toBeInTheDocument();
   });
 });

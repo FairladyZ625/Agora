@@ -23,6 +23,8 @@ const agentStoreState = {
       role: 'developer',
       status: 'busy',
       presence: 'online',
+      selectability: 'selectable',
+      selectabilityReason: 'active_assignment',
       presenceReason: 'live_session',
       channelProviders: ['discord'],
       hostFramework: 'openclaw',
@@ -43,6 +45,8 @@ const agentStoreState = {
       role: 'writer',
       status: 'idle',
       presence: 'stale',
+      selectability: 'selectable',
+      selectabilityReason: 'stale_observation',
       presenceReason: 'stale_gateway_log',
       channelProviders: ['discord'],
       hostFramework: 'openclaw',
@@ -296,6 +300,8 @@ describe('agents workbench layout', () => {
     fireEvent.click(screen.getByRole('button', { name: /agent 状态异常/i }));
     expect(screen.getByRole('dialog', { name: /agent 明细工作区/i })).toBeInTheDocument();
     expect(screen.getByText('sonnet')).toBeInTheDocument();
+    expect(screen.getAllByText('selectable').length).toBeGreaterThan(0);
+    expect(screen.getByText(/可分配原因: active_assignment/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: /close|关闭/i }).at(-1)!);
     fireEvent.click(screen.getByRole('button', { name: /channel 健康异常/i }));

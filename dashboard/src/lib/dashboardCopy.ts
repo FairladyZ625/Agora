@@ -635,6 +635,8 @@ export function useAgentsPageCopy() {
     modelLabel: t('agents.modelLabel'),
     presenceLabel: t('agents.presenceLabel'),
     presenceReasonLabel: t('agents.presenceReasonLabel'),
+    selectabilityLabel: t('agents.selectabilityLabel'),
+    selectabilityReasonLabel: t('agents.selectabilityReasonLabel'),
     accountLabel: t('agents.accountLabel'),
     statusLabel: t('agents.statusLabel'),
     lastSeenLabel: t('agents.lastSeenLabel'),
