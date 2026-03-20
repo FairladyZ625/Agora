@@ -56,9 +56,7 @@ function toggleRoleSkillRef(
 ) {
   const nextRefs = toggleSkillRef(current[role] ?? [], skillRef);
   if (nextRefs.length === 0) {
-    const rest = { ...current };
-    delete rest[role];
-    return rest;
+    return Object.fromEntries(Object.entries(current).filter(([key]) => key !== role));
   }
   return {
     ...current,
