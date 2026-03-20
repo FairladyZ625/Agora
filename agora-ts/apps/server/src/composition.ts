@@ -28,6 +28,7 @@ import {
   OsHostResourcePort,
   HumanAccountService,
   ProjectBrainIndexQueueService,
+  type ProjectBrainIndexWorkerService,
   ProjectBrainService,
   ProjectService,
   RolePackService,
@@ -170,6 +171,10 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: { projectService: ProjectService; citizenService: CitizenService },
   ) => ProjectBrainService;
+  createProjectBrainIndexWorkerService?: (
+    context: ServerCompositionContext,
+    deps: { projectBrainService: ProjectBrainService },
+  ) => ProjectBrainIndexWorkerService | undefined;
   createTaskParticipationService: (
     context: ServerCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },

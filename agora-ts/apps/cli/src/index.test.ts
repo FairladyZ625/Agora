@@ -909,6 +909,100 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"chunk_id": "proj-brain:decision:runtime-boundary:0"');
   });
 
+  it('best-effort drains queued index jobs after knowledge writes', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = {
+      upsertKnowledgeEntry: vi.fn().mockReturnValue({
+        path: '/brain/facts/runtime-boundary.md',
+        kind: 'fact',
+        slug: 'runtime-boundary',
+      }),
+    };
+    const projectBrainIndexWorkerService = {
+      drainPendingJobs: vi.fn().mockResolvedValue({
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        pending: 0,
+      }),
+    };
+    const program = createCliProgram({
+      projectService: projectService as never,
+      projectBrainIndexWorkerService: projectBrainIndexWorkerService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'knowledge', 'add',
+      '--project', 'proj-brain',
+      '--kind', 'fact',
+      '--slug', 'runtime-boundary',
+      '--title', 'Runtime Boundary',
+      '--body', 'Keep runtime-specific logic out of core.',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectService.upsertKnowledgeEntry).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      kind: 'fact',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      body: 'Keep runtime-specific logic out of core.',
+    });
+    expect(projectBrainIndexWorkerService.drainPendingJobs).toHaveBeenCalledWith({ limit: 5 });
+  });
+
+  it('prints project brain doctor output through an injected doctor service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainDoctorService = {
+      diagnoseProject: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        db_path: '/Users/lizeyu/.agora/agora.db',
+        embedding: {
+          configured: true,
+          healthy: true,
+          provider: 'openai-compatible',
+          model: 'embedding-3',
+        },
+        vector_index: {
+          provider: 'qdrant',
+          healthy: true,
+          chunk_count: 5,
+        },
+        jobs: {
+          pending: 2,
+          running: 1,
+          failed: 0,
+          succeeded: 7,
+        },
+        drift: {
+          detected: false,
+          documents_without_jobs: 0,
+        },
+      }),
+    };
+    const program = createCliProgram({
+      projectBrainDoctorService: projectBrainDoctorService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'doctor',
+      '--project', 'proj-brain',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainDoctorService.diagnoseProject).toHaveBeenCalledWith('proj-brain');
+    expect(stdout.value).toContain('"project_id": "proj-brain"');
+    expect(stdout.value).toContain('"pending": 2');
+    expect(stdout.value).toContain('"provider": "qdrant"');
+  });
+
   it('routes project brain task query through an injected retrieval service', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
