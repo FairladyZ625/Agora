@@ -17,7 +17,7 @@ import {
 
 describe('dashboard expansion mappers', () => {
   it('maps agent status payloads into stable dashboard view models', () => {
-    const dto: ApiAgentsStatusDto = {
+    const dto = {
       summary: {
         active_tasks: 2,
         active_agents: 1,
@@ -33,6 +33,8 @@ describe('dashboard expansion mappers', () => {
           role: 'developer',
           status: 'busy',
           presence: 'online',
+          selectability: 'selectable',
+          selectability_reason: 'live_session',
           presence_reason: 'live_session',
           channel_providers: ['discord'],
           host_framework: 'openclaw',
@@ -164,7 +166,7 @@ describe('dashboard expansion mappers', () => {
           ],
         },
       ],
-    };
+    } as unknown as ApiAgentsStatusDto;
 
     const status = mapAgentsStatusDto(dto);
 
@@ -187,6 +189,8 @@ describe('dashboard expansion mappers', () => {
     expect(status.agents[0]?.taskCount).toBe(1);
     expect(status.agents[0]?.presence).toBe('online');
     expect(status.agents[0]?.presenceReason).toBe('live_session');
+    expect((status.agents[0] as { selectability?: string } | undefined)?.selectability).toBe('selectable');
+    expect((status.agents[0] as { selectabilityReason?: string | null } | undefined)?.selectabilityReason).toBe('live_session');
     expect(status.agents[0]?.channelProviders).toEqual(['discord']);
     expect(status.agents[0]?.hostFramework).toBe('openclaw');
     expect(status.agents[0]?.lastSeenAt).toBe('2026-03-07T10:01:00.000Z');

@@ -77,6 +77,37 @@ function getPillClass(tone: 'danger' | 'warning' | 'success' | 'info' | 'neutral
   }
 }
 
+function getPresenceTone(presence: 'online' | 'offline' | 'disconnected' | 'stale') {
+  if (presence === 'online') {
+    return 'success' as const;
+  }
+  if (presence === 'stale') {
+    return 'warning' as const;
+  }
+  return 'danger' as const;
+}
+
+function getAgentSelectability(agent: {
+  presence: 'online' | 'offline' | 'disconnected' | 'stale';
+  selectability?: 'selectable' | 'restricted';
+  selectabilityReason?: string | null;
+}): { value: 'selectable' | 'restricted'; reason: string } {
+  if (agent.selectability) {
+    return {
+      value: agent.selectability,
+      reason: agent.selectabilityReason ?? 'n/a',
+    };
+  }
+  return {
+    value: agent.presence === 'offline' || agent.presence === 'disconnected' ? 'restricted' : 'selectable',
+    reason: agent.presence === 'offline' || agent.presence === 'disconnected' ? 'legacy_presence_gate' : 'legacy_presence_ok',
+  };
+}
+
+function getSelectabilityTone(selectability: 'selectable' | 'restricted') {
+  return selectability === 'selectable' ? 'info' as const : 'danger' as const;
+}
+
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -595,27 +626,36 @@ export function AgentsPage() {
                 <div className="space-y-3">
                   {visibleAgents.map((agent) => (
                     <div key={agent.id} className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <strong className="type-heading-sm">{agent.id}</strong>
-                          <span className="status-pill status-pill--neutral">{agent.status}</span>
-                          <span className={getPillClass(agent.presence === 'online' ? 'success' : agent.presence === 'stale' ? 'warning' : 'danger')}>
-                            {agent.presence}
-                          </span>
-                        </div>
-                        <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                          <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
-                          <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
-                          <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
-                          <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
-                          <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
-                          <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
-                          <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
-                          <span>{copy.loadLabel}: {agent.load}</span>
-                          <span>{copy.taskCountLabel}: {agent.taskCount}</span>
-                          <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>
-                        </div>
-                      </div>
+                      {(() => {
+                        const selectability = getAgentSelectability(agent);
+                        return (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong className="type-heading-sm">{agent.id}</strong>
+                              <span className="status-pill status-pill--neutral">{agent.status}</span>
+                              <span className={getPillClass(getPresenceTone(agent.presence))}>
+                                {agent.presence}
+                              </span>
+                              <span className={getPillClass(getSelectabilityTone(selectability.value))}>
+                                {selectability.value}
+                              </span>
+                            </div>
+                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                              <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
+                              <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
+                              <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
+                              <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
+                              <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
+                              <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
+                              <span>{copy.selectabilityReasonLabel}: {selectability.reason}</span>
+                              <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
+                              <span>{copy.loadLabel}: {agent.load}</span>
+                              <span>{copy.taskCountLabel}: {agent.taskCount}</span>
+                              <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

@@ -46,6 +46,8 @@ export const agentStatusItemSchema = z.object({
   role: z.string().nullable(),
   status: z.string(),
   presence: z.enum(['online', 'offline', 'disconnected', 'stale']),
+  selectability: z.enum(['selectable', 'restricted']),
+  selectability_reason: z.string().nullable().optional(),
   presence_reason: z.string().nullable().optional(),
   active_task_ids: z.array(z.string()),
   active_subtask_ids: z.array(z.string()),

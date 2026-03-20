@@ -42,7 +42,7 @@ export function evaluateTemplateRuntimeCompatibility(
         missingSuggested.push(normalizedSuggested);
         continue;
       }
-      if (agent.presence === 'offline' || agent.presence === 'disconnected') {
+      if (!isSelectableAgent(agent)) {
         unavailableSuggested.push(normalizedSuggested);
         continue;
       }
@@ -56,6 +56,13 @@ export function evaluateTemplateRuntimeCompatibility(
       missingSuggested,
     };
   });
+}
+
+function isSelectableAgent(agent: AgentStatusItem) {
+  if (agent.selectability) {
+    return agent.selectability !== 'restricted';
+  }
+  return agent.presence !== 'offline' && agent.presence !== 'disconnected';
 }
 
 export function evaluateTemplateControllerTopology(members: TemplateTeamPresetMember[]): TemplateControllerTopology {
