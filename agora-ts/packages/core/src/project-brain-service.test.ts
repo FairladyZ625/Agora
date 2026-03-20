@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
 import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
@@ -134,5 +134,48 @@ describe('project brain service', () => {
 
     expect(appended.kind).toBe('reference');
     expect(appended.content).toContain('Append this note into the project brain.');
+  });
+
+  it('enqueues affected project brain docs after append operations', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-brain',
+      name: 'Brain Project',
+    });
+    const enqueueDocumentSync = vi.fn();
+    const service = new ProjectBrainService({
+      projectService,
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainIndexQueueService: {
+        enqueueDocumentSync,
+      },
+    });
+
+    service.appendDocument({
+      project_id: 'proj-brain',
+      kind: 'reference',
+      slug: 'obsidian-notes',
+      title: 'Obsidian Notes',
+      body: 'Append this note into the project brain.',
+      heading: 'Notes',
+    });
+
+    expect(enqueueDocumentSync).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      document_kind: 'reference',
+      document_slug: 'obsidian-notes',
+      reason: 'brain_append',
+    });
+    expect(enqueueDocumentSync).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      document_kind: 'index',
+      document_slug: 'index',
+      reason: 'brain_append',
+    });
   });
 });

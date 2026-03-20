@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { ProjectService } from './project-service.js';
@@ -137,5 +137,73 @@ describe('project service', () => {
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-knowledge', 'index.md'), 'utf8')).toContain(
       '[[knowledge/decisions/runtime-boundary.md]]',
     );
+  });
+
+  it('enqueues affected project brain docs when knowledge, timeline, and recap write paths change', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    tempPaths.push(brainPackDir);
+    const enqueueDocumentSync = vi.fn();
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      projectBrainIndexQueueService: {
+        enqueueDocumentSync,
+      },
+    });
+
+    service.createProject({
+      id: 'proj-knowledge',
+      name: 'Project Knowledge',
+      owner: 'archon',
+    });
+    service.upsertKnowledgeEntry({
+      project_id: 'proj-knowledge',
+      kind: 'decision',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      body: 'Core keeps orchestration semantics.',
+    });
+    service.recordTaskBinding({
+      project_id: 'proj-knowledge',
+      task_id: 'OC-1',
+      title: 'Task One',
+      state: 'active',
+      workspace_path: null,
+      bound_at: new Date().toISOString(),
+    });
+    service.recordTaskRecap({
+      project_id: 'proj-knowledge',
+      task_id: 'OC-1',
+      title: 'Task One',
+      state: 'done',
+      current_stage: 'review',
+      controller_ref: 'archon',
+      workspace_path: null,
+      completed_by: 'archon',
+      completed_at: new Date().toISOString(),
+      summary_lines: ['done'],
+    });
+
+    expect(enqueueDocumentSync).toHaveBeenCalledWith({
+      project_id: 'proj-knowledge',
+      document_kind: 'decision',
+      document_slug: 'runtime-boundary',
+      reason: 'knowledge_upsert',
+    });
+    expect(enqueueDocumentSync).toHaveBeenCalledWith({
+      project_id: 'proj-knowledge',
+      document_kind: 'timeline',
+      document_slug: 'timeline',
+      reason: 'task_binding',
+    });
+    expect(enqueueDocumentSync).toHaveBeenCalledWith({
+      project_id: 'proj-knowledge',
+      document_kind: 'recap',
+      document_slug: 'OC-1',
+      reason: 'task_recap',
+    });
   });
 });

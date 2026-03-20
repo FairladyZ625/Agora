@@ -18,6 +18,12 @@ function normalizeDbPath(value: string): string {
   if (value.startsWith('~/')) {
     return join(homedir(), value.slice(2));
   }
+  if (value === '$HOME') {
+    return homedir();
+  }
+  if (value.startsWith('$HOME/')) {
+    return join(homedir(), value.slice('$HOME/'.length));
+  }
   return value;
 }
 

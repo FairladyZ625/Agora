@@ -4,6 +4,7 @@ import {
   ensureBundledAgoraAssetsInstalled,
   hasInstalledBrainPack,
   loadAgoraConfig,
+  normalizePathLikeEnvValue,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   syncBundledBrainPackContents,
   type AgoraConfig,
@@ -35,6 +36,7 @@ import {
   OpenClawCitizenProjectionAdapter,
   ProjectBrainAutomationService,
   ProjectBrainChunkingPolicy,
+  ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainRetrievalService,
   OsHostResourcePort,
@@ -265,6 +267,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
     createProjectBrainService: (context, deps) => new ProjectBrainService({
       projectService: deps.projectService,
@@ -272,6 +275,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: context.brainPackDir,
       }),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
     createCitizenService: (context, deps) => new CitizenService(context.db, {
       projectService: deps.projectService,
@@ -385,10 +389,10 @@ export function createCliComposition(
   options: CreateCliCompositionOptions = {},
   overrides: Partial<CliCompositionFactories> = {},
 ): CliComposition {
-  const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
+  const config = loadAgoraConfig(options.configPath ?? normalizePathLikeEnvValue('AGORA_CONFIG_PATH', process.env.AGORA_CONFIG_PATH) ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
   const db = createAgoraDatabase({
-    dbPath: options.dbPath ?? process.env.AGORA_DB_PATH ?? config.db_path,
+    dbPath: options.dbPath ?? normalizePathLikeEnvValue('AGORA_DB_PATH', process.env.AGORA_DB_PATH) ?? config.db_path,
     busyTimeoutMs: config.db_busy_timeout_ms,
   });
   runMigrations(db);

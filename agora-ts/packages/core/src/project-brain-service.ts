@@ -8,11 +8,13 @@ import type {
   ProjectBrainSearchResult,
 } from './project-brain-query-port.js';
 import type { ProjectService } from './project-service.js';
+import type { ProjectBrainIndexQueueService } from './project-brain-index-queue-service.js';
 
 export interface ProjectBrainServiceOptions {
   projectService: ProjectService;
   projectBrainQueryPort: ProjectBrainQueryPort;
   citizenService?: CitizenService;
+  projectBrainIndexQueueService?: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'>;
 }
 
 export class ProjectBrainService {
@@ -53,7 +55,20 @@ export class ProjectBrainService {
 
   appendDocument(input: ProjectBrainAppendInput): ProjectBrainDocument {
     this.options.projectService.requireProject(input.project_id);
-    return this.options.projectBrainQueryPort.appendDocument(input);
+    const document = this.options.projectBrainQueryPort.appendDocument(input);
+    this.options.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: document.project_id,
+      document_kind: input.kind,
+      document_slug: document.slug,
+      reason: 'brain_append',
+    });
+    this.options.projectBrainIndexQueueService?.enqueueDocumentSync({
+      project_id: document.project_id,
+      document_kind: 'index',
+      document_slug: 'index',
+      reason: 'brain_append',
+    });
+    return document;
   }
 
   private listCitizenScaffoldDocuments(projectId: string): ProjectBrainDocument[] {

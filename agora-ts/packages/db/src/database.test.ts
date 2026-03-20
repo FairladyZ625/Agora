@@ -74,6 +74,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '018_binding_reconcile_reasoning.sql',
       '019_runtime_session_reconcile_state.sql',
       '020_task_skill_policy.sql',
+      '021_project_brain_index_jobs.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
