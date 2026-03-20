@@ -45,6 +45,7 @@
 .type-heading-md,
 .type-heading-lg,
 .type-heading-nav {
+  font-family: var(--font-brand);
   font-weight: 600;
   letter-spacing: var(--tracking-tight);
   color: var(--color-text-primary);
@@ -60,6 +61,7 @@
 
 .type-heading-nav {
   font-size: var(--font-size-heading-nav);
+  letter-spacing: 0.02em;
 }
 
 .type-footer-meta {
@@ -82,7 +84,7 @@
 }
 
 .icon-accent-warning {
-  color: var(--color-warning);
+  color: var(--signal-attention);
 }
 
 .icon-accent-info {
@@ -97,7 +99,7 @@
   width: 100%;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: var(--font-size-body-lg);
+  font-size: var(--font-size-body);
 }
 
 .input-text:focus {
@@ -116,8 +118,10 @@
 .inline-alert {
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  padding: 12px 16px;
+  padding: 12px 14px;
   font-size: var(--font-size-body-sm);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
 }
 
 .inline-alert--danger {
@@ -125,4 +129,3 @@
   background: var(--color-danger-bg);
   color: var(--color-danger-text);
 }
-

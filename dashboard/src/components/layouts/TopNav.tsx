@@ -44,17 +44,19 @@ function IconButton({
   children,
   spinning,
   compact = true,
+  shell = false,
 }: {
   onClick: () => void | Promise<void>;
   label: string;
   children: React.ReactNode;
   spinning?: boolean;
   compact?: boolean;
+  shell?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={compact ? 'icon-button' : 'icon-button icon-button--compound'}
+      className={`${compact ? 'icon-button' : 'icon-button icon-button--compound'}${shell ? ' icon-button--shell' : ''}`}
       aria-label={label}
       title={label}
     >
@@ -167,15 +169,15 @@ export function TopNav({
   };
 
   return (
-    <header className="app-topbar sticky top-0 z-20" style={{ background: 'var(--color-panel-strong)' }}>
-      <div className={isMobile ? 'app-frame app-topbar__frame app-topbar__frame--mobile px-4 py-4 md:px-6' : 'app-frame app-topbar__frame px-4 py-4 md:px-6'}>
-        <div className="app-topbar__cluster app-topbar__cluster--brand">
+    <header className="app-topbar app-topbar--shell sticky top-0 z-20">
+      <div className={isMobile ? 'app-frame app-topbar__frame app-topbar__frame--mobile app-topbar__frame--shell px-4 py-4 md:px-6' : 'app-frame app-topbar__frame app-topbar__frame--shell px-4 py-4 md:px-6'}>
+        <div className="app-topbar__cluster app-topbar__cluster--brand topbar-brand-stage topbar-brand-stage--shell">
           {isMobile ? (
             <>
-              <IconButton onClick={onOpenMobileNav} label={t('common.openNavigation')}>
+              <IconButton onClick={onOpenMobileNav} label={t('common.openNavigation')} shell>
                 <Menu size={18} />
               </IconButton>
-              <BrandLogo collapsed className="topbar-brand-mark" />
+              <BrandLogo collapsed className="topbar-brand-mark topbar-brand-mark--shell" />
               <div className="topbar-brand-copy">
                 <div className="topbar-system-name">{shellCopy.brandSystemName}</div>
               </div>
@@ -185,46 +187,46 @@ export function TopNav({
               activeCount={activeCount}
               reviewCount={reviewCount}
               hasError={!!error}
-              className="topbar-intelligence"
+              className="topbar-intelligence topbar-intelligence--shell"
             />
           )}
         </div>
 
-        <div className="app-topbar__cluster app-topbar__cluster--controls">
+        <div className="app-topbar__cluster app-topbar__cluster--controls topbar-controls-stage topbar-controls-stage--shell">
           {isMobile ? (
             <div className="topbar-ops__stack">
               <div className="topbar-ops__row topbar-ops__row--mobile">
-                <span className="topbar-chip topbar-chip--status">
+                <span className="topbar-chip topbar-chip--shell topbar-chip--status">
                   <span className="status-dot status-dot--success" />
                   {queueStatusLabel}
                 </span>
 
-                <div className="topbar-actions-group topbar-actions-group--mobile">
-                  <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading}>
+                <div className="topbar-actions-group topbar-actions-group--mobile topbar-actions-group--shell">
+                  <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading} shell>
                     <RefreshCw size={16} />
                   </IconButton>
-                  <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')}>
+                  <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')} shell>
                     <Languages size={16} />
                   </IconButton>
-                  <IconButton onClick={toggleMotionMode} label={motionToggleLabel}>
+                  <IconButton onClick={toggleMotionMode} label={motionToggleLabel} shell>
                     <Gauge size={16} />
                   </IconButton>
-                  <IconButton onClick={nextTheme} label={themeLabels[mode]}>
+                  <IconButton onClick={nextTheme} label={themeLabels[mode]} shell>
                     <ThemeIcon size={16} />
                   </IconButton>
-                  <IconButton onClick={() => void handleLogout()} label={t('common.logout')}>
+                  <IconButton onClick={() => void handleLogout()} label={t('common.logout')} shell>
                     <LogOut size={16} />
                   </IconButton>
                 </div>
               </div>
 
               <div className="topbar-ops__row topbar-ops__row--mobile topbar-ops__row--mobile-secondary">
-                <span className="topbar-chip">
+                <span className="topbar-chip topbar-chip--shell">
                   <span className="status-dot status-dot--info" />
                   {runtimeStatusLabel}
                 </span>
 
-                <div className="topbar-user-chip topbar-user-chip--compact">
+                <div className="topbar-user-chip topbar-user-chip--compact topbar-user-chip--shell">
                   <span className="topbar-user-chip__identity">
                     <UserRound size={14} />
                     <span className="topbar-user-chip__name">{username ?? 'unknown'}</span>
@@ -235,47 +237,47 @@ export function TopNav({
             </div>
           ) : (
             <div className="topbar-ops__row">
-              <span className="topbar-chip topbar-chip--status">
+              <span className="topbar-chip topbar-chip--shell topbar-chip--status">
                 <span className="status-dot status-dot--success" />
                 {queueStatusLabel}
               </span>
-              <div className="topbar-status hidden md:flex" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-subtle)' }}>
+              <div className="topbar-status topbar-status--shell hidden md:flex">
                 <span className="status-dot status-dot--info" />
                 {runtimeStatusLabel}
               </div>
               <TopbarClock label={shellCopy.systemClockLabel} />
 
-              <div className="topbar-user-chip">
+              <div className="topbar-user-chip topbar-user-chip--shell">
                 <span className="topbar-user-chip__identity">
                   <UserRound size={14} />
                   <span className="topbar-user-chip__name">{username ?? 'unknown'}</span>
                   <span className="topbar-user-chip__role">{role ?? 'member'}</span>
                 </span>
-                <button type="button" className="topbar-user-chip__action" onClick={() => void handleLogout()}>
+                <button type="button" className="topbar-user-chip__action topbar-user-chip__action--shell" onClick={() => void handleLogout()}>
                   <LogOut size={14} />
                   <span>{t('common.logout')}</span>
                 </button>
               </div>
 
-              <div className="topbar-actions-group">
-                <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading}>
+              <div className="topbar-actions-group topbar-actions-group--shell">
+                <IconButton onClick={refreshWorkspace} label={t('common.refreshWorkspace')} spinning={loading} shell>
                   <RefreshCw size={16} />
                 </IconButton>
-                <div className="topbar-separator" />
-                <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')} compact={false}>
+                <div className="topbar-separator topbar-separator--shell" />
+                <IconButton onClick={() => void toggleLocale()} label={t('common.switchLanguage')} compact={false} shell>
                   <span className="flex items-center gap-1">
                     <Languages size={16} />
                     <span className="type-label-sm">{locale === 'zh-CN' ? t('common.localeShort.zh') : t('common.localeShort.en')}</span>
                   </span>
                 </IconButton>
-                <div className="topbar-separator" />
-                <IconButton onClick={toggleMotionMode} label={motionToggleLabel} compact={false}>
+                <div className="topbar-separator topbar-separator--shell" />
+                <IconButton onClick={toggleMotionMode} label={motionToggleLabel} compact={false} shell>
                   <span className="flex items-center gap-1">
                     <Gauge size={16} />
                     <span className="type-label-sm">{motionShortLabels[motionMode]}</span>
                   </span>
                 </IconButton>
-                <IconButton onClick={nextTheme} label={themeLabels[mode]}>
+                <IconButton onClick={nextTheme} label={themeLabels[mode]} shell>
                   <ThemeIcon size={16} />
                 </IconButton>
               </div>

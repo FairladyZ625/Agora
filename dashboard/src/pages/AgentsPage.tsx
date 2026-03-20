@@ -394,7 +394,7 @@ export function AgentsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="workbench-shell">
       <section className="surface-panel surface-panel--workspace">
         <div className="workbench-masthead">
           <div>
