@@ -128,6 +128,7 @@ export function IntelligenceCanvas({
 
     const gl = canvas.getContext('webgl2');
     if (!gl) return; // fallback rendered instead
+    const glContext: WebGL2RenderingContext = gl;
 
     let program: WebGLProgram;
     try {
@@ -192,7 +193,7 @@ export function IntelligenceCanvas({
           : hexToRgb('#0284c7');
       }
 
-      gl.uniform3f(uColor, color[0], color[1], color[2]);
+      glContext.uniform3f(uColor, color[0], color[1], color[2]);
 
       // Compute per-particle targets
       const speedCap = Math.min(ac, 5);
@@ -251,29 +252,29 @@ export function IntelligenceCanvas({
         szData[i] = particles[i].size;
       }
 
-      gl.viewport(0, 0, WIDTH, HEIGHT);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      glContext.viewport(0, 0, WIDTH, HEIGHT);
+      glContext.clearColor(0, 0, 0, 0);
+      glContext.clear(glContext.COLOR_BUFFER_BIT);
 
       // Upload position
-      gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, posData, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(aPosition);
-      gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+      glContext.bindBuffer(glContext.ARRAY_BUFFER, posBuf);
+      glContext.bufferData(glContext.ARRAY_BUFFER, posData, glContext.DYNAMIC_DRAW);
+      glContext.enableVertexAttribArray(aPosition);
+      glContext.vertexAttribPointer(aPosition, 2, glContext.FLOAT, false, 0, 0);
 
       // Upload opacity
-      gl.bindBuffer(gl.ARRAY_BUFFER, opBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, opData, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(aOpacity);
-      gl.vertexAttribPointer(aOpacity, 1, gl.FLOAT, false, 0, 0);
+      glContext.bindBuffer(glContext.ARRAY_BUFFER, opBuf);
+      glContext.bufferData(glContext.ARRAY_BUFFER, opData, glContext.DYNAMIC_DRAW);
+      glContext.enableVertexAttribArray(aOpacity);
+      glContext.vertexAttribPointer(aOpacity, 1, glContext.FLOAT, false, 0, 0);
 
       // Upload size
-      gl.bindBuffer(gl.ARRAY_BUFFER, szBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, szData, gl.DYNAMIC_DRAW);
-      gl.enableVertexAttribArray(aSize);
-      gl.vertexAttribPointer(aSize, 1, gl.FLOAT, false, 0, 0);
+      glContext.bindBuffer(glContext.ARRAY_BUFFER, szBuf);
+      glContext.bufferData(glContext.ARRAY_BUFFER, szData, glContext.DYNAMIC_DRAW);
+      glContext.enableVertexAttribArray(aSize);
+      glContext.vertexAttribPointer(aSize, 1, glContext.FLOAT, false, 0, 0);
 
-      gl.drawArrays(gl.POINTS, 0, PARTICLE_COUNT);
+      glContext.drawArrays(glContext.POINTS, 0, PARTICLE_COUNT);
 
       // Static mode: draw once then stop
       if (reducedMotion) {
@@ -285,10 +286,10 @@ export function IntelligenceCanvas({
 
     return () => {
       cancelAnimationFrame(rafId);
-      gl.deleteBuffer(posBuf);
-      gl.deleteBuffer(opBuf);
-      gl.deleteBuffer(szBuf);
-      gl.deleteProgram(program);
+      glContext.deleteBuffer(posBuf);
+      glContext.deleteBuffer(opBuf);
+      glContext.deleteBuffer(szBuf);
+      glContext.deleteProgram(program);
     };
   }, []); // intentionally empty — state read via stateRef
 
