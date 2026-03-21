@@ -555,4 +555,36 @@ describe('create task page', () => {
     const recentButton = within(globalPanel).getByRole('button', { name: 'planning-with-files' });
     expect(within(recentButton).getByText('最近')).toBeInTheDocument();
   });
+
+  it('shows a clear hint that selected skills can be clicked again to deselect', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'planning-with-files' }));
+    expect(screen.getByText('点击已选 Skill 可取消')).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'planning-with-files' }).some(
+        (element) => element.getAttribute('title') === '点击取消 planning-with-files',
+      ),
+    ).toBe(true);
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: '为 developer 配置专属 Skills' }));
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'refactoring-ui' }));
+
+    expect(within(developerCard as HTMLElement).getByText('点击已选 Skill 可取消')).toBeInTheDocument();
+    expect(
+      within(developerCard as HTMLElement).getAllByRole('button', { name: 'refactoring-ui' }).some(
+        (element) => element.getAttribute('title') === '点击取消 refactoring-ui',
+      ),
+    ).toBe(true);
+  });
 });

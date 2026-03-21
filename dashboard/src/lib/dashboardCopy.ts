@@ -245,6 +245,8 @@ export function useCreateTaskPageCopy() {
     noSkillResultsLabel: t('createTask.noSkillResultsLabel'),
     noRoleSkillsSelectedLabel: t('createTask.noRoleSkillsSelectedLabel'),
     selectedSkillsCount: (count: number) => t('createTask.selectedSkillsCount', { count }),
+    selectedSkillToggleHint: t('createTask.selectedSkillToggleHint'),
+    deselectSkillTitle: (skillRef: string) => t('createTask.deselectSkillTitle', { skillRef }),
     openGlobalSkillsAction: t('createTask.openGlobalSkillsAction'),
     closeGlobalSkillsAction: t('createTask.closeGlobalSkillsAction'),
     globalSkillsSearchLabel: t('createTask.globalSkillsSearchLabel'),

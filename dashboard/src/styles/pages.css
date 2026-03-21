@@ -487,6 +487,10 @@
   gap: 8px;
 }
 
+.skill-picker__hint {
+  color: var(--color-text-tertiary);
+}
+
 .skill-picker__panel {
   display: flex;
   flex-direction: column;

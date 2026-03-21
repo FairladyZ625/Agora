@@ -680,6 +680,7 @@ export function CreateTaskPage() {
                         key={skillRef}
                         type="button"
                         aria-pressed="true"
+                        title={createTaskCopy.deselectSkillTitle(skillRef)}
                         onClick={() => toggleGlobalSkill(skillRef)}
                         className="choice-pill choice-pill--active"
                       >
@@ -687,6 +688,9 @@ export function CreateTaskPage() {
                       </button>
                     ))}
                   </div>
+                ) : null}
+                {globalSkillRefs.length > 0 ? (
+                  <p className="type-text-xs skill-picker__hint">{createTaskCopy.selectedSkillToggleHint}</p>
                 ) : null}
 
                 {globalSkillsOpen ? (
@@ -831,6 +835,7 @@ export function CreateTaskPage() {
                                   key={`${member.role}-selected-${skillRef}`}
                                   type="button"
                                   aria-pressed="true"
+                                  title={createTaskCopy.deselectSkillTitle(skillRef)}
                                   onClick={() => toggleRoleSkill(member.role, skillRef)}
                                   className="choice-pill choice-pill--active"
                                 >
@@ -841,6 +846,9 @@ export function CreateTaskPage() {
                           ) : (
                             <span className="type-body-sm">{createTaskCopy.noRoleSkillsSelectedLabel}</span>
                           )}
+                          {(roleSkillRefs[member.role] ?? []).length > 0 ? (
+                            <p className="type-text-xs skill-picker__hint">{createTaskCopy.selectedSkillToggleHint}</p>
+                          ) : null}
 
                           {roleSkillPickerOpen[member.role] ? (
                             <div className="skill-picker__panel">
