@@ -132,11 +132,19 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     }
     for (const message of input.messages) {
       const mentionRefs = Array.from(new Set(message.participant_refs ?? []));
-      const mentionPairs = await Promise.all(mentionRefs.map(async (participantRef) => {
-        const token = this.participantTokens[participantRef];
-        const userId = await this.resolveParticipantUserId(participantRef, token);
-        return [participantRef, `<@${userId}>`] as const;
-      }));
+      const mentionPairs: Array<readonly [string, string]> = [];
+      for (const participantRef of mentionRefs) {
+        try {
+          const token = this.participantTokens[participantRef];
+          const userId = await this.resolveParticipantUserId(participantRef, token);
+          mentionPairs.push([participantRef, `<@${userId}>`] as const);
+        } catch (error) {
+          if (isMissingDiscordParticipantTokenError(error)) {
+            continue;
+          }
+          throw error;
+        }
+      }
       const mentionMap = new Map<string, string>(mentionPairs);
       const content = [
         mentionPairs.map(([, mention]) => mention).join(' '),
@@ -214,4 +222,8 @@ function decodeDiscordTokenUserId(token: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isMissingDiscordParticipantTokenError(error: unknown) {
+  return error instanceof Error && error.message.startsWith('no discord token configured for participant ');
 }
