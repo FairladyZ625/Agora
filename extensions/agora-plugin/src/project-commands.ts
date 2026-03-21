@@ -34,7 +34,14 @@ async function handleCreate(bridge: AgoraBridge, args: string[], senderId: strin
   const parsed = parseProjectCreateArgs(args);
   if (!parsed.name) {
     return {
-      text: "Usage: /project create <name> [--id <project_id>] [--summary <summary>] [--repo-path <path>] [--new-repo] [--nomos-id <nomos_id>] [--owner <owner>]",
+      text: [
+        "Ready to create a project.",
+        "Usage: /project create <name> [--id <project_id>] [--summary <summary>] [--repo-path <path>] [--new-repo] [--nomos-id <nomos_id>] [--owner <owner>]",
+        "",
+        "Examples:",
+        '/project create "Project Name"',
+        '/project create "Project Name" --repo-path /tmp/repo --new-repo',
+      ].join("\n"),
     };
   }
 
@@ -141,6 +148,12 @@ function parseProjectCreateArgs(args: string[]) {
 function formatHelp() {
   return [
     "Agora /project commands:",
+    "Most common:",
+    '/project create "Project Name"',
+    "/project list active",
+    "/project show <project_id>",
+    "",
+    "Full command list:",
     "/project create <name> [--id <project_id>] [--summary <summary>] [--repo-path <path>] [--new-repo] [--nomos-id <nomos_id>] [--owner <owner>]",
     "/project list [status]",
     "/project show <project_id>",

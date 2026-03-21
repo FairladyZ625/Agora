@@ -40,6 +40,26 @@ Check the plugin:
 openclaw plugins info agora
 ```
 
+## Use The Plugin In Discord
+
+The current Agora plugin command surface is text-first.
+
+Start with:
+
+```text
+/task
+```
+
+That returns the available task commands and common examples.
+
+For a first create smoke:
+
+```text
+/task create "fix dashboard create flow" coding
+```
+
+If you forget the type, the plugin now returns guided text and the supported task types instead of only a terse usage line.
+
 ## Recommended Discord Policy
 
 When OpenClaw and Agora share Discord channels, start with:

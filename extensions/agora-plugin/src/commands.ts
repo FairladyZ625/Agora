@@ -1,6 +1,8 @@
 import { AgoraBridge } from "./bridge";
 import type { CommandResult, OpenClawPluginApi } from "./types";
 
+const SUPPORTED_TASK_TYPES = ["coding", "coding_heavy", "research", "document", "quick", "brainstorm"] as const;
+
 export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge): void {
   api.registerCommand({
     name: "task",
@@ -47,7 +49,7 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
           case "cleanup":
             return await handleCleanup(bridge, rest);
           default:
-            return { text: formatHelp() };
+            return { text: formatHelp(ctx) };
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -59,11 +61,15 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
 
 async function handleCreate(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
   if (args.length < 1) {
-    return { text: "Usage: /task create <title> [type]" };
+    return { text: formatCreateGuidance() };
   }
 
   let type = "coding";
   let title = args.join(" ");
+
+  if (args.length === 2 && !isTaskType(args[1]) && looksLikeTypeToken(args[1])) {
+    return { text: formatInvalidTypeGuidance(args[1]) };
+  }
 
   if (args.length > 1 && isTaskType(args[args.length - 1])) {
     type = args[args.length - 1];
@@ -276,9 +282,39 @@ async function handleCleanup(bridge: AgoraBridge, args: string[]): Promise<Comma
   return { text: `cleaned ${result.cleaned || 0} task(s)` };
 }
 
-function formatHelp(): string {
+function formatHelp(ctx?: { threadId?: string; conversationId?: string }): string {
+  return formatHelpWithContext(ctx);
+}
+
+function formatHelpWithContext(ctx?: { threadId?: string; conversationId?: string }): string {
+  if (ctx?.threadId || ctx?.conversationId) {
+    return [
+      "Agora /task commands:",
+      "You are in a task thread.",
+      "Most relevant here:",
+      "- /task status <task_id>",
+      "- /task approve [comment]",
+      "- /task reject [reason]",
+      "- /task advance <task_id>",
+      "",
+      "Need to create a new task elsewhere?",
+      '- /task create "fix dashboard create flow" coding',
+      "",
+      `Supported task types: ${SUPPORTED_TASK_TYPES.join(", ")}`,
+    ].join("\n");
+  }
+
   return [
     "Agora /task commands:",
+    "Most common:",
+    '- /task create "fix dashboard create flow" coding',
+    "- /task list active",
+    "- /task status OC-123",
+    "",
+    "Supported task types:",
+    `- ${SUPPORTED_TASK_TYPES.join("\n- ")}`,
+    "",
+    "Full command list:",
     "- /task create <title> [type]",
     "- /task list [state]",
     "- /task status <task_id>",
@@ -298,6 +334,28 @@ function formatHelp(): string {
   ].join("\n");
 }
 
+function formatCreateGuidance(): string {
+  return [
+    "Ready to create a task.",
+    "Usage: /task create <title> [type]",
+    "Default type: coding",
+    `Supported task types: ${SUPPORTED_TASK_TYPES.join(", ")}`,
+    "",
+    "Examples:",
+    '- /task create "fix dashboard create flow" coding',
+    '- /task create "write release notes" document',
+  ].join("\n");
+}
+
+function formatInvalidTypeGuidance(type: string): string {
+  return [
+    `Unknown task type: "${type}"`,
+    `Supported task types: ${SUPPORTED_TASK_TYPES.join(", ")}`,
+    "",
+    'Example: /task create "fix dashboard create flow" coding',
+  ].join("\n");
+}
+
 export function tokenize(raw: string): string[] {
   const tokens: string[] = [];
   const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
@@ -309,7 +367,11 @@ export function tokenize(raw: string): string[] {
 }
 
 function isTaskType(value: string): boolean {
-  return ["coding", "coding_heavy", "research", "document", "quick", "brainstorm"].includes(value);
+  return (SUPPORTED_TASK_TYPES as readonly string[]).includes(value);
+}
+
+function looksLikeTypeToken(value: string): boolean {
+  return /^[a-z][a-z0-9_]+$/i.test(value);
 }
 
 function looksLikeTaskId(value?: string): boolean {

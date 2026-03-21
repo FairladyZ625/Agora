@@ -122,6 +122,36 @@ But before that, collect:
 - the human approver's Discord user ID if you want Discord-side identity binding
 - the OpenClaw-managed bot roster and their tokens
 
+### Current `/task` entry surface
+
+The current Agora OpenClaw plugin exposes `/task` and `/project` as text command bridges.
+
+That means:
+
+- you can create and manage tasks directly in Discord
+- the entry is currently text-first, not a picker or modal flow
+- if you do not remember the exact syntax, start with `/task`
+
+Useful first commands:
+
+```text
+/task
+/task create "fix dashboard create flow" coding
+/task list active
+/task status OC-123
+```
+
+Supported task types today:
+
+- `coding`
+- `coding_heavy`
+- `research`
+- `document`
+- `quick`
+- `brainstorm`
+
+If you want picker-style task creation later, that requires structured interactive result support in the host plugin API; it is not just a hidden toggle in the current Agora plugin.
+
 ## Detailed Bootstrap Sequence
 
 ### Step 1: Bootstrap Agora source

@@ -37,6 +37,8 @@ describe("registerTaskCommands", () => {
     const result = await getCommand().handler({ args: "unknown", senderId: "u1" });
     expect(result.text).toContain("Agora /task commands:");
     expect(result.text).toContain("/task create");
+    expect(result.text).toContain("Most common:");
+    expect(result.text).toContain("Supported task types:");
   });
 
   it("returns usage when create title is missing", async () => {
@@ -45,7 +47,40 @@ describe("registerTaskCommands", () => {
     registerTaskCommands(api as any, bridge);
 
     const result = await getCommand().handler({ args: "create", senderId: "u1" });
-    expect(result.text).toBe("Usage: /task create <title> [type]");
+    expect(result.text).toContain("Ready to create a task.");
+    expect(result.text).toContain('/task create "fix dashboard create flow" coding');
+    expect(result.text).toContain("Default type: coding");
+  });
+
+  it("returns guided help when no subcommand is provided inside a task thread", async () => {
+    const { api, getCommand } = buildApi();
+    const bridge = {} as any;
+    registerTaskCommands(api as any, bridge);
+
+    const result = await getCommand().handler({
+      args: "",
+      senderId: "u1",
+      provider: "discord",
+      threadId: "thread-1",
+      conversationId: "channel-1",
+    });
+
+    expect(result.text).toContain("You are in a task thread.");
+    expect(result.text).toContain("/task approve [comment]");
+    expect(result.text).toContain("/task reject [reason]");
+    expect(result.text).toContain("/task status <task_id>");
+  });
+
+  it("returns invalid-type guidance for unknown create types", async () => {
+    const { api, getCommand } = buildApi();
+    const bridge = {} as any;
+    registerTaskCommands(api as any, bridge);
+
+    const result = await getCommand().handler({ args: 'create "hello world" wrong_type', senderId: "u1" });
+
+    expect(result.text).toContain('Unknown task type: "wrong_type"');
+    expect(result.text).toContain("Supported task types:");
+    expect(result.text).toContain("coding_heavy");
   });
 
   it("calls bridge.createTask with parsed args", async () => {
