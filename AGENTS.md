@@ -29,6 +29,18 @@
 - provider-specific 数据只能作为 adapter 状态或投影，不能成为长期 Core 主模型。
 - `apps/server` 与 `apps/cli` 是 composition root，负责绑定 adapter，不负责承载核心业务语义。
 
+## 1.5 First-Principles / Proposal Discipline
+
+- 任何需求分析、方案设计、代码实现都必须先用第一性原理思考。
+- 不允许默认假设提出需求的人已经完全想清楚目标、动机、约束与验收口径。
+- 必须从原始需求和问题本身出发拆解语义；如果动机、目标或边界不清晰，应先停下来澄清，再继续设计或实现。
+- 当需要编写任何 TypeScript 代码时，强制使用 `typescript-project-specifications` skill。
+- 当需要给出修改方案或重构方案时，必须同时满足以下约束：
+  - 不允许给出兼容性、补丁性、兜底性方案，除非用户明确要求保留兼容。
+  - 不允许过度设计；必须选择满足需求且不违反上位原则的最短实现路径。
+  - 不允许自行扩展到用户未要求的方案范围，不得擅自加入降级路径、旁路机制或额外业务分支。
+  - 必须保证方案逻辑自洽，并经过完整主链路推演与验证。
+
 ## 2. Entry Surface Rules
 
 - Dashboard 是人类操作入口；CLI / REST 是 Agent 与自动化入口。
