@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import { formatSelectabilityReason, resolveAgentSelectability } from '@/lib/agentSelectability';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -10,6 +11,7 @@ const MIN_CHANNEL_DETAIL_STALE_AFTER_MS = 15_000;
 
 type DrawerAxis = 'agents' | 'channels' | 'execution' | null;
 type ChannelDetailTab = 'summary' | 'signals' | 'history';
+type AgentSelectabilityFilter = 'all' | 'selectable' | 'restricted';
 type IssueGroup = {
   id: string;
   label: string;
@@ -87,23 +89,6 @@ function getPresenceTone(presence: 'online' | 'offline' | 'disconnected' | 'stal
   return 'danger' as const;
 }
 
-function getAgentSelectability(agent: {
-  presence: 'online' | 'offline' | 'disconnected' | 'stale';
-  selectability?: 'selectable' | 'restricted';
-  selectabilityReason?: string | null;
-}): { value: 'selectable' | 'restricted'; reason: string } {
-  if (agent.selectability) {
-    return {
-      value: agent.selectability,
-      reason: agent.selectabilityReason ?? 'n/a',
-    };
-  }
-  return {
-    value: agent.presence === 'offline' || agent.presence === 'disconnected' ? 'restricted' : 'selectable',
-    reason: agent.presence === 'offline' || agent.presence === 'disconnected' ? 'legacy_presence_gate' : 'legacy_presence_ok',
-  };
-}
-
 function getSelectabilityTone(selectability: 'selectable' | 'restricted') {
   return selectability === 'selectable' ? 'info' as const : 'danger' as const;
 }
@@ -140,6 +125,7 @@ export function AgentsPage() {
 
   const [activeDrawer, setActiveDrawer] = useState<DrawerAxis>(null);
   const [channelTab, setChannelTab] = useState<ChannelDetailTab>('summary');
+  const [selectabilityFilter, setSelectabilityFilter] = useState<AgentSelectabilityFilter>('all');
   const [manualSelectedChannelId, setManualSelectedChannelId] = useState<string | null>(null);
   const selectedChannelId = channelFilter ?? manualSelectedChannelId ?? channelSummaries[0]?.channel ?? null;
 
@@ -197,7 +183,19 @@ export function AgentsPage() {
     setChannelFilter(channel);
   }, [setChannelFilter]);
 
-  const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
+  const baseVisibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
+  const visibleAgents = useMemo(
+    () => baseVisibleAgents.filter((agent) => (
+      selectabilityFilter === 'all'
+        ? true
+        : resolveAgentSelectability(agent).value === selectabilityFilter
+    )),
+    [baseVisibleAgents, selectabilityFilter],
+  );
+  const selectabilitySummary = useMemo(() => ({
+    selectable: baseVisibleAgents.filter((agent) => resolveAgentSelectability(agent).value === 'selectable').length,
+    restricted: baseVisibleAgents.filter((agent) => resolveAgentSelectability(agent).value === 'restricted').length,
+  }), [baseVisibleAgents]);
   const selectedChannel = useMemo(
     () => {
       if (!selectedChannelId) {
@@ -618,6 +616,26 @@ export function AgentsPage() {
                   </button>
                 ))}
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="type-text-xs">{copy.selectabilityFilterLabel}</span>
+                {(['all', 'selectable', 'restricted'] as const).map((filter) => {
+                  const selected = selectabilityFilter === filter;
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                      onClick={() => setSelectabilityFilter(filter)}
+                    >
+                      {copy.selectabilityFilterLabels[filter]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="type-text-xs flex flex-wrap items-center gap-3">
+                <span>{copy.selectabilityLabel}: {copy.selectabilityFilterLabels.selectable} {selectabilitySummary.selectable}</span>
+                <span>{copy.selectabilityLabel}: {copy.selectabilityFilterLabels.restricted} {selectabilitySummary.restricted}</span>
+              </div>
               {visibleAgents.length === 0 ? (
                 <div className="empty-state">
                   <p className="type-body-sm">{copy.emptyAgents}</p>
@@ -627,7 +645,7 @@ export function AgentsPage() {
                   {visibleAgents.map((agent) => (
                     <div key={agent.id} className="data-row">
                       {(() => {
-                        const selectability = getAgentSelectability(agent);
+                        const selectability = resolveAgentSelectability(agent);
                         return (
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -647,7 +665,7 @@ export function AgentsPage() {
                               <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
                               <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
                               <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
-                              <span>{copy.selectabilityReasonLabel}: {selectability.reason}</span>
+                              <span>{copy.selectabilityReasonLabel}: {formatSelectabilityReason(selectability.reason, copy.selectabilityReasonLabels)}</span>
                               <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
                               <span>{copy.loadLabel}: {agent.load}</span>
                               <span>{copy.taskCountLabel}: {agent.taskCount}</span>
