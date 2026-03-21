@@ -295,24 +295,6 @@ export function DashboardHome() {
         formatRelativeTimestamp(selectedRailTask.updated_at),
       ].filter(Boolean)
     : [];
-  const heroNotes = homeCopy.sideNotes;
-  const heroSignals = [
-    {
-      label: homeCopy.metricLabels.active,
-      value: homeMetrics.activeCount,
-      note: homeCopy.metricNotes.active,
-    },
-    {
-      label: homeCopy.metricLabels.waiting,
-      value: homeMetrics.waitingCount,
-      note: homeCopy.metricNotes.waiting,
-    },
-    {
-      label: homeCopy.metricLabels.activeExecutions,
-      value: homeMetrics.activeExecutions,
-      note: homeCopy.metricNotes.activeExecutions,
-    },
-  ];
 
   const handleSelectRailTask = async (taskId: string) => {
     setRailTaskId(taskId);
@@ -367,7 +349,7 @@ export function DashboardHome() {
       <section className="home-os__grid">
         <article className="home-os__main-column surface-panel surface-panel--workspace">
           <div className="home-os__hero">
-            <div className="home-os__hero-block home-os__hero-block--lead">
+            <div className="home-os__hero-block">
               <p className="page-kicker">{homeCopy.kicker}</p>
               <h2 className="home-os__display">{homeCopy.title}</h2>
               <p className="home-os__signature">{homeCopy.architectureLabel}</p>
@@ -385,32 +367,6 @@ export function DashboardHome() {
                 <Link to="/agents" className="button-secondary">
                   {homeCopy.tertiaryAction}
                 </Link>
-              </div>
-            </div>
-            <div className="home-os__hero-rail">
-              <div className="home-os__hero-lead surface-panel surface-panel--muted">
-                <p className="home-os__hero-lead-kicker">{homeCopy.pulseKicker}</p>
-                <p className="home-os__hero-lead-copy">{homeCopy.slogan}</p>
-              </div>
-
-              <div className="home-os__hero-notes">
-                {heroNotes.map((note) => (
-                  <section key={note.kicker} className="home-os__hero-note">
-                    <p className="home-os__hero-note-kicker">{note.kicker}</p>
-                    <h3 className="home-os__hero-note-title">{note.title}</h3>
-                    <p className="home-os__hero-note-body">{note.body}</p>
-                  </section>
-                ))}
-              </div>
-
-              <div className="home-os__hero-signals">
-                {heroSignals.map((signal) => (
-                  <div key={signal.label} className="home-os__hero-signal">
-                    <span className="home-os__hero-signal-label">{signal.label}</span>
-                    <strong className="home-os__hero-signal-value">{signal.value}</strong>
-                    <span className="home-os__hero-signal-note">{signal.note}</span>
-                  </div>
-                ))}
               </div>
             </div>
           </div>
@@ -454,76 +410,74 @@ export function DashboardHome() {
               </div>
             </div>
 
-            <div className="home-os__main-stage">
-              <div className="home-os__authority surface-panel surface-panel--muted">
-                <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
-                <h3 className="home-os__authority-title">{authorityTitle}</h3>
-                <div className="home-os__authority-grid">
-                  <div className="home-os__authority-stat">
-                    <span className="page-kicker">{homeCopy.resolutionMeta.gate}</span>
-                    <strong>{authorityGate}</strong>
-                  </div>
-                  <div className="home-os__authority-stat">
-                    <span className="page-kicker">{homeCopy.resolutionMeta.stage}</span>
-                    <strong>{authorityStage}</strong>
-                  </div>
+            <div className="home-os__authority surface-panel surface-panel--muted">
+              <p className="page-kicker home-os__authority-kicker">{homeCopy.pendingResolutionLabel}</p>
+              <h3 className="home-os__authority-title">{authorityTitle}</h3>
+              <div className="home-os__authority-grid">
+                <div className="home-os__authority-stat">
+                  <span className="page-kicker">{homeCopy.resolutionMeta.gate}</span>
+                  <strong>{authorityGate}</strong>
                 </div>
-                <p className="type-body-sm">{authoritySummary}</p>
-                <div className="home-os__authority-actions">
-                  <button type="button" className="button-primary" disabled={!canResolveReview} onClick={() => void handleReviewDecision('approve')}>
-                    {homeCopy.resolutionActions.authorize}
-                  </button>
-                  <button type="button" className="button-danger" disabled={!canResolveReview} onClick={() => void handleReviewDecision('reject')}>
-                    {homeCopy.resolutionActions.veto}
-                  </button>
-                  <button type="button" className="button-secondary home-os__authority-secondary" onClick={() => void handleSynthesis()}>
-                    {homeCopy.resolutionActions.synthesize}
-                  </button>
+                <div className="home-os__authority-stat">
+                  <span className="page-kicker">{homeCopy.resolutionMeta.stage}</span>
+                  <strong>{authorityStage}</strong>
                 </div>
               </div>
-
-              {summaryReady ? (
-                <div className="home-os__load surface-panel surface-panel--muted page-transition">
-                  <div className="home-os__module-head">
-                    <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
-                    <span className="home-os__load-value">{homeCopy.loadReadoutLabel}: {loadPercent}%</span>
-                  </div>
-                  <div className="home-os__load-bar">
-                    <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-                    <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
-                  </div>
-
-                  <div className="home-os__metrics">
-                    <div className="inline-stat">
-                      <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
-                      <span className="inline-stat__value">{homeMetrics.activeCount}</span>
-                    </div>
-                    <div className="inline-stat">
-                      <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
-                      <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
-                    </div>
-                    <div className="inline-stat">
-                      <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
-                      <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
-                    </div>
-                    <div className="inline-stat">
-                      <span className="inline-stat__label">{homeCopy.metricLabels.activeExecutions}</span>
-                      <span className="inline-stat__value">{homeMetrics.activeExecutions}</span>
-                    </div>
-                    <div className="inline-stat">
-                      <span className="inline-stat__label">{homeCopy.metricLabels.hostLoad}</span>
-                      <span className="inline-stat__value">{homeMetrics.hostLoadLabel}</span>
-                    </div>
-                  </div>
-                  <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>
-                </div>
-              ) : (
-                <div className="home-os__summary-loading" aria-hidden="true">
-                  <Skeleton variant="row" />
-                  <Skeleton variant="card" />
-                </div>
-              )}
+              <p className="type-body-sm">{authoritySummary}</p>
+              <div className="home-os__authority-actions">
+                <button type="button" className="button-primary" disabled={!canResolveReview} onClick={() => void handleReviewDecision('approve')}>
+                  {homeCopy.resolutionActions.authorize}
+                </button>
+                <button type="button" className="button-danger" disabled={!canResolveReview} onClick={() => void handleReviewDecision('reject')}>
+                  {homeCopy.resolutionActions.veto}
+                </button>
+                <button type="button" className="button-secondary home-os__authority-secondary" onClick={() => void handleSynthesis()}>
+                  {homeCopy.resolutionActions.synthesize}
+                </button>
+              </div>
             </div>
+
+            {summaryReady ? (
+              <div className="home-os__load surface-panel surface-panel--muted page-transition">
+                <div className="home-os__module-head">
+                  <p className="page-kicker">{homeCopy.systemLoadLabel}</p>
+                  <span className="home-os__load-value">{homeCopy.loadReadoutLabel}: {loadPercent}%</span>
+                </div>
+                <div className="home-os__load-bar">
+                  <div className="home-os__load-fill" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
+                  <div className="home-os__load-marker" style={{ '--load-width': `${loadPercent}%` } as CSSProperties} />
+                </div>
+
+                <div className="home-os__metrics">
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.active}</span>
+                    <span className="inline-stat__value">{homeMetrics.activeCount}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.waiting}</span>
+                    <span className="inline-stat__value">{homeMetrics.waitingCount}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.latestCompleted}</span>
+                    <span className="inline-stat__value">{homeMetrics.latestCompletedLabel}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.activeExecutions}</span>
+                    <span className="inline-stat__value">{homeMetrics.activeExecutions}</span>
+                  </div>
+                  <div className="inline-stat">
+                    <span className="inline-stat__label">{homeCopy.metricLabels.hostLoad}</span>
+                    <span className="inline-stat__value">{homeMetrics.hostLoadLabel}</span>
+                  </div>
+                </div>
+                <p className="home-os__load-note">{homeCopy.loadEstimateNote}</p>
+              </div>
+            ) : (
+              <div className="home-os__summary-loading" aria-hidden="true">
+                <Skeleton variant="row" />
+                <Skeleton variant="card" />
+              </div>
+            )}
           </div>
         </article>
 
@@ -575,37 +529,9 @@ export function DashboardHome() {
             <div className="home-os__section-divider" />
 
             {railReady && selectedRailTask ? (
-              isMobile ? (
-                <section className="home-os__rail-summary">
-                  <div className="home-os__module-head home-os__module-head--compact">
-                    <div>
-                      <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                      <p className="page-kicker">{homeCopy.taskRailLabels.selectedTask}</p>
-                    </div>
-                    <span className="status-pill status-pill--info">
-                      {selectedRailTask.stageName ?? selectedRailTask.current_stage ?? homeCopy.taskRailLabels.stageFallback}
-                    </span>
-                  </div>
-                  <div className="home-os__task-chip-stack">
-                    <div className="home-os__proposal-head">
-                      <div>
-                        <p className="home-os__proposal-title">{selectedRailTask.title}</p>
-                        <p className="type-mono-sm">{selectedRailTask.id}</p>
-                      </div>
-                      <span className={`home-os__proposal-stance home-os__proposal-stance--${getProposalTone(selectedRailTask.state)}`}>
-                        {getProposalToneLabel(getProposalTone(selectedRailTask.state), homeCopy.proposalToneLabels)}
-                      </span>
-                    </div>
-                    <p className="home-os__task-chip-context">{selectedRailSummaryParts.join(' / ')}</p>
-                    <div className="home-os__proposal-meta">
-                      <span>{selectedRailTask.gateType ?? homeCopy.resolutionFallbacks.gate}</span>
-                      <span>{formatRelativeTimestamp(selectedRailTask.updated_at)}</span>
-                    </div>
-                  </div>
-                </section>
-              ) : (
-                <>
-                  <section className="home-os__rail-focus">
+              <>
+                {isMobile ? (
+                  <section className="home-os__rail-summary">
                     <div className="home-os__module-head home-os__module-head--compact">
                       <div>
                         <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
@@ -615,84 +541,89 @@ export function DashboardHome() {
                         {selectedRailTask.stageName ?? selectedRailTask.current_stage ?? homeCopy.taskRailLabels.stageFallback}
                       </span>
                     </div>
-                    <div className="home-os__rail-focus-grid">
-                      <div className="home-os__rail-focus-title">
-                        <p className="home-os__proposal-title">{selectedRailTask.title}</p>
-                        <p className="type-mono-sm">{selectedRailTask.id}</p>
+                    <div className="home-os__task-chip-stack">
+                      <div className="home-os__proposal-head">
+                        <div>
+                          <p className="home-os__proposal-title">{selectedRailTask.title}</p>
+                          <p className="type-mono-sm">{selectedRailTask.id}</p>
+                        </div>
+                        <span className={`home-os__proposal-stance home-os__proposal-stance--${getProposalTone(selectedRailTask.state)}`}>
+                          {getProposalToneLabel(getProposalTone(selectedRailTask.state), homeCopy.proposalToneLabels)}
+                        </span>
                       </div>
-                      <div className="home-os__rail-focus-copy">
-                        <p className="home-os__task-chip-context">{selectedRailSummaryParts.join(' / ')}</p>
-                      </div>
-                      <div className="home-os__rail-focus-meta">
+                      <p className="home-os__task-chip-context">{selectedRailSummaryParts.join(' / ')}</p>
+                      <div className="home-os__proposal-meta">
                         <span>{selectedRailTask.gateType ?? homeCopy.resolutionFallbacks.gate}</span>
                         <span>{formatRelativeTimestamp(selectedRailTask.updated_at)}</span>
                       </div>
                     </div>
                   </section>
-
-                  <section className="home-os__rail-block">
-                    <div className="home-os__module-head">
-                      <div>
-                        <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                        <p className="page-kicker">{homeCopy.taskRailLabels.executionLoop}</p>
-                      </div>
-                      <Network size={16} className="home-os__rail-icon" />
-                    </div>
-
-                    <div className="home-os__dag-board">
-                      {executionLanes.map((lane) => (
-                        <div key={lane.stageId} className="home-os__dag-stage">
-                          <p className="home-os__dag-stage-label">{lane.stageId}</p>
-                          <div className="home-os__dag-stage-items">
-                            {lane.items.map((item) => (
-                              <div key={item.id} className="home-os__dag-node">
-                                <strong>{item.title}</strong>
-                                <span>{item.assignee}</span>
-                                <span className="home-os__dag-node-status">{item.status}</span>
-                              </div>
-                            ))}
-                          </div>
+                ) : (
+                  <>
+                    <section className="home-os__rail-block">
+                      <div className="home-os__module-head">
+                        <div>
+                          <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
+                          <p className="page-kicker">{homeCopy.taskRailLabels.executionLoop}</p>
                         </div>
-                      ))}
-                    </div>
-                  </section>
-
-                  <section className="home-os__rail-block home-os__rail-block--terminal">
-                    <div className="home-os__module-head">
-                      <div>
-                        <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
-                        <p className="page-kicker">{homeCopy.terminalLabel}</p>
+                        <Network size={16} className="home-os__rail-icon" />
                       </div>
-                      <ScrollText size={16} className="home-os__rail-icon" />
-                    </div>
 
-                    <div className="home-os__module-head">
-                      <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
-                      <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
-                    </div>
-
-                    <div className="home-os__terminal">
-                      {runtimeLines.length === 0 ? (
-                        <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
-                      ) : (
-                        runtimeLines.map((line, index) => (
-                          <div key={line.id} className="home-os__terminal-line terminal-entry">
-                            <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
-                            <div className="home-os__terminal-body">
-                              <div className="home-os__terminal-head">
-                                <span className="home-os__terminal-token">{line.prefix}</span>
-                                <span>{line.title}</span>
-                                <span className="home-os__terminal-meta">{line.meta}</span>
-                              </div>
-                              <span>{line.body}</span>
+                      <div className="home-os__dag-board">
+                        {executionLanes.map((lane) => (
+                          <div key={lane.stageId} className="home-os__dag-stage">
+                            <p className="home-os__dag-stage-label">{lane.stageId}</p>
+                            <div className="home-os__dag-stage-items">
+                              {lane.items.map((item) => (
+                                <div key={item.id} className="home-os__dag-node">
+                                  <strong>{item.title}</strong>
+                                  <span>{item.assignee}</span>
+                                  <span className="home-os__dag-node-status">{item.status}</span>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </section>
-                </>
-              )
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="home-os__rail-block home-os__rail-block--terminal">
+                      <div className="home-os__module-head">
+                        <div>
+                          <p className="home-os__section-index">{homeCopy.sectionLabels.pipeline}</p>
+                          <p className="page-kicker">{homeCopy.terminalLabel}</p>
+                        </div>
+                        <ScrollText size={16} className="home-os__rail-icon" />
+                      </div>
+
+                      <div className="home-os__module-head">
+                        <h3 className="section-title">{homeCopy.taskRailLabels.runtimeLog}</h3>
+                        <span className="status-pill status-pill--info">{homeCopy.terminalStatusPrefix}</span>
+                      </div>
+
+                      <div className="home-os__terminal">
+                        {runtimeLines.length === 0 ? (
+                          <p className="type-body-sm">{homeCopy.taskRailLabels.logEmpty}</p>
+                        ) : (
+                          runtimeLines.map((line, index) => (
+                            <div key={line.id} className="home-os__terminal-line terminal-entry">
+                              <span className="home-os__terminal-prefix">[{String(index + 1).padStart(2, '0')}]</span>
+                              <div className="home-os__terminal-body">
+                                <div className="home-os__terminal-head">
+                                  <span className="home-os__terminal-token">{line.prefix}</span>
+                                  <span>{line.title}</span>
+                                  <span className="home-os__terminal-meta">{line.meta}</span>
+                                </div>
+                                <span>{line.body}</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </section>
+                  </>
+                )}
+              </>
             ) : (
               <div className="home-os__rail-empty">
                 {railReady ? (

@@ -1,6 +1,6 @@
 @media (min-width: 960px) {
   .hero-grid {
-    grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
   }
 
   .hero-display {
@@ -8,7 +8,7 @@
   }
 
   .home-content-grid {
-    grid-template-columns: minmax(0, 1.3fr) minmax(var(--workbench-pane-min), 0.82fr);
+    grid-template-columns: minmax(0, 1.25fr) minmax(var(--workbench-pane-min), 0.9fr);
   }
 
   .settings-form-grid {

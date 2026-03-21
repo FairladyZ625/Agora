@@ -111,7 +111,7 @@ export function Sidebar({
       {mobileOpen && (
         <button
           type="button"
-          className="sidebar-overlay sidebar-overlay--shell fixed inset-0 z-30 md:hidden"
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
           aria-label={t('common.closeNavigation')}
           onClick={onCloseMobile}
         />
@@ -120,22 +120,28 @@ export function Sidebar({
       <aside
         ref={sidebarRef}
         className={cn(
-          'app-sidebar app-sidebar--shell fixed inset-y-3 left-3 z-40 flex transition-[transform,width,opacity] duration-300 md:static md:inset-auto md:translate-x-0',
+          'app-sidebar fixed inset-y-3 left-3 z-40 flex transition-[transform,width,opacity] duration-300 md:static md:inset-auto md:translate-x-0',
           isMobile ? 'app-sidebar--mobile' : effectiveCollapsed ? 'app-sidebar--collapsed' : 'app-sidebar--expanded',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
+        style={{
+          background: 'var(--color-panel)',
+          borderColor: 'var(--color-border)',
+          boxShadow: 'var(--shadow-lg)',
+        }}
       >
         <div className="flex h-full w-full flex-col">
           <div
             className={cn(
-              'sidebar-brand-shell sidebar-brand-shell--shell relative flex items-center border-b px-4 py-2',
+              'sidebar-brand-shell relative flex items-center border-b px-4 py-2',
               effectiveCollapsed ? 'justify-center' : 'justify-start',
             )}
+            style={{ borderColor: 'var(--color-border)' }}
           >
             <BrandLogo collapsed={effectiveCollapsed} />
 
             {!effectiveCollapsed && (
-              <div className="sidebar-brand-panel sidebar-brand-panel--shell">
+              <div className="sidebar-brand-panel">
                 <h1 className="sidebar-brand-title">
                   {shellCopy.brandSystemName}
                 </h1>
@@ -146,7 +152,7 @@ export function Sidebar({
               <button
                 type="button"
                 onClick={onCloseMobile}
-                className="icon-button icon-button--shell absolute right-3 top-1/2 -translate-y-1/2"
+                className="icon-button absolute right-3 top-1/2 -translate-y-1/2"
                 aria-label={t('common.closeSidebar')}
               >
                 <X size={16} />
@@ -155,7 +161,7 @@ export function Sidebar({
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-5">
-            <nav className="nav-rail nav-rail--shell space-y-1.5">
+            <nav className="space-y-1.5">
               {shellCopy.navItems.map(({ to, key, label, hint }) => {
                 const Icon = navIcons[key as keyof typeof navIcons];
 
@@ -166,7 +172,7 @@ export function Sidebar({
                   end={to === '/'}
                   onClick={onCloseMobile}
                   className={({ isActive }) =>
-                    isActive ? 'nav-link nav-link--shell nav-link--active' : 'nav-link nav-link--shell'
+                    isActive ? 'nav-link nav-link--active' : 'nav-link'
                   }
                 >
                   <Icon size={18} className="shrink-0" />
@@ -185,11 +191,13 @@ export function Sidebar({
           {!isMobile ? (
             <div
               className="border-t px-3 py-3"
+              style={{ borderColor: 'var(--color-border)' }}
             >
               <button
                 type="button"
                 onClick={onToggle}
-                className="sidebar-toggle-button sidebar-toggle-button--shell"
+                className="sidebar-toggle-button"
+                style={{ borderColor: 'var(--color-border)' }}
                 aria-label={collapsed ? t('common.expandSidebar') : t('common.collapseSidebar')}
               >
                 {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}

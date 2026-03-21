@@ -6,27 +6,6 @@
   background: var(--color-panel);
   box-shadow: var(--shadow-sm);
   padding: var(--surface-padding);
-  isolation: isolate;
-}
-
-.surface-panel::before {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 1px;
-  background: linear-gradient(180deg, var(--color-border-strong), transparent 72%);
-  opacity: 0.8;
-  pointer-events: none;
-}
-
-.surface-panel::after {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: linear-gradient(90deg, var(--color-border-strong), transparent 72%);
-  opacity: 0.75;
-  pointer-events: none;
 }
 
 .surface-panel--hero {
@@ -73,10 +52,9 @@
 .page-kicker {
   margin: 0;
   font-size: var(--font-size-kicker);
-  font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   color: var(--color-text-tertiary);
 }
 
@@ -86,12 +64,10 @@
 
 .page-title {
   margin: 0;
-  font-family: var(--font-brand);
   font-size: var(--font-size-page-title);
   font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--tracking-tight);
   color: var(--color-text-primary);
-  text-wrap: balance;
 }
 
 .page-summary {
@@ -114,12 +90,10 @@
 }
 
 .hero-display {
-  font-family: var(--font-brand);
   font-size: var(--font-size-hero-title-mobile);
   font-weight: 600;
-  letter-spacing: -0.045em;
+  letter-spacing: var(--tracking-tight);
   text-shadow: var(--hero-text-shadow);
-  line-height: 0.96;
 }
 
 .hero-copy {
@@ -133,15 +107,13 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 10px 16px;
+  padding: 10px 14px;
   border: 1px solid var(--hero-axiom-border);
   border-radius: var(--radius-pill);
   background: var(--hero-axiom-bg);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-body-sm);
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--font-size-body-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .surface-panel--hero-side .section-title,
@@ -180,10 +152,9 @@
 
 .section-title {
   margin: 4px 0 0;
-  font-family: var(--font-brand);
   font-size: 18px;
   font-weight: 600;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
   color: var(--color-text-primary);
 }
 

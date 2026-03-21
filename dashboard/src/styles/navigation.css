@@ -10,13 +10,6 @@
   isolation: isolate;
 }
 
-.app-topbar--shell {
-  border-radius: 0;
-  background: var(--color-panel-strong);
-  backdrop-filter: none;
-  box-shadow: var(--topbar-shell-shadow);
-}
-
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -25,7 +18,6 @@
   width: 44px;
   height: 44px;
   border: 1px solid var(--color-border);
-  border-radius: 0;
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -36,14 +28,9 @@
   padding-inline: 10px;
 }
 
-.icon-button--shell {
-  border-color: var(--color-border-strong);
-  background: var(--color-panel-muted);
-}
-
 .icon-button:hover {
   color: var(--color-text-primary);
-  background: var(--color-panel-strong);
+  background: var(--color-bg-subtle);
 }
 
 .app-sidebar {
@@ -51,17 +38,6 @@
   border: 1px solid var(--sidebar-shell-border);
   background: var(--sidebar-shell-bg);
   box-shadow: var(--sidebar-shell-shadow);
-}
-
-.app-sidebar--shell {
-  border-radius: 0;
-  border-color: var(--color-border);
-  background: var(--color-panel-strong);
-  box-shadow: var(--shadow-lg);
-}
-
-.sidebar-overlay--shell {
-  background: color-mix(in srgb, var(--color-static-dark) 42%, transparent);
 }
 
 .app-sidebar--collapsed {
@@ -82,27 +58,21 @@
   align-items: flex-start;
   gap: 12px;
   border: 1px solid transparent;
-  border-radius: 0;
-  border-inline-start-width: 3px;
   padding: 12px 14px;
   color: var(--color-text-secondary);
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
 .nav-link:hover {
-  background: var(--color-panel-muted);
+  background: var(--color-bg-subtle);
   color: var(--color-text-primary);
 }
 
 .nav-link--active {
   color: var(--color-text-primary);
-  background: var(--color-panel-muted);
+  background: var(--nav-link-active-bg);
   border-color: var(--nav-link-active-border);
-  box-shadow: inset 3px 0 0 var(--signal-primary);
-}
-
-.nav-link--shell {
-  border-radius: 0;
+  box-shadow: var(--signal-active-glow);
 }
 
 .nav-meta {
@@ -116,30 +86,18 @@
   gap: 14px;
 }
 
-.sidebar-brand-shell--shell {
-  padding-top: 12px;
-  padding-bottom: 12px;
-  background: linear-gradient(180deg, var(--color-panel-strong), var(--color-panel));
-}
-
 .sidebar-brand-title {
   font-family: var(--font-brand);
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-text-primary);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-primary);
 }
 
 .sidebar-brand-panel {
   flex: 1;
   text-align: left;
   min-width: 0;
-}
-
-.sidebar-brand-panel--shell {
-  padding-inline-start: 12px;
-  border-inline-start: 1px solid var(--color-border);
 }
 
 .sidebar-nav-title {
@@ -169,7 +127,6 @@
   align-items: center;
   justify-content: center;
   border: 1px solid var(--color-border);
-  border-radius: 0;
   font-size: var(--font-size-body-sm);
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -178,57 +135,7 @@
 
 .sidebar-toggle-button:hover {
   color: var(--color-text-primary);
-  background: var(--color-panel-muted);
-}
-
-.sidebar-toggle-button--shell {
-  border-color: var(--color-border-strong);
-  background: var(--color-panel-muted);
-}
-
-.topbar-brand-mark--shell {
-  border: 1px solid var(--color-border);
-  border-radius: 0;
-  background: var(--color-panel-muted);
-}
-
-.topbar-chip--shell {
-  border-radius: 0;
-  border-color: var(--color-border-strong);
-  background: var(--color-panel-muted);
-}
-
-.topbar-chip--shell.topbar-chip--status {
-  border-inline-start: 3px solid var(--signal-primary);
-}
-
-.topbar-status--shell {
-  border: 1px solid var(--color-border-strong);
-  border-inline-start: 3px solid var(--signal-primary);
-  border-radius: 0;
-  background: var(--color-panel-muted);
-}
-
-.topbar-user-chip--shell {
-  border-radius: 0;
-  border-color: var(--color-border-strong);
-  background: var(--color-panel-muted);
-}
-
-.topbar-user-chip--shell .topbar-user-chip__action--shell {
-  border-radius: 0;
-  border-color: var(--color-border-strong);
-  background: var(--color-panel-strong);
-}
-
-.topbar-actions-group--shell {
-  border-radius: 0;
-  border-color: var(--color-border-strong);
-  background: var(--color-panel-muted);
-}
-
-.topbar-separator--shell {
-  background: var(--color-border-strong);
+  background: var(--color-bg-subtle);
 }
 
 .brand-mark {

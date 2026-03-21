@@ -106,7 +106,7 @@ vi.mock('@/stores/templateStore', () => ({
       defaultTeamRoles: ['architect', 'developer', 'craftsman'],
       defaultTeam: [
         { role: 'architect', memberKind: 'controller', modelPreference: 'strong_reasoning', suggested: ['opus'] },
-        { role: 'developer', memberKind: 'citizen', modelPreference: 'fast_coding', suggested: ['sonnet', 'review'] },
+        { role: 'developer', memberKind: 'citizen', modelPreference: 'fast_coding', suggested: ['sonnet'] },
         { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code'] },
       ],
       raw: {},
@@ -205,28 +205,6 @@ vi.mock('@/stores/agentStore', () => ({
         primaryModel: null,
         workspaceDir: null,
         accountId: 'sonnet',
-        activeTaskIds: [],
-        activeSubtaskIds: [],
-        taskCount: 0,
-        subtaskCount: 0,
-        load: 0,
-        lastActiveAt: null,
-        lastSeenAt: null,
-      },
-      {
-        id: 'review',
-        role: null,
-        status: 'idle',
-        presence: 'disconnected',
-        selectability: 'restricted',
-        selectabilityReason: 'provider_disconnected',
-        presenceReason: 'health_monitor_restart',
-        channelProviders: ['discord'],
-        hostFramework: 'openclaw',
-        inventorySources: ['discord', 'openclaw'],
-        primaryModel: null,
-        workspaceDir: null,
-        accountId: 'review',
         activeTaskIds: [],
         activeSubtaskIds: [],
         taskCount: 0,
@@ -434,23 +412,5 @@ describe('create task page', () => {
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     expect(within(developerCard as HTMLElement).getByRole('button', { name: 'sonnet' })).toBeInTheDocument();
-  });
-
-  it('shows restricted suggested agents with a human-readable reason instead of silently hiding them', async () => {
-    render(
-      <MemoryRouter>
-        <CreateTaskPage />
-      </MemoryRouter>,
-    );
-
-    await waitFor(() => {
-      expect(apiMocks.listSkills).toHaveBeenCalled();
-    });
-
-    const developerCard = screen.getByText('developer').closest('.detail-card');
-    expect(developerCard).not.toBeNull();
-    expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'review' })).not.toBeInTheDocument();
-    expect(within(developerCard as HTMLElement).getByText('review')).toBeInTheDocument();
-    expect(within(developerCard as HTMLElement).getByText('连接中断，当前不可分配')).toBeInTheDocument();
   });
 });

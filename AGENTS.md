@@ -130,9 +130,7 @@
   - 先读 [docs/11-REFERENCE/testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/testing-standard.md)
   - Discord 冒烟再读 [docs/11-REFERENCE/discord-smoke-testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/discord-smoke-testing-standard.md)
 - Dashboard / 前端任务：
-  - 先读仓库根目录 `.impeccable.md`
   - 先读 [docs/11-REFERENCE/dashboard-frontend-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/dashboard-frontend-standard.md)
-  - 若任务涉及 Dashboard 视觉重构 / token 重构 / 新页面视觉基线，再读 [docs/09-PLANNING/TASKS/2026-03-20-dashboard-visual-directions/c-sharp-design-spec.md](/Users/lizeyu/Projects/Agora/docs/09-PLANNING/TASKS/2026-03-20-dashboard-visual-directions/c-sharp-design-spec.md)
 - 交付总结 / 复盘：
   - 先读 [docs/11-REFERENCE/walkthrough-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/walkthrough-standard.md)
 - 其他工程质量门与通用工程规则：

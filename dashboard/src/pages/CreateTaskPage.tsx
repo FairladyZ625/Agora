@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { formatSelectabilityReason, isSelectableAgent, resolveAgentSelectability } from '@/lib/agentSelectability';
 import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createTaskDraft';
 import { listSkills } from '@/lib/api';
-import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
+import { buildCraftsmanInventory, isCraftsmanRole } from '@/lib/orchestrationRoles';
 import { buildProjectBrainDraftPreamble, parseProjectBrainSourceContext } from '@/lib/projectBrainContext';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
@@ -64,6 +63,13 @@ function toggleRoleSkillRef(
     ...current,
     [role]: nextRefs,
   };
+}
+
+function isSelectableAgent(agent: AgentStatusItem) {
+  if (agent.selectability) {
+    return agent.selectability !== 'restricted';
+  }
+  return agent.presence !== 'offline' && agent.presence !== 'disconnected';
 }
 
 export function CreateTaskPage() {
@@ -181,30 +187,6 @@ export function CreateTaskPage() {
   }, [agents, assignments, craftsmanRuntime, selectedTemplate]);
 
   const availableAgents = agents.filter(isSelectableAgent);
-  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
-  const restrictedSuggestedByRole = useMemo(() => {
-    if (!selectedTemplate) {
-      return {} as Record<string, Array<{ id: string; reason: string }>>;
-    }
-    return Object.fromEntries(selectedTemplate.defaultTeam.map((member) => {
-      if (isCraftsmanRole(member.role, member.memberKind ?? null)) {
-        return [member.role, []];
-      }
-      const restricted = member.suggested
-        .map((agentId) => normalizeRoleBindingId(member.role, agentId, member.memberKind))
-        .map((agentId) => agentById.get(agentId))
-        .filter((agent): agent is AgentStatusItem => Boolean(agent))
-        .filter((agent) => !isSelectableAgent(agent))
-        .map((agent) => ({
-          id: agent.id,
-          reason: formatSelectabilityReason(
-            resolveAgentSelectability(agent).reason,
-            createTaskCopy.selectabilityReasonLabels,
-          ),
-        }));
-      return [member.role, restricted];
-    }));
-  }, [agentById, createTaskCopy.selectabilityReasonLabels, selectedTemplate]);
   const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime);
   const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
   const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;
@@ -499,20 +481,6 @@ export function CreateTaskPage() {
                             ))
                           : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
                       </div>
-                      {(restrictedSuggestedByRole[member.role] ?? []).length > 0 ? (
-                        <div className="mt-3">
-                          <span className="detail-card__label">{createTaskCopy.restrictedSuggestedLabel}</span>
-                          <div className="mt-2 space-y-2">
-                            {(restrictedSuggestedByRole[member.role] ?? []).map((item) => (
-                              <div key={`${member.role}-restricted-${item.id}`} className="type-body-sm">
-                                <strong>{item.id}</strong>
-                                {' · '}
-                                <span>{item.reason}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
                       <div className="mt-3">
                         <span className="detail-card__label">{createTaskCopy.roleSkillsLabel}</span>
                         <div className="mt-2 flex flex-wrap gap-2">
