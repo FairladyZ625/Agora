@@ -55,11 +55,21 @@ body::before {
 }
 
 .app-topbar__frame {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto;
   align-items: center;
   gap: 20px;
   min-height: 64px;
+}
+
+.app-topbar__intelligence-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .app-topbar__cluster {
@@ -114,20 +124,72 @@ body::before {
 
 .topbar-intelligence {
   position: relative;
-  width: 188px;
-  height: 28px;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.topbar-intelligence--bar {
+  isolation: isolate;
+}
+
+.topbar-intelligence--bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 50%, var(--topbar-intelligence-ambient), transparent 34%),
+    radial-gradient(circle at 45% 42%, var(--topbar-intelligence-ambient-strong), transparent 28%),
+    radial-gradient(circle at 78% 50%, var(--topbar-intelligence-ambient), transparent 34%),
+    linear-gradient(180deg, transparent 0%, var(--topbar-intelligence-band) 100%);
+  opacity: 1;
+}
+
+.topbar-intelligence--bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, transparent 0%, var(--topbar-intelligence-highlight) 18%, transparent 40%),
+    linear-gradient(90deg, transparent 52%, var(--topbar-intelligence-highlight-soft) 68%, transparent 86%);
+  opacity: 0.88;
+}
+
+.topbar-intelligence__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: var(--topbar-intelligence-canvas-opacity);
 }
 
 .topbar-intelligence__dot {
   position: absolute;
   top: 50%;
+  z-index: 4;
   width: 8px;
   height: 8px;
   margin-top: -4px;
   border: 1px solid var(--color-primary);
-  border-radius: 999px;
   background: var(--color-primary-bg);
   box-shadow: var(--topbar-intelligence-dot-glow);
+  opacity: var(--topbar-intelligence-ornament-opacity);
+}
+
+.topbar-intelligence__ornaments {
+  position: absolute;
+  top: 50%;
+  left: clamp(18px, 2vw, 34px);
+  width: 188px;
+  height: 28px;
+  transform: translateY(-50%);
+  z-index: 3;
+  pointer-events: none;
 }
 
 .topbar-intelligence__dot--1 {
@@ -145,9 +207,17 @@ body::before {
 .topbar-intelligence__rail {
   position: absolute;
   top: 50%;
+  z-index: 3;
   height: 1px;
-  background: linear-gradient(90deg, var(--signal-line), var(--signal-line-strong), var(--signal-line));
+  background:
+    linear-gradient(
+      90deg,
+      var(--topbar-intelligence-line),
+      var(--topbar-intelligence-line-strong),
+      var(--topbar-intelligence-line)
+  );
   background-size: 200% 100%;
+  opacity: var(--topbar-intelligence-ornament-opacity);
 }
 
 .topbar-intelligence__rail--left {
@@ -162,14 +232,15 @@ body::before {
 
 .topbar-intelligence__carrier {
   position: absolute;
+  z-index: 4;
   top: 50%;
   left: 22px;
   width: 10px;
   height: 10px;
   margin-top: -5px;
-  border-radius: 999px;
   background: var(--color-primary);
   box-shadow: var(--topbar-intelligence-carriage-glow);
+  opacity: 0.9;
 }
 
 .topbar-system-name {

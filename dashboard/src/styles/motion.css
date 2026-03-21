@@ -160,17 +160,17 @@
   }
 
   52% {
-    transform: translateX(66px);
+    transform: translateX(var(--signal-travel-mid, 66px));
     opacity: 1;
   }
 
   86% {
-    transform: translateX(132px);
+    transform: translateX(var(--signal-travel-end, 132px));
     opacity: 1;
   }
 
   100% {
-    transform: translateX(132px);
+    transform: translateX(var(--signal-travel-end, 132px));
     opacity: 0.72;
   }
 }

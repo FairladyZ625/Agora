@@ -5,11 +5,11 @@ export interface IntelligenceCanvasProps {
   reviewCount: number;
   hasError: boolean;
   className?: string;
+  testId?: string;
 }
 
-const PARTICLE_COUNT = 60;
-const WIDTH = 188;
-const HEIGHT = 28;
+const MIN_PARTICLE_COUNT = 72;
+const MAX_PARTICLE_COUNT = 320;
 
 const VERT_SRC = `#version 300 es
 in vec2 a_position;
@@ -37,10 +37,15 @@ void main() {
   outColor = vec4(u_color, alpha);
 }`;
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function hexToRgb(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const value = hex.trim();
+  const r = parseInt(value.slice(1, 3), 16) / 255;
+  const g = parseInt(value.slice(3, 5), 16) / 255;
+  const b = parseInt(value.slice(5, 7), 16) / 255;
   return [r, g, b];
 }
 
@@ -87,27 +92,74 @@ interface Particle {
   size: number;
 }
 
-function makeParticles(): Particle[] {
-  return Array.from({ length: PARTICLE_COUNT }, () => ({
-    x: Math.random() * WIDTH,
-    y: Math.random() * HEIGHT,
-    vx: (Math.random() - 0.5) * 0.4,
-    vy: (Math.random() - 0.5) * 0.4,
-    opacity: 0.3 + Math.random() * 0.2,
-    size: 1.5 + Math.random() * 0.5,
+function computeParticleCount(width: number, height: number) {
+  const areaDriven = Math.round((width * Math.max(height, 56)) / 520);
+  return clamp(areaDriven, MIN_PARTICLE_COUNT, MAX_PARTICLE_COUNT);
+}
+
+function makeParticles(count: number, width: number, height: number, scale: number): Particle[] {
+  const baseSize = clamp(height * 0.042, 1.8, 2.8) * scale;
+  const variance = clamp(height * 0.018, 0.65, 1.2) * scale;
+
+  return Array.from({ length: count }, () => ({
+    x: Math.random() * width,
+    y: Math.random() * height,
+    vx: 0.24 * scale + Math.random() * 0.2 * scale,
+    vy: (Math.random() - 0.5) * 0.16 * scale,
+    opacity: 0.34 + Math.random() * 0.26,
+    size: baseSize + Math.random() * variance,
   }));
 }
 
-// CSS fallback for when WebGL2 is unavailable
-function CssFallback({ className }: { className?: string }) {
+function useElementSize(elementRef: React.RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect();
+      setSize((prev) => {
+        const nextWidth = Math.round(rect.width);
+        const nextHeight = Math.round(rect.height);
+        if (prev.width === nextWidth && prev.height === nextHeight) {
+          return prev;
+        }
+        return { width: nextWidth, height: nextHeight };
+      });
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateSize);
+      return () => window.removeEventListener('resize', updateSize);
+    }
+
+    const observer = new ResizeObserver(() => updateSize());
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [elementRef]);
+
+  return size;
+}
+
+function CssFallback({ className, testId }: { className?: string; testId?: string }) {
   return (
-    <div className={`topbar-intelligence${className ? ` ${className}` : ''}`} aria-hidden="true">
-      <span className="topbar-intelligence__dot topbar-intelligence__dot--1" />
-      <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
-      <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
-      <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
-      <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
-      <span className="topbar-intelligence__carrier signal-travel" />
+    <div
+      className={`topbar-intelligence${className ? ` ${className}` : ''}`}
+      data-testid={testId}
+      aria-hidden="true"
+    >
+      <div className="topbar-intelligence__ornaments">
+        <span className="topbar-intelligence__dot topbar-intelligence__dot--1" />
+        <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
+        <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
+        <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
+        <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
+        <span className="topbar-intelligence__carrier signal-travel" />
+      </div>
     </div>
   );
 }
@@ -117,58 +169,71 @@ export function IntelligenceCanvas({
   reviewCount,
   hasError,
   className,
+  testId,
 }: IntelligenceCanvasProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef({ activeCount, reviewCount, hasError });
+  const size = useElementSize(wrapperRef);
 
-  // Keep stateRef current without triggering re-renders in the loop
   useEffect(() => {
     stateRef.current = { activeCount, reviewCount, hasError };
   }, [activeCount, reviewCount, hasError]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || size.width <= 0 || size.height <= 0) return;
 
-    const gl = canvas.getContext('webgl2');
-    if (!gl) return; // fallback rendered instead
+    const gl = canvas.getContext('webgl2', { alpha: true, antialias: true });
+    if (!gl) return;
+
     const glContext: WebGL2RenderingContext = gl;
+    const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+    const drawWidth = Math.max(1, Math.round(size.width * dpr));
+    const drawHeight = Math.max(1, Math.round(size.height * dpr));
+    const particleCount = computeParticleCount(size.width, size.height);
+
+    canvas.width = drawWidth;
+    canvas.height = drawHeight;
+    canvas.style.width = `${size.width}px`;
+    canvas.style.height = `${size.height}px`;
 
     let program: WebGLProgram;
     try {
-      program = createProgram(gl);
+      program = createProgram(glContext);
     } catch {
       return;
     }
 
-    gl.useProgram(program);
+    glContext.useProgram(program);
 
-    const aPosition = gl.getAttribLocation(program, 'a_position');
-    const aOpacity = gl.getAttribLocation(program, 'a_opacity');
-    const aSize = gl.getAttribLocation(program, 'a_size');
-    const uResolution = gl.getUniformLocation(program, 'u_resolution');
-    const uColor = gl.getUniformLocation(program, 'u_color');
+    const aPosition = glContext.getAttribLocation(program, 'a_position');
+    const aOpacity = glContext.getAttribLocation(program, 'a_opacity');
+    const aSize = glContext.getAttribLocation(program, 'a_size');
+    const uResolution = glContext.getUniformLocation(program, 'u_resolution');
+    const uColor = glContext.getUniformLocation(program, 'u_color');
 
-    gl.uniform2f(uResolution, WIDTH, HEIGHT);
+    glContext.uniform2f(uResolution, drawWidth, drawHeight);
 
-    // Buffers
-    const posBuf = gl.createBuffer();
-    const opBuf = gl.createBuffer();
-    const szBuf = gl.createBuffer();
+    const posBuf = glContext.createBuffer();
+    const opBuf = glContext.createBuffer();
+    const szBuf = glContext.createBuffer();
 
-    const posData = new Float32Array(PARTICLE_COUNT * 2);
-    const opData = new Float32Array(PARTICLE_COUNT);
-    const szData = new Float32Array(PARTICLE_COUNT);
+    if (!posBuf || !opBuf || !szBuf) {
+      glContext.deleteProgram(program);
+      return;
+    }
 
-    const particles = makeParticles();
+    const posData = new Float32Array(particleCount * 2);
+    const opData = new Float32Array(particleCount);
+    const szData = new Float32Array(particleCount);
+    const targetVx = new Float32Array(particleCount);
+    const targetVy = new Float32Array(particleCount);
+    const targetOp = new Float32Array(particleCount);
+    const particles = makeParticles(particleCount, drawWidth, drawHeight, dpr);
 
-    // Lerp targets
-    const targetVx = new Float32Array(PARTICLE_COUNT);
-    const targetVy = new Float32Array(PARTICLE_COUNT);
-    const targetOp = new Float32Array(PARTICLE_COUNT);
-
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    glContext.enable(glContext.BLEND);
+    glContext.blendFunc(glContext.SRC_ALPHA, glContext.ONE_MINUS_SRC_ALPHA);
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -177,11 +242,10 @@ export function IntelligenceCanvas({
 
     function tick() {
       rafId = requestAnimationFrame(tick);
-      frame++;
+      frame += 1;
 
       const { activeCount: ac, reviewCount: rc, hasError: err } = stateRef.current;
 
-      // Determine target color
       let color: [number, number, number];
       if (err) {
         color = hexToRgb(readThemeColor('--intelligence-error-color'));
@@ -193,56 +257,45 @@ export function IntelligenceCanvas({
 
       glContext.uniform3f(uColor, color[0], color[1], color[2]);
 
-      // Compute per-particle targets
       const speedCap = Math.min(ac, 5);
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const lerpT = reducedMotion ? 1 : 0.06;
+      const verticalBand = drawHeight * 0.22;
+
+      for (let i = 0; i < particleCount; i += 1) {
         if (err) {
-          // Chaotic scatter
-          if (frame % 20 === i % 20) {
-            targetVx[i] = (Math.random() - 0.5) * 3.0;
-            targetVy[i] = (Math.random() - 0.5) * 3.0;
+          if (frame % 16 === i % 16) {
+            targetVx[i] = (0.75 + Math.random() * 0.65) * dpr;
+            targetVy[i] = (Math.random() - 0.5) * 0.95 * dpr;
           }
-          targetOp[i] = 0.6 + Math.random() * 0.3;
+          targetOp[i] = 0.72 + Math.random() * 0.2;
         } else if (rc > 0) {
-          // Cluster toward center
-          const cx = WIDTH / 2;
-          const cy = HEIGHT / 2;
-          const dx = cx - particles[i].x;
-          const dy = cy - particles[i].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) + 0.001;
-          targetVx[i] = (dx / dist) * 0.6;
-          targetVy[i] = (dy / dist) * 0.6;
-          // Pulsing opacity
-          targetOp[i] = 0.5 + 0.4 * Math.sin(frame * 0.05 + i * 0.3);
+          const laneY = drawHeight * 0.5 + Math.sin((frame * 0.04) + i * 0.18) * verticalBand;
+          targetVx[i] = (0.62 + (i % 4) * 0.1) * dpr;
+          targetVy[i] = (laneY - particles[i].y) * 0.018;
+          targetOp[i] = 0.58 + 0.2 * (0.5 + Math.sin(frame * 0.05 + i * 0.24));
         } else if (ac > 0) {
-          // Directional flow left→right
-          targetVx[i] = 0.3 + (speedCap / 5) * 1.2;
-          targetVy[i] = (Math.random() - 0.5) * 0.2;
-          targetOp[i] = 0.7 + (speedCap / 5) * 0.2;
+          targetVx[i] = (0.68 + (speedCap * 0.2) + Math.random() * 0.24) * dpr;
+          targetVy[i] = (Math.random() - 0.5) * 0.2 * dpr;
+          targetOp[i] = 0.56 + (speedCap * 0.05) + Math.random() * 0.14;
         } else {
-          // Idle drift
-          if (frame % 120 === i % 120) {
-            targetVx[i] = (Math.random() - 0.5) * 0.4;
-            targetVy[i] = (Math.random() - 0.5) * 0.4;
-          }
-          targetOp[i] = 0.3 + Math.random() * 0.2;
+          targetVx[i] = (0.3 + Math.random() * 0.16) * dpr;
+          targetVy[i] = (Math.random() - 0.5) * 0.1 * dpr;
+          targetOp[i] = 0.42 + Math.random() * 0.14;
         }
+
+        particles[i].vx += (targetVx[i] - particles[i].vx) * lerpT;
+        particles[i].vy += (targetVy[i] - particles[i].vy) * lerpT;
+        particles[i].opacity += (targetOp[i] - particles[i].opacity) * lerpT;
 
         if (!reducedMotion) {
-          const lerpT = 1 / 60;
-          particles[i].vx += (targetVx[i] - particles[i].vx) * lerpT;
-          particles[i].vy += (targetVy[i] - particles[i].vy) * lerpT;
-          particles[i].opacity += (targetOp[i] - particles[i].opacity) * lerpT;
-
           particles[i].x += particles[i].vx;
           particles[i].y += particles[i].vy;
-
-          // Wrap around edges
-          if (particles[i].x < 0) particles[i].x += WIDTH;
-          if (particles[i].x > WIDTH) particles[i].x -= WIDTH;
-          if (particles[i].y < 0) particles[i].y += HEIGHT;
-          if (particles[i].y > HEIGHT) particles[i].y -= HEIGHT;
         }
+
+        if (particles[i].x < -16 * dpr) particles[i].x = drawWidth + 8 * dpr;
+        if (particles[i].x > drawWidth + 16 * dpr) particles[i].x = -8 * dpr;
+        if (particles[i].y < 0) particles[i].y += drawHeight;
+        if (particles[i].y > drawHeight) particles[i].y -= drawHeight;
 
         posData[i * 2] = particles[i].x;
         posData[i * 2 + 1] = particles[i].y;
@@ -250,31 +303,27 @@ export function IntelligenceCanvas({
         szData[i] = particles[i].size;
       }
 
-      glContext.viewport(0, 0, WIDTH, HEIGHT);
+      glContext.viewport(0, 0, drawWidth, drawHeight);
       glContext.clearColor(0, 0, 0, 0);
       glContext.clear(glContext.COLOR_BUFFER_BIT);
 
-      // Upload position
       glContext.bindBuffer(glContext.ARRAY_BUFFER, posBuf);
       glContext.bufferData(glContext.ARRAY_BUFFER, posData, glContext.DYNAMIC_DRAW);
       glContext.enableVertexAttribArray(aPosition);
       glContext.vertexAttribPointer(aPosition, 2, glContext.FLOAT, false, 0, 0);
 
-      // Upload opacity
       glContext.bindBuffer(glContext.ARRAY_BUFFER, opBuf);
       glContext.bufferData(glContext.ARRAY_BUFFER, opData, glContext.DYNAMIC_DRAW);
       glContext.enableVertexAttribArray(aOpacity);
       glContext.vertexAttribPointer(aOpacity, 1, glContext.FLOAT, false, 0, 0);
 
-      // Upload size
       glContext.bindBuffer(glContext.ARRAY_BUFFER, szBuf);
       glContext.bufferData(glContext.ARRAY_BUFFER, szData, glContext.DYNAMIC_DRAW);
       glContext.enableVertexAttribArray(aSize);
       glContext.vertexAttribPointer(aSize, 1, glContext.FLOAT, false, 0, 0);
 
-      glContext.drawArrays(glContext.POINTS, 0, PARTICLE_COUNT);
+      glContext.drawArrays(glContext.POINTS, 0, particleCount);
 
-      // Static mode: draw once then stop
       if (reducedMotion) {
         cancelAnimationFrame(rafId);
       }
@@ -289,21 +338,28 @@ export function IntelligenceCanvas({
       glContext.deleteBuffer(szBuf);
       glContext.deleteProgram(program);
     };
-  }, []); // intentionally empty — state read via stateRef
+  }, [size.height, size.width]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={WIDTH}
-      height={HEIGHT}
-      className={className}
+    <div
+      ref={wrapperRef}
+      className={`topbar-intelligence${className ? ` ${className}` : ''}`}
+      data-testid={testId}
       aria-hidden="true"
-      style={{ display: 'block' }}
-    />
+    >
+      <canvas ref={canvasRef} className="topbar-intelligence__canvas" />
+      <div className="topbar-intelligence__ornaments">
+        <span className="topbar-intelligence__dot topbar-intelligence__dot--1" />
+        <span className="topbar-intelligence__dot topbar-intelligence__dot--2" />
+        <span className="topbar-intelligence__dot topbar-intelligence__dot--3" />
+        <span className="topbar-intelligence__rail topbar-intelligence__rail--left flow-shift" />
+        <span className="topbar-intelligence__rail topbar-intelligence__rail--right" />
+        <span className="topbar-intelligence__carrier signal-travel" />
+      </div>
+    </div>
   );
 }
 
-// Re-export with WebGL2 availability check as a wrapper
 const IntelligenceCanvasWithFallback = React.memo(function IntelligenceCanvasWithFallback(
   props: IntelligenceCanvasProps,
 ) {
@@ -317,7 +373,7 @@ const IntelligenceCanvasWithFallback = React.memo(function IntelligenceCanvasWit
   });
 
   if (!supportsWebGL2) {
-    return <CssFallback className={props.className} />;
+    return <CssFallback className={props.className} testId={props.testId} />;
   }
 
   return <IntelligenceCanvas {...props} />;
