@@ -235,6 +235,7 @@ export function CreateTaskPage() {
   const [roleSkillRefs, setRoleSkillRefs] = useState<Record<string, string[]>>({});
   const [globalSkillsOpen, setGlobalSkillsOpen] = useState(true);
   const [globalSkillSearch, setGlobalSkillSearch] = useState('');
+  const [globalSkillFilter, setGlobalSkillFilter] = useState<'all' | 'selected' | 'recommended'>('all');
   const [roleSkillPickerOpen, setRoleSkillPickerOpen] = useState<Record<string, boolean>>({});
   const [roleSkillSearch, setRoleSkillSearch] = useState<Record<string, string>>({});
   const [skillUsageHistory, setSkillUsageHistory] = useState<SkillUsageEntry[]>(() => readSkillUsageHistory());
@@ -332,19 +333,6 @@ export function CreateTaskPage() {
     [availableSkills],
   );
   const currentTemplateType = selectedTemplate?.type ?? type;
-  const filteredGlobalSkills = useMemo(
-    () => sortSkillsForPicker(
-      filterSkills(skillCatalog, globalSkillSearch),
-      globalSkillRefs,
-      skillUsageHistory,
-      {
-        surface: 'global',
-        templateType: currentTemplateType,
-        role: null,
-      },
-    ),
-    [currentTemplateType, globalSkillRefs, globalSkillSearch, skillCatalog, skillUsageHistory],
-  );
   const globalSkillSignals = useMemo(
     () => getRecentTimestamps(skillUsageHistory, {
       surface: 'global',
@@ -352,6 +340,28 @@ export function CreateTaskPage() {
       role: null,
     }),
     [currentTemplateType, skillUsageHistory],
+  );
+  const filteredGlobalSkills = useMemo(
+    () => {
+      const sorted = sortSkillsForPicker(
+        filterSkills(skillCatalog, globalSkillSearch),
+        globalSkillRefs,
+        skillUsageHistory,
+        {
+          surface: 'global',
+          templateType: currentTemplateType,
+          role: null,
+        },
+      );
+      if (globalSkillFilter === 'selected') {
+        return sorted.filter((skill) => globalSkillRefs.includes(skill.skill_ref));
+      }
+      if (globalSkillFilter === 'recommended') {
+        return sorted.filter((skill) => resolveSkillSignal(skill.skill_ref, globalSkillSignals) === 'recommended');
+      }
+      return sorted;
+    },
+    [currentTemplateType, globalSkillFilter, globalSkillRefs, globalSkillSearch, globalSkillSignals, skillCatalog, skillUsageHistory],
   );
   const restrictedSuggestedByRole = useMemo(() => {
     if (!selectedTemplate) {
@@ -680,9 +690,9 @@ export function CreateTaskPage() {
                         key={skillRef}
                         type="button"
                         aria-pressed="true"
-                        title={createTaskCopy.deselectSkillTitle(skillRef)}
+                        data-skill-tooltip={createTaskCopy.deselectSkillTitle(skillRef)}
                         onClick={() => toggleGlobalSkill(skillRef)}
-                        className="choice-pill choice-pill--active"
+                        className="choice-pill choice-pill--active skill-picker__selected-chip"
                       >
                         {skillRef}
                       </button>
@@ -706,6 +716,18 @@ export function CreateTaskPage() {
                         className="input-text"
                       />
                     </label>
+                    <div className="skill-picker__filters">
+                      {(['all', 'selected', 'recommended'] as const).map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setGlobalSkillFilter(filter)}
+                          className={globalSkillFilter === filter ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                        >
+                          {createTaskCopy.globalSkillFilterLabels[filter]}
+                        </button>
+                      ))}
+                    </div>
                     <div data-testid="global-skill-picker-results">
                       {renderSkillOptionList(
                         filteredGlobalSkills,
@@ -835,9 +857,9 @@ export function CreateTaskPage() {
                                   key={`${member.role}-selected-${skillRef}`}
                                   type="button"
                                   aria-pressed="true"
-                                  title={createTaskCopy.deselectSkillTitle(skillRef)}
+                                  data-skill-tooltip={createTaskCopy.deselectSkillTitle(skillRef)}
                                   onClick={() => toggleRoleSkill(member.role, skillRef)}
-                                  className="choice-pill choice-pill--active"
+                                  className="choice-pill choice-pill--active skill-picker__selected-chip"
                                 >
                                   {skillRef}
                                 </button>

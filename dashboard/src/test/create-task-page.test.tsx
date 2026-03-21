@@ -571,7 +571,7 @@ describe('create task page', () => {
     expect(screen.getByText('点击已选 Skill 可取消')).toBeInTheDocument();
     expect(
       screen.getAllByRole('button', { name: 'planning-with-files' }).some(
-        (element) => element.getAttribute('title') === '点击取消 planning-with-files',
+        (element) => element.getAttribute('data-skill-tooltip') === '点击取消 planning-with-files',
       ),
     ).toBe(true);
 
@@ -583,8 +583,44 @@ describe('create task page', () => {
     expect(within(developerCard as HTMLElement).getByText('点击已选 Skill 可取消')).toBeInTheDocument();
     expect(
       within(developerCard as HTMLElement).getAllByRole('button', { name: 'refactoring-ui' }).some(
-        (element) => element.getAttribute('title') === '点击取消 refactoring-ui',
+        (element) => element.getAttribute('data-skill-tooltip') === '点击取消 refactoring-ui',
       ),
     ).toBe(true);
+  });
+
+  it('supports lightweight global filters for selected and recommended skills', async () => {
+    window.localStorage.setItem('agora-create-task-skill-usage', JSON.stringify([
+      {
+        skillRef: 'frontend-design',
+        surface: 'global',
+        templateType: 'coding',
+        role: null,
+        lastUsedAt: '2026-03-21T11:00:00.000Z',
+      },
+    ]));
+
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'planning-with-files' }));
+    fireEvent.click(screen.getByRole('button', { name: '已选' }));
+
+    const globalPanel = screen.getByTestId('global-skill-picker-results');
+    expect(within(globalPanel).getAllByRole('button').map((element) => element.getAttribute('aria-label'))).toEqual([
+      'planning-with-files',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: '推荐' }));
+    expect(within(globalPanel).getAllByRole('button').map((element) => element.getAttribute('aria-label'))).toEqual([
+      'planning-with-files',
+      'frontend-design',
+    ]);
   });
 });

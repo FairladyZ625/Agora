@@ -251,6 +251,11 @@ export function useCreateTaskPageCopy() {
     closeGlobalSkillsAction: t('createTask.closeGlobalSkillsAction'),
     globalSkillsSearchLabel: t('createTask.globalSkillsSearchLabel'),
     globalSkillsSearchPlaceholder: t('createTask.globalSkillsSearchPlaceholder'),
+    globalSkillFilterLabels: {
+      all: t('createTask.globalSkillFilterLabels.all'),
+      selected: t('createTask.globalSkillFilterLabels.selected'),
+      recommended: t('createTask.globalSkillFilterLabels.recommended'),
+    },
     skillSignalLabels: {
       recommended: t('createTask.skillSignalLabels.recommended'),
       recent: t('createTask.skillSignalLabels.recent'),

@@ -303,6 +303,11 @@ export const resources = {
         closeGlobalSkillsAction: '收起全局 Skills',
         globalSkillsSearchLabel: '搜索全局 Skills',
         globalSkillsSearchPlaceholder: '按名称筛选全局 Skills',
+        globalSkillFilterLabels: {
+          all: '全部',
+          selected: '已选',
+          recommended: '推荐',
+        },
         skillSignalLabels: {
           recommended: '推荐',
           recent: '最近',
@@ -1413,6 +1418,11 @@ export const resources = {
         closeGlobalSkillsAction: 'Hide global skills',
         globalSkillsSearchLabel: 'Search global skills',
         globalSkillsSearchPlaceholder: 'Filter global skills by name',
+        globalSkillFilterLabels: {
+          all: 'All',
+          selected: 'Selected',
+          recommended: 'Recommended',
+        },
         skillSignalLabels: {
           recommended: 'Recommended',
           recent: 'Recent',
