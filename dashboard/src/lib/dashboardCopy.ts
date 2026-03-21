@@ -66,6 +66,18 @@ export function useDashboardHomeCopy() {
     title: t('home.title'),
     summary: t('home.summary'),
     slogan: t('home.slogan'),
+    heroStatusLabel: t('home.heroStatusLabel'),
+    heroStackLabels: {
+      pending: t('home.heroStackLabels.pending'),
+      active: t('home.heroStackLabels.active'),
+      governance: t('home.heroStackLabels.governance'),
+    },
+    heroBriefs: {
+      pending: (count: number, title: string) => t('home.heroBriefs.pending', { count, title }),
+      idle: () => t('home.heroBriefs.idle'),
+      active: (count: number, executions: number) => t('home.heroBriefs.active', { count, executions }),
+      governance: (runtime: string, load: string) => t('home.heroBriefs.governance', { runtime, load }),
+    },
     sectionLabels: {
       agora: t('home.sectionLabels.agora'),
       archon: t('home.sectionLabels.archon'),

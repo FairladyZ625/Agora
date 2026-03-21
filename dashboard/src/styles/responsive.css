@@ -258,6 +258,31 @@
     grid-template-columns: 1fr;
   }
 
+  .home-os__visual-zone,
+  .home-signal-field {
+    min-height: 132px;
+  }
+
+  .home-os__orbital-readout {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .home-os__orbital-core {
+    width: 56px;
+    height: 56px;
+  }
+
+  .home-os__orbital-readout .home-os__orbital-value {
+    justify-self: start;
+  }
+
+  .home-os__header-actions {
+    left: 0;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
   .home-os__terminal {
     min-height: 240px;
   }

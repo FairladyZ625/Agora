@@ -219,6 +219,9 @@
   --intelligence-active-color: var(--color-primary);
   --intelligence-review-color: var(--color-warning);
   --intelligence-error-color: var(--color-danger);
+  --home-signal-field-line: #4a78a6;
+  --home-signal-field-glow: #7ba8d0;
+  --home-signal-field-highlight: #ffffff;
   --runtime-log-bg: var(--color-static-dark);
   --runtime-log-overlay: color-mix(in srgb, var(--color-static-dark) 80%, transparent);
   --runtime-log-spinner-track: color-mix(in srgb, var(--color-static-white) 10%, transparent);
@@ -463,6 +466,9 @@
   --topbar-intelligence-highlight-soft: rgba(158, 184, 210, 0.08);
   --topbar-intelligence-canvas-opacity: 0.98;
   --topbar-intelligence-ornament-opacity: 0.86;
+  --home-signal-field-line: #9eb8d2;
+  --home-signal-field-glow: #d8eff9;
+  --home-signal-field-highlight: #f5fcff;
   --topbar-sigil-bg: linear-gradient(135deg, rgba(224, 245, 250, 0.14), rgba(100, 210, 239, 0.12));
   --topbar-sigil-border: rgba(158, 184, 210, 0.2);
   --topbar-sigil-shadow: 0 16px 28px rgba(158, 184, 210, 0.12);

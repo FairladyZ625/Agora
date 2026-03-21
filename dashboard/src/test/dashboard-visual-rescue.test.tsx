@@ -91,15 +91,21 @@ describe('dashboard visual rescue target structure', () => {
     taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-001');
   });
 
-  it('adds a branded home hero that explains the Agora operating model', () => {
+  it('turns the home hero into an operational summary with direct next actions', () => {
     renderWithRouter(<DashboardHome />);
 
     expect(screen.getByText('Agora')).toBeInTheDocument();
-    expect(screen.getByText('Agora 中枢')).toBeInTheDocument();
-    expect(screen.getByText('裁决中枢')).toBeInTheDocument();
-    expect(screen.getByText('任务总线')).toBeInTheDocument();
+    expect(screen.getByText('当前总览')).toBeInTheDocument();
+    expect(screen.getByText('待审批事项')).toBeInTheDocument();
+    expect(screen.getByText('活跃任务')).toBeInTheDocument();
+    expect(screen.getByText('运行治理')).toBeInTheDocument();
+    expect(screen.getByTestId('home-signal-field')).toBeInTheDocument();
+    expect(screen.getByText('待决议队列')).toBeInTheDocument();
+    expect(screen.getByText(/待处理 1 个审批/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /打开任务总线/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /进入裁决台/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /进入裁决台|进入审批队列/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Agora 不是普通控制台/)).not.toBeInTheDocument();
+    expect(screen.queryByText('广场，而不是后台')).not.toBeInTheDocument();
   });
 
   it('turns the app shell into a contextual operational rail', () => {
@@ -239,7 +245,7 @@ describe('dashboard visual rescue target structure', () => {
     renderWithRouter(<DashboardHome />);
 
     expect(screen.getByText('AGORA / 指挥广场')).toBeInTheDocument();
-    expect(screen.getByText('实时编排总览')).toBeInTheDocument();
+    expect(screen.getByText('实时态势总览')).toBeInTheDocument();
     expect(screen.getByText('当前裁决')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /查看 Agent 监测/i })).toBeInTheDocument();
   });
@@ -252,5 +258,7 @@ describe('dashboard visual rescue target structure', () => {
     );
 
     expect(screen.queryByText('多 Agent 协作编排中枢')).not.toBeInTheDocument();
+    expect(screen.queryByText('品牌主舞台')).not.toBeInTheDocument();
+    expect(screen.getByText('态势总览')).toBeInTheDocument();
   });
 });
