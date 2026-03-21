@@ -25,11 +25,11 @@ export function AppShell({ children }: AppShellProps) {
   const shouldRenderSidebar = !isMobile || mobileNavOpen;
 
   return (
-    <div className="app-shell app-shell-tone">
+    <div className="app-shell app-shell-tone app-shell--shell">
       {/* M4: skip-to-content link */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded"
+        className="skip-link sr-only focus:not-sr-only"
       >
         Skip to content
       </a>
@@ -56,11 +56,8 @@ export function AppShell({ children }: AppShellProps) {
           </div>
         </main>
 
-        <footer
-          className="app-shell__footer border-t"
-          style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel-strong)' }}
-        >
-          <div className="app-frame app-shell__footer-inner px-4 py-3 md:px-6">
+        <footer className="app-shell__footer app-shell__footer--shell">
+          <div className="app-frame app-shell__footer-inner app-shell__footer-inner--shell px-4 py-3 md:px-6">
             <div className="footer-plaque">
               <span className="footer-plaque__label">{shellCopy.footerProjectLabel}</span>
               <span className="footer-plaque__value">{shellCopy.footerProjectValue}</span>

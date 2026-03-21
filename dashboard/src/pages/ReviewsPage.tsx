@@ -171,7 +171,7 @@ export function ReviewsPage() {
   };
 
   return (
-    <div className="workspace-page workspace-page--locked">
+    <div className="workbench-shell workspace-page workspace-page--locked">
       <section className="surface-panel surface-panel--workspace">
         <div className="workbench-masthead">
           <div className="space-y-3">
