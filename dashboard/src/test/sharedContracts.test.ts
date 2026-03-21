@@ -29,6 +29,36 @@ describe('shared contracts', () => {
     expect(parsed.id).toBe('OC-900');
   });
 
+  it('parses regression_test task control mode from shared contracts', () => {
+    const parsed = taskSchema.parse({
+      id: 'OC-901',
+      version: 1,
+      title: 'regression contract task',
+      description: null,
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      locale: 'zh-CN',
+      state: 'active',
+      archive_status: null,
+      current_stage: 'triage',
+      control: {
+        mode: 'regression_test',
+      },
+      team: { members: [] },
+      workflow: { stages: [] },
+      scheduler: null,
+      scheduler_snapshot: null,
+      discord: null,
+      metrics: null,
+      error_detail: null,
+      created_at: '2026-03-21T00:00:00.000Z',
+      updated_at: '2026-03-21T00:00:00.000Z',
+    });
+
+    expect(parsed.control?.mode).toBe('regression_test');
+  });
+
   it('allows dashboard to import and parse dashboard dto schemas from agora-ts', () => {
     const parsed = agentsStatusSchema.parse({
       summary: {

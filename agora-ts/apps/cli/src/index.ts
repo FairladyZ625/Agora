@@ -12,7 +12,9 @@ import {
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
+  isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
+import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
   CitizenService,
@@ -25,10 +27,12 @@ import type {
   ProjectBrainService,
   ProjectService,
   RolePackService,
+  TaskContextBindingService,
   TaskConversationService,
   TaskService,
   TemplateAuthoringService,
   TmuxRuntimeService,
+  IMProvisioningPort,
 } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
@@ -88,9 +92,11 @@ export interface CliDependencies {
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
   taskConversationService?: TaskConversationService;
+  taskContextBindingService?: TaskContextBindingService;
   templateAuthoringService?: TemplateAuthoringService;
   rolePackService?: RolePackService;
   dashboardQueryService?: DashboardQueryService;
+  imProvisioningPort?: IMProvisioningPort;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
   startCommandCwd?: string;
@@ -380,9 +386,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardSessionClient = createLazyObject(() => deps.dashboardSessionClient ?? resolveComposition().dashboardSessionClient);
   const humanAccountService = createLazyObject(() => deps.humanAccountService ?? resolveComposition().humanAccountService);
   const taskConversationService = createLazyObject(() => deps.taskConversationService ?? resolveComposition().taskConversationService);
+  const taskContextBindingService = createLazyObject(() => deps.taskContextBindingService ?? resolveComposition().taskContextBindingService);
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const getImProvisioningPort = () => deps.imProvisioningPort ?? resolveComposition().imProvisioningPort;
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
@@ -572,6 +580,153 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `状态: ${task.state}`);
       writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
       writeLine(stdout, `Flow Log: ${status.flow_log.length}`);
+    });
+
+  const regression = program
+    .command('regression')
+    .description('developer live regression commands');
+
+  regression
+    .command('live')
+    .description('publish a live regression prompt into a bound task thread')
+    .option('--task-id <taskId>', 'existing task id')
+    .option('--title <title>', 'create a fresh regression task with this title')
+    .option('--type <type>', 'task type for create mode', 'coding')
+    .option('--priority <priority>', 'task priority for create mode', 'normal')
+    .option('--creator <creator>', 'task creator for create mode', 'archon')
+    .option('--locale <locale>', 'task locale for create mode (zh-CN|en-US)', 'zh-CN')
+    .option('--team-json <json>', 'team override JSON for create mode')
+    .option('--workflow-json <json>', 'workflow override JSON for create mode')
+    .option('--im-target-json <json>', 'IM target override JSON for create mode')
+    .option('--project-id <projectId>', 'bind create-mode regression task to an existing project')
+    .option('--controller <agentId>', 'controller agent override for create mode')
+    .option('--bind <binding>', 'role binding override for create mode (role=agent)', collectOption, [])
+    .requiredOption('--goal <goal>', 'regression goal')
+    .option('--message <text>', 'prompt text')
+    .option('--body-file <path>', 'prompt text file')
+    .option('--participant <ref>', 'participant ref to mention', collectOption, [])
+    .option('--action <kind>', 'optional fallback task action')
+    .option('--action-actor <actor>', 'actor id used for the fallback action')
+    .option('--next-stage-id <id>', 'branch target for advance_current')
+    .option('--comment <text>', 'comment for approve/confirm actions')
+    .option('--reason <text>', 'reason for reject actions')
+    .option('--vote <vote>', 'vote for confirm_current (approve|reject)')
+    .option('--json', 'emit JSON', false)
+    .action(async (options: {
+      taskId?: string;
+      title?: string;
+      type: string;
+      priority: TaskPriority;
+      creator: string;
+      locale: 'zh-CN' | 'en-US';
+      teamJson?: string;
+      workflowJson?: string;
+      imTargetJson?: string;
+      projectId?: string;
+      controller?: string;
+      bind?: string[];
+      goal: string;
+      message?: string;
+      bodyFile?: string;
+      participant?: string[];
+      action?: string;
+      actionActor?: string;
+      nextStageId?: string;
+      comment?: string;
+      reason?: string;
+      vote?: 'approve' | 'reject';
+      json?: boolean;
+    }) => {
+      if (!isDeveloperRegressionEnabled(process.env)) {
+        throw new CliError(
+          'AGORA_DEV_REGRESSION_MODE is not enabled.',
+          'usage',
+          CLI_EXIT_CODES.usage,
+          'Set AGORA_DEV_REGRESSION_MODE=true before running developer live regression commands.',
+        );
+      }
+      const imProvisioningPort = getImProvisioningPort();
+      if (!imProvisioningPort) {
+        throw new Error('IM provisioning port is not configured');
+      }
+      if ((options.taskId ? 1 : 0) + (options.title ? 1 : 0) !== 1) {
+        throw new Error('regression live requires exactly one target: --task-id or --title');
+      }
+      const message = readTextOption(options.message, options.bodyFile, 'regression live').trim();
+      if (!message) {
+        throw new Error('regression live requires --message or --body-file');
+      }
+      const taskAction = options.action
+        ? {
+            kind: options.action as 'approve_current' | 'reject_current' | 'advance_current' | 'confirm_current',
+            actor_ref: options.actionActor ?? '',
+            ...(options.nextStageId ? { next_stage_id: options.nextStageId } : {}),
+            ...(options.comment ? { comment: options.comment } : {}),
+            ...(options.reason ? { reason: options.reason } : {}),
+            ...(options.vote ? { vote: options.vote } : {}),
+          }
+        : undefined;
+      if (taskAction && !taskAction.actor_ref) {
+        throw new Error('--action-actor is required when --action is provided');
+      }
+      const actor = new LiveRegressionActor({
+        taskService,
+        taskContextBindingService,
+        taskConversationService,
+        imProvisioningPort,
+      });
+      const target = options.taskId
+        ? { taskId: options.taskId }
+        : (() => {
+            const input = createTaskRequestSchema.parse({
+              title: options.title,
+              type: options.type,
+              creator: options.creator,
+              description: '',
+              priority: options.priority,
+              locale: options.locale,
+              ...(options.projectId ? { project_id: options.projectId } : {}),
+              ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
+              ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
+              ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
+              control: { mode: 'regression_test' },
+            });
+            const template = (() => {
+              try {
+                return templateAuthoringService.getTemplate(options.type);
+              } catch {
+                return null;
+              }
+            })();
+            return {
+              createTask: applyTaskCreateOverrides(
+                input,
+                options.type,
+                template,
+                rolePackService,
+                options.controller,
+                parseRoleBindings(options.bind),
+              ),
+            };
+          })();
+      const result = await actor.run({
+        target,
+        actorRef: 'agora-bot',
+        displayName: 'AgoraBot',
+        goal: options.goal,
+        message,
+        ...(options.participant ? { participantRefs: options.participant } : {}),
+        ...(taskAction ? { taskAction } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `Regression task: ${result.taskId}`);
+      writeLine(stdout, `Thread: ${result.threadRef ?? '-'}`);
+      writeLine(stdout, `State: ${result.state}`);
+      writeLine(stdout, `Stage: ${result.currentStage ?? '-'}`);
+      writeLine(stdout, `Conversation Entry: ${result.conversationEntryId ?? '-'}`);
     });
 
   const roles = program

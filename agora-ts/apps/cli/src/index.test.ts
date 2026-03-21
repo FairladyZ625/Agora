@@ -51,6 +51,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
+  delete process.env.AGORA_DEV_REGRESSION_MODE;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -1409,6 +1410,197 @@ describe('agora-ts cli', () => {
     const created = taskService.getTask('OC-300SMOKE');
     expect(stderr.value).toBe('');
     expect(created?.control?.mode).toBe('smoke_test');
+  });
+
+  it('rejects live regression commands when developer regression mode is disabled', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-off',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-OFF',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await expect(program.parseAsync([
+      'regression',
+      'live',
+      '--task-id', 'OC-CLI-REG-OFF',
+      '--goal', 'should fail without env gate',
+      '--message', 'continue',
+    ], { from: 'user' })).rejects.toThrow(/AGORA_DEV_REGRESSION_MODE/);
+  });
+
+  it('runs live regression through the cli against an existing bound task', async () => {
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-on',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-ON',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'cli regression task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'drive execute stage from cli regression',
+      priority: 'normal',
+      control: { mode: 'regression_test' },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'triage',
+            mode: 'discuss',
+            gate: { type: 'command' },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'regression',
+      'live',
+      '--task-id', 'OC-CLI-REG-ON',
+      '--goal', 'drive execute stage from cli',
+      '--message', 'advance if ready',
+      '--participant', 'opus',
+      '--action', 'advance_current',
+      '--action-actor', 'archon',
+      '--json',
+    ], { from: 'user' });
+
+    const payload = JSON.parse(stdout.value);
+    expect(stderr.value).toBe('');
+    expect(payload).toMatchObject({
+      taskId: 'OC-CLI-REG-ON',
+      threadRef: 'discord-thread-cli-regression-on',
+      currentStage: 'execute',
+      state: 'active',
+    });
+    expect(provisioning.published).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_ref: 'discord-thread-cli-regression-on',
+        messages: [
+          expect.objectContaining({
+            kind: 'regression_operator',
+            participant_refs: ['opus'],
+            body: 'advance if ready',
+          }),
+        ],
+      }),
+    ]));
+  });
+
+  it('can create a regression-mode task directly from the live regression command', async () => {
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-create',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-CREATE',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'regression',
+      'live',
+      '--title', 'fresh regression task',
+      '--type', 'coding',
+      '--goal', 'create and start a fresh regression task',
+      '--message', 'start the live regression loop',
+      '--json',
+    ], { from: 'user' });
+
+    const payload = JSON.parse(stdout.value);
+    const created = taskService.getTask('OC-CLI-REG-CREATE');
+    expect(stderr.value).toBe('');
+    expect(payload).toMatchObject({
+      taskId: 'OC-CLI-REG-CREATE',
+      threadRef: 'discord-thread-cli-regression-create',
+      state: 'active',
+    });
+    expect(created?.control?.mode).toBe('regression_test');
+    expect(provisioning.published).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_ref: 'discord-thread-cli-regression-create',
+        messages: [
+          expect.objectContaining({
+            kind: 'regression_operator',
+            body: 'start the live regression loop',
+          }),
+        ],
+      }),
+    ]));
   });
 
   it('creates tasks with global and role-scoped skill policy through the cli', async () => {
