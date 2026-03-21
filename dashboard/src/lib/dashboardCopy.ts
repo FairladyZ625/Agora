@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import type { AgentSelectabilityReasonLabels } from '@/lib/agentSelectability';
 
 export function useShellCopy() {
   const { t } = useTranslation();
@@ -248,6 +249,18 @@ export function useCreateTaskPageCopy() {
     privateThreadLabel: t('createTask.privateThreadLabel'),
     teamSummary: t('createTask.teamSummary'),
     noAgentLabel: t('createTask.noAgentLabel'),
+    restrictedSuggestedLabel: t('createTask.restrictedSuggestedLabel'),
+    selectabilityReasonLabel: t('createTask.selectabilityReasonLabel'),
+    selectabilityReasonLabels: {
+      active_assignment: t('selectabilityReasons.active_assignment'),
+      inventory_launchable: t('selectabilityReasons.inventory_launchable'),
+      stale_observation: t('selectabilityReasons.stale_observation'),
+      provider_disconnected: t('selectabilityReasons.provider_disconnected'),
+      unbound_agent: t('selectabilityReasons.unbound_agent'),
+      legacy_presence_gate: t('selectabilityReasons.legacy_presence_gate'),
+      legacy_presence_ok: t('selectabilityReasons.legacy_presence_ok'),
+      unknown: t('selectabilityReasons.unknown'),
+    } satisfies AgentSelectabilityReasonLabels,
     sourceContextTitle: t('createTask.sourceContextTitle'),
     sourceContextSummary: t('createTask.sourceContextSummary'),
     sourceKindLabel: t('createTask.sourceKindLabel'),
@@ -624,6 +637,12 @@ export function useAgentsPageCopy() {
       disconnected: t('agents.filterLabels.disconnected'),
       offline: t('agents.filterLabels.offline'),
     },
+    selectabilityFilterLabel: t('agents.selectabilityFilterLabel'),
+    selectabilityFilterLabels: {
+      all: t('agents.selectabilityFilterLabels.all'),
+      selectable: t('agents.selectabilityFilterLabels.selectable'),
+      restricted: t('agents.selectabilityFilterLabels.restricted'),
+    },
     agentListTitle: t('agents.agentListTitle'),
     craftsmenTitle: t('agents.craftsmenTitle'),
     emptyAgents: t('agents.emptyAgents'),
@@ -637,6 +656,16 @@ export function useAgentsPageCopy() {
     presenceReasonLabel: t('agents.presenceReasonLabel'),
     selectabilityLabel: t('agents.selectabilityLabel'),
     selectabilityReasonLabel: t('agents.selectabilityReasonLabel'),
+    selectabilityReasonLabels: {
+      active_assignment: t('selectabilityReasons.active_assignment'),
+      inventory_launchable: t('selectabilityReasons.inventory_launchable'),
+      stale_observation: t('selectabilityReasons.stale_observation'),
+      provider_disconnected: t('selectabilityReasons.provider_disconnected'),
+      unbound_agent: t('selectabilityReasons.unbound_agent'),
+      legacy_presence_gate: t('selectabilityReasons.legacy_presence_gate'),
+      legacy_presence_ok: t('selectabilityReasons.legacy_presence_ok'),
+      unknown: t('selectabilityReasons.unknown'),
+    } satisfies AgentSelectabilityReasonLabels,
     accountLabel: t('agents.accountLabel'),
     statusLabel: t('agents.statusLabel'),
     lastSeenLabel: t('agents.lastSeenLabel'),

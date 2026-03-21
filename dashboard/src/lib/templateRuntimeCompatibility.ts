@@ -1,4 +1,5 @@
 import type { AgentStatusItem, TemplateTeamPresetMember } from '@/types/dashboard';
+import { isSelectableAgent } from '@/lib/agentSelectability';
 import { isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 
 export interface TemplateRuntimeCompatibilityItem {
@@ -56,13 +57,6 @@ export function evaluateTemplateRuntimeCompatibility(
       missingSuggested,
     };
   });
-}
-
-function isSelectableAgent(agent: AgentStatusItem) {
-  if (agent.selectability) {
-    return agent.selectability !== 'restricted';
-  }
-  return agent.presence !== 'offline' && agent.presence !== 'disconnected';
 }
 
 export function evaluateTemplateControllerTopology(members: TemplateTeamPresetMember[]): TemplateControllerTopology {
