@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -33,6 +33,7 @@ function makeBrainPackDir() {
 }
 
 afterEach(() => {
+  delete process.env.AGORA_HOME_DIR;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -300,6 +301,52 @@ describe('task routes', () => {
         }),
       ],
     });
+  });
+
+  it('creates a Nomos-aware project through the api and writes the repo shim/global state skeleton', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-repo-parent-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-beta');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-BOOTSTRAP',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-api',
+        name: 'Project API Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json()).toMatchObject({
+      id: 'proj-nomos-api',
+      name: 'Project API Nomos',
+      status: 'active',
+    });
+    expect(existsSync(join(repoRoot, 'AGENTS.md'))).toBe(true);
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Fill Policy');
+    expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'profile.toml'), 'utf8')).toContain(
+      'id = "proj-nomos-api"',
+    );
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project API Nomos');
   });
 
   it('serves a project workbench detail bundle through the api', async () => {

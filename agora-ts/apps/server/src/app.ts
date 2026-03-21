@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import { DEFAULT_AGORA_NOMOS_ID, installBuiltInAgoraNomosForProject } from '@agora-ts/config';
 import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
@@ -78,6 +79,7 @@ import {
   type NotificationDispatcher,
   type CitizenService,
   type ProjectBrainService,
+  ProjectBootstrapService,
   type ProjectService,
   ProjectService as ProjectServiceImpl,
   type TaskConversationService,
@@ -1043,13 +1045,35 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = createProjectRequestSchema.parse(request.body);
-      return reply.send(projectService.createProject({
+      const nomosId = payload.nomos_id?.trim() || DEFAULT_AGORA_NOMOS_ID;
+      if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
+        throw new Error(`Unsupported nomos_id: ${nomosId}`);
+      }
+      const project = projectService.createProject({
         ...(payload.id ? { id: payload.id } : {}),
         name: payload.name,
         summary: payload.summary,
         ...(payload.owner ? { owner: payload.owner } : {}),
         ...(payload.metadata ? { metadata: payload.metadata } : {}),
-      }));
+      });
+      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
+        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
+        initializeRepo: payload.initialize_repo ?? false,
+      });
+      if (taskService) {
+        new ProjectBootstrapService({
+          projectService,
+          taskService,
+        }).createHarnessBootstrapTask({
+          project_id: project.id,
+          project_name: project.name,
+          creator: project.owner ?? 'archon',
+          repo_path: payload.repo_path,
+          project_state_root: installedNomos.layout.root,
+          nomos_id: installedNomos.profile.pack.id,
+        });
+      }
+      return reply.send(project);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -309,10 +309,17 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-INDEX-BOOTSTRAP',
+      projectService,
+    });
     const program = createCliProgram({
-      projectService: new ProjectService(db, {
-        knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
-      }),
+      projectService,
+      taskService,
       stdout,
       stderr,
     }).exitOverride();
@@ -324,6 +331,53 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Project 已创建: proj-alpha');
     expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
     expect(readFileSync(join(brainPackRoot, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+  });
+
+  it('installs the built-in Nomos skeleton and repo shim through the cli project-create path', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-brain-');
+    const repoParent = makeTempDir('agora-ts-cli-project-repo-parent-');
+    const repoRoot = join(repoParent, 'repo-alpha');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-BOOTSTRAP',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-nomos',
+      '--name',
+      'Project Nomos',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已创建: proj-nomos');
+    expect(stdout.value).toContain('Nomos: agora/default@0.1.0');
+    expect(stdout.value).toContain(`Repo Shim: ${join(repoRoot, 'AGENTS.md')}`);
+    expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-BOOTSTRAP');
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'profile.toml'), 'utf8')).toContain(
+      'id = "proj-nomos"',
+    );
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project Nomos');
   });
 
   it('creates a project-bound task through the cli', async () => {

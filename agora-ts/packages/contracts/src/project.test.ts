@@ -7,9 +7,15 @@ describe('project contracts', () => {
       name: 'Alpha',
       summary: 'Thin slice',
       owner: 'archon',
+      repo_path: '/tmp/alpha',
+      initialize_repo: true,
+      nomos_id: 'agora/default',
     })).toMatchObject({
       name: 'Alpha',
       owner: 'archon',
+      repo_path: '/tmp/alpha',
+      initialize_repo: true,
+      nomos_id: 'agora/default',
     });
   });
 

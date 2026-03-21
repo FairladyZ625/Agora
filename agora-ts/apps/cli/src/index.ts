@@ -3,13 +3,18 @@ import { realpathSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
+import {
+  DEFAULT_AGORA_NOMOS_ID,
+  installBuiltInAgoraNomosForProject,
+  resolveAgoraRuntimeEnvironmentFromConfigPackage,
+} from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
   deriveGraphFromStages,
   OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  ProjectBootstrapService,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
@@ -945,25 +950,63 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--name <name>', 'project name')
     .option('--summary <summary>', 'project summary')
     .option('--owner <owner>', 'project owner')
+    .option('--repo-path <path>', 'bind to an existing or new repo path')
+    .option('--new-repo', 'create the repo path if it does not exist and initialize git', false)
+    .option('--nomos-id <nomosId>', 'Nomos pack id (currently only agora/default)', DEFAULT_AGORA_NOMOS_ID)
     .option('--metadata-json <json>', 'project metadata JSON')
     .action((options: {
       id: string;
       name: string;
       summary?: string;
       owner?: string;
+      repoPath?: string;
+      newRepo?: boolean;
+      nomosId?: string;
       metadataJson?: string;
     }) => {
+      const nomosId = options.nomosId?.trim() || DEFAULT_AGORA_NOMOS_ID;
+      if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
+        throw new Error(`Unsupported nomos_id: ${nomosId}`);
+      }
       const input = createProjectRequestSchema.parse({
         id: options.id,
         name: options.name,
         ...(options.summary !== undefined ? { summary: options.summary } : {}),
         ...(options.owner !== undefined ? { owner: options.owner } : {}),
+        ...(options.repoPath ? { repo_path: options.repoPath } : {}),
+        ...(options.newRepo ? { initialize_repo: true } : {}),
+        nomos_id: nomosId,
         ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
       }) satisfies CreateProjectInputLike;
       const project = projectService.createProject(input);
+      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
+        ...(input.repo_path ? { repoPath: input.repo_path } : {}),
+        initializeRepo: input.initialize_repo ?? false,
+      });
+      const bootstrapTask = taskService
+        ? new ProjectBootstrapService({
+          projectService,
+          taskService,
+        }).createHarnessBootstrapTask({
+          project_id: project.id,
+          project_name: project.name,
+          creator: project.owner ?? 'archon',
+          repo_path: input.repo_path,
+          project_state_root: installedNomos.layout.root,
+          nomos_id: installedNomos.profile.pack.id,
+        })
+        : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);
       writeLine(stdout, `名称: ${project.name}`);
       writeLine(stdout, `状态: ${project.status}`);
+      writeLine(stdout, `Nomos: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
+      if (installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      }
+      if (bootstrapTask) {
+        writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
+      }
     });
 
   projects
