@@ -2116,7 +2116,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { jobId: string };
       const payload = archiveJobStatusUpdateRequestSchema.parse(request.body);
-      return reply.send(dashboardQueryService.updateArchiveJob(parseNumericId(params.jobId, 'jobId'), payload));
+      const job = dashboardQueryService.updateArchiveJob(parseNumericId(params.jobId, 'jobId'), payload);
+      await dashboardQueryService.drainBackgroundOperations();
+      return reply.send(job);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -2141,7 +2143,9 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
     try {
-      return reply.send(dashboardQueryService.ingestArchiveJobReceipts());
+      const result = dashboardQueryService.ingestArchiveJobReceipts();
+      await dashboardQueryService.drainBackgroundOperations();
+      return reply.send(result);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

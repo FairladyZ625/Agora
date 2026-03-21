@@ -1947,11 +1947,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('标记 archive job synced')
     .argument('<jobId>', 'archive job id')
     .requiredOption('--commit-hash <commitHash>', 'writer commit hash')
-    .action((jobId: string, options: { commitHash: string }) => {
+    .action(async (jobId: string, options: { commitHash: string }) => {
       const job = dashboardQueryService.updateArchiveJob(Number(jobId), {
         status: 'synced',
         commit_hash: options.commitHash,
       });
+      await dashboardQueryService.drainBackgroundOperations();
       writeLine(stdout, `archive job 已完成: ${job.id} -> ${job.status}`);
     });
 
@@ -1988,8 +1989,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .command('scan-receipts')
     .description('摄取 archive writer receipts')
     .option('--json', '输出 JSON', false)
-    .action((options: { json?: boolean }) => {
+    .action(async (options: { json?: boolean }) => {
       const result = dashboardQueryService.ingestArchiveJobReceipts();
+      await dashboardQueryService.drainBackgroundOperations();
       if (options.json) {
         writeLine(stdout, JSON.stringify(result, null, 2));
         return;

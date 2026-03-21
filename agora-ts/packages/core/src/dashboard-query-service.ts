@@ -61,6 +61,7 @@ export class DashboardQueryService {
   private readonly agentsStatusCacheTtlMs: number;
   private readonly now: () => Date;
   private agentsStatusCache: { value: AgentsStatusDto; expiresAtMs: number } | null = null;
+  private readonly backgroundOperations = new Set<Promise<void>>();
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -127,6 +128,13 @@ export class DashboardQueryService {
       throw new NotFoundError(`Channel ${channel} not found`);
     }
     return detail;
+  }
+
+  async drainBackgroundOperations(): Promise<void> {
+    if (this.backgroundOperations.size === 0) {
+      return;
+    }
+    await Promise.allSettled(Array.from(this.backgroundOperations));
   }
 
   private buildAgentsStatus(options: {
@@ -586,7 +594,7 @@ export class DashboardQueryService {
     if (!binding || binding.status === 'destroyed') {
       return;
     }
-    void this.imProvisioningPort.archiveContext({
+    this.trackBackgroundOperation(this.imProvisioningPort.archiveContext({
       binding_id: binding.id,
       conversation_ref: binding.conversation_ref,
       thread_ref: binding.thread_ref,
@@ -597,6 +605,13 @@ export class DashboardQueryService {
     }).catch((err: unknown) => {
       console.error(`[DashboardQueryService] IM context destroy failed for task ${taskId}:`, err);
       this.taskContextBindingService?.updateStatus(binding.id, 'failed');
+    }));
+  }
+
+  private trackBackgroundOperation(operation: Promise<void>) {
+    this.backgroundOperations.add(operation);
+    void operation.finally(() => {
+      this.backgroundOperations.delete(operation);
     });
   }
 }
