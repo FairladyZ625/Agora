@@ -25,6 +25,8 @@ describe("registerProjectCommands", () => {
 
     expect(result.text).toContain("Agora /project commands:");
     expect(result.text).toContain("/project create");
+    expect(result.text).toContain("Most common:");
+    expect(result.text).toContain('/project create "Project Name"');
   });
 
   it("returns usage when create is missing the project name", async () => {
@@ -33,7 +35,9 @@ describe("registerProjectCommands", () => {
 
     const result = await getCommand("project").handler({ args: "create", senderId: "u1" });
 
-    expect(result.text).toContain("Usage: /project create");
+    expect(result.text).toContain("Ready to create a project.");
+    expect(result.text).toContain('/project create "Project Name"');
+    expect(result.text).toContain("--repo-path");
   });
 
   it("creates projects through the bridge with parsed flags", async () => {
