@@ -78,7 +78,7 @@ async function main() {
     imProvisioningPort: provisioning,
     taskContextBindingService: bindings,
     allowAgents: {
-      opus: { canCall: [], canAdvance: true },
+      glm5: { canCall: [], canAdvance: true },
     },
   });
   const inbound = new TaskInboundService(conversations, bindings, taskService);
@@ -121,8 +121,9 @@ async function main() {
       priority: 'normal',
       team_override: {
         members: [
-          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
-          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'developer', agentId: 'glm47', member_kind: 'citizen', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
         ],
       },
       workflow_override: {
@@ -223,13 +224,13 @@ async function main() {
         thread_ref: threadRef,
         direction: 'inbound',
         author_kind: 'agent',
-        author_ref: 'opus',
-        display_name: 'opus',
+        author_ref: 'glm5',
+        display_name: 'glm5',
         body: 'advance from discord thread smoke',
         occurred_at: new Date().toISOString(),
         task_action: {
           kind: 'advance_current',
-          actor_ref: 'opus',
+          actor_ref: 'glm5',
           ...(options.scenario === 'branch' ? { next_stage_id: 'deep-review' } : {}),
         },
       },

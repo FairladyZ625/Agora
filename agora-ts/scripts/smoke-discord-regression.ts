@@ -59,6 +59,14 @@ async function main() {
           priority: 'normal',
           locale: 'zh-CN',
           control: { mode: 'regression_test' },
+          team_override: {
+            members: [
+              { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
+              { role: 'developer', agentId: 'glm47', member_kind: 'citizen', model_preference: 'cost_regression' },
+              { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
+              { role: 'craftsman', agentId: 'claude_code', member_kind: 'craftsman', model_preference: 'coding_cli' },
+            ],
+          },
           workflow_override: {
             type: 'custom',
             stages: [
@@ -84,7 +92,7 @@ async function main() {
       displayName: 'AgoraBot',
       goal: options.goal,
       message: options.message,
-      participantRefs: ['opus'],
+      participantRefs: ['glm5'],
     });
 
     bindingId = result.bindingId;
