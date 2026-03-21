@@ -3400,6 +3400,60 @@ describe('task service', () => {
     expect(meta).toContain('control_mode: "smoke_test"');
   });
 
+  it('adds regression-mode operator proxy guidance to bootstrap and role briefs', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-1',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REGRESSION-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-regression-1',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createTask({
+      title: 'Regression Bootstrap',
+      type: 'coding',
+      creator: 'archon',
+      description: 'validate regression control mode',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test' as never,
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const mentionBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_mentions');
+    expect(mentionBrief?.body).toContain('回归代理模式');
+    expect(mentionBrief?.body).toContain('AgoraBot 在当前线程里代表开发者执行回归');
+    const opusBrief = provisioningPort.published[0]?.messages.find((message) => (
+      message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus'
+    ));
+    expect(opusBrief?.body).toContain('回归代理模式：AgoraBot 在当前线程里代表开发者推进任务');
+
+    const task = new TaskRepository(db).getTask('OC-REGRESSION-1');
+    expect(task?.control?.mode).toBe('regression_test');
+    const meta = readFileSync(join(brainPackDir, 'tasks', 'OC-REGRESSION-1', 'task.meta.yaml'), 'utf8');
+    expect(meta).toContain('control_mode: "regression_test"');
+  });
+
   it('adds smoke-mode guidance to gate and callback status broadcasts only in smoke mode', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

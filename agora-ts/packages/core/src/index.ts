@@ -8,6 +8,7 @@ export * from './craftsman-probe-port.js';
 export * from './craftsman-tail-port.js';
 export * from './craftsman-output.js';
 export * from './craftsman-runtime-mode.js';
+export * from './dev-regression-mode.js';
 export * from './adapters/index.js';
 export * from './archive-job-notifier.js';
 export * from './dashboard-query-service.js';

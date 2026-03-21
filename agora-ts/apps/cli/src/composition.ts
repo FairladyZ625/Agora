@@ -177,6 +177,8 @@ export interface CliComposition {
   config: AgoraConfig;
   db: AgoraDatabase;
   taskService: TaskService;
+  imProvisioningPort?: IMProvisioningPort;
+  taskContextBindingService: TaskContextBindingService;
   projectService: ProjectService;
   projectBrainService: ProjectBrainService;
   projectBrainAutomationService: ProjectBrainAutomationService;
@@ -489,6 +491,8 @@ export function createCliComposition(
     config,
     db,
     taskService,
+    taskContextBindingService,
+    ...(imProvisioningPort ? { imProvisioningPort } : {}),
     projectService,
     projectBrainService,
     projectBrainAutomationService,

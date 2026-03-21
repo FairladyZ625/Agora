@@ -2460,6 +2460,14 @@ export class TaskService {
                 `- ${taskText(task, '额外测试引导仅用于验证。', 'Extra testing guidance may appear for validation only.')}`,
                 `- ${taskText(task, '这不是默认的终端用户产品流程。', 'This is not the default end-user product flow.')}`,
               ]
+            : task.control?.mode === 'regression_test'
+              ? [
+                  '',
+                  `${taskText(task, '回归代理模式', 'Regression Proxy Mode')}:`,
+                  `- ${taskText(task, '当前任务运行在开发期 regression mode 下。', 'This task is running in developer regression mode.')}`,
+                  `- ${taskText(task, 'AgoraBot 在当前线程里代表开发者执行回归，并可主动牵引任务推进。', 'AgoraBot represents the developer in this thread for regression and may actively steer task progression.')}`,
+                  `- ${taskText(task, '这套代理语义仅用于开发验证，不代表正式终端用户产品权限。', 'This proxy contract is for development validation only and does not represent normal end-user permissions.')}`,
+                ]
             : []),
         ].join('\n'),
       },
@@ -2500,7 +2508,9 @@ export class TaskService {
           `${taskText(task, '成员 mention', 'Roster mention')}: {{participant:${member.agentId}}}`,
           ...(task.control?.mode === 'smoke_test'
             ? [taskText(task, '冒烟测试模式：当前线程仅用于验证，不代表默认产品体验。', 'Smoke Test Mode: this thread is being used for validation, not for the default product UX.')]
-            : []),
+            : task.control?.mode === 'regression_test'
+              ? [taskText(task, '回归代理模式：AgoraBot 在当前线程里代表开发者推进任务、执行回归牵引；这只在开发环境中生效。', 'Regression Proxy Mode: AgoraBot represents the developer in this thread to drive the task and perform regression steering; this only applies in developer environments.')]
+              : []),
           ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`${taskText(task, '阅读角色文档', 'Read role doc')}: ${roleDocPath}`] : []),
           ...(member.briefing_mode === 'overlay_delta'
             ? [taskText(task, '该 Agent 已自带 Agora 托管的基础角色上下文；以下 role brief 只提供本任务增量。', 'This agent already carries Agora-managed base role context; use the role brief below as task delta.')]
@@ -4160,7 +4170,7 @@ type TaskStatusBroadcastEnvelope = {
   execution_kind: string | null;
   allowed_actions: string[];
   controller_ref: string | null;
-  control_mode: 'normal' | 'smoke_test';
+  control_mode: 'normal' | 'smoke_test' | 'regression_test';
   workspace_path: string | null;
   participant_refs: string[] | null;
   lines: string[];
