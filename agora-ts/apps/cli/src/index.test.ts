@@ -52,6 +52,12 @@ afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
   delete process.env.AGORA_DEV_REGRESSION_MODE;
+  delete process.env.AGORA_DASHBOARD_LOGIN_USER;
+  delete process.env.AGORA_DASHBOARD_LOGIN_PASSWORD;
+  delete process.env.AGORA_DASHBOARD_USER;
+  delete process.env.AGORA_DASHBOARD_PASSWORD;
+  delete process.env.DASHBOARD_LOGIN_USER;
+  delete process.env.DASHBOARD_LOGIN_PASSWORD;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -2043,6 +2049,72 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('dashboard session 已建立: lizeyu');
     expect(stdout.value).toContain('authenticated: true');
     expect(stdout.value).toContain('dashboard session 已清除');
+  });
+
+  it('reads dashboard session login credentials from env in developer regression mode', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    process.env.AGORA_DASHBOARD_LOGIN_USER = 'regression-admin';
+    process.env.AGORA_DASHBOARD_LOGIN_PASSWORD = 'secret-pass';
+
+    const program = createCliProgram({
+      taskService: {
+        createTask: () => {
+          throw new Error('unused');
+        },
+      } as unknown as TaskService,
+      legacyRuntimeService: {
+        up: () => {
+          throw new Error('unused');
+        },
+        status: () => {
+          throw new Error('unused');
+        },
+        send: () => {
+          throw new Error('unused');
+        },
+        sendText: () => {
+          throw new Error('unused');
+        },
+        sendKeys: () => {
+          throw new Error('unused');
+        },
+        submitChoice: () => {
+          throw new Error('unused');
+        },
+        start: () => {
+          throw new Error('unused');
+        },
+        resume: () => {
+          throw new Error('unused');
+        },
+        task: () => {
+          throw new Error('unused');
+        },
+        tail: () => {
+          throw new Error('unused');
+        },
+        doctor: () => {
+          throw new Error('unused');
+        },
+        down: () => {
+          throw new Error('unused');
+        },
+        recordIdentity: () => {
+          throw new Error('unused');
+        },
+      },
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['dashboard', 'session', 'login'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('dashboard session 已建立: regression-admin');
   });
 
   it('runs local dev stack through the start command and run alias', async () => {

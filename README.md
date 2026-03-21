@@ -242,6 +242,8 @@ Enable it explicitly in the repo-root `.env`:
 
 ```bash
 AGORA_DEV_REGRESSION_MODE=true
+AGORA_DASHBOARD_LOGIN_USER=
+AGORA_DASHBOARD_LOGIN_PASSWORD=
 ```
 
 This mode is for source-level developers iterating on Agora itself.
@@ -251,9 +253,12 @@ Typical commands:
 
 ```bash
 cd agora-ts
+npm run dev -w @agora-ts/cli -- dashboard session login
 npm run smoke:discord:regression
 npm run dev -w @agora-ts/cli -- regression live --task-id <task_id> --goal "validate the current Discord flow" --message "Drive this task forward and report what blocks you."
 ```
+
+When `AGORA_DEV_REGRESSION_MODE=true`, `agora dashboard session login` can read `AGORA_DASHBOARD_LOGIN_USER` / `AGORA_DASHBOARD_LOGIN_PASSWORD` directly from the repo-root `.env`.
 
 Default local endpoints:
 

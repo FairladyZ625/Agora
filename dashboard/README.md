@@ -26,11 +26,14 @@ npm run test:perf
 Optional authenticated audit:
 
 ```bash
-export DASHBOARD_LOGIN_USER=<username>
-export DASHBOARD_LOGIN_PASSWORD=<password>
+export AGORA_DASHBOARD_LOGIN_USER=<username>
+export AGORA_DASHBOARD_LOGIN_PASSWORD=<password>
 npm run test:compat
 npm run test:perf
 ```
+
+The browser audit helpers also read these values from the repo-root `.env`.
+Legacy `DASHBOARD_LOGIN_USER` / `DASHBOARD_LOGIN_PASSWORD` and `AGORA_DASHBOARD_USER` / `AGORA_DASHBOARD_PASSWORD` remain accepted as fallbacks.
 
 Reports are written to `dashboard/.artifacts/browser-audits/`.
 

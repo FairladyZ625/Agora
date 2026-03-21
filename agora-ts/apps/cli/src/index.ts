@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
+import { resolveAgoraRuntimeEnvironmentFromConfigPackage } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
@@ -158,6 +159,54 @@ function buildSkillPolicy(skillRefs: string[] = [], rawRoleSkills: string[] = []
     role_refs: roleRefs,
     enforcement: 'required' as const,
   };
+}
+
+function readDashboardLoginCredentials(env: NodeJS.ProcessEnv = process.env) {
+  const username = (
+    env.AGORA_DASHBOARD_LOGIN_USER
+    ?? env.AGORA_DASHBOARD_USER
+    ?? env.DASHBOARD_LOGIN_USER
+    ?? ''
+  ).trim();
+  const password = (
+    env.AGORA_DASHBOARD_LOGIN_PASSWORD
+    ?? env.AGORA_DASHBOARD_PASSWORD
+    ?? env.DASHBOARD_LOGIN_PASSWORD
+    ?? ''
+  ).trim();
+  if (!username || !password) {
+    return null;
+  }
+  return { username, password };
+}
+
+function resolveDashboardSessionLoginInput(
+  options: { username?: string; password?: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  const username = options.username?.trim() ?? '';
+  const password = options.password?.trim() ?? '';
+  if (username || password) {
+    if (!username || !password) {
+      throw new Error('dashboard session login requires both --username and --password.');
+    }
+    return { username, password };
+  }
+
+  if (!isDeveloperRegressionEnabled(env)) {
+    throw new Error(
+      'dashboard session login requires --username/--password, or enable AGORA_DEV_REGRESSION_MODE=true and set AGORA_DASHBOARD_LOGIN_USER / AGORA_DASHBOARD_LOGIN_PASSWORD.',
+    );
+  }
+
+  const fromEnv = readDashboardLoginCredentials(env);
+  if (!fromEnv) {
+    throw new Error(
+      'developer regression mode is enabled, but AGORA_DASHBOARD_LOGIN_USER / AGORA_DASHBOARD_LOGIN_PASSWORD are not set.',
+    );
+  }
+  return fromEnv;
 }
 
 function buildTemplateMembers(
@@ -2656,13 +2705,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   dashboardSession
     .command('login')
-    .description('登录 dashboard session 并缓存 cookie')
-    .requiredOption('--username <username>', '用户名')
-    .requiredOption('--password <password>', '密码')
-    .action(async (options: { username: string; password: string }) => {
+    .description('登录 dashboard session 并缓存 cookie；在 developer regression mode 下可直接读取 .env 中的 dashboard 登录变量')
+    .option('--username <username>', '用户名')
+    .option('--password <password>', '密码')
+    .action(async (options: { username?: string; password?: string }) => {
+      const credentials = resolveDashboardSessionLoginInput(options);
       const result = await dashboardSessionClient.login({
-        username: options.username,
-        password: options.password,
+        username: credentials.username,
+        password: credentials.password,
       });
       writeLine(stdout, `dashboard session 已建立: ${result.username}`);
       writeLine(stdout, `method: ${result.method}`);

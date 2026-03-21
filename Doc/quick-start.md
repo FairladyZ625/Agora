@@ -48,6 +48,8 @@ Set the repo-root `.env` flag below only if you are iterating on Agora itself an
 
 ```bash
 AGORA_DEV_REGRESSION_MODE=true
+AGORA_DASHBOARD_LOGIN_USER=
+AGORA_DASHBOARD_LOGIN_PASSWORD=
 ```
 
 Keep this disabled for normal product usage.
@@ -56,9 +58,12 @@ Typical commands:
 
 ```bash
 cd agora-ts
+npm run dev -w @agora-ts/cli -- dashboard session login
 npm run smoke:discord:regression
 npm run dev -w @agora-ts/cli -- regression live --task-id <task_id> --goal "validate the Discord orchestration loop" --message "Drive the task forward and report blockers."
 ```
+
+With developer regression mode enabled, the dashboard session CLI can read `AGORA_DASHBOARD_LOGIN_USER` / `AGORA_DASHBOARD_LOGIN_PASSWORD` directly from the repo-root `.env`.
 
 ## First CLI Task
 

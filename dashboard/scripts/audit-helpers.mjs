@@ -42,8 +42,24 @@ export function resolveAuditConfig() {
   const frontendPort = Number(process.env.AGORA_FRONTEND_PORT ?? rootEnv.AGORA_FRONTEND_PORT ?? DEFAULT_FRONTEND_PORT);
   const baseUrl = process.env.DASHBOARD_BASE_URL ?? `http://${host}:${frontendPort}`;
   const dashboardBaseUrl = new URL('/dashboard/', baseUrl).toString().replace(/\/$/, '');
-  const username = process.env.DASHBOARD_LOGIN_USER ?? process.env.AGORA_DASHBOARD_USER ?? '';
-  const password = process.env.DASHBOARD_LOGIN_PASSWORD ?? process.env.AGORA_DASHBOARD_PASSWORD ?? '';
+  const username = (
+    process.env.AGORA_DASHBOARD_LOGIN_USER
+    ?? rootEnv.AGORA_DASHBOARD_LOGIN_USER
+    ?? process.env.AGORA_DASHBOARD_USER
+    ?? rootEnv.AGORA_DASHBOARD_USER
+    ?? process.env.DASHBOARD_LOGIN_USER
+    ?? rootEnv.DASHBOARD_LOGIN_USER
+    ?? ''
+  );
+  const password = (
+    process.env.AGORA_DASHBOARD_LOGIN_PASSWORD
+    ?? rootEnv.AGORA_DASHBOARD_LOGIN_PASSWORD
+    ?? process.env.AGORA_DASHBOARD_PASSWORD
+    ?? rootEnv.AGORA_DASHBOARD_PASSWORD
+    ?? process.env.DASHBOARD_LOGIN_PASSWORD
+    ?? rootEnv.DASHBOARD_LOGIN_PASSWORD
+    ?? ''
+  );
   const authenticated = username.length > 0 && password.length > 0;
   const pages = authenticated ? DEFAULT_PROTECTED_PAGES : DEFAULT_PAGES;
 

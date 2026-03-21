@@ -109,7 +109,7 @@ async function run() {
 
   console.log(`Compatibility audit report written to ${reportPath}`);
   if (!config.authenticated) {
-    console.log(`Protected pages were skipped because DASHBOARD_LOGIN_USER / DASHBOARD_LOGIN_PASSWORD were not provided. Baseline route: ${unauthenticatedFallbackRoute}.`);
+    console.log(`Protected pages were skipped because AGORA_DASHBOARD_LOGIN_USER / AGORA_DASHBOARD_LOGIN_PASSWORD were not provided. Baseline route: ${unauthenticatedFallbackRoute}.`);
   }
   if (failures.length > 0) {
     console.error(`Compatibility audit found ${failures.length} failing page loads.`);
