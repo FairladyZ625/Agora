@@ -1071,6 +1071,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           repo_path: payload.repo_path,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
+          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
         });
       }
       return reply.send(project);

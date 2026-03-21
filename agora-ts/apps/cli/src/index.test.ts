@@ -378,6 +378,9 @@ describe('agora-ts cli', () => {
       'id = "proj-nomos"',
     );
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project Nomos');
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
   });
 
   it('creates a project-bound task through the cli', async () => {

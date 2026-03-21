@@ -122,8 +122,12 @@ export interface AgoraProjectStateLayout {
   archiveDir: string;
   promptsDir: string;
   bootstrapPromptsDir: string;
+  bootstrapInterviewPromptPath: string;
   closeoutPromptsDir: string;
   doctorPromptsDir: string;
+  closeoutReviewPromptPath: string;
+  constitutionEntryPath: string;
+  docsReferenceIndexPath: string;
   scriptsDir: string;
   skillsDir: string;
   allDirectories: string[];
@@ -207,8 +211,12 @@ export function resolveAgoraProjectStateLayout(
     archiveDir: resolve(root, 'archive'),
     promptsDir,
     bootstrapPromptsDir: resolve(promptsDir, 'bootstrap'),
+    bootstrapInterviewPromptPath: resolve(promptsDir, 'bootstrap', 'interview.md'),
     closeoutPromptsDir: resolve(promptsDir, 'closeout'),
     doctorPromptsDir: resolve(promptsDir, 'doctor'),
+    closeoutReviewPromptPath: resolve(promptsDir, 'closeout', 'review.md'),
+    constitutionEntryPath: resolve(root, 'constitution', 'constitution.md'),
+    docsReferenceIndexPath: resolve(docsRoot, 'reference', 'README.md'),
     scriptsDir: resolve(root, 'scripts'),
     skillsDir: resolve(root, 'skills'),
     allDirectories,
@@ -296,6 +304,7 @@ export function ensureAgoraProjectStateLayout(
   if (shouldWriteProfile && !existsSync(layout.profilePath)) {
     writeFileSync(layout.profilePath, renderNomosProjectProfileToml(profile), 'utf8');
   }
+  seedBuiltInAgoraNomosFiles(layout, profile);
 
   return layout;
 }
@@ -535,4 +544,89 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {};
+}
+
+function seedBuiltInAgoraNomosFiles(layout: AgoraProjectStateLayout, profile: NomosProjectProfile) {
+  writeFileIfMissing(layout.constitutionEntryPath, renderBuiltInConstitution(profile));
+  writeFileIfMissing(layout.docsReferenceIndexPath, renderBuiltInReferenceIndex(profile));
+  writeFileIfMissing(layout.bootstrapInterviewPromptPath, renderBuiltInBootstrapInterviewPrompt(profile, layout));
+  writeFileIfMissing(layout.closeoutReviewPromptPath, renderBuiltInCloseoutReviewPrompt(profile));
+}
+
+function writeFileIfMissing(path: string, content: string) {
+  if (existsSync(path)) {
+    return;
+  }
+  writeFileSync(path, content, 'utf8');
+}
+
+function renderBuiltInConstitution(profile: NomosProjectProfile) {
+  return [
+    '# General Constitution',
+    '',
+    `This project uses ${profile.pack.name} (\`${profile.pack.id}@${profile.pack.version}\`).`,
+    '',
+    '- Use first-principles reasoning before proposing changes.',
+    '- Do not assume missing requirements or constraints.',
+    '- Do not treat uncertain statements as confirmed facts.',
+    '- Do not claim completion without verification.',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInReferenceIndex(profile: NomosProjectProfile) {
+  return [
+    '# Nomos Reference Index',
+    '',
+    `Nomos pack: \`${profile.pack.id}@${profile.pack.version}\``,
+    '',
+    'Use this directory for project-specific reference material produced during bootstrap and later execution.',
+    '',
+    'Suggested first documents:',
+    '- current-surface.md',
+    '- methodologies.md',
+    '- constraints.md',
+    '- open-questions.md',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInBootstrapInterviewPrompt(profile: NomosProjectProfile, layout: AgoraProjectStateLayout) {
+  return [
+    '# Harness Bootstrap Interview',
+    '',
+    `You are bootstrapping ${profile.pack.name} for project \`${profile.project.id}\`.`,
+    '',
+    'Objectives:',
+    '- Identify the current project surface before changing process.',
+    '- Fill the global project-state harness docs and project brain.',
+    '- Establish the initial methodologies, constraints, and open questions.',
+    '',
+    'Write outputs into:',
+    `- ${layout.brainDir}`,
+    `- ${layout.docsReferenceDir}`,
+    `- ${layout.docsArchitectureDir}`,
+    `- ${layout.docsPlanningDir}`,
+    '',
+    'Interview prompts:',
+    '1. What already exists today?',
+    '2. Where is the code or working surface?',
+    '3. What constraints are already known?',
+    '4. What decisions are already fixed?',
+    '5. What remains unknown and must be tracked as open questions?',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInCloseoutReviewPrompt(profile: NomosProjectProfile) {
+  return [
+    '# Harness Closeout Review',
+    '',
+    `Use this prompt when closing tasks under ${profile.pack.name}.`,
+    '',
+    '- Review what should be harvested back into project brain.',
+    '- Identify docs/reference updates required by the task.',
+    '- Confirm whether archive can proceed.',
+    '',
+  ].join('\n');
 }

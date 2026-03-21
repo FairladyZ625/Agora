@@ -994,6 +994,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
           repo_path: input.repo_path,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
+          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
         })
         : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);

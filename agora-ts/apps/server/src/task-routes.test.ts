@@ -347,6 +347,9 @@ describe('task routes', () => {
       'id = "proj-nomos-api"',
     );
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project API Nomos');
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
+    );
   });
 
   it('serves a project workbench detail bundle through the api', async () => {
