@@ -25,7 +25,8 @@ describe("plugin register", () => {
       },
     });
 
-    expect(registerCommand).toHaveBeenCalledOnce();
+    expect(registerCommand).toHaveBeenCalledTimes(2);
+    expect(registerCommand.mock.calls.map(([command]) => command.name)).toEqual(["project", "task"]);
     expect(registerService).toHaveBeenCalledOnce();
     expect(on).toHaveBeenCalledWith("session_start", expect.any(Function));
     expect(on).toHaveBeenCalledWith("session_end", expect.any(Function));
@@ -49,7 +50,8 @@ describe("plugin register", () => {
       },
     });
 
-    expect(registerCommand).toHaveBeenCalledOnce();
+    expect(registerCommand).toHaveBeenCalledTimes(2);
+    expect(registerCommand.mock.calls.map(([command]) => command.name)).toEqual(["project", "task"]);
     expect(logger.info).toHaveBeenCalledWith("Agora plugin loaded (http://127.0.0.1:18420)");
   });
 
