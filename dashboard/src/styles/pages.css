@@ -502,20 +502,22 @@
 
 .skill-picker__results {
   display: grid;
-  gap: 8px;
-  max-height: 260px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+  max-height: 420px;
   overflow: auto;
+  align-content: start;
 }
 
 .skill-picker__option {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
   border: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
-  padding: 12px 14px;
-  text-align: left;
+  padding: 10px 12px;
+  text-align: center;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
@@ -530,14 +532,14 @@
 }
 
 .skill-picker__option-name {
-  font-size: var(--font-size-body);
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-body-sm);
   font-weight: 600;
   color: var(--color-text-primary);
-}
-
-.skill-picker__option-hint {
-  font-size: var(--font-size-body-sm);
-  color: var(--color-text-tertiary);
 }
 
 .template-actions-grid {

@@ -286,6 +286,7 @@ vi.mock('@/stores/agentStore', () => ({
 describe('create task page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   it('builds a private-thread payload from selected citizens while keeping craftsman separate from participants', async () => {
@@ -319,7 +320,6 @@ describe('create task page', () => {
     const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
     expect(craftsmanCard).not.toBeNull();
     fireEvent.click(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' }));
-    fireEvent.click(screen.getByRole('button', { name: '选择全局 Skills' }));
     fireEvent.change(screen.getByLabelText('搜索全局 Skills'), {
       target: { value: 'planning' },
     });
@@ -466,7 +466,7 @@ describe('create task page', () => {
     expect(within(developerCard as HTMLElement).getByText('连接中断，当前不可分配')).toBeInTheDocument();
   });
 
-  it('hides the full global skill catalog until the picker is opened and filters results with search', async () => {
+  it('keeps the global skill picker open by default and filters the grid with search', async () => {
     render(
       <MemoryRouter>
         <CreateTaskPage />
@@ -476,11 +476,6 @@ describe('create task page', () => {
     await waitFor(() => {
       expect(apiMocks.listSkills).toHaveBeenCalled();
     });
-
-    expect(screen.queryByLabelText('搜索全局 Skills')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: '选择全局 Skills' }));
 
     expect(screen.getByLabelText('搜索全局 Skills')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('搜索全局 Skills'), {
@@ -516,5 +511,42 @@ describe('create task page', () => {
 
     expect(within(developerCard as HTMLElement).getByRole('button', { name: 'frontend-design' })).toBeInTheDocument();
     expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+  });
+
+  it('prioritizes recent global skills in the visible grid order', async () => {
+    window.localStorage.setItem('agora-create-task-skill-usage', JSON.stringify([
+      {
+        skillRef: 'frontend-design',
+        surface: 'global',
+        templateType: 'coding',
+        role: null,
+        lastUsedAt: '2026-03-21T11:00:00.000Z',
+      },
+      {
+        skillRef: 'planning-with-files',
+        surface: 'global',
+        templateType: 'coding',
+        role: null,
+        lastUsedAt: '2026-03-20T11:00:00.000Z',
+      },
+    ]));
+
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const globalPanel = screen.getByTestId('global-skill-picker-results');
+    const visibleSkillButtons = within(globalPanel).getAllByRole('button').map((element) => element.textContent?.trim());
+    expect(visibleSkillButtons.slice(0, 3)).toEqual([
+      'frontend-design',
+      'planning-with-files',
+      'refactoring-ui',
+    ]);
   });
 });

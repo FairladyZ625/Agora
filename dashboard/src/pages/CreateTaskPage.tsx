@@ -17,6 +17,17 @@ import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { AgentStatusItem } from '@/types/dashboard';
 
+const SKILL_USAGE_STORAGE_KEY = 'agora-create-task-skill-usage';
+const MAX_SKILL_USAGE_ENTRIES = 50;
+
+type SkillUsageEntry = {
+  skillRef: string;
+  surface: 'global' | 'role';
+  templateType: string;
+  role: string | null;
+  lastUsedAt: string;
+};
+
 function haveSameAssignments(left: Record<string, string>, right: Record<string, string>) {
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
@@ -79,9 +90,107 @@ function filterSkills(
     `${skill.skill_ref} ${skill.resolved_path}`.toLowerCase().includes(normalizedQuery));
 }
 
-function formatSkillHint(resolvedPath: string) {
-  const segments = resolvedPath.split('/').filter(Boolean);
-  return segments.slice(-2).join('/');
+function readSkillUsageHistory(): SkillUsageEntry[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  const raw = window.localStorage.getItem(SKILL_USAGE_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.warn(`[CreateTaskPage] Invalid skill usage payload for storage key "${SKILL_USAGE_STORAGE_KEY}"`);
+      return [];
+    }
+    return parsed.filter((entry): entry is SkillUsageEntry =>
+      Boolean(
+        entry
+        && typeof entry === 'object'
+        && typeof entry.skillRef === 'string'
+        && typeof entry.surface === 'string'
+        && typeof entry.templateType === 'string'
+        && (typeof entry.role === 'string' || entry.role === null)
+        && typeof entry.lastUsedAt === 'string',
+      ));
+  } catch (error) {
+    console.warn(`[CreateTaskPage] Failed to parse storage key "${SKILL_USAGE_STORAGE_KEY}"`, error);
+    return [];
+  }
+}
+
+function writeSkillUsageHistory(entries: SkillUsageEntry[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(SKILL_USAGE_STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_SKILL_USAGE_ENTRIES)));
+  } catch (error) {
+    console.warn(`[CreateTaskPage] Failed to persist storage key "${SKILL_USAGE_STORAGE_KEY}"`, error);
+  }
+}
+
+function getRecentTimestamps(
+  history: SkillUsageEntry[],
+  context: { surface: 'global' | 'role'; templateType: string; role: string | null },
+) {
+  const exact = new Map<string, number>();
+  const overall = new Map<string, number>();
+
+  for (const entry of history) {
+    const timestamp = Date.parse(entry.lastUsedAt);
+    if (Number.isNaN(timestamp)) {
+      continue;
+    }
+    const previousOverall = overall.get(entry.skillRef) ?? -Infinity;
+    if (timestamp > previousOverall) {
+      overall.set(entry.skillRef, timestamp);
+    }
+    const isExactMatch = entry.surface === context.surface
+      && entry.templateType === context.templateType
+      && entry.role === context.role;
+    if (!isExactMatch) {
+      continue;
+    }
+    const previousExact = exact.get(entry.skillRef) ?? -Infinity;
+    if (timestamp > previousExact) {
+      exact.set(entry.skillRef, timestamp);
+    }
+  }
+
+  return { exact, overall };
+}
+
+function sortSkillsForPicker(
+  skills: Array<{ skill_ref: string; resolved_path: string }>,
+  selectedRefs: string[],
+  history: SkillUsageEntry[],
+  context: { surface: 'global' | 'role'; templateType: string; role: string | null },
+) {
+  const selected = new Set(selectedRefs);
+  const { exact, overall } = getRecentTimestamps(history, context);
+  return [...skills].sort((left, right) => {
+    const leftSelected = selected.has(left.skill_ref);
+    const rightSelected = selected.has(right.skill_ref);
+    if (leftSelected !== rightSelected) {
+      return leftSelected ? -1 : 1;
+    }
+
+    const leftExact = exact.get(left.skill_ref) ?? -Infinity;
+    const rightExact = exact.get(right.skill_ref) ?? -Infinity;
+    if (leftExact !== rightExact) {
+      return rightExact - leftExact;
+    }
+
+    const leftRecent = overall.get(left.skill_ref) ?? -Infinity;
+    const rightRecent = overall.get(right.skill_ref) ?? -Infinity;
+    if (leftRecent !== rightRecent) {
+      return rightRecent - leftRecent;
+    }
+
+    return left.skill_ref.localeCompare(right.skill_ref);
+  });
 }
 
 export function CreateTaskPage() {
@@ -111,10 +220,11 @@ export function CreateTaskPage() {
   const [availableSkills, setAvailableSkills] = useState<Array<{ skill_ref: string; resolved_path: string }>>([]);
   const [globalSkillRefs, setGlobalSkillRefs] = useState<string[]>([]);
   const [roleSkillRefs, setRoleSkillRefs] = useState<Record<string, string[]>>({});
-  const [globalSkillsOpen, setGlobalSkillsOpen] = useState(false);
+  const [globalSkillsOpen, setGlobalSkillsOpen] = useState(true);
   const [globalSkillSearch, setGlobalSkillSearch] = useState('');
   const [roleSkillPickerOpen, setRoleSkillPickerOpen] = useState<Record<string, boolean>>({});
   const [roleSkillSearch, setRoleSkillSearch] = useState<Record<string, string>>({});
+  const [skillUsageHistory, setSkillUsageHistory] = useState<SkillUsageEntry[]>(() => readSkillUsageHistory());
   const [submitting, setSubmitting] = useState(false);
   const priorities = ['low', 'normal', 'high'] as const;
   const visibility = 'private' as const;
@@ -208,9 +318,19 @@ export function CreateTaskPage() {
     () => [...availableSkills].sort((left, right) => left.skill_ref.localeCompare(right.skill_ref)),
     [availableSkills],
   );
+  const currentTemplateType = selectedTemplate?.type ?? type;
   const filteredGlobalSkills = useMemo(
-    () => filterSkills(skillCatalog, globalSkillSearch),
-    [globalSkillSearch, skillCatalog],
+    () => sortSkillsForPicker(
+      filterSkills(skillCatalog, globalSkillSearch),
+      globalSkillRefs,
+      skillUsageHistory,
+      {
+        surface: 'global',
+        templateType: currentTemplateType,
+        role: null,
+      },
+    ),
+    [currentTemplateType, globalSkillRefs, globalSkillSearch, skillCatalog, skillUsageHistory],
   );
   const restrictedSuggestedByRole = useMemo(() => {
     if (!selectedTemplate) {
@@ -245,6 +365,48 @@ export function CreateTaskPage() {
       }))
     : createTaskCopy.taskTypes;
 
+  const recordSkillUsage = (
+    skillRef: string,
+    context: { surface: 'global' | 'role'; role: string | null },
+  ) => {
+    const nextEntry: SkillUsageEntry = {
+      skillRef,
+      surface: context.surface,
+      templateType: currentTemplateType,
+      role: context.role,
+      lastUsedAt: new Date().toISOString(),
+    };
+    setSkillUsageHistory((current) => {
+      const next = [
+        nextEntry,
+        ...current.filter((entry) => !(
+          entry.skillRef === nextEntry.skillRef
+          && entry.surface === nextEntry.surface
+          && entry.templateType === nextEntry.templateType
+          && entry.role === nextEntry.role
+        )),
+      ];
+      writeSkillUsageHistory(next);
+      return next;
+    });
+  };
+
+  const toggleGlobalSkill = (skillRef: string) => {
+    const adding = !globalSkillRefs.includes(skillRef);
+    setGlobalSkillRefs((current) => toggleSkillRef(current, skillRef));
+    if (adding) {
+      recordSkillUsage(skillRef, { surface: 'global', role: null });
+    }
+  };
+
+  const toggleRoleSkill = (role: string, skillRef: string) => {
+    const adding = !(roleSkillRefs[role] ?? []).includes(skillRef);
+    setRoleSkillRefs((current) => toggleRoleSkillRef(current, role, skillRef));
+    if (adding) {
+      recordSkillUsage(skillRef, { surface: 'role', role });
+    }
+  };
+
   const renderSkillOptionList = (
     skills: Array<{ skill_ref: string; resolved_path: string }>,
     selectedRefs: string[],
@@ -270,7 +432,6 @@ export function CreateTaskPage() {
               className={selected ? 'skill-picker__option skill-picker__option--active' : 'skill-picker__option'}
             >
               <span className="skill-picker__option-name">{skill.skill_ref}</span>
-              <span className="skill-picker__option-hint" aria-hidden="true">{formatSkillHint(skill.resolved_path)}</span>
             </button>
           );
         })}
@@ -491,7 +652,7 @@ export function CreateTaskPage() {
                         key={skillRef}
                         type="button"
                         aria-pressed="true"
-                        onClick={() => setGlobalSkillRefs((current) => toggleSkillRef(current, skillRef))}
+                        onClick={() => toggleGlobalSkill(skillRef)}
                         className="choice-pill choice-pill--active"
                       >
                         {skillRef}
@@ -513,11 +674,13 @@ export function CreateTaskPage() {
                         className="input-text"
                       />
                     </label>
-                    {renderSkillOptionList(
-                      filteredGlobalSkills,
-                      globalSkillRefs,
-                      (skillRef) => setGlobalSkillRefs((current) => toggleSkillRef(current, skillRef)),
-                    )}
+                    <div data-testid="global-skill-picker-results">
+                      {renderSkillOptionList(
+                        filteredGlobalSkills,
+                        globalSkillRefs,
+                        toggleGlobalSkill,
+                      )}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -639,7 +802,7 @@ export function CreateTaskPage() {
                                   key={`${member.role}-selected-${skillRef}`}
                                   type="button"
                                   aria-pressed="true"
-                                  onClick={() => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skillRef))}
+                                  onClick={() => toggleRoleSkill(member.role, skillRef)}
                                   className="choice-pill choice-pill--active"
                                 >
                                   {skillRef}
@@ -667,9 +830,18 @@ export function CreateTaskPage() {
                                 />
                               </label>
                               {renderSkillOptionList(
-                                filterSkills(skillCatalog, roleSkillSearch[member.role] ?? ''),
+                                sortSkillsForPicker(
+                                  filterSkills(skillCatalog, roleSkillSearch[member.role] ?? ''),
+                                  roleSkillRefs[member.role] ?? [],
+                                  skillUsageHistory,
+                                  {
+                                    surface: 'role',
+                                    templateType: currentTemplateType,
+                                    role: member.role,
+                                  },
+                                ),
                                 roleSkillRefs[member.role] ?? [],
-                                (skillRef) => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skillRef)),
+                                (skillRef) => toggleRoleSkill(member.role, skillRef),
                               )}
                             </div>
                           ) : null}
