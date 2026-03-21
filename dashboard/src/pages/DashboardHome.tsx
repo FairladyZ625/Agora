@@ -1,5 +1,6 @@
 import { startTransition, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, Clock3, Network, PanelRightOpen, ScrollText } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
@@ -7,7 +8,9 @@ import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useMotionStore } from '@/stores/motionStore';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { HomeSignalField } from '@/components/ui/HomeSignalField';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { CraftsmanGovernanceSnapshot, Task, TaskStatus } from '@/types/task';
@@ -177,6 +180,7 @@ export function DashboardHome() {
   const { t } = useTranslation();
   const homeCopy = useDashboardHomeCopy();
   const isMobile = useMediaQuery('(max-width: 767px)');
+  const motionMode = useMotionStore((state) => state.mode);
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
   const error = useTaskStore((state) => state.error);
@@ -295,6 +299,31 @@ export function DashboardHome() {
         formatRelativeTimestamp(selectedRailTask.updated_at),
       ].filter(Boolean)
     : [];
+  const heroStrips = [
+    {
+      key: 'pending',
+      label: homeCopy.heroStackLabels.pending,
+      body: focusReview
+        ? homeCopy.heroBriefs.pending(homeMetrics.waitingCount, focusReview.title)
+        : homeCopy.heroBriefs.idle(),
+      value: `${homeMetrics.waitingCount}${homeCopy.reviewCountUnit}`,
+      toneClass: homeMetrics.waitingCount > 0 ? 'warning' : 'neutral',
+    },
+    {
+      key: 'active',
+      label: homeCopy.heroStackLabels.active,
+      body: homeCopy.heroBriefs.active(homeMetrics.activeCount, homeMetrics.activeExecutions),
+      value: `${homeMetrics.activeExecutions}`,
+      toneClass: homeMetrics.activeExecutions > 0 || homeMetrics.activeCount > 0 ? 'info' : 'neutral',
+    },
+    {
+      key: 'governance',
+      label: homeCopy.heroStackLabels.governance,
+      body: homeCopy.heroBriefs.governance(healthSnapshot?.runtime.status ?? '—', homeMetrics.hostLoadLabel),
+      value: healthSnapshot?.runtime.status ?? '—',
+      toneClass: healthSnapshot?.runtime.status === 'healthy' ? 'success' : 'warning',
+    },
+  ];
 
   const handleSelectRailTask = async (taskId: string) => {
     setRailTaskId(taskId);
@@ -353,9 +382,68 @@ export function DashboardHome() {
               <p className="page-kicker">{homeCopy.kicker}</p>
               <h2 className="home-os__display">{homeCopy.title}</h2>
               <p className="home-os__signature">{homeCopy.architectureLabel}</p>
+              <div className="home-os__visual-zone">
+                <HomeSignalField testId="home-signal-field" />
+              </div>
             </div>
             <div className="home-os__hero-block home-os__hero-block--copy">
-              <p className="page-summary">{homeCopy.summary}</p>
+              <div className="home-os__hero-summary">
+                <p className="page-kicker">{homeCopy.heroStatusLabel}</p>
+                <div className="home-os__orbital-stack">
+                  {heroStrips.map((strip, index) => (
+                    <motion.article
+                      key={strip.key}
+                      className={`home-os__orbital-readout home-os__orbital-readout--${strip.key}`}
+                      initial={{ opacity: 0, y: 18, filter: 'blur(10px)' }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                        filter: 'blur(0px)',
+                      }}
+                      transition={{
+                        duration: motionMode === 'full' ? 0.56 : 0.32,
+                        delay: index * 0.08,
+                        ease: [0.16, 1, 0.3, 1],
+                      }}
+                    >
+                      <div className="home-os__orbital-copy">
+                        <p className="home-os__orbital-label">{strip.label}</p>
+                        <p className="home-os__orbital-body">{strip.body}</p>
+                      </div>
+                      <div className="home-os__orbital-core" aria-hidden="true">
+                        <motion.span
+                          className="home-os__orbital-ring home-os__orbital-ring--outer"
+                          animate={
+                            motionMode === 'full'
+                              ? { scale: [0.96, 1.04, 0.96], opacity: [0.24, 0.52, 0.24], rotate: [0, 18, 0] }
+                              : { scale: 1, opacity: 0.28, rotate: 0 }
+                          }
+                          transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                        <motion.span
+                          className="home-os__orbital-ring home-os__orbital-ring--inner"
+                          animate={
+                            motionMode === 'full'
+                              ? { scale: [1.02, 0.96, 1.02], opacity: [0.4, 0.72, 0.4], rotate: [0, -24, 0] }
+                              : { scale: 1, opacity: 0.46, rotate: 0 }
+                          }
+                          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                        <motion.span
+                          className="home-os__orbital-core-dot"
+                          animate={
+                            motionMode === 'full'
+                              ? { scale: [0.92, 1.08, 0.92], opacity: [0.72, 1, 0.72] }
+                              : { scale: 1, opacity: 0.82 }
+                          }
+                          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                        <span className={`home-os__orbital-value home-os__orbital-value--${strip.toneClass}`}>{strip.value}</span>
+                      </div>
+                    </motion.article>
+                  ))}
+                </div>
+              </div>
               <div className="home-os__header-actions">
                 <Link to="/tasks" className="button-primary">
                   {homeCopy.primaryAction}
