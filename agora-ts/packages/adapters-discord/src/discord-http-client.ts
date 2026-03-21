@@ -2,6 +2,7 @@ import { EnvHttpProxyAgent, type Dispatcher } from 'undici';
 import { resolveDiscordProxyEnvironment } from './proxy-support.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
+const DISCORD_MESSAGE_CONTENT_LIMIT = 2000;
 
 export interface DiscordClientOptions {
   botToken: string;
@@ -68,15 +69,17 @@ export class DiscordHttpClient {
   }
 
   async sendMessage(channelId: string, content: string): Promise<void> {
-    const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
-      method: 'POST',
-      headers: this.headers,
-      ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Discord sendMessage failed: ${res.status} ${body}`);
+    for (const chunk of splitDiscordMessageContent(content)) {
+      const res = await fetch(`${DISCORD_API}/channels/${channelId}/messages`, {
+        method: 'POST',
+        headers: this.headers,
+        ...(this.dispatcher ? { dispatcher: this.dispatcher } : {}),
+        body: JSON.stringify({ content: chunk }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Discord sendMessage failed: ${res.status} ${body}`);
+      }
     }
   }
 
@@ -185,4 +188,39 @@ export class DiscordHttpClient {
       throw new Error(`Discord deleteChannel failed: ${res.status} ${body}`);
     }
   }
+}
+
+function splitDiscordMessageContent(content: string) {
+  if (content.length <= DISCORD_MESSAGE_CONTENT_LIMIT) {
+    return [content];
+  }
+
+  const chunks: string[] = [];
+  let remaining = content;
+  while (remaining.length > DISCORD_MESSAGE_CONTENT_LIMIT) {
+    const slice = remaining.slice(0, DISCORD_MESSAGE_CONTENT_LIMIT);
+    const splitAt = findPreferredSplitIndex(slice);
+    chunks.push(remaining.slice(0, splitAt).trimEnd());
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
+  return chunks.filter((chunk) => chunk.length > 0);
+}
+
+function findPreferredSplitIndex(slice: string) {
+  const paragraphBreak = slice.lastIndexOf('\n\n');
+  if (paragraphBreak >= 1200) {
+    return paragraphBreak + 2;
+  }
+  const lineBreak = slice.lastIndexOf('\n');
+  if (lineBreak >= 1200) {
+    return lineBreak + 1;
+  }
+  const space = slice.lastIndexOf(' ');
+  if (space >= 1200) {
+    return space + 1;
+  }
+  return slice.length;
 }

@@ -718,6 +718,40 @@ describe('DiscordIMProvisioningAdapter', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('splits long published messages into Discord-safe chunks', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+    });
+
+    const longBody = ['Bootstrap heading', '', 'A'.repeat(2105), '', 'Tail section'].join('\n');
+
+    await adapter.publishMessages({
+      binding_id: 'bind-bootstrap-long-1',
+      thread_ref: 'thread-bootstrap-long-1',
+      messages: [
+        {
+          kind: 'bootstrap_root',
+          participant_refs: [],
+          body: longBody,
+        },
+      ],
+    });
+
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(1);
+    for (const [, request] of mockFetch.mock.calls as Array<[string, { body: string }]>) {
+      const body = JSON.parse(request.body) as { content: string };
+      expect(body.content.length).toBeLessThanOrEqual(2000);
+    }
+
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('DiscordIMMessagingAdapter', () => {
