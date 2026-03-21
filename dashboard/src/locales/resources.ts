@@ -301,6 +301,10 @@ export const resources = {
         closeGlobalSkillsAction: '收起全局 Skills',
         globalSkillsSearchLabel: '搜索全局 Skills',
         globalSkillsSearchPlaceholder: '按名称筛选全局 Skills',
+        skillSignalLabels: {
+          recommended: '推荐',
+          recent: '最近',
+        },
         openRoleSkillsAction: '为 {{role}} 配置专属 Skills',
         closeRoleSkillsAction: '收起 {{role}} 专属 Skills',
         roleSkillsSearchLabel: '搜索 {{role}} 专属 Skills',
@@ -1405,6 +1409,10 @@ export const resources = {
         closeGlobalSkillsAction: 'Hide global skills',
         globalSkillsSearchLabel: 'Search global skills',
         globalSkillsSearchPlaceholder: 'Filter global skills by name',
+        skillSignalLabels: {
+          recommended: 'Recommended',
+          recent: 'Recent',
+        },
         openRoleSkillsAction: 'Configure {{role}} skills',
         closeRoleSkillsAction: 'Hide {{role}} skills',
         roleSkillsSearchLabel: 'Search {{role}} skills',

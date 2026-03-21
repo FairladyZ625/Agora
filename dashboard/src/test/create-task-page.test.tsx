@@ -524,9 +524,9 @@ describe('create task page', () => {
       },
       {
         skillRef: 'planning-with-files',
-        surface: 'global',
+        surface: 'role',
         templateType: 'coding',
-        role: null,
+        role: 'developer',
         lastUsedAt: '2026-03-20T11:00:00.000Z',
       },
     ]));
@@ -542,11 +542,17 @@ describe('create task page', () => {
     });
 
     const globalPanel = screen.getByTestId('global-skill-picker-results');
-    const visibleSkillButtons = within(globalPanel).getAllByRole('button').map((element) => element.textContent?.trim());
+    const visibleSkillButtons = within(globalPanel).getAllByRole('button').map((element) => element.getAttribute('aria-label'));
     expect(visibleSkillButtons.slice(0, 3)).toEqual([
       'frontend-design',
       'planning-with-files',
       'refactoring-ui',
     ]);
+
+    const recommendedButton = within(globalPanel).getByRole('button', { name: 'frontend-design' });
+    expect(within(recommendedButton).getByText('推荐')).toBeInTheDocument();
+
+    const recentButton = within(globalPanel).getByRole('button', { name: 'planning-with-files' });
+    expect(within(recentButton).getByText('最近')).toBeInTheDocument();
   });
 });

@@ -162,6 +162,19 @@ function getRecentTimestamps(
   return { exact, overall };
 }
 
+function resolveSkillSignal(
+  skillRef: string,
+  signals: ReturnType<typeof getRecentTimestamps>,
+): 'recommended' | 'recent' | null {
+  if ((signals.exact.get(skillRef) ?? -Infinity) > -Infinity) {
+    return 'recommended';
+  }
+  if ((signals.overall.get(skillRef) ?? -Infinity) > -Infinity) {
+    return 'recent';
+  }
+  return null;
+}
+
 function sortSkillsForPicker(
   skills: Array<{ skill_ref: string; resolved_path: string }>,
   selectedRefs: string[],
@@ -332,6 +345,14 @@ export function CreateTaskPage() {
     ),
     [currentTemplateType, globalSkillRefs, globalSkillSearch, skillCatalog, skillUsageHistory],
   );
+  const globalSkillSignals = useMemo(
+    () => getRecentTimestamps(skillUsageHistory, {
+      surface: 'global',
+      templateType: currentTemplateType,
+      role: null,
+    }),
+    [currentTemplateType, skillUsageHistory],
+  );
   const restrictedSuggestedByRole = useMemo(() => {
     if (!selectedTemplate) {
       return {} as Record<string, Array<{ id: string; reason: string }>>;
@@ -410,6 +431,7 @@ export function CreateTaskPage() {
   const renderSkillOptionList = (
     skills: Array<{ skill_ref: string; resolved_path: string }>,
     selectedRefs: string[],
+    signals: ReturnType<typeof getRecentTimestamps>,
     onToggle: (skillRef: string) => void,
   ) => {
     if (availableSkills.length === 0) {
@@ -422,6 +444,7 @@ export function CreateTaskPage() {
       <div className="skill-picker__results">
         {skills.map((skill) => {
           const selected = selectedRefs.includes(skill.skill_ref);
+          const signal = resolveSkillSignal(skill.skill_ref, signals);
           return (
             <button
               key={skill.skill_ref}
@@ -431,6 +454,11 @@ export function CreateTaskPage() {
               onClick={() => onToggle(skill.skill_ref)}
               className={selected ? 'skill-picker__option skill-picker__option--active' : 'skill-picker__option'}
             >
+              {signal ? (
+                <span className="skill-picker__option-signal" aria-hidden="true">
+                  {createTaskCopy.skillSignalLabels[signal]}
+                </span>
+              ) : null}
               <span className="skill-picker__option-name">{skill.skill_ref}</span>
             </button>
           );
@@ -678,6 +706,7 @@ export function CreateTaskPage() {
                       {renderSkillOptionList(
                         filteredGlobalSkills,
                         globalSkillRefs,
+                        globalSkillSignals,
                         toggleGlobalSkill,
                       )}
                     </div>
@@ -841,6 +870,11 @@ export function CreateTaskPage() {
                                   },
                                 ),
                                 roleSkillRefs[member.role] ?? [],
+                                getRecentTimestamps(skillUsageHistory, {
+                                  surface: 'role',
+                                  templateType: currentTemplateType,
+                                  role: member.role,
+                                }),
                                 (skillRef) => toggleRoleSkill(member.role, skillRef),
                               )}
                             </div>

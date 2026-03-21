@@ -514,6 +514,7 @@
   align-items: center;
   justify-content: center;
   min-height: 42px;
+  position: relative;
   border: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
   padding: 10px 12px;
@@ -540,6 +541,19 @@
   font-size: var(--font-size-body-sm);
   font-weight: 600;
   color: var(--color-text-primary);
+}
+
+.skill-picker__option-signal {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-text-tertiary);
 }
 
 .template-actions-grid {

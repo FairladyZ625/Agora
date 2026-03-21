@@ -249,6 +249,10 @@ export function useCreateTaskPageCopy() {
     closeGlobalSkillsAction: t('createTask.closeGlobalSkillsAction'),
     globalSkillsSearchLabel: t('createTask.globalSkillsSearchLabel'),
     globalSkillsSearchPlaceholder: t('createTask.globalSkillsSearchPlaceholder'),
+    skillSignalLabels: {
+      recommended: t('createTask.skillSignalLabels.recommended'),
+      recent: t('createTask.skillSignalLabels.recent'),
+    },
     openRoleSkillsAction: (role: string) => t('createTask.openRoleSkillsAction', { role }),
     closeRoleSkillsAction: (role: string) => t('createTask.closeRoleSkillsAction', { role }),
     roleSkillsSearchLabel: (role: string) => t('createTask.roleSkillsSearchLabel', { role }),
