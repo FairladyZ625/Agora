@@ -381,6 +381,7 @@ describe('agora-ts cli', () => {
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
       join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'interview.md'),
     );
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
   });
 
   it('creates a project-bound task through the cli', async () => {

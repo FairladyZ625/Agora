@@ -1049,6 +1049,9 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
         throw new Error(`Unsupported nomos_id: ${nomosId}`);
       }
+      const bootstrapMode = payload.repo_path
+        ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
+        : 'no_repo';
       const project = projectService.createProject({
         ...(payload.id ? { id: payload.id } : {}),
         name: payload.name,
@@ -1072,6 +1075,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_mode: bootstrapMode,
         });
       }
       return reply.send(project);

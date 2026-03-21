@@ -350,6 +350,7 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
       join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
     );
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
   });
 
   it('serves a project workbench detail bundle through the api', async () => {

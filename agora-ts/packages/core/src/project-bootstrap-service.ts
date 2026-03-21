@@ -10,6 +10,7 @@ export interface CreateProjectHarnessBootstrapTaskInput {
   project_state_root?: string | null | undefined;
   nomos_id?: string | null | undefined;
   bootstrap_prompt_path?: string | null | undefined;
+  bootstrap_mode?: 'existing_repo' | 'new_repo' | 'no_repo' | null | undefined;
 }
 
 export interface ProjectBootstrapServiceOptions {
@@ -125,6 +126,9 @@ function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTa
   }
   if (input.bootstrap_prompt_path) {
     lines.push(`- Follow bootstrap methodology from: \`${input.bootstrap_prompt_path}\``);
+  }
+  if (input.bootstrap_mode) {
+    lines.push(`- Bootstrap mode: \`${input.bootstrap_mode}\``);
   }
 
   lines.push(

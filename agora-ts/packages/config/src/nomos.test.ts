@@ -126,6 +126,11 @@ describe('nomos pack model freeze', () => {
     expect(existsSync(join(installed.layout.root, '.git'))).toBe(true);
     expect(readFileSync(join(installed.layout.constitutionDir, 'constitution.md'), 'utf8')).toContain('General Constitution');
     expect(readFileSync(join(installed.layout.bootstrapPromptsDir, 'interview.md'), 'utf8')).toContain('Harness Bootstrap Interview');
+    expect(readFileSync(installed.layout.bootstrapExistingProjectPromptPath, 'utf8')).toContain('Existing Project Bootstrap');
+    expect(readFileSync(installed.layout.bootstrapNewProjectPromptPath, 'utf8')).toContain('New Project Bootstrap');
+    expect(readFileSync(installed.layout.bootstrapNoRepoPromptPath, 'utf8')).toContain('No-Repo Bootstrap');
+    expect(readFileSync(installed.layout.docsReferenceMethodologiesPath, 'utf8')).toContain('Methodologies');
+    expect(readFileSync(installed.layout.docsReferenceCurrentSurfacePath, 'utf8')).toContain('Current Surface');
   });
 
   it('merges persisted project metadata with the installed Nomos boundary', () => {

@@ -123,11 +123,16 @@ export interface AgoraProjectStateLayout {
   promptsDir: string;
   bootstrapPromptsDir: string;
   bootstrapInterviewPromptPath: string;
+  bootstrapExistingProjectPromptPath: string;
+  bootstrapNewProjectPromptPath: string;
+  bootstrapNoRepoPromptPath: string;
   closeoutPromptsDir: string;
   doctorPromptsDir: string;
   closeoutReviewPromptPath: string;
   constitutionEntryPath: string;
   docsReferenceIndexPath: string;
+  docsReferenceMethodologiesPath: string;
+  docsReferenceCurrentSurfacePath: string;
   scriptsDir: string;
   skillsDir: string;
   allDirectories: string[];
@@ -154,6 +159,7 @@ export interface InstalledBuiltInAgoraNomosResult {
   layout: AgoraProjectStateLayout;
   repoRoot: string | null;
   repoShimPath: string | null;
+  repoExistedBeforeInstall: boolean;
   repoShimWritten: boolean;
   repoGitInitialized: boolean;
   projectStateGitInitialized: boolean;
@@ -212,11 +218,16 @@ export function resolveAgoraProjectStateLayout(
     promptsDir,
     bootstrapPromptsDir: resolve(promptsDir, 'bootstrap'),
     bootstrapInterviewPromptPath: resolve(promptsDir, 'bootstrap', 'interview.md'),
+    bootstrapExistingProjectPromptPath: resolve(promptsDir, 'bootstrap', 'existing-project.md'),
+    bootstrapNewProjectPromptPath: resolve(promptsDir, 'bootstrap', 'new-project.md'),
+    bootstrapNoRepoPromptPath: resolve(promptsDir, 'bootstrap', 'no-repo.md'),
     closeoutPromptsDir: resolve(promptsDir, 'closeout'),
     doctorPromptsDir: resolve(promptsDir, 'doctor'),
     closeoutReviewPromptPath: resolve(promptsDir, 'closeout', 'review.md'),
     constitutionEntryPath: resolve(root, 'constitution', 'constitution.md'),
     docsReferenceIndexPath: resolve(docsRoot, 'reference', 'README.md'),
+    docsReferenceMethodologiesPath: resolve(docsRoot, 'reference', 'methodologies.md'),
+    docsReferenceCurrentSurfacePath: resolve(docsRoot, 'reference', 'current-surface.md'),
     scriptsDir: resolve(root, 'scripts'),
     skillsDir: resolve(root, 'skills'),
     allDirectories,
@@ -320,6 +331,7 @@ export function installBuiltInAgoraNomosForProject(
     writeProfile: true,
   });
 
+  const repoExistedBeforeInstall = options.repoPath ? existsSync(resolve(options.repoPath)) : false;
   const repoRoot = resolveRepoRoot(options.repoPath, options.initializeRepo ?? false);
   const repoShimPath = repoRoot ? resolve(repoRoot, 'AGENTS.md') : null;
   const forceWriteRepoShim = options.forceWriteRepoShim ?? false;
@@ -336,6 +348,7 @@ export function installBuiltInAgoraNomosForProject(
     layout,
     repoRoot,
     repoShimPath,
+    repoExistedBeforeInstall,
     repoShimWritten,
     repoGitInitialized,
     projectStateGitInitialized,
@@ -549,7 +562,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 function seedBuiltInAgoraNomosFiles(layout: AgoraProjectStateLayout, profile: NomosProjectProfile) {
   writeFileIfMissing(layout.constitutionEntryPath, renderBuiltInConstitution(profile));
   writeFileIfMissing(layout.docsReferenceIndexPath, renderBuiltInReferenceIndex(profile));
+  writeFileIfMissing(layout.docsReferenceMethodologiesPath, renderBuiltInMethodologiesReference(profile));
+  writeFileIfMissing(layout.docsReferenceCurrentSurfacePath, renderBuiltInCurrentSurfaceReference(profile));
   writeFileIfMissing(layout.bootstrapInterviewPromptPath, renderBuiltInBootstrapInterviewPrompt(profile, layout));
+  writeFileIfMissing(layout.bootstrapExistingProjectPromptPath, renderBuiltInExistingProjectPrompt(layout));
+  writeFileIfMissing(layout.bootstrapNewProjectPromptPath, renderBuiltInNewProjectPrompt(layout));
+  writeFileIfMissing(layout.bootstrapNoRepoPromptPath, renderBuiltInNoRepoPrompt(layout));
   writeFileIfMissing(layout.closeoutReviewPromptPath, renderBuiltInCloseoutReviewPrompt(profile));
 }
 
@@ -591,6 +609,36 @@ function renderBuiltInReferenceIndex(profile: NomosProjectProfile) {
   ].join('\n');
 }
 
+function renderBuiltInMethodologiesReference(profile: NomosProjectProfile) {
+  return [
+    '# Methodologies',
+    '',
+    `Record the project-specific methodologies discovered while bootstrapping ${profile.pack.name}.`,
+    '',
+    'Suggested sections:',
+    '- Proposal discipline',
+    '- Planning and documentation loop',
+    '- Verification expectations',
+    '- Release or archive discipline',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInCurrentSurfaceReference(profile: NomosProjectProfile) {
+  return [
+    '# Current Surface',
+    '',
+    `Capture the current project reality for \`${profile.project.id}\`.`,
+    '',
+    'Suggested sections:',
+    '- Code or asset roots',
+    '- Active tools and runtimes',
+    '- Existing docs and reference material',
+    '- Known owners and operators',
+    '',
+  ].join('\n');
+}
+
 function renderBuiltInBootstrapInterviewPrompt(profile: NomosProjectProfile, layout: AgoraProjectStateLayout) {
   return [
     '# Harness Bootstrap Interview',
@@ -614,6 +662,65 @@ function renderBuiltInBootstrapInterviewPrompt(profile: NomosProjectProfile, lay
     '3. What constraints are already known?',
     '4. What decisions are already fixed?',
     '5. What remains unknown and must be tracked as open questions?',
+    '',
+    'Branch prompts:',
+    `- Existing repo flow: ${layout.bootstrapExistingProjectPromptPath}`,
+    `- New repo flow: ${layout.bootstrapNewProjectPromptPath}`,
+    `- No-repo flow: ${layout.bootstrapNoRepoPromptPath}`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInExistingProjectPrompt(layout: AgoraProjectStateLayout) {
+  return [
+    '# Existing Project Bootstrap',
+    '',
+    'Use this branch when the user already has a code or working repository.',
+    '',
+    'Collect:',
+    '- Repo path and current branch state',
+    '- Existing docs, tests, and build commands',
+    '- What should remain in the repo vs move into global project state',
+    '',
+    'Write findings into:',
+    `- ${layout.docsReferenceCurrentSurfacePath}`,
+    `- ${layout.docsReferenceMethodologiesPath}`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInNewProjectPrompt(layout: AgoraProjectStateLayout) {
+  return [
+    '# New Project Bootstrap',
+    '',
+    'Use this branch when Agora is initializing a brand new repository or working directory.',
+    '',
+    'Collect:',
+    '- What kind of repo should be created',
+    '- Initial stack and toolchain expectations',
+    '- Which docs and governance skeletons should be filled first',
+    '',
+    'Write findings into:',
+    `- ${layout.docsReferenceCurrentSurfacePath}`,
+    `- ${layout.docsReferenceMethodologiesPath}`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInNoRepoPrompt(layout: AgoraProjectStateLayout) {
+  return [
+    '# No-Repo Bootstrap',
+    '',
+    'Use this branch when the project is not code-first or no repo exists yet.',
+    '',
+    'Collect:',
+    '- The current project surface and outputs',
+    '- What should be tracked as durable reference material',
+    '- Whether a repo should exist later and what would trigger it',
+    '',
+    'Write findings into:',
+    `- ${layout.docsReferenceCurrentSurfacePath}`,
+    `- ${layout.docsReferenceMethodologiesPath}`,
     '',
   ].join('\n');
 }

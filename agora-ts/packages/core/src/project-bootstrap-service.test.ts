@@ -83,6 +83,7 @@ describe('project bootstrap service', () => {
       project_state_root: '/Users/example/.agora/projects/proj-bootstrap',
       nomos_id: 'agora/default',
       bootstrap_prompt_path: '/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md',
+      bootstrap_mode: 'existing_repo',
     });
 
     expect(task.id).toBe('OC-HARNESS-BOOTSTRAP');
@@ -91,6 +92,7 @@ describe('project bootstrap service', () => {
     expect(task.description).toContain('Global project state root');
     expect(task.description).toContain('/tmp/bootstrap-project');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md');
+    expect(task.description).toContain('Bootstrap mode: `existing_repo`');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'knowledge', 'facts', 'bootstrap-current-surface.md'), 'utf8')).toContain(
       'Bootstrap Current Surface',
     );

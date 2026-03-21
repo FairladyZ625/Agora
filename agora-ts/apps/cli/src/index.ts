@@ -983,6 +983,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(input.repo_path ? { repoPath: input.repo_path } : {}),
         initializeRepo: input.initialize_repo ?? false,
       });
+      const bootstrapMode = input.repo_path
+        ? (input.initialize_repo ? 'new_repo' : 'existing_repo')
+        : 'no_repo';
       const bootstrapTask = taskService
         ? new ProjectBootstrapService({
           projectService,
@@ -995,6 +998,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_mode: bootstrapMode,
         })
         : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);
