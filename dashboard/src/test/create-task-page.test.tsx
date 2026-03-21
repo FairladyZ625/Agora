@@ -14,6 +14,10 @@ const apiMocks = vi.hoisted(() => ({
       skill_ref: 'refactoring-ui',
       resolved_path: '/tmp/skills/refactoring-ui/SKILL.md',
     },
+    {
+      skill_ref: 'frontend-design',
+      resolved_path: '/tmp/skills/frontend-design/SKILL.md',
+    },
   ])),
 }));
 const showMessage = vi.fn();
@@ -307,11 +311,19 @@ describe('create task page', () => {
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: '为 developer 配置专属 Skills' }));
+    fireEvent.change(within(developerCard as HTMLElement).getByLabelText('搜索 developer 专属 Skills'), {
+      target: { value: 'refactor' },
+    });
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'refactoring-ui' }));
     const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
     expect(craftsmanCard).not.toBeNull();
     fireEvent.click(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'planning-with-files' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: '选择全局 Skills' }));
+    fireEvent.change(screen.getByLabelText('搜索全局 Skills'), {
+      target: { value: 'planning' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'planning-with-files' }));
     fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
 
     await waitFor(() => {
@@ -452,5 +464,57 @@ describe('create task page', () => {
     expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'review' })).not.toBeInTheDocument();
     expect(within(developerCard as HTMLElement).getByText('review')).toBeInTheDocument();
     expect(within(developerCard as HTMLElement).getByText('连接中断，当前不可分配')).toBeInTheDocument();
+  });
+
+  it('hides the full global skill catalog until the picker is opened and filters results with search', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByLabelText('搜索全局 Skills')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '选择全局 Skills' }));
+
+    expect(screen.getByLabelText('搜索全局 Skills')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('搜索全局 Skills'), {
+      target: { value: 'refactor' },
+    });
+
+    expect(screen.getByRole('button', { name: 'refactoring-ui' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'frontend-design' })).not.toBeInTheDocument();
+  });
+
+  it('keeps role-specific skills collapsed until an override picker is opened for that role', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    expect(within(developerCard as HTMLElement).queryByLabelText('搜索 developer 专属 Skills')).not.toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: '为 developer 配置专属 Skills' }));
+
+    fireEvent.change(within(developerCard as HTMLElement).getByLabelText('搜索 developer 专属 Skills'), {
+      target: { value: 'frontend' },
+    });
+
+    expect(within(developerCard as HTMLElement).getByRole('button', { name: 'frontend-design' })).toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
   });
 });

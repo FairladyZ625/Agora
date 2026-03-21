@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -66,6 +67,23 @@ function toggleRoleSkillRef(
   };
 }
 
+function filterSkills(
+  skills: Array<{ skill_ref: string; resolved_path: string }>,
+  query: string,
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return skills;
+  }
+  return skills.filter((skill) =>
+    `${skill.skill_ref} ${skill.resolved_path}`.toLowerCase().includes(normalizedQuery));
+}
+
+function formatSkillHint(resolvedPath: string) {
+  const segments = resolvedPath.split('/').filter(Boolean);
+  return segments.slice(-2).join('/');
+}
+
 export function CreateTaskPage() {
   const { t } = useTranslation();
   const { locale } = useLocale();
@@ -93,6 +111,10 @@ export function CreateTaskPage() {
   const [availableSkills, setAvailableSkills] = useState<Array<{ skill_ref: string; resolved_path: string }>>([]);
   const [globalSkillRefs, setGlobalSkillRefs] = useState<string[]>([]);
   const [roleSkillRefs, setRoleSkillRefs] = useState<Record<string, string[]>>({});
+  const [globalSkillsOpen, setGlobalSkillsOpen] = useState(false);
+  const [globalSkillSearch, setGlobalSkillSearch] = useState('');
+  const [roleSkillPickerOpen, setRoleSkillPickerOpen] = useState<Record<string, boolean>>({});
+  const [roleSkillSearch, setRoleSkillSearch] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const priorities = ['low', 'normal', 'high'] as const;
   const visibility = 'private' as const;
@@ -182,6 +204,14 @@ export function CreateTaskPage() {
 
   const availableAgents = agents.filter(isSelectableAgent);
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const skillCatalog = useMemo(
+    () => [...availableSkills].sort((left, right) => left.skill_ref.localeCompare(right.skill_ref)),
+    [availableSkills],
+  );
+  const filteredGlobalSkills = useMemo(
+    () => filterSkills(skillCatalog, globalSkillSearch),
+    [globalSkillSearch, skillCatalog],
+  );
   const restrictedSuggestedByRole = useMemo(() => {
     if (!selectedTemplate) {
       return {} as Record<string, Array<{ id: string; reason: string }>>;
@@ -214,6 +244,39 @@ export function CreateTaskPage() {
         label: template.name,
       }))
     : createTaskCopy.taskTypes;
+
+  const renderSkillOptionList = (
+    skills: Array<{ skill_ref: string; resolved_path: string }>,
+    selectedRefs: string[],
+    onToggle: (skillRef: string) => void,
+  ) => {
+    if (availableSkills.length === 0) {
+      return <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>;
+    }
+    if (skills.length === 0) {
+      return <span className="type-body-sm">{createTaskCopy.noSkillResultsLabel}</span>;
+    }
+    return (
+      <div className="skill-picker__results">
+        {skills.map((skill) => {
+          const selected = selectedRefs.includes(skill.skill_ref);
+          return (
+            <button
+              key={skill.skill_ref}
+              type="button"
+              aria-label={skill.skill_ref}
+              aria-pressed={selected}
+              onClick={() => onToggle(skill.skill_ref)}
+              className={selected ? 'skill-picker__option skill-picker__option--active' : 'skill-picker__option'}
+            >
+              <span className="skill-picker__option-name">{skill.skill_ref}</span>
+              <span className="skill-picker__option-hint" aria-hidden="true">{formatSkillHint(skill.resolved_path)}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -406,21 +469,57 @@ export function CreateTaskPage() {
             </div>
 
             <div>
-              <span className="field-label">{createTaskCopy.globalSkillsLabel}</span>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {availableSkills.length > 0
-                  ? availableSkills.map((skill) => (
+              <div className="skill-picker">
+                <div className="skill-picker__header">
+                  <span className="field-label">{createTaskCopy.globalSkillsLabel}</span>
+                  <div className="skill-picker__actions">
+                    <span className="status-pill status-pill--neutral">{createTaskCopy.selectedSkillsCount(globalSkillRefs.length)}</span>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setGlobalSkillsOpen((current) => !current)}
+                    >
+                      {globalSkillsOpen ? createTaskCopy.closeGlobalSkillsAction : createTaskCopy.openGlobalSkillsAction}
+                    </button>
+                  </div>
+                </div>
+
+                {globalSkillRefs.length > 0 ? (
+                  <div className="skill-picker__selected">
+                    {globalSkillRefs.map((skillRef) => (
                       <button
-                        key={skill.skill_ref}
+                        key={skillRef}
                         type="button"
-                        aria-pressed={globalSkillRefs.includes(skill.skill_ref)}
-                        onClick={() => setGlobalSkillRefs((current) => toggleSkillRef(current, skill.skill_ref))}
-                        className={globalSkillRefs.includes(skill.skill_ref) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                        aria-pressed="true"
+                        onClick={() => setGlobalSkillRefs((current) => toggleSkillRef(current, skillRef))}
+                        className="choice-pill choice-pill--active"
                       >
-                        {skill.skill_ref}
+                        {skillRef}
                       </button>
-                    ))
-                  : <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>}
+                    ))}
+                  </div>
+                ) : null}
+
+                {globalSkillsOpen ? (
+                  <div className="skill-picker__panel">
+                    <label className="input-shell--centered skill-picker__search">
+                      <Search size={16} className="icon-muted" />
+                      <input
+                        type="text"
+                        value={globalSkillSearch}
+                        onChange={(event) => setGlobalSkillSearch(event.target.value)}
+                        placeholder={createTaskCopy.globalSkillsSearchPlaceholder}
+                        aria-label={createTaskCopy.globalSkillsSearchLabel}
+                        className="input-text"
+                      />
+                    </label>
+                    {renderSkillOptionList(
+                      filteredGlobalSkills,
+                      globalSkillRefs,
+                      (skillRef) => setGlobalSkillRefs((current) => toggleSkillRef(current, skillRef)),
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -514,21 +613,66 @@ export function CreateTaskPage() {
                         </div>
                       ) : null}
                       <div className="mt-3">
-                        <span className="detail-card__label">{createTaskCopy.roleSkillsLabel}</span>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {availableSkills.length > 0
-                            ? availableSkills.map((skill) => (
+                        <div className="skill-picker">
+                          <div className="skill-picker__header">
+                            <span className="detail-card__label">{createTaskCopy.roleSkillsLabel}</span>
+                            <div className="skill-picker__actions">
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => setRoleSkillPickerOpen((current) => ({
+                                  ...current,
+                                  [member.role]: !current[member.role],
+                                }))}
+                              >
+                                {roleSkillPickerOpen[member.role]
+                                  ? createTaskCopy.closeRoleSkillsAction(member.role)
+                                  : createTaskCopy.openRoleSkillsAction(member.role)}
+                              </button>
+                            </div>
+                          </div>
+
+                          {(roleSkillRefs[member.role] ?? []).length > 0 ? (
+                            <div className="skill-picker__selected">
+                              {(roleSkillRefs[member.role] ?? []).map((skillRef) => (
                                 <button
-                                  key={`${member.role}-${skill.skill_ref}`}
+                                  key={`${member.role}-selected-${skillRef}`}
                                   type="button"
-                                  aria-pressed={(roleSkillRefs[member.role] ?? []).includes(skill.skill_ref)}
-                                  onClick={() => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skill.skill_ref))}
-                                  className={(roleSkillRefs[member.role] ?? []).includes(skill.skill_ref) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                                  aria-pressed="true"
+                                  onClick={() => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skillRef))}
+                                  className="choice-pill choice-pill--active"
                                 >
-                                  {skill.skill_ref}
+                                  {skillRef}
                                 </button>
-                              ))
-                            : <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>}
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="type-body-sm">{createTaskCopy.noRoleSkillsSelectedLabel}</span>
+                          )}
+
+                          {roleSkillPickerOpen[member.role] ? (
+                            <div className="skill-picker__panel">
+                              <label className="input-shell--centered skill-picker__search">
+                                <Search size={16} className="icon-muted" />
+                                <input
+                                  type="text"
+                                  value={roleSkillSearch[member.role] ?? ''}
+                                  onChange={(event) => setRoleSkillSearch((current) => ({
+                                    ...current,
+                                    [member.role]: event.target.value,
+                                  }))}
+                                  placeholder={createTaskCopy.roleSkillsSearchPlaceholder}
+                                  aria-label={createTaskCopy.roleSkillsSearchLabel(member.role)}
+                                  className="input-text"
+                                />
+                              </label>
+                              {renderSkillOptionList(
+                                filterSkills(skillCatalog, roleSkillSearch[member.role] ?? ''),
+                                roleSkillRefs[member.role] ?? [],
+                                (skillRef) => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skillRef)),
+                              )}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
