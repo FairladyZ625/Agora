@@ -154,6 +154,7 @@ If you want semantic `project brain` retrieval, prepare one embedding provider c
 Manual fallback values remain:
 
 ```bash
+AGORA_DEV_REGRESSION_MODE=false
 OPENAI_API_KEY=...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
@@ -169,6 +170,7 @@ Operational notes:
 - `QDRANT_URL` may still point at a custom local process, a container, or another operator-managed endpoint if you do not use the default init path.
 - Without these variables, `project brain` still works in raw lexical mode, but semantic query/bootstrap and vector indexing stay unavailable.
 - `./scripts/bootstrap-local.sh` creates `.env` from `.env.example`; `./agora init` is now the preferred way to populate the vector section.
+- `AGORA_DEV_REGRESSION_MODE` is separate from product bootstrap. Keep it `false` unless you are a source-level developer running the Discord live regression harness and explicitly want agent-side operator proxy behavior in `regression_test` tasks.
 
 ### Step 2: Run `./agora init`
 

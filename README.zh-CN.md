@@ -224,6 +224,29 @@ QDRANT_API_KEY=
 完整从零跑通指南见：
 
 - [Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
+
+### 开发者 Live Regression Mode
+
+Agora 现在提供了一个仅面向开发者的 live regression harness，可直接在真实 Discord task thread 里做回归。
+开启后，本机 agent 可以在 `regression_test` 任务中通过 AgoraBot 以 operator proxy 语义推进任务，并沿正常编排链路完成 live smoke / regression。
+
+在仓库根目录 `.env` 中显式开启：
+
+```bash
+AGORA_DEV_REGRESSION_MODE=true
+```
+
+这只用于懂源码、正在迭代 Agora 本身的开发者。
+普通产品使用路径应保持关闭。
+
+常用命令：
+
+```bash
+cd agora-ts
+npm run smoke:discord:regression
+npm run dev -w @agora-ts/cli -- regression live --task-id <task_id> --goal "验证当前 Discord 流程" --message "推进这个任务，并告诉我卡点在哪里。"
+```
+
 默认本地地址：
 
 - API：`http://127.0.0.1:18420/api/health`

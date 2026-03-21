@@ -41,6 +41,25 @@ cd Agora
 - API: `http://127.0.0.1:18420/api/health`
 - Dashboard: `http://127.0.0.1:33173/dashboard/`
 
+## Developer Live Regression Mode
+
+Agora also includes a developer-only live regression harness for real Discord task threads.
+Set the repo-root `.env` flag below only if you are iterating on Agora itself and want the local agent to proxy operator actions in `regression_test` tasks:
+
+```bash
+AGORA_DEV_REGRESSION_MODE=true
+```
+
+Keep this disabled for normal product usage.
+
+Typical commands:
+
+```bash
+cd agora-ts
+npm run smoke:discord:regression
+npm run dev -w @agora-ts/cli -- regression live --task-id <task_id> --goal "validate the Discord orchestration loop" --message "Drive the task forward and report blockers."
+```
+
 ## First CLI Task
 
 ```bash

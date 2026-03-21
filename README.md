@@ -232,6 +232,29 @@ With that configured, these commands switch from raw lexical search to hybrid re
 For the end-to-end bootstrap guide, see:
 
 - [Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md](./Doc/06-INTEGRATIONS/openclaw/agora-openclaw-bootstrap-whitepaper.md)
+
+### Developer Live Regression Mode
+
+Agora now supports a developer-only live regression harness for real Discord task threads.
+When enabled, the local agent can use AgoraBot as an operator proxy in `regression_test` tasks and drive live smoke/regression loops through the normal orchestration path.
+
+Enable it explicitly in the repo-root `.env`:
+
+```bash
+AGORA_DEV_REGRESSION_MODE=true
+```
+
+This mode is for source-level developers iterating on Agora itself.
+Keep it disabled for normal product usage.
+
+Typical commands:
+
+```bash
+cd agora-ts
+npm run smoke:discord:regression
+npm run dev -w @agora-ts/cli -- regression live --task-id <task_id> --goal "validate the current Discord flow" --message "Drive this task forward and report what blocks you."
+```
+
 Default local endpoints:
 
 - API: `http://127.0.0.1:18420/api/health`
