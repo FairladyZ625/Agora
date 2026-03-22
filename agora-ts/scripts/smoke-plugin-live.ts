@@ -1,0 +1,438 @@
+#!/usr/bin/env tsx
+import { cpSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import process from "node:process";
+import { buildApp } from "../apps/server/src/app.ts";
+import {
+  CitizenService,
+  DashboardQueryService,
+  LiveSessionStore,
+  ProjectBrainService,
+  ProjectService,
+  RolePackService,
+  TaskContextBindingService,
+  TaskConversationService,
+  TaskService,
+} from "../packages/core/src/index.ts";
+import { FilesystemProjectBrainQueryAdapter } from "../packages/core/src/adapters/filesystem-project-brain-query-adapter.ts";
+import { FilesystemProjectKnowledgeAdapter } from "../packages/core/src/adapters/filesystem-project-knowledge-adapter.ts";
+import * as pluginModule from "../../extensions/agora-plugin/src/index.ts";
+import { createAgoraDatabase, runMigrations } from "../packages/db/src/index.ts";
+
+type HookName =
+  | "session_start"
+  | "session_end"
+  | "message_received"
+  | "message_sent"
+  | "before_agent_start"
+  | "agent_end";
+
+type RegisteredCommand = {
+  name: string;
+  handler: (ctx: Record<string, unknown>) => Promise<{ text: string }>;
+};
+
+class FakePluginApi {
+  readonly loggerMessages = {
+    info: [] as string[],
+    error: [] as string[],
+  };
+
+  readonly pluginConfig: Record<string, unknown>;
+
+  private readonly commands = new Map<string, RegisteredCommand>();
+  private readonly hooks = new Map<HookName, Array<(event: unknown, ctx: unknown) => void | Promise<void>>>();
+  private service: { start: () => void | Promise<void>; stop?: () => void | Promise<void> } | null = null;
+  private agentEventListener: ((event: unknown) => void) | undefined;
+
+  constructor(serverUrl: string) {
+    this.pluginConfig = {
+      serverUrl,
+      agentId: "smoke",
+    };
+  }
+
+  readonly logger = {
+    info: (message: string) => {
+      this.loggerMessages.info.push(message);
+    },
+    error: (message: string) => {
+      this.loggerMessages.error.push(message);
+    },
+  };
+
+  readonly runtime = {
+    events: {
+      onAgentEvent: (listener: (event: unknown) => void) => {
+        this.agentEventListener = listener;
+        return () => {
+          this.agentEventListener = undefined;
+        };
+      },
+    },
+  };
+
+  registerCommand(command: RegisteredCommand) {
+    this.commands.set(command.name, command);
+  }
+
+  registerService(service: { start: () => void | Promise<void>; stop?: () => void | Promise<void> }) {
+    this.service = service;
+  }
+
+  on(hook: HookName, handler: (event: unknown, ctx: unknown) => void | Promise<void>) {
+    const current = this.hooks.get(hook) ?? [];
+    current.push(handler);
+    this.hooks.set(hook, current);
+  }
+
+  async runCommand(name: string, ctx: Record<string, unknown>) {
+    const command = this.commands.get(name);
+    if (!command) {
+      throw new Error(`command not registered: ${name}`);
+    }
+    return command.handler(ctx);
+  }
+
+  async startService() {
+    await this.service?.start();
+  }
+
+  async stopService() {
+    await this.service?.stop?.();
+  }
+
+  async emitHook(hook: HookName, event: unknown, ctx: unknown) {
+    for (const handler of this.hooks.get(hook) ?? []) {
+      await handler(event, ctx);
+    }
+  }
+
+  emitAgentEvent(event: unknown) {
+    this.agentEventListener?.(event);
+  }
+}
+
+async function main() {
+  const tempRoot = mkdtempSync(join(tmpdir(), "agora-plugin-live-smoke-"));
+  const previousAgoraHome = process.env.AGORA_HOME_DIR;
+  process.env.AGORA_HOME_DIR = join(tempRoot, "agora-home");
+
+  const dbPath = join(tempRoot, "agora.db");
+  const templatesDir = join(tempRoot, "templates");
+  const brainPackRoot = join(tempRoot, "brain-pack");
+  mkdirSync(join(templatesDir, "tasks"), { recursive: true });
+  mkdirSync(brainPackRoot, { recursive: true });
+  cpSync(
+    resolve(process.cwd(), "templates", "tasks", "coding.json"),
+    join(templatesDir, "tasks", "coding.json"),
+  );
+
+  const db = createAgoraDatabase({ dbPath });
+  runMigrations(db);
+  const liveSessionStore = new LiveSessionStore();
+  const taskContextBindingService = new TaskContextBindingService(db);
+  const taskConversationService = new TaskConversationService(db);
+  const projectService = new ProjectService(db, {
+    knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+  });
+  let taskCounter = 0;
+  const taskService = new TaskService(db, {
+    templatesDir,
+    taskIdGenerator: () => `OC-PLUGIN-SMOKE-${++taskCounter}`,
+  });
+  const rolePackService = new RolePackService({ db });
+  const citizenService = new CitizenService(db, {
+    projectService,
+    rolePackService,
+    projectionPorts: [],
+  });
+  const projectBrainService = new ProjectBrainService({
+    projectService,
+    citizenService,
+    projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+  });
+  const dashboardQueryService = new DashboardQueryService(db, {
+    templatesDir,
+    liveSessions: liveSessionStore,
+  });
+  const app = buildApp({
+    db,
+    taskService,
+    projectService,
+    projectBrainService,
+    citizenService,
+    dashboardQueryService,
+    liveSessionStore,
+    taskContextBindingService,
+    taskConversationService,
+  });
+
+  let origin: string | null = null;
+  try {
+    origin = await app.listen({ port: 0, host: "127.0.0.1" });
+    const api = new FakePluginApi(origin);
+    const registerPlugin = resolvePluginRegister(pluginModule);
+    registerPlugin(api as never);
+    await api.startService();
+
+    const projectId = "proj-plugin-live-smoke";
+    const projectName = "Plugin Live Smoke Project";
+    const projectCreate = await api.runCommand("project", {
+      args: "create Plugin Live Smoke",
+      commandBody: `/project create "${projectName}" --id ${projectId} --summary "local plugin smoke"`,
+      senderId: "smoke-user",
+    });
+    const projectList = await api.runCommand("project", {
+      args: "list active",
+      commandBody: "/project list active",
+      senderId: "smoke-user",
+    });
+    const projectShow = await api.runCommand("project", {
+      args: `show ${projectId}`,
+      commandBody: `/project show ${projectId}`,
+      senderId: "smoke-user",
+    });
+
+    if (!projectCreate.text.includes(`Created project ${projectId}`)) {
+      throw new Error(`project create failed: ${projectCreate.text}`);
+    }
+    if (!projectList.text.includes(projectId)) {
+      throw new Error(`project list missing ${projectId}: ${projectList.text}`);
+    }
+    if (!projectShow.text.includes(`${projectId} | active | ${projectName}`)) {
+      throw new Error(`project show mismatch: ${projectShow.text}`);
+    }
+
+    const taskCreate = await api.runCommand("task", {
+      args: "create Plugin Live Smoke Task coding",
+      commandBody: '/task create "Plugin Live Smoke Task" coding',
+      senderId: "smoke-user",
+    });
+    const taskIdMatch = taskCreate.text.match(/Created (OC-[A-Z0-9-]+)/i);
+    const taskId = taskIdMatch?.[1];
+    if (!taskId) {
+      throw new Error(`task create did not return task id: ${taskCreate.text}`);
+    }
+
+    const conversationRef = "plugin-live-smoke";
+    const threadRef = "thread-plugin-live-smoke";
+    await requestJson(`${origin}/api/tasks/${encodeURIComponent(taskId)}/context-binding`, {
+      method: "POST",
+      body: {
+        im_provider: "discord",
+        conversation_ref: conversationRef,
+        thread_ref: threadRef,
+      },
+    });
+
+    const sessionKey = `agent:smoke:discord:channel:${conversationRef}`;
+    await api.emitHook(
+      "session_start",
+      { sessionId: "sess-plugin-live-1", sessionKey },
+      { sessionId: "sess-plugin-live-1", sessionKey, agentId: "smoke" },
+    );
+    await api.emitHook(
+      "before_agent_start",
+      { prompt: "run plugin live smoke" },
+      {
+        agentId: "smoke",
+        sessionId: "sess-plugin-live-1",
+        sessionKey,
+        channelId: "discord",
+        trigger: "smoke",
+      },
+    );
+    await api.emitHook(
+      "message_received",
+      {
+        content: "please continue plugin smoke",
+        timestamp: Date.now(),
+        metadata: {
+          threadId: threadRef,
+          messageId: "msg-in-plugin-smoke",
+          senderId: "530383608410800138",
+          senderName: "Lizeyu",
+        },
+      },
+      {
+        channelId: "discord",
+        conversationId: conversationRef,
+        sessionKey,
+        agentId: "smoke",
+        accountId: "530383608410800138",
+      },
+    );
+    await api.emitHook(
+      "message_sent",
+      {
+        content: "plugin smoke acknowledged",
+        success: true,
+        timestamp: Date.now(),
+        metadata: {
+          threadId: threadRef,
+          messageId: "msg-out-plugin-smoke",
+        },
+      },
+      {
+        channelId: "discord",
+        conversationId: conversationRef,
+        sessionKey,
+        agentId: "smoke",
+        accountId: "530383608410800138",
+      },
+    );
+    api.emitAgentEvent({
+      runId: "run-plugin-live-smoke",
+      seq: 1,
+      stream: "heartbeat",
+      ts: Date.now(),
+      sessionKey,
+      data: {
+        status: "ok",
+      },
+    });
+    await api.emitHook(
+      "agent_end",
+      {
+        success: true,
+        durationMs: 12,
+      },
+      {
+        agentId: "smoke",
+        sessionId: "sess-plugin-live-1",
+        sessionKey,
+        channelId: "discord",
+        trigger: "smoke",
+      },
+    );
+    await api.emitHook(
+      "session_end",
+      {
+        sessionId: "sess-plugin-live-1",
+        sessionKey,
+        messageCount: 2,
+      },
+      {
+        sessionId: "sess-plugin-live-1",
+        sessionKey,
+        agentId: "smoke",
+      },
+    );
+
+    const sessions = await waitFor(
+      async () => {
+        const value = await requestJson<Array<Record<string, unknown>>>(`${origin}/api/live/openclaw/sessions`);
+        return value.length > 0 ? value : null;
+      },
+      "live session upsert",
+    );
+    const conversation = await waitFor(
+      async () => {
+        const value = await requestJson<{ entries: Array<Record<string, unknown>> }>(
+          `${origin}/api/tasks/${encodeURIComponent(taskId)}/conversation`,
+        );
+        return value.entries.length >= 2 ? value : null;
+      },
+      "task conversation ingestion",
+    );
+
+    if (api.loggerMessages.error.length > 0) {
+      throw new Error(`plugin logger errors: ${api.loggerMessages.error.join(" | ")}`);
+    }
+
+    const inboundEntry = conversation.entries.find((entry) => entry.direction === "inbound");
+    const outboundEntry = conversation.entries.find((entry) => entry.direction === "outbound");
+    if (!inboundEntry || !outboundEntry) {
+      throw new Error(`expected inbound and outbound conversation entries, got ${JSON.stringify(conversation.entries)}`);
+    }
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status: "pass",
+          project_id: projectId,
+          task_id: taskId,
+          commands: {
+            project_create: projectCreate.text,
+            project_list: projectList.text,
+            project_show: projectShow.text,
+            task_create: taskCreate.text,
+          },
+          live_session: sessions[0],
+          conversation_entries: conversation.entries.length,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } finally {
+    await taskService.drainBackgroundOperations();
+    await app.close();
+    db.close();
+    if (previousAgoraHome === undefined) {
+      delete process.env.AGORA_HOME_DIR;
+    } else {
+      process.env.AGORA_HOME_DIR = previousAgoraHome;
+    }
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+async function requestJson<T>(
+  url: string,
+  input?: {
+    method?: string;
+    body?: unknown;
+  },
+) {
+  const response = await fetch(url, {
+    method: input?.method ?? "GET",
+    headers: input?.body ? { "content-type": "application/json" } : undefined,
+    body: input?.body ? JSON.stringify(input.body) : undefined,
+  });
+  const text = await response.text();
+  const payload = text.length > 0 ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new Error(`${input?.method ?? "GET"} ${url} failed: ${response.status} ${JSON.stringify(payload)}`);
+  }
+  return payload as T;
+}
+
+async function waitFor<T>(
+  probe: () => Promise<T | null>,
+  label: string,
+  timeoutMs = 5_000,
+  intervalMs = 100,
+) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const value = await probe();
+    if (value) {
+      return value;
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, intervalMs));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+function resolvePluginRegister(moduleValue: Record<string, unknown>) {
+  const candidate =
+    typeof moduleValue.default === "function"
+      ? moduleValue.default
+      : moduleValue.default && typeof moduleValue.default === "object" && typeof (moduleValue.default as Record<string, unknown>).default === "function"
+        ? (moduleValue.default as Record<string, unknown>).default
+        : typeof moduleValue === "function"
+          ? moduleValue
+          : null;
+  if (!candidate) {
+    throw new Error("failed to resolve plugin register export");
+  }
+  return candidate as (api: unknown) => void;
+}
+
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

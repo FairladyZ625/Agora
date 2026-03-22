@@ -67,6 +67,30 @@ describe("registerProjectCommands", () => {
     expect(result.text).toContain("Created project proj-plugin");
   });
 
+  it("prefers commandBody when discord native args truncate a quoted project name", async () => {
+    const createProject = vi.fn(async () => ({
+      id: "proj-command-body",
+      name: "Plugin Smoke Project",
+      status: "active",
+      owner: "u1",
+    }));
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any);
+
+    const result = await getCommand("project").handler({
+      args: "create Plugin Smoke",
+      commandBody: '/project create "Plugin Smoke Project" --id proj-command-body',
+      senderId: "u1",
+    });
+
+    expect(createProject).toHaveBeenCalledWith({
+      id: "proj-command-body",
+      name: "Plugin Smoke Project",
+      owner: "u1",
+    });
+    expect(result.text).toContain("Created project proj-command-body");
+  });
+
   it("lists projects through the bridge", async () => {
     const listProjects = vi.fn(async () => [
       { id: "proj-a", status: "active", name: "Project A" },
