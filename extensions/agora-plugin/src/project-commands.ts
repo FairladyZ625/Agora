@@ -1,4 +1,5 @@
 import { AgoraBridge } from "./bridge";
+import { resolveCommandTokens } from "./command-args";
 import type { CommandResult, OpenClawPluginApi } from "./types";
 
 export function registerProjectCommands(api: OpenClawPluginApi, bridge: AgoraBridge): void {
@@ -8,7 +9,7 @@ export function registerProjectCommands(api: OpenClawPluginApi, bridge: AgoraBri
     acceptsArgs: true,
     requireAuth: false,
     handler: async (ctx) => {
-      const tokens = tokenize(ctx.args || "");
+      const tokens = resolveCommandTokens("project", ctx);
       const [subcommand, ...rest] = tokens;
 
       try {
@@ -158,14 +159,4 @@ function formatHelp() {
     "/project list [status]",
     "/project show <project_id>",
   ].join("\n");
-}
-
-function tokenize(input: string): string[] {
-  const pattern = /"([^"]+)"|'([^']+)'|(\S+)/g;
-  const tokens: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(input)) !== null) {
-    tokens.push(match[1] || match[2] || match[3]);
-  }
-  return tokens;
 }
