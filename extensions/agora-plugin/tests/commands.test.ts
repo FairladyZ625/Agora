@@ -95,6 +95,34 @@ describe("registerTaskCommands", () => {
     expect(result.text).toContain("Created OC-001");
   });
 
+  it("prefers commandBody over lossy args for quoted create titles", async () => {
+    const createTask = vi.fn(async () => ({ id: "OC-002", type: "coding", title: "human smoke create" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { createTask } as any);
+
+    const result = await getCommand().handler({
+      args: "create human smoke coding",
+      commandBody: '/task create "human smoke create" coding',
+      senderId: "u1",
+    });
+
+    expect(createTask).toHaveBeenCalledWith("human smoke create", "coding", "u1");
+    expect(result.text).toContain("Created OC-002");
+  });
+
+  it("can resolve help from commandBody even when args are missing", async () => {
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, {} as any);
+
+    const result = await getCommand().handler({
+      commandBody: "/task help",
+      senderId: "u1",
+    });
+
+    expect(result.text).toContain("Agora /task commands:");
+    expect(result.text).toContain("Most common:");
+  });
+
   it.each([
     ["status", "Usage: /task status <task_id>"],
     ["advance", "Usage: /task advance <task_id>"],

@@ -1,5 +1,5 @@
 import { AgoraBridge } from "./bridge";
-import type { CommandResult, OpenClawPluginApi } from "./types";
+import type { CommandContext, CommandResult, OpenClawPluginApi } from "./types";
 
 const SUPPORTED_TASK_TYPES = ["coding", "coding_heavy", "research", "document", "quick", "brainstorm"] as const;
 
@@ -10,7 +10,7 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
     acceptsArgs: true,
     requireAuth: false,
     handler: async (ctx) => {
-      const tokens = tokenize(ctx.args || "");
+      const tokens = resolveCommandTokens("task", ctx);
       const [subcommand, ...rest] = tokens;
       const senderId = ctx.senderId || ctx.from || "unknown";
 
@@ -364,6 +364,21 @@ export function tokenize(raw: string): string[] {
     tokens.push(match[1] || match[2] || match[3]);
   }
   return tokens;
+}
+
+function resolveCommandTokens(commandName: string, ctx: CommandContext): string[] {
+  const fallback = tokenize(ctx.args || "");
+  const commandBody = typeof ctx.commandBody === "string" ? ctx.commandBody.trim() : "";
+  if (!commandBody.startsWith("/")) {
+    return fallback;
+  }
+  const normalizedPrefix = `/${commandName}`.toLowerCase();
+  const loweredBody = commandBody.toLowerCase();
+  if (loweredBody !== normalizedPrefix && !loweredBody.startsWith(`${normalizedPrefix} `)) {
+    return fallback;
+  }
+  const derived = tokenize(commandBody.slice(commandName.length + 1).trim());
+  return derived.length > 0 ? derived : fallback;
 }
 
 function isTaskType(value: string): boolean {

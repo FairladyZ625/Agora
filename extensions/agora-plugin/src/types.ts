@@ -1,5 +1,6 @@
 export interface CommandContext {
   args?: string;
+  commandBody?: string;
   senderId?: string;
   from?: string;
   provider?: string;
