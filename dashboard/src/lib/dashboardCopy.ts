@@ -542,6 +542,7 @@ export function useTasksPageCopy() {
     executionChoiceLabel: t('tasks.executionChoiceLabel'),
     executionKeysLabel: t('tasks.executionKeysLabel'),
     executionCountUnit: t('tasks.executionCountUnit'),
+    governanceTitle: t('tasks.governanceTitle'),
     governanceActiveLabel: t('tasks.governanceActiveLabel'),
     governancePerAgentLabel: t('tasks.governancePerAgentLabel'),
     governanceMemoryLabel: t('tasks.governanceMemoryLabel'),

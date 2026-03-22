@@ -170,6 +170,10 @@
     grid-template-columns: 1fr;
   }
 
+  .workbench-grid--tasks {
+    grid-template-columns: 1fr;
+  }
+
   .workbench-hero__stats {
     min-width: 0;
     grid-template-columns: 1fr;
@@ -212,6 +216,12 @@
     grid-template-columns: 1fr;
   }
 
+  .task-flow__facts,
+  .task-runtime-grid,
+  .task-hero-card__footer {
+    grid-template-columns: 1fr;
+  }
+
   .review-pane--queue,
   .task-pane--queue {
     border-right: 0;
@@ -222,6 +232,19 @@
   .task-pane__filters,
   .task-authority__actions {
     align-items: stretch;
+  }
+
+  .task-toolbar__group {
+    width: 100%;
+  }
+
+  .task-toolbar__button {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .task-toolbar__status {
+    min-height: 0;
   }
 
   .review-toolbar__group {
