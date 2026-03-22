@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import {
+  BUILT_IN_AGORA_NOMOS_PACK,
   DEFAULT_AGORA_NOMOS_ID,
+  buildBuiltInAgoraNomosProjectProfile,
   installBuiltInAgoraNomosForProject,
+  mergeProjectMetadataWithNomosProfile,
+  NOMOS_LIFECYCLE_MODULES,
+  REPO_AGENTS_SHIM_SECTION_ORDER,
+  resolveAgoraProjectStateLayout,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
@@ -71,6 +77,7 @@ import { runStartCommand } from './start-command.js';
 import { classifyCliError, CliError, CLI_EXIT_CODES, renderCliError } from './errors.js';
 import { cliText, resolveCliLocale } from './locale.js';
 import type { HumanAccountService } from '@agora-ts/core';
+import type { InstalledBuiltInAgoraNomosResult } from '@agora-ts/config';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -128,6 +135,49 @@ function parseJsonOption(raw: string | undefined, context: string): Record<strin
 
 function collectOption(value: string, previous: string[] = []) {
   return [...previous, value];
+}
+
+function requireSupportedNomosId(raw: string | undefined) {
+  const nomosId = raw?.trim() || DEFAULT_AGORA_NOMOS_ID;
+  if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
+    throw new Error(`Unsupported nomos_id: ${nomosId}`);
+  }
+  return nomosId;
+}
+
+function writeInstalledNomosSummary(
+  stream: Writable,
+  result: InstalledBuiltInAgoraNomosResult,
+  options: {
+    projectId: string;
+    projectName: string;
+    bootstrapTaskId?: string | null;
+  },
+) {
+  writeLine(stream, `Project 已创建: ${options.projectId}`);
+  writeLine(stream, `名称: ${options.projectName}`);
+  writeLine(stream, `Nomos: ${result.profile.pack.id}@${result.profile.pack.version}`);
+  writeLine(stream, `Project State: ${result.layout.root}`);
+  if (result.repoShimPath) {
+    writeLine(stream, `Repo Shim: ${result.repoShimPath}`);
+  }
+  if (options.bootstrapTaskId) {
+    writeLine(stream, `Bootstrap Task: ${options.bootstrapTaskId}`);
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
+  const agora = asRecord(project.metadata?.agora);
+  const nomos = asRecord(agora?.nomos);
+  return typeof nomos?.id === 'string' && nomos.id.length > 0
+    ? nomos.id
+    : DEFAULT_AGORA_NOMOS_ID;
 }
 
 function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
@@ -888,6 +938,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projects = program
     .command('projects')
     .description('project thin-slice commands');
+  const nomos = program
+    .command('nomos')
+    .description('Nomos pack and project-state commands');
   const skills = program
     .command('skills')
     .description('local skill catalog commands');
@@ -921,6 +974,166 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `${templateId} — ${template.name}`);
       writeLine(stdout, `roles: ${Object.keys(template.defaultTeam ?? {}).join(', ') || '-'}`);
       writeLine(stdout, `stages: ${(template.stages ?? []).map((stage) => stage.id).join(' -> ') || '-'}`);
+    });
+
+  nomos
+    .command('list')
+    .description('列出当前可用的 Nomos packs')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const packs = [{
+        ...BUILT_IN_AGORA_NOMOS_PACK,
+        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+        shim_sections: [...REPO_AGENTS_SHIM_SECTION_ORDER],
+      }];
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ nomos: packs }, null, 2));
+        return;
+      }
+      for (const pack of packs) {
+        writeLine(stdout, `${pack.id}\t${pack.version}\t${pack.name}`);
+      }
+    });
+
+  nomos
+    .command('show')
+    .description('查看 Nomos pack 详情')
+    .argument('[nomosId]', 'Nomos pack id', DEFAULT_AGORA_NOMOS_ID)
+    .option('--json', '输出 JSON', false)
+    .action((nomosId: string, options: { json?: boolean }) => {
+      const supportedNomosId = requireSupportedNomosId(nomosId);
+      const profile = buildBuiltInAgoraNomosProjectProfile('__preview__');
+      const payload = {
+        id: supportedNomosId,
+        pack: profile.pack,
+        repository_shim: profile.repository_shim,
+        project_state: profile.project_state,
+        bootstrap: profile.bootstrap,
+        docs: profile.docs,
+        lifecycle: profile.lifecycle,
+        doctor: profile.doctor,
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, `${payload.pack.id} — ${payload.pack.name}`);
+      writeLine(stdout, `version: ${payload.pack.version}`);
+      writeLine(stdout, `install_mode: ${payload.pack.install_mode}`);
+      writeLine(stdout, `project_state_root: ${payload.project_state.root_template}`);
+      writeLine(stdout, `lifecycle: ${payload.lifecycle.modules.join(', ')}`);
+      writeLine(stdout, `shim sections: ${payload.repository_shim.required_sections.join(', ')}`);
+    });
+
+  nomos
+    .command('inspect-project')
+    .description('查看某个 project 的 Nomos 安装状态')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const layout = resolveAgoraProjectStateLayout(projectId);
+      const metadata = project.metadata ?? null;
+      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
+      const profileInstalled = existsSync(layout.profilePath);
+      const repoShimInstalled = Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md')));
+      const payload = {
+        project_id: project.id,
+        project_name: project.name,
+        nomos_id: readProjectNomosId(project),
+        project_state_root: layout.root,
+        profile_path: layout.profilePath,
+        profile_installed: profileInstalled,
+        repo_path: repoPath,
+        repo_shim_installed: repoShimInstalled,
+        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
+        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, `${payload.project_id} — ${payload.project_name}`);
+      writeLine(stdout, `nomos: ${payload.nomos_id}`);
+      writeLine(stdout, `project_state_root: ${payload.project_state_root}`);
+      writeLine(stdout, `profile_installed: ${payload.profile_installed}`);
+      writeLine(stdout, `repo_path: ${payload.repo_path ?? '-'}`);
+      writeLine(stdout, `repo_shim_installed: ${payload.repo_shim_installed}`);
+      writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
+    });
+
+  nomos
+    .command('install')
+    .description('为已有 project 安装或重装 built-in Nomos')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .option('--repo-path <path>', 'bind to an existing or new repo path')
+    .option('--initialize-repo', 'create the repo path if it does not exist and initialize git', false)
+    .option('--force-write-repo-shim', 'overwrite repo-root AGENTS.md shim', false)
+    .option('--skip-bootstrap-task', 'do not create a bootstrap task after install', false)
+    .option('--creator <creator>', 'creator used for bootstrap task', 'archon')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      repoPath?: string;
+      initializeRepo?: boolean;
+      forceWriteRepoShim?: boolean;
+      skipBootstrapTask?: boolean;
+      creator?: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
+        ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+        initializeRepo: options.initializeRepo ?? false,
+        forceWriteRepoShim: options.forceWriteRepoShim ?? false,
+      });
+      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+        ...(project.metadata ?? {}),
+        ...(options.repoPath ? { repo_path: options.repoPath } : {}),
+      }, installedNomos.profile));
+      let bootstrapTaskId: string | null = null;
+      if (!options.skipBootstrapTask && taskService) {
+        const bootstrapMode = options.repoPath
+          ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
+          : 'no_repo';
+        const bootstrapTask = new ProjectBootstrapService({
+          projectService,
+          taskService,
+        }).createHarnessBootstrapTask({
+          project_id: project.id,
+          project_name: project.name,
+          creator: options.creator ?? project.owner ?? 'archon',
+          repo_path: options.repoPath,
+          project_state_root: installedNomos.layout.root,
+          nomos_id: installedNomos.profile.pack.id,
+          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_mode: bootstrapMode,
+        });
+        bootstrapTaskId = bootstrapTask.id;
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: project.id,
+          nomos: installedNomos.profile.pack,
+          project_state_root: installedNomos.layout.root,
+          repo_shim_path: installedNomos.repoShimPath,
+          repo_git_initialized: installedNomos.repoGitInitialized,
+          project_state_git_initialized: installedNomos.projectStateGitInitialized,
+          bootstrap_task_id: bootstrapTaskId,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos 已安装: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Project: ${project.id}`);
+      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
+      if (installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      }
+      writeLine(stdout, `Repo Git Initialized: ${installedNomos.repoGitInitialized}`);
+      writeLine(stdout, `Project State Git Initialized: ${installedNomos.projectStateGitInitialized}`);
+      if (bootstrapTaskId) {
+        writeLine(stdout, `Bootstrap Task: ${bootstrapTaskId}`);
+      }
     });
 
   projects
@@ -964,7 +1177,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   projects
     .command('create')
-    .description('创建 project')
+    .description('创建 project，并走 Nomos-first 安装/bootstrap 流程')
     .requiredOption('--id <projectId>', 'project id')
     .requiredOption('--name <name>', 'project name')
     .option('--summary <summary>', 'project summary')
@@ -983,10 +1196,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       nomosId?: string;
       metadataJson?: string;
     }) => {
-      const nomosId = options.nomosId?.trim() || DEFAULT_AGORA_NOMOS_ID;
-      if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
-        throw new Error(`Unsupported nomos_id: ${nomosId}`);
-      }
+      const nomosId = requireSupportedNomosId(options.nomosId);
       const input = createProjectRequestSchema.parse({
         id: options.id,
         name: options.name,
@@ -1002,6 +1212,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(input.repo_path ? { repoPath: input.repo_path } : {}),
         initializeRepo: input.initialize_repo ?? false,
       });
+      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+        ...(input.metadata ?? {}),
+        ...(input.repo_path ? { repo_path: input.repo_path } : {}),
+      }, installedNomos.profile));
       const bootstrapMode = input.repo_path
         ? (input.initialize_repo ? 'new_repo' : 'existing_repo')
         : 'no_repo';

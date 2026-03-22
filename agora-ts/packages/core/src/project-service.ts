@@ -60,6 +60,11 @@ export class ProjectService {
     return this.projects.getProject(projectId);
   }
 
+  updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): StoredProject {
+    this.requireProject(projectId);
+    return this.projects.updateProject(projectId, { metadata });
+  }
+
   listProjects(status?: string): StoredProject[] {
     return this.projects.listProjects(status);
   }
