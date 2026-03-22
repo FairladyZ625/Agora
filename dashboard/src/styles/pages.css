@@ -1113,12 +1113,12 @@
   min-height: 176px;
   overflow: hidden;
   -webkit-mask-image:
-    radial-gradient(circle at 44% 46%, rgb(0 0 0 / 100%) 0, rgb(0 0 0 / 100%) 38%, rgb(0 0 0 / 72%) 58%, transparent 88%),
-    linear-gradient(180deg, transparent 0, rgb(0 0 0 / 80%) 14%, rgb(0 0 0 / 100%) 28%, rgb(0 0 0 / 100%) 72%, rgb(0 0 0 / 80%) 86%, transparent 100%);
+    var(--home-signal-field-mask-radial),
+    var(--home-signal-field-mask-linear);
   -webkit-mask-composite: source-in;
   mask-image:
-    radial-gradient(circle at 44% 46%, rgb(0 0 0 / 100%) 0, rgb(0 0 0 / 100%) 38%, rgb(0 0 0 / 72%) 58%, transparent 88%),
-    linear-gradient(180deg, transparent 0, rgb(0 0 0 / 80%) 14%, rgb(0 0 0 / 100%) 28%, rgb(0 0 0 / 100%) 72%, rgb(0 0 0 / 80%) 86%, transparent 100%);
+    var(--home-signal-field-mask-radial),
+    var(--home-signal-field-mask-linear);
   mask-composite: intersect;
 }
 
