@@ -14,6 +14,7 @@ export interface EnsureBundledAgoraAssetsOptions {
 export interface EnsuredAgoraAssetsResult {
   userAgoraDir: string;
   agoraSkillDir: string;
+  bundledSkillNames: string[];
   userSkillDirs: string[];
   installedSkillTargets: string[];
   userBrainPackDir: string;
@@ -47,27 +48,56 @@ export function ensureBundledAgoraAssetsInstalled(
   const userSkillDirs = resolveUserSkillDirs(options);
   const agoraSkillDir = resolveUserAgoraSkillDir(options);
   const installedSkillTargets: string[] = [];
+  const bundledSkillNames: string[] = [];
 
   mkdirSync(userAgoraDir, { recursive: true });
 
-  const sourceSkillDir = resolve(bundledSkillsDir, 'agora-bootstrap');
-  if (existsSync(sourceSkillDir)) {
-    mkdirSync(resolve(userAgoraDir, 'skills'), { recursive: true });
-    cpSync(sourceSkillDir, agoraSkillDir, {
-      recursive: true,
-      force: true,
-    });
-    installedSkillTargets.push(agoraSkillDir);
+  const sourceSkillDirs = existsSync(bundledSkillsDir)
+    ? readdirSync(bundledSkillsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(resolve(bundledSkillsDir, entry.name, 'SKILL.md')))
+      .map((entry) => ({
+        name: entry.name,
+        sourceDir: resolve(bundledSkillsDir, entry.name),
+      }))
+    : [];
 
-    for (const userSkillsDir of userSkillDirs) {
-      mkdirSync(userSkillsDir, { recursive: true });
-      const targetDir = resolve(userSkillsDir, 'agora-bootstrap');
-      cpSync(sourceSkillDir, targetDir, {
+  if (sourceSkillDirs.length > 0) {
+    mkdirSync(resolve(userAgoraDir, 'skills'), { recursive: true });
+
+    for (const { name, sourceDir } of sourceSkillDirs) {
+      const agoraTargetDir = resolve(userAgoraDir, 'skills', name);
+      cpSync(sourceDir, agoraTargetDir, {
         recursive: true,
         force: true,
       });
-      installedSkillTargets.push(targetDir);
+      installedSkillTargets.push(agoraTargetDir);
+      bundledSkillNames.push(name);
+
+      for (const userSkillsDir of userSkillDirs) {
+        mkdirSync(userSkillsDir, { recursive: true });
+        const targetDir = resolve(userSkillsDir, name);
+        cpSync(sourceDir, targetDir, {
+          recursive: true,
+          force: true,
+        });
+        installedSkillTargets.push(targetDir);
+      }
     }
+
+    if (!existsSync(agoraSkillDir) && bundledSkillNames.includes('agora-bootstrap')) {
+      cpSync(resolve(bundledSkillsDir, 'agora-bootstrap'), agoraSkillDir, {
+        recursive: true,
+        force: true,
+      });
+    } else if (existsSync(resolve(userAgoraDir, 'skills', 'agora-bootstrap'))) {
+      // Keep the historical field pointing at the bootstrap skill for existing callers.
+    }
+  }
+
+  if (!existsSync(agoraSkillDir) && existsSync(resolve(userAgoraDir, 'skills', 'agora-bootstrap'))) {
+    // no-op, conventional path exists
+  } else if (!existsSync(agoraSkillDir)) {
+    mkdirSync(agoraSkillDir, { recursive: true });
   }
 
   const userBrainPackDir = resolve(userAgoraDir, 'agora-ai-brain');
@@ -83,6 +113,7 @@ export function ensureBundledAgoraAssetsInstalled(
   return {
     userAgoraDir,
     agoraSkillDir,
+    bundledSkillNames,
     userSkillDirs,
     installedSkillTargets,
     userBrainPackDir,

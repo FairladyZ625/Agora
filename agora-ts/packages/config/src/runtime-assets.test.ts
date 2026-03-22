@@ -78,4 +78,32 @@ describe('runtime assets', () => {
     expect(readFileSync(join(installedBrainPackDir, 'AGORA.md'), 'utf8')).toBe('runtime agora');
     expect(readFileSync(join(installedBrainPackDir, 'README.md'), 'utf8')).toBe('runtime readme');
   });
+
+  it('installs every bundled skill into Agora and user skill directories', () => {
+    const projectRoot = makeTempDir();
+    const bundledSkillsDir = join(projectRoot, '.skills');
+    const userAgoraDir = makeTempDir();
+    const userAgentsSkillsDir = makeTempDir();
+    const userCodexSkillsDir = makeTempDir();
+
+    mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
+    mkdirSync(join(bundledSkillsDir, 'create-nomos', 'references'), { recursive: true });
+    writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
+    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'SKILL.md'), '# create nomos\n');
+    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'references', 'pack-schema.md'), '# schema\n');
+
+    const result = ensureBundledAgoraAssetsInstalled({
+      projectRoot,
+      bundledSkillsDir,
+      userAgoraDir,
+      userSkillDirs: [userAgentsSkillsDir, userCodexSkillsDir],
+    });
+
+    expect(result.bundledSkillNames.sort()).toEqual(['agora-bootstrap', 'create-nomos']);
+    expect(readFileSync(join(userAgoraDir, 'skills', 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
+    expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'SKILL.md'), 'utf8')).toContain('create nomos');
+    expect(readFileSync(join(userAgentsSkillsDir, 'create-nomos', 'SKILL.md'), 'utf8')).toContain('create nomos');
+    expect(readFileSync(join(userCodexSkillsDir, 'create-nomos', 'SKILL.md'), 'utf8')).toContain('create nomos');
+    expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'references', 'pack-schema.md'), 'utf8')).toContain('schema');
+  });
 });

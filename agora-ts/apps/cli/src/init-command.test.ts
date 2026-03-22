@@ -64,7 +64,10 @@ describe('runInitCommand', () => {
     const userCodexSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-codex-skill-dst-'));
     tempPaths.push(bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userAgentsSkillsDir, userCodexSkillsDir);
     mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
+    mkdirSync(join(bundledSkillsDir, 'create-nomos', 'references'), { recursive: true });
     writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
+    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'SKILL.md'), '# create nomos\n');
+    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'references', 'pack-schema.md'), '# schema\n');
     mkdirSync(join(bundledBrainPackDir, 'roles'), { recursive: true });
     mkdirSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY'), { recursive: true });
     writeFileSync(join(bundledBrainPackDir, 'README.md'), '# brain\n');
@@ -98,8 +101,12 @@ describe('runInitCommand', () => {
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks', 'OC-SEED-SHOULD-NOT-COPY'))).toBe(false);
     expect(existsSync(join(userAgentsSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(userCodexSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(userAgoraDir, 'skills', 'create-nomos', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(userAgentsSkillsDir, 'create-nomos', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(userCodexSkillsDir, 'create-nomos', 'SKILL.md'))).toBe(true);
     expect(readFileSync(join(userAgentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
     expect(readFileSync(join(userCodexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
+    expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'references', 'pack-schema.md'), 'utf8')).toContain('schema');
   });
 
   it('skips hybrid retrieval setup when the user declines the optional prompt', async () => {
