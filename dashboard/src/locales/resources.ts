@@ -572,6 +572,11 @@ export const resources = {
         repoShimInstalledLabel: 'Repo Shim 已安装',
         profileInstalledLabel: 'Profile 已安装',
         lifecycleModulesLabel: 'Lifecycle Modules',
+        reinstallNomosAction: '重装 Nomos',
+        rerunBootstrapAction: '重新拉起 Bootstrap',
+        nomosActionPending: 'Nomos 操作执行中…',
+        nomosReinstallSuccess: 'Nomos 已重装并刷新 project state。',
+        nomosBootstrapSuccess: 'Bootstrap task 已重新创建。',
         yesLabel: '是',
         noLabel: '否',
         stats: {
@@ -1713,6 +1718,11 @@ export const resources = {
         repoShimInstalledLabel: 'Repo Shim Installed',
         profileInstalledLabel: 'Profile Installed',
         lifecycleModulesLabel: 'Lifecycle Modules',
+        reinstallNomosAction: 'Reinstall Nomos',
+        rerunBootstrapAction: 'Rerun Bootstrap',
+        nomosActionPending: 'Nomos action in progress…',
+        nomosReinstallSuccess: 'Nomos reinstalled and project state refreshed.',
+        nomosBootstrapSuccess: 'Bootstrap task recreated.',
         yesLabel: 'Yes',
         noLabel: 'No',
         stats: {

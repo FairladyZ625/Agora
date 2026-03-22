@@ -359,6 +359,11 @@ export function useProjectDetailPageCopy() {
     repoShimInstalledLabel: t('projectDetail.repoShimInstalledLabel'),
     profileInstalledLabel: t('projectDetail.profileInstalledLabel'),
     lifecycleModulesLabel: t('projectDetail.lifecycleModulesLabel'),
+    reinstallNomosAction: t('projectDetail.reinstallNomosAction'),
+    rerunBootstrapAction: t('projectDetail.rerunBootstrapAction'),
+    nomosActionPending: t('projectDetail.nomosActionPending'),
+    nomosReinstallSuccess: t('projectDetail.nomosReinstallSuccess'),
+    nomosBootstrapSuccess: t('projectDetail.nomosBootstrapSuccess'),
     yesLabel: t('projectDetail.yesLabel'),
     noLabel: t('projectDetail.noLabel'),
     stats: {

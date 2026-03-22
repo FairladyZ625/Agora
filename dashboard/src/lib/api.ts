@@ -82,6 +82,25 @@ const projectNomosStateSchema = z.object({
 
 export type ApiProjectNomosStateDto = z.infer<typeof projectNomosStateSchema>;
 
+const projectNomosInstallSchema = z.object({
+  project_id: z.string().min(1),
+  nomos: z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    version: z.string().min(1),
+    description: z.string().min(1),
+    source: z.string().min(1),
+    install_mode: z.string().min(1),
+  }),
+  project_state_root: z.string().min(1),
+  repo_shim_path: z.string().nullable(),
+  repo_git_initialized: z.boolean(),
+  project_state_git_initialized: z.boolean(),
+  bootstrap_task_id: z.string().nullable(),
+});
+
+export type ApiProjectNomosInstallDto = z.infer<typeof projectNomosInstallSchema>;
+
 class ApiError extends Error {
   status: number;
   statusText: string;
@@ -723,6 +742,26 @@ export function getProjectNomosState(projectId: string): Promise<ApiProjectNomos
   return request<ApiProjectNomosStateDto>(
     `/projects/${encodeURIComponent(projectId)}/nomos`,
     projectNomosStateSchema,
+  );
+}
+
+export function installProjectNomos(
+  projectId: string,
+  input?: {
+    repo_path?: string;
+    initialize_repo?: boolean;
+    force_write_repo_shim?: boolean;
+    skip_bootstrap_task?: boolean;
+    creator?: string;
+  },
+): Promise<ApiProjectNomosInstallDto> {
+  return request<ApiProjectNomosInstallDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/install`,
+    projectNomosInstallSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input ?? {}),
+    },
   );
 }
 

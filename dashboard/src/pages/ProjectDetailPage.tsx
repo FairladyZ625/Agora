@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import * as api from '@/lib/api';
 import { useProjectDetailPageCopy } from '@/lib/dashboardCopy';
 import { useProjectStore } from '@/stores/projectStore';
 import { useTodoStore } from '@/stores/todoStore';
@@ -44,6 +45,8 @@ export function ProjectDetailPage() {
     projectId: null,
     selection: null,
   });
+  const [nomosActionPending, setNomosActionPending] = useState(false);
+  const [nomosActionMessage, setNomosActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -79,6 +82,25 @@ export function ProjectDetailPage() {
     : selectedProject.todos;
   const detailSelection = detailState.projectId === (projectId ?? null) ? detailState.selection : null;
   const nomos = selectedProject.nomos;
+
+  const runNomosAction = async (mode: 'reinstall' | 'bootstrap') => {
+    if (!projectId) {
+      return;
+    }
+    setNomosActionPending(true);
+    setNomosActionMessage(null);
+    try {
+      await api.installProjectNomos(projectId, {
+        skip_bootstrap_task: mode === 'reinstall',
+      });
+      await selectProject(projectId);
+      setNomosActionMessage(mode === 'reinstall' ? copy.nomosReinstallSuccess : copy.nomosBootstrapSuccess);
+    } catch (error) {
+      setNomosActionMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setNomosActionPending(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -125,7 +147,27 @@ export function ProjectDetailPage() {
         <section className="surface-panel surface-panel--workspace" data-testid="project-nomos-panel">
           <div className="section-title-row">
             <h3 className="section-title">{copy.nomosTitle}</h3>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('reinstall')}
+              >
+                {copy.reinstallNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('bootstrap')}
+              >
+                {copy.rerunBootstrapAction}
+              </button>
+            </div>
           </div>
+          {nomosActionPending ? <div className="inline-alert mt-4">{copy.nomosActionPending}</div> : null}
+          {nomosActionMessage ? <div className="inline-alert mt-4">{nomosActionMessage}</div> : null}
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="space-y-2">
               <p className="field-label">{copy.nomosIdLabel}</p>
