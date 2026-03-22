@@ -295,6 +295,15 @@
     min-height: 180px;
   }
 
+  .board-task-card__meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .board-task-card__badges {
+    justify-content: flex-start;
+  }
+
   .agents-issue-queue__scroll {
     max-height: none;
     padding-right: 0;
