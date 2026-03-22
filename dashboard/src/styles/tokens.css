@@ -222,6 +222,8 @@
   --home-signal-field-line: #4a78a6;
   --home-signal-field-glow: #7ba8d0;
   --home-signal-field-highlight: #ffffff;
+  --home-signal-field-mask-radial: radial-gradient(circle at 44% 46%, rgb(0 0 0 / 100%) 0, rgb(0 0 0 / 100%) 38%, rgb(0 0 0 / 72%) 58%, transparent 88%);
+  --home-signal-field-mask-linear: linear-gradient(180deg, transparent 0, rgb(0 0 0 / 80%) 14%, rgb(0 0 0 / 100%) 28%, rgb(0 0 0 / 100%) 72%, rgb(0 0 0 / 80%) 86%, transparent 100%);
   --runtime-log-bg: var(--color-static-dark);
   --runtime-log-overlay: color-mix(in srgb, var(--color-static-dark) 80%, transparent);
   --runtime-log-spinner-track: color-mix(in srgb, var(--color-static-white) 10%, transparent);
@@ -469,6 +471,8 @@
   --home-signal-field-line: #9eb8d2;
   --home-signal-field-glow: #d8eff9;
   --home-signal-field-highlight: #f5fcff;
+  --home-signal-field-mask-radial: radial-gradient(circle at 44% 46%, rgb(0 0 0 / 100%) 0, rgb(0 0 0 / 100%) 38%, rgb(0 0 0 / 72%) 58%, transparent 88%);
+  --home-signal-field-mask-linear: linear-gradient(180deg, transparent 0, rgb(0 0 0 / 80%) 14%, rgb(0 0 0 / 100%) 28%, rgb(0 0 0 / 100%) 72%, rgb(0 0 0 / 80%) 86%, transparent 100%);
   --topbar-sigil-bg: linear-gradient(135deg, rgba(224, 245, 250, 0.14), rgba(100, 210, 239, 0.12));
   --topbar-sigil-border: rgba(158, 184, 210, 0.2);
   --topbar-sigil-shadow: 0 16px 28px rgba(158, 184, 210, 0.12);

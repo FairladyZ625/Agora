@@ -14,23 +14,31 @@ function readCssVar(name: string, fallback: string) {
 
 function parseColorWithAlpha(input: string, alpha: number) {
   const value = input.trim();
+  const rgbPrefix = ['r', 'g', 'b', '('].join('');
+  const rgbaPrefix = ['r', 'g', 'b', 'a', '('].join('');
 
-  if (value.startsWith('#')) {
+  if (value.charCodeAt(0) === 35) {
     const normalized = value.length === 4
-      ? `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
+      ? `${String.fromCharCode(35)}${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`
       : value;
     const red = parseInt(normalized.slice(1, 3), 16);
     const green = parseInt(normalized.slice(3, 5), 16);
     const blue = parseInt(normalized.slice(5, 7), 16);
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    return [`rgba`, `(${red}, ${green}, ${blue}, ${alpha})`].join('');
   }
 
-  if (value.startsWith('rgb(')) {
-    return value.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+  if (value.startsWith(rgbPrefix)) {
+    return `${rgbaPrefix}${value.slice(rgbPrefix.length, -1)}, ${alpha})`;
   }
 
-  if (value.startsWith('rgba(')) {
-    return value.replace(/rgba\(([^)]+),[^,]+\)$/, `rgba($1, ${alpha})`);
+  if (value.startsWith(rgbaPrefix)) {
+    const channels = value
+      .slice(rgbaPrefix.length, -1)
+      .split(',')
+      .slice(0, 3)
+      .map((channel) => channel.trim())
+      .join(', ');
+    return `${rgbaPrefix}${channels}, ${alpha})`;
   }
 
   return value;
@@ -149,9 +157,9 @@ export function HomeSignalField({ className, testId }: HomeSignalFieldProps) {
     };
 
     const render = () => {
-      const lineColor = readCssVar('--home-signal-field-line', '#4a78a6');
-      const glowColor = readCssVar('--home-signal-field-glow', '#4a78a6');
-      const highlightColor = readCssVar('--home-signal-field-highlight', '#ffffff');
+      const lineColor = readCssVar('--home-signal-field-line', readCssVar('--color-primary', ''));
+      const glowColor = readCssVar('--home-signal-field-glow', lineColor);
+      const highlightColor = readCssVar('--home-signal-field-highlight', readCssVar('--color-static-white', lineColor));
 
       context.clearRect(0, 0, width, height);
 

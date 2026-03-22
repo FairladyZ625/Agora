@@ -224,23 +224,22 @@
     align-items: stretch;
   }
 
+  .review-toolbar__group {
+    width: 100%;
+  }
+
+  .review-toolbar__button {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .review-toolbar__status {
+    min-height: 0;
+  }
+
   .review-canvas__signals {
     min-width: 0;
     grid-template-columns: 1fr;
-  }
-
-  .review-table__head {
-    display: none;
-  }
-
-  .review-table__row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 16px 0;
-  }
-
-  .review-table__cell--right {
-    text-align: left;
   }
 
   .dense-row {
