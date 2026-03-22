@@ -9,7 +9,26 @@ const team = {
 };
 
 describe('permission service', () => {
-  it('honors allowAgents canAdvance instead of granting every team member advance rights', () => {
+  it('allows controller and archon to advance regardless of allowAgents fallback', () => {
+    const permissions = new PermissionService({
+      archonUsers: ['archon'],
+      allowAgents: {
+        '*': { canCall: [], canAdvance: false },
+      },
+    });
+    const controllerTeam = {
+      members: [
+        { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        { role: 'reviewer', agentId: 'sonnet', model_preference: 'review' },
+      ],
+    };
+
+    expect(permissions.canAdvance('opus', controllerTeam)).toBe(true);
+    expect(permissions.canAdvance('archon', controllerTeam)).toBe(true);
+    expect(permissions.canAdvance('sonnet', controllerTeam)).toBe(false);
+  });
+
+  it('honors allowAgents canAdvance for non-controller agents', () => {
     const permissions = new PermissionService({
       archonUsers: ['archon'],
       allowAgents: {

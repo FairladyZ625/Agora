@@ -1444,7 +1444,7 @@ describe('task service', () => {
     expect(advanced.current_stage).toBe('develop');
   });
 
-  it('uses allowAgents canAdvance config instead of team membership for command advances', () => {
+  it('uses allowAgents canAdvance config for non-controller command advances', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const service = new TaskService(db, {
@@ -1466,7 +1466,7 @@ describe('task service', () => {
       priority: 'normal',
       creator: 'archon',
       team: {
-        members: [{ role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' }],
+        members: [{ role: 'developer', agentId: 'opus', model_preference: 'strong_reasoning' }],
       },
       workflow: {
         type: 'command-only',
