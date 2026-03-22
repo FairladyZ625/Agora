@@ -101,6 +101,37 @@ const projectNomosInstallSchema = z.object({
 
 export type ApiProjectNomosInstallDto = z.infer<typeof projectNomosInstallSchema>;
 
+const projectNomosDoctorSchema = z.object({
+  project_id: z.string().min(1),
+  db_path: z.string().min(1),
+  embedding: z.object({
+    configured: z.boolean(),
+    healthy: z.boolean(),
+    provider: z.string().min(1),
+    model: z.string().nullable(),
+    error: z.string().optional(),
+  }),
+  vector_index: z.object({
+    configured: z.boolean(),
+    provider: z.string().min(1),
+    healthy: z.boolean(),
+    chunk_count: z.number().optional(),
+    warning: z.string().optional(),
+  }),
+  jobs: z.object({
+    pending: z.number(),
+    running: z.number(),
+    failed: z.number(),
+    succeeded: z.number(),
+  }),
+  drift: z.object({
+    detected: z.boolean(),
+    documents_without_jobs: z.number(),
+  }),
+});
+
+export type ApiProjectNomosDoctorDto = z.infer<typeof projectNomosDoctorSchema>;
+
 class ApiError extends Error {
   status: number;
   statusText: string;
@@ -762,6 +793,13 @@ export function installProjectNomos(
       method: 'POST',
       body: JSON.stringify(input ?? {}),
     },
+  );
+}
+
+export function runProjectNomosDoctor(projectId: string): Promise<ApiProjectNomosDoctorDto> {
+  return request<ApiProjectNomosDoctorDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/doctor`,
+    projectNomosDoctorSchema,
   );
 }
 

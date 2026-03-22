@@ -25,6 +25,34 @@ const { installProjectNomos } = vi.hoisted(() => ({
     bootstrap_task_id: null,
   })),
 }));
+const { runProjectNomosDoctor } = vi.hoisted(() => ({
+  runProjectNomosDoctor: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    db_path: '/tmp/agora.db',
+    embedding: {
+      configured: true,
+      healthy: true,
+      provider: 'openai-compatible',
+      model: 'embedding-3',
+    },
+    vector_index: {
+      configured: true,
+      provider: 'qdrant',
+      healthy: true,
+      chunk_count: 16,
+    },
+    jobs: {
+      pending: 0,
+      running: 0,
+      failed: 0,
+      succeeded: 4,
+    },
+    drift: {
+      detected: false,
+      documents_without_jobs: 0,
+    },
+  })),
+}));
 const createProject = vi.fn(async () => ({
   id: 'proj-beta',
   name: 'Project Beta',
@@ -42,6 +70,7 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     installProjectNomos,
+    runProjectNomosDoctor,
   };
 });
 const updateTodo = vi.fn(async () => undefined);
@@ -268,6 +297,13 @@ describe('project workbench pages', () => {
         skip_bootstrap_task: false,
       });
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Run Doctor' }));
+    await waitFor(() => {
+      expect(runProjectNomosDoctor).toHaveBeenCalledWith('proj-alpha');
+    });
+    expect(screen.getByText('Doctor report refreshed.')).toBeInTheDocument();
+    expect(screen.getByText('openai-compatible / Yes')).toBeInTheDocument();
+    expect(screen.getByText('qdrant / 16')).toBeInTheDocument();
     expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
     expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
     expect(screen.getByText('Alpha Architect')).toBeInTheDocument();

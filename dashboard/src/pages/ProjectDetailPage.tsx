@@ -47,6 +47,7 @@ export function ProjectDetailPage() {
   });
   const [nomosActionPending, setNomosActionPending] = useState(false);
   const [nomosActionMessage, setNomosActionMessage] = useState<string | null>(null);
+  const [doctorReport, setDoctorReport] = useState<Awaited<ReturnType<typeof api.runProjectNomosDoctor>> | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -83,18 +84,24 @@ export function ProjectDetailPage() {
   const detailSelection = detailState.projectId === (projectId ?? null) ? detailState.selection : null;
   const nomos = selectedProject.nomos;
 
-  const runNomosAction = async (mode: 'reinstall' | 'bootstrap') => {
+  const runNomosAction = async (mode: 'reinstall' | 'bootstrap' | 'doctor') => {
     if (!projectId) {
       return;
     }
     setNomosActionPending(true);
     setNomosActionMessage(null);
     try {
-      await api.installProjectNomos(projectId, {
-        skip_bootstrap_task: mode === 'reinstall',
-      });
-      await selectProject(projectId);
-      setNomosActionMessage(mode === 'reinstall' ? copy.nomosReinstallSuccess : copy.nomosBootstrapSuccess);
+      if (mode === 'doctor') {
+        const report = await api.runProjectNomosDoctor(projectId);
+        setDoctorReport(report);
+        setNomosActionMessage(copy.nomosDoctorSuccess);
+      } else {
+        await api.installProjectNomos(projectId, {
+          skip_bootstrap_task: mode === 'reinstall',
+        });
+        await selectProject(projectId);
+        setNomosActionMessage(mode === 'reinstall' ? copy.nomosReinstallSuccess : copy.nomosBootstrapSuccess);
+      }
     } catch (error) {
       setNomosActionMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -164,6 +171,14 @@ export function ProjectDetailPage() {
               >
                 {copy.rerunBootstrapAction}
               </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('doctor')}
+              >
+                {copy.runDoctorAction}
+              </button>
             </div>
           </div>
           {nomosActionPending ? <div className="inline-alert mt-4">{copy.nomosActionPending}</div> : null}
@@ -198,6 +213,44 @@ export function ProjectDetailPage() {
               <p className="type-body-sm">{nomos.lifecycleModules.join(', ')}</p>
             </div>
           </div>
+          {doctorReport ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorTitle}</p>
+                <p className="type-body-sm">{doctorReport.project_id}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorEmbeddingLabel}</p>
+                <p className="type-body-sm">
+                  {doctorReport.embedding.provider}
+                  {' / '}
+                  {doctorReport.embedding.healthy ? copy.yesLabel : copy.noLabel}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorVectorLabel}</p>
+                <p className="type-body-sm">
+                  {doctorReport.vector_index.provider}
+                  {' / '}
+                  {doctorReport.vector_index.chunk_count ?? 0}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorJobsLabel}</p>
+                <p className="type-body-sm">
+                  {`pending=${doctorReport.jobs.pending}, running=${doctorReport.jobs.running}, failed=${doctorReport.jobs.failed}, succeeded=${doctorReport.jobs.succeeded}`}
+                </p>
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <p className="field-label">{copy.doctorDriftLabel}</p>
+                <p className="type-body-sm">
+                  {doctorReport.drift.detected ? copy.yesLabel : copy.noLabel}
+                  {' / '}
+                  {doctorReport.drift.documents_without_jobs}
+                </p>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

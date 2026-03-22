@@ -453,6 +453,62 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Project REST Nomos');
   });
 
+  it('serves project-level Nomos doctor output through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const app = buildApp({
+      db,
+      projectBrainDoctorService: {
+        diagnoseProject: async (projectId: string) => ({
+          project_id: projectId,
+          db_path: '/tmp/agora.db',
+          embedding: {
+            configured: true,
+            healthy: true,
+            provider: 'openai-compatible',
+            model: 'embedding-3',
+          },
+          vector_index: {
+            configured: true,
+            provider: 'qdrant',
+            healthy: true,
+            chunk_count: 16,
+          },
+          jobs: {
+            pending: 0,
+            running: 0,
+            failed: 0,
+            succeeded: 4,
+          },
+          drift: {
+            detected: false,
+            documents_without_jobs: 0,
+          },
+        }),
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-rest/nomos/doctor',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      project_id: 'proj-nomos-rest',
+      embedding: {
+        healthy: true,
+      },
+      vector_index: {
+        provider: 'qdrant',
+        chunk_count: 16,
+      },
+      drift: {
+        detected: false,
+      },
+    });
+  });
+
   it('serves a project workbench detail bundle through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

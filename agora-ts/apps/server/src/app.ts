@@ -87,6 +87,7 @@ import {
   type LiveSessionStore,
   type NotificationDispatcher,
   type CitizenService,
+  type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
   type ProjectService,
@@ -106,6 +107,7 @@ export interface BuildAppOptions {
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
+  projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
@@ -658,6 +660,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     await taskService?.drainBackgroundOperations?.();
   });
   const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
   const citizenService = options.citizenService;
   const dashboardQueryService = options.dashboardQueryService;
@@ -1259,6 +1262,19 @@ export function buildApp(options: BuildAppOptions = {}) {
         project_state_git_initialized: installedNomos.projectStateGitInitialized,
         bootstrap_task_id: bootstrapTaskId,
       });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/doctor', async (request, reply) => {
+    if (!projectBrainDoctorService) {
+      return reply.status(503).send({ message: 'Project brain doctor service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      return reply.send(await projectBrainDoctorService.diagnoseProject(projectId));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
