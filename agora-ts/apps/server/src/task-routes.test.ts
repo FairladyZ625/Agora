@@ -340,6 +340,14 @@ describe('task routes', () => {
       id: 'proj-nomos-api',
       name: 'Project API Nomos',
       status: 'active',
+      metadata: {
+        repo_path: repoRoot,
+        agora: {
+          nomos: {
+            id: 'agora/default',
+          },
+        },
+      },
     });
     expect(existsSync(join(repoRoot, 'AGENTS.md'))).toBe(true);
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Fill Policy');
@@ -351,6 +359,98 @@ describe('task routes', () => {
       join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
     );
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
+  });
+
+  it('serves explicit Nomos catalog and project install state through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-gamma');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-INSTALL',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    projectService.createProject({
+      id: 'proj-nomos-rest',
+      name: 'Project REST Nomos',
+      owner: 'archon',
+    });
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos',
+    });
+    const showResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/agora/default',
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rest/nomos/install',
+      payload: {
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+    const inspectResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-rest/nomos',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      nomos: [
+        expect.objectContaining({
+          id: 'agora/default',
+          version: '0.1.0',
+        }),
+      ],
+    });
+
+    expect(showResponse.statusCode).toBe(200);
+    expect(showResponse.json()).toMatchObject({
+      id: 'agora/default',
+      pack: expect.objectContaining({
+        id: 'agora/default',
+        version: '0.1.0',
+      }),
+      lifecycle: expect.objectContaining({
+        modules: expect.arrayContaining(['project-bootstrap', 'task-context-delivery']),
+      }),
+    });
+
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-rest',
+      nomos: expect.objectContaining({
+        id: 'agora/default',
+      }),
+      bootstrap_task_id: 'OC-SERVER-NOMOS-INSTALL',
+    });
+
+    expect(inspectResponse.statusCode).toBe(200);
+    expect(inspectResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-rest',
+      nomos_id: 'agora/default',
+      project_state_root: join(agoraHomeDir, 'projects', 'proj-nomos-rest'),
+      repo_path: repoRoot,
+      repo_shim_installed: true,
+      profile_installed: true,
+    });
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
+    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Project REST Nomos');
   });
 
   it('serves a project workbench detail bundle through the api', async () => {

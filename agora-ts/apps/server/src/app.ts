@@ -1,8 +1,17 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { resolve, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { DEFAULT_AGORA_NOMOS_ID, installBuiltInAgoraNomosForProject } from '@agora-ts/config';
+import {
+  BUILT_IN_AGORA_NOMOS_PACK,
+  DEFAULT_AGORA_NOMOS_ID,
+  buildBuiltInAgoraNomosProjectProfile,
+  installBuiltInAgoraNomosForProject,
+  mergeProjectMetadataWithNomosProfile,
+  NOMOS_LIFECYCLE_MODULES,
+  REPO_AGENTS_SHIM_SECTION_ORDER,
+  resolveAgoraProjectStateLayout,
+} from '@agora-ts/config';
 import {
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
@@ -215,6 +224,20 @@ function parseBasicCredentials(authorization?: string) {
     username: decoded.slice(0, separatorIndex),
     password: decoded.slice(separatorIndex + 1),
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
+  const agora = asRecord(project.metadata?.agora);
+  const nomos = asRecord(agora?.nomos);
+  return typeof nomos?.id === 'string' && nomos.id.length > 0
+    ? nomos.id
+    : DEFAULT_AGORA_NOMOS_ID;
 }
 
 function parseCookies(header?: string) {
@@ -1063,6 +1086,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
         initializeRepo: payload.initialize_repo ?? false,
       });
+      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+        ...(payload.metadata ?? {}),
+        ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
+      }, installedNomos.profile));
       if (taskService) {
         new ProjectBootstrapService({
           projectService,
@@ -1078,11 +1105,39 @@ export function buildApp(options: BuildAppOptions = {}) {
           bootstrap_mode: bootstrapMode,
         });
       }
-      return reply.send(project);
+      return reply.send(persistedProject);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
+  });
+
+  app.get('/api/nomos', async (_request, reply) => {
+    return reply.send({
+      nomos: [{
+        ...BUILT_IN_AGORA_NOMOS_PACK,
+        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+        shim_sections: [...REPO_AGENTS_SHIM_SECTION_ORDER],
+      }],
+    });
+  });
+
+  app.get('/api/nomos/*', async (request, reply) => {
+    const { '*': nomosId = '' } = request.params as { '*': string };
+    if ((nomosId?.trim() || DEFAULT_AGORA_NOMOS_ID) !== DEFAULT_AGORA_NOMOS_ID) {
+      return reply.status(404).send({ message: `Nomos ${nomosId} not found` });
+    }
+    const profile = buildBuiltInAgoraNomosProjectProfile('__preview__');
+    return reply.send({
+      id: DEFAULT_AGORA_NOMOS_ID,
+      pack: profile.pack,
+      repository_shim: profile.repository_shim,
+      project_state: profile.project_state,
+      bootstrap: profile.bootstrap,
+      docs: profile.docs,
+      lifecycle: profile.lifecycle,
+      doctor: profile.doctor,
+    });
   });
 
   app.get('/api/projects', async (request, reply) => {
@@ -1118,6 +1173,92 @@ export function buildApp(options: BuildAppOptions = {}) {
         knowledge: projectService.listKnowledgeEntries(params.projectId),
         citizens: citizenService.listCitizens(params.projectId),
       }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const project = projectService.requireProject(projectId);
+      const layout = resolveAgoraProjectStateLayout(projectId);
+      const metadata = project.metadata ?? null;
+      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
+      return reply.send({
+        project_id: project.id,
+        project_name: project.name,
+        nomos_id: readProjectNomosId(project),
+        project_state_root: layout.root,
+        profile_path: layout.profilePath,
+        profile_installed: existsSync(layout.profilePath),
+        repo_path: repoPath,
+        repo_shim_installed: Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md'))),
+        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
+        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        repo_path?: string;
+        initialize_repo?: boolean;
+        force_write_repo_shim?: boolean;
+        skip_bootstrap_task?: boolean;
+        creator?: string;
+      } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
+        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
+        initializeRepo: payload.initialize_repo ?? false,
+        forceWriteRepoShim: payload.force_write_repo_shim ?? false,
+      });
+      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+        ...(project.metadata ?? {}),
+        ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
+      }, installedNomos.profile));
+      let bootstrapTaskId: string | null = null;
+      if (!payload.skip_bootstrap_task && taskService) {
+        const bootstrapMode = payload.repo_path
+          ? ((payload.initialize_repo ?? false) ? 'new_repo' : 'existing_repo')
+          : 'no_repo';
+        const bootstrapTask = new ProjectBootstrapService({
+          projectService,
+          taskService,
+        }).createHarnessBootstrapTask({
+          project_id: project.id,
+          project_name: project.name,
+          creator: payload.creator ?? project.owner ?? 'archon',
+          repo_path: payload.repo_path,
+          project_state_root: installedNomos.layout.root,
+          nomos_id: installedNomos.profile.pack.id,
+          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_mode: bootstrapMode,
+        });
+        bootstrapTaskId = bootstrapTask.id;
+      }
+      return reply.send({
+        project_id: project.id,
+        nomos: installedNomos.profile.pack,
+        project_state_root: installedNomos.layout.root,
+        repo_shim_path: installedNomos.repoShimPath,
+        repo_git_initialized: installedNomos.repoGitInitialized,
+        project_state_git_initialized: installedNomos.projectStateGitInitialized,
+        bootstrap_task_id: bootstrapTaskId,
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
