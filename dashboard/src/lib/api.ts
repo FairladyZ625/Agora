@@ -67,6 +67,21 @@ import {
 import { z, type ZodType } from 'zod';
 import { parseJsonWithContext } from '@/utils/json';
 
+const projectNomosStateSchema = z.object({
+  project_id: z.string().min(1),
+  project_name: z.string().min(1),
+  nomos_id: z.string().min(1),
+  project_state_root: z.string().min(1),
+  profile_path: z.string().min(1),
+  profile_installed: z.boolean(),
+  repo_path: z.string().nullable(),
+  repo_shim_installed: z.boolean(),
+  bootstrap_prompts_dir: z.string().min(1),
+  lifecycle_modules: z.array(z.string().min(1)),
+});
+
+export type ApiProjectNomosStateDto = z.infer<typeof projectNomosStateSchema>;
+
 class ApiError extends Error {
   status: number;
   statusText: string;
@@ -702,6 +717,13 @@ export function createProject(input: {
 
 export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {
   return request<ApiProjectWorkbenchDto>(`/projects/${encodeURIComponent(projectId)}`, projectWorkbenchResponseSchema);
+}
+
+export function getProjectNomosState(projectId: string): Promise<ApiProjectNomosStateDto> {
+  return request<ApiProjectNomosStateDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos`,
+    projectNomosStateSchema,
+  );
 }
 
 export function listTodos(status?: Exclude<TodoFilter, 'all'>, projectId?: string): Promise<ApiTodoDto[]> {

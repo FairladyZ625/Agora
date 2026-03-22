@@ -13,6 +13,8 @@ const createProject = vi.fn(async () => ({
   summary: 'New project',
   owner: 'archon',
   status: 'active',
+  nomosId: 'agora/default',
+  repoPath: null,
   createdAt: '2026-03-16T02:00:00.000Z',
   updatedAt: '2026-03-16T02:00:00.000Z',
 }));
@@ -28,6 +30,8 @@ const projectStoreState = {
       summary: 'Core + brain baseline',
       owner: 'archon',
       status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
       createdAt: '2026-03-16T00:00:00.000Z',
       updatedAt: '2026-03-16T01:00:00.000Z',
     },
@@ -40,8 +44,20 @@ const projectStoreState = {
       summary: 'Core + brain baseline',
       owner: 'archon',
       status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
       createdAt: '2026-03-16T00:00:00.000Z',
       updatedAt: '2026-03-16T01:00:00.000Z',
+    },
+    nomos: {
+      nomosId: 'agora/default',
+      projectStateRoot: '/Users/example/.agora/projects/proj-alpha',
+      profilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
+      profileInstalled: true,
+      repoPath: '/repo/proj-alpha',
+      repoShimInstalled: true,
+      bootstrapPromptsDir: '/Users/example/.agora/projects/proj-alpha/prompts/bootstrap',
+      lifecycleModules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
     },
     index: {
       kind: 'index',
@@ -170,6 +186,8 @@ describe('project workbench pages', () => {
 
     expect(screen.getByRole('heading', { name: 'Projects' })).toBeInTheDocument();
     expect(screen.getByText('Project Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Nomos: agora/default')).toBeInTheDocument();
+    expect(screen.getByText('Repo Bound')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Project' })).toBeInTheDocument();
   });
 
@@ -205,6 +223,11 @@ describe('project workbench pages', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nomos State' })).toBeInTheDocument();
+    expect(screen.getByText('/Users/example/.agora/projects/proj-alpha')).toBeInTheDocument();
+    expect(screen.getByText('/repo/proj-alpha')).toBeInTheDocument();
+    expect(screen.getAllByText('Yes').length).toBeGreaterThan(0);
+    expect(screen.getByText('project-bootstrap, task-context-delivery, task-closeout')).toBeInTheDocument();
     expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
     expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
     expect(screen.getByText('Alpha Architect')).toBeInTheDocument();

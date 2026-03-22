@@ -3,6 +3,7 @@ import type {
   ProjectCitizen,
   ProjectIndexDoc,
   ProjectKnowledgeDoc,
+  ProjectNomosState,
   ProjectRecap,
   ProjectSummary,
   ProjectTaskSummary,
@@ -11,6 +12,18 @@ import type {
   ProjectWorkbench,
 } from '@/types/project';
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readProjectNomosId(metadata: Record<string, unknown> | null | undefined) {
+  const agora = asRecord(metadata?.agora);
+  const nomos = asRecord(agora?.nomos);
+  return typeof nomos?.id === 'string' && nomos.id.length > 0 ? nomos.id : null;
+}
+
 export function mapProjectDto(dto: ApiProjectDto): ProjectSummary {
   return {
     id: dto.id,
@@ -18,8 +31,32 @@ export function mapProjectDto(dto: ApiProjectDto): ProjectSummary {
     summary: dto.summary,
     owner: dto.owner,
     status: dto.status,
+    nomosId: readProjectNomosId(dto.metadata),
+    repoPath: typeof dto.metadata?.repo_path === 'string' ? dto.metadata.repo_path : null,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
+  };
+}
+
+export function mapProjectNomosStateDto(dto: {
+  nomos_id: string;
+  project_state_root: string;
+  profile_path: string;
+  profile_installed: boolean;
+  repo_path: string | null;
+  repo_shim_installed: boolean;
+  bootstrap_prompts_dir: string;
+  lifecycle_modules: string[];
+}): ProjectNomosState {
+  return {
+    nomosId: dto.nomos_id,
+    projectStateRoot: dto.project_state_root,
+    profilePath: dto.profile_path,
+    profileInstalled: dto.profile_installed,
+    repoPath: dto.repo_path,
+    repoShimInstalled: dto.repo_shim_installed,
+    bootstrapPromptsDir: dto.bootstrap_prompts_dir,
+    lifecycleModules: dto.lifecycle_modules,
   };
 }
 
@@ -111,6 +148,7 @@ export function mapProjectTodoSummaryDto(dto: ApiTodoDto): ProjectTodoSummary {
 export function mapProjectWorkbenchDto(dto: ApiProjectWorkbenchDto): ProjectWorkbench {
   return {
     project: mapProjectDto(dto.project),
+    nomos: null,
     index: mapProjectIndexDoc(dto.index),
     timeline: mapProjectTimelineDoc(dto.timeline),
     recaps: dto.recaps.map(mapProjectRecap),

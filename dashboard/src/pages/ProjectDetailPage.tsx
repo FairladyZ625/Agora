@@ -78,6 +78,7 @@ export function ProjectDetailPage() {
     ? selectedProject.todos.filter((todo) => todo.status === 'pending')
     : selectedProject.todos;
   const detailSelection = detailState.projectId === (projectId ?? null) ? detailState.selection : null;
+  const nomos = selectedProject.nomos;
 
   return (
     <div className="space-y-6">
@@ -119,6 +120,44 @@ export function ProjectDetailPage() {
           </div>
         </div>
       </section>
+
+      {nomos ? (
+        <section className="surface-panel surface-panel--workspace" data-testid="project-nomos-panel">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.nomosTitle}</h3>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2">
+              <p className="field-label">{copy.nomosIdLabel}</p>
+              <p className="type-body-sm break-all">{nomos.nomosId}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.repoPathLabel}</p>
+              <p className="type-body-sm break-all">{nomos.repoPath ?? copy.emptySummary}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.projectStateRootLabel}</p>
+              <p className="type-body-sm break-all">{nomos.projectStateRoot}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.bootstrapPromptsLabel}</p>
+              <p className="type-body-sm break-all">{nomos.bootstrapPromptsDir}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.repoShimInstalledLabel}</p>
+              <p className="type-body-sm">{nomos.repoShimInstalled ? copy.yesLabel : copy.noLabel}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.profileInstalledLabel}</p>
+              <p className="type-body-sm">{nomos.profileInstalled ? copy.yesLabel : copy.noLabel}</p>
+            </div>
+            <div className="space-y-2 lg:col-span-2">
+              <p className="field-label">{copy.lifecycleModulesLabel}</p>
+              <p className="type-body-sm">{nomos.lifecycleModules.join(', ')}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">

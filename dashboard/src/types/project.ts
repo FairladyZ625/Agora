@@ -4,8 +4,21 @@ export interface ProjectSummary {
   summary: string | null;
   owner: string | null;
   status: string;
+  nomosId: string | null;
+  repoPath: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectNomosState {
+  nomosId: string;
+  projectStateRoot: string;
+  profilePath: string;
+  profileInstalled: boolean;
+  repoPath: string | null;
+  repoShimInstalled: boolean;
+  bootstrapPromptsDir: string;
+  lifecycleModules: string[];
 }
 
 export interface ProjectIndexDoc {
@@ -75,6 +88,7 @@ export interface ProjectTodoSummary {
 
 export interface ProjectWorkbench {
   project: ProjectSummary;
+  nomos: ProjectNomosState | null;
   index: ProjectIndexDoc | null;
   timeline: ProjectTimelineDoc | null;
   recaps: ProjectRecap[];
