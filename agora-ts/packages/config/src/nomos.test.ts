@@ -70,12 +70,17 @@ describe('nomos pack model freeze', () => {
     const layout = ensureAgoraProjectStateLayout('proj-freeze', { userAgoraDir: agoraHomeDir });
 
     expect(existsSync(layout.constitutionDir)).toBe(true);
+    expect(existsSync(layout.docsArchitectureDir)).toBe(true);
     expect(existsSync(layout.docsPlanningDir)).toBe(true);
+    expect(existsSync(layout.lifecycleDir)).toBe(true);
     expect(existsSync(layout.bootstrapPromptsDir)).toBe(true);
     expect(existsSync(layout.profilePath)).toBe(true);
     expect(readFileSync(layout.profilePath, 'utf8')).toContain('schema_version = 1');
     expect(readFileSync(layout.profilePath, 'utf8')).toContain('id = "proj-freeze"');
     expect(readFileSync(layout.profilePath, 'utf8')).toContain('root_template = "~/.agora/projects/<project-id>"');
+    expect(readFileSync(layout.docsArchitectureOperatingModelPath, 'utf8')).toContain('Operating Model');
+    expect(readFileSync(layout.lifecycleProjectBootstrapPath, 'utf8')).toContain('Project Bootstrap Lifecycle');
+    expect(readFileSync(layout.doctorProjectPromptPath, 'utf8')).toContain('Project Doctor');
   });
 
   it('renders a repo-root AGENTS shim with the frozen section contract', () => {
@@ -124,13 +129,24 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Pack Index');
     expect(existsSync(join(repoRoot, '.git'))).toBe(true);
     expect(existsSync(join(installed.layout.root, '.git'))).toBe(true);
-    expect(readFileSync(join(installed.layout.constitutionDir, 'constitution.md'), 'utf8')).toContain('General Constitution');
+    expect(readFileSync(join(installed.layout.constitutionDir, 'constitution.md'), 'utf8')).toContain('Agora Default Nomos Constitution');
     expect(readFileSync(join(installed.layout.bootstrapPromptsDir, 'interview.md'), 'utf8')).toContain('Harness Bootstrap Interview');
+    expect(readFileSync(join(installed.layout.bootstrapPromptsDir, 'interview.md'), 'utf8')).toContain('bootstrap-fields.md');
     expect(readFileSync(installed.layout.bootstrapExistingProjectPromptPath, 'utf8')).toContain('Existing Project Bootstrap');
     expect(readFileSync(installed.layout.bootstrapNewProjectPromptPath, 'utf8')).toContain('New Project Bootstrap');
     expect(readFileSync(installed.layout.bootstrapNoRepoPromptPath, 'utf8')).toContain('No-Repo Bootstrap');
     expect(readFileSync(installed.layout.docsReferenceMethodologiesPath, 'utf8')).toContain('Methodologies');
+    expect(readFileSync(installed.layout.docsReferenceMethodologiesPath, 'utf8')).toContain('Planning trio + SSoT + walkthrough loop');
     expect(readFileSync(installed.layout.docsReferenceCurrentSurfacePath, 'utf8')).toContain('Current Surface');
+    expect(readFileSync(installed.layout.docsReferenceGovernancePath, 'utf8')).toContain('Governance');
+    expect(readFileSync(installed.layout.docsReferenceLifecyclePath, 'utf8')).toContain('Lifecycle Reference');
+    expect(readFileSync(installed.layout.docsReferenceBootstrapFieldsPath, 'utf8')).toContain('Bootstrap Fields');
+    expect(readFileSync(installed.layout.docsArchitectureOperatingModelPath, 'utf8')).toContain('Three surfaces:');
+    expect(readFileSync(installed.layout.lifecycleTaskContextDeliveryPath, 'utf8')).toContain('Task Context Delivery Lifecycle');
+    expect(readFileSync(installed.layout.lifecycleTaskCloseoutPath, 'utf8')).toContain('Task Closeout Lifecycle');
+    expect(readFileSync(installed.layout.lifecycleProjectArchivePath, 'utf8')).toContain('Project Archive Lifecycle');
+    expect(readFileSync(installed.layout.lifecycleGovernanceDoctorPath, 'utf8')).toContain('Governance Doctor Lifecycle');
+    expect(readFileSync(installed.layout.doctorProjectPromptPath, 'utf8')).toContain('Project Doctor');
   });
 
   it('merges persisted project metadata with the installed Nomos boundary', () => {

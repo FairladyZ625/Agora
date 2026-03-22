@@ -133,8 +133,18 @@ export interface AgoraProjectStateLayout {
   docsReferenceIndexPath: string;
   docsReferenceMethodologiesPath: string;
   docsReferenceCurrentSurfacePath: string;
+  docsReferenceGovernancePath: string;
+  docsReferenceLifecyclePath: string;
+  docsReferenceBootstrapFieldsPath: string;
+  docsArchitectureOperatingModelPath: string;
   scriptsDir: string;
   skillsDir: string;
+  lifecycleProjectBootstrapPath: string;
+  lifecycleTaskContextDeliveryPath: string;
+  lifecycleTaskCloseoutPath: string;
+  lifecycleProjectArchivePath: string;
+  lifecycleGovernanceDoctorPath: string;
+  doctorProjectPromptPath: string;
   allDirectories: string[];
 }
 
@@ -228,8 +238,18 @@ export function resolveAgoraProjectStateLayout(
     docsReferenceIndexPath: resolve(docsRoot, 'reference', 'README.md'),
     docsReferenceMethodologiesPath: resolve(docsRoot, 'reference', 'methodologies.md'),
     docsReferenceCurrentSurfacePath: resolve(docsRoot, 'reference', 'current-surface.md'),
+    docsReferenceGovernancePath: resolve(docsRoot, 'reference', 'governance.md'),
+    docsReferenceLifecyclePath: resolve(docsRoot, 'reference', 'lifecycle.md'),
+    docsReferenceBootstrapFieldsPath: resolve(docsRoot, 'reference', 'bootstrap-fields.md'),
+    docsArchitectureOperatingModelPath: resolve(docsRoot, 'architecture', 'operating-model.md'),
     scriptsDir: resolve(root, 'scripts'),
     skillsDir: resolve(root, 'skills'),
+    lifecycleProjectBootstrapPath: resolve(root, 'lifecycle', 'project-bootstrap.md'),
+    lifecycleTaskContextDeliveryPath: resolve(root, 'lifecycle', 'task-context-delivery.md'),
+    lifecycleTaskCloseoutPath: resolve(root, 'lifecycle', 'task-closeout.md'),
+    lifecycleProjectArchivePath: resolve(root, 'lifecycle', 'project-archive.md'),
+    lifecycleGovernanceDoctorPath: resolve(root, 'lifecycle', 'governance-doctor.md'),
+    doctorProjectPromptPath: resolve(promptsDir, 'doctor', 'project.md'),
     allDirectories,
   };
 }
@@ -564,11 +584,21 @@ function seedBuiltInAgoraNomosFiles(layout: AgoraProjectStateLayout, profile: No
   writeFileIfMissing(layout.docsReferenceIndexPath, renderBuiltInReferenceIndex(profile));
   writeFileIfMissing(layout.docsReferenceMethodologiesPath, renderBuiltInMethodologiesReference(profile));
   writeFileIfMissing(layout.docsReferenceCurrentSurfacePath, renderBuiltInCurrentSurfaceReference(profile));
+  writeFileIfMissing(layout.docsReferenceGovernancePath, renderBuiltInGovernanceReference(profile));
+  writeFileIfMissing(layout.docsReferenceLifecyclePath, renderBuiltInLifecycleReference(profile));
+  writeFileIfMissing(layout.docsReferenceBootstrapFieldsPath, renderBuiltInBootstrapFieldsReference(profile));
+  writeFileIfMissing(layout.docsArchitectureOperatingModelPath, renderBuiltInOperatingModelArchitecture(profile, layout));
+  writeFileIfMissing(layout.lifecycleProjectBootstrapPath, renderBuiltInProjectBootstrapLifecycle(layout));
+  writeFileIfMissing(layout.lifecycleTaskContextDeliveryPath, renderBuiltInTaskContextDeliveryLifecycle(layout));
+  writeFileIfMissing(layout.lifecycleTaskCloseoutPath, renderBuiltInTaskCloseoutLifecycle(layout));
+  writeFileIfMissing(layout.lifecycleProjectArchivePath, renderBuiltInProjectArchiveLifecycle(layout));
+  writeFileIfMissing(layout.lifecycleGovernanceDoctorPath, renderBuiltInGovernanceDoctorLifecycle(layout));
   writeFileIfMissing(layout.bootstrapInterviewPromptPath, renderBuiltInBootstrapInterviewPrompt(profile, layout));
   writeFileIfMissing(layout.bootstrapExistingProjectPromptPath, renderBuiltInExistingProjectPrompt(layout));
   writeFileIfMissing(layout.bootstrapNewProjectPromptPath, renderBuiltInNewProjectPrompt(layout));
   writeFileIfMissing(layout.bootstrapNoRepoPromptPath, renderBuiltInNoRepoPrompt(layout));
   writeFileIfMissing(layout.closeoutReviewPromptPath, renderBuiltInCloseoutReviewPrompt(profile));
+  writeFileIfMissing(layout.doctorProjectPromptPath, renderBuiltInDoctorPrompt(profile, layout));
 }
 
 function writeFileIfMissing(path: string, content: string) {
@@ -580,7 +610,7 @@ function writeFileIfMissing(path: string, content: string) {
 
 function renderBuiltInConstitution(profile: NomosProjectProfile) {
   return [
-    '# General Constitution',
+    '# Agora Default Nomos Constitution',
     '',
     `This project uses ${profile.pack.name} (\`${profile.pack.id}@${profile.pack.version}\`).`,
     '',
@@ -588,6 +618,14 @@ function renderBuiltInConstitution(profile: NomosProjectProfile) {
     '- Do not assume missing requirements or constraints.',
     '- Do not treat uncertain statements as confirmed facts.',
     '- Do not claim completion without verification.',
+    '- Keep the repo-facing shim thin and move durable project knowledge into global project state.',
+    '- Treat project brain, docs harness, lifecycle, and governance as one operating system.',
+    '',
+    'Default operating stance:',
+    '- CLI and REST are the primary automation/control surfaces.',
+    '- Repo-root `AGENTS.md` is an index, not the project body.',
+    '- The global project state is the durable harness body.',
+    '- Planning, walkthrough, QA, and security artifacts are expected parts of delivery.',
     '',
   ].join('\n');
 }
@@ -600,11 +638,17 @@ function renderBuiltInReferenceIndex(profile: NomosProjectProfile) {
     '',
     'Use this directory for project-specific reference material produced during bootstrap and later execution.',
     '',
-    'Suggested first documents:',
+    'Built-in defaults shipped with Agora Default Nomos:',
     '- current-surface.md',
     '- methodologies.md',
+    '- governance.md',
+    '- lifecycle.md',
+    '- bootstrap-fields.md',
+    '',
+    'Expected follow-up documents:',
     '- constraints.md',
     '- open-questions.md',
+    '- domain references that become durable execution inputs',
     '',
   ].join('\n');
 }
@@ -615,11 +659,19 @@ function renderBuiltInMethodologiesReference(profile: NomosProjectProfile) {
     '',
     `Record the project-specific methodologies discovered while bootstrapping ${profile.pack.name}.`,
     '',
-    'Suggested sections:',
+    'Agora Default Nomos starts from these defaults:',
+    '- First-principles / proposal discipline',
+    '- Planning trio + SSoT + walkthrough loop',
+    '- Evidence-before-assertion verification',
+    '- CLI-first, REST-second, plugin bridge for human IM use',
+    '- Closeout before archive; harvest before deletion',
+    '',
+    'Refine these sections for the current project:',
     '- Proposal discipline',
     '- Planning and documentation loop',
     '- Verification expectations',
-    '- Release or archive discipline',
+    '- Runtime / IM bridge expectations',
+    '- Release, closeout, and archive discipline',
     '',
   ].join('\n');
 }
@@ -635,6 +687,80 @@ function renderBuiltInCurrentSurfaceReference(profile: NomosProjectProfile) {
     '- Active tools and runtimes',
     '- Existing docs and reference material',
     '- Known owners and operators',
+    '- Current IM / runtime / automation entry surfaces',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInGovernanceReference(profile: NomosProjectProfile) {
+  return [
+    '# Governance',
+    '',
+    `Capture how ${profile.pack.name} should be enforced inside this project.`,
+    '',
+    'Default governance expectations:',
+    '- Non-trivial work should have planning artifacts.',
+    '- Completion claims require tests, smoke, or other verification evidence.',
+    '- Important lifecycle transitions should write durable docs or brain updates.',
+    '- Human approval remains reserved for true review/approval gates.',
+    '',
+    'Project-specific additions belong here, not in `AGENTS.md`.',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInLifecycleReference(profile: NomosProjectProfile) {
+  return [
+    '# Lifecycle Reference',
+    '',
+    `Document how ${profile.pack.name} expects work to move through the project lifecycle.`,
+    '',
+    'Lifecycle modules shipped by default:',
+    '- project-bootstrap',
+    '- task-context-delivery',
+    '- task-closeout',
+    '- project-archive',
+    '- governance-doctor',
+    '',
+    'Use the lifecycle directory for module-level operating rules and refinements.',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInBootstrapFieldsReference(profile: NomosProjectProfile) {
+  return [
+    '# Bootstrap Fields',
+    '',
+    `Use this file to capture the methodology fields that ${profile.pack.name} expects to fill during bootstrap.`,
+    '',
+    'Required bootstrap fields:',
+    '- Project shape (existing repo / new repo / no repo)',
+    '- Current surface and working roots',
+    '- Known constraints and non-negotiable decisions',
+    '- Methodologies for planning, execution, and verification',
+    '- Governance expectations and approval boundaries',
+    '- Open questions that should stay visible after bootstrap',
+    '',
+    'This file is a declaration/reference, not the interview script itself.',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInOperatingModelArchitecture(profile: NomosProjectProfile, layout: AgoraProjectStateLayout) {
+  return [
+    '# Operating Model',
+    '',
+    `This architecture note explains how ${profile.pack.name} treats the project operating surfaces.`,
+    '',
+    'Three surfaces:',
+    '- Repo surface: execution surface, code, and the thin `AGENTS.md` shim.',
+    `- Global project state: durable harness body under \`${layout.root}\`.`,
+    '- Runtime/control state: database, sessions, queues, and live adapter state.',
+    '',
+    'Default rule:',
+    '- Keep repo-facing instructions thin.',
+    '- Keep durable context, methodologies, and lifecycle artifacts in global project state.',
+    '- Keep runtime state out of the durable docs layer.',
     '',
   ].join('\n');
 }
@@ -656,12 +782,18 @@ function renderBuiltInBootstrapInterviewPrompt(profile: NomosProjectProfile, lay
     `- ${layout.docsArchitectureDir}`,
     `- ${layout.docsPlanningDir}`,
     '',
+    'Bootstrap references:',
+    `- Field declarations: ${layout.docsReferenceBootstrapFieldsPath}`,
+    `- Governance defaults: ${layout.docsReferenceGovernancePath}`,
+    `- Lifecycle defaults: ${layout.docsReferenceLifecyclePath}`,
+    '',
     'Interview prompts:',
     '1. What already exists today?',
     '2. Where is the code or working surface?',
     '3. What constraints are already known?',
     '4. What decisions are already fixed?',
     '5. What remains unknown and must be tracked as open questions?',
+    '6. Which parts of the default Agora methodologies should stay, and which must be customized?',
     '',
     'Branch prompts:',
     `- Existing repo flow: ${layout.bootstrapExistingProjectPromptPath}`,
@@ -681,10 +813,12 @@ function renderBuiltInExistingProjectPrompt(layout: AgoraProjectStateLayout) {
     '- Repo path and current branch state',
     '- Existing docs, tests, and build commands',
     '- What should remain in the repo vs move into global project state',
+    '- Which governance/doc harness defaults already exist and should be preserved',
     '',
     'Write findings into:',
     `- ${layout.docsReferenceCurrentSurfacePath}`,
     `- ${layout.docsReferenceMethodologiesPath}`,
+    `- ${layout.docsArchitectureOperatingModelPath}`,
     '',
   ].join('\n');
 }
@@ -699,10 +833,12 @@ function renderBuiltInNewProjectPrompt(layout: AgoraProjectStateLayout) {
     '- What kind of repo should be created',
     '- Initial stack and toolchain expectations',
     '- Which docs and governance skeletons should be filled first',
+    '- What the first durable reference set should contain before implementation starts',
     '',
     'Write findings into:',
     `- ${layout.docsReferenceCurrentSurfacePath}`,
     `- ${layout.docsReferenceMethodologiesPath}`,
+    `- ${layout.docsArchitectureOperatingModelPath}`,
     '',
   ].join('\n');
 }
@@ -717,10 +853,12 @@ function renderBuiltInNoRepoPrompt(layout: AgoraProjectStateLayout) {
     '- The current project surface and outputs',
     '- What should be tracked as durable reference material',
     '- Whether a repo should exist later and what would trigger it',
+    '- Which default Agora methodologies still apply to this non-code-first project',
     '',
     'Write findings into:',
     `- ${layout.docsReferenceCurrentSurfacePath}`,
     `- ${layout.docsReferenceMethodologiesPath}`,
+    `- ${layout.docsArchitectureOperatingModelPath}`,
     '',
   ].join('\n');
 }
@@ -734,6 +872,99 @@ function renderBuiltInCloseoutReviewPrompt(profile: NomosProjectProfile) {
     '- Review what should be harvested back into project brain.',
     '- Identify docs/reference updates required by the task.',
     '- Confirm whether archive can proceed.',
+    '- Keep task-local state temporary; move durable learnings into project state.',
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInDoctorPrompt(profile: NomosProjectProfile, layout: AgoraProjectStateLayout) {
+  return [
+    '# Project Doctor',
+    '',
+    `Use this prompt when diagnosing ${profile.pack.name} health for project \`${profile.project.id}\`.`,
+    '',
+    'Check:',
+    '- Repo shim presence and routing correctness',
+    '- Project-state layout completeness',
+    '- Bootstrap prompt and lifecycle prompt presence',
+    '- Brain/index/doctor dependent services if configured',
+    '- Drift between lifecycle expectations and current project state',
+    '',
+    'Primary inspection roots:',
+    `- ${layout.root}`,
+    `- ${layout.docsReferenceDir}`,
+    `- ${layout.lifecycleDir}`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInProjectBootstrapLifecycle(layout: AgoraProjectStateLayout) {
+  return [
+    '# Project Bootstrap Lifecycle',
+    '',
+    'Responsibilities:',
+    '- Install the built-in Agora Nomos skeleton.',
+    '- Bind repo and global project state.',
+    '- Spawn the harness bootstrap task.',
+    '- Seed the first durable project references and brain scaffolds.',
+    '',
+    `Primary prompts live under \`${layout.bootstrapPromptsDir}\`.`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInTaskContextDeliveryLifecycle(layout: AgoraProjectStateLayout) {
+  return [
+    '# Task Context Delivery Lifecycle',
+    '',
+    'Responsibilities:',
+    '- Materialize audience-specific context artifacts for controller, craftsman, and citizen.',
+    '- Keep task execution briefs pointed at the correct audience artifact.',
+    '- Refresh task context when project/task bindings or lifecycle state changes.',
+    '',
+    `Task-local artifacts remain under \`${layout.tasksDir}\`, while durable knowledge belongs in \`${layout.brainDir}\`.`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInTaskCloseoutLifecycle(layout: AgoraProjectStateLayout) {
+  return [
+    '# Task Closeout Lifecycle',
+    '',
+    'Responsibilities:',
+    '- Produce harvest drafts for project-bound tasks.',
+    '- Gate archive behind review-pending approval.',
+    '- Push durable outputs back into project brain and harness docs before cleanup.',
+    '',
+    `Closeout prompts live under \`${layout.closeoutPromptsDir}\`.`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInProjectArchiveLifecycle(layout: AgoraProjectStateLayout) {
+  return [
+    '# Project Archive Lifecycle',
+    '',
+    'Responsibilities:',
+    '- Allow project archive only after active task constraints are satisfied.',
+    '- Keep project archive/delete semantics explicit and fail-closed.',
+    '- Preserve global project state as the durable record of the project harness.',
+    '',
+    `Archive projections and history belong under \`${layout.archiveDir}\`.`,
+    '',
+  ].join('\n');
+}
+
+function renderBuiltInGovernanceDoctorLifecycle(layout: AgoraProjectStateLayout) {
+  return [
+    '# Governance Doctor Lifecycle',
+    '',
+    'Responsibilities:',
+    '- Diagnose harness completeness and lifecycle drift.',
+    '- Surface missing prompts, missing profile/repo shim state, and project-brain health issues.',
+    '- Provide an operator-facing health summary without mutating durable state.',
+    '',
+    `Doctor prompts live under \`${layout.doctorPromptsDir}\`.`,
     '',
   ].join('\n');
 }
