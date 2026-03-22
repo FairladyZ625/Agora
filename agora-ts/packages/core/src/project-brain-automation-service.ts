@@ -159,6 +159,18 @@ export class ProjectBrainAutomationService {
       completed_at: new Date().toISOString(),
       summary_lines: buildTaskCloseSummary(task, actor, reason),
     });
+    this.options.taskBrainWorkspacePort.writeTaskHarvestDraft(binding, {
+      task_id: task.id,
+      project_id: task.project_id,
+      locale: task.locale,
+      title: task.title,
+      state: task.state,
+      current_stage: task.current_stage,
+      controller_ref: resolveControllerRef(task.team.members),
+      completed_by: actor,
+      completed_at: new Date().toISOString(),
+      summary_lines: buildTaskCloseSummary(task, actor, reason),
+    });
   }
 }
 

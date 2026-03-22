@@ -453,6 +453,13 @@ export class DashboardQueryService {
     return this.archives.retryArchiveJob(jobId);
   }
 
+  approveArchiveJob(jobId: number, input: {
+    approver_id: string;
+    comment?: string;
+  }): ArchiveJobDto {
+    return this.archives.approveArchiveJob(jobId, input);
+  }
+
   notifyArchiveJob(jobId: number): ArchiveJobDto {
     if (!this.archiveJobNotifier) {
       throw new Error('Archive job notifier is not configured');

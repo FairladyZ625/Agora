@@ -521,6 +521,46 @@ describe('task routes', () => {
     });
   });
 
+  it('archives and deletes projects through the api with lifecycle guards', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    const app = buildApp({
+      db,
+      projectService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-api-lifecycle',
+        name: 'Project API Lifecycle',
+      },
+    });
+
+    const archiveResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-api-lifecycle/archive',
+    });
+    const deleteResponse = await app.inject({
+      method: 'DELETE',
+      url: '/api/projects/proj-api-lifecycle',
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json()).toMatchObject({
+      id: 'proj-api-lifecycle',
+      status: 'archived',
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json()).toMatchObject({
+      ok: true,
+      project_id: 'proj-api-lifecycle',
+    });
+    expect(projectService.getProject('proj-api-lifecycle')).toBeNull();
+  });
+
   it('filters task list by project through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1461,7 +1501,7 @@ describe('task routes', () => {
     });
   });
 
-  it('deletes the IM context when the archive job is marked synced through the route', async () => {
+  it('approves review-pending archive jobs before sync and deletes the IM context through the route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const provisioningPort = new StubIMProvisioningPort({
@@ -1513,6 +1553,17 @@ describe('task routes', () => {
       url: '/api/archive/jobs?task_id=OC-CTX-DELETE',
     });
     const jobId = archiveJob.json()[0].id;
+    expect(archiveJob.json()[0]).toMatchObject({
+      status: 'review_pending',
+    });
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${jobId}/approve`,
+      payload: {
+        approver_id: 'lizeyu',
+        comment: 'closeout reviewed',
+      },
+    });
     const synced = await app.inject({
       method: 'POST',
       url: `/api/archive/jobs/${jobId}/status`,
@@ -1520,6 +1571,17 @@ describe('task routes', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({
+      id: jobId,
+      status: 'pending',
+      payload: expect.objectContaining({
+        closeout_review: expect.objectContaining({
+          state: 'approved',
+          approver_id: 'lizeyu',
+        }),
+      }),
+    });
     expect(synced.statusCode).toBe(200);
     expect(provisioningPort.archived).toEqual(
       expect.arrayContaining([

@@ -944,6 +944,25 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   projects
+    .command('archive')
+    .description('归档 project')
+    .argument('<projectId>', 'project id')
+    .action((projectId: string) => {
+      const project = projectService.archiveProject(projectId);
+      writeLine(stdout, `Project 已归档: ${project.id}`);
+      writeLine(stdout, `状态: ${project.status}`);
+    });
+
+  projects
+    .command('delete')
+    .description('删除 project')
+    .argument('<projectId>', 'project id')
+    .action((projectId: string) => {
+      projectService.deleteProject(projectId);
+      writeLine(stdout, `Project 已删除: ${projectId}`);
+    });
+
+  projects
     .command('create')
     .description('创建 project')
     .requiredOption('--id <projectId>', 'project id')
@@ -1932,7 +1951,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   archiveJobs
     .command('list')
     .description('列出 archive jobs')
-    .option('--status <status>', 'pending|notified|synced|failed')
+    .option('--status <status>', 'review_pending|pending|notified|synced|failed')
     .option('--task-id <taskId>', 'task id filter')
     .option('--json', '输出 JSON', false)
     .action((options: { status?: string; taskId?: string; json?: boolean }) => {
@@ -1970,6 +1989,20 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `target: ${job.target_path}`);
       writeLine(stdout, `requested_at: ${job.requested_at}`);
       writeLine(stdout, `completed_at: ${job.completed_at ?? '-'}`);
+    });
+
+  archiveJobs
+    .command('approve')
+    .description('审批放行 review_pending archive job')
+    .argument('<jobId>', 'archive job id')
+    .requiredOption('--approver-id <approverId>', 'approver id')
+    .option('--comment <comment>', 'approval comment')
+    .action((jobId: string, options: { approverId: string; comment?: string }) => {
+      const job = dashboardQueryService.approveArchiveJob(Number(jobId), {
+        approver_id: options.approverId,
+        ...(options.comment !== undefined ? { comment: options.comment } : {}),
+      });
+      writeLine(stdout, `archive job 已审批放行: ${job.id} -> ${job.status}`);
     });
 
   archiveJobs
