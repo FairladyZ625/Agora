@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import {
   BUILT_IN_AGORA_NOMOS_PACK,
   DEFAULT_AGORA_NOMOS_ID,
+  buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
@@ -1012,6 +1013,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         docs: profile.docs,
         lifecycle: profile.lifecycle,
         doctor: profile.doctor,
+        seeded_assets: buildBuiltInAgoraNomosSeededAssets(),
       };
       if (options.json) {
         writeLine(stdout, JSON.stringify(payload, null, 2));
@@ -1023,6 +1025,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `project_state_root: ${payload.project_state.root_template}`);
       writeLine(stdout, `lifecycle: ${payload.lifecycle.modules.join(', ')}`);
       writeLine(stdout, `shim sections: ${payload.repository_shim.required_sections.join(', ')}`);
+      writeLine(stdout, `seeded references: ${payload.seeded_assets.docs.reference.join(', ')}`);
+      writeLine(stdout, `seeded lifecycle docs: ${payload.seeded_assets.lifecycle.join(', ')}`);
+      writeLine(stdout, `seeded bootstrap prompts: ${payload.seeded_assets.prompts.bootstrap.join(', ')}`);
     });
 
   nomos

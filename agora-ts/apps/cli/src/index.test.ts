@@ -401,6 +401,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('agora/default — Agora Default Nomos');
     expect(stdout.value).toContain('lifecycle: project-bootstrap, task-context-delivery, task-closeout, project-archive, governance-doctor');
     expect(stdout.value).toContain('shim sections: general_constitution, pack_index, bootstrap_method, fill_policy');
+    expect(stdout.value).toContain('seeded references: current-surface.md, methodologies.md, governance.md, lifecycle.md, bootstrap-fields.md');
+    expect(stdout.value).toContain('seeded lifecycle docs: project-bootstrap.md, task-context-delivery.md, task-closeout.md, project-archive.md, governance-doctor.md');
+    expect(stdout.value).toContain('seeded bootstrap prompts: interview.md, existing-project.md, new-project.md, no-repo.md');
   });
 
   it('installs Nomos for an existing project and exposes inspect-project output', async () => {

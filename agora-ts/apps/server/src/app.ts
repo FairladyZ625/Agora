@@ -5,6 +5,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   BUILT_IN_AGORA_NOMOS_PACK,
   DEFAULT_AGORA_NOMOS_ID,
+  buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
@@ -1140,6 +1141,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       docs: profile.docs,
       lifecycle: profile.lifecycle,
       doctor: profile.doctor,
+      seeded_assets: buildBuiltInAgoraNomosSeededAssets(),
     });
   });
 

@@ -426,6 +426,18 @@ describe('task routes', () => {
         id: 'agora/default',
         version: '0.1.0',
       }),
+      seeded_assets: {
+        docs: {
+          reference: expect.arrayContaining(['methodologies.md', 'governance.md', 'lifecycle.md', 'bootstrap-fields.md']),
+          architecture: expect.arrayContaining(['operating-model.md']),
+        },
+        lifecycle: expect.arrayContaining(['project-bootstrap.md', 'task-context-delivery.md', 'task-closeout.md']),
+        prompts: {
+          bootstrap: expect.arrayContaining(['interview.md', 'existing-project.md', 'new-project.md', 'no-repo.md']),
+          closeout: expect.arrayContaining(['review.md']),
+          doctor: expect.arrayContaining(['project.md']),
+        },
+      },
       lifecycle: expect.objectContaining({
         modules: expect.arrayContaining(['project-bootstrap', 'task-context-delivery']),
       }),

@@ -192,6 +192,57 @@ export const BUILT_IN_AGORA_NOMOS_PACK = {
 
 export const DEFAULT_AGORA_NOMOS_ID = BUILT_IN_AGORA_NOMOS_PACK.id;
 
+export const BUILT_IN_AGORA_NOMOS_REFERENCE_DOCS = [
+  'current-surface.md',
+  'methodologies.md',
+  'governance.md',
+  'lifecycle.md',
+  'bootstrap-fields.md',
+] as const;
+
+export const BUILT_IN_AGORA_NOMOS_ARCHITECTURE_DOCS = [
+  'operating-model.md',
+] as const;
+
+export const BUILT_IN_AGORA_NOMOS_LIFECYCLE_DOCS = [
+  'project-bootstrap.md',
+  'task-context-delivery.md',
+  'task-closeout.md',
+  'project-archive.md',
+  'governance-doctor.md',
+] as const;
+
+export const BUILT_IN_AGORA_NOMOS_BOOTSTRAP_PROMPTS = [
+  'interview.md',
+  'existing-project.md',
+  'new-project.md',
+  'no-repo.md',
+] as const;
+
+export const BUILT_IN_AGORA_NOMOS_CLOSEOUT_PROMPTS = [
+  'review.md',
+] as const;
+
+export const BUILT_IN_AGORA_NOMOS_DOCTOR_PROMPTS = [
+  'project.md',
+] as const;
+
+export function buildBuiltInAgoraNomosSeededAssets() {
+  return {
+    constitution: ['constitution.md'],
+    docs: {
+      reference: [...BUILT_IN_AGORA_NOMOS_REFERENCE_DOCS],
+      architecture: [...BUILT_IN_AGORA_NOMOS_ARCHITECTURE_DOCS],
+    },
+    lifecycle: [...BUILT_IN_AGORA_NOMOS_LIFECYCLE_DOCS],
+    prompts: {
+      bootstrap: [...BUILT_IN_AGORA_NOMOS_BOOTSTRAP_PROMPTS],
+      closeout: [...BUILT_IN_AGORA_NOMOS_CLOSEOUT_PROMPTS],
+      doctor: [...BUILT_IN_AGORA_NOMOS_DOCTOR_PROMPTS],
+    },
+  };
+}
+
 export function resolveAgoraProjectsDir(options: ResolveAgoraProjectStateOptions = {}) {
   return resolve(resolveUserAgoraDir(options), 'projects');
 }
