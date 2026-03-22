@@ -27,6 +27,12 @@ Do not use this skill for:
 - [Interview Fields](./references/interview-fields.md)
 - [Output Skeleton](./references/output-skeleton.md)
 
+## Bundled assets
+
+- `assets/pack-template/`
+
+Use the bundled template as the starting skeleton when the user wants a concrete pack output quickly. Customize it after the interview; do not ship the raw template unchanged.
+
 ## Core rule
 
 Treat the work as **bone + fill**:
@@ -47,6 +53,7 @@ Do not collapse those two layers.
    - governance / doctor rules
    - bootstrap prompts
 4. Generate the pack directory skeleton.
+   - Prefer starting from `assets/pack-template/` when a concrete pack directory is needed.
 5. Write the minimum required files so the pack is installable and inspectable.
 
 ## Output requirements

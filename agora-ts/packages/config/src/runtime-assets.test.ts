@@ -91,6 +91,8 @@ describe('runtime assets', () => {
     writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
     writeFileSync(join(bundledSkillsDir, 'create-nomos', 'SKILL.md'), '# create nomos\n');
     writeFileSync(join(bundledSkillsDir, 'create-nomos', 'references', 'pack-schema.md'), '# schema\n');
+    mkdirSync(join(bundledSkillsDir, 'create-nomos', 'assets', 'pack-template'), { recursive: true });
+    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'assets', 'pack-template', 'profile.toml'), 'id = \"example/test\"\\n');
 
     const result = ensureBundledAgoraAssetsInstalled({
       projectRoot,
@@ -105,5 +107,6 @@ describe('runtime assets', () => {
     expect(readFileSync(join(userAgentsSkillsDir, 'create-nomos', 'SKILL.md'), 'utf8')).toContain('create nomos');
     expect(readFileSync(join(userCodexSkillsDir, 'create-nomos', 'SKILL.md'), 'utf8')).toContain('create nomos');
     expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'references', 'pack-schema.md'), 'utf8')).toContain('schema');
+    expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'assets', 'pack-template', 'profile.toml'), 'utf8')).toContain('example/test');
   });
 });
