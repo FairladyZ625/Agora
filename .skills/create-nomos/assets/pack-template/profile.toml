@@ -1,0 +1,22 @@
+id = "example/my-nomos"
+name = "Example Nomos"
+version = "0.1.0"
+description = "Replace with the Nomos purpose."
+
+[constitution]
+entry = "constitution/constitution.md"
+
+[docs]
+root = "docs"
+
+[docs.skeleton]
+create_if_missing = ["architecture", "planning", "walkthrough", "qa", "security", "reference"]
+
+[lifecycle]
+modules = ["project-bootstrap", "task-context-delivery", "task-closeout"]
+
+[install]
+default_mode = "copy_on_install"
+
+[doctor]
+checks = ["constitution-present", "docs-skeleton-complete", "bootstrap-prompts-present"]
