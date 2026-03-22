@@ -1124,6 +1124,33 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/projects/:projectId/archive', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      return reply.send(projectService.archiveProject(projectId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/projects/:projectId', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      projectService.deleteProject(projectId);
+      return reply.send({ ok: true, project_id: projectId });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/tasks', async (request, reply) => {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
@@ -2146,6 +2173,28 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { jobId: string };
       const payload = archiveJobStatusUpdateRequestSchema.parse(request.body);
       return reply.send(dashboardQueryService.updateArchiveJob(parseNumericId(params.jobId, 'jobId'), payload));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/archive/jobs/:jobId/approve', async (request, reply) => {
+    if (!dashboardQueryService) {
+      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
+    }
+    try {
+      const params = request.params as { jobId: string };
+      const payload = approveTaskRequestSchema.parse(request.body);
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        return reply.status(403).send({ message: 'missing authenticated human actor' });
+      }
+      const approverId = humanActor?.username ?? payload.approver_id;
+      return reply.send(dashboardQueryService.approveArchiveJob(parseNumericId(params.jobId, 'jobId'), {
+        approver_id: approverId,
+        comment: payload.comment,
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { ProjectRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
+import { ProjectRepository, TaskRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import type {
   ProjectKnowledgeDocument,
@@ -26,11 +26,13 @@ export interface ProjectServiceOptions {
 
 export class ProjectService {
   private readonly projects: ProjectRepository;
+  private readonly tasks: TaskRepository;
   private readonly knowledgePort: ProjectKnowledgePort | undefined;
   private readonly projectBrainIndexQueueService: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'> | undefined;
 
   constructor(db: AgoraDatabase, options: ProjectServiceOptions = {}) {
     this.projects = new ProjectRepository(db);
+    this.tasks = new TaskRepository(db);
     this.knowledgePort = options.knowledgePort;
     this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }
@@ -172,6 +174,31 @@ export class ProjectService {
   searchProjectKnowledge(projectId: string, query: string, kind?: ProjectKnowledgeKind | 'recap'): ProjectKnowledgeSearchResult[] {
     this.requireProject(projectId);
     return this.knowledgePort?.searchProjectKnowledge(projectId, query, kind) ?? [];
+  }
+
+  archiveProject(projectId: string): StoredProject {
+    const project = this.requireProject(projectId);
+    const blockingTasks = this.tasks.listTasks(undefined, projectId)
+      .filter((task) => task.state !== 'done' && task.state !== 'cancelled');
+    if (blockingTasks.length > 0) {
+      throw new Error(`Cannot archive project ${projectId} while active tasks still exist`);
+    }
+    if (project.status === 'archived') {
+      return project;
+    }
+    return this.projects.updateProject(projectId, { status: 'archived' });
+  }
+
+  deleteProject(projectId: string): void {
+    const project = this.requireProject(projectId);
+    if (project.status !== 'archived') {
+      throw new Error(`Cannot delete project ${projectId} before it is archived`);
+    }
+    const remainingTasks = this.tasks.listTasks(undefined, projectId);
+    if (remainingTasks.length > 0) {
+      throw new Error(`Cannot delete project ${projectId} while tasks are still bound to it`);
+    }
+    this.projects.deleteProject(projectId);
   }
 
   private generateProjectId(name: string) {

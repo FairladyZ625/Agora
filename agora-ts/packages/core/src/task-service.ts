@@ -58,7 +58,11 @@ import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
-import type { TaskBrainWorkspacePort } from './task-brain-port.js';
+import type {
+  TaskBrainContextArtifact,
+  TaskBrainContextAudience,
+  TaskBrainWorkspacePort,
+} from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
@@ -70,6 +74,7 @@ import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAli
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
+const TASK_BRAIN_CONTEXT_AUDIENCES: TaskBrainContextAudience[] = ['controller', 'craftsman', 'citizen'];
 
 type TaskTemplate = {
   name: string;
@@ -2134,18 +2139,7 @@ export class TaskService {
   }
 
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
-    const projectBrainContext = task.project_id && this.projectBrainAutomationService
-      ? this.projectBrainAutomationService.buildBootstrapContext({
-          project_id: task.project_id,
-          task_id: task.id,
-          task_title: task.title,
-          ...(task.description ? { task_description: task.description } : {}),
-          allowed_citizen_ids: task.team.members
-            .filter((member) => member.member_kind === 'citizen')
-            .map((member) => member.agentId),
-          audience: 'controller',
-        })
-      : null;
+    const projectBrainContexts = this.buildProjectBrainContexts(task);
     return {
       task_id: task.id,
       project_id: task.project_id ?? null,
@@ -2181,16 +2175,38 @@ export class TaskService {
         ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
         ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
       })),
-      ...(projectBrainContext
+      ...(projectBrainContexts
         ? {
-            project_brain_context: {
-              audience: projectBrainContext.audience,
-              source_documents: projectBrainContext.source_documents,
-              markdown: projectBrainContext.markdown,
-            },
+            project_brain_contexts: projectBrainContexts,
           }
         : {}),
     } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
+  }
+
+  private buildProjectBrainContexts(task: StoredTask): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
+    if (!task.project_id || !this.projectBrainAutomationService) {
+      return null;
+    }
+    const allowedCitizenIds = task.team.members
+      .filter((member) => member.member_kind === 'citizen')
+      .map((member) => member.agentId);
+    const contexts: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> = {};
+    for (const audience of TASK_BRAIN_CONTEXT_AUDIENCES) {
+      const context = this.projectBrainAutomationService.buildBootstrapContext({
+        project_id: task.project_id,
+        task_id: task.id,
+        task_title: task.title,
+        ...(task.description ? { task_description: task.description } : {}),
+        ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
+        audience,
+      });
+      contexts[audience] = {
+        audience: context.audience,
+        source_documents: context.source_documents,
+        markdown: context.markdown,
+      };
+    }
+    return contexts;
   }
 
   private refreshTaskBrainWorkspace(task: StoredTask) {
@@ -2230,7 +2246,10 @@ export class TaskService {
     }
     const workspacePath = binding.workspace_path;
     const roleBriefPath = join(workspacePath, '05-agents', input.assignee, '00-role-brief.md');
-    const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+    const projectBrainContextPath = resolveProjectBrainContextPath(
+      workspacePath,
+      resolveTaskBrainContextAudienceForAssignee(task, input.assignee),
+    );
     const currentStage = task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : null;
     const controllerRef = resolveControllerRef(task.team.members);
     const currentStageParticipants = this.stageRosterService.resolveDesiredRefs(task.team, currentStage ?? undefined);
@@ -2604,6 +2623,18 @@ export class TaskService {
           ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
         ];
         this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
+          task_id: task.id,
+          project_id: task.project_id,
+          locale: task.locale,
+          title: task.title,
+          state: task.state,
+          current_stage: task.current_stage,
+          controller_ref: resolveControllerRef(task.team.members),
+          completed_by: actor,
+          completed_at: new Date().toISOString(),
+          summary_lines: summaryLines,
+        });
+        this.taskBrainWorkspacePort.writeTaskHarvestDraft(binding, {
           task_id: task.id,
           project_id: task.project_id,
           locale: task.locale,
@@ -3694,15 +3725,31 @@ export class TaskService {
     }
 
     const task = this.getTaskOrThrow(taskId);
+    const binding = this.taskBrainBindingService?.getActiveBinding(task.id);
     return this.archiveJobRepository.insertArchiveJob({
       task_id: task.id,
-      status: 'pending',
+      status: 'review_pending',
       target_path: this.buildArchiveTargetPath(task),
       payload: {
         task_id: task.id,
         title: task.title,
         type: task.type,
         state: task.state,
+        ...(task.project_id ? { project_id: task.project_id } : {}),
+        closeout_review: {
+          required: true,
+          state: 'review_pending',
+          task_state: task.state,
+          candidate_updates: [
+            ...(task.project_id ? [{
+              kind: 'recap',
+              slug: task.id,
+              project_id: task.project_id,
+            }] : []),
+          ],
+          ...(binding?.workspace_path ? { workspace_path: binding.workspace_path } : {}),
+          ...(binding?.workspace_path ? { harvest_draft_path: join(binding.workspace_path, '07-outputs', 'project-harvest-draft.md') } : {}),
+        },
       },
       writer_agent: 'writer-agent',
     });
@@ -4238,6 +4285,23 @@ function stageAllowsCraftsmanDispatch(stage: WorkflowStageLike | null | undefine
   }
   return resolveStageExecutionKind(stage) === 'craftsman_dispatch'
     || resolveAllowedActions(stage).includes('dispatch_craftsman');
+}
+
+function resolveTaskBrainContextAudienceForAssignee(task: StoredTask, assignee: string): TaskBrainContextAudience {
+  const member = task.team.members.find((candidate) => candidate.agentId === assignee);
+  switch (member?.member_kind) {
+    case 'craftsman':
+      return 'craftsman';
+    case 'citizen':
+      return 'citizen';
+    case 'controller':
+    default:
+      return 'controller';
+  }
+}
+
+function resolveProjectBrainContextPath(workspacePath: string, audience: TaskBrainContextAudience) {
+  return join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
 }
 
 function slugify(value: string) {

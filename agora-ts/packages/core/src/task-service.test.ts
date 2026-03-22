@@ -953,7 +953,7 @@ describe('task service', () => {
     );
   });
 
-  it('materializes a bootstrap project brain context file for project-bound tasks', () => {
+  it('materializes audience-specific project brain context files for project-bound tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
@@ -1055,13 +1055,22 @@ describe('task service', () => {
     });
 
     const workspacePath = join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
-    const bootstrapContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
-    expect(existsSync(bootstrapContextPath)).toBe(true);
-    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
-    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('Runtime Boundary');
-    expect(readFileSync(bootstrapContextPath, 'utf8')).toContain('citizen-alpha');
-    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(bootstrapContextPath);
-    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(bootstrapContextPath);
+    const controllerContextPath = join(workspacePath, '04-context', 'project-brain-context-controller.md');
+    const craftsmanContextPath = join(workspacePath, '04-context', 'project-brain-context-craftsman.md');
+    const citizenContextPath = join(workspacePath, '04-context', 'project-brain-context-citizen.md');
+    expect(existsSync(controllerContextPath)).toBe(true);
+    expect(existsSync(craftsmanContextPath)).toBe(true);
+    expect(existsSync(citizenContextPath)).toBe(true);
+    expect(readFileSync(controllerContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(controllerContextPath, 'utf8')).toContain('Runtime Boundary');
+    expect(readFileSync(controllerContextPath, 'utf8')).toContain('citizen-alpha');
+    expect(readFileSync(craftsmanContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(citizenContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(controllerContextPath);
+    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(craftsmanContextPath);
+    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(citizenContextPath);
+    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(controllerContextPath);
+    expect(readFileSync(join(workspacePath, '05-agents', 'citizen-alpha', '00-role-brief.md'), 'utf8')).toContain(citizenContextPath);
   });
 
   it('passes task context into project brain bootstrap generation for project-bound tasks', () => {
@@ -1115,6 +1124,7 @@ describe('task service', () => {
       },
     });
 
+    expect(buildBootstrapContext).toHaveBeenCalledTimes(3);
     expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
       project_id: 'proj-bootstrap',
       task_id: 'OC-PROJECT-CTX',
@@ -1123,9 +1133,25 @@ describe('task service', () => {
       allowed_citizen_ids: ['citizen-alpha'],
       audience: 'controller',
     }));
+    expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 'proj-bootstrap',
+      task_id: 'OC-PROJECT-CTX',
+      task_title: 'Project bootstrap task',
+      task_description: 'bootstrap project context',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'craftsman',
+    }));
+    expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 'proj-bootstrap',
+      task_id: 'OC-PROJECT-CTX',
+      task_title: 'Project bootstrap task',
+      task_description: 'bootstrap project context',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'citizen',
+    }));
   });
 
-  it('materializes task close recap into task and project scope for project-bound tasks', () => {
+  it('materializes task close recap and harvest draft into task and project scope for project-bound tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
@@ -1171,16 +1197,21 @@ describe('task service', () => {
     const done = service.advanceTask('OC-PROJECT-RECAP', { callerId: 'archon' });
     const workspacePath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'OC-PROJECT-RECAP');
     const taskRecapPath = join(workspacePath, '07-outputs', 'task-close-recap.md');
+    const taskHarvestDraftPath = join(workspacePath, '07-outputs', 'project-harvest-draft.md');
     const projectRecapPath = join(brainPackDir, 'projects', 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
 
     expect(done.state).toBe('done');
     expect(existsSync(taskRecapPath)).toBe(true);
+    expect(existsSync(taskHarvestDraftPath)).toBe(true);
     expect(existsSync(projectRecapPath)).toBe(true);
     expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'))).toBe(true);
     expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'))).toBe(true);
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('Project: proj-recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('任务已到达 done，已进入 archive 流程。');
+    expect(readFileSync(taskHarvestDraftPath, 'utf8')).toContain('doc_type: task_harvest_draft');
+    expect(readFileSync(taskHarvestDraftPath, 'utf8')).toContain('候选沉淀');
+    expect(readFileSync(taskHarvestDraftPath, 'utf8')).toContain('事实候选');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
@@ -1230,6 +1261,7 @@ describe('task service', () => {
         updateWorkspace: () => {},
         writeExecutionBrief: () => ({ brief_path: '/tmp/unused-brief.md' }),
         writeTaskCloseRecap: () => {},
+        writeTaskHarvestDraft: () => {},
         destroyWorkspace: () => {},
       },
     });
@@ -1933,9 +1965,12 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-103',
-          status: 'pending',
+          status: 'review_pending',
           payload: expect.objectContaining({
             state: 'cancelled',
+            closeout_review: expect.objectContaining({
+              state: 'review_pending',
+            }),
           }),
         }),
       ]),
@@ -2583,7 +2618,7 @@ describe('task service', () => {
     );
   });
 
-  it('enqueues a pending archive job when a task reaches done', () => {
+  it('enqueues a review-pending archive job when a task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const service = new TaskService(db, {
@@ -2630,8 +2665,14 @@ describe('task service', () => {
     expect(archiveJobs).toHaveLength(1);
     expect(archiveJobs[0]).toMatchObject({
       task_id: 'OC-114',
-      status: 'pending',
+      status: 'review_pending',
       writer_agent: 'writer-agent',
+      payload: expect.objectContaining({
+        closeout_review: expect.objectContaining({
+          required: true,
+          state: 'review_pending',
+        }),
+      }),
     });
     expect(archiveJobs[0]?.target_path).toContain('OC-114');
   });
@@ -4696,6 +4737,117 @@ describe('task service', () => {
     expect(briefBody).toContain('Controller: opus');
     expect(briefBody).toContain('Current Stage: implement');
     expect(briefBody).toContain('Current Stage Participants: opus, sonnet');
+  });
+
+  it('routes a project-bound craftsman execution brief to the craftsman context artifact', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const captured: Array<{ brief_path: string | null; prompt: string | null }> = [];
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-audience-brief-1',
+      adapters: {
+        claude: {
+          name: 'claude',
+          dispatchTask(request) {
+            captured.push({ brief_path: request.brief_path, prompt: request.prompt });
+            return {
+              status: 'running',
+              session_id: `claude:${request.execution_id}`,
+              started_at: '2026-03-21T10:00:00.000Z',
+              payload: null,
+            };
+          },
+        },
+      },
+    });
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-brief-audience',
+      name: 'Audience Brief Project',
+    });
+    const buildBootstrapContext = vi.fn((input: { audience: 'controller' | 'citizen' | 'craftsman' }) => ({
+      project_id: 'proj-brief-audience',
+      audience: input.audience,
+      markdown: `---\ndoc_type: project_brain_bootstrap_context\naudience: ${input.audience}\n---\n# ${input.audience}\n`,
+      source_documents: [],
+    }));
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-AUDIENCE-BRIEF-1',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+      taskBrainBindingService: new TaskBrainBindingService(db, {
+        idGenerator: () => 'brain-audience-brief-binding',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      projectBrainAutomationService: {
+        buildBootstrapContext,
+        promoteKnowledge: vi.fn(),
+        recordTaskCloseRecap: vi.fn(),
+      } as unknown as ProjectBrainAutomationService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Audience-specific execution brief',
+      type: 'custom',
+      creator: 'archon',
+      description: 'craftsman should get craftsman context',
+      priority: 'normal',
+      project_id: 'proj-brief-audience',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
+          { role: 'craftsman', agentId: 'claude', member_kind: 'craftsman', model_preference: 'coding_cli' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            roster: { include_roles: ['developer'], keep_controller: true },
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-audience-brief-1',
+      task_id: 'OC-AUDIENCE-BRIEF-1',
+      stage_id: 'implement',
+      title: 'Implement audience brief',
+      assignee: 'claude',
+      status: 'pending',
+      craftsman_type: 'claude',
+      craftsman_prompt: 'Use the audience-specific context.',
+    });
+
+    service.dispatchCraftsman({
+      task_id: 'OC-AUDIENCE-BRIEF-1',
+      subtask_id: 'sub-audience-brief-1',
+      caller_id: 'opus',
+      adapter: 'claude',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: '/tmp/audience-brief-dispatch',
+    });
+
+    expect(captured).toHaveLength(1);
+    const briefBody = readFileSync(captured[0]!.brief_path!, 'utf8');
+    expect(briefBody).toContain('project-brain-context-craftsman.md');
+    expect(briefBody).not.toContain('project-brain-context-controller.md');
   });
 
   it('auto-dispatches craftsman subtasks with a materialized execution brief when no brief_path is provided', () => {

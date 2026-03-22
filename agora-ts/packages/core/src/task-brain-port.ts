@@ -1,5 +1,18 @@
 import type { WorkflowStageRosterDto } from '@agora-ts/contracts';
 
+export type TaskBrainContextAudience = 'controller' | 'citizen' | 'craftsman';
+
+export interface TaskBrainContextArtifact {
+  audience: TaskBrainContextAudience;
+  source_documents: Array<{
+    kind: string;
+    slug: string;
+    title: string | null;
+    path: string;
+  }>;
+  markdown: string;
+}
+
 export interface TaskBrainWorkspaceRequest {
   task_id: string;
   project_id: string | null;
@@ -34,16 +47,7 @@ export interface TaskBrainWorkspaceRequest {
     agent_origin?: 'agora_managed' | 'user_managed';
     briefing_mode?: 'overlay_full' | 'overlay_delta';
   }>;
-  project_brain_context?: {
-    audience: 'controller' | 'citizen' | 'craftsman';
-    source_documents: Array<{
-      kind: string;
-      slug: string;
-      title: string | null;
-      path: string;
-    }>;
-    markdown: string;
-  } | null;
+  project_brain_contexts?: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null;
 }
 
 export interface TaskBrainWorkspaceResult {
@@ -54,6 +58,19 @@ export interface TaskBrainWorkspaceResult {
 }
 
 export interface TaskBrainCloseRecapRequest {
+  task_id: string;
+  project_id: string | null;
+  locale: 'zh-CN' | 'en-US';
+  title: string;
+  state: string;
+  current_stage: string | null;
+  controller_ref: string | null;
+  completed_by: string;
+  completed_at: string;
+  summary_lines: string[];
+}
+
+export interface TaskBrainHarvestDraftRequest {
   task_id: string;
   project_id: string | null;
   locale: 'zh-CN' | 'en-US';
@@ -108,5 +125,6 @@ export interface TaskBrainWorkspacePort {
   updateWorkspace(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainWorkspaceRequest): void;
   writeExecutionBrief(binding: TaskBrainWorkspaceBindingRef, input: TaskExecutionBriefRequest): TaskExecutionBriefResult;
   writeTaskCloseRecap(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainCloseRecapRequest): void;
+  writeTaskHarvestDraft(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainHarvestDraftRequest): void;
   destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void;
 }

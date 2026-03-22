@@ -118,6 +118,7 @@ function createDashboardQueryServiceStub(): DashboardQueryService {
     listSkills: () => [],
     listArchiveJobs: () => [],
     getArchiveJob: () => { throw new Error('unused'); },
+    approveArchiveJob: () => { throw new Error('unused'); },
     retryArchiveJob: () => { throw new Error('unused'); },
     notifyArchiveJob: () => { throw new Error('unused'); },
     updateArchiveJob: () => { throw new Error('unused'); },
@@ -1915,28 +1916,60 @@ describe('agora-ts cli', () => {
     });
     const job = archives.insertArchiveJob({
       task_id: task.id,
-      status: 'pending',
+      status: 'review_pending',
       target_path: 'ZeYu-AI-Brain/tasks/',
-      payload: {},
+      payload: {
+        closeout_review: {
+          required: true,
+          state: 'review_pending',
+        },
+      },
       writer_agent: 'writer-agent',
     });
     expect(job).toBeDefined();
 
     await program.parseAsync(['archive', 'jobs', 'list'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'show', String(job?.id), '--json'], { from: 'user' });
+    await program.parseAsync(['archive', 'jobs', 'approve', String(job?.id), '--approver-id', 'lizeyu', '--comment', 'looks good'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'complete', String(job?.id), '--commit-hash', 'deadbeef'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'retry', String(job?.id)], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'fail', String(job?.id), '--error-message', 'writer timeout'], { from: 'user' });
 
     const finalJob = dashboardQueryService.getArchiveJob(job!.id);
     expect(stderr.value).toBe('');
-    expect(stdout.value).toContain(`\t${task.id}\tpending\t`);
+    expect(stdout.value).toContain(`\t${task.id}\treview_pending\t`);
     expect(stdout.value).toContain(`"task_id": "${task.id}"`);
+    expect(stdout.value).toContain(`archive job 已审批放行: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已完成: ${job?.id} -> synced`);
     expect(stdout.value).toContain(`archive job 已重置: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已失败: ${job?.id} -> failed`);
     expect(finalJob.status).toBe('failed');
     expect(finalJob.payload).toMatchObject({ error_message: 'writer timeout' });
+  });
+
+  it('archives and deletes projects through the cli with lifecycle guards', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-ops',
+      name: 'Project Ops',
+    });
+    const program = createCliProgram({
+      projectService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'archive', 'proj-ops'], { from: 'user' });
+    await program.parseAsync(['projects', 'delete', 'proj-ops'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已归档: proj-ops');
+    expect(stdout.value).toContain('Project 已删除: proj-ops');
+    expect(projectService.getProject('proj-ops')).toBeNull();
   });
 
   it('runs task action commands through the cli', async () => {

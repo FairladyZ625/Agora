@@ -89,6 +89,10 @@ export class ProjectRepository {
     return this.requireProject(projectId, 'update');
   }
 
+  deleteProject(projectId: string): void {
+    this.db.prepare('DELETE FROM projects WHERE id = ?').run(projectId);
+  }
+
   private requireProject(projectId: string, action: 'insert' | 'update') {
     const project = this.getProject(projectId);
     if (!project) {
