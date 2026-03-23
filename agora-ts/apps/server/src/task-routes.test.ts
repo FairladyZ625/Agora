@@ -689,6 +689,10 @@ describe('task routes', () => {
       nomos_diff: expect.objectContaining({
         changed: false,
       }),
+      nomos_drift: expect.objectContaining({
+        risk_level: 'high',
+        activation_blockers: expect.any(Number),
+      }),
       drift: {
         detected: false,
       },

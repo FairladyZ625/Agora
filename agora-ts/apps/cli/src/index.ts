@@ -10,6 +10,7 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  diagnoseProjectNomosDrift,
   diffProjectNomos,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
@@ -2013,6 +2014,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
                 base: state.activation_status === 'active_project' ? 'active' : 'builtin',
                 candidate: 'draft',
               }),
+              drift: diagnoseProjectNomosDrift(options.project, project.metadata ?? null),
             };
           })()
           : null;
@@ -2022,6 +2024,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
             nomos_runtime: nomosDiagnosis.runtime,
             nomos_validation: nomosDiagnosis.validation,
             nomos_diff: nomosDiagnosis.diff,
+            nomos_drift: nomosDiagnosis.drift,
           }
           : result;
         if (options.json) {
@@ -2038,6 +2041,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
           writeLine(stdout, `nomos_doctor_prompt=${nomosDiagnosis.runtime.doctor_project_prompt_path}`);
           writeLine(stdout, `nomos_validation draft_valid=${nomosDiagnosis.validation.draft.valid} active_valid=${nomosDiagnosis.validation.active.valid}`);
           writeLine(stdout, `nomos_diff changed=${nomosDiagnosis.diff.changed} fields=${nomosDiagnosis.diff.differences.map((entry) => entry.field).join(',') || '-'}`);
+          writeLine(stdout, `nomos_drift risk=${nomosDiagnosis.drift.risk_level} blockers=${nomosDiagnosis.drift.activation_blockers} warnings=${nomosDiagnosis.drift.structural_warnings}`);
         }
         return;
       }

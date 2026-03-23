@@ -1428,6 +1428,8 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"nomos_validation"');
     expect(stdout.value).toContain('"draft"');
     expect(stdout.value).toContain('"nomos_diff"');
+    expect(stdout.value).toContain('"nomos_drift"');
+    expect(stdout.value).toContain('"risk_level": "high"');
     expect(stdout.value).toContain('"nomos_id": "project/proj-brain"');
   });
 

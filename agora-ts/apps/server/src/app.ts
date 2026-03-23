@@ -7,6 +7,7 @@ import {
   DEFAULT_AGORA_NOMOS_ID,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  diagnoseProjectNomosDrift,
   diffProjectNomos,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
@@ -1369,6 +1370,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           base: state.activation_status === 'active_project' ? 'active' : 'builtin',
           candidate: 'draft',
         }),
+        nomos_drift: diagnoseProjectNomosDrift(projectId, project.metadata ?? null),
       });
     } catch (error) {
       const translated = translateError(error);

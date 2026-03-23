@@ -331,6 +331,22 @@ export interface ProjectNomosDiffResult {
   differences: ProjectNomosDiffEntry[];
 }
 
+export type ProjectNomosDriftRiskLevel = 'none' | 'low' | 'medium' | 'high';
+
+export interface ProjectNomosDriftReport {
+  project_id: string;
+  activation_status: ProjectNomosActivationStatus;
+  risk_level: ProjectNomosDriftRiskLevel;
+  activation_blockers: number;
+  structural_warnings: number;
+  semantic_changes: number;
+  changed_fields: string[];
+  added_lifecycle_modules: string[];
+  removed_lifecycle_modules: string[];
+  added_doctor_checks: string[];
+  removed_doctor_checks: string[];
+}
+
 export interface ProjectNomosRuntimePaths {
   nomos_root: string;
   lifecycle_root: string;
@@ -997,6 +1013,67 @@ export function diffProjectNomos(
     base_pack: basePack,
     candidate_pack: candidatePack,
     differences,
+  };
+}
+
+export function diagnoseProjectNomosDrift(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ResolveAgoraProjectStateOptions = {},
+): ProjectNomosDriftReport {
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const draftValidation = validateProjectNomos(projectId, metadata, {
+    ...options,
+    target: 'draft',
+  });
+  const activeValidation = validateProjectNomos(projectId, metadata, {
+    ...options,
+    target: 'active',
+  });
+  const diff = diffProjectNomos(projectId, metadata, {
+    ...options,
+    base: state.activation_status === 'active_project' ? 'active' : 'builtin',
+    candidate: 'draft',
+  });
+
+  const activationBlockers = draftValidation.issues.filter((issue) => issue.severity === 'error').length;
+  const structuralWarnings = draftValidation.issues.filter((issue) => issue.severity === 'warning').length
+    + activeValidation.issues.filter((issue) => issue.severity === 'warning').length;
+
+  const candidateLifecycleModules = new Set(diff.candidate_pack?.lifecycle_modules ?? []);
+  const baseLifecycleModules = new Set(diff.base_pack?.lifecycle_modules ?? []);
+  const candidateDoctorChecks = new Set(diff.candidate_pack?.doctor_checks ?? []);
+  const baseDoctorChecks = new Set(diff.base_pack?.doctor_checks ?? []);
+
+  const addedLifecycleModules = [...candidateLifecycleModules].filter((item) => !baseLifecycleModules.has(item));
+  const removedLifecycleModules = [...baseLifecycleModules].filter((item) => !candidateLifecycleModules.has(item));
+  const addedDoctorChecks = [...candidateDoctorChecks].filter((item) => !baseDoctorChecks.has(item));
+  const removedDoctorChecks = [...baseDoctorChecks].filter((item) => !candidateDoctorChecks.has(item));
+
+  const semanticChanges = diff.differences.length;
+  const changedFields = diff.differences.map((entry) => entry.field);
+
+  let riskLevel: ProjectNomosDriftRiskLevel = 'none';
+  if (activationBlockers > 0) {
+    riskLevel = 'high';
+  } else if (removedLifecycleModules.length > 0 || removedDoctorChecks.length > 0) {
+    riskLevel = 'medium';
+  } else if (structuralWarnings > 0 || semanticChanges > 0) {
+    riskLevel = 'low';
+  }
+
+  return {
+    project_id: projectId,
+    activation_status: state.activation_status,
+    risk_level: riskLevel,
+    activation_blockers: activationBlockers,
+    structural_warnings: structuralWarnings,
+    semantic_changes: semanticChanges,
+    changed_fields: changedFields,
+    added_lifecycle_modules: addedLifecycleModules,
+    removed_lifecycle_modules: removedLifecycleModules,
+    added_doctor_checks: addedDoctorChecks,
+    removed_doctor_checks: removedDoctorChecks,
   };
 }
 

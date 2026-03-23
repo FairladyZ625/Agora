@@ -20,6 +20,7 @@ import {
   refineProjectNomosDraftFromSpec,
   validateProjectNomos,
   diffProjectNomos,
+  diagnoseProjectNomosDrift,
   resolveInstalledCreateNomosPackTemplateDir,
   scaffoldNomosPack,
   renderNomosProjectProfileToml,
@@ -309,6 +310,27 @@ describe('nomos pack model freeze', () => {
         }),
       ]),
     );
+  });
+
+  it('summarizes nomos drift taxonomy from validation and semantic diff', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const installed = installBuiltInAgoraNomosForProject('proj-drift', { userAgoraDir: agoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-drift', 'Drift Project', {
+      userAgoraDir: agoraHomeDir,
+      nomosId: installed.profile.pack.id,
+    });
+    const metadata = mergeProjectMetadataWithNomosProfile({}, installed.profile);
+
+    const drift = diagnoseProjectNomosDrift('proj-drift', metadata, { userAgoraDir: agoraHomeDir });
+
+    expect(drift.risk_level).toBe('medium');
+    expect(drift.activation_blockers).toBe(0);
+    expect(drift.semantic_changes).toBeGreaterThan(0);
+    expect(drift.changed_fields).toContain('pack_id');
+    expect(drift.removed_lifecycle_modules).toEqual(
+      expect.arrayContaining(['project-archive', 'governance-doctor']),
+    );
+    expect(drift.removed_doctor_checks).toContain('repo-shim-present');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {
