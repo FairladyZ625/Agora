@@ -153,6 +153,7 @@ async function captureDashboardScreenshots(input: {
   origin: string;
   cookie: string;
   projectId: string;
+  exportDir: string;
   projectsScreenshotPath: string;
   detailScreenshotPath: string;
   playwrightBrowsersPath: string;
@@ -175,13 +176,51 @@ async function captureDashboardScreenshots(input: {
     await page.screenshot({ path: ${JSON.stringify(input.projectsScreenshotPath)}, fullPage: true });
     await page.goto(${JSON.stringify(`${input.origin}/dashboard/projects/${input.projectId}`)}, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
+    let reviewVisible = false;
+    let validationVisible = false;
+    let diffVisible = false;
+    let exportVisible = false;
+    let installVisible = false;
+    let activationVisible = false;
+    await page.getByRole('button', { name: 'Review Draft' }).click();
+    await page.getByText('Can Activate').waitFor({ timeout: 3000 });
+    reviewVisible = true;
+    await page.getByRole('button', { name: 'Validate Draft' }).click();
+    await page.getByText('Validation Issues').waitFor({ timeout: 3000 });
+    validationVisible = true;
+    await page.getByRole('button', { name: 'Diff Draft' }).click();
+    await page.getByText('Changed Fields').waitFor({ timeout: 3000 });
+    diffVisible = true;
+    await page.getByRole('button', { name: 'Activate Draft' }).click();
+    await page.getByText('Project Nomos activated.').waitFor({ timeout: 3000 });
+    activationVisible = true;
+    await page.getByLabel('Export Dir').fill(${JSON.stringify(input.exportDir)});
+    await page.getByRole('button', { name: 'Export Pack' }).click();
+    await page.getByText('Nomos pack exported.').waitFor({ timeout: 3000 });
+    exportVisible = true;
+    await page.getByLabel('Pack Dir').fill(${JSON.stringify(input.exportDir)});
+    await page.getByRole('button', { name: 'Install Pack' }).click();
+    await page.getByText('Nomos pack installed into draft.').waitFor({ timeout: 3000 });
+    installVisible = true;
     await page.screenshot({ path: ${JSON.stringify(input.detailScreenshotPath)}, fullPage: true });
     const bodyText = await page.locator('body').innerText();
     console.log(JSON.stringify({
       detailUrl: page.url(),
       bodyText: bodyText.slice(0, 1600),
       nomosVisible: bodyText.includes('Nomos State'),
-      actionVisible: bodyText.includes('Reinstall Nomos') && bodyText.includes('Rerun Bootstrap') && bodyText.includes('Run Doctor'),
+      actionVisible: bodyText.includes('Review Draft')
+        && bodyText.includes('Activate Draft')
+        && bodyText.includes('Validate Draft')
+        && bodyText.includes('Diff Draft')
+        && bodyText.includes('Reinstall Nomos')
+        && bodyText.includes('Rerun Bootstrap')
+        && bodyText.includes('Run Doctor'),
+      reviewVisible,
+      validationVisible,
+      diffVisible,
+      exportVisible,
+      installVisible,
+      activationVisible,
     }));
     await browser.close();
   `;
@@ -217,6 +256,12 @@ async function captureDashboardScreenshots(input: {
     bodyText: string;
     nomosVisible: boolean;
     actionVisible: boolean;
+    reviewVisible: boolean;
+    validationVisible: boolean;
+    diffVisible: boolean;
+    exportVisible: boolean;
+    installVisible: boolean;
+    activationVisible: boolean;
   };
 }
 
@@ -241,6 +286,7 @@ async function main() {
   const dashboardUser = 'smoke-admin';
   const projectsScreenshotPath = join(smokeRoot, 'dashboard-projects.png');
   const detailScreenshotPath = join(smokeRoot, 'dashboard-project-detail.png');
+  const dashboardExportDir = join(smokeRoot, 'dashboard-exported-pack');
 
   const restoreEnv = {
     HOME: process.env.HOME,
@@ -439,10 +485,16 @@ async function main() {
       origin: dashboardOrigin,
       cookie: dashboardCookie,
       projectId: bootstrapProjectId,
+      exportDir: dashboardExportDir,
       projectsScreenshotPath,
       detailScreenshotPath,
       playwrightBrowsersPath,
     });
+    if (!dashboardUi.nomosVisible || !dashboardUi.actionVisible || !dashboardUi.reviewVisible
+      || !dashboardUi.validationVisible || !dashboardUi.diffVisible || !dashboardUi.activationVisible
+      || !dashboardUi.exportVisible || !dashboardUi.installVisible) {
+      throw new Error(`dashboard nomos click-path incomplete: ${JSON.stringify(dashboardUi)}`);
+    }
 
     const dashboardLayer = {
       project_id: bootstrapProjectId,
@@ -453,6 +505,12 @@ async function main() {
       detail_url: dashboardUi.detailUrl,
       nomos_visible: dashboardUi.nomosVisible,
       actions_visible: dashboardUi.actionVisible,
+      review_visible: dashboardUi.reviewVisible,
+      validation_visible: dashboardUi.validationVisible,
+      diff_visible: dashboardUi.diffVisible,
+      activation_visible: dashboardUi.activationVisible,
+      export_visible: dashboardUi.exportVisible,
+      install_visible: dashboardUi.installVisible,
       detail_excerpt: dashboardUi.bodyText,
     };
 

@@ -201,6 +201,94 @@ describe("registerProjectCommands", () => {
     expect(result.text).toContain("index=present, timeline=missing");
   });
 
+  it("bridges project nomos review and activate actions", async () => {
+    const reviewProjectNomos = vi.fn(async () => ({
+      project_id: "proj-nomos",
+      activation_status: "active_builtin",
+      can_activate: true,
+      issues: [],
+      active: { pack_id: "agora/default" },
+      draft: { pack_id: "project/proj-nomos" },
+    }));
+    const activateProjectNomos = vi.fn(async () => ({
+      project_id: "proj-nomos",
+      nomos_id: "project/proj-nomos",
+      activation_status: "active_project",
+    }));
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, {
+      reviewProjectNomos,
+      activateProjectNomos,
+    } as any, createPluginTrace(api as any));
+
+    const review = await getCommand("project").handler({ args: "nomos review proj-nomos", senderId: "u1" });
+    const activate = await getCommand("project").handler({ args: "nomos activate proj-nomos", senderId: "u1" });
+
+    expect(reviewProjectNomos).toHaveBeenCalledWith("proj-nomos");
+    expect(review.text).toContain("can_activate=yes");
+    expect(review.text).toContain("draft=project/proj-nomos");
+    expect(activateProjectNomos).toHaveBeenCalledWith("proj-nomos", "u1");
+    expect(activate.text).toContain("status=active_project");
+  });
+
+  it("bridges project nomos validate, diff, export, and install-pack actions", async () => {
+    const validateProjectNomos = vi.fn(async () => ({
+      project_id: "proj-nomos",
+      target: "draft",
+      valid: true,
+      issues: [],
+      pack: { pack_id: "project/proj-nomos" },
+    }));
+    const diffProjectNomos = vi.fn(async () => ({
+      project_id: "proj-nomos",
+      base: "builtin",
+      candidate: "draft",
+      changed: true,
+      differences: [{ field: "pack_id" }],
+    }));
+    const exportProjectNomos = vi.fn(async () => ({
+      project_id: "proj-nomos",
+      target: "draft",
+      output_dir: "/tmp/pack-out",
+      pack: { pack_id: "project/proj-nomos" },
+    }));
+    const installProjectNomosPack = vi.fn(async () => ({
+      project_id: "proj-target",
+      pack: { pack_id: "project/proj-nomos" },
+      installed_root: "/tmp/state/nomos/project-nomos",
+    }));
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, {
+      validateProjectNomos,
+      diffProjectNomos,
+      exportProjectNomos,
+      installProjectNomosPack,
+    } as any, createPluginTrace(api as any));
+
+    const validate = await getCommand("project").handler({ args: "nomos validate proj-nomos --target draft", senderId: "u1" });
+    const diff = await getCommand("project").handler({
+      args: "nomos diff proj-nomos --base builtin --candidate draft",
+      senderId: "u1",
+    });
+    const exported = await getCommand("project").handler({
+      args: "nomos export proj-nomos --output-dir /tmp/pack-out",
+      senderId: "u1",
+    });
+    const installed = await getCommand("project").handler({
+      args: "nomos install-pack proj-target --pack-dir /tmp/pack-out",
+      senderId: "u1",
+    });
+
+    expect(validateProjectNomos).toHaveBeenCalledWith("proj-nomos", "draft");
+    expect(validate.text).toContain("valid=yes");
+    expect(diffProjectNomos).toHaveBeenCalledWith("proj-nomos", { base: "builtin", candidate: "draft" });
+    expect(diff.text).toContain("fields=pack_id");
+    expect(exportProjectNomos).toHaveBeenCalledWith("proj-nomos", "/tmp/pack-out", "draft");
+    expect(exported.text).toContain("output=/tmp/pack-out");
+    expect(installProjectNomosPack).toHaveBeenCalledWith("proj-target", "/tmp/pack-out");
+    expect(installed.text).toContain("draft_root=/tmp/state/nomos/project-nomos");
+  });
+
   it("surfaces bridge failures as project command errors", async () => {
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, {

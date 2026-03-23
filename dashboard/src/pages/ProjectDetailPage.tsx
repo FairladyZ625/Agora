@@ -3,9 +3,23 @@ import { Link, useParams } from 'react-router';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import * as api from '@/lib/api';
 import { useProjectDetailPageCopy } from '@/lib/dashboardCopy';
+import {
+  mapProjectNomosActivationDto,
+  mapProjectNomosDiffDto,
+  mapProjectNomosReviewDto,
+  mapProjectNomosValidationDto,
+} from '@/lib/projectMappers';
 import { useProjectStore } from '@/stores/projectStore';
 import { useTodoStore } from '@/stores/todoStore';
-import type { ProjectCitizen, ProjectKnowledgeDoc, ProjectRecap } from '@/types/project';
+import type {
+  ProjectCitizen,
+  ProjectKnowledgeDoc,
+  ProjectNomosActivation,
+  ProjectNomosDiff,
+  ProjectNomosReview,
+  ProjectNomosValidation,
+  ProjectRecap,
+} from '@/types/project';
 
 type ProjectDetailSelection =
   | { kind: 'recap'; item: ProjectRecap }
@@ -47,7 +61,13 @@ export function ProjectDetailPage() {
   });
   const [nomosActionPending, setNomosActionPending] = useState(false);
   const [nomosActionMessage, setNomosActionMessage] = useState<string | null>(null);
+  const [exportDir, setExportDir] = useState('');
+  const [packDir, setPackDir] = useState('');
   const [doctorReport, setDoctorReport] = useState<Awaited<ReturnType<typeof api.runProjectNomosDoctor>> | null>(null);
+  const [reviewReport, setReviewReport] = useState<ProjectNomosReview | null>(null);
+  const [activationReport, setActivationReport] = useState<ProjectNomosActivation | null>(null);
+  const [validationReport, setValidationReport] = useState<ProjectNomosValidation | null>(null);
+  const [diffReport, setDiffReport] = useState<ProjectNomosDiff | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -84,7 +104,9 @@ export function ProjectDetailPage() {
   const detailSelection = detailState.projectId === (projectId ?? null) ? detailState.selection : null;
   const nomos = selectedProject.nomos;
 
-  const runNomosAction = async (mode: 'reinstall' | 'bootstrap' | 'doctor') => {
+  const runNomosAction = async (
+    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack',
+  ) => {
     if (!projectId) {
       return;
     }
@@ -95,6 +117,33 @@ export function ProjectDetailPage() {
         const report = await api.runProjectNomosDoctor(projectId);
         setDoctorReport(report);
         setNomosActionMessage(copy.nomosDoctorSuccess);
+      } else if (mode === 'review') {
+        const report = await api.reviewProjectNomos(projectId);
+        setReviewReport(mapProjectNomosReviewDto(report));
+        setNomosActionMessage(copy.nomosReviewSuccess);
+      } else if (mode === 'activate') {
+        const report = await api.activateProjectNomos(projectId, selectedProject.project.owner ?? 'archon');
+        setActivationReport(mapProjectNomosActivationDto(report));
+        await selectProject(projectId);
+        setNomosActionMessage(copy.nomosActivateSuccess);
+      } else if (mode === 'validate') {
+        const report = await api.validateProjectNomos(projectId, 'draft');
+        setValidationReport(mapProjectNomosValidationDto(report));
+        setNomosActionMessage(copy.nomosValidateSuccess);
+      } else if (mode === 'diff') {
+        const report = await api.diffProjectNomos(projectId, {
+          base: selectedProject.nomos?.activationStatus === 'active_project' ? 'active' : 'builtin',
+          candidate: 'draft',
+        });
+        setDiffReport(mapProjectNomosDiffDto(report));
+        setNomosActionMessage(copy.nomosDiffSuccess);
+      } else if (mode === 'export') {
+        const result = await api.exportProjectNomos(projectId, exportDir, 'draft');
+        setNomosActionMessage(`${copy.nomosExportSuccess} ${result.output_dir}`);
+      } else if (mode === 'install-pack') {
+        const result = await api.installProjectNomosPack(projectId, packDir);
+        await selectProject(projectId);
+        setNomosActionMessage(`${copy.nomosInstallPackSuccess} ${result.installed_root}`);
       } else {
         await api.installProjectNomos(projectId, {
           skip_bootstrap_task: mode === 'reinstall',
@@ -159,6 +208,54 @@ export function ProjectDetailPage() {
                 type="button"
                 className="button-secondary"
                 disabled={nomosActionPending}
+                onClick={() => void runNomosAction('review')}
+              >
+                {copy.reviewNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('activate')}
+              >
+                {copy.activateNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('validate')}
+              >
+                {copy.validateNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('diff')}
+              >
+                {copy.diffNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('export')}
+              >
+                {copy.exportNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('install-pack')}
+              >
+                {copy.installPackAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
                 onClick={() => void runNomosAction('reinstall')}
               >
                 {copy.reinstallNomosAction}
@@ -189,6 +286,10 @@ export function ProjectDetailPage() {
               <p className="type-body-sm break-all">{nomos.nomosId}</p>
             </div>
             <div className="space-y-2">
+              <p className="field-label">{copy.activationStatusLabel}</p>
+              <p className="type-body-sm">{nomos.activationStatus}</p>
+            </div>
+            <div className="space-y-2">
               <p className="field-label">{copy.repoPathLabel}</p>
               <p className="type-body-sm break-all">{nomos.repoPath ?? copy.emptySummary}</p>
             </div>
@@ -212,7 +313,127 @@ export function ProjectDetailPage() {
               <p className="field-label">{copy.lifecycleModulesLabel}</p>
               <p className="type-body-sm">{nomos.lifecycleModules.join(', ')}</p>
             </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.draftRootLabel}</p>
+              <p className="type-body-sm break-all">{nomos.draftRoot}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.activeRootLabel}</p>
+              <p className="type-body-sm break-all">{nomos.activeRoot}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="field-label" htmlFor="nomos-export-dir">{copy.exportDirLabel}</label>
+              <input
+                id="nomos-export-dir"
+                className="input-shell"
+                value={exportDir}
+                onChange={(event) => setExportDir(event.target.value)}
+                placeholder="/tmp/exported-pack"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="field-label" htmlFor="nomos-pack-dir">{copy.packDirLabel}</label>
+              <input
+                id="nomos-pack-dir"
+                className="input-shell"
+                value={packDir}
+                onChange={(event) => setPackDir(event.target.value)}
+                placeholder="/tmp/exported-pack"
+              />
+            </div>
           </div>
+          {reviewReport ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2" data-testid="project-nomos-review">
+              <div className="space-y-2">
+                <p className="field-label">{copy.reviewTitle}</p>
+                <p className="type-body-sm">{reviewReport.projectId}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.reviewCanActivateLabel}</p>
+                <p className="type-body-sm">{reviewReport.canActivate ? copy.yesLabel : copy.noLabel}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.reviewActivePackLabel}</p>
+                <p className="type-body-sm break-all">{reviewReport.active.packId}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.reviewDraftPackLabel}</p>
+                <p className="type-body-sm break-all">{reviewReport.draft?.packId ?? copy.noneLabel}</p>
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <p className="field-label">{copy.reviewIssuesLabel}</p>
+                <p className="type-body-sm">{reviewReport.issues.length > 0 ? reviewReport.issues.join(' | ') : copy.noneLabel}</p>
+              </div>
+            </div>
+          ) : null}
+          {activationReport ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2" data-testid="project-nomos-activation">
+              <div className="space-y-2">
+                <p className="field-label">{copy.activationStatusLabel}</p>
+                <p className="type-body-sm">{activationReport.activationStatus}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.nomosIdLabel}</p>
+                <p className="type-body-sm break-all">{activationReport.nomosId}</p>
+              </div>
+            </div>
+          ) : null}
+          {validationReport ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2" data-testid="project-nomos-validation">
+              <div className="space-y-2">
+                <p className="field-label">{copy.validationTitle}</p>
+                <p className="type-body-sm">{validationReport.projectId}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.validationTargetLabel}</p>
+                <p className="type-body-sm">{validationReport.target}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.validationValidLabel}</p>
+                <p className="type-body-sm">{validationReport.valid ? copy.yesLabel : copy.noLabel}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.reviewDraftPackLabel}</p>
+                <p className="type-body-sm break-all">{validationReport.pack?.packId ?? copy.noneLabel}</p>
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <p className="field-label">{copy.validationIssuesLabel}</p>
+                <p className="type-body-sm">
+                  {validationReport.issues.length > 0
+                    ? validationReport.issues.map((issue) => issue.message).join(' | ')
+                    : copy.noneLabel}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {diffReport ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2" data-testid="project-nomos-diff">
+              <div className="space-y-2">
+                <p className="field-label">{copy.diffTitle}</p>
+                <p className="type-body-sm">{diffReport.projectId}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.diffChangedLabel}</p>
+                <p className="type-body-sm">{diffReport.changed ? copy.yesLabel : copy.noLabel}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.diffBaseLabel}</p>
+                <p className="type-body-sm">{diffReport.base}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.diffCandidateLabel}</p>
+                <p className="type-body-sm">{diffReport.candidate}</p>
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <p className="field-label">{copy.diffFieldsLabel}</p>
+                <p className="type-body-sm">
+                  {diffReport.differences.length > 0
+                    ? diffReport.differences.map((entry) => entry.field).join(', ')
+                    : copy.noneLabel}
+                </p>
+              </div>
+            </div>
+          ) : null}
           {doctorReport ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">

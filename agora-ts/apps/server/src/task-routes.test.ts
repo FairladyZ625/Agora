@@ -699,6 +699,68 @@ describe('task routes', () => {
     });
   });
 
+  it('serves project-level Nomos validate and diff output through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-validate-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-validate-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-validate');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-VALIDATE',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-validate',
+        name: 'Project Validate Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const validateResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-validate/nomos/validate?target=draft',
+    });
+    const diffResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-validate/nomos/diff?base=builtin&candidate=draft',
+    });
+
+    expect(validateResponse.statusCode).toBe(200);
+    expect(validateResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-validate',
+      target: 'draft',
+      valid: true,
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-validate',
+      }),
+    });
+    expect(diffResponse.statusCode).toBe(200);
+    expect(diffResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-validate',
+      base: 'builtin',
+      candidate: 'draft',
+      changed: true,
+      candidate_pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-validate',
+      }),
+    });
+  });
+
   it('exports a project nomos pack and installs it into another project draft slot through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

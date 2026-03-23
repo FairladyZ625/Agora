@@ -5,7 +5,7 @@ import { noopPluginTrace, type PluginTrace } from "./trace";
 import type { CommandContext } from "./types";
 import type { CommandResult, OpenClawPluginApi } from "./types";
 
-const PROJECT_SUBCOMMANDS = new Set(["create", "list", "show"]);
+const PROJECT_SUBCOMMANDS = new Set(["create", "list", "show", "nomos"]);
 
 export function registerProjectCommands(
   api: OpenClawPluginApi,
@@ -52,6 +52,8 @@ export function registerProjectCommands(
             return await handleList(bridge, rest);
           case "show":
             return await handleShow(bridge, rest);
+          case "nomos":
+            return await handleNomos(bridge, rest, senderId);
           default:
             return { text: formatHelp() };
         }
@@ -229,6 +231,121 @@ async function handleShow(bridge: AgoraBridge, args: string[]): Promise<CommandR
   };
 }
 
+async function handleNomos(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
+  const [action, ...rest] = args;
+  switch (action) {
+    case "review": {
+      const projectId = rest[0];
+      if (!projectId) {
+        return { text: "Usage: /project nomos review <project_id>" };
+      }
+      const review = await bridge.reviewProjectNomos(projectId);
+      return {
+        text: [
+          `Nomos review for ${review.project_id}`,
+          `activation=${review.activation_status}`,
+          `can_activate=${review.can_activate ? "yes" : "no"}`,
+          `active=${review.active.pack_id}`,
+          `draft=${review.draft?.pack_id ?? "none"}`,
+          `issues=${review.issues.length}`,
+        ].join("\n"),
+      };
+    }
+    case "activate": {
+      const projectId = rest[0];
+      if (!projectId) {
+        return { text: "Usage: /project nomos activate <project_id>" };
+      }
+      const activation = await bridge.activateProjectNomos(projectId, senderId);
+      return {
+        text: [
+          `Activated Nomos for ${activation.project_id}`,
+          `nomos=${activation.nomos_id}`,
+          `status=${activation.activation_status}`,
+        ].join("\n"),
+      };
+    }
+    case "validate": {
+      const projectId = rest[0];
+      if (!projectId) {
+        return { text: "Usage: /project nomos validate <project_id> [--target draft|active]" };
+      }
+      const target = rest.includes("--target")
+        ? ((rest[rest.indexOf("--target") + 1] as "draft" | "active" | undefined) ?? "draft")
+        : "draft";
+      const validation = await bridge.validateProjectNomos(projectId, target === "active" ? "active" : "draft");
+      return {
+        text: [
+          `Nomos validation for ${validation.project_id}`,
+          `target=${validation.target}`,
+          `valid=${validation.valid ? "yes" : "no"}`,
+          `pack=${validation.pack?.pack_id ?? "none"}`,
+          `issues=${validation.issues.length}`,
+        ].join("\n"),
+      };
+    }
+    case "diff": {
+      const projectId = rest[0];
+      if (!projectId) {
+        return { text: "Usage: /project nomos diff <project_id> [--base builtin|active] [--candidate draft|active]" };
+      }
+      const base = rest.includes("--base")
+        ? ((rest[rest.indexOf("--base") + 1] as "builtin" | "active" | undefined) ?? "active")
+        : "active";
+      const candidate = rest.includes("--candidate")
+        ? ((rest[rest.indexOf("--candidate") + 1] as "draft" | "active" | undefined) ?? "draft")
+        : "draft";
+      const diff = await bridge.diffProjectNomos(projectId, {
+        base: base === "builtin" ? "builtin" : "active",
+        candidate: candidate === "active" ? "active" : "draft",
+      });
+      return {
+        text: [
+          `Nomos diff for ${diff.project_id}`,
+          `base=${diff.base}`,
+          `candidate=${diff.candidate}`,
+          `changed=${diff.changed ? "yes" : "no"}`,
+          `fields=${diff.differences.length ? diff.differences.map((entry) => entry.field).join(", ") : "none"}`,
+        ].join("\n"),
+      };
+    }
+    case "export": {
+      const projectId = rest[0];
+      const outputDir = flagValue(rest.slice(1), "--output-dir");
+      const target = (flagValue(rest.slice(1), "--target") as "draft" | "active" | undefined) ?? "draft";
+      if (!projectId || !outputDir) {
+        return { text: "Usage: /project nomos export <project_id> --output-dir <dir> [--target draft|active]" };
+      }
+      const exported = await bridge.exportProjectNomos(projectId, outputDir, target === "active" ? "active" : "draft");
+      return {
+        text: [
+          `Exported Nomos for ${exported.project_id}`,
+          `target=${exported.target}`,
+          `pack=${exported.pack?.pack_id ?? "none"}`,
+          `output=${exported.output_dir}`,
+        ].join("\n"),
+      };
+    }
+    case "install-pack": {
+      const projectId = rest[0];
+      const packDir = flagValue(rest.slice(1), "--pack-dir");
+      if (!projectId || !packDir) {
+        return { text: "Usage: /project nomos install-pack <project_id> --pack-dir <dir>" };
+      }
+      const installed = await bridge.installProjectNomosPack(projectId, packDir);
+      return {
+        text: [
+          `Installed Nomos pack into ${installed.project_id}`,
+          `pack=${installed.pack.pack_id}`,
+          `draft_root=${installed.installed_root}`,
+        ].join("\n"),
+      };
+    }
+    default:
+      return { text: formatNomosHelp() };
+  }
+}
+
 function parseProjectCreateArgs(args: string[]) {
   let nameParts: string[] = [];
   let id: string | undefined;
@@ -281,6 +398,11 @@ function parseProjectCreateArgs(args: string[]) {
   };
 }
 
+function flagValue(args: string[], flag: string) {
+  const index = args.indexOf(flag);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
 function formatHelp() {
   return [
     "Agora /project commands:",
@@ -293,6 +415,19 @@ function formatHelp() {
     "/project create <name> [--id <project_id>] [--summary <summary>] [--repo-path <path>] [--new-repo] [--nomos-id <nomos_id>] [--owner <owner>]",
     "/project list [status]",
     "/project show <project_id>",
+    "/project nomos <review|activate|validate|diff|export|install-pack> ...",
+  ].join("\n");
+}
+
+function formatNomosHelp() {
+  return [
+    "Agora /project nomos commands:",
+    "/project nomos review <project_id>",
+    "/project nomos activate <project_id>",
+    "/project nomos validate <project_id> [--target draft|active]",
+    "/project nomos diff <project_id> [--base builtin|active] [--candidate draft|active]",
+    "/project nomos export <project_id> --output-dir <dir> [--target draft|active]",
+    "/project nomos install-pack <project_id> --pack-dir <dir>",
   ].join("\n");
 }
 

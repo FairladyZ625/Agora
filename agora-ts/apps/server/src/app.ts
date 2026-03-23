@@ -1365,6 +1365,44 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.get('/api/projects/:projectId/nomos/validate', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const query = (request.query as { target?: 'draft' | 'active' } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      return reply.send(validateProjectNomos(project.id, project.metadata ?? null, {
+        target: query.target === 'active' ? 'active' : 'draft',
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/diff', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const query = (request.query as {
+        base?: 'builtin' | 'active';
+        candidate?: 'draft' | 'active';
+      } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      return reply.send(diffProjectNomos(project.id, project.metadata ?? null, {
+        base: query.base === 'builtin' ? 'builtin' : 'active',
+        candidate: query.candidate === 'active' ? 'active' : 'draft',
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/projects/:projectId/nomos/doctor', async (request, reply) => {
     if (!projectBrainDoctorService) {
       return reply.status(503).send({ message: 'Project brain doctor service is not configured' });

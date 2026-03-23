@@ -65,6 +65,7 @@ describe('project mappers', () => {
   it('maps project nomos state, task summaries, and todo summaries', () => {
     expect(mapProjectNomosStateDto({
       nomos_id: 'agora/default',
+      activation_status: 'active_builtin',
       project_state_root: '/tmp/state',
       profile_path: '/tmp/state/profile.toml',
       profile_installed: true,
@@ -72,8 +73,15 @@ describe('project mappers', () => {
       repo_shim_installed: false,
       bootstrap_prompts_dir: '/tmp/state/prompts',
       lifecycle_modules: ['bootstrap', 'closeout'],
+      draft_root: '/tmp/state/nomos/project-nomos',
+      draft_profile_path: '/tmp/state/nomos/project-nomos/profile.toml',
+      draft_profile_installed: true,
+      active_root: '/tmp/state',
+      active_profile_path: '/tmp/state/profile.toml',
+      active_profile_installed: true,
     })).toEqual({
       nomosId: 'agora/default',
+      activationStatus: 'active_builtin',
       projectStateRoot: '/tmp/state',
       profilePath: '/tmp/state/profile.toml',
       profileInstalled: true,
@@ -81,6 +89,12 @@ describe('project mappers', () => {
       repoShimInstalled: false,
       bootstrapPromptsDir: '/tmp/state/prompts',
       lifecycleModules: ['bootstrap', 'closeout'],
+      draftRoot: '/tmp/state/nomos/project-nomos',
+      draftProfilePath: '/tmp/state/nomos/project-nomos/profile.toml',
+      draftProfileInstalled: true,
+      activeRoot: '/tmp/state',
+      activeProfilePath: '/tmp/state/profile.toml',
+      activeProfileInstalled: true,
     });
 
     const task = {

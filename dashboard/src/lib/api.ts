@@ -71,6 +71,7 @@ const projectNomosStateSchema = z.object({
   project_id: z.string().min(1),
   project_name: z.string().min(1),
   nomos_id: z.string().min(1),
+  activation_status: z.enum(['active_builtin', 'active_project']),
   project_state_root: z.string().min(1),
   profile_path: z.string().min(1),
   profile_installed: z.boolean(),
@@ -78,6 +79,12 @@ const projectNomosStateSchema = z.object({
   repo_shim_installed: z.boolean(),
   bootstrap_prompts_dir: z.string().min(1),
   lifecycle_modules: z.array(z.string().min(1)),
+  draft_root: z.string().min(1),
+  draft_profile_path: z.string().min(1),
+  draft_profile_installed: z.boolean(),
+  active_root: z.string().min(1),
+  active_profile_path: z.string().min(1),
+  active_profile_installed: z.boolean(),
 });
 
 export type ApiProjectNomosStateDto = z.infer<typeof projectNomosStateSchema>;
@@ -131,6 +138,94 @@ const projectNomosDoctorSchema = z.object({
 });
 
 export type ApiProjectNomosDoctorDto = z.infer<typeof projectNomosDoctorSchema>;
+
+const projectNomosPackSummarySchema = z.object({
+  pack_id: z.string().min(1),
+  name: z.string().min(1),
+  version: z.string().min(1),
+  description: z.string().min(1),
+  lifecycle_modules: z.array(z.string().min(1)),
+  doctor_checks: z.array(z.string().min(1)),
+  source: z.string().min(1),
+  root: z.string().min(1),
+  profile_path: z.string().min(1),
+});
+
+const projectNomosReviewSchema = z.object({
+  project_id: z.string().min(1),
+  activation_status: z.enum(['active_builtin', 'active_project']),
+  can_activate: z.boolean(),
+  issues: z.array(z.string()),
+  active: projectNomosPackSummarySchema,
+  draft: projectNomosPackSummarySchema.nullable(),
+});
+
+export type ApiProjectNomosReviewDto = z.infer<typeof projectNomosReviewSchema>;
+
+const projectNomosActivationSchema = z.object({
+  project_id: z.string().min(1),
+  nomos_id: z.string().min(1),
+  activation_status: z.literal('active_project'),
+  active_root: z.string().min(1),
+  active_profile_path: z.string().min(1),
+  activated_at: z.string().min(1),
+  activated_by: z.string().min(1),
+});
+
+export type ApiProjectNomosActivationDto = z.infer<typeof projectNomosActivationSchema>;
+
+const projectNomosValidationIssueSchema = z.object({
+  severity: z.enum(['error', 'warning']),
+  code: z.string().min(1),
+  message: z.string().min(1),
+  path: z.string().optional(),
+});
+
+const projectNomosValidationSchema = z.object({
+  project_id: z.string().min(1),
+  target: z.enum(['draft', 'active']),
+  valid: z.boolean(),
+  activation_status: z.enum(['active_builtin', 'active_project']),
+  pack: projectNomosPackSummarySchema.nullable(),
+  issues: z.array(projectNomosValidationIssueSchema),
+});
+
+export type ApiProjectNomosValidationDto = z.infer<typeof projectNomosValidationSchema>;
+
+const projectNomosDiffSchema = z.object({
+  project_id: z.string().min(1),
+  base: z.enum(['builtin', 'active']),
+  candidate: z.enum(['draft', 'active']),
+  changed: z.boolean(),
+  base_pack: projectNomosPackSummarySchema.nullable(),
+  candidate_pack: projectNomosPackSummarySchema.nullable(),
+  differences: z.array(z.object({
+    field: z.string().min(1),
+    from: z.unknown(),
+    to: z.unknown(),
+  })),
+});
+
+export type ApiProjectNomosDiffDto = z.infer<typeof projectNomosDiffSchema>;
+
+const projectNomosExportSchema = z.object({
+  project_id: z.string().min(1),
+  target: z.enum(['draft', 'active']),
+  output_dir: z.string().min(1),
+  pack: projectNomosPackSummarySchema.nullable(),
+});
+
+export type ApiProjectNomosExportDto = z.infer<typeof projectNomosExportSchema>;
+
+const projectNomosInstallPackSchema = z.object({
+  project_id: z.string().min(1),
+  pack: projectNomosPackSummarySchema,
+  installed_root: z.string().min(1),
+  installed_profile_path: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()),
+});
+
+export type ApiProjectNomosInstallPackDto = z.infer<typeof projectNomosInstallPackSchema>;
 
 class ApiError extends Error {
   status: number;
@@ -800,6 +895,84 @@ export function runProjectNomosDoctor(projectId: string): Promise<ApiProjectNomo
   return request<ApiProjectNomosDoctorDto>(
     `/projects/${encodeURIComponent(projectId)}/nomos/doctor`,
     projectNomosDoctorSchema,
+  );
+}
+
+export function reviewProjectNomos(projectId: string): Promise<ApiProjectNomosReviewDto> {
+  return request<ApiProjectNomosReviewDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/review`,
+    projectNomosReviewSchema,
+  );
+}
+
+export function activateProjectNomos(projectId: string, actor: string): Promise<ApiProjectNomosActivationDto> {
+  return request<ApiProjectNomosActivationDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/activate`,
+    projectNomosActivationSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ actor }),
+    },
+  );
+}
+
+export function validateProjectNomos(
+  projectId: string,
+  target: 'draft' | 'active' = 'draft',
+): Promise<ApiProjectNomosValidationDto> {
+  const params = new URLSearchParams({ target });
+  return request<ApiProjectNomosValidationDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/validate?${params.toString()}`,
+    projectNomosValidationSchema,
+  );
+}
+
+export function diffProjectNomos(
+  projectId: string,
+  input: { base?: 'builtin' | 'active'; candidate?: 'draft' | 'active' } = {},
+): Promise<ApiProjectNomosDiffDto> {
+  const params = new URLSearchParams();
+  if (input.base) {
+    params.set('base', input.base);
+  }
+  if (input.candidate) {
+    params.set('candidate', input.candidate);
+  }
+  const query = params.toString();
+  return request<ApiProjectNomosDiffDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/diff${query ? `?${query}` : ''}`,
+    projectNomosDiffSchema,
+  );
+}
+
+export function exportProjectNomos(
+  projectId: string,
+  outputDir: string,
+  target: 'draft' | 'active' = 'draft',
+): Promise<ApiProjectNomosExportDto> {
+  return request<ApiProjectNomosExportDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/export`,
+    projectNomosExportSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        output_dir: outputDir,
+        target,
+      }),
+    },
+  );
+}
+
+export function installProjectNomosPack(projectId: string, packDir: string): Promise<ApiProjectNomosInstallPackDto> {
+  return request<ApiProjectNomosInstallPackDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/install-pack`,
+    projectNomosInstallPackSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        pack_dir: packDir,
+      }),
+    },
   );
 }
 

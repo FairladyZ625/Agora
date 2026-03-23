@@ -25,7 +25,7 @@ type HookName =
   | "session_end"
   | "message_received"
   | "message_sent"
-  | "before_agent_start"
+  | "before_prompt_build"
   | "agent_end";
 
 type RegisteredCommand = {
@@ -194,6 +194,44 @@ async function main() {
       commandBody: `/project show ${projectId}`,
       senderId: "smoke-user",
     });
+    const projectNomosReview = await api.runCommand("project", {
+      args: `nomos review ${projectId}`,
+      commandBody: `/project nomos review ${projectId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosValidate = await api.runCommand("project", {
+      args: `nomos validate ${projectId} --target draft`,
+      commandBody: `/project nomos validate ${projectId} --target draft`,
+      senderId: "smoke-user",
+    });
+    const projectNomosDiff = await api.runCommand("project", {
+      args: `nomos diff ${projectId} --base builtin --candidate draft`,
+      commandBody: `/project nomos diff ${projectId} --base builtin --candidate draft`,
+      senderId: "smoke-user",
+    });
+    const projectNomosActivate = await api.runCommand("project", {
+      args: `nomos activate ${projectId}`,
+      commandBody: `/project nomos activate ${projectId}`,
+      senderId: "smoke-user",
+    });
+    const targetProjectId = "proj-plugin-live-target";
+    const targetProjectName = "Plugin Live Target";
+    const targetCreate = await api.runCommand("project", {
+      args: `create ${targetProjectName}`,
+      commandBody: `/project create "${targetProjectName}" --id ${targetProjectId}`,
+      senderId: "smoke-user",
+    });
+    const exportDir = join(tempRoot, "plugin-exported-pack");
+    const projectNomosExport = await api.runCommand("project", {
+      args: `nomos export ${projectId} --output-dir ${exportDir}`,
+      commandBody: `/project nomos export ${projectId} --output-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallPack = await api.runCommand("project", {
+      args: `nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
+      commandBody: `/project nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
 
     if (!projectCreate.text.includes(`Created project ${projectId}`)) {
       throw new Error(`project create failed: ${projectCreate.text}`);
@@ -203,6 +241,27 @@ async function main() {
     }
     if (!projectShow.text.includes(`${projectId} | active | ${projectName}`)) {
       throw new Error(`project show mismatch: ${projectShow.text}`);
+    }
+    if (!projectNomosReview.text.includes(`Nomos review for ${projectId}`)) {
+      throw new Error(`project nomos review failed: ${projectNomosReview.text}`);
+    }
+    if (!projectNomosValidate.text.includes("valid=yes")) {
+      throw new Error(`project nomos validate failed: ${projectNomosValidate.text}`);
+    }
+    if (!projectNomosDiff.text.includes("changed=yes")) {
+      throw new Error(`project nomos diff failed: ${projectNomosDiff.text}`);
+    }
+    if (!projectNomosActivate.text.includes("status=active_project")) {
+      throw new Error(`project nomos activate failed: ${projectNomosActivate.text}`);
+    }
+    if (!targetCreate.text.includes(`Created project ${targetProjectId}`)) {
+      throw new Error(`target project create failed: ${targetCreate.text}`);
+    }
+    if (!projectNomosExport.text.includes(`output=${exportDir}`)) {
+      throw new Error(`project nomos export failed: ${projectNomosExport.text}`);
+    }
+    if (!projectNomosInstallPack.text.includes(`Installed Nomos pack into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-pack failed: ${projectNomosInstallPack.text}`);
     }
 
     const taskCreate = await api.runCommand("task", {
@@ -234,8 +293,8 @@ async function main() {
       { sessionId: "sess-plugin-live-1", sessionKey, agentId: "smoke" },
     );
     await api.emitHook(
-      "before_agent_start",
-      { prompt: "run plugin live smoke" },
+      "before_prompt_build",
+      { prompt: "run plugin live smoke", messages: [] },
       {
         agentId: "smoke",
         sessionId: "sess-plugin-live-1",
@@ -358,6 +417,13 @@ async function main() {
             project_create: projectCreate.text,
             project_list: projectList.text,
             project_show: projectShow.text,
+            project_nomos_review: projectNomosReview.text,
+            project_nomos_validate: projectNomosValidate.text,
+            project_nomos_diff: projectNomosDiff.text,
+            project_nomos_activate: projectNomosActivate.text,
+            target_project_create: targetCreate.text,
+            project_nomos_export: projectNomosExport.text,
+            project_nomos_install_pack: projectNomosInstallPack.text,
             task_create: taskCreate.text,
           },
           live_session: sessions[0],
