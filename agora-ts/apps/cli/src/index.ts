@@ -11,14 +11,17 @@ import {
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   ensureProjectNomosAuthoringDraft,
+  activateProjectNomosDraft,
   refineProjectNomosDraftFromSpec,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   REPO_AGENTS_SHIM_SECTION_ORDER,
+  resolveProjectNomosState,
   resolveInstalledCreateNomosPackTemplateDir,
   resolveAgoraProjectStateLayout,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
+  reviewProjectNomosDraft,
   scaffoldNomosPack,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
@@ -1097,22 +1100,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--json', '输出 JSON', false)
     .action((projectId: string, options: { json?: boolean }) => {
       const project = projectService.requireProject(projectId);
-      const layout = resolveAgoraProjectStateLayout(projectId);
-      const metadata = project.metadata ?? null;
-      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
-      const profileInstalled = existsSync(layout.profilePath);
-      const repoShimInstalled = Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md')));
       const payload = {
-        project_id: project.id,
+        ...resolveProjectNomosState(project.id, project.metadata ?? null),
         project_name: project.name,
-        nomos_id: readProjectNomosId(project),
-        project_state_root: layout.root,
-        profile_path: layout.profilePath,
-        profile_installed: profileInstalled,
-        repo_path: repoPath,
-        repo_shim_installed: repoShimInstalled,
-        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
-        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
       };
       if (options.json) {
         writeLine(stdout, JSON.stringify(payload, null, 2));
@@ -1120,11 +1110,66 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `${payload.project_id} — ${payload.project_name}`);
       writeLine(stdout, `nomos: ${payload.nomos_id}`);
+      writeLine(stdout, `activation_status: ${payload.activation_status}`);
       writeLine(stdout, `project_state_root: ${payload.project_state_root}`);
       writeLine(stdout, `profile_installed: ${payload.profile_installed}`);
       writeLine(stdout, `repo_path: ${payload.repo_path ?? '-'}`);
       writeLine(stdout, `repo_shim_installed: ${payload.repo_shim_installed}`);
       writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
+      writeLine(stdout, `draft_root: ${payload.draft_root}`);
+      writeLine(stdout, `active_root: ${payload.active_root}`);
+    });
+
+  nomos
+    .command('review-project')
+    .description('review 某个 project 当前的 draft Nomos 是否可激活')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const review = reviewProjectNomosDraft(project.id, project.metadata ?? null);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(review, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos draft review: ${project.id}`);
+      writeLine(stdout, `activation_status: ${review.activation_status}`);
+      writeLine(stdout, `can_activate: ${review.can_activate}`);
+      writeLine(stdout, `draft_pack: ${review.draft?.pack_id ?? '-'}`);
+      if (review.issues.length > 0) {
+        writeLine(stdout, `issues: ${review.issues.join(' | ')}`);
+      }
+    });
+
+  nomos
+    .command('activate-project')
+    .description('激活某个 project 当前的 draft Nomos')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--actor <actor>', 'activation actor')
+    .option('--json', '输出 JSON', false)
+    .action((options: { projectId: string; actor: string; json?: boolean }) => {
+      const project = projectService.requireProject(options.projectId);
+      const activation = activateProjectNomosDraft(project.id, {
+        metadata: project.metadata ?? null,
+        actor: options.actor,
+      });
+      projectService.updateProjectMetadata(project.id, activation.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: activation.project_id,
+          nomos_id: activation.nomos_id,
+          activation_status: activation.activation_status,
+          active_root: activation.active_root,
+          active_profile_path: activation.active_profile_path,
+          activated_at: activation.activated_at,
+          activated_by: activation.activated_by,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos 已激活: ${activation.nomos_id}`);
+      writeLine(stdout, `project_id: ${activation.project_id}`);
+      writeLine(stdout, `activation_status: ${activation.activation_status}`);
+      writeLine(stdout, `active_root: ${activation.active_root}`);
     });
 
   nomos

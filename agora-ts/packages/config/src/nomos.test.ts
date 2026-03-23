@@ -264,6 +264,7 @@ describe('nomos pack model freeze', () => {
           source: 'builtin:agora-default',
           install_mode: 'copy_on_install',
           root_template: '~/.agora/projects/<project-id>',
+          activation_status: 'active_builtin',
         },
       },
     });

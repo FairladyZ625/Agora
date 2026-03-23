@@ -8,11 +8,14 @@ import {
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   ensureProjectNomosAuthoringDraft,
+  activateProjectNomosDraft,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   REPO_AGENTS_SHIM_SECTION_ORDER,
+  resolveProjectNomosState,
   resolveAgoraProjectStateLayout,
+  reviewProjectNomosDraft,
 } from '@agora-ts/config';
 import {
   craftsmanCallbackRequestSchema,
@@ -1198,20 +1201,54 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const { projectId } = request.params as { projectId: string };
       const project = projectService.requireProject(projectId);
-      const layout = resolveAgoraProjectStateLayout(projectId);
-      const metadata = project.metadata ?? null;
-      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
       return reply.send({
-        project_id: project.id,
+        ...resolveProjectNomosState(project.id, project.metadata ?? null),
         project_name: project.name,
-        nomos_id: readProjectNomosId(project),
-        project_state_root: layout.root,
-        profile_path: layout.profilePath,
-        profile_installed: existsSync(layout.profilePath),
-        repo_path: repoPath,
-        repo_shim_installed: Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md'))),
-        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
-        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/review', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const project = projectService.requireProject(projectId);
+      return reply.send(reviewProjectNomosDraft(project.id, project.metadata ?? null));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/activate', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as { actor?: string } | undefined) ?? {};
+      if (!payload.actor?.trim()) {
+        throw new Error('actor is required');
+      }
+      const project = projectService.requireProject(projectId);
+      const activation = activateProjectNomosDraft(project.id, {
+        metadata: project.metadata ?? null,
+        actor: payload.actor,
+      });
+      projectService.updateProjectMetadata(project.id, activation.metadata);
+      return reply.send({
+        project_id: activation.project_id,
+        nomos_id: activation.nomos_id,
+        activation_status: activation.activation_status,
+        active_root: activation.active_root,
+        active_profile_path: activation.active_profile_path,
+        activated_at: activation.activated_at,
+        activated_by: activation.activated_by,
       });
     } catch (error) {
       const translated = translateError(error);

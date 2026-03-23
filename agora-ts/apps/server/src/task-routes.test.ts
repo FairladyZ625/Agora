@@ -467,6 +467,7 @@ describe('task routes', () => {
     expect(inspectResponse.json()).toMatchObject({
       project_id: 'proj-nomos-rest',
       nomos_id: 'agora/default',
+      activation_status: 'active_builtin',
       project_state_root: join(agoraHomeDir, 'projects', 'proj-nomos-rest'),
       repo_path: repoRoot,
       repo_shim_installed: true,
@@ -474,6 +475,79 @@ describe('task routes', () => {
     });
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
     expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Project REST Nomos');
+  });
+
+  it('reviews and activates a project-specific nomos draft through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-activate');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-ACTIVATE',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-activate',
+        name: 'Project Activate Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const reviewResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-activate/nomos/review',
+    });
+    const activateResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-activate/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
+    });
+    const inspectResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-activate/nomos',
+    });
+
+    expect(reviewResponse.statusCode).toBe(200);
+    expect(reviewResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      can_activate: true,
+      draft: expect.objectContaining({
+        pack_id: 'project/proj-nomos-activate',
+      }),
+    });
+
+    expect(activateResponse.statusCode).toBe(200);
+    expect(activateResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      nomos_id: 'project/proj-nomos-activate',
+      activation_status: 'active_project',
+    });
+
+    expect(inspectResponse.statusCode).toBe(200);
+    expect(inspectResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      nomos_id: 'project/proj-nomos-activate',
+      activation_status: 'active_project',
+      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos'),
+    });
   });
 
   it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {
