@@ -10,9 +10,11 @@ import {
   REPO_AGENTS_SHIM_SECTION_ORDER,
   buildBuiltInAgoraNomosProjectProfile,
   ensureAgoraProjectStateLayout,
+  ensureProjectNomosAuthoringDraft,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   nomosProjectProfileSchema,
+  resolveInstalledCreateNomosPackTemplateDir,
   scaffoldNomosPack,
   renderNomosProjectProfileToml,
   renderRepoAgentsShim,
@@ -62,7 +64,9 @@ describe('nomos pack model freeze', () => {
     expect(layout.root).toBe(join(agoraHomeDir, 'projects', 'proj-layout'));
     expect(layout.profilePath).toBe(join(agoraHomeDir, 'projects', 'proj-layout', 'profile.toml'));
     expect(layout.docsReferenceDir).toBe(join(agoraHomeDir, 'projects', 'proj-layout', 'docs', 'reference'));
+    expect(layout.docsReferenceProjectNomosSpecPath).toBe(join(agoraHomeDir, 'projects', 'proj-layout', 'docs', 'reference', 'project-nomos-authoring-spec.md'));
     expect(layout.bootstrapPromptsDir).toBe(join(agoraHomeDir, 'projects', 'proj-layout', 'prompts', 'bootstrap'));
+    expect(layout.projectNomosDraftDir).toBe(join(agoraHomeDir, 'projects', 'proj-layout', 'nomos', 'project-nomos'));
     expect(layout.allDirectories).toContain(join(agoraHomeDir, 'projects', 'proj-layout', 'brain'));
   });
 
@@ -148,6 +152,32 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(installed.layout.lifecycleProjectArchivePath, 'utf8')).toContain('Project Archive Lifecycle');
     expect(readFileSync(installed.layout.lifecycleGovernanceDoctorPath, 'utf8')).toContain('Governance Doctor Lifecycle');
     expect(readFileSync(installed.layout.doctorProjectPromptPath, 'utf8')).toContain('Project Doctor');
+  });
+
+  it('creates a project-nomos authoring spec and draft pack inside global project state', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const templateRoot = resolveInstalledCreateNomosPackTemplateDir({ userAgoraDir: agoraHomeDir });
+    mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(templateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(templateRoot, 'README.md'), '# Template\n', 'utf8');
+    writeFileSync(join(templateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(templateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const result = ensureProjectNomosAuthoringDraft('proj-authoring', 'Authoring Project', {
+      userAgoraDir: agoraHomeDir,
+      repoPath: '/tmp/authoring-repo',
+      nomosId: 'agora/default',
+    });
+
+    expect(result.specPath).toBe(join(agoraHomeDir, 'projects', 'proj-authoring', 'docs', 'reference', 'project-nomos-authoring-spec.md'));
+    expect(result.draftDir).toBe(join(agoraHomeDir, 'projects', 'proj-authoring', 'nomos', 'project-nomos'));
+    expect(result.draftProfilePath).toBe(join(agoraHomeDir, 'projects', 'proj-authoring', 'nomos', 'project-nomos', 'profile.toml'));
+    expect(existsSync(result.specPath)).toBe(true);
+    expect(existsSync(result.draftProfilePath!)).toBe(true);
+    expect(readFileSync(result.specPath, 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(result.specPath, 'utf8')).toContain('/tmp/authoring-repo');
+    expect(readFileSync(result.draftProfilePath!, 'utf8')).toContain('id = "project/proj-authoring"');
+    expect(readFileSync(result.draftProfilePath!, 'utf8')).toContain('name = "Authoring Project Nomos"');
   });
 
   it('merges persisted project metadata with the installed Nomos boundary', () => {
