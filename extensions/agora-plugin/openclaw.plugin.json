@@ -13,6 +13,10 @@
       "apiToken": {
         "type": "string",
         "default": ""
+      },
+      "traceNativeSlash": {
+        "type": "boolean",
+        "default": false
       }
     }
   },
@@ -24,6 +28,10 @@
     "apiToken": {
       "label": "Agora API Token",
       "help": "Optional Bearer token used for authenticated Agora API requests"
+    },
+    "traceNativeSlash": {
+      "label": "Trace Native Slash",
+      "help": "Emit structured slash-command dispatch traces through the OpenClaw gateway logger"
     }
   }
 }

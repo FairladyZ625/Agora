@@ -1,11 +1,17 @@
 import { AgoraBridge } from "./bridge";
 import { resolveCommandTokens } from "./command-args";
 import { createWizardStore, resolveCreateWizardSessionKey } from "./create-wizard-store";
+import { noopPluginTrace, type PluginTrace } from "./trace";
+import type { CommandContext } from "./types";
 import type { CommandResult, OpenClawPluginApi } from "./types";
 
 const PROJECT_SUBCOMMANDS = new Set(["create", "list", "show"]);
 
-export function registerProjectCommands(api: OpenClawPluginApi, bridge: AgoraBridge): void {
+export function registerProjectCommands(
+  api: OpenClawPluginApi,
+  bridge: AgoraBridge,
+  trace: PluginTrace = noopPluginTrace,
+): void {
   api.registerCommand({
     name: "project",
     description: "Agora project management",
@@ -16,14 +22,25 @@ export function registerProjectCommands(api: OpenClawPluginApi, bridge: AgoraBri
       const [subcommand, ...rest] = tokens;
       const senderId = ctx.senderId || ctx.from || "archon";
       const wizardSessionKey = resolveCreateWizardSessionKey("project", ctx);
+      const wizardSession = createWizardStore.get(wizardSessionKey);
+      trace.slash(ctx, {
+        event: "dispatch",
+        command: "project",
+        subcommand,
+        tokens,
+        wizardSessionKey,
+        wizardState: wizardSession ? `${wizardSession.kind}:${wizardSession.step}` : undefined,
+      });
 
       try {
         const wizardResult = await maybeHandleProjectWizard({
           bridge,
+          ctx,
           senderId,
           tokens,
           subcommand,
           wizardSessionKey,
+          trace,
         });
         if (wizardResult) {
           return wizardResult;
@@ -48,10 +65,12 @@ export function registerProjectCommands(api: OpenClawPluginApi, bridge: AgoraBri
 
 async function maybeHandleProjectWizard(input: {
   bridge: AgoraBridge;
+  ctx: CommandContext;
   senderId: string;
   tokens: string[];
   subcommand?: string;
   wizardSessionKey: string;
+  trace: PluginTrace;
 }): Promise<CommandResult | null> {
   const session = createWizardStore.get(input.wizardSessionKey);
   if (input.subcommand === "create" && input.tokens.length === 1) {
@@ -59,6 +78,14 @@ async function maybeHandleProjectWizard(input: {
       kind: "project",
       step: "name",
       senderId: input.senderId,
+    });
+    input.trace.slash(input.ctx, {
+      event: "wizard_start",
+      command: "project",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: "project:name",
     });
     return { text: formatProjectWizardNamePrompt() };
   }
@@ -75,6 +102,15 @@ async function maybeHandleProjectWizard(input: {
 
   const answer = normalizeWizardAnswer(input.tokens);
   if (!answer || answer === "help") {
+    input.trace.slash(input.ctx, {
+      event: "wizard_prompt",
+      command: "project",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: `${session.kind}:${session.step}`,
+      note: "help_or_empty",
+    });
     return {
       text: session.step === "name"
         ? formatProjectWizardNamePrompt()
@@ -83,6 +119,14 @@ async function maybeHandleProjectWizard(input: {
   }
   if (answer === "cancel") {
     createWizardStore.clear(input.wizardSessionKey);
+    input.trace.slash(input.ctx, {
+      event: "wizard_cancel",
+      command: "project",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: `${session.kind}:${session.step}`,
+    });
     return { text: "Project create wizard cancelled." };
   }
 
@@ -92,6 +136,15 @@ async function maybeHandleProjectWizard(input: {
       step: "summary",
       senderId: input.senderId,
       name: answer,
+    });
+    input.trace.slash(input.ctx, {
+      event: "wizard_prompt",
+      command: "project",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: "project:summary",
+      note: `name=${answer}`,
     });
     return { text: formatProjectWizardSummaryPrompt(answer) };
   }
@@ -103,6 +156,15 @@ async function maybeHandleProjectWizard(input: {
     owner: input.senderId,
   });
   createWizardStore.clear(input.wizardSessionKey);
+  input.trace.slash(input.ctx, {
+    event: "wizard_complete",
+    command: "project",
+    subcommand: input.subcommand,
+    tokens: input.tokens,
+    wizardSessionKey: input.wizardSessionKey,
+    wizardState: "project:summary",
+    note: `project_id=${project.id}`,
+  });
   return {
     text: [
       `Created project ${project.id}`,

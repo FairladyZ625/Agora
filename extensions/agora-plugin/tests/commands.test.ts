@@ -2,15 +2,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerTaskCommands, tokenize } from "../src/commands";
 import { resetCreateWizardStore } from "../src/create-wizard-store";
+import { createPluginTrace } from "../src/trace";
 
 function buildApi() {
   let registered: any = null;
+  const loggerMessages = {
+    info: [] as string[],
+    error: [] as string[],
+  };
   return {
     api: {
+      pluginConfig: {
+        traceNativeSlash: true,
+      },
+      logger: {
+        info(message: string) {
+          loggerMessages.info.push(message);
+        },
+        error(message: string) {
+          loggerMessages.error.push(message);
+        },
+      },
       registerCommand(command: any) {
         registered = command;
       },
     },
+    loggerMessages,
     getCommand() {
       return registered;
     },
@@ -37,7 +54,7 @@ describe("registerTaskCommands", () => {
   it("returns help when subcommand is unknown", async () => {
     const { api, getCommand } = buildApi();
     const bridge = {} as any;
-    registerTaskCommands(api as any, bridge);
+    registerTaskCommands(api as any, bridge, createPluginTrace(api as any));
 
     const result = await getCommand().handler({ args: "unknown", senderId: "u1" });
     expect(result.text).toContain("Agora /task commands:");
@@ -49,7 +66,7 @@ describe("registerTaskCommands", () => {
   it("starts a create wizard when title is missing", async () => {
     const { api, getCommand } = buildApi();
     const bridge = {} as any;
-    registerTaskCommands(api as any, bridge);
+    registerTaskCommands(api as any, bridge, createPluginTrace(api as any));
 
     const result = await getCommand().handler({ args: "create", senderId: "u1" });
     expect(result.text).toContain("Task create wizard");
@@ -60,7 +77,7 @@ describe("registerTaskCommands", () => {
   it("returns guided help when no subcommand is provided inside a task thread", async () => {
     const { api, getCommand } = buildApi();
     const bridge = {} as any;
-    registerTaskCommands(api as any, bridge);
+    registerTaskCommands(api as any, bridge, createPluginTrace(api as any));
 
     const result = await getCommand().handler({
       args: "",
@@ -79,7 +96,7 @@ describe("registerTaskCommands", () => {
   it("returns invalid-type guidance for unknown create types", async () => {
     const { api, getCommand } = buildApi();
     const bridge = {} as any;
-    registerTaskCommands(api as any, bridge);
+    registerTaskCommands(api as any, bridge, createPluginTrace(api as any));
 
     const result = await getCommand().handler({ args: 'create "hello world" wrong_type', senderId: "u1" });
 
@@ -92,7 +109,7 @@ describe("registerTaskCommands", () => {
     const createTask = vi.fn(async () => ({ id: "OC-001", type: "coding", title: "hello world" }));
     const { api, getCommand } = buildApi();
     const bridge = { createTask } as any;
-    registerTaskCommands(api as any, bridge);
+    registerTaskCommands(api as any, bridge, createPluginTrace(api as any));
 
     const result = await getCommand().handler({ args: 'create "hello world" coding', senderId: "u1" });
 
@@ -102,8 +119,8 @@ describe("registerTaskCommands", () => {
 
   it("walks the user through title then type and completes create", async () => {
     const createTask = vi.fn(async () => ({ id: "OC-WIZ-1", type: "coding", title: "guided task smoke" }));
-    const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, { createTask } as any);
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerTaskCommands(api as any, { createTask } as any, createPluginTrace(api as any));
 
     const start = await getCommand().handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
     const title = await getCommand().handler({ args: '"guided task smoke"', senderId: "u1", provider: "discord", conversationId: "hall" });
@@ -115,12 +132,15 @@ describe("registerTaskCommands", () => {
     expect(createTask).toHaveBeenCalledWith("guided task smoke", "coding", "u1");
     expect(type.text).toContain("Created OC-WIZ-1");
     expect(type.text).toContain("Wizard complete.");
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_start"'))).toBe(true);
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_complete"'))).toBe(true);
+    expect(loggerMessages.info.some((message) => message.includes('"wizard_session_key":"task:discord:hall:u1"'))).toBe(true);
   });
 
   it("lets the user skip task type and falls back to coding", async () => {
     const createTask = vi.fn(async () => ({ id: "OC-WIZ-2", type: "coding", title: "guided default task" }));
     const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, { createTask } as any);
+    registerTaskCommands(api as any, { createTask } as any, createPluginTrace(api as any));
 
     await getCommand().handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
     await getCommand().handler({ args: '"guided default task"', senderId: "u1", provider: "discord", conversationId: "hall" });
@@ -132,8 +152,8 @@ describe("registerTaskCommands", () => {
 
   it("keeps task wizard open for invalid type and supports cancel", async () => {
     const createTask = vi.fn(async () => ({ id: "OC-WIZ-3", type: "coding", title: "guided invalid type" }));
-    const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, { createTask } as any);
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerTaskCommands(api as any, { createTask } as any, createPluginTrace(api as any));
 
     await getCommand().handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
     await getCommand().handler({ args: '"guided invalid type"', senderId: "u1", provider: "discord", conversationId: "hall" });
@@ -144,12 +164,14 @@ describe("registerTaskCommands", () => {
     expect(invalid.text).toContain("Task create wizard");
     expect(createTask).not.toHaveBeenCalled();
     expect(cancel.text).toBe("Task create wizard cancelled.");
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_invalid"'))).toBe(true);
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_cancel"'))).toBe(true);
   });
 
   it("prefers commandBody over lossy args for quoted create titles", async () => {
     const createTask = vi.fn(async () => ({ id: "OC-002", type: "coding", title: "human smoke create" }));
     const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, { createTask } as any);
+    registerTaskCommands(api as any, { createTask } as any, createPluginTrace(api as any));
 
     const result = await getCommand().handler({
       args: "create human smoke coding",
@@ -163,7 +185,7 @@ describe("registerTaskCommands", () => {
 
   it("can resolve help from commandBody even when args are missing", async () => {
     const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, {} as any);
+    registerTaskCommands(api as any, {} as any, createPluginTrace(api as any));
 
     const result = await getCommand().handler({
       commandBody: "/task help",
@@ -190,7 +212,7 @@ describe("registerTaskCommands", () => {
     ["unblock", "Usage: /task unblock <task_id> [reason]"],
   ])("returns usage when %s is missing required args", async (subcommand, expected) => {
     const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, {} as any);
+    registerTaskCommands(api as any, {} as any, createPluginTrace(api as any));
 
     const result = await getCommand().handler({ args: subcommand, senderId: "u1" });
 
@@ -218,7 +240,7 @@ describe("registerTaskCommands", () => {
       rejectCurrent: vi.fn(async () => ({ id: "OC-202" })),
     } as any;
     const { api, getCommand } = buildApi();
-    registerTaskCommands(api as any, bridge);
+    registerTaskCommands(api as any, bridge, createPluginTrace(api as any));
 
     await expect(getCommand().handler({ args: "list active", senderId: "u1" })).resolves.toEqual({
       text: "OC-101 | active | develop | Task one",
@@ -385,5 +407,27 @@ describe("registerTaskCommands", () => {
     const result = await getCommand().handler({ args: "status OC-500", senderId: "u1" });
 
     expect(result.text).toBe("Task command failed: nope");
+  });
+
+  it("emits trace logs for native slash dispatch fields", async () => {
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerTaskCommands(api as any, {} as any, createPluginTrace(api as any));
+
+    await getCommand().handler({
+      args: "create lossy title coding",
+      commandBody: '/task create "lossless title" coding',
+      senderId: "u1",
+      provider: "discord",
+      channelId: "guild-1",
+      conversationId: "hall",
+      threadId: "thread-1",
+    });
+
+    const dispatch = loggerMessages.info.find((message) => message.includes('"event":"dispatch"'));
+    expect(dispatch).toContain('"command":"task"');
+    expect(dispatch).toContain('"command_body":"/task create \\"lossless title\\" coding"');
+    expect(dispatch).toContain('"args":"create lossy title coding"');
+    expect(dispatch).toContain('"thread_id":"thread-1"');
+    expect(dispatch).toContain('"wizard_session_key":"task:discord:thread-1:u1"');
   });
 });
