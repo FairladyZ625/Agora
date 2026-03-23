@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import {
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   nomosProjectProfileSchema,
+  scaffoldNomosPack,
   renderNomosProjectProfileToml,
   renderRepoAgentsShim,
   resolveAgoraProjectStateLayout,
@@ -171,5 +172,43 @@ describe('nomos pack model freeze', () => {
         },
       },
     });
+  });
+
+  it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {
+    const templateRoot = join(makeAgoraHomeDir(), 'template');
+    mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(templateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(templateRoot, 'README.md'), '# Template\n', 'utf8');
+    writeFileSync(join(templateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(templateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const outputDir = join(makeAgoraHomeDir(), 'packs', 'acme-web');
+    const result = scaffoldNomosPack({
+      outputDir,
+      templateDir: templateRoot,
+      id: 'acme/web',
+      name: 'Acme Web Nomos',
+      description: 'Custom Nomos for Acme web delivery.',
+      version: '0.2.0',
+      lifecycleModules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+      doctorChecks: ['constitution-present', 'docs-skeleton-complete'],
+    });
+
+    expect(result.outputDir).toBe(outputDir);
+    expect(existsSync(join(outputDir, 'profile.toml'))).toBe(true);
+    expect(existsSync(join(outputDir, 'README.md'))).toBe(true);
+    expect(existsSync(join(outputDir, 'constitution', 'constitution.md'))).toBe(true);
+    expect(existsSync(join(outputDir, 'lifecycle', 'project-bootstrap.md'))).toBe(true);
+    expect(existsSync(join(outputDir, 'lifecycle', 'task-context-delivery.md'))).toBe(true);
+    expect(existsSync(join(outputDir, 'lifecycle', 'task-closeout.md'))).toBe(true);
+    expect(existsSync(join(outputDir, 'prompts', 'bootstrap', 'interview.md'))).toBe(true);
+    expect(readFileSync(join(outputDir, 'profile.toml'), 'utf8')).toContain('id = "acme/web"');
+    expect(readFileSync(join(outputDir, 'profile.toml'), 'utf8')).toContain('name = "Acme Web Nomos"');
+    expect(readFileSync(join(outputDir, 'profile.toml'), 'utf8')).toContain('version = "0.2.0"');
+    expect(readFileSync(join(outputDir, 'README.md'), 'utf8')).toContain('# Acme Web Nomos');
+    expect(readFileSync(join(outputDir, 'README.md'), 'utf8')).toContain('Custom Nomos for Acme web delivery.');
+    expect(readFileSync(join(outputDir, 'constitution', 'constitution.md'), 'utf8')).toContain('Acme Web Nomos');
+    expect(readFileSync(join(outputDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('Acme Web Nomos');
+    expect(readFileSync(join(outputDir, 'prompts', 'bootstrap', 'interview.md'), 'utf8')).toContain('Acme Web Nomos');
   });
 });

@@ -25,6 +25,12 @@ my-nomos/
 
 ## Minimum completion bar
 
+Preferred generation entry when CLI is available:
+
+```bash
+agora nomos scaffold --id <pack-id> --name "<pack name>" --description "<purpose>" --output-dir <target-dir>
+```
+
 The generated pack should let another agent answer:
 
 - What is this Nomos for?

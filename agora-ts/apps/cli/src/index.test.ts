@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -464,6 +464,41 @@ describe('agora-ts cli', () => {
       'id = "proj-existing-nomos"',
     );
     expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Existing Nomos Project');
+  });
+
+  it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const outputRoot = makeTempDir('agora-ts-cli-nomos-pack-');
+    const installedTemplateRoot = join(process.env.AGORA_HOME_DIR!, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+      taskService: { getHealthSnapshot: () => ({}) } as unknown as TaskService,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'nomos',
+      'scaffold',
+      '--id', 'acme/web',
+      '--name', 'Acme Web Nomos',
+      '--description', 'Custom Nomos for Acme web delivery.',
+      '--output-dir', join(outputRoot, 'acme-web'),
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos pack 已生成');
+    expect(stdout.value).toContain('Pack: acme/web@0.1.0');
+    expect(readFileSync(join(outputRoot, 'acme-web', 'profile.toml'), 'utf8')).toContain('id = "acme/web"');
+    expect(readFileSync(join(outputRoot, 'acme-web', 'README.md'), 'utf8')).toContain('# Acme Web Nomos');
   });
 
   it('creates a project-bound task through the cli', async () => {

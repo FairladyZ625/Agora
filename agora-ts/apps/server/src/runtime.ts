@@ -10,6 +10,7 @@ import {
 import {
   OpenAiCompatibleProjectBrainEmbeddingAdapter,
   ProjectBrainChunkingPolicy,
+  ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainIndexWorkerService,
@@ -154,6 +155,22 @@ function createDefaultProjectBrainIndexWorkerService(runtime: {
   });
 }
 
+function createDefaultProjectBrainDoctorService(runtime: {
+  config: AgoraConfig;
+  db: ReturnType<typeof createAgoraDatabase>;
+  projectBrainService: ReturnType<typeof buildServerComposition>['projectBrainService'];
+}) {
+  const embeddingPort = process.env.OPENAI_API_KEY
+    ? new OpenAiCompatibleProjectBrainEmbeddingAdapter()
+    : undefined;
+  return new ProjectBrainDoctorService({
+    dbPath: runtime.config.db_path,
+    projectBrainService: runtime.projectBrainService,
+    queueService: new ProjectBrainIndexQueueService(runtime.db),
+    ...(embeddingPort ? { embeddingPort } : {}),
+  });
+}
+
 export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   const config = loadAgoraConfig(options.configPath ?? process.env.AGORA_CONFIG_PATH ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
@@ -193,6 +210,11 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     db,
     projectBrainService: composition.projectBrainService,
   });
+  const projectBrainDoctorService = createDefaultProjectBrainDoctorService({
+    config,
+    db,
+    projectBrainService: composition.projectBrainService,
+  });
   const observationScheduler = createObservationScheduler({
     config,
     taskService,
@@ -222,6 +244,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
       writeMaxRequests: config.rate_limit.write_max_requests,
     },
     observability: config.observability,
+    projectBrainDoctorService,
     dashboardDir: resolveDashboardDir(),
     observationScheduler,
     discordPresenceService: composition.discordPresenceService,

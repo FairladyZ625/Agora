@@ -33,6 +33,16 @@ Do not use this skill for:
 
 Use the bundled template as the starting skeleton when the user wants a concrete pack output quickly. Customize it after the interview; do not ship the raw template unchanged.
 
+## Preferred generation path
+
+When Agora CLI is available, prefer generating the pack through:
+
+```bash
+agora nomos scaffold --id <pack-id> --name "<pack name>" --description "<purpose>" --output-dir <target-dir>
+```
+
+Then refine the generated files instead of hand-copying every file from scratch.
+
 ## Core rule
 
 Treat the work as **bone + fill**:
@@ -53,7 +63,8 @@ Do not collapse those two layers.
    - governance / doctor rules
    - bootstrap prompts
 4. Generate the pack directory skeleton.
-   - Prefer starting from `assets/pack-template/` when a concrete pack directory is needed.
+   - Prefer `agora nomos scaffold ...` when CLI is available.
+   - Otherwise start from `assets/pack-template/`.
 5. Write the minimum required files so the pack is installable and inspectable.
 
 ## Output requirements
