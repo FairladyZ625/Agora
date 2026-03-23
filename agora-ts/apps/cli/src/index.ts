@@ -20,7 +20,9 @@ import {
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
+  prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
+  requireSupportedNomosId,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   resolveInstalledCreateNomosPackTemplateDir,
@@ -151,14 +153,6 @@ function parseJsonOption(raw: string | undefined, context: string): Record<strin
 
 function collectOption(value: string, previous: string[] = []) {
   return [...previous, value];
-}
-
-function requireSupportedNomosId(raw: string | undefined) {
-  const nomosId = raw?.trim() || DEFAULT_AGORA_NOMOS_ID;
-  if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
-    throw new Error(`Unsupported nomos_id: ${nomosId}`);
-  }
-  return nomosId;
 }
 
 function collectStringOption(value: string, previous: string[]) {
@@ -1329,34 +1323,18 @@ export function createCliProgram(deps: CliDependencies = {}) {
       json?: boolean;
     }) => {
       const project = projectService.requireProject(options.projectId);
-      const preInstallNomosState = resolveProjectNomosState(project.id, project.metadata ?? null);
-      const preInstallRuntimePaths = resolveProjectNomosRuntimePaths(project.id, project.metadata ?? null);
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: project.metadata ?? {},
+        repoPath: options.repoPath,
         initializeRepo: options.initializeRepo ?? false,
         forceWriteRepoShim: options.forceWriteRepoShim ?? false,
       });
-      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
-        ...(options.repoPath ? { repoPath: options.repoPath } : {}),
-        nomosId: installedNomos.profile.pack.id,
-      });
-      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(project.metadata ?? {}),
-        ...(options.repoPath ? { repo_path: options.repoPath } : {}),
-      }, installedNomos.profile));
-      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
-      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
-      const effectiveRuntimePaths = preInstallNomosState.activation_status === 'active_project'
-        ? preInstallRuntimePaths
-        : runtimePaths;
-      const effectiveNomosState = preInstallNomosState.activation_status === 'active_project'
-        ? preInstallNomosState
-        : nomosState;
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       let bootstrapTaskId: string | null = null;
       if (!options.skipBootstrapTask && taskService) {
-        const bootstrapMode = options.repoPath
-          ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
-          : 'no_repo';
         const bootstrapTask = new ProjectBootstrapService({
           projectService,
           taskService,
@@ -1365,39 +1343,39 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_name: project.name,
           creator: options.creator ?? project.owner ?? 'archon',
           repo_path: options.repoPath,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: effectiveNomosState.nomos_id,
-          project_nomos_spec_path: authoringDraft.specPath,
-          project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: effectiveRuntimePaths.bootstrap_interview_prompt_path,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.effectiveNomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.effectiveRuntimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: preparedNomos.bootstrapMode,
         });
         bootstrapTaskId = bootstrapTask.id;
       }
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           project_id: project.id,
-          nomos: installedNomos.profile.pack,
-          project_state_root: installedNomos.layout.root,
-          repo_shim_path: installedNomos.repoShimPath,
-          repo_git_initialized: installedNomos.repoGitInitialized,
-          project_state_git_initialized: installedNomos.projectStateGitInitialized,
-          project_nomos_spec_path: authoringDraft.specPath,
-          project_nomos_draft_root: authoringDraft.draftDir,
+          nomos: preparedNomos.installedNomos.profile.pack,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          repo_shim_path: preparedNomos.installedNomos.repoShimPath,
+          repo_git_initialized: preparedNomos.installedNomos.repoGitInitialized,
+          project_state_git_initialized: preparedNomos.installedNomos.projectStateGitInitialized,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
           bootstrap_task_id: bootstrapTaskId,
         }, null, 2));
         return;
       }
-      writeLine(stdout, `Nomos 已安装: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Nomos 已安装: ${preparedNomos.installedNomos.profile.pack.id}@${preparedNomos.installedNomos.profile.pack.version}`);
       writeLine(stdout, `Project: ${project.id}`);
-      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
-      if (installedNomos.repoShimPath) {
-        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      writeLine(stdout, `Project State: ${preparedNomos.installedNomos.layout.root}`);
+      if (preparedNomos.installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${preparedNomos.installedNomos.repoShimPath}`);
       }
-      writeLine(stdout, `Project Nomos Spec: ${authoringDraft.specPath}`);
-      writeLine(stdout, `Project Nomos Draft: ${authoringDraft.draftDir}`);
-      writeLine(stdout, `Repo Git Initialized: ${installedNomos.repoGitInitialized}`);
-      writeLine(stdout, `Project State Git Initialized: ${installedNomos.projectStateGitInitialized}`);
+      writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
+      writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
+      writeLine(stdout, `Repo Git Initialized: ${preparedNomos.installedNomos.repoGitInitialized}`);
+      writeLine(stdout, `Project State Git Initialized: ${preparedNomos.installedNomos.projectStateGitInitialized}`);
       if (bootstrapTaskId) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTaskId}`);
       }
@@ -1475,23 +1453,15 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
       }) satisfies CreateProjectInputLike;
       const project = projectService.createProject(input);
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(input.repo_path ? { repoPath: input.repo_path } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: input.metadata ?? {},
+        repoPath: input.repo_path,
         initializeRepo: input.initialize_repo ?? false,
       });
-      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
-        ...(input.repo_path ? { repoPath: input.repo_path } : {}),
-        nomosId: installedNomos.profile.pack.id,
-      });
-      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(input.metadata ?? {}),
-        ...(input.repo_path ? { repo_path: input.repo_path } : {}),
-      }, installedNomos.profile));
-      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
-      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
-      const bootstrapMode = input.repo_path
-        ? (input.initialize_repo ? 'new_repo' : 'existing_repo')
-        : 'no_repo';
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       const bootstrapTask = taskService
         ? new ProjectBootstrapService({
           projectService,
@@ -1501,24 +1471,24 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_name: project.name,
           creator: project.owner ?? 'archon',
           repo_path: input.repo_path,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: nomosState.nomos_id,
-          project_nomos_spec_path: authoringDraft.specPath,
-          project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.nomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.runtimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: preparedNomos.bootstrapMode,
         })
         : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);
       writeLine(stdout, `名称: ${project.name}`);
       writeLine(stdout, `状态: ${project.status}`);
-      writeLine(stdout, `Nomos: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
-      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
-      if (installedNomos.repoShimPath) {
-        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      writeLine(stdout, `Nomos: ${preparedNomos.installedNomos.profile.pack.id}@${preparedNomos.installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Project State: ${preparedNomos.installedNomos.layout.root}`);
+      if (preparedNomos.installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${preparedNomos.installedNomos.repoShimPath}`);
       }
-      writeLine(stdout, `Project Nomos Spec: ${authoringDraft.specPath}`);
-      writeLine(stdout, `Project Nomos Draft: ${authoringDraft.draftDir}`);
+      writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
+      writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
       if (bootstrapTask) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
       }

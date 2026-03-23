@@ -16,7 +16,9 @@ import {
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
+  prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
+  requireSupportedNomosId,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   reviewProjectNomosDraft,
@@ -1081,10 +1083,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = createProjectRequestSchema.parse(request.body);
-      const nomosId = payload.nomos_id?.trim() || DEFAULT_AGORA_NOMOS_ID;
-      if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
-        throw new Error(`Unsupported nomos_id: ${nomosId}`);
-      }
+      const nomosId = requireSupportedNomosId(payload.nomos_id);
       const bootstrapMode = payload.repo_path
         ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
         : 'no_repo';
@@ -1095,20 +1094,15 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.owner ? { owner: payload.owner } : {}),
         ...(payload.metadata ? { metadata: payload.metadata } : {}),
       });
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: payload.metadata ?? {},
+        repoPath: payload.repo_path,
         initializeRepo: payload.initialize_repo ?? false,
       });
-      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
-        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
-        nomosId: installedNomos.profile.pack.id,
-      });
-      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(payload.metadata ?? {}),
-        ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
-      }, installedNomos.profile));
-      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
-      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       if (taskService) {
         new ProjectBootstrapService({
           projectService,
@@ -1118,15 +1112,15 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_name: project.name,
           creator: project.owner ?? 'archon',
           repo_path: payload.repo_path,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: nomosState.nomos_id,
-          project_nomos_spec_path: authoringDraft.specPath,
-          project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.nomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.runtimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: bootstrapMode,
         });
       }
-      return reply.send(persistedProject);
+      return reply.send(projectService.requireProject(project.id));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1278,31 +1272,18 @@ export function buildApp(options: BuildAppOptions = {}) {
       } | undefined) ?? {};
       const project = projectService.requireProject(projectId);
       const metadata = project.metadata ?? null;
-      const preInstallNomosState = resolveProjectNomosState(project.id, metadata);
-      const preInstallRuntimePaths = resolveProjectNomosRuntimePaths(project.id, metadata);
       const effectiveRepoPath = payload.repo_path
         ?? (typeof metadata?.repo_path === 'string' ? metadata.repo_path : undefined);
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(effectiveRepoPath ? { repoPath: effectiveRepoPath } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: project.metadata ?? {},
+        repoPath: effectiveRepoPath,
         initializeRepo: payload.initialize_repo ?? false,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
-      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
-        ...(effectiveRepoPath ? { repoPath: effectiveRepoPath } : {}),
-        nomosId: installedNomos.profile.pack.id,
-      });
-      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(project.metadata ?? {}),
-        ...(effectiveRepoPath ? { repo_path: effectiveRepoPath } : {}),
-      }, installedNomos.profile));
-      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
-      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
-      const effectiveRuntimePaths = preInstallNomosState.activation_status === 'active_project'
-        ? preInstallRuntimePaths
-        : runtimePaths;
-      const effectiveNomosState = preInstallNomosState.activation_status === 'active_project'
-        ? preInstallNomosState
-        : nomosState;
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
         const bootstrapMode = effectiveRepoPath
@@ -1316,24 +1297,24 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_name: project.name,
           creator: payload.creator ?? project.owner ?? 'archon',
           repo_path: effectiveRepoPath,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: effectiveNomosState.nomos_id,
-          project_nomos_spec_path: authoringDraft.specPath,
-          project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: effectiveRuntimePaths.bootstrap_interview_prompt_path,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.effectiveNomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.effectiveRuntimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: preparedNomos.bootstrapMode,
         });
         bootstrapTaskId = bootstrapTask.id;
       }
       return reply.send({
         project_id: project.id,
-        nomos: installedNomos.profile.pack,
-        project_state_root: installedNomos.layout.root,
-        repo_shim_path: installedNomos.repoShimPath,
-        repo_git_initialized: installedNomos.repoGitInitialized,
-        project_state_git_initialized: installedNomos.projectStateGitInitialized,
-        project_nomos_spec_path: authoringDraft.specPath,
-        project_nomos_draft_root: authoringDraft.draftDir,
+        nomos: preparedNomos.installedNomos.profile.pack,
+        project_state_root: preparedNomos.installedNomos.layout.root,
+        repo_shim_path: preparedNomos.installedNomos.repoShimPath,
+        repo_git_initialized: preparedNomos.installedNomos.repoGitInitialized,
+        project_state_git_initialized: preparedNomos.installedNomos.projectStateGitInitialized,
+        project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+        project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
         bootstrap_task_id: bootstrapTaskId,
       });
     } catch (error) {
