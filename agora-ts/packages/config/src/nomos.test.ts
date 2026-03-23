@@ -11,8 +11,10 @@ import {
   NOMOS_PROJECT_STATE_ROOT_TEMPLATE,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   buildBuiltInAgoraNomosProjectProfile,
+  exportProjectNomosPack,
   ensureAgoraProjectStateLayout,
   ensureProjectNomosAuthoringDraft,
+  installLocalNomosPackToProject,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   nomosProjectProfileSchema,
@@ -331,6 +333,43 @@ describe('nomos pack model freeze', () => {
       expect.arrayContaining(['project-archive', 'governance-doctor']),
     );
     expect(drift.removed_doctor_checks).toContain('repo-shim-present');
+  });
+
+  it('exports a project draft pack and installs it into another project draft slot', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-source', { userAgoraDir: agoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-source', 'Source Project', {
+      userAgoraDir: agoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+
+    const exportDir = join(agoraHomeDir, 'exports', 'source-pack');
+    const exported = exportProjectNomosPack('proj-source', sourceMetadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'draft',
+      outputDir: exportDir,
+    });
+
+    expect(existsSync(join(exportDir, 'profile.toml'))).toBe(true);
+    expect(exported.pack?.pack_id).toBe('project/proj-source');
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-target', { userAgoraDir: agoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installLocalNomosPackToProject('proj-target', targetMetadata, {
+      userAgoraDir: agoraHomeDir,
+      packDir: exportDir,
+    });
+
+    expect(installed.pack.pack_id).toBe('project/proj-source');
+    expect(existsSync(installed.installed_root)).toBe(true);
+    expect(installed.metadata.agora?.nomos?.draft_profile_path).toContain('/projects/proj-target/nomos/project-nomos/profile.toml');
+    const targetValidation = validateProjectNomos('proj-target', installed.metadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'draft',
+    });
+    expect(targetValidation.valid).toBe(true);
+    expect(targetValidation.pack?.pack_id).toBe('project/proj-source');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {

@@ -200,6 +200,33 @@ export interface ScaffoldNomosPackResult {
   readmePath: string;
 }
 
+export interface ExportProjectNomosPackOptions extends ResolveAgoraProjectStateOptions {
+  target?: 'draft' | 'active';
+  outputDir: string;
+  replaceExisting?: boolean;
+}
+
+export interface ExportProjectNomosPackResult {
+  project_id: string;
+  target: 'draft' | 'active';
+  output_dir: string;
+  pack: ProjectNomosPackSummary | null;
+}
+
+export interface InstallLocalNomosPackToProjectOptions extends ResolveAgoraProjectStateOptions {
+  packDir: string;
+  metadata?: Record<string, unknown> | null | undefined;
+  replaceExisting?: boolean;
+}
+
+export interface InstallLocalNomosPackToProjectResult {
+  project_id: string;
+  pack: ProjectNomosPackSummary;
+  installed_root: string;
+  installed_profile_path: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface EnsureProjectNomosAuthoringDraftOptions extends ResolveAgoraProjectStateOptions {
   repoPath?: string | null;
   nomosId?: string | null;
@@ -1123,6 +1150,88 @@ export function activateProjectNomosDraft(
     active_profile_path: review.draft.profile_path,
     activated_at: activatedAt,
     activated_by: options.actor,
+    metadata: nextMetadata,
+  };
+}
+
+export function exportProjectNomosPack(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ExportProjectNomosPackOptions,
+): ExportProjectNomosPackResult {
+  const target = options.target ?? 'draft';
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const root = target === 'active' ? state.active_root : state.draft_root;
+  const pack = resolveProjectNomosPackForTarget(projectId, state, target);
+  if (!pack || !existsSync(root)) {
+    throw new Error(`Cannot export Nomos pack for ${projectId}: ${target} pack is missing.`);
+  }
+
+  if (options.replaceExisting && existsSync(options.outputDir)) {
+    rmSync(options.outputDir, { recursive: true, force: true });
+  }
+  mkdirSync(options.outputDir, { recursive: true });
+  if (readdirSync(options.outputDir).length > 0) {
+    throw new Error(`Nomos export output directory must be empty: ${options.outputDir}`);
+  }
+  copyDirectoryRecursive(root, options.outputDir);
+
+  return {
+    project_id: projectId,
+    target,
+    output_dir: options.outputDir,
+    pack,
+  };
+}
+
+export function installLocalNomosPackToProject(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: InstallLocalNomosPackToProjectOptions,
+): InstallLocalNomosPackToProjectResult {
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const layout = resolveAgoraProjectStateLayout(projectId, options);
+  const sourceProfilePath = resolve(options.packDir, 'profile.toml');
+  if (!existsSync(options.packDir) || !existsSync(sourceProfilePath)) {
+    throw new Error(`Nomos pack directory is invalid: ${options.packDir}`);
+  }
+
+  if (options.replaceExisting ?? true) {
+    rmSync(layout.projectNomosDraftDir, { recursive: true, force: true });
+  }
+  mkdirSync(layout.projectNomosDraftDir, { recursive: true });
+  copyDirectoryRecursive(options.packDir, layout.projectNomosDraftDir);
+
+  const pack = loadProjectNomosPackSummary(
+    layout.projectNomosDraftDir,
+    layout.projectNomosDraftProfilePath,
+    'project_state_draft',
+  );
+  if (!pack) {
+    throw new Error(`Installed Nomos pack is missing profile: ${layout.projectNomosDraftProfilePath}`);
+  }
+
+  const existing = options.metadata ?? metadata ?? {};
+  const existingAgora = asRecord(asRecord(existing).agora);
+  const existingNomos = asRecord(existingAgora.nomos);
+  const nextMetadata = {
+    ...existing,
+    agora: {
+      ...existingAgora,
+      nomos: {
+        ...existingNomos,
+        draft_root: layout.projectNomosDraftDir,
+        draft_profile_path: layout.projectNomosDraftProfilePath,
+        draft_profile_installed: true,
+      },
+    },
+  } as Record<string, unknown>;
+
+  return {
+    project_id: projectId,
+    pack,
+    installed_root: layout.projectNomosDraftDir,
+    installed_profile_path: layout.projectNomosDraftProfilePath,
     metadata: nextMetadata,
   };
 }

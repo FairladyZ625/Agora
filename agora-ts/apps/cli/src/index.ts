@@ -12,8 +12,10 @@ import {
   buildBuiltInAgoraNomosProjectProfile,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
+  exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  installLocalNomosPackToProject,
   refineProjectNomosDraftFromSpec,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
@@ -1121,6 +1123,58 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
       writeLine(stdout, `draft_root: ${payload.draft_root}`);
       writeLine(stdout, `active_root: ${payload.active_root}`);
+    });
+
+  nomos
+    .command('export-project')
+    .description('导出某个 project 当前的 draft/active Nomos pack 到本地目录')
+    .argument('<projectId>', 'project id')
+    .requiredOption('--output-dir <path>', 'output directory for exported pack')
+    .option('--target <target>', 'export target: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: {
+      outputDir: string;
+      target?: 'draft' | 'active';
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(projectId);
+      const exported = exportProjectNomosPack(project.id, project.metadata ?? null, {
+        target: options.target === 'active' ? 'active' : 'draft',
+        outputDir: options.outputDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(exported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos pack 已导出: ${project.id}`);
+      writeLine(stdout, `target: ${exported.target}`);
+      writeLine(stdout, `output_dir: ${exported.output_dir}`);
+      writeLine(stdout, `pack_id: ${exported.pack?.pack_id ?? '-'}`);
+    });
+
+  nomos
+    .command('install-pack')
+    .description('把本地 Nomos pack 安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--pack-dir <path>', 'local pack directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      packDir: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installLocalNomosPackToProject(project.id, project.metadata ?? null, {
+        packDir: options.packDir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos pack 已安装到 draft: ${project.id}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
     });
 
   nomos

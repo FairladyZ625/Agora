@@ -574,6 +574,64 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('pack_id');
   });
 
+  it('exports a project nomos pack and installs it into another project through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-reuse-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-reuse-repo-');
+    const sourceRepoRoot = join(repoParent, 'repo-source');
+    const targetRepoRoot = join(repoParent, 'repo-target');
+    const exportDir = join(repoParent, 'exported-pack');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const generatedTaskIds = ['OC-NOMOS-REUSE-1', 'OC-NOMOS-REUSE-2'];
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => generatedTaskIds.shift() ?? 'OC-NOMOS-REUSE-X',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-source',
+      '--name', 'Source Project',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-target',
+      '--name', 'Target Project',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-project', 'proj-source',
+      '--output-dir', exportDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-pack',
+      '--project-id', 'proj-target',
+      '--pack-dir', exportDir,
+    ], { from: 'user' });
+    await program.parseAsync(['nomos', 'validate-project', 'proj-target'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos pack 已导出: proj-source');
+    expect(stdout.value).toContain('Nomos pack 已安装到 draft: proj-target');
+    expect(stdout.value).toContain('Project Nomos validation: proj-target (draft)');
+    expect(stdout.value).toContain('pack_id: project/proj-source');
+  });
+
   it('reruns bootstrap against the active project Nomos prompt after activation', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
