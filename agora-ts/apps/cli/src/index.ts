@@ -18,8 +18,8 @@ import {
   NOMOS_LIFECYCLE_MODULES,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   resolveProjectNomosState,
+  resolveProjectNomosRuntimePaths,
   resolveInstalledCreateNomosPackTemplateDir,
-  resolveAgoraProjectStateLayout,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   reviewProjectNomosDraft,
   scaffoldNomosPack,
@@ -1213,6 +1213,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       json?: boolean;
     }) => {
       const project = projectService.requireProject(options.projectId);
+      const preInstallNomosState = resolveProjectNomosState(project.id, project.metadata ?? null);
+      const preInstallRuntimePaths = resolveProjectNomosRuntimePaths(project.id, project.metadata ?? null);
       const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
         ...(options.repoPath ? { repoPath: options.repoPath } : {}),
         initializeRepo: options.initializeRepo ?? false,
@@ -1222,10 +1224,18 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.repoPath ? { repoPath: options.repoPath } : {}),
         nomosId: installedNomos.profile.pack.id,
       });
-      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(project.metadata ?? {}),
         ...(options.repoPath ? { repo_path: options.repoPath } : {}),
       }, installedNomos.profile));
+      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
+      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
+      const effectiveRuntimePaths = preInstallNomosState.activation_status === 'active_project'
+        ? preInstallRuntimePaths
+        : runtimePaths;
+      const effectiveNomosState = preInstallNomosState.activation_status === 'active_project'
+        ? preInstallNomosState
+        : nomosState;
       let bootstrapTaskId: string | null = null;
       if (!options.skipBootstrapTask && taskService) {
         const bootstrapMode = options.repoPath
@@ -1240,10 +1250,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
           creator: options.creator ?? project.owner ?? 'archon',
           repo_path: options.repoPath,
           project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
+          nomos_id: effectiveNomosState.nomos_id,
           project_nomos_spec_path: authoringDraft.specPath,
           project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_prompt_path: effectiveRuntimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: bootstrapMode,
         });
         bootstrapTaskId = bootstrapTask.id;
@@ -1357,10 +1367,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(input.repo_path ? { repoPath: input.repo_path } : {}),
         nomosId: installedNomos.profile.pack.id,
       });
-      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(input.metadata ?? {}),
         ...(input.repo_path ? { repo_path: input.repo_path } : {}),
       }, installedNomos.profile));
+      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
+      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
       const bootstrapMode = input.repo_path
         ? (input.initialize_repo ? 'new_repo' : 'existing_repo')
         : 'no_repo';
@@ -1374,10 +1386,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
           creator: project.owner ?? 'archon',
           repo_path: input.repo_path,
           project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
+          nomos_id: nomosState.nomos_id,
           project_nomos_spec_path: authoringDraft.specPath,
           project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: bootstrapMode,
         })
         : null;

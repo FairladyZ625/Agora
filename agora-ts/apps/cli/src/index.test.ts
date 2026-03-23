@@ -528,6 +528,51 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain(`active_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-activate', 'nomos', 'project-nomos')}`);
   });
 
+  it('reruns bootstrap against the active project Nomos prompt after activation', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-rerun-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-rerun-repo-');
+    const repoRoot = join(repoParent, 'repo-rerun');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    let taskCounter = 0;
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => `OC-NOMOS-RERUN-${++taskCounter}`,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-rerun',
+      '--name',
+      'Rerun Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'activate-project', '--project-id', 'proj-rerun', '--actor', 'archon'], { from: 'user' });
+    await program.parseAsync(['nomos', 'install', '--project-id', 'proj-rerun'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask('OC-NOMOS-RERUN-2')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
+  });
+
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

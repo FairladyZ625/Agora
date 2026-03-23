@@ -297,6 +297,15 @@ export interface ResolvedProjectNomosState {
   active_profile_installed: boolean;
 }
 
+export interface ProjectNomosRuntimePaths {
+  nomos_root: string;
+  lifecycle_root: string;
+  bootstrap_prompts_dir: string;
+  bootstrap_interview_prompt_path: string;
+  closeout_review_prompt_path: string;
+  doctor_project_prompt_path: string;
+}
+
 const REPO_AGENTS_SHIM_SECTION_TITLES: Record<RepoAgentsShimSection, string> = {
   general_constitution: 'General Constitution',
   pack_index: 'Pack Index',
@@ -767,7 +776,9 @@ export function resolveProjectNomosState(
     profile_installed: existsSync(layout.profilePath),
     repo_path: repoPath,
     repo_shim_installed: Boolean(repoPath && existsSync(resolve(repoPath, 'AGENTS.md'))),
-    bootstrap_prompts_dir: layout.bootstrapPromptsDir,
+    bootstrap_prompts_dir: activationStatus === 'active_project'
+      ? resolve(activeRoot, 'prompts', 'bootstrap')
+      : layout.bootstrapPromptsDir,
     lifecycle_modules: activeSummary?.lifecycle_modules ?? [...NOMOS_LIFECYCLE_MODULES],
     draft_root: draftRoot,
     draft_profile_path: draftProfilePath,
@@ -822,6 +833,33 @@ export function reviewProjectNomosDraft(
     issues,
     active: activeSummary,
     draft: draftSummary,
+  };
+}
+
+export function resolveProjectNomosRuntimePaths(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ResolveAgoraProjectStateOptions = {},
+): ProjectNomosRuntimePaths {
+  const layout = resolveAgoraProjectStateLayout(projectId, options);
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  if (state.activation_status === 'active_project') {
+    return {
+      nomos_root: state.active_root,
+      lifecycle_root: resolve(state.active_root, 'lifecycle'),
+      bootstrap_prompts_dir: resolve(state.active_root, 'prompts', 'bootstrap'),
+      bootstrap_interview_prompt_path: resolve(state.active_root, 'prompts', 'bootstrap', 'interview.md'),
+      closeout_review_prompt_path: resolve(state.active_root, 'prompts', 'closeout', 'review.md'),
+      doctor_project_prompt_path: resolve(state.active_root, 'prompts', 'doctor', 'project.md'),
+    };
+  }
+  return {
+    nomos_root: layout.root,
+    lifecycle_root: layout.lifecycleDir,
+    bootstrap_prompts_dir: layout.bootstrapPromptsDir,
+    bootstrap_interview_prompt_path: layout.bootstrapInterviewPromptPath,
+    closeout_review_prompt_path: layout.closeoutReviewPromptPath,
+    doctor_project_prompt_path: layout.doctorProjectPromptPath,
   };
 }
 

@@ -550,7 +550,7 @@ describe('task routes', () => {
     });
   });
 
-  it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {
+  it('reuses persisted repo_path and active Nomos bootstrap prompt when rerunning Nomos bootstrap through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-home-'));
@@ -561,9 +561,10 @@ describe('task routes', () => {
     const repoRoot = join(repoParent, 'repo-rerun');
     mkdirSync(repoRoot, { recursive: true });
     const projectService = new ProjectService(db);
+    let taskCounter = 0;
     const taskService = new TaskService(db, {
       templatesDir,
-      taskIdGenerator: () => 'OC-SERVER-NOMOS-RERUN',
+      taskIdGenerator: () => `OC-SERVER-NOMOS-RERUN-${++taskCounter}`,
       projectService,
     });
     const app = buildApp({
@@ -572,13 +573,22 @@ describe('task routes', () => {
       taskService,
     });
 
-    projectService.createProject({
-      id: 'proj-nomos-rerun',
-      name: 'Project Rerun Nomos',
-      owner: 'archon',
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-rerun',
+        name: 'Project Rerun Nomos',
+        repo_path: repoRoot,
+        initialize_repo: false,
+      },
     });
-    projectService.updateProjectMetadata('proj-nomos-rerun', {
-      repo_path: repoRoot,
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rerun/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
     });
 
     const response = await app.inject({
@@ -588,8 +598,11 @@ describe('task routes', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain('Bootstrap mode: `existing_repo`');
-    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain(repoRoot);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(repoRoot);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
   });
 
   it('serves project-level Nomos doctor output through the api', async () => {
