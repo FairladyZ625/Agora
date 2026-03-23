@@ -73,7 +73,7 @@ describe("registerLiveStatusBridge", () => {
     );
   });
 
-  it("projects before_agent_start and agent_end hooks into live snapshots", async () => {
+  it("projects before_prompt_build and agent_end hooks into live snapshots", async () => {
     const bridge = {
       upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
       ingestRuntimeIdentity: vi.fn().mockResolvedValue({ ok: true, identity: {} }),
@@ -82,12 +82,12 @@ describe("registerLiveStatusBridge", () => {
 
     registerLiveStatusBridge(api as never, bridge as never);
 
-    const beforeAgentStart = hooks.get("before_agent_start");
+    const beforePromptBuild = hooks.get("before_prompt_build");
     const agentEnd = hooks.get("agent_end");
-    expect(beforeAgentStart).toBeTypeOf("function");
+    expect(beforePromptBuild).toBeTypeOf("function");
     expect(agentEnd).toBeTypeOf("function");
 
-    await beforeAgentStart?.(
+    await beforePromptBuild?.(
       { prompt: "run a smoke task", messages: [] },
       {
         agentId: "ops",
@@ -118,7 +118,7 @@ describe("registerLiveStatusBridge", () => {
         agent_id: "ops",
         session_key: "agent:ops:discord:channel:alerts",
         status: "active",
-        last_event: "before_agent_start",
+        last_event: "before_prompt_build",
         metadata: expect.objectContaining({
           trigger: "user",
           sessionId: "sess-3",
@@ -150,11 +150,11 @@ describe("registerLiveStatusBridge", () => {
 
     registerLiveStatusBridge(api as never, bridge as never);
 
-    const beforeAgentStart = hooks.get("before_agent_start");
+    const beforePromptBuild = hooks.get("before_prompt_build");
     const agentEnd = hooks.get("agent_end");
 
-    await beforeAgentStart?.(
-      { prompt: "run fallback lifecycle" },
+    await beforePromptBuild?.(
+      { prompt: "run fallback lifecycle", messages: [] },
       {
         sessionKey: "agent:ops:discord:channel:alerts",
         sessionId: "sess-4",
@@ -177,7 +177,7 @@ describe("registerLiveStatusBridge", () => {
         agent_id: "ops",
         channel: "discord",
         conversation_id: "alerts",
-        last_event: "before_agent_start",
+        last_event: "before_prompt_build",
       }),
     );
     expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
@@ -204,12 +204,13 @@ describe("registerLiveStatusBridge", () => {
 
     registerLiveStatusBridge(api as never, bridge as never);
 
-    const beforeAgentStart = hooks.get("before_agent_start");
+    const beforePromptBuild = hooks.get("before_prompt_build");
     const agentEnd = hooks.get("agent_end");
 
-    await beforeAgentStart?.(
+    await beforePromptBuild?.(
       {
         prompt: "resume gemini",
+        messages: [],
         metadata: {
           workspaceRoot: "/Users/lizeyu/Projects/Agora",
           chatFile: "/tmp/gemini/session.json",
@@ -495,11 +496,11 @@ describe("registerLiveStatusBridge", () => {
 
     registerLiveStatusBridge(api as never, bridge as never);
 
-    const beforeAgentStart = hooks.get("before_agent_start");
+    const beforePromptBuild = hooks.get("before_prompt_build");
     const agentEnd = hooks.get("agent_end");
 
-    await beforeAgentStart?.(
-      { prompt: "missing session" },
+    await beforePromptBuild?.(
+      { prompt: "missing session", messages: [] },
       {
         agentId: "ops",
       },

@@ -52,12 +52,19 @@ export interface MessageHookContext {
   agentId?: string;
 }
 
-export interface AgentHookEvent {
+export interface PromptBuildHookEvent {
+  prompt: string;
+  messages: unknown[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentEndHookEvent {
   prompt?: string;
   messages?: unknown[];
   success?: boolean;
   error?: string;
   durationMs?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentHookContext {
@@ -90,17 +97,19 @@ export interface OpenClawPluginApi {
     start: () => void | Promise<void>;
     stop?: () => void | Promise<void>;
   }): void;
-  on?<K extends 'session_start' | 'session_end' | 'message_received' | 'message_sent' | 'before_agent_start' | 'agent_end'>(
+  on?<K extends 'session_start' | 'session_end' | 'message_received' | 'message_sent' | 'before_prompt_build' | 'agent_end'>(
     hook: K,
     handler: (
       event: K extends 'session_start' | 'session_end'
         ? SessionHookEvent
-        : K extends 'before_agent_start' | 'agent_end'
-          ? AgentHookEvent
+        : K extends 'before_prompt_build'
+          ? PromptBuildHookEvent
+          : K extends 'agent_end'
+            ? AgentEndHookEvent
           : MessageHookEvent,
       ctx: K extends 'session_start' | 'session_end'
         ? { sessionKey?: string; agentId?: string; sessionId: string }
-        : K extends 'before_agent_start' | 'agent_end'
+        : K extends 'before_prompt_build' | 'agent_end'
           ? AgentHookContext
         : MessageHookContext,
     ) => void | Promise<void>,
