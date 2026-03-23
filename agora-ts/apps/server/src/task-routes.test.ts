@@ -699,6 +699,79 @@ describe('task routes', () => {
     });
   });
 
+  it('exports a project nomos pack and installs it into another project draft slot through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const app = buildApp({
+      db,
+      projectService,
+    });
+    const repoRoot = mkdtempSync(join(tmpdir(), 'agora-nomos-export-source-'));
+    const targetRepoRoot = mkdtempSync(join(tmpdir(), 'agora-nomos-export-target-'));
+    const exportDir = mkdtempSync(join(tmpdir(), 'agora-nomos-export-pack-'));
+    tempPaths.push(repoRoot, targetRepoRoot, exportDir);
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-source',
+        name: 'Nomos Source',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-target',
+        name: 'Nomos Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-source/nomos/export',
+      payload: {
+        output_dir: exportDir,
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-target/nomos/install-pack',
+      payload: {
+        pack_dir: exportDir,
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-source',
+      target: 'draft',
+      output_dir: exportDir,
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-source',
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-source',
+      }),
+    });
+  });
+
   it('serves a project workbench detail bundle through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

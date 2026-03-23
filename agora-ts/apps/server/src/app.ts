@@ -9,8 +9,10 @@ import {
   buildBuiltInAgoraNomosProjectProfile,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
+  exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  installLocalNomosPackToProject,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
@@ -1334,6 +1336,48 @@ export function buildApp(options: BuildAppOptions = {}) {
         project_nomos_draft_root: authoringDraft.draftDir,
         bootstrap_task_id: bootstrapTaskId,
       });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/export', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        output_dir: string;
+        target?: 'draft' | 'active';
+      } | undefined) ?? { output_dir: '' };
+      const project = projectService.requireProject(projectId);
+      return reply.send(exportProjectNomosPack(project.id, project.metadata ?? null, {
+        outputDir: payload.output_dir,
+        target: payload.target === 'active' ? 'active' : 'draft',
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-pack', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        pack_dir: string;
+      } | undefined) ?? { pack_dir: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installLocalNomosPackToProject(project.id, project.metadata ?? null, {
+        packDir: payload.pack_dir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
