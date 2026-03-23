@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resetCreateWizardStore } from "../src/create-wizard-store";
 import { registerProjectCommands } from "../src/project-commands";
 
 function buildApi() {
@@ -17,6 +18,10 @@ function buildApi() {
 }
 
 describe("registerProjectCommands", () => {
+  beforeEach(() => {
+    resetCreateWizardStore();
+  });
+
   it("returns help for unknown subcommands", async () => {
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, {} as any);
@@ -29,15 +34,15 @@ describe("registerProjectCommands", () => {
     expect(result.text).toContain('/project create "Project Name"');
   });
 
-  it("returns usage when create is missing the project name", async () => {
+  it("starts a create wizard when project name is missing", async () => {
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, {} as any);
 
     const result = await getCommand("project").handler({ args: "create", senderId: "u1" });
 
-    expect(result.text).toContain("Ready to create a project.");
-    expect(result.text).toContain('/project create "Project Name"');
-    expect(result.text).toContain("--repo-path");
+    expect(result.text).toContain("Project create wizard");
+    expect(result.text).toContain("Step 1/2");
+    expect(result.text).toContain('/project "Project Name"');
   });
 
   it("creates projects through the bridge with parsed flags", async () => {
@@ -65,6 +70,57 @@ describe("registerProjectCommands", () => {
       owner: "u1",
     });
     expect(result.text).toContain("Created project proj-plugin");
+  });
+
+  it("walks the user through project name then summary and creates with defaults on skip", async () => {
+    const createProject = vi.fn(async () => ({
+      id: "proj-guided",
+      name: "Guided Project",
+      status: "active",
+      owner: "u1",
+    }));
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any);
+
+    const start = await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    const name = await getCommand("project").handler({ args: '"Guided Project"', senderId: "u1", provider: "discord", conversationId: "hall" });
+    const skip = await getCommand("project").handler({ args: "skip", senderId: "u1", provider: "discord", conversationId: "hall" });
+
+    expect(start.text).toContain("Step 1/2");
+    expect(name.text).toContain("Step 2/2");
+    expect(name.text).toContain("Guided Project");
+    expect(createProject).toHaveBeenCalledWith({
+      name: "Guided Project",
+      owner: "u1",
+    });
+    expect(skip.text).toContain("Created project proj-guided");
+    expect(skip.text).toContain("Wizard complete.");
+  });
+
+  it("accepts a summary in the project wizard and can cancel", async () => {
+    const createProject = vi.fn(async () => ({
+      id: "proj-guided-summary",
+      name: "Guided Summary Project",
+      status: "active",
+      owner: "u1",
+    }));
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any);
+
+    await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    await getCommand("project").handler({ args: '"Guided Summary Project"', senderId: "u1", provider: "discord", conversationId: "hall" });
+    const summary = await getCommand("project").handler({ args: '"A short summary"', senderId: "u1", provider: "discord", conversationId: "hall" });
+
+    expect(createProject).toHaveBeenCalledWith({
+      name: "Guided Summary Project",
+      summary: "A short summary",
+      owner: "u1",
+    });
+    expect(summary.text).toContain("Created project proj-guided-summary");
+
+    await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    const cancel = await getCommand("project").handler({ args: "cancel", senderId: "u1", provider: "discord", conversationId: "hall" });
+    expect(cancel.text).toBe("Project create wizard cancelled.");
   });
 
   it("prefers commandBody when discord native args truncate a quoted project name", async () => {
