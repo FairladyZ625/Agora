@@ -40,6 +40,14 @@ export class ProjectBootstrapService {
       description: buildHarnessBootstrapDescription(input),
       priority: 'high',
       project_id: input.project_id,
+      control: {
+        mode: 'normal',
+        nomos_authoring: {
+          kind: 'project_nomos',
+          project_id: input.project_id,
+          auto_refine_on_done: true,
+        },
+      },
     });
   }
 

@@ -5,6 +5,7 @@ import {
   hasInstalledBrainPack,
   loadAgoraConfig,
   normalizePathLikeEnvValue,
+  refineProjectNomosDraftFromSpec,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   syncBundledBrainPackContents,
   type AgoraConfig,
@@ -311,6 +312,9 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
       hostResourcePort: new OsHostResourcePort(),
       skillCatalogPort: new FilesystemSkillCatalogAdapter(),
+      projectNomosAuthoringPort: {
+        refineProjectNomosDraft: (projectId: string) => refineProjectNomosDraftFromSpec(projectId),
+      },
       craftsmanGovernance: {
         maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
         hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,

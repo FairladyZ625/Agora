@@ -2677,6 +2677,130 @@ describe('task service', () => {
     expect(archiveJobs[0]?.target_path).toContain('OC-114');
   });
 
+  it('auto-refines a project nomos draft when a fixed authoring task reaches done', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const refineProjectNomosDraft = vi.fn(() => ({
+      draftDir: '/tmp/project-nomos',
+      draftProfilePath: '/tmp/project-nomos/profile.toml',
+    }));
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-AUTHORING-1',
+      projectNomosAuthoringPort: {
+        refineProjectNomosDraft,
+      },
+    });
+
+    service.createTask({
+      title: 'Create Project Nomos: Example',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      control: {
+        mode: 'normal',
+        nomos_authoring: {
+          kind: 'project_nomos',
+          project_id: 'proj-nomos-loop',
+          auto_refine_on_done: true,
+        },
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'author', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['author'],
+          nodes: [
+            { id: 'author', kind: 'stage', gate: { type: 'command' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'author__complete__done', from: 'author', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    });
+
+    const done = service.advanceTask('OC-NOMOS-AUTHORING-1', { callerId: 'opus' });
+
+    expect(done).toMatchObject({
+      state: 'done',
+      current_stage: null,
+    });
+    expect(refineProjectNomosDraft).toHaveBeenCalledWith('proj-nomos-loop');
+  });
+
+  it('auto-refines a project nomos draft when a fixed authoring task is force-advanced to done', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const refineProjectNomosDraft = vi.fn(() => ({
+      draftDir: '/tmp/project-nomos',
+      draftProfilePath: '/tmp/project-nomos/profile.toml',
+    }));
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-AUTHORING-2',
+      projectNomosAuthoringPort: {
+        refineProjectNomosDraft,
+      },
+    });
+
+    service.createTask({
+      title: 'Create Project Nomos: Example Force',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      control: {
+        mode: 'normal',
+        nomos_authoring: {
+          kind: 'project_nomos',
+          project_id: 'proj-nomos-loop-force',
+          auto_refine_on_done: true,
+        },
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'author', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['author'],
+          nodes: [
+            { id: 'author', kind: 'stage', gate: { type: 'command' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'author__complete__done', from: 'author', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    });
+
+    const done = service.forceAdvanceTask('OC-NOMOS-AUTHORING-2', { reason: 'smoke' });
+
+    expect(done).toMatchObject({
+      state: 'done',
+      current_stage: null,
+    });
+    expect(refineProjectNomosDraft).toHaveBeenCalledWith('proj-nomos-loop-force');
+  });
+
   it('clears current_stage and blocks further gate decisions after force advancing a terminal stage to done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
