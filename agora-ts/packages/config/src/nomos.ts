@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { resolveUserAgoraDir, type EnsureBundledAgoraAssetsOptions } from './runtime-assets.js';
@@ -189,6 +189,7 @@ export interface ScaffoldNomosPackOptions {
   version?: string;
   lifecycleModules?: readonly NomosLifecycleModule[];
   doctorChecks?: readonly string[];
+  replaceExisting?: boolean;
 }
 
 export interface ScaffoldNomosPackResult {
@@ -208,6 +209,26 @@ export interface ProjectNomosAuthoringDraftResult {
   draftDir: string;
   draftProfilePath: string | null;
   scaffolded: boolean;
+}
+
+export interface ProjectNomosAuthoringSpec {
+  project_id: string;
+  project_name: string;
+  base_nomos_id: string;
+  project_shape: 'existing_repo' | 'new_repo' | 'no_repo';
+  repo_path: string | null;
+  purpose: string;
+  lifecycle_modules: NomosLifecycleModule[];
+  doctor_checks: string[];
+  methodology_keep: string[];
+  methodology_change: string[];
+  open_questions: string[];
+}
+
+export interface RefineProjectNomosDraftResult {
+  spec: ProjectNomosAuthoringSpec;
+  draftDir: string;
+  draftProfilePath: string;
 }
 
 const REPO_AGENTS_SHIM_SECTION_TITLES: Record<RepoAgentsShimSection, string> = {
@@ -339,6 +360,66 @@ export function ensureProjectNomosAuthoringDraft(
     draftDir: layout.projectNomosDraftDir,
     draftProfilePath: scaffolded.profilePath,
     scaffolded: true,
+  };
+}
+
+export function parseProjectNomosAuthoringSpec(path: string): ProjectNomosAuthoringSpec {
+  const raw = readFileSync(path, 'utf8');
+  const frontmatter = parseStructuredFrontmatter(raw);
+  const defaultShape = frontmatter.repo_path ? 'existing_repo' : 'no_repo';
+
+  return {
+    project_id: asRequiredString(frontmatter.project_id, 'project_id'),
+    project_name: asRequiredString(frontmatter.project_name, 'project_name'),
+    base_nomos_id: asOptionalString(frontmatter.base_nomos_id) ?? DEFAULT_AGORA_NOMOS_ID,
+    project_shape: asProjectShape(frontmatter.project_shape ?? defaultShape),
+    repo_path: asOptionalString(frontmatter.repo_path) ?? null,
+    purpose: asOptionalString(frontmatter.purpose) ?? '',
+    lifecycle_modules: asLifecycleModules(frontmatter.lifecycle_modules),
+    doctor_checks: asStringArray(frontmatter.doctor_checks, DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS),
+    methodology_keep: asStringArray(frontmatter.methodology_keep),
+    methodology_change: asStringArray(frontmatter.methodology_change),
+    open_questions: asStringArray(frontmatter.open_questions),
+  };
+}
+
+export function refineProjectNomosDraftFromSpec(
+  projectId: string,
+  options: ResolveAgoraProjectStateOptions = {},
+): RefineProjectNomosDraftResult {
+  const layout = resolveAgoraProjectStateLayout(projectId, options);
+  const spec = parseProjectNomosAuthoringSpec(layout.docsReferenceProjectNomosSpecPath);
+  const templateDir = resolveInstalledCreateNomosPackTemplateDir(options);
+  if (!existsSync(templateDir)) {
+    throw new Error(`Nomos pack template not found: ${templateDir}`);
+  }
+
+  const scaffolded = scaffoldNomosPack({
+    outputDir: layout.projectNomosDraftDir,
+    templateDir,
+    id: `project/${projectId}`,
+    name: `${spec.project_name} Nomos`,
+    description: spec.purpose.trim() || `Project-specific Nomos draft for ${spec.project_name}.`,
+    lifecycleModules: spec.lifecycle_modules,
+    doctorChecks: spec.doctor_checks,
+    replaceExisting: true,
+  });
+
+  writeFileSync(
+    resolve(layout.projectNomosDraftDir, 'docs', 'reference', 'methodologies.md'),
+    renderRefinedProjectNomosMethodologies(spec),
+    'utf8',
+  );
+  writeFileSync(
+    resolve(layout.projectNomosDraftDir, 'prompts', 'bootstrap', 'interview.md'),
+    renderRefinedProjectNomosBootstrapInterview(spec),
+    'utf8',
+  );
+
+  return {
+    spec,
+    draftDir: layout.projectNomosDraftDir,
+    draftProfilePath: scaffolded.profilePath,
   };
 }
 
@@ -561,6 +642,10 @@ export function scaffoldNomosPack(options: ScaffoldNomosPackOptions): ScaffoldNo
 
   if (!existsSync(options.templateDir)) {
     throw new Error(`Nomos pack template not found: ${options.templateDir}`);
+  }
+
+  if (options.replaceExisting && existsSync(options.outputDir)) {
+    rmSync(options.outputDir, { recursive: true, force: true });
   }
 
   if (existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
@@ -872,6 +957,20 @@ function renderProjectNomosAuthoringSpec(input: {
   nomosId?: string | null;
 }) {
   return [
+    '---',
+    `project_id: ${tomlString(input.projectId)}`,
+    `project_name: ${tomlString(input.projectName)}`,
+    `base_nomos_id: ${tomlString(input.nomosId ?? DEFAULT_AGORA_NOMOS_ID)}`,
+    `project_shape: ${tomlString(input.repoPath ? 'existing_repo' : 'no_repo')}`,
+    `repo_path: ${tomlString(input.repoPath ?? '')}`,
+    'purpose: ""',
+    `lifecycle_modules: ${tomlStringArray(DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES)}`,
+    `doctor_checks: ${tomlStringArray(DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS)}`,
+    'methodology_keep: []',
+    'methodology_change: []',
+    'open_questions: []',
+    '---',
+    '',
     '# Project Nomos Authoring Spec',
     '',
     `Project: \`${input.projectId}\` (${input.projectName})`,
@@ -993,6 +1092,39 @@ function renderCustomNomosBootstrapInterview(input: { name: string; description:
   ].join('\n');
 }
 
+function renderRefinedProjectNomosMethodologies(spec: ProjectNomosAuthoringSpec) {
+  return [
+    '# Methodologies',
+    '',
+    `${spec.project_name} Nomos should start from these decisions:`,
+    '',
+    spec.methodology_keep.length > 0 ? `Keep:` : 'Keep: (none yet)',
+    ...renderListOrPlaceholder(spec.methodology_keep),
+    '',
+    spec.methodology_change.length > 0 ? 'Change:' : 'Change: (none yet)',
+    ...renderListOrPlaceholder(spec.methodology_change),
+    '',
+    `Lifecycle modules: ${spec.lifecycle_modules.join(', ')}`,
+    `Doctor checks: ${spec.doctor_checks.join(', ')}`,
+    '',
+  ].join('\n');
+}
+
+function renderRefinedProjectNomosBootstrapInterview(spec: ProjectNomosAuthoringSpec) {
+  return [
+    `# ${spec.project_name} Nomos Bootstrap Interview`,
+    '',
+    spec.purpose.trim() || 'Refine this project-specific Nomos from the interview outputs captured in the authoring spec.',
+    '',
+    `Project shape: \`${spec.project_shape}\``,
+    `Repo path: ${spec.repo_path ? `\`${spec.repo_path}\`` : 'none yet'}`,
+    '',
+    'Open questions:',
+    ...renderListOrPlaceholder(spec.open_questions),
+    '',
+  ].join('\n');
+}
+
 function renderCustomNomosLifecycleDoc(module: NomosLifecycleModule, name: string) {
   switch (module) {
     case 'project-bootstrap':
@@ -1024,6 +1156,128 @@ function renderCustomNomosDoctorPrompt(name: string) {
     'Review constitution, docs, lifecycle, and drift signals for this Nomos installation.',
     '',
   ].join('\n');
+}
+
+function parseStructuredFrontmatter(content: string) {
+  const lines = content.split('\n');
+  if (lines[0]?.trim() !== '---') {
+    throw new Error('Project Nomos authoring spec must start with frontmatter');
+  }
+  const result: Record<string, unknown> = {};
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (line.trim() === '---') {
+      return result;
+    }
+    if (!line.trim()) {
+      continue;
+    }
+    const separator = line.indexOf(':');
+    if (separator === -1) {
+      continue;
+    }
+    const key = line.slice(0, separator).trim();
+    const rawValue = line.slice(separator + 1).trim();
+    if (!rawValue.length) {
+      const blockLines: string[] = [];
+      for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
+        const blockLine = lines[blockIndex] ?? '';
+        if (!blockLine.trim()) {
+          continue;
+        }
+        if (/^\s*- /.test(blockLine)) {
+          blockLines.push(blockLine);
+          index = blockIndex;
+          continue;
+        }
+        break;
+      }
+      result[key] = parseStructuredValue(blockLines.join('\n'));
+      continue;
+    }
+    result[key] = parseStructuredValue(rawValue);
+  }
+  throw new Error('Project Nomos authoring spec frontmatter is not closed');
+}
+
+function parseStructuredValue(rawValue: string): unknown {
+  if (!rawValue.length) {
+    return '';
+  }
+  if (rawValue.trim().startsWith('- ')) {
+    return rawValue
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.startsWith('- '))
+      .map((entry) => entry.slice(2).trim());
+  }
+  if (rawValue.includes('\n')) {
+    return rawValue
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.startsWith('- '))
+      .map((entry) => entry.slice(2).trim());
+  }
+  if (rawValue.startsWith('[')) {
+    return JSON.parse(rawValue) as unknown;
+  }
+  if (rawValue === 'null') {
+    return null;
+  }
+  if (rawValue.startsWith('"')) {
+    return JSON.parse(rawValue) as unknown;
+  }
+  return rawValue;
+}
+
+function asRequiredString(value: unknown, field: string) {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  throw new Error(`Project Nomos authoring spec is missing ${field}`);
+}
+
+function asOptionalString(value: unknown) {
+  return typeof value === 'string' ? value : null;
+}
+
+function asStringArray(value: unknown, fallback: readonly string[] = []) {
+  if (!value) {
+    return [...fallback];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('Project Nomos authoring spec expected an array value');
+  }
+  return value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function asProjectShape(value: unknown): ProjectNomosAuthoringSpec['project_shape'] {
+  if (value === 'existing_repo' || value === 'new_repo' || value === 'no_repo') {
+    return value;
+  }
+  throw new Error(`Unsupported project_shape: ${String(value)}`);
+}
+
+function asLifecycleModules(value: unknown) {
+  const items = asStringArray(value, DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES);
+  const modules: NomosLifecycleModule[] = [];
+  for (const item of items) {
+    if (!NOMOS_LIFECYCLE_MODULES.includes(item as NomosLifecycleModule)) {
+      throw new Error(`Unsupported Nomos lifecycle module: ${item}`);
+    }
+    modules.push(item as NomosLifecycleModule);
+  }
+  return modules;
+}
+
+function renderListOrPlaceholder(values: readonly string[]) {
+  if (values.length === 0) {
+    return ['- none yet'];
+  }
+  return values.map((value) => `- ${value}`);
 }
 
 function renderBuiltInConstitution(profile: NomosProjectProfile) {

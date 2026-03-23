@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   BUILT_IN_AGORA_NOMOS_PACK,
   DEFAULT_AGORA_NOMOS_ID,
+  DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS,
+  DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   NOMOS_PROJECT_STATE_DIRECTORIES,
   NOMOS_PROJECT_STATE_ROOT_TEMPLATE,
   REPO_AGENTS_SHIM_SECTION_ORDER,
@@ -14,6 +16,8 @@ import {
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   nomosProjectProfileSchema,
+  parseProjectNomosAuthoringSpec,
+  refineProjectNomosDraftFromSpec,
   resolveInstalledCreateNomosPackTemplateDir,
   scaffoldNomosPack,
   renderNomosProjectProfileToml,
@@ -175,9 +179,70 @@ describe('nomos pack model freeze', () => {
     expect(existsSync(result.specPath)).toBe(true);
     expect(existsSync(result.draftProfilePath!)).toBe(true);
     expect(readFileSync(result.specPath, 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(result.specPath, 'utf8')).toContain('project_shape: "existing_repo"');
     expect(readFileSync(result.specPath, 'utf8')).toContain('/tmp/authoring-repo');
     expect(readFileSync(result.draftProfilePath!, 'utf8')).toContain('id = "project/proj-authoring"');
     expect(readFileSync(result.draftProfilePath!, 'utf8')).toContain('name = "Authoring Project Nomos"');
+  });
+
+  it('parses a structured authoring spec and refines the project nomos draft from it', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const templateRoot = resolveInstalledCreateNomosPackTemplateDir({ userAgoraDir: agoraHomeDir });
+    mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(templateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(templateRoot, 'README.md'), '# Template\n', 'utf8');
+    writeFileSync(join(templateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(templateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const seeded = ensureProjectNomosAuthoringDraft('proj-refine', 'Refine Project', {
+      userAgoraDir: agoraHomeDir,
+      repoPath: '/tmp/refine-repo',
+      nomosId: 'agora/default',
+    });
+
+    writeFileSync(seeded.specPath, [
+      '---',
+      'project_id: "proj-refine"',
+      'project_name: "Refine Project"',
+      'base_nomos_id: "agora/default"',
+      'project_shape: "existing_repo"',
+      'repo_path: "/tmp/refine-repo"',
+      'purpose: "Refined Nomos for a code-heavy product project."',
+      'lifecycle_modules:',
+      '  - project-bootstrap',
+      '  - task-closeout',
+      'doctor_checks:',
+      '  - constitution-present',
+      '  - bootstrap-prompts-present',
+      'methodology_keep:',
+      '  - planning trio',
+      '  - walkthrough discipline',
+      'methodology_change:',
+      '  - replace dashboard-first review with CLI-first review',
+      'open_questions:',
+      '  - Should closeout require human signoff?',
+      '---',
+      '',
+      '# Project Nomos Authoring Spec',
+    ].join('\n'), 'utf8');
+
+    const parsed = parseProjectNomosAuthoringSpec(seeded.specPath);
+    expect(parsed.project_shape).toBe('existing_repo');
+    expect(parsed.lifecycle_modules).toEqual(['project-bootstrap', 'task-closeout']);
+    expect(parsed.doctor_checks).toEqual(['constitution-present', 'bootstrap-prompts-present']);
+    expect(parsed.methodology_keep).toEqual(['planning trio', 'walkthrough discipline']);
+    expect(parsed.methodology_change).toEqual(['replace dashboard-first review with CLI-first review']);
+    expect(parsed.open_questions).toEqual(['Should closeout require human signoff?']);
+
+    const refined = refineProjectNomosDraftFromSpec('proj-refine', { userAgoraDir: agoraHomeDir });
+    expect(refined.spec.project_id).toBe('proj-refine');
+    expect(refined.draftProfilePath).toBe(join(agoraHomeDir, 'projects', 'proj-refine', 'nomos', 'project-nomos', 'profile.toml'));
+    expect(readFileSync(refined.draftProfilePath, 'utf8')).toContain('description = "Refined Nomos for a code-heavy product project."');
+    expect(readFileSync(refined.draftProfilePath, 'utf8')).toContain('modules = ["project-bootstrap", "task-closeout"]');
+    expect(readFileSync(join(refined.draftDir, 'README.md'), 'utf8')).toContain('Refined Nomos for a code-heavy product project.');
+    expect(readFileSync(join(refined.draftDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('planning trio');
+    expect(readFileSync(join(refined.draftDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('replace dashboard-first review with CLI-first review');
+    expect(readFileSync(join(refined.draftDir, 'prompts', 'bootstrap', 'interview.md'), 'utf8')).toContain('Should closeout require human signoff?');
   });
 
   it('merges persisted project metadata with the installed Nomos boundary', () => {

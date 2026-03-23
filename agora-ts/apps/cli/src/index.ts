@@ -11,6 +11,7 @@ import {
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   ensureProjectNomosAuthoringDraft,
+  refineProjectNomosDraftFromSpec,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
@@ -1124,6 +1125,27 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `repo_path: ${payload.repo_path ?? '-'}`);
       writeLine(stdout, `repo_shim_installed: ${payload.repo_shim_installed}`);
       writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
+    });
+
+  nomos
+    .command('refine-project')
+    .description('根据 project-nomos authoring spec 重写该 project 的 draft pack')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((options: { projectId: string; json?: boolean }) => {
+      const refined = refineProjectNomosDraftFromSpec(options.projectId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: options.projectId,
+          spec: refined.spec,
+          draft_dir: refined.draftDir,
+          draft_profile_path: refined.draftProfilePath,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos draft 已更新: ${options.projectId}`);
+      writeLine(stdout, `Draft Dir: ${refined.draftDir}`);
+      writeLine(stdout, `Profile: ${refined.draftProfilePath}`);
     });
 
   nomos

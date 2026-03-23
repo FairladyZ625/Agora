@@ -137,6 +137,9 @@ function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTa
 
   lines.push(
     '',
+    'After interview updates are written into the authoring spec, run:',
+    `- \`agora nomos refine-project --project-id ${input.project_id}\``,
+    '',
     'Interview checklist:',
     '- What already exists today, and what kind of project is this?',
     '- Which repo/workspace path is the real execution surface?',
