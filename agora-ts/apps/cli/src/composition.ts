@@ -410,10 +410,15 @@ export function createCliComposition(
   options: CreateCliCompositionOptions = {},
   overrides: Partial<CliCompositionFactories> = {},
 ): CliComposition {
-  const config = loadAgoraConfig(options.configPath ?? normalizePathLikeEnvValue('AGORA_CONFIG_PATH', process.env.AGORA_CONFIG_PATH) ?? '');
+  const loadedConfig = loadAgoraConfig(options.configPath ?? normalizePathLikeEnvValue('AGORA_CONFIG_PATH', process.env.AGORA_CONFIG_PATH) ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  const resolvedDbPath = options.dbPath ?? normalizePathLikeEnvValue('AGORA_DB_PATH', process.env.AGORA_DB_PATH) ?? loadedConfig.db_path;
+  const config: AgoraConfig = {
+    ...loadedConfig,
+    db_path: resolvedDbPath,
+  };
   const db = createAgoraDatabase({
-    dbPath: options.dbPath ?? normalizePathLikeEnvValue('AGORA_DB_PATH', process.env.AGORA_DB_PATH) ?? config.db_path,
+    dbPath: resolvedDbPath,
     busyTimeoutMs: config.db_busy_timeout_ms,
   });
   runMigrations(db);

@@ -342,6 +342,7 @@ describe('cli composition', () => {
     const composition = createCliComposition({ configPath });
 
     composition.db.close();
+    expect(composition.config.db_path).toBe(expectedDbPath);
     expect(existsSync(expectedDbPath)).toBe(true);
     expect(existsSync(repoLocalDbPath)).toBe(false);
   });
