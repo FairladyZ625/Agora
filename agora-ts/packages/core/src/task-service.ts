@@ -3743,6 +3743,9 @@ export class TaskService {
 
     const task = this.getTaskOrThrow(taskId);
     const binding = this.taskBrainBindingService?.getActiveBinding(task.id);
+    const nomosRuntime = task.project_id && this.projectNomosAuthoringPort?.resolveProjectNomosRuntimeContext
+      ? this.projectNomosAuthoringPort.resolveProjectNomosRuntimeContext(task.project_id)
+      : null;
     return this.archiveJobRepository.insertArchiveJob({
       task_id: task.id,
       status: 'review_pending',
@@ -3766,6 +3769,7 @@ export class TaskService {
           ],
           ...(binding?.workspace_path ? { workspace_path: binding.workspace_path } : {}),
           ...(binding?.workspace_path ? { harvest_draft_path: join(binding.workspace_path, '07-outputs', 'project-harvest-draft.md') } : {}),
+          ...(nomosRuntime ? { nomos_runtime: nomosRuntime } : {}),
         },
       },
       writer_agent: 'writer-agent',

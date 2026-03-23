@@ -469,6 +469,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-INSTALL');
     expect(stdout.value).toContain('proj-existing-nomos — Existing Nomos Project');
     expect(stdout.value).toContain('nomos: agora/default');
+    expect(stdout.value).toContain('activation_status: active_builtin');
     expect(stdout.value).toContain(`project_state_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos')}`);
     expect(stdout.value).toContain(`repo_path: ${repoRoot}`);
     expect(stdout.value).toContain('repo_shim_installed: true');
@@ -477,6 +478,99 @@ describe('agora-ts cli', () => {
       'id = "proj-existing-nomos"',
     );
     expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Existing Nomos Project');
+  });
+
+  it('reviews and activates a project-specific nomos draft through explicit cli commands', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-activate-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-activate-repo-');
+    const repoRoot = join(repoParent, 'repo-activate');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-ACTIVATE',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-activate',
+      '--name',
+      'Activate Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'review-project', 'proj-activate'], { from: 'user' });
+    await program.parseAsync(['nomos', 'activate-project', '--project-id', 'proj-activate', '--actor', 'archon'], { from: 'user' });
+    await program.parseAsync(['nomos', 'inspect-project', 'proj-activate'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos draft review: proj-activate');
+    expect(stdout.value).toContain('can_activate: true');
+    expect(stdout.value).toContain('Project Nomos 已激活: project/proj-activate');
+    expect(stdout.value).toContain('nomos: project/proj-activate');
+    expect(stdout.value).toContain('activation_status: active_project');
+    expect(stdout.value).toContain(`active_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-activate', 'nomos', 'project-nomos')}`);
+  });
+
+  it('reruns bootstrap against the active project Nomos prompt after activation', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-rerun-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-rerun-repo-');
+    const repoRoot = join(repoParent, 'repo-rerun');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    let taskCounter = 0;
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => `OC-NOMOS-RERUN-${++taskCounter}`,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-rerun',
+      '--name',
+      'Rerun Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'activate-project', '--project-id', 'proj-rerun', '--actor', 'archon'], { from: 'user' });
+    await program.parseAsync(['nomos', 'install', '--project-id', 'proj-rerun'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask('OC-NOMOS-RERUN-2')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
   });
 
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
@@ -1221,6 +1315,24 @@ describe('agora-ts cli', () => {
   it('prints project brain doctor output through an injected doctor service', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-brain',
+      name: 'Brain Project',
+      metadata: {
+        repo_path: '/tmp/repo',
+        agora: {
+          nomos: {
+            id: 'project/proj-brain',
+            activation_status: 'active_project',
+            active_root: '/tmp/project-nomos',
+            active_profile_path: '/tmp/project-nomos/profile.toml',
+          },
+        },
+      },
+    });
     const projectBrainDoctorService = {
       diagnoseProject: vi.fn().mockResolvedValue({
         project_id: 'proj-brain',
@@ -1249,6 +1361,7 @@ describe('agora-ts cli', () => {
       }),
     };
     const program = createCliProgram({
+      projectService,
       projectBrainDoctorService: projectBrainDoctorService as never,
       stdout,
       stderr,
@@ -1265,6 +1378,8 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"project_id": "proj-brain"');
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
+    expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_id": "project/proj-brain"');
   });
 
   it('routes project brain task query through an injected retrieval service', async () => {

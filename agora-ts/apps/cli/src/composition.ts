@@ -6,6 +6,8 @@ import {
   loadAgoraConfig,
   normalizePathLikeEnvValue,
   refineProjectNomosDraftFromSpec,
+  resolveProjectNomosRuntimePaths,
+  resolveProjectNomosState,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   syncBundledBrainPackContents,
   type AgoraConfig,
@@ -314,6 +316,18 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       skillCatalogPort: new FilesystemSkillCatalogAdapter(),
       projectNomosAuthoringPort: {
         refineProjectNomosDraft: (projectId: string) => refineProjectNomosDraftFromSpec(projectId),
+        resolveProjectNomosRuntimeContext: (projectId: string) => {
+          const project = deps.projectService.requireProject(projectId);
+          const state = resolveProjectNomosState(projectId, project.metadata ?? null);
+          const runtimePaths = resolveProjectNomosRuntimePaths(projectId, project.metadata ?? null);
+          return {
+            nomos_id: state.nomos_id,
+            activation_status: state.activation_status,
+            bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+            closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+            doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+          };
+        },
       },
       craftsmanGovernance: {
         maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
@@ -396,10 +410,15 @@ export function createCliComposition(
   options: CreateCliCompositionOptions = {},
   overrides: Partial<CliCompositionFactories> = {},
 ): CliComposition {
-  const config = loadAgoraConfig(options.configPath ?? normalizePathLikeEnvValue('AGORA_CONFIG_PATH', process.env.AGORA_CONFIG_PATH) ?? '');
+  const loadedConfig = loadAgoraConfig(options.configPath ?? normalizePathLikeEnvValue('AGORA_CONFIG_PATH', process.env.AGORA_CONFIG_PATH) ?? '');
   const runtimeEnv = resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  const resolvedDbPath = options.dbPath ?? normalizePathLikeEnvValue('AGORA_DB_PATH', process.env.AGORA_DB_PATH) ?? loadedConfig.db_path;
+  const config: AgoraConfig = {
+    ...loadedConfig,
+    db_path: resolvedDbPath,
+  };
   const db = createAgoraDatabase({
-    dbPath: options.dbPath ?? normalizePathLikeEnvValue('AGORA_DB_PATH', process.env.AGORA_DB_PATH) ?? config.db_path,
+    dbPath: resolvedDbPath,
     busyTimeoutMs: config.db_busy_timeout_ms,
   });
   runMigrations(db);

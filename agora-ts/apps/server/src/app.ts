@@ -8,11 +8,14 @@ import {
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   ensureProjectNomosAuthoringDraft,
+  activateProjectNomosDraft,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   REPO_AGENTS_SHIM_SECTION_ORDER,
-  resolveAgoraProjectStateLayout,
+  resolveProjectNomosState,
+  resolveProjectNomosRuntimePaths,
+  reviewProjectNomosDraft,
 } from '@agora-ts/config';
 import {
   craftsmanCallbackRequestSchema,
@@ -1099,6 +1102,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.metadata ?? {}),
         ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
       }, installedNomos.profile));
+      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
+      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
       if (taskService) {
         new ProjectBootstrapService({
           projectService,
@@ -1109,10 +1114,10 @@ export function buildApp(options: BuildAppOptions = {}) {
           creator: project.owner ?? 'archon',
           repo_path: payload.repo_path,
           project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
+          nomos_id: nomosState.nomos_id,
           project_nomos_spec_path: authoringDraft.specPath,
           project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: bootstrapMode,
         });
       }
@@ -1198,20 +1203,54 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const { projectId } = request.params as { projectId: string };
       const project = projectService.requireProject(projectId);
-      const layout = resolveAgoraProjectStateLayout(projectId);
-      const metadata = project.metadata ?? null;
-      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
       return reply.send({
-        project_id: project.id,
+        ...resolveProjectNomosState(project.id, project.metadata ?? null),
         project_name: project.name,
-        nomos_id: readProjectNomosId(project),
-        project_state_root: layout.root,
-        profile_path: layout.profilePath,
-        profile_installed: existsSync(layout.profilePath),
-        repo_path: repoPath,
-        repo_shim_installed: Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md'))),
-        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
-        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/review', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const project = projectService.requireProject(projectId);
+      return reply.send(reviewProjectNomosDraft(project.id, project.metadata ?? null));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/activate', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as { actor?: string } | undefined) ?? {};
+      if (!payload.actor?.trim()) {
+        throw new Error('actor is required');
+      }
+      const project = projectService.requireProject(projectId);
+      const activation = activateProjectNomosDraft(project.id, {
+        metadata: project.metadata ?? null,
+        actor: payload.actor,
+      });
+      projectService.updateProjectMetadata(project.id, activation.metadata);
+      return reply.send({
+        project_id: activation.project_id,
+        nomos_id: activation.nomos_id,
+        activation_status: activation.activation_status,
+        active_root: activation.active_root,
+        active_profile_path: activation.active_profile_path,
+        activated_at: activation.activated_at,
+        activated_by: activation.activated_by,
       });
     } catch (error) {
       const translated = translateError(error);
@@ -1234,6 +1273,8 @@ export function buildApp(options: BuildAppOptions = {}) {
       } | undefined) ?? {};
       const project = projectService.requireProject(projectId);
       const metadata = project.metadata ?? null;
+      const preInstallNomosState = resolveProjectNomosState(project.id, metadata);
+      const preInstallRuntimePaths = resolveProjectNomosRuntimePaths(project.id, metadata);
       const effectiveRepoPath = payload.repo_path
         ?? (typeof metadata?.repo_path === 'string' ? metadata.repo_path : undefined);
       const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
@@ -1245,10 +1286,18 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(effectiveRepoPath ? { repoPath: effectiveRepoPath } : {}),
         nomosId: installedNomos.profile.pack.id,
       });
-      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(project.metadata ?? {}),
         ...(effectiveRepoPath ? { repo_path: effectiveRepoPath } : {}),
       }, installedNomos.profile));
+      const runtimePaths = resolveProjectNomosRuntimePaths(project.id, persistedProject.metadata ?? null);
+      const nomosState = resolveProjectNomosState(project.id, persistedProject.metadata ?? null);
+      const effectiveRuntimePaths = preInstallNomosState.activation_status === 'active_project'
+        ? preInstallRuntimePaths
+        : runtimePaths;
+      const effectiveNomosState = preInstallNomosState.activation_status === 'active_project'
+        ? preInstallNomosState
+        : nomosState;
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
         const bootstrapMode = effectiveRepoPath
@@ -1263,10 +1312,10 @@ export function buildApp(options: BuildAppOptions = {}) {
           creator: payload.creator ?? project.owner ?? 'archon',
           repo_path: effectiveRepoPath,
           project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
+          nomos_id: effectiveNomosState.nomos_id,
           project_nomos_spec_path: authoringDraft.specPath,
           project_nomos_draft_root: authoringDraft.draftDir,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_prompt_path: effectiveRuntimePaths.bootstrap_interview_prompt_path,
           bootstrap_mode: bootstrapMode,
         });
         bootstrapTaskId = bootstrapTask.id;
@@ -1294,7 +1343,23 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const { projectId } = request.params as { projectId: string };
-      return reply.send(await projectBrainDoctorService.diagnoseProject(projectId));
+      const report = await projectBrainDoctorService.diagnoseProject(projectId);
+      if (!projectService) {
+        return reply.send(report);
+      }
+      const project = projectService.requireProject(projectId);
+      const state = resolveProjectNomosState(projectId, project.metadata ?? null);
+      const runtimePaths = resolveProjectNomosRuntimePaths(projectId, project.metadata ?? null);
+      return reply.send({
+        ...report,
+        nomos_runtime: {
+          nomos_id: state.nomos_id,
+          activation_status: state.activation_status,
+          bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+          closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+          doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+        },
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

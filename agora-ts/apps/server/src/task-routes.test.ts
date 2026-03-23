@@ -467,6 +467,7 @@ describe('task routes', () => {
     expect(inspectResponse.json()).toMatchObject({
       project_id: 'proj-nomos-rest',
       nomos_id: 'agora/default',
+      activation_status: 'active_builtin',
       project_state_root: join(agoraHomeDir, 'projects', 'proj-nomos-rest'),
       repo_path: repoRoot,
       repo_shim_installed: true,
@@ -476,7 +477,80 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Project REST Nomos');
   });
 
-  it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {
+  it('reviews and activates a project-specific nomos draft through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-activate');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-ACTIVATE',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-activate',
+        name: 'Project Activate Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const reviewResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-activate/nomos/review',
+    });
+    const activateResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-activate/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
+    });
+    const inspectResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-activate/nomos',
+    });
+
+    expect(reviewResponse.statusCode).toBe(200);
+    expect(reviewResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      can_activate: true,
+      draft: expect.objectContaining({
+        pack_id: 'project/proj-nomos-activate',
+      }),
+    });
+
+    expect(activateResponse.statusCode).toBe(200);
+    expect(activateResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      nomos_id: 'project/proj-nomos-activate',
+      activation_status: 'active_project',
+    });
+
+    expect(inspectResponse.statusCode).toBe(200);
+    expect(inspectResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      nomos_id: 'project/proj-nomos-activate',
+      activation_status: 'active_project',
+      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos'),
+    });
+  });
+
+  it('reuses persisted repo_path and active Nomos bootstrap prompt when rerunning Nomos bootstrap through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-home-'));
@@ -487,9 +561,10 @@ describe('task routes', () => {
     const repoRoot = join(repoParent, 'repo-rerun');
     mkdirSync(repoRoot, { recursive: true });
     const projectService = new ProjectService(db);
+    let taskCounter = 0;
     const taskService = new TaskService(db, {
       templatesDir,
-      taskIdGenerator: () => 'OC-SERVER-NOMOS-RERUN',
+      taskIdGenerator: () => `OC-SERVER-NOMOS-RERUN-${++taskCounter}`,
       projectService,
     });
     const app = buildApp({
@@ -498,13 +573,22 @@ describe('task routes', () => {
       taskService,
     });
 
-    projectService.createProject({
-      id: 'proj-nomos-rerun',
-      name: 'Project Rerun Nomos',
-      owner: 'archon',
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-rerun',
+        name: 'Project Rerun Nomos',
+        repo_path: repoRoot,
+        initialize_repo: false,
+      },
     });
-    projectService.updateProjectMetadata('proj-nomos-rerun', {
-      repo_path: repoRoot,
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rerun/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
     });
 
     const response = await app.inject({
@@ -514,15 +598,35 @@ describe('task routes', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain('Bootstrap mode: `existing_repo`');
-    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain(repoRoot);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(repoRoot);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
   });
 
   it('serves project-level Nomos doctor output through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-nomos-rest',
+      name: 'Project REST Nomos',
+      metadata: {
+        repo_path: '/tmp/repo',
+        agora: {
+          nomos: {
+            id: 'project/proj-nomos-rest',
+            activation_status: 'active_project',
+            active_root: '/tmp/project-nomos-rest',
+            active_profile_path: '/tmp/project-nomos-rest/profile.toml',
+          },
+        },
+      },
+    });
     const app = buildApp({
       db,
+      projectService,
       projectBrainDoctorService: {
         diagnoseProject: async (projectId: string) => ({
           project_id: projectId,
@@ -568,6 +672,10 @@ describe('task routes', () => {
         provider: 'qdrant',
         chunk_count: 16,
       },
+      nomos_runtime: expect.objectContaining({
+        nomos_id: 'project/proj-nomos-rest',
+        activation_status: 'active_project',
+      }),
       drift: {
         detected: false,
       },
