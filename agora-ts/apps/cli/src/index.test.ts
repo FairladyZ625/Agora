@@ -1315,6 +1315,24 @@ describe('agora-ts cli', () => {
   it('prints project brain doctor output through an injected doctor service', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-brain',
+      name: 'Brain Project',
+      metadata: {
+        repo_path: '/tmp/repo',
+        agora: {
+          nomos: {
+            id: 'project/proj-brain',
+            activation_status: 'active_project',
+            active_root: '/tmp/project-nomos',
+            active_profile_path: '/tmp/project-nomos/profile.toml',
+          },
+        },
+      },
+    });
     const projectBrainDoctorService = {
       diagnoseProject: vi.fn().mockResolvedValue({
         project_id: 'proj-brain',
@@ -1343,6 +1361,7 @@ describe('agora-ts cli', () => {
       }),
     };
     const program = createCliProgram({
+      projectService,
       projectBrainDoctorService: projectBrainDoctorService as never,
       stdout,
       stderr,
@@ -1359,6 +1378,8 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"project_id": "proj-brain"');
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
+    expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_id": "project/proj-brain"');
   });
 
   it('routes project brain task query through an injected retrieval service', async () => {

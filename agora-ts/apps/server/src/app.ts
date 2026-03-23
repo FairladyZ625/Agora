@@ -1343,7 +1343,23 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const { projectId } = request.params as { projectId: string };
-      return reply.send(await projectBrainDoctorService.diagnoseProject(projectId));
+      const report = await projectBrainDoctorService.diagnoseProject(projectId);
+      if (!projectService) {
+        return reply.send(report);
+      }
+      const project = projectService.requireProject(projectId);
+      const state = resolveProjectNomosState(projectId, project.metadata ?? null);
+      const runtimePaths = resolveProjectNomosRuntimePaths(projectId, project.metadata ?? null);
+      return reply.send({
+        ...report,
+        nomos_runtime: {
+          nomos_id: state.nomos_id,
+          activation_status: state.activation_status,
+          bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+          closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+          doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+        },
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

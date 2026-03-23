@@ -608,8 +608,25 @@ describe('task routes', () => {
   it('serves project-level Nomos doctor output through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-nomos-rest',
+      name: 'Project REST Nomos',
+      metadata: {
+        repo_path: '/tmp/repo',
+        agora: {
+          nomos: {
+            id: 'project/proj-nomos-rest',
+            activation_status: 'active_project',
+            active_root: '/tmp/project-nomos-rest',
+            active_profile_path: '/tmp/project-nomos-rest/profile.toml',
+          },
+        },
+      },
+    });
     const app = buildApp({
       db,
+      projectService,
       projectBrainDoctorService: {
         diagnoseProject: async (projectId: string) => ({
           project_id: projectId,
@@ -655,6 +672,10 @@ describe('task routes', () => {
         provider: 'qdrant',
         chunk_count: 16,
       },
+      nomos_runtime: expect.objectContaining({
+        nomos_id: 'project/proj-nomos-rest',
+        activation_status: 'active_project',
+      }),
       drift: {
         detected: false,
       },

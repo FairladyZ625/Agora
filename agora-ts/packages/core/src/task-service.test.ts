@@ -2621,9 +2621,28 @@ describe('task service', () => {
   it('enqueues a review-pending archive job when a task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-closeout',
+      name: 'Closeout Project',
+    });
     const service = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-114',
+      projectService,
+      projectNomosAuthoringPort: {
+        refineProjectNomosDraft: () => ({
+          draftDir: '/tmp/project-nomos',
+          draftProfilePath: '/tmp/project-nomos/profile.toml',
+        }),
+        resolveProjectNomosRuntimeContext: () => ({
+          nomos_id: 'project/proj-closeout',
+          activation_status: 'active_project',
+          bootstrap_interview_prompt_path: '/tmp/project-nomos/prompts/bootstrap/interview.md',
+          closeout_review_prompt_path: '/tmp/project-nomos/prompts/closeout/review.md',
+          doctor_project_prompt_path: '/tmp/project-nomos/prompts/doctor/project.md',
+        }),
+      },
     });
     const subtasks = new SubtaskRepository(db);
     const archives = new ArchiveJobRepository(db);
@@ -2634,6 +2653,7 @@ describe('task service', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
+      project_id: 'proj-closeout',
     });
     service.archonApproveTask('OC-114', {
       reviewerId: 'lizeyu',
@@ -2671,6 +2691,11 @@ describe('task service', () => {
         closeout_review: expect.objectContaining({
           required: true,
           state: 'review_pending',
+          nomos_runtime: expect.objectContaining({
+            nomos_id: 'project/proj-closeout',
+            activation_status: 'active_project',
+            closeout_review_prompt_path: '/tmp/project-nomos/prompts/closeout/review.md',
+          }),
         }),
       }),
     });

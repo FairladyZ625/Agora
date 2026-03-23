@@ -1931,8 +1931,23 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const doctorService = getProjectBrainDoctorService();
       if (doctorService) {
         const result = await doctorService.diagnoseProject(options.project);
+        const nomosRuntime = projectService
+          ? (() => {
+            const project = projectService.requireProject(options.project);
+            const state = resolveProjectNomosState(options.project, project.metadata ?? null);
+            const runtimePaths = resolveProjectNomosRuntimePaths(options.project, project.metadata ?? null);
+            return {
+              nomos_id: state.nomos_id,
+              activation_status: state.activation_status,
+              bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+              closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+              doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+            };
+          })()
+          : null;
+        const payload = nomosRuntime ? { ...result, nomos_runtime: nomosRuntime } : result;
         if (options.json) {
-          writeLine(stdout, JSON.stringify(result, null, 2));
+          writeLine(stdout, JSON.stringify(payload, null, 2));
           return;
         }
         writeLine(stdout, `project=${result.project_id} db=${result.db_path}`);
@@ -1940,6 +1955,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, `vector configured=${result.vector_index.configured} healthy=${result.vector_index.healthy} provider=${result.vector_index.provider} chunks=${result.vector_index.chunk_count ?? 0}`);
         writeLine(stdout, `jobs pending=${result.jobs.pending} running=${result.jobs.running} failed=${result.jobs.failed} succeeded=${result.jobs.succeeded}`);
         writeLine(stdout, `drift detected=${result.drift.detected} documents_without_jobs=${result.drift.documents_without_jobs}`);
+        if (nomosRuntime) {
+          writeLine(stdout, `nomos_runtime id=${nomosRuntime.nomos_id} activation=${nomosRuntime.activation_status}`);
+          writeLine(stdout, `nomos_doctor_prompt=${nomosRuntime.doctor_project_prompt_path}`);
+        }
         return;
       }
       const payload = {
