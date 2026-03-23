@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerTaskCommands, tokenize } from "../src/commands";
+import { resetCreateWizardStore } from "../src/create-wizard-store";
 
 function buildApi() {
   let registered: any = null;
@@ -29,6 +30,10 @@ describe("tokenize", () => {
 });
 
 describe("registerTaskCommands", () => {
+  beforeEach(() => {
+    resetCreateWizardStore();
+  });
+
   it("returns help when subcommand is unknown", async () => {
     const { api, getCommand } = buildApi();
     const bridge = {} as any;
@@ -41,15 +46,15 @@ describe("registerTaskCommands", () => {
     expect(result.text).toContain("Supported task types:");
   });
 
-  it("returns usage when create title is missing", async () => {
+  it("starts a create wizard when title is missing", async () => {
     const { api, getCommand } = buildApi();
     const bridge = {} as any;
     registerTaskCommands(api as any, bridge);
 
     const result = await getCommand().handler({ args: "create", senderId: "u1" });
-    expect(result.text).toContain("Ready to create a task.");
-    expect(result.text).toContain('/task create "fix dashboard create flow" coding');
-    expect(result.text).toContain("Default type: coding");
+    expect(result.text).toContain("Task create wizard");
+    expect(result.text).toContain("Step 1/2");
+    expect(result.text).toContain('/task "Fix dashboard create flow"');
   });
 
   it("returns guided help when no subcommand is provided inside a task thread", async () => {
@@ -93,6 +98,52 @@ describe("registerTaskCommands", () => {
 
     expect(createTask).toHaveBeenCalledWith("hello world", "coding", "u1");
     expect(result.text).toContain("Created OC-001");
+  });
+
+  it("walks the user through title then type and completes create", async () => {
+    const createTask = vi.fn(async () => ({ id: "OC-WIZ-1", type: "coding", title: "guided task smoke" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { createTask } as any);
+
+    const start = await getCommand().handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    const title = await getCommand().handler({ args: '"guided task smoke"', senderId: "u1", provider: "discord", conversationId: "hall" });
+    const type = await getCommand().handler({ args: "coding", senderId: "u1", provider: "discord", conversationId: "hall" });
+
+    expect(start.text).toContain("Step 1/2");
+    expect(title.text).toContain("Step 2/2");
+    expect(title.text).toContain("guided task smoke");
+    expect(createTask).toHaveBeenCalledWith("guided task smoke", "coding", "u1");
+    expect(type.text).toContain("Created OC-WIZ-1");
+    expect(type.text).toContain("Wizard complete.");
+  });
+
+  it("lets the user skip task type and falls back to coding", async () => {
+    const createTask = vi.fn(async () => ({ id: "OC-WIZ-2", type: "coding", title: "guided default task" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { createTask } as any);
+
+    await getCommand().handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    await getCommand().handler({ args: '"guided default task"', senderId: "u1", provider: "discord", conversationId: "hall" });
+    const result = await getCommand().handler({ args: "skip", senderId: "u1", provider: "discord", conversationId: "hall" });
+
+    expect(createTask).toHaveBeenCalledWith("guided default task", "coding", "u1");
+    expect(result.text).toContain("Created OC-WIZ-2");
+  });
+
+  it("keeps task wizard open for invalid type and supports cancel", async () => {
+    const createTask = vi.fn(async () => ({ id: "OC-WIZ-3", type: "coding", title: "guided invalid type" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { createTask } as any);
+
+    await getCommand().handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    await getCommand().handler({ args: '"guided invalid type"', senderId: "u1", provider: "discord", conversationId: "hall" });
+    const invalid = await getCommand().handler({ args: "wrong_type", senderId: "u1", provider: "discord", conversationId: "hall" });
+    const cancel = await getCommand().handler({ args: "cancel", senderId: "u1", provider: "discord", conversationId: "hall" });
+
+    expect(invalid.text).toContain('Unknown task type: "wrong_type"');
+    expect(invalid.text).toContain("Task create wizard");
+    expect(createTask).not.toHaveBeenCalled();
+    expect(cancel.text).toBe("Task create wizard cancelled.");
   });
 
   it("prefers commandBody over lossy args for quoted create titles", async () => {
