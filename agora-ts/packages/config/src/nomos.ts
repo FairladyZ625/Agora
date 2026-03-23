@@ -25,6 +25,7 @@ export const NOMOS_PROJECT_STATE_DIRECTORIES = [
   'docs/security',
   'docs/reference',
   'lifecycle',
+  'nomos',
   'brain',
   'tasks',
   'archive',
@@ -133,12 +134,16 @@ export interface AgoraProjectStateLayout {
   docsReferenceIndexPath: string;
   docsReferenceMethodologiesPath: string;
   docsReferenceCurrentSurfacePath: string;
+  docsReferenceProjectNomosSpecPath: string;
   docsReferenceGovernancePath: string;
   docsReferenceLifecyclePath: string;
   docsReferenceBootstrapFieldsPath: string;
   docsArchitectureOperatingModelPath: string;
   scriptsDir: string;
   skillsDir: string;
+  nomosDir: string;
+  projectNomosDraftDir: string;
+  projectNomosDraftProfilePath: string;
   lifecycleProjectBootstrapPath: string;
   lifecycleTaskContextDeliveryPath: string;
   lifecycleTaskCloseoutPath: string;
@@ -191,6 +196,18 @@ export interface ScaffoldNomosPackResult {
   profilePath: string;
   constitutionPath: string;
   readmePath: string;
+}
+
+export interface EnsureProjectNomosAuthoringDraftOptions extends ResolveAgoraProjectStateOptions {
+  repoPath?: string | null;
+  nomosId?: string | null;
+}
+
+export interface ProjectNomosAuthoringDraftResult {
+  specPath: string;
+  draftDir: string;
+  draftProfilePath: string | null;
+  scaffolded: boolean;
 }
 
 const REPO_AGENTS_SHIM_SECTION_TITLES: Record<RepoAgentsShimSection, string> = {
@@ -277,6 +294,54 @@ export function resolveInstalledCreateNomosPackTemplateDir(options: ResolveAgora
   return resolve(resolveUserAgoraDir(options), 'skills', 'create-nomos', 'assets', 'pack-template');
 }
 
+export function ensureProjectNomosAuthoringDraft(
+  projectId: string,
+  projectName: string,
+  options: EnsureProjectNomosAuthoringDraftOptions = {},
+): ProjectNomosAuthoringDraftResult {
+  const layout = ensureAgoraProjectStateLayout(projectId, options);
+  writeFileIfMissing(layout.docsReferenceProjectNomosSpecPath, renderProjectNomosAuthoringSpec({
+    projectId,
+    projectName,
+    ...(options.repoPath !== undefined ? { repoPath: options.repoPath } : {}),
+    ...(options.nomosId !== undefined ? { nomosId: options.nomosId } : {}),
+  }));
+
+  const templateDir = resolveInstalledCreateNomosPackTemplateDir(options);
+  if (!existsSync(templateDir)) {
+    return {
+      specPath: layout.docsReferenceProjectNomosSpecPath,
+      draftDir: layout.projectNomosDraftDir,
+      draftProfilePath: null,
+      scaffolded: false,
+    };
+  }
+
+  if (existsSync(layout.projectNomosDraftProfilePath)) {
+    return {
+      specPath: layout.docsReferenceProjectNomosSpecPath,
+      draftDir: layout.projectNomosDraftDir,
+      draftProfilePath: layout.projectNomosDraftProfilePath,
+      scaffolded: false,
+    };
+  }
+
+  const scaffolded = scaffoldNomosPack({
+    outputDir: layout.projectNomosDraftDir,
+    templateDir,
+    id: `project/${projectId}`,
+    name: `${projectName} Nomos`,
+    description: `Project-specific Nomos draft for ${projectName}.`,
+  });
+
+  return {
+    specPath: layout.docsReferenceProjectNomosSpecPath,
+    draftDir: layout.projectNomosDraftDir,
+    draftProfilePath: scaffolded.profilePath,
+    scaffolded: true,
+  };
+}
+
 export function resolveAgoraProjectsDir(options: ResolveAgoraProjectStateOptions = {}) {
   return resolve(resolveUserAgoraDir(options), 'projects');
 }
@@ -290,6 +355,7 @@ export function resolveAgoraProjectStateLayout(
   const root = resolve(projectsRoot, projectId);
   const docsRoot = resolve(root, 'docs');
   const promptsDir = resolve(root, 'prompts');
+  const nomosDir = resolve(root, 'nomos');
   const allDirectories = NOMOS_PROJECT_STATE_DIRECTORIES.map((entry) => resolve(root, entry));
 
   return {
@@ -323,12 +389,16 @@ export function resolveAgoraProjectStateLayout(
     docsReferenceIndexPath: resolve(docsRoot, 'reference', 'README.md'),
     docsReferenceMethodologiesPath: resolve(docsRoot, 'reference', 'methodologies.md'),
     docsReferenceCurrentSurfacePath: resolve(docsRoot, 'reference', 'current-surface.md'),
+    docsReferenceProjectNomosSpecPath: resolve(docsRoot, 'reference', 'project-nomos-authoring-spec.md'),
     docsReferenceGovernancePath: resolve(docsRoot, 'reference', 'governance.md'),
     docsReferenceLifecyclePath: resolve(docsRoot, 'reference', 'lifecycle.md'),
     docsReferenceBootstrapFieldsPath: resolve(docsRoot, 'reference', 'bootstrap-fields.md'),
     docsArchitectureOperatingModelPath: resolve(docsRoot, 'architecture', 'operating-model.md'),
     scriptsDir: resolve(root, 'scripts'),
     skillsDir: resolve(root, 'skills'),
+    nomosDir,
+    projectNomosDraftDir: resolve(nomosDir, 'project-nomos'),
+    projectNomosDraftProfilePath: resolve(nomosDir, 'project-nomos', 'profile.toml'),
     lifecycleProjectBootstrapPath: resolve(root, 'lifecycle', 'project-bootstrap.md'),
     lifecycleTaskContextDeliveryPath: resolve(root, 'lifecycle', 'task-context-delivery.md'),
     lifecycleTaskCloseoutPath: resolve(root, 'lifecycle', 'task-closeout.md'),
@@ -793,6 +863,32 @@ function writeFileIfMissing(path: string, content: string) {
     return;
   }
   writeFileSync(path, content, 'utf8');
+}
+
+function renderProjectNomosAuthoringSpec(input: {
+  projectId: string;
+  projectName: string;
+  repoPath?: string | null;
+  nomosId?: string | null;
+}) {
+  return [
+    '# Project Nomos Authoring Spec',
+    '',
+    `Project: \`${input.projectId}\` (${input.projectName})`,
+    '',
+    'Use this file to capture the interview outputs that should shape the project-specific Nomos draft.',
+    '',
+    `- Installed baseline Nomos: \`${input.nomosId ?? 'agora/default'}\``,
+    `- Repo path: ${input.repoPath ? `\`${input.repoPath}\`` : 'none yet'}`,
+    '',
+    'Fill these sections during the Nomos authoring task:',
+    '- Project shape and current working surface',
+    '- Which default methodologies should stay or change',
+    '- Lifecycle modules and approval rules',
+    '- Governance / doctor expectations',
+    '- Open questions that still block final Nomos refinement',
+    '',
+  ].join('\n');
 }
 
 function renderNomosPackTemplateProfileToml(input: {

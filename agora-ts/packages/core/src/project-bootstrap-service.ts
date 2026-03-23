@@ -9,6 +9,8 @@ export interface CreateProjectHarnessBootstrapTaskInput {
   repo_path?: string | null | undefined;
   project_state_root?: string | null | undefined;
   nomos_id?: string | null | undefined;
+  project_nomos_spec_path?: string | null | undefined;
+  project_nomos_draft_root?: string | null | undefined;
   bootstrap_prompt_path?: string | null | undefined;
   bootstrap_mode?: 'existing_repo' | 'new_repo' | 'no_repo' | null | undefined;
 }
@@ -32,7 +34,7 @@ export class ProjectBootstrapService {
     this.seedNomosBootstrapScaffolds(input.project_id);
 
     return this.taskService.createTask({
-      title: `Bootstrap Project Harness: ${input.project_name}`,
+      title: `Create Project Nomos: ${input.project_name}`,
       type: 'coding',
       creator: input.creator?.trim() || 'archon',
       description: buildHarnessBootstrapDescription(input),
@@ -99,22 +101,24 @@ export class ProjectBootstrapService {
 
 function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTaskInput) {
   const lines = [
-    `Initialize the installed Nomos for project \`${input.project_id}\`.`,
+    `Create and refine the project-specific Nomos for project \`${input.project_id}\`.`,
     '',
-    'Bootstrap goals:',
-    '- Inspect the current project surface before proposing process changes.',
-    '- Fill the global project-state harness docs and project brain, not `AGENTS.md`.',
-    '- Establish the first project methodologies, constraints, and open questions.',
+    'Nomos authoring goals:',
+    '- Interview the user before changing methodology or governance defaults.',
+    '- Fill the project Nomos authoring spec and refine the seeded draft pack.',
+    '- Keep project-specific content in global project state, not in repo-root `AGENTS.md`.',
     '',
-    'Write outputs into:',
-    '- `brain/`',
-    '- `docs/reference/`',
-    '- `docs/architecture/`',
-    '- `docs/planning/`',
+    'Primary authoring outputs:',
   ];
 
   if (input.project_state_root) {
     lines.push(`- Global project state root: \`${input.project_state_root}\``);
+  }
+  if (input.project_nomos_spec_path) {
+    lines.push(`- Project Nomos spec: \`${input.project_nomos_spec_path}\``);
+  }
+  if (input.project_nomos_draft_root) {
+    lines.push(`- Project Nomos draft pack: \`${input.project_nomos_draft_root}\``);
   }
   if (input.repo_path) {
     lines.push(`- Bound repo path: \`${input.repo_path}\``);
@@ -134,11 +138,11 @@ function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTa
   lines.push(
     '',
     'Interview checklist:',
-    '- What already exists today?',
-    '- Where is the code or working surface?',
-    '- What constraints are already known?',
-    '- What decisions are already fixed?',
-    '- What remains unknown and must be tracked as open questions?',
+    '- What already exists today, and what kind of project is this?',
+    '- Which repo/workspace path is the real execution surface?',
+    '- Which default methodologies should stay, and which should change?',
+    '- Which lifecycle modules, approvals, and doctor rules should this project Nomos enforce?',
+    '- What remains unknown and must stay visible in the authoring spec before the Nomos is finalized?',
   );
 
   return lines.join('\n');

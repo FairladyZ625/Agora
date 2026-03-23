@@ -309,6 +309,12 @@ describe('task routes', () => {
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-home-'));
     tempPaths.push(agoraHomeDir);
     process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const installedTemplateRoot = join(agoraHomeDir, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
     const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-repo-parent-'));
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-beta');
@@ -354,9 +360,14 @@ describe('task routes', () => {
     expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-nomos-api"',
     );
-    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project API Nomos');
+    expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'docs', 'reference', 'project-nomos-authoring-spec.md'), 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'nomos', 'project-nomos', 'profile.toml'), 'utf8')).toContain('id = "project/proj-nomos-api"');
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Create Project Nomos: Project API Nomos');
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
       join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
+    );
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-api', 'docs', 'reference', 'project-nomos-authoring-spec.md'),
     );
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
   });
@@ -462,7 +473,7 @@ describe('task routes', () => {
       profile_installed: true,
     });
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
-    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Project REST Nomos');
+    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Project REST Nomos');
   });
 
   it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {

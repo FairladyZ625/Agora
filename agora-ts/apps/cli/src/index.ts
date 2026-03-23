@@ -10,6 +10,7 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  ensureProjectNomosAuthoringDraft,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
@@ -1150,6 +1151,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
         initializeRepo: options.initializeRepo ?? false,
         forceWriteRepoShim: options.forceWriteRepoShim ?? false,
       });
+      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
+        ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+        nomosId: installedNomos.profile.pack.id,
+      });
       projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(project.metadata ?? {}),
         ...(options.repoPath ? { repo_path: options.repoPath } : {}),
@@ -1169,6 +1174,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
           repo_path: options.repoPath,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
+          project_nomos_spec_path: authoringDraft.specPath,
+          project_nomos_draft_root: authoringDraft.draftDir,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
           bootstrap_mode: bootstrapMode,
         });
@@ -1182,6 +1189,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
           repo_shim_path: installedNomos.repoShimPath,
           repo_git_initialized: installedNomos.repoGitInitialized,
           project_state_git_initialized: installedNomos.projectStateGitInitialized,
+          project_nomos_spec_path: authoringDraft.specPath,
+          project_nomos_draft_root: authoringDraft.draftDir,
           bootstrap_task_id: bootstrapTaskId,
         }, null, 2));
         return;
@@ -1192,6 +1201,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (installedNomos.repoShimPath) {
         writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
       }
+      writeLine(stdout, `Project Nomos Spec: ${authoringDraft.specPath}`);
+      writeLine(stdout, `Project Nomos Draft: ${authoringDraft.draftDir}`);
       writeLine(stdout, `Repo Git Initialized: ${installedNomos.repoGitInitialized}`);
       writeLine(stdout, `Project State Git Initialized: ${installedNomos.projectStateGitInitialized}`);
       if (bootstrapTaskId) {
@@ -1275,6 +1286,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(input.repo_path ? { repoPath: input.repo_path } : {}),
         initializeRepo: input.initialize_repo ?? false,
       });
+      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
+        ...(input.repo_path ? { repoPath: input.repo_path } : {}),
+        nomosId: installedNomos.profile.pack.id,
+      });
       projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(input.metadata ?? {}),
         ...(input.repo_path ? { repo_path: input.repo_path } : {}),
@@ -1293,6 +1308,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
           repo_path: input.repo_path,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
+          project_nomos_spec_path: authoringDraft.specPath,
+          project_nomos_draft_root: authoringDraft.draftDir,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
           bootstrap_mode: bootstrapMode,
         })
@@ -1305,6 +1322,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (installedNomos.repoShimPath) {
         writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
       }
+      writeLine(stdout, `Project Nomos Spec: ${authoringDraft.specPath}`);
+      writeLine(stdout, `Project Nomos Draft: ${authoringDraft.draftDir}`);
       if (bootstrapTask) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
       }

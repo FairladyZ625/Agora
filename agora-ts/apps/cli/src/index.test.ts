@@ -342,6 +342,12 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-brain-');
     const repoParent = makeTempDir('agora-ts-cli-project-repo-parent-');
     const repoRoot = join(repoParent, 'repo-alpha');
+    const installedTemplateRoot = join(process.env.AGORA_HOME_DIR!, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
     const projectService = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
@@ -374,13 +380,20 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Nomos: agora/default@0.1.0');
     expect(stdout.value).toContain(`Repo Shim: ${join(repoRoot, 'AGENTS.md')}`);
     expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-BOOTSTRAP');
+    expect(stdout.value).toContain(`Project Nomos Spec: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md')}`);
+    expect(stdout.value).toContain(`Project Nomos Draft: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'nomos', 'project-nomos')}`);
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-nomos"',
     );
-    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project Nomos');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'), 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'nomos', 'project-nomos', 'profile.toml'), 'utf8')).toContain('id = "project/proj-nomos"');
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Create Project Nomos: Project Nomos');
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
       join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'),
     );
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
   });
@@ -463,7 +476,7 @@ describe('agora-ts cli', () => {
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-existing-nomos"',
     );
-    expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Existing Nomos Project');
+    expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Existing Nomos Project');
   });
 
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {

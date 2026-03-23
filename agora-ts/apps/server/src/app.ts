@@ -7,6 +7,7 @@ import {
   DEFAULT_AGORA_NOMOS_ID,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  ensureProjectNomosAuthoringDraft,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
@@ -1090,6 +1091,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
         initializeRepo: payload.initialize_repo ?? false,
       });
+      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
+        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
+        nomosId: installedNomos.profile.pack.id,
+      });
       const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(payload.metadata ?? {}),
         ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
@@ -1105,6 +1110,8 @@ export function buildApp(options: BuildAppOptions = {}) {
           repo_path: payload.repo_path,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
+          project_nomos_spec_path: authoringDraft.specPath,
+          project_nomos_draft_root: authoringDraft.draftDir,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
           bootstrap_mode: bootstrapMode,
         });
@@ -1234,6 +1241,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         initializeRepo: payload.initialize_repo ?? false,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
+      const authoringDraft = ensureProjectNomosAuthoringDraft(project.id, project.name, {
+        ...(effectiveRepoPath ? { repoPath: effectiveRepoPath } : {}),
+        nomosId: installedNomos.profile.pack.id,
+      });
       projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(project.metadata ?? {}),
         ...(effectiveRepoPath ? { repo_path: effectiveRepoPath } : {}),
@@ -1253,6 +1264,8 @@ export function buildApp(options: BuildAppOptions = {}) {
           repo_path: effectiveRepoPath,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
+          project_nomos_spec_path: authoringDraft.specPath,
+          project_nomos_draft_root: authoringDraft.draftDir,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
           bootstrap_mode: bootstrapMode,
         });
@@ -1265,6 +1278,8 @@ export function buildApp(options: BuildAppOptions = {}) {
         repo_shim_path: installedNomos.repoShimPath,
         repo_git_initialized: installedNomos.repoGitInitialized,
         project_state_git_initialized: installedNomos.projectStateGitInitialized,
+        project_nomos_spec_path: authoringDraft.specPath,
+        project_nomos_draft_root: authoringDraft.draftDir,
         bootstrap_task_id: bootstrapTaskId,
       });
     } catch (error) {
