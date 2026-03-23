@@ -100,7 +100,7 @@ export const nomosProjectProfileSchema = z.object({
 
 export type NomosProjectProfile = z.infer<typeof nomosProjectProfileSchema>;
 
-export interface ResolveAgoraProjectStateOptions extends Pick<EnsureBundledAgoraAssetsOptions, 'userAgoraDir'> {}
+export type ResolveAgoraProjectStateOptions = Pick<EnsureBundledAgoraAssetsOptions, 'userAgoraDir'>;
 
 export interface AgoraProjectStateLayout {
   userAgoraDir: string;

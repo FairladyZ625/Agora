@@ -303,7 +303,6 @@ describe('project service', () => {
       project_id: 'proj-delete-blocked',
     });
     taskService.cancelTask('OC-PROJ-DELETE-1', {
-      callerId: 'archon',
       reason: 'close task before project delete test',
     });
 

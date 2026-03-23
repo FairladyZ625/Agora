@@ -339,7 +339,7 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByText('会话消息内容')).toBeInTheDocument();
     expect(screen.getAllByText('craftsman_completed').length).toBeGreaterThan(0);
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
-    expect(screen.getByText('执行控制面')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '执行控制面' })).toBeInTheDocument();
     expect(screen.getAllByText('Please provide the next coding instruction.').length).toBeGreaterThan(0);
     expect(screen.getByRole('log', { name: 'Agent runtime output' })).toBeInTheDocument();
   });

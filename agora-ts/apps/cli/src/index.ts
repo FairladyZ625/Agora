@@ -82,7 +82,6 @@ import { runStartCommand } from './start-command.js';
 import { classifyCliError, CliError, CLI_EXIT_CODES, renderCliError } from './errors.js';
 import { cliText, resolveCliLocale } from './locale.js';
 import type { HumanAccountService } from '@agora-ts/core';
-import type { InstalledBuiltInAgoraNomosResult } from '@agora-ts/config';
 
 type Writable = {
   write: (chunk: string) => void;
@@ -154,27 +153,6 @@ function requireSupportedNomosId(raw: string | undefined) {
 
 function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
-}
-
-function writeInstalledNomosSummary(
-  stream: Writable,
-  result: InstalledBuiltInAgoraNomosResult,
-  options: {
-    projectId: string;
-    projectName: string;
-    bootstrapTaskId?: string | null;
-  },
-) {
-  writeLine(stream, `Project 已创建: ${options.projectId}`);
-  writeLine(stream, `名称: ${options.projectName}`);
-  writeLine(stream, `Nomos: ${result.profile.pack.id}@${result.profile.pack.version}`);
-  writeLine(stream, `Project State: ${result.layout.root}`);
-  if (result.repoShimPath) {
-    writeLine(stream, `Repo Shim: ${result.repoShimPath}`);
-  }
-  if (options.bootstrapTaskId) {
-    writeLine(stream, `Bootstrap Task: ${options.bootstrapTaskId}`);
-  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

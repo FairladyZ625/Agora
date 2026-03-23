@@ -81,6 +81,8 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     DashboardQueryService: class DashboardQueryService {},
     InboxService: class InboxService {},
     LiveSessionStore: class LiveSessionStore {},
+    ProjectBrainDoctorService: class ProjectBrainDoctorService {},
+    ProjectBrainIndexQueueService: class ProjectBrainIndexQueueService {},
     TaskService: class TaskService {
       startupRecoveryScan() {}
     },

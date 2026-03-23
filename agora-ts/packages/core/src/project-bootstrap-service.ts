@@ -1,6 +1,6 @@
 import type { StoredTask } from '@agora-ts/db';
-import { ProjectService } from './project-service.js';
-import { TaskService } from './task-service.js';
+import type { ProjectService } from './project-service.js';
+import type { TaskService } from './task-service.js';
 
 export interface CreateProjectHarnessBootstrapTaskInput {
   project_id: string;

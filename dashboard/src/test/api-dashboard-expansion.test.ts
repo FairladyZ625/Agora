@@ -49,6 +49,8 @@ describe('dashboard expansion api client', () => {
               role: null,
               status: 'busy',
               presence: 'online',
+              selectability: 'selectable',
+              selectability_reason: 'live_session',
               presence_reason: 'live_session',
               active_task_ids: ['OC-001'],
               active_subtask_ids: [],

@@ -62,7 +62,7 @@ describe('agora-ts testing scenarios', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-900',
-          status: 'pending',
+          status: 'review_pending',
         }),
       ]),
     );
@@ -128,7 +128,7 @@ describe('agora-ts testing scenarios', () => {
     const result = runScenario(runtime, 'project-brain-bootstrap');
 
     expect(result.name).toBe('project-brain-bootstrap');
-    expect(result.bootstrapContextPath).toContain('project-brain-context.md');
+    expect(result.bootstrapContextPath).toContain('project-brain-context-controller.md');
     expect(result.bootstrapContextContains).toEqual(
       expect.arrayContaining([
         'project_brain_bootstrap_context',
@@ -398,7 +398,7 @@ describe('agora-ts testing scenarios', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-CANCEL',
-          status: 'pending',
+          status: 'review_pending',
           payload: expect.objectContaining({
             state: 'cancelled',
           }),

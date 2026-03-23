@@ -92,7 +92,7 @@ describe('runtime assets', () => {
     writeFileSync(join(bundledSkillsDir, 'create-nomos', 'SKILL.md'), '# create nomos\n');
     writeFileSync(join(bundledSkillsDir, 'create-nomos', 'references', 'pack-schema.md'), '# schema\n');
     mkdirSync(join(bundledSkillsDir, 'create-nomos', 'assets', 'pack-template'), { recursive: true });
-    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'assets', 'pack-template', 'profile.toml'), 'id = \"example/test\"\\n');
+    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'assets', 'pack-template', 'profile.toml'), 'id = "example/test"\n');
 
     const result = ensureBundledAgoraAssetsInstalled({
       projectRoot,

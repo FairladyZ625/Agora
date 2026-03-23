@@ -239,7 +239,7 @@ describe('dashboard query service', () => {
     const archives = new ArchiveJobRepository(db);
     const queries = new DashboardQueryService(db, { templatesDir });
 
-    tasks.insertTask({
+    const task = tasks.insertTask({
       id: 'OC-403A',
       title: '归档审批放行',
       description: '',
@@ -248,8 +248,8 @@ describe('dashboard query service', () => {
       creator: 'archon',
       team: { members: [] },
       workflow: { stages: [] },
-      state: 'done',
     });
+    tasks.updateTask(task.id, task.version, { state: 'done' });
     const job = archives.insertArchiveJob({
       task_id: 'OC-403A',
       status: 'review_pending',

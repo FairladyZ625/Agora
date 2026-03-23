@@ -161,6 +161,7 @@ describe('cli composition', () => {
             updateWorkspace: () => undefined,
             writeExecutionBrief: () => ({ brief_path: '/tmp/unused-brief.md' }),
             writeTaskCloseRecap: () => undefined,
+            writeTaskHarvestDraft: () => undefined,
             destroyWorkspace: () => undefined,
           };
         },

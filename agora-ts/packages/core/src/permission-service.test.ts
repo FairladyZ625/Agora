@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { TeamDto } from '@agora-ts/contracts';
 import { PermissionService } from './permission-service.js';
 
-const team = {
+const team: TeamDto = {
   members: [
     { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
     { role: 'reviewer', agentId: 'sonnet', model_preference: 'review' },
@@ -16,7 +17,7 @@ describe('permission service', () => {
         '*': { canCall: [], canAdvance: false },
       },
     });
-    const controllerTeam = {
+    const controllerTeam: TeamDto = {
       members: [
         { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
         { role: 'reviewer', agentId: 'sonnet', model_preference: 'review' },
