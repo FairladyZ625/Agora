@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import { formatSelectabilityReason, resolveAgentSelectability } from '@/lib/agentSelectability';
 import { useAgentsPageCopy } from '@/lib/dashboardCopy';
 import { filterAgentsByView } from '@/lib/agentProviderInsights';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -10,6 +11,7 @@ const MIN_CHANNEL_DETAIL_STALE_AFTER_MS = 15_000;
 
 type DrawerAxis = 'agents' | 'channels' | 'execution' | null;
 type ChannelDetailTab = 'summary' | 'signals' | 'history';
+type AgentSelectabilityFilter = 'all' | 'selectable' | 'restricted';
 type IssueGroup = {
   id: string;
   label: string;
@@ -77,6 +79,20 @@ function getPillClass(tone: 'danger' | 'warning' | 'success' | 'info' | 'neutral
   }
 }
 
+function getPresenceTone(presence: 'online' | 'offline' | 'disconnected' | 'stale') {
+  if (presence === 'online') {
+    return 'success' as const;
+  }
+  if (presence === 'stale') {
+    return 'warning' as const;
+  }
+  return 'danger' as const;
+}
+
+function getSelectabilityTone(selectability: 'selectable' | 'restricted') {
+  return selectability === 'selectable' ? 'info' as const : 'danger' as const;
+}
+
 export function AgentsPage() {
   const copy = useAgentsPageCopy();
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -109,6 +125,7 @@ export function AgentsPage() {
 
   const [activeDrawer, setActiveDrawer] = useState<DrawerAxis>(null);
   const [channelTab, setChannelTab] = useState<ChannelDetailTab>('summary');
+  const [selectabilityFilter, setSelectabilityFilter] = useState<AgentSelectabilityFilter>('all');
   const [manualSelectedChannelId, setManualSelectedChannelId] = useState<string | null>(null);
   const selectedChannelId = channelFilter ?? manualSelectedChannelId ?? channelSummaries[0]?.channel ?? null;
 
@@ -166,7 +183,19 @@ export function AgentsPage() {
     setChannelFilter(channel);
   }, [setChannelFilter]);
 
-  const visibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
+  const baseVisibleAgents = filterAgentsByView(agents, presenceFilter, channelFilter, hostFilter);
+  const visibleAgents = useMemo(
+    () => baseVisibleAgents.filter((agent) => (
+      selectabilityFilter === 'all'
+        ? true
+        : resolveAgentSelectability(agent).value === selectabilityFilter
+    )),
+    [baseVisibleAgents, selectabilityFilter],
+  );
+  const selectabilitySummary = useMemo(() => ({
+    selectable: baseVisibleAgents.filter((agent) => resolveAgentSelectability(agent).value === 'selectable').length,
+    restricted: baseVisibleAgents.filter((agent) => resolveAgentSelectability(agent).value === 'restricted').length,
+  }), [baseVisibleAgents]);
   const selectedChannel = useMemo(
     () => {
       if (!selectedChannelId) {
@@ -587,6 +616,26 @@ export function AgentsPage() {
                   </button>
                 ))}
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="type-text-xs">{copy.selectabilityFilterLabel}</span>
+                {(['all', 'selectable', 'restricted'] as const).map((filter) => {
+                  const selected = selectabilityFilter === filter;
+                  return (
+                    <button
+                      key={filter}
+                      type="button"
+                      className={selected ? 'status-pill status-pill--info' : 'status-pill status-pill--neutral'}
+                      onClick={() => setSelectabilityFilter(filter)}
+                    >
+                      {copy.selectabilityFilterLabels[filter]}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="type-text-xs flex flex-wrap items-center gap-3">
+                <span>{copy.selectabilityLabel}: {copy.selectabilityFilterLabels.selectable} {selectabilitySummary.selectable}</span>
+                <span>{copy.selectabilityLabel}: {copy.selectabilityFilterLabels.restricted} {selectabilitySummary.restricted}</span>
+              </div>
               {visibleAgents.length === 0 ? (
                 <div className="empty-state">
                   <p className="type-body-sm">{copy.emptyAgents}</p>
@@ -595,27 +644,36 @@ export function AgentsPage() {
                 <div className="space-y-3">
                   {visibleAgents.map((agent) => (
                     <div key={agent.id} className="data-row">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <strong className="type-heading-sm">{agent.id}</strong>
-                          <span className="status-pill status-pill--neutral">{agent.status}</span>
-                          <span className={getPillClass(agent.presence === 'online' ? 'success' : agent.presence === 'stale' ? 'warning' : 'danger')}>
-                            {agent.presence}
-                          </span>
-                        </div>
-                        <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
-                          <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
-                          <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
-                          <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
-                          <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
-                          <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
-                          <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
-                          <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
-                          <span>{copy.loadLabel}: {agent.load}</span>
-                          <span>{copy.taskCountLabel}: {agent.taskCount}</span>
-                          <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>
-                        </div>
-                      </div>
+                      {(() => {
+                        const selectability = resolveAgentSelectability(agent);
+                        return (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong className="type-heading-sm">{agent.id}</strong>
+                              <span className="status-pill status-pill--neutral">{agent.status}</span>
+                              <span className={getPillClass(getPresenceTone(agent.presence))}>
+                                {agent.presence}
+                              </span>
+                              <span className={getPillClass(getSelectabilityTone(selectability.value))}>
+                                {selectability.value}
+                              </span>
+                            </div>
+                            <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
+                              <span>{copy.roleLabel}: {agent.role ?? 'unassigned'}</span>
+                              <span>{copy.channelLabel}: {formatList(agent.channelProviders, 'n/a')}</span>
+                              <span>{copy.hostLabel}: {agent.hostFramework ?? 'n/a'}</span>
+                              <span>{copy.inventorySourcesLabel}: {formatList(agent.inventorySources, 'unknown')}</span>
+                              <span>{copy.modelLabel}: {agent.primaryModel ?? 'n/a'}</span>
+                              <span>{copy.presenceReasonLabel}: {agent.presenceReason ?? 'n/a'}</span>
+                              <span>{copy.selectabilityReasonLabel}: {formatSelectabilityReason(selectability.reason, copy.selectabilityReasonLabels)}</span>
+                              <span>{copy.lastSeenLabel}: {agent.lastSeenAt ?? 'n/a'}</span>
+                              <span>{copy.loadLabel}: {agent.load}</span>
+                              <span>{copy.taskCountLabel}: {agent.taskCount}</span>
+                              <span>{copy.subtaskCountLabel}: {agent.subtaskCount}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

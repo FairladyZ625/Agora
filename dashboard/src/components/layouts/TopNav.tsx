@@ -168,6 +168,17 @@ export function TopNav({
 
   return (
     <header className="app-topbar sticky top-0 z-20" style={{ background: 'var(--color-panel-strong)' }}>
+      {!isMobile ? (
+        <div className="app-topbar__intelligence-layer" data-testid="topbar-intelligence-layer" aria-hidden="true">
+          <IntelligenceCanvas
+            activeCount={activeCount}
+            reviewCount={reviewCount}
+            hasError={!!error}
+            className="topbar-intelligence--bar"
+            testId="topbar-intelligence-bar"
+          />
+        </div>
+      ) : null}
       <div className={isMobile ? 'app-frame app-topbar__frame app-topbar__frame--mobile px-4 py-4 md:px-6' : 'app-frame app-topbar__frame px-4 py-4 md:px-6'}>
         <div className="app-topbar__cluster app-topbar__cluster--brand">
           {isMobile ? (
@@ -180,14 +191,7 @@ export function TopNav({
                 <div className="topbar-system-name">{shellCopy.brandSystemName}</div>
               </div>
             </>
-          ) : (
-            <IntelligenceCanvas
-              activeCount={activeCount}
-              reviewCount={reviewCount}
-              hasError={!!error}
-              className="topbar-intelligence"
-            />
-          )}
+          ) : null}
         </div>
 
         <div className="app-topbar__cluster app-topbar__cluster--controls">

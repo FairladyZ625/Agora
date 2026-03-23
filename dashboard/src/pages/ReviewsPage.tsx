@@ -86,7 +86,6 @@ export function ReviewsPage() {
   }, [currentSelectedId, selectTask]);
 
   const selected =
-    filteredQueue.find((item) => item.id === currentSelectedId) ??
     ((currentSelectedId || reviewId) && selectedTaskStatus?.task.id === currentSelectedId
       ? {
           id: selectedTaskStatus.task.id,
@@ -102,6 +101,7 @@ export function ReviewsPage() {
           state: selectedTaskStatus.task.state,
         }
       : null) ??
+    filteredQueue.find((item) => item.id === currentSelectedId) ??
     filteredQueue[0] ??
     null;
   const selectedStatus =
@@ -109,6 +109,7 @@ export function ReviewsPage() {
       ? selectedTaskStatus
       : null;
   const activeFilterCount = priorityFilter.length + gateFilter.length + creatorFilter.length;
+  const canResolveSelected = selected?.state === 'gate_waiting';
 
   const handleDecision = async (decision: 'approve' | 'reject') => {
     if (!selected) return;
@@ -213,48 +214,50 @@ export function ReviewsPage() {
           </div>
 
           <div className="review-canvas__filters">
-            <div className="workbench-toolbar__filter-anchor">
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={() => setFilterOpen((current) => !current)}
-              >
-                <Filter size={14} />
-                {reviewsPageCopy.filterAction}
-                {activeFilterCount > 0 ? (
-                  <span className="status-pill status-pill--info">{activeFilterCount}</span>
-                ) : null}
-              </button>
+            <div className="review-toolbar__group">
+              <div className="workbench-toolbar__filter-anchor">
+                <button
+                  type="button"
+                  className={filterOpen ? 'button-secondary review-toolbar__button review-toolbar__button--active' : 'button-secondary review-toolbar__button'}
+                  onClick={() => setFilterOpen((current) => !current)}
+                >
+                  <Filter size={14} />
+                  {reviewsPageCopy.filterAction}
+                  {activeFilterCount > 0 ? (
+                    <span className="status-pill status-pill--info">{activeFilterCount}</span>
+                  ) : null}
+                </button>
 
-              {filterOpen ? (
-                <WorkbenchFilterPopover
-                  title={reviewsPageCopy.filterAction}
-                  emptyLabel={reviewsPageCopy.emptySummary}
-                  sections={reviewSections}
-                  onClear={clearFilters}
-                  onClose={() => setFilterOpen(false)}
-                  footer={
-                    <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
-                      {reviewsPageCopy.applyFiltersAction}
-                    </button>
-                  }
-                />
-              ) : null}
+                {filterOpen ? (
+                  <WorkbenchFilterPopover
+                    title={reviewsPageCopy.filterAction}
+                    emptyLabel={reviewsPageCopy.emptySummary}
+                    sections={reviewSections}
+                    onClear={clearFilters}
+                    onClose={() => setFilterOpen(false)}
+                    footer={
+                      <button type="button" className="button-primary" onClick={() => setFilterOpen(false)}>
+                        {reviewsPageCopy.applyFiltersAction}
+                      </button>
+                    }
+                  />
+                ) : null}
+              </div>
+
+              {queueScopes.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setScope((current) => (current === item.value ? 'all' : item.value))}
+                  className={scope === item.value ? 'button-secondary review-toolbar__button review-toolbar__button--active' : 'button-secondary review-toolbar__button'}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
 
-            {queueScopes.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setScope((current) => (current === item.value ? 'all' : item.value))}
-                className={scope === item.value ? 'choice-pill choice-pill--active' : 'choice-pill'}
-              >
-                {item.label}
-              </button>
-            ))}
-
             {activeFilterCount > 0 ? (
-              <span className="topbar-chip">
+              <span className="review-toolbar__status">
                 {reviewsPageCopy.activeFilterPrefix} {activeFilterCount}
               </span>
             ) : null}
@@ -262,13 +265,6 @@ export function ReviewsPage() {
 
           <div className="workbench-scroll workbench-scroll--list review-pane__scroll">
             <div className="review-table review-table--dense">
-              <div className="review-table__head" role="presentation">
-                <span>{reviewsPageCopy.tableHeaders.task}</span>
-                <span>{reviewsPageCopy.tableHeaders.gate}</span>
-                <span>{reviewsPageCopy.tableHeaders.priority}</span>
-                <span className="text-right">{reviewsPageCopy.tableHeaders.wait}</span>
-              </div>
-
               {filteredQueue.length > 0 ? (
                 filteredQueue.map((item, index) => (
                   <StaggeredItem key={item.id} index={index}>
@@ -281,18 +277,23 @@ export function ReviewsPage() {
                         }
                         setSelectedId(item.id);
                       }}
-                      className={item.id === selected?.id ? 'review-table__row review-table__row--active' : 'review-table__row'}
+                      className={item.id === selected?.id ? 'dense-row review-row dense-row--active' : 'dense-row review-row'}
                     >
-                      <div className="review-table__task">
-                        <span className="type-mono-xs">{item.id}</span>
-                        <strong className="review-table__title">{item.title}</strong>
-                        <p className="review-table__summary">{item.summary}</p>
+                      <div className="dense-row__main review-row__main">
+                        <div className="dense-row__titleblock">
+                          <span className="type-mono-xs review-row__id">{item.id}</span>
+                          <strong className="dense-row__title review-row__title">{item.title}</strong>
+                        </div>
+                        <p className="review-row__summary">{item.summary}</p>
+                        <div className="dense-row__meta review-row__meta">
+                          <span className="review-row__fact">
+                            <span className="review-row__fact-label">{reviewsPageCopy.tableHeaders.gate}</span>
+                            <span>{item.gate}</span>
+                          </span>
+                          <PriorityBadge priority={item.priority} />
+                        </div>
                       </div>
-                      <span className="review-table__cell">{item.gate}</span>
-                      <div className="review-table__cell">
-                        <PriorityBadge priority={item.priority} />
-                      </div>
-                      <span className="review-table__cell review-table__cell--right">{item.waitTime}</span>
+                      <span className="dense-row__time review-row__time">{item.waitTime}</span>
                     </button>
                   </StaggeredItem>
                 ))
@@ -359,18 +360,20 @@ export function ReviewsPage() {
                   />
                 </div>
 
-                <div className="review-inspector__section">
-                  <div className="review-inspector__actions">
-                    <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
-                      <XCircle size={16} />
-                      {reviewsPageCopy.rejectAction}
-                    </button>
-                    <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
-                      <CheckCircle2 size={16} />
-                      {reviewsPageCopy.approveAction}
-                    </button>
+                {canResolveSelected ? (
+                  <div className="review-inspector__section">
+                    <div className="review-inspector__actions">
+                      <button type="button" className="button-danger" onClick={() => void handleDecision('reject')}>
+                        <XCircle size={16} />
+                        {reviewsPageCopy.rejectAction}
+                      </button>
+                      <button type="button" className="button-primary" onClick={() => void handleDecision('approve')}>
+                        <CheckCircle2 size={16} />
+                        {reviewsPageCopy.approveAction}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <div className="review-inspector__section review-inspector__section--meta">
                   <button

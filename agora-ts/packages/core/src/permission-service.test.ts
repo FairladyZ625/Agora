@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { TeamDto } from '@agora-ts/contracts';
 import { PermissionService } from './permission-service.js';
 
-const team = {
+const team: TeamDto = {
   members: [
     { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
     { role: 'reviewer', agentId: 'sonnet', model_preference: 'review' },
@@ -9,7 +10,26 @@ const team = {
 };
 
 describe('permission service', () => {
-  it('honors allowAgents canAdvance instead of granting every team member advance rights', () => {
+  it('allows controller and archon to advance regardless of allowAgents fallback', () => {
+    const permissions = new PermissionService({
+      archonUsers: ['archon'],
+      allowAgents: {
+        '*': { canCall: [], canAdvance: false },
+      },
+    });
+    const controllerTeam: TeamDto = {
+      members: [
+        { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        { role: 'reviewer', agentId: 'sonnet', model_preference: 'review' },
+      ],
+    };
+
+    expect(permissions.canAdvance('opus', controllerTeam)).toBe(true);
+    expect(permissions.canAdvance('archon', controllerTeam)).toBe(true);
+    expect(permissions.canAdvance('sonnet', controllerTeam)).toBe(false);
+  });
+
+  it('honors allowAgents canAdvance for non-controller agents', () => {
     const permissions = new PermissionService({
       archonUsers: ['archon'],
       allowAgents: {

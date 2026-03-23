@@ -84,6 +84,8 @@ export interface AgentStatusItem {
   role: string | null;
   status: string;
   presence: 'online' | 'offline' | 'disconnected' | 'stale';
+  selectability?: 'selectable' | 'restricted';
+  selectabilityReason?: string | null;
   presenceReason: string | null;
   channelProviders: string[];
   hostFramework: string | null;

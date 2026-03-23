@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
+import * as api from '@/lib/api';
 import { useProjectDetailPageCopy } from '@/lib/dashboardCopy';
 import { useProjectStore } from '@/stores/projectStore';
 import { useTodoStore } from '@/stores/todoStore';
@@ -44,6 +45,9 @@ export function ProjectDetailPage() {
     projectId: null,
     selection: null,
   });
+  const [nomosActionPending, setNomosActionPending] = useState(false);
+  const [nomosActionMessage, setNomosActionMessage] = useState<string | null>(null);
+  const [doctorReport, setDoctorReport] = useState<Awaited<ReturnType<typeof api.runProjectNomosDoctor>> | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -78,6 +82,32 @@ export function ProjectDetailPage() {
     ? selectedProject.todos.filter((todo) => todo.status === 'pending')
     : selectedProject.todos;
   const detailSelection = detailState.projectId === (projectId ?? null) ? detailState.selection : null;
+  const nomos = selectedProject.nomos;
+
+  const runNomosAction = async (mode: 'reinstall' | 'bootstrap' | 'doctor') => {
+    if (!projectId) {
+      return;
+    }
+    setNomosActionPending(true);
+    setNomosActionMessage(null);
+    try {
+      if (mode === 'doctor') {
+        const report = await api.runProjectNomosDoctor(projectId);
+        setDoctorReport(report);
+        setNomosActionMessage(copy.nomosDoctorSuccess);
+      } else {
+        await api.installProjectNomos(projectId, {
+          skip_bootstrap_task: mode === 'reinstall',
+        });
+        await selectProject(projectId);
+        setNomosActionMessage(mode === 'reinstall' ? copy.nomosReinstallSuccess : copy.nomosBootstrapSuccess);
+      }
+    } catch (error) {
+      setNomosActionMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setNomosActionPending(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -119,6 +149,110 @@ export function ProjectDetailPage() {
           </div>
         </div>
       </section>
+
+      {nomos ? (
+        <section className="surface-panel surface-panel--workspace" data-testid="project-nomos-panel">
+          <div className="section-title-row">
+            <h3 className="section-title">{copy.nomosTitle}</h3>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('reinstall')}
+              >
+                {copy.reinstallNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('bootstrap')}
+              >
+                {copy.rerunBootstrapAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('doctor')}
+              >
+                {copy.runDoctorAction}
+              </button>
+            </div>
+          </div>
+          {nomosActionPending ? <div className="inline-alert mt-4">{copy.nomosActionPending}</div> : null}
+          {nomosActionMessage ? <div className="inline-alert mt-4">{nomosActionMessage}</div> : null}
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="space-y-2">
+              <p className="field-label">{copy.nomosIdLabel}</p>
+              <p className="type-body-sm break-all">{nomos.nomosId}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.repoPathLabel}</p>
+              <p className="type-body-sm break-all">{nomos.repoPath ?? copy.emptySummary}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.projectStateRootLabel}</p>
+              <p className="type-body-sm break-all">{nomos.projectStateRoot}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.bootstrapPromptsLabel}</p>
+              <p className="type-body-sm break-all">{nomos.bootstrapPromptsDir}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.repoShimInstalledLabel}</p>
+              <p className="type-body-sm">{nomos.repoShimInstalled ? copy.yesLabel : copy.noLabel}</p>
+            </div>
+            <div className="space-y-2">
+              <p className="field-label">{copy.profileInstalledLabel}</p>
+              <p className="type-body-sm">{nomos.profileInstalled ? copy.yesLabel : copy.noLabel}</p>
+            </div>
+            <div className="space-y-2 lg:col-span-2">
+              <p className="field-label">{copy.lifecycleModulesLabel}</p>
+              <p className="type-body-sm">{nomos.lifecycleModules.join(', ')}</p>
+            </div>
+          </div>
+          {doctorReport ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorTitle}</p>
+                <p className="type-body-sm">{doctorReport.project_id}</p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorEmbeddingLabel}</p>
+                <p className="type-body-sm">
+                  {doctorReport.embedding.provider}
+                  {' / '}
+                  {doctorReport.embedding.healthy ? copy.yesLabel : copy.noLabel}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorVectorLabel}</p>
+                <p className="type-body-sm">
+                  {doctorReport.vector_index.provider}
+                  {' / '}
+                  {doctorReport.vector_index.chunk_count ?? 0}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="field-label">{copy.doctorJobsLabel}</p>
+                <p className="type-body-sm">
+                  {`pending=${doctorReport.jobs.pending}, running=${doctorReport.jobs.running}, failed=${doctorReport.jobs.failed}, succeeded=${doctorReport.jobs.succeeded}`}
+                </p>
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <p className="field-label">{copy.doctorDriftLabel}</p>
+                <p className="type-body-sm">
+                  {doctorReport.drift.detected ? copy.yesLabel : copy.noLabel}
+                  {' / '}
+                  {doctorReport.drift.documents_without_jobs}
+                </p>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="space-y-6">

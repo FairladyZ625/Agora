@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts', '**/*.tsbuildinfo', 'vitest.config.ts', 'eslint.config.js', 'scripts/smoke-craftsman-acp.ts', 'scripts/smoke-discord-inbound-action.ts', 'scripts/smoke-hybrid-init.ts', 'scripts/smoke-stage-roster-discord.ts'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts', '**/*.tsbuildinfo', 'vitest.config.ts', 'eslint.config.js', 'scripts/smoke-craftsman-acp.ts', 'scripts/smoke-discord-inbound-action.ts', 'scripts/smoke-discord-regression.ts', 'scripts/smoke-hybrid-init.ts', 'scripts/smoke-nomos-layered.ts', 'scripts/smoke-plugin-live.ts', 'scripts/smoke-stage-roster-discord.ts'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

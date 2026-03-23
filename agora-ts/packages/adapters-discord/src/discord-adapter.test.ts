@@ -83,6 +83,36 @@ describe('DiscordHttpClient', () => {
     vi.unstubAllGlobals();
   });
 
+  it('sendMessage retries on Discord rate limits and eventually succeeds', async () => {
+    vi.useFakeTimers();
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: async () => JSON.stringify({ message: 'You are being rate limited.', retry_after: 0.05, global: false }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    try {
+      const client = new DiscordHttpClient({ botToken: 'tok' });
+      const sendPromise = client.sendMessage('thread-rate-limit', 'Hello after retry');
+      await vi.advanceTimersByTimeAsync(50);
+      await sendPromise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://discord.com/api/v10/channels/thread-rate-limit/messages',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('joinThread calls Discord API for the current account', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: async () => '' });
     vi.stubGlobal('fetch', mockFetch);
@@ -715,6 +745,74 @@ describe('DiscordIMProvisioningAdapter', () => {
     const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { content: string };
     expect(body.content).toContain('<@1475474563445035048>');
     expect(body.content).toContain('Wake <@1475474563445035048>');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('splits long published messages into Discord-safe chunks', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+    });
+
+    const longBody = ['Bootstrap heading', '', 'A'.repeat(2105), '', 'Tail section'].join('\n');
+
+    await adapter.publishMessages({
+      binding_id: 'bind-bootstrap-long-1',
+      thread_ref: 'thread-bootstrap-long-1',
+      messages: [
+        {
+          kind: 'bootstrap_root',
+          participant_refs: [],
+          body: longBody,
+        },
+      ],
+    });
+
+    expect(mockFetch.mock.calls.length).toBeGreaterThan(1);
+    for (const [, request] of mockFetch.mock.calls as Array<[string, { body: string }]>) {
+      const body = JSON.parse(request.body) as { content: string };
+      expect(body.content.length).toBeLessThanOrEqual(2000);
+    }
+
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to plain participant refs when discord tokens are missing', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMProvisioningAdapter({
+      botToken: 'main-token',
+      defaultChannelId: 'chan-default',
+      participantTokens: {
+        opus: makeParticipantToken('1475474563445035048'),
+      },
+    });
+
+    await adapter.publishMessages({
+      binding_id: 'bind-bootstrap-fallback-1',
+      thread_ref: 'thread-bootstrap-fallback-1',
+      messages: [
+        {
+          kind: 'bootstrap_root',
+          participant_refs: ['opus', 'sonnet'],
+          body: 'Ping {{participant:opus}} and {{participant:sonnet}}',
+        },
+      ],
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { content: string };
+    expect(body.content).toContain('<@1475474563445035048>');
+    expect(body.content).toContain('@sonnet');
 
     vi.unstubAllGlobals();
   });

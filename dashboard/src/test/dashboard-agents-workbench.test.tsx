@@ -11,10 +11,10 @@ const agentStoreState = {
   summary: {
     activeTasks: 1,
     activeAgents: 1,
-    totalAgents: 2,
+    totalAgents: 3,
     onlineAgents: 1,
     staleAgents: 1,
-    disconnectedAgents: 0,
+    disconnectedAgents: 1,
     busyCraftsmen: 1,
   },
   agents: [
@@ -23,6 +23,8 @@ const agentStoreState = {
       role: 'developer',
       status: 'busy',
       presence: 'online',
+      selectability: 'selectable',
+      selectabilityReason: 'active_assignment',
       presenceReason: 'live_session',
       channelProviders: ['discord'],
       hostFramework: 'openclaw',
@@ -43,6 +45,8 @@ const agentStoreState = {
       role: 'writer',
       status: 'idle',
       presence: 'stale',
+      selectability: 'selectable',
+      selectabilityReason: 'stale_observation',
       presenceReason: 'stale_gateway_log',
       channelProviders: ['discord'],
       hostFramework: 'openclaw',
@@ -57,6 +61,28 @@ const agentStoreState = {
       activeSubtaskIds: [],
       lastActiveAt: null,
       lastSeenAt: '2026-03-08T09:30:00.000Z',
+    },
+    {
+      id: 'review',
+      role: 'reviewer',
+      status: 'idle',
+      presence: 'disconnected',
+      selectability: 'restricted',
+      selectabilityReason: 'provider_disconnected',
+      presenceReason: 'health_monitor_restart',
+      channelProviders: ['discord'],
+      hostFramework: 'openclaw',
+      inventorySources: ['openclaw'],
+      primaryModel: 'gac/claude-sonnet-4-6',
+      workspaceDir: '/tmp/review',
+      accountId: 'review',
+      taskCount: 0,
+      subtaskCount: 0,
+      load: 0,
+      activeTaskIds: [],
+      activeSubtaskIds: [],
+      lastActiveAt: null,
+      lastSeenAt: '2026-03-08T09:20:00.000Z',
     },
   ],
   craftsmen: [
@@ -296,6 +322,8 @@ describe('agents workbench layout', () => {
     fireEvent.click(screen.getByRole('button', { name: /agent 状态异常/i }));
     expect(screen.getByRole('dialog', { name: /agent 明细工作区/i })).toBeInTheDocument();
     expect(screen.getByText('sonnet')).toBeInTheDocument();
+    expect(screen.getAllByText('selectable').length).toBeGreaterThan(0);
+    expect(screen.getByText((content) => content.includes('当前已在任务中'))).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: /close|关闭/i }).at(-1)!);
     fireEvent.click(screen.getByRole('button', { name: /channel 健康异常/i }));
@@ -306,5 +334,17 @@ describe('agents workbench layout', () => {
     fireEvent.click(screen.getByRole('button', { name: /执行运行态/i }));
     expect(screen.getByRole('dialog', { name: /执行明细工作区/i })).toBeInTheDocument();
     expect(screen.getByText(/tail:codex/i)).toBeInTheDocument();
+  });
+
+  it('filters agents by selectability and renders human-readable selectability reasons', () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: /agent 状态异常/i }));
+    expect(screen.getByRole('dialog', { name: /agent 明细工作区/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'restricted' }));
+    expect(screen.getByText('review')).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes('连接中断，当前不可分配'))).toBeInTheDocument();
+    expect(screen.queryByText('sonnet')).not.toBeInTheDocument();
   });
 });

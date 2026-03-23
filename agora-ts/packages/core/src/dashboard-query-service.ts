@@ -220,9 +220,11 @@ export class DashboardQueryService {
           role: member.role,
           status: 'busy',
           presence: 'offline',
+          selectability: 'restricted' as const,
+          selectability_reason: 'unbound_agent',
           presence_reason: 'task_overlay',
-          active_task_ids: [],
-          active_subtask_ids: [],
+          active_task_ids: [] as string[],
+          active_subtask_ids: [] as string[],
           load: 0,
           last_active_at: activityMap.get(member.agentId) ?? null,
           last_seen_at: null,
@@ -230,6 +232,8 @@ export class DashboardQueryService {
           host_framework: null as string | null,
           inventory_sources: [] as string[],
           account_id: null,
+          primary_model: null as string | null,
+          workspace_dir: null as string | null,
         };
         if (!current.active_task_ids.includes(task.id)) {
           current.active_task_ids.push(task.id);
@@ -243,9 +247,11 @@ export class DashboardQueryService {
           role: null,
           status: 'busy',
           presence: 'offline',
+          selectability: 'restricted' as const,
+          selectability_reason: 'unbound_agent',
           presence_reason: 'subtask_overlay',
-          active_task_ids: [],
-          active_subtask_ids: [],
+          active_task_ids: [] as string[],
+          active_subtask_ids: [] as string[],
           load: 0,
           last_active_at: activityMap.get(subtask.assignee) ?? null,
           last_seen_at: null,
@@ -253,6 +259,8 @@ export class DashboardQueryService {
           host_framework: null as string | null,
           inventory_sources: [] as string[],
           account_id: null,
+          primary_model: null as string | null,
+          workspace_dir: null as string | null,
         };
         if (!current.active_task_ids.includes(task.id)) {
           current.active_task_ids.push(task.id);
@@ -296,9 +304,11 @@ export class DashboardQueryService {
         role: null,
         status: 'busy',
         presence: 'online',
+        selectability: 'selectable' as const,
+        selectability_reason: 'live_session',
         presence_reason: 'live_session',
-        active_task_ids: [],
-        active_subtask_ids: [],
+        active_task_ids: [] as string[],
+        active_subtask_ids: [] as string[],
         load: 0,
         last_active_at: session.last_event_at,
         last_seen_at: session.last_event_at,
@@ -306,6 +316,8 @@ export class DashboardQueryService {
         host_framework: 'openclaw' as string | null,
         inventory_sources: ['openclaw'] as string[],
         account_id: null,
+        primary_model: null as string | null,
+        workspace_dir: null as string | null,
       };
       current.status = session.status === 'idle' ? 'idle' : 'busy';
       current.presence = 'online';
@@ -330,9 +342,11 @@ export class DashboardQueryService {
         role: null,
         status: 'idle',
         presence: 'offline',
+        selectability: 'selectable' as const,
+        selectability_reason: 'inventory_launchable',
         presence_reason: 'inventory_only',
-        active_task_ids: [],
-        active_subtask_ids: [],
+        active_task_ids: [] as string[],
+        active_subtask_ids: [] as string[],
         load: 0,
         last_active_at: null,
         last_seen_at: null,
@@ -340,6 +354,8 @@ export class DashboardQueryService {
         host_framework: null as string | null,
         inventory_sources: [] as string[],
         account_id: null,
+        primary_model: null as string | null,
+        workspace_dir: null as string | null,
       };
       current.primary_model = item.primary_model;
       current.workspace_dir = item.workspace_dir;
@@ -355,9 +371,11 @@ export class DashboardQueryService {
         role: null,
         status: 'idle',
         presence: item.presence,
+        selectability: item.presence === 'disconnected' ? 'restricted' as const : 'selectable' as const,
+        selectability_reason: item.presence === 'disconnected' ? 'provider_disconnected' : 'inventory_launchable',
         presence_reason: item.reason,
-        active_task_ids: [],
-        active_subtask_ids: [],
+        active_task_ids: [] as string[],
+        active_subtask_ids: [] as string[],
         load: 0,
         last_active_at: null,
         last_seen_at: item.last_seen_at,
@@ -365,6 +383,8 @@ export class DashboardQueryService {
         host_framework: null as string | null,
         inventory_sources: item.provider ? [item.provider] : [] as string[],
         account_id: item.account_id,
+        primary_model: null as string | null,
+        workspace_dir: null as string | null,
       };
       current.presence = item.presence;
       current.presence_reason = item.reason;
@@ -379,19 +399,28 @@ export class DashboardQueryService {
     }
 
     const allAgents = Array.from(agents.values())
-      .map((item) => ({
-        ...item,
-        status: item.load > 0 || item.status === 'busy' ? 'busy' : 'idle',
-        presence: item.load > 0 ? 'online' : item.presence,
-        presence_reason: item.load > 0 ? 'live_session' : item.presence_reason ?? 'inventory_only',
-        last_seen_at: item.last_seen_at ?? item.last_active_at,
-        channel_providers: item.channel_providers.sort(),
-        host_framework: item.host_framework ?? null,
-        inventory_sources: item.inventory_sources.sort(),
-        account_id: item.account_id ?? null,
-        primary_model: item.primary_model ?? null,
-        workspace_dir: item.workspace_dir ?? null,
-      }))
+      .map((item) => {
+        const presence = item.load > 0 ? 'online' : item.presence;
+        const normalized = {
+          ...item,
+          status: item.load > 0 || item.status === 'busy' ? 'busy' : 'idle',
+          presence,
+          presence_reason: item.load > 0 ? 'live_session' : item.presence_reason ?? 'inventory_only',
+          last_seen_at: item.last_seen_at ?? item.last_active_at,
+          channel_providers: item.channel_providers.sort(),
+          host_framework: item.host_framework ?? null,
+          inventory_sources: item.inventory_sources.sort(),
+          account_id: item.account_id ?? null,
+          primary_model: item.primary_model ?? null,
+          workspace_dir: item.workspace_dir ?? null,
+        };
+        const selectability = deriveAgentSelectability(normalized);
+        return {
+          ...normalized,
+          selectability: selectability.selectability,
+          selectability_reason: selectability.reason,
+        };
+      })
       .sort((a, b) => {
         if (a.status !== b.status) {
           return a.status === 'busy' ? -1 : 1;
@@ -422,6 +451,13 @@ export class DashboardQueryService {
 
   retryArchiveJob(jobId: number): ArchiveJobDto {
     return this.archives.retryArchiveJob(jobId);
+  }
+
+  approveArchiveJob(jobId: number, input: {
+    approver_id: string;
+    comment?: string;
+  }): ArchiveJobDto {
+    return this.archives.approveArchiveJob(jobId, input);
   }
 
   notifyArchiveJob(jobId: number): ArchiveJobDto {
@@ -777,6 +813,43 @@ function presenceRank(presence: 'online' | 'offline' | 'disconnected' | 'stale')
     default:
       return 3;
   }
+}
+
+function deriveAgentSelectability(agent: {
+  presence: 'online' | 'offline' | 'disconnected' | 'stale';
+  host_framework: string | null;
+  inventory_sources: string[];
+  channel_providers: string[];
+  load: number;
+}) {
+  if (agent.presence === 'disconnected') {
+    return {
+      selectability: 'restricted' as const,
+      reason: 'provider_disconnected',
+    };
+  }
+  if (agent.presence === 'stale') {
+    return {
+      selectability: 'selectable' as const,
+      reason: 'stale_observation',
+    };
+  }
+  if (agent.load > 0) {
+    return {
+      selectability: 'selectable' as const,
+      reason: 'active_assignment',
+    };
+  }
+  if (agent.host_framework || agent.inventory_sources.length > 0 || agent.channel_providers.length > 0) {
+    return {
+      selectability: 'selectable' as const,
+      reason: 'inventory_launchable',
+    };
+  }
+  return {
+    selectability: 'restricted' as const,
+    reason: 'unbound_agent',
+  };
 }
 
 function normalizeChannelProvider(value?: string | null) {

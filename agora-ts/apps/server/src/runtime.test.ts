@@ -81,6 +81,8 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     DashboardQueryService: class DashboardQueryService {},
     InboxService: class InboxService {},
     LiveSessionStore: class LiveSessionStore {},
+    ProjectBrainDoctorService: class ProjectBrainDoctorService {},
+    ProjectBrainIndexQueueService: class ProjectBrainIndexQueueService {},
     TaskService: class TaskService {
       startupRecoveryScan() {}
     },
@@ -114,6 +116,12 @@ afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
   delete process.env.AGORA_CRAFTSMAN_SERVER_MODE;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_BASE_URL;
+  delete process.env.OPENAI_EMBEDDING_MODEL;
+  delete process.env.OPENAI_EMBEDDING_DIMENSION;
+  delete process.env.QDRANT_URL;
+  delete process.env.QDRANT_API_KEY;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -148,6 +156,8 @@ describe('server runtime', () => {
     expect(runtime.dashboardQueryService).toBeDefined();
     expect(runtime.liveSessionStore).toBeDefined();
     expect(runtime.taskConversationService).toBeDefined();
+    expect(Reflect.get(runtime.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
+    expect(Reflect.get(runtime.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(readFileSync(join(process.env.AGORA_BRAIN_PACK_ROOT!, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     runtime.db.close();
   });
@@ -381,6 +391,64 @@ describe('server runtime', () => {
       inboxAfterMs: 33_000,
     });
 
+    runtime.observationScheduler.stop();
+    runtime.db.close();
+    vi.useRealTimers();
+  });
+
+  it('drains project brain index jobs during observation ticks when an index worker is provided', () => {
+    vi.useFakeTimers();
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+          startup_recovery_on_boot: false,
+        },
+      }),
+    );
+
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 0,
+      probed: 0,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => ({
+      scanned_tasks: 0,
+      controller_pings: 0,
+      roster_pings: 0,
+      inbox_items: 0,
+    }));
+    const drainPendingJobs = vi.fn().mockResolvedValue({
+      processed: 1,
+      succeeded: 1,
+      failed: 0,
+      pending: 0,
+    });
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+        createProjectBrainIndexWorkerService: () => ({
+          drainPendingJobs,
+        }) as never,
+      },
+    });
+
+    vi.advanceTimersByTime(5000);
+
+    expect(drainPendingJobs).toHaveBeenCalledWith({ limit: 25 });
     runtime.observationScheduler.stop();
     runtime.db.close();
     vi.useRealTimers();

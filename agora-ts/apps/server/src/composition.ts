@@ -28,6 +28,7 @@ import {
   OsHostResourcePort,
   HumanAccountService,
   ProjectBrainIndexQueueService,
+  type ProjectBrainIndexWorkerService,
   ProjectBrainService,
   ProjectService,
   RolePackService,
@@ -170,6 +171,10 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: { projectService: ProjectService; citizenService: CitizenService },
   ) => ProjectBrainService;
+  createProjectBrainIndexWorkerService?: (
+    context: ServerCompositionContext,
+    deps: { projectBrainService: ProjectBrainService },
+  ) => ProjectBrainIndexWorkerService | undefined;
   createTaskParticipationService: (
     context: ServerCompositionContext,
     deps: { agentRuntimePort: AgentRuntimePort },
@@ -272,6 +277,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         craftsmanExecutionTailPort: deps.craftsmanExecutionTailPort,
         hostResourcePort: new OsHostResourcePort(),
         liveSessionStore: deps.liveSessionStore,
+        skillCatalogPort: new FilesystemSkillCatalogAdapter(),
         craftsmanGovernance: {
           maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
           hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,

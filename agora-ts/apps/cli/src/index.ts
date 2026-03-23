@@ -1,26 +1,55 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
+import {
+  BUILT_IN_AGORA_NOMOS_PACK,
+  DEFAULT_AGORA_NOMOS_ID,
+  DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS,
+  DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
+  buildBuiltInAgoraNomosSeededAssets,
+  buildBuiltInAgoraNomosProjectProfile,
+  installBuiltInAgoraNomosForProject,
+  mergeProjectMetadataWithNomosProfile,
+  NOMOS_LIFECYCLE_MODULES,
+  REPO_AGENTS_SHIM_SECTION_ORDER,
+  resolveInstalledCreateNomosPackTemplateDir,
+  resolveAgoraProjectStateLayout,
+  resolveAgoraRuntimeEnvironmentFromConfigPackage,
+  scaffoldNomosPack,
+} from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
-import { deriveGraphFromStages } from '@agora-ts/core';
+import {
+  deriveGraphFromStages,
+  OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  ProjectBootstrapService,
+  ProjectBrainDoctorService,
+  ProjectBrainIndexQueueService,
+  ProjectBrainIndexWorkerService,
+  isDeveloperRegressionEnabled,
+} from '@agora-ts/core';
+import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
   CitizenService,
   DashboardQueryService,
   ProjectBrainAutomationService,
+  ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   ProjectBrainIndexService,
+  ProjectBrainIndexWorkerService as ProjectBrainIndexWorkerServiceContract,
   ProjectBrainRetrievalService,
   ProjectBrainService,
   ProjectService,
   RolePackService,
+  TaskContextBindingService,
   TaskConversationService,
   TaskService,
   TemplateAuthoringService,
   TmuxRuntimeService,
+  IMProvisioningPort,
 } from '@agora-ts/core';
 import type {
   CraftsmanCallbackRequestDto,
@@ -65,6 +94,8 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
 type CreateProjectInputLike = CreateProjectRequestDto;
 type CreateCitizenInputLike = CreateCitizenRequestDto;
 
+const CLI_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+
 export interface CliDependencies {
   taskService?: TaskService;
   projectService?: ProjectService;
@@ -72,15 +103,19 @@ export interface CliDependencies {
   projectBrainAutomationService?: ProjectBrainAutomationService;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
+  projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
+  projectBrainIndexWorkerService?: ProjectBrainIndexWorkerServiceContract;
   citizenService?: CitizenService;
   legacyRuntimeService?: LegacyRuntimeServiceLike;
   tmuxRuntimeService?: LegacyRuntimeServiceLike;
   dashboardSessionClient?: DashboardSessionClient;
   humanAccountService?: HumanAccountService;
   taskConversationService?: TaskConversationService;
+  taskContextBindingService?: TaskContextBindingService;
   templateAuthoringService?: TemplateAuthoringService;
   rolePackService?: RolePackService;
   dashboardQueryService?: DashboardQueryService;
+  imProvisioningPort?: IMProvisioningPort;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
   startCommandCwd?: string;
@@ -106,6 +141,32 @@ function parseJsonOption(raw: string | undefined, context: string): Record<strin
 
 function collectOption(value: string, previous: string[] = []) {
   return [...previous, value];
+}
+
+function requireSupportedNomosId(raw: string | undefined) {
+  const nomosId = raw?.trim() || DEFAULT_AGORA_NOMOS_ID;
+  if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
+    throw new Error(`Unsupported nomos_id: ${nomosId}`);
+  }
+  return nomosId;
+}
+
+function collectStringOption(value: string, previous: string[]) {
+  return [...previous, value];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
+  const agora = asRecord(project.metadata?.agora);
+  const nomos = asRecord(agora?.nomos);
+  return typeof nomos?.id === 'string' && nomos.id.length > 0
+    ? nomos.id
+    : DEFAULT_AGORA_NOMOS_ID;
 }
 
 function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
@@ -142,6 +203,54 @@ function buildSkillPolicy(skillRefs: string[] = [], rawRoleSkills: string[] = []
     role_refs: roleRefs,
     enforcement: 'required' as const,
   };
+}
+
+function readDashboardLoginCredentials(env: NodeJS.ProcessEnv = process.env) {
+  const username = (
+    env.AGORA_DASHBOARD_LOGIN_USER
+    ?? env.AGORA_DASHBOARD_USER
+    ?? env.DASHBOARD_LOGIN_USER
+    ?? ''
+  ).trim();
+  const password = (
+    env.AGORA_DASHBOARD_LOGIN_PASSWORD
+    ?? env.AGORA_DASHBOARD_PASSWORD
+    ?? env.DASHBOARD_LOGIN_PASSWORD
+    ?? ''
+  ).trim();
+  if (!username || !password) {
+    return null;
+  }
+  return { username, password };
+}
+
+function resolveDashboardSessionLoginInput(
+  options: { username?: string; password?: string },
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  resolveAgoraRuntimeEnvironmentFromConfigPackage();
+  const username = options.username?.trim() ?? '';
+  const password = options.password?.trim() ?? '';
+  if (username || password) {
+    if (!username || !password) {
+      throw new Error('dashboard session login requires both --username and --password.');
+    }
+    return { username, password };
+  }
+
+  if (!isDeveloperRegressionEnabled(env)) {
+    throw new Error(
+      'dashboard session login requires --username/--password, or enable AGORA_DEV_REGRESSION_MODE=true and set AGORA_DASHBOARD_LOGIN_USER / AGORA_DASHBOARD_LOGIN_PASSWORD.',
+    );
+  }
+
+  const fromEnv = readDashboardLoginCredentials(env);
+  if (!fromEnv) {
+    throw new Error(
+      'developer regression mode is enabled, but AGORA_DASHBOARD_LOGIN_USER / AGORA_DASHBOARD_LOGIN_PASSWORD are not set.',
+    );
+  }
+  return fromEnv;
 }
 
 function buildTemplateMembers(
@@ -370,14 +479,67 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const dashboardSessionClient = createLazyObject(() => deps.dashboardSessionClient ?? resolveComposition().dashboardSessionClient);
   const humanAccountService = createLazyObject(() => deps.humanAccountService ?? resolveComposition().humanAccountService);
   const taskConversationService = createLazyObject(() => deps.taskConversationService ?? resolveComposition().taskConversationService);
+  const taskContextBindingService = createLazyObject(() => deps.taskContextBindingService ?? resolveComposition().taskContextBindingService);
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const getImProvisioningPort = () => deps.imProvisioningPort ?? resolveComposition().imProvisioningPort;
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
   const getProjectBrainIndexService = () => deps.projectBrainIndexService ?? resolveComposition().projectBrainIndexService;
   const getProjectBrainRetrievalService = () => deps.projectBrainRetrievalService ?? resolveComposition().projectBrainRetrievalService;
+  let projectBrainDoctorService: ProjectBrainDoctorServiceContract | null | undefined;
+  let projectBrainIndexWorkerService: ProjectBrainIndexWorkerServiceContract | null | undefined;
+  const getProjectBrainDoctorService = () => {
+    if (deps.projectBrainDoctorService) {
+      return deps.projectBrainDoctorService;
+    }
+    if (projectBrainDoctorService !== undefined) {
+      return projectBrainDoctorService ?? undefined;
+    }
+    const composition = resolveComposition();
+    const embeddingPort = process.env.OPENAI_API_KEY
+      ? new OpenAiCompatibleProjectBrainEmbeddingAdapter()
+      : undefined;
+    projectBrainDoctorService = new ProjectBrainDoctorService({
+      dbPath: deps.dbPath ?? composition.config.db_path,
+      projectBrainService: composition.projectBrainService,
+      queueService: new ProjectBrainIndexQueueService(composition.db),
+      ...(composition.projectBrainIndexService ? { indexService: composition.projectBrainIndexService } : {}),
+      ...(embeddingPort ? { embeddingPort } : {}),
+    });
+    return projectBrainDoctorService;
+  };
+  const getProjectBrainIndexWorkerService = () => {
+    if (deps.projectBrainIndexWorkerService) {
+      return deps.projectBrainIndexWorkerService;
+    }
+    if (projectBrainIndexWorkerService !== undefined) {
+      return projectBrainIndexWorkerService ?? undefined;
+    }
+    const composition = resolveComposition();
+    if (!composition.projectBrainIndexService) {
+      projectBrainIndexWorkerService = null;
+      return undefined;
+    }
+    projectBrainIndexWorkerService = new ProjectBrainIndexWorkerService({
+      queueService: new ProjectBrainIndexQueueService(composition.db),
+      indexService: composition.projectBrainIndexService,
+    });
+    return projectBrainIndexWorkerService;
+  };
+  const maybeDrainProjectBrainIndexJobs = async (limit = 5) => {
+    const worker = getProjectBrainIndexWorkerService();
+    if (!worker) {
+      return;
+    }
+    try {
+      await worker.drainPendingJobs({ limit });
+    } catch (error) {
+      writeLine(stderr, `[agora] project brain index auto-drain failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
   const citizenService = createLazyObject(() => deps.citizenService ?? resolveComposition().citizenService);
   const program = new Command();
 
@@ -513,6 +675,153 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Flow Log: ${status.flow_log.length}`);
     });
 
+  const regression = program
+    .command('regression')
+    .description('developer live regression commands');
+
+  regression
+    .command('live')
+    .description('publish a live regression prompt into a bound task thread')
+    .option('--task-id <taskId>', 'existing task id')
+    .option('--title <title>', 'create a fresh regression task with this title')
+    .option('--type <type>', 'task type for create mode', 'coding')
+    .option('--priority <priority>', 'task priority for create mode', 'normal')
+    .option('--creator <creator>', 'task creator for create mode', 'archon')
+    .option('--locale <locale>', 'task locale for create mode (zh-CN|en-US)', 'zh-CN')
+    .option('--team-json <json>', 'team override JSON for create mode')
+    .option('--workflow-json <json>', 'workflow override JSON for create mode')
+    .option('--im-target-json <json>', 'IM target override JSON for create mode')
+    .option('--project-id <projectId>', 'bind create-mode regression task to an existing project')
+    .option('--controller <agentId>', 'controller agent override for create mode')
+    .option('--bind <binding>', 'role binding override for create mode (role=agent)', collectOption, [])
+    .requiredOption('--goal <goal>', 'regression goal')
+    .option('--message <text>', 'prompt text')
+    .option('--body-file <path>', 'prompt text file')
+    .option('--participant <ref>', 'participant ref to mention', collectOption, [])
+    .option('--action <kind>', 'optional fallback task action')
+    .option('--action-actor <actor>', 'actor id used for the fallback action')
+    .option('--next-stage-id <id>', 'branch target for advance_current')
+    .option('--comment <text>', 'comment for approve/confirm actions')
+    .option('--reason <text>', 'reason for reject actions')
+    .option('--vote <vote>', 'vote for confirm_current (approve|reject)')
+    .option('--json', 'emit JSON', false)
+    .action(async (options: {
+      taskId?: string;
+      title?: string;
+      type: string;
+      priority: TaskPriority;
+      creator: string;
+      locale: 'zh-CN' | 'en-US';
+      teamJson?: string;
+      workflowJson?: string;
+      imTargetJson?: string;
+      projectId?: string;
+      controller?: string;
+      bind?: string[];
+      goal: string;
+      message?: string;
+      bodyFile?: string;
+      participant?: string[];
+      action?: string;
+      actionActor?: string;
+      nextStageId?: string;
+      comment?: string;
+      reason?: string;
+      vote?: 'approve' | 'reject';
+      json?: boolean;
+    }) => {
+      if (!isDeveloperRegressionEnabled(process.env)) {
+        throw new CliError(
+          'AGORA_DEV_REGRESSION_MODE is not enabled.',
+          'usage',
+          CLI_EXIT_CODES.usage,
+          'Set AGORA_DEV_REGRESSION_MODE=true before running developer live regression commands.',
+        );
+      }
+      const imProvisioningPort = getImProvisioningPort();
+      if (!imProvisioningPort) {
+        throw new Error('IM provisioning port is not configured');
+      }
+      if ((options.taskId ? 1 : 0) + (options.title ? 1 : 0) !== 1) {
+        throw new Error('regression live requires exactly one target: --task-id or --title');
+      }
+      const message = readTextOption(options.message, options.bodyFile, 'regression live').trim();
+      if (!message) {
+        throw new Error('regression live requires --message or --body-file');
+      }
+      const taskAction = options.action
+        ? {
+            kind: options.action as 'approve_current' | 'reject_current' | 'advance_current' | 'confirm_current',
+            actor_ref: options.actionActor ?? '',
+            ...(options.nextStageId ? { next_stage_id: options.nextStageId } : {}),
+            ...(options.comment ? { comment: options.comment } : {}),
+            ...(options.reason ? { reason: options.reason } : {}),
+            ...(options.vote ? { vote: options.vote } : {}),
+          }
+        : undefined;
+      if (taskAction && !taskAction.actor_ref) {
+        throw new Error('--action-actor is required when --action is provided');
+      }
+      const actor = new LiveRegressionActor({
+        taskService,
+        taskContextBindingService,
+        taskConversationService,
+        imProvisioningPort,
+      });
+      const target = options.taskId
+        ? { taskId: options.taskId }
+        : (() => {
+            const input = createTaskRequestSchema.parse({
+              title: options.title,
+              type: options.type,
+              creator: options.creator,
+              description: '',
+              priority: options.priority,
+              locale: options.locale,
+              ...(options.projectId ? { project_id: options.projectId } : {}),
+              ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
+              ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
+              ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
+              control: { mode: 'regression_test' },
+            });
+            const template = (() => {
+              try {
+                return templateAuthoringService.getTemplate(options.type);
+              } catch {
+                return null;
+              }
+            })();
+            return {
+              createTask: applyTaskCreateOverrides(
+                input,
+                options.type,
+                template,
+                rolePackService,
+                options.controller,
+                parseRoleBindings(options.bind),
+              ),
+            };
+          })();
+      const result = await actor.run({
+        target,
+        actorRef: 'agora-bot',
+        displayName: 'AgoraBot',
+        goal: options.goal,
+        message,
+        ...(options.participant ? { participantRefs: options.participant } : {}),
+        ...(taskAction ? { taskAction } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `Regression task: ${result.taskId}`);
+      writeLine(stdout, `Thread: ${result.threadRef ?? '-'}`);
+      writeLine(stdout, `State: ${result.state}`);
+      writeLine(stdout, `Stage: ${result.currentStage ?? '-'}`);
+      writeLine(stdout, `Conversation Entry: ${result.conversationEntryId ?? '-'}`);
+    });
+
   const roles = program
     .command('roles')
     .description('Agora role pack commands');
@@ -618,6 +927,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projects = program
     .command('projects')
     .description('project thin-slice commands');
+  const nomos = program
+    .command('nomos')
+    .description('Nomos pack and project-state commands');
   const skills = program
     .command('skills')
     .description('local skill catalog commands');
@@ -653,6 +965,240 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `stages: ${(template.stages ?? []).map((stage) => stage.id).join(' -> ') || '-'}`);
     });
 
+  nomos
+    .command('list')
+    .description('列出当前可用的 Nomos packs')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const packs = [{
+        ...BUILT_IN_AGORA_NOMOS_PACK,
+        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+        shim_sections: [...REPO_AGENTS_SHIM_SECTION_ORDER],
+      }];
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ nomos: packs }, null, 2));
+        return;
+      }
+      for (const pack of packs) {
+        writeLine(stdout, `${pack.id}\t${pack.version}\t${pack.name}`);
+      }
+    });
+
+  nomos
+    .command('show')
+    .description('查看 Nomos pack 详情')
+    .argument('[nomosId]', 'Nomos pack id', DEFAULT_AGORA_NOMOS_ID)
+    .option('--json', '输出 JSON', false)
+    .action((nomosId: string, options: { json?: boolean }) => {
+      const supportedNomosId = requireSupportedNomosId(nomosId);
+      const profile = buildBuiltInAgoraNomosProjectProfile('__preview__');
+      const payload = {
+        id: supportedNomosId,
+        pack: profile.pack,
+        repository_shim: profile.repository_shim,
+        project_state: profile.project_state,
+        bootstrap: profile.bootstrap,
+        docs: profile.docs,
+        lifecycle: profile.lifecycle,
+        doctor: profile.doctor,
+        seeded_assets: buildBuiltInAgoraNomosSeededAssets(),
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, `${payload.pack.id} — ${payload.pack.name}`);
+      writeLine(stdout, `version: ${payload.pack.version}`);
+      writeLine(stdout, `install_mode: ${payload.pack.install_mode}`);
+      writeLine(stdout, `project_state_root: ${payload.project_state.root_template}`);
+      writeLine(stdout, `lifecycle: ${payload.lifecycle.modules.join(', ')}`);
+      writeLine(stdout, `shim sections: ${payload.repository_shim.required_sections.join(', ')}`);
+      writeLine(stdout, `seeded references: ${payload.seeded_assets.docs.reference.join(', ')}`);
+      writeLine(stdout, `seeded lifecycle docs: ${payload.seeded_assets.lifecycle.join(', ')}`);
+      writeLine(stdout, `seeded bootstrap prompts: ${payload.seeded_assets.prompts.bootstrap.join(', ')}`);
+    });
+
+  nomos
+    .command('scaffold')
+    .description('生成一个可分享的自定义 Nomos pack 骨架')
+    .requiredOption('--id <packId>', 'pack id, e.g. acme/web')
+    .requiredOption('--name <name>', 'pack display name')
+    .requiredOption('--description <description>', 'pack description')
+    .requiredOption('--output-dir <path>', 'output directory for the generated pack')
+    .option('--version <version>', 'pack version', '0.1.0')
+    .option('--module <module>', 'lifecycle module to include', collectStringOption, [])
+    .option('--doctor-check <check>', 'doctor check to include', collectStringOption, [])
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      id: string;
+      name: string;
+      description: string;
+      outputDir: string;
+      version?: string;
+      module?: string[];
+      doctorCheck?: string[];
+      json?: boolean;
+    }) => {
+      const lifecycleModules = (options.module?.length ?? 0) > 0
+        ? options.module!.map((module) => module.trim()).map((module) => {
+          if (!NOMOS_LIFECYCLE_MODULES.includes(module as (typeof NOMOS_LIFECYCLE_MODULES)[number])) {
+            throw new Error(`Unsupported Nomos lifecycle module: ${module}`);
+          }
+          return module as (typeof NOMOS_LIFECYCLE_MODULES)[number];
+        })
+        : [...DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES];
+      const doctorChecks = (options.doctorCheck?.length ?? 0) > 0
+        ? options.doctorCheck!.map((check) => check.trim())
+        : [...DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS];
+      const installedTemplateDir = resolveInstalledCreateNomosPackTemplateDir();
+      const bundledTemplateDir = resolve(CLI_REPO_ROOT, '.skills', 'create-nomos', 'assets', 'pack-template');
+      const templateDir = existsSync(installedTemplateDir) ? installedTemplateDir : bundledTemplateDir;
+
+      const scaffolded = scaffoldNomosPack({
+        outputDir: options.outputDir,
+        templateDir,
+        id: options.id,
+        name: options.name,
+        description: options.description,
+        lifecycleModules,
+        doctorChecks,
+        ...(options.version ? { version: options.version } : {}),
+      });
+
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          pack_id: options.id,
+          pack_name: options.name,
+          version: options.version ?? '0.1.0',
+          output_dir: scaffolded.outputDir,
+          profile_path: scaffolded.profilePath,
+          constitution_path: scaffolded.constitutionPath,
+          readme_path: scaffolded.readmePath,
+          template_dir: templateDir,
+          lifecycle_modules: lifecycleModules,
+          doctor_checks: doctorChecks,
+        }, null, 2));
+        return;
+      }
+
+      writeLine(stdout, `Nomos pack 已生成: ${options.name}`);
+      writeLine(stdout, `Pack: ${options.id}@${options.version ?? '0.1.0'}`);
+      writeLine(stdout, `Output Dir: ${scaffolded.outputDir}`);
+      writeLine(stdout, `Profile: ${scaffolded.profilePath}`);
+      writeLine(stdout, `Template: ${templateDir}`);
+    });
+
+  nomos
+    .command('inspect-project')
+    .description('查看某个 project 的 Nomos 安装状态')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const layout = resolveAgoraProjectStateLayout(projectId);
+      const metadata = project.metadata ?? null;
+      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
+      const profileInstalled = existsSync(layout.profilePath);
+      const repoShimInstalled = Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md')));
+      const payload = {
+        project_id: project.id,
+        project_name: project.name,
+        nomos_id: readProjectNomosId(project),
+        project_state_root: layout.root,
+        profile_path: layout.profilePath,
+        profile_installed: profileInstalled,
+        repo_path: repoPath,
+        repo_shim_installed: repoShimInstalled,
+        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
+        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, `${payload.project_id} — ${payload.project_name}`);
+      writeLine(stdout, `nomos: ${payload.nomos_id}`);
+      writeLine(stdout, `project_state_root: ${payload.project_state_root}`);
+      writeLine(stdout, `profile_installed: ${payload.profile_installed}`);
+      writeLine(stdout, `repo_path: ${payload.repo_path ?? '-'}`);
+      writeLine(stdout, `repo_shim_installed: ${payload.repo_shim_installed}`);
+      writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
+    });
+
+  nomos
+    .command('install')
+    .description('为已有 project 安装或重装 built-in Nomos')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .option('--repo-path <path>', 'bind to an existing or new repo path')
+    .option('--initialize-repo', 'create the repo path if it does not exist and initialize git', false)
+    .option('--force-write-repo-shim', 'overwrite repo-root AGENTS.md shim', false)
+    .option('--skip-bootstrap-task', 'do not create a bootstrap task after install', false)
+    .option('--creator <creator>', 'creator used for bootstrap task', 'archon')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      repoPath?: string;
+      initializeRepo?: boolean;
+      forceWriteRepoShim?: boolean;
+      skipBootstrapTask?: boolean;
+      creator?: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
+        ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+        initializeRepo: options.initializeRepo ?? false,
+        forceWriteRepoShim: options.forceWriteRepoShim ?? false,
+      });
+      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+        ...(project.metadata ?? {}),
+        ...(options.repoPath ? { repo_path: options.repoPath } : {}),
+      }, installedNomos.profile));
+      let bootstrapTaskId: string | null = null;
+      if (!options.skipBootstrapTask && taskService) {
+        const bootstrapMode = options.repoPath
+          ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
+          : 'no_repo';
+        const bootstrapTask = new ProjectBootstrapService({
+          projectService,
+          taskService,
+        }).createHarnessBootstrapTask({
+          project_id: project.id,
+          project_name: project.name,
+          creator: options.creator ?? project.owner ?? 'archon',
+          repo_path: options.repoPath,
+          project_state_root: installedNomos.layout.root,
+          nomos_id: installedNomos.profile.pack.id,
+          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_mode: bootstrapMode,
+        });
+        bootstrapTaskId = bootstrapTask.id;
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: project.id,
+          nomos: installedNomos.profile.pack,
+          project_state_root: installedNomos.layout.root,
+          repo_shim_path: installedNomos.repoShimPath,
+          repo_git_initialized: installedNomos.repoGitInitialized,
+          project_state_git_initialized: installedNomos.projectStateGitInitialized,
+          bootstrap_task_id: bootstrapTaskId,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos 已安装: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Project: ${project.id}`);
+      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
+      if (installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      }
+      writeLine(stdout, `Repo Git Initialized: ${installedNomos.repoGitInitialized}`);
+      writeLine(stdout, `Project State Git Initialized: ${installedNomos.projectStateGitInitialized}`);
+      if (bootstrapTaskId) {
+        writeLine(stdout, `Bootstrap Task: ${bootstrapTaskId}`);
+      }
+    });
+
   projects
     .command('list')
     .description('列出 projects')
@@ -674,31 +1220,94 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   projects
+    .command('archive')
+    .description('归档 project')
+    .argument('<projectId>', 'project id')
+    .action((projectId: string) => {
+      const project = projectService.archiveProject(projectId);
+      writeLine(stdout, `Project 已归档: ${project.id}`);
+      writeLine(stdout, `状态: ${project.status}`);
+    });
+
+  projects
+    .command('delete')
+    .description('删除 project')
+    .argument('<projectId>', 'project id')
+    .action((projectId: string) => {
+      projectService.deleteProject(projectId);
+      writeLine(stdout, `Project 已删除: ${projectId}`);
+    });
+
+  projects
     .command('create')
-    .description('创建 project')
+    .description('创建 project，并走 Nomos-first 安装/bootstrap 流程')
     .requiredOption('--id <projectId>', 'project id')
     .requiredOption('--name <name>', 'project name')
     .option('--summary <summary>', 'project summary')
     .option('--owner <owner>', 'project owner')
+    .option('--repo-path <path>', 'bind to an existing or new repo path')
+    .option('--new-repo', 'create the repo path if it does not exist and initialize git', false)
+    .option('--nomos-id <nomosId>', 'Nomos pack id (currently only agora/default)', DEFAULT_AGORA_NOMOS_ID)
     .option('--metadata-json <json>', 'project metadata JSON')
     .action((options: {
       id: string;
       name: string;
       summary?: string;
       owner?: string;
+      repoPath?: string;
+      newRepo?: boolean;
+      nomosId?: string;
       metadataJson?: string;
     }) => {
+      const nomosId = requireSupportedNomosId(options.nomosId);
       const input = createProjectRequestSchema.parse({
         id: options.id,
         name: options.name,
         ...(options.summary !== undefined ? { summary: options.summary } : {}),
         ...(options.owner !== undefined ? { owner: options.owner } : {}),
+        ...(options.repoPath ? { repo_path: options.repoPath } : {}),
+        ...(options.newRepo ? { initialize_repo: true } : {}),
+        nomos_id: nomosId,
         ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
       }) satisfies CreateProjectInputLike;
       const project = projectService.createProject(input);
+      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
+        ...(input.repo_path ? { repoPath: input.repo_path } : {}),
+        initializeRepo: input.initialize_repo ?? false,
+      });
+      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
+        ...(input.metadata ?? {}),
+        ...(input.repo_path ? { repo_path: input.repo_path } : {}),
+      }, installedNomos.profile));
+      const bootstrapMode = input.repo_path
+        ? (input.initialize_repo ? 'new_repo' : 'existing_repo')
+        : 'no_repo';
+      const bootstrapTask = taskService
+        ? new ProjectBootstrapService({
+          projectService,
+          taskService,
+        }).createHarnessBootstrapTask({
+          project_id: project.id,
+          project_name: project.name,
+          creator: project.owner ?? 'archon',
+          repo_path: input.repo_path,
+          project_state_root: installedNomos.layout.root,
+          nomos_id: installedNomos.profile.pack.id,
+          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
+          bootstrap_mode: bootstrapMode,
+        })
+        : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);
       writeLine(stdout, `名称: ${project.name}`);
       writeLine(stdout, `状态: ${project.status}`);
+      writeLine(stdout, `Nomos: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
+      if (installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      }
+      if (bootstrapTask) {
+        writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
+      }
     });
 
   projects
@@ -766,7 +1375,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--body <body>', 'knowledge body')
     .option('--body-file <path>', 'load body from file')
     .option('--source-task <taskId>', 'source task id', collectOption, [])
-    .action((options: {
+    .action(async (options: {
       project: string;
       kind: 'decision' | 'fact' | 'open_question' | 'reference';
       slug: string;
@@ -792,6 +1401,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Knowledge 已写入: ${doc.path}`);
       writeLine(stdout, `kind: ${doc.kind}`);
       writeLine(stdout, `slug: ${doc.slug}`);
+      await maybeDrainProjectBrainIndexJobs();
     });
 
   projectKnowledge
@@ -1215,6 +1825,38 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   projectBrain
+    .command('doctor')
+    .description('诊断 project brain embedding/vector/queue 状态')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: { project: string; json?: boolean }) => {
+      const doctorService = getProjectBrainDoctorService();
+      if (doctorService) {
+        const result = await doctorService.diagnoseProject(options.project);
+        if (options.json) {
+          writeLine(stdout, JSON.stringify(result, null, 2));
+          return;
+        }
+        writeLine(stdout, `project=${result.project_id} db=${result.db_path}`);
+        writeLine(stdout, `embedding configured=${result.embedding.configured} healthy=${result.embedding.healthy} provider=${result.embedding.provider} model=${result.embedding.model ?? '-'}`);
+        writeLine(stdout, `vector configured=${result.vector_index.configured} healthy=${result.vector_index.healthy} provider=${result.vector_index.provider} chunks=${result.vector_index.chunk_count ?? 0}`);
+        writeLine(stdout, `jobs pending=${result.jobs.pending} running=${result.jobs.running} failed=${result.jobs.failed} succeeded=${result.jobs.succeeded}`);
+        writeLine(stdout, `drift detected=${result.drift.detected} documents_without_jobs=${result.drift.documents_without_jobs}`);
+        return;
+      }
+      const payload = {
+        project_id: options.project,
+        status: 'not_wired',
+        message: 'project brain doctor is not wired yet',
+      };
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(payload, null, 2));
+        return;
+      }
+      writeLine(stdout, payload.message);
+    });
+
+  projectBrain
     .command('append')
     .description('向 project brain 追加 Markdown 内容')
     .requiredOption('--project <projectId>', 'project id')
@@ -1226,7 +1868,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--body <body>', 'markdown body')
     .option('--body-file <path>', 'load body from file')
     .option('--source-task <taskId>', 'source task id', collectOption, [])
-    .action((options: {
+    .action(async (options: {
       project: string;
       kind: 'timeline' | 'decision' | 'fact' | 'open_question' | 'reference';
       slug?: string;
@@ -1253,6 +1895,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
       writeLine(stdout, `Brain 已追加: ${doc.kind}/${doc.slug}`);
       writeLine(stdout, `path: ${doc.path}`);
+      await maybeDrainProjectBrainIndexJobs();
     });
 
   projectBrain
@@ -1267,7 +1910,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--body <body>', 'markdown body')
     .option('--body-file <path>', 'load body from file')
     .option('--source-task <taskId>', 'source task id', collectOption, [])
-    .action((options: {
+    .action(async (options: {
       project: string;
       kind: 'decision' | 'fact' | 'open_question' | 'reference';
       slug?: string;
@@ -1294,6 +1937,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       });
       writeLine(stdout, `Brain 已提升: ${doc.kind}/${doc.slug}`);
       writeLine(stdout, `path: ${doc.path}`);
+      await maybeDrainProjectBrainIndexJobs();
     });
 
   citizens
@@ -1584,7 +2228,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   archiveJobs
     .command('list')
     .description('列出 archive jobs')
-    .option('--status <status>', 'pending|notified|synced|failed')
+    .option('--status <status>', 'review_pending|pending|notified|synced|failed')
     .option('--task-id <taskId>', 'task id filter')
     .option('--json', '输出 JSON', false)
     .action((options: { status?: string; taskId?: string; json?: boolean }) => {
@@ -1622,6 +2266,20 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `target: ${job.target_path}`);
       writeLine(stdout, `requested_at: ${job.requested_at}`);
       writeLine(stdout, `completed_at: ${job.completed_at ?? '-'}`);
+    });
+
+  archiveJobs
+    .command('approve')
+    .description('审批放行 review_pending archive job')
+    .argument('<jobId>', 'archive job id')
+    .requiredOption('--approver-id <approverId>', 'approver id')
+    .option('--comment <comment>', 'approval comment')
+    .action((jobId: string, options: { approverId: string; comment?: string }) => {
+      const job = dashboardQueryService.approveArchiveJob(Number(jobId), {
+        approver_id: options.approverId,
+        ...(options.comment !== undefined ? { comment: options.comment } : {}),
+      });
+      writeLine(stdout, `archive job 已审批放行: ${job.id} -> ${job.status}`);
     });
 
   archiveJobs
@@ -2405,13 +3063,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   dashboardSession
     .command('login')
-    .description('登录 dashboard session 并缓存 cookie')
-    .requiredOption('--username <username>', '用户名')
-    .requiredOption('--password <password>', '密码')
-    .action(async (options: { username: string; password: string }) => {
+    .description('登录 dashboard session 并缓存 cookie；在 developer regression mode 下可直接读取 .env 中的 dashboard 登录变量')
+    .option('--username <username>', '用户名')
+    .option('--password <password>', '密码')
+    .action(async (options: { username?: string; password?: string }) => {
+      const credentials = resolveDashboardSessionLoginInput(options);
       const result = await dashboardSessionClient.login({
-        username: options.username,
-        password: options.password,
+        username: credentials.username,
+        password: credentials.password,
       });
       writeLine(stdout, `dashboard session 已建立: ${result.username}`);
       writeLine(stdout, `method: ${result.method}`);

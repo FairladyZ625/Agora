@@ -242,7 +242,7 @@ describe('task inbound service', () => {
       task_action_result: {
         kind: 'advance_current',
         task_id: 'OC-INBOUND-COMPLETE-1',
-        current_stage: 'deliver',
+        current_stage: null,
         state: 'done',
       },
     });

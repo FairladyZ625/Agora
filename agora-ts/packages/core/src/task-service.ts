@@ -58,7 +58,11 @@ import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
-import type { TaskBrainWorkspacePort } from './task-brain-port.js';
+import type {
+  TaskBrainContextArtifact,
+  TaskBrainContextAudience,
+  TaskBrainWorkspacePort,
+} from './task-brain-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
@@ -70,6 +74,7 @@ import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAli
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
+const TASK_BRAIN_CONTEXT_AUDIENCES: TaskBrainContextAudience[] = ['controller', 'craftsman', 'citizen'];
 
 type TaskTemplate = {
   name: string;
@@ -608,6 +613,7 @@ export class TaskService {
 
   approveTask(taskId: string, options: ApproveTaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.approverId, 'approve');
     this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
@@ -642,6 +648,7 @@ export class TaskService {
 
   rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.rejectorId, 'reject');
     this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
@@ -685,6 +692,7 @@ export class TaskService {
 
   archonApproveTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-approve');
     this.gateService.routeGateCommand(task, stage, 'archon-approve', options.reviewerId);
@@ -725,6 +733,7 @@ export class TaskService {
 
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-reject');
     this.gateService.routeGateCommand(task, stage, 'archon-reject', options.reviewerId);
@@ -781,6 +790,7 @@ export class TaskService {
     if (advance.completesTask) {
       const done = this.taskRepository.updateTask(task.id, task.version, {
         state: TaskState.DONE,
+        current_stage: null,
       });
       this.refreshTaskBrainWorkspace(done);
       this.materializeTaskCloseRecap(done, actor);
@@ -1624,6 +1634,7 @@ export class TaskService {
     if (advance.completesTask) {
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
+        current_stage: null,
       });
       this.refreshTaskBrainWorkspace(done);
       this.materializeTaskCloseRecap(done, 'archon', options.reason);
@@ -1677,6 +1688,7 @@ export class TaskService {
 
   confirmTask(taskId: string, options: ConfirmTaskOptions): StoredTask & { quorum: { approved: number; total: number } } {
     const task = this.getTaskOrThrow(taskId);
+    this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.voterId, 'confirm');
     this.gateService.routeGateCommand(task, stage, 'confirm', options.voterId);
@@ -2127,18 +2139,7 @@ export class TaskService {
   }
 
   private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
-    const projectBrainContext = task.project_id && this.projectBrainAutomationService
-      ? this.projectBrainAutomationService.buildBootstrapContext({
-          project_id: task.project_id,
-          task_id: task.id,
-          task_title: task.title,
-          ...(task.description ? { task_description: task.description } : {}),
-          allowed_citizen_ids: task.team.members
-            .filter((member) => member.member_kind === 'citizen')
-            .map((member) => member.agentId),
-          audience: 'controller',
-        })
-      : null;
+    const projectBrainContexts = this.buildProjectBrainContexts(task);
     return {
       task_id: task.id,
       project_id: task.project_id ?? null,
@@ -2174,16 +2175,38 @@ export class TaskService {
         ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
         ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
       })),
-      ...(projectBrainContext
+      ...(projectBrainContexts
         ? {
-            project_brain_context: {
-              audience: projectBrainContext.audience,
-              source_documents: projectBrainContext.source_documents,
-              markdown: projectBrainContext.markdown,
-            },
+            project_brain_contexts: projectBrainContexts,
           }
         : {}),
     } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
+  }
+
+  private buildProjectBrainContexts(task: StoredTask): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
+    if (!task.project_id || !this.projectBrainAutomationService) {
+      return null;
+    }
+    const allowedCitizenIds = task.team.members
+      .filter((member) => member.member_kind === 'citizen')
+      .map((member) => member.agentId);
+    const contexts: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> = {};
+    for (const audience of TASK_BRAIN_CONTEXT_AUDIENCES) {
+      const context = this.projectBrainAutomationService.buildBootstrapContext({
+        project_id: task.project_id,
+        task_id: task.id,
+        task_title: task.title,
+        ...(task.description ? { task_description: task.description } : {}),
+        ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
+        audience,
+      });
+      contexts[audience] = {
+        audience: context.audience,
+        source_documents: context.source_documents,
+        markdown: context.markdown,
+      };
+    }
+    return contexts;
   }
 
   private refreshTaskBrainWorkspace(task: StoredTask) {
@@ -2223,7 +2246,10 @@ export class TaskService {
     }
     const workspacePath = binding.workspace_path;
     const roleBriefPath = join(workspacePath, '05-agents', input.assignee, '00-role-brief.md');
-    const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+    const projectBrainContextPath = resolveProjectBrainContextPath(
+      workspacePath,
+      resolveTaskBrainContextAudienceForAssignee(task, input.assignee),
+    );
     const currentStage = task.current_stage ? this.getStageByIdOrThrow(task, task.current_stage) : null;
     const controllerRef = resolveControllerRef(task.team.members);
     const currentStageParticipants = this.stageRosterService.resolveDesiredRefs(task.team, currentStage ?? undefined);
@@ -2314,6 +2340,12 @@ export class TaskService {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
     return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
+  }
+
+  private assertTaskActive(task: StoredTask) {
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
+    }
   }
 
   private assertStageRosterAction(
@@ -2447,6 +2479,14 @@ export class TaskService {
                 `- ${taskText(task, '额外测试引导仅用于验证。', 'Extra testing guidance may appear for validation only.')}`,
                 `- ${taskText(task, '这不是默认的终端用户产品流程。', 'This is not the default end-user product flow.')}`,
               ]
+            : task.control?.mode === 'regression_test'
+              ? [
+                  '',
+                  `${taskText(task, '回归代理模式', 'Regression Proxy Mode')}:`,
+                  `- ${taskText(task, '当前任务运行在开发期 regression mode 下。', 'This task is running in developer regression mode.')}`,
+                  `- ${taskText(task, 'AgoraBot 在当前线程里代表开发者执行回归，并可主动牵引任务推进。', 'AgoraBot represents the developer in this thread for regression and may actively steer task progression.')}`,
+                  `- ${taskText(task, '这套代理语义仅用于开发验证，不代表正式终端用户产品权限。', 'This proxy contract is for development validation only and does not represent normal end-user permissions.')}`,
+                ]
             : []),
         ].join('\n'),
       },
@@ -2487,7 +2527,9 @@ export class TaskService {
           `${taskText(task, '成员 mention', 'Roster mention')}: {{participant:${member.agentId}}}`,
           ...(task.control?.mode === 'smoke_test'
             ? [taskText(task, '冒烟测试模式：当前线程仅用于验证，不代表默认产品体验。', 'Smoke Test Mode: this thread is being used for validation, not for the default product UX.')]
-            : []),
+            : task.control?.mode === 'regression_test'
+              ? [taskText(task, '回归代理模式：AgoraBot 在当前线程里代表开发者推进任务、执行回归牵引；这只在开发环境中生效。', 'Regression Proxy Mode: AgoraBot represents the developer in this thread to drive the task and perform regression steering; this only applies in developer environments.')]
+              : []),
           ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`${taskText(task, '阅读角色文档', 'Read role doc')}: ${roleDocPath}`] : []),
           ...(member.briefing_mode === 'overlay_delta'
             ? [taskText(task, '该 Agent 已自带 Agora 托管的基础角色上下文；以下 role brief 只提供本任务增量。', 'This agent already carries Agora-managed base role context; use the role brief below as task delta.')]
@@ -2581,6 +2623,18 @@ export class TaskService {
           ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
         ];
         this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
+          task_id: task.id,
+          project_id: task.project_id,
+          locale: task.locale,
+          title: task.title,
+          state: task.state,
+          current_stage: task.current_stage,
+          controller_ref: resolveControllerRef(task.team.members),
+          completed_by: actor,
+          completed_at: new Date().toISOString(),
+          summary_lines: summaryLines,
+        });
+        this.taskBrainWorkspacePort.writeTaskHarvestDraft(binding, {
           task_id: task.id,
           project_id: task.project_id,
           locale: task.locale,
@@ -3671,15 +3725,31 @@ export class TaskService {
     }
 
     const task = this.getTaskOrThrow(taskId);
+    const binding = this.taskBrainBindingService?.getActiveBinding(task.id);
     return this.archiveJobRepository.insertArchiveJob({
       task_id: task.id,
-      status: 'pending',
+      status: 'review_pending',
       target_path: this.buildArchiveTargetPath(task),
       payload: {
         task_id: task.id,
         title: task.title,
         type: task.type,
         state: task.state,
+        ...(task.project_id ? { project_id: task.project_id } : {}),
+        closeout_review: {
+          required: true,
+          state: 'review_pending',
+          task_state: task.state,
+          candidate_updates: [
+            ...(task.project_id ? [{
+              kind: 'recap',
+              slug: task.id,
+              project_id: task.project_id,
+            }] : []),
+          ],
+          ...(binding?.workspace_path ? { workspace_path: binding.workspace_path } : {}),
+          ...(binding?.workspace_path ? { harvest_draft_path: join(binding.workspace_path, '07-outputs', 'project-harvest-draft.md') } : {}),
+        },
       },
       writer_agent: 'writer-agent',
     });
@@ -4147,7 +4217,7 @@ type TaskStatusBroadcastEnvelope = {
   execution_kind: string | null;
   allowed_actions: string[];
   controller_ref: string | null;
-  control_mode: 'normal' | 'smoke_test';
+  control_mode: 'normal' | 'smoke_test' | 'regression_test';
   workspace_path: string | null;
   participant_refs: string[] | null;
   lines: string[];
@@ -4215,6 +4285,23 @@ function stageAllowsCraftsmanDispatch(stage: WorkflowStageLike | null | undefine
   }
   return resolveStageExecutionKind(stage) === 'craftsman_dispatch'
     || resolveAllowedActions(stage).includes('dispatch_craftsman');
+}
+
+function resolveTaskBrainContextAudienceForAssignee(task: StoredTask, assignee: string): TaskBrainContextAudience {
+  const member = task.team.members.find((candidate) => candidate.agentId === assignee);
+  switch (member?.member_kind) {
+    case 'craftsman':
+      return 'craftsman';
+    case 'citizen':
+      return 'citizen';
+    case 'controller':
+    default:
+      return 'controller';
+  }
+}
+
+function resolveProjectBrainContextPath(workspacePath: string, audience: TaskBrainContextAudience) {
+  return join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
 }
 
 function slugify(value: string) {

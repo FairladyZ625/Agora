@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import * as api from '@/lib/api';
-import { mapProjectDto, mapProjectTaskSummaryDto, mapProjectTodoSummaryDto, mapProjectWorkbenchDto } from '@/lib/projectMappers';
+import {
+  mapProjectDto,
+  mapProjectNomosStateDto,
+  mapProjectTaskSummaryDto,
+  mapProjectTodoSummaryDto,
+  mapProjectWorkbenchDto,
+} from '@/lib/projectMappers';
 import type { ProjectSummary, ProjectWorkbench } from '@/types/project';
 
 interface ProjectStore {
@@ -67,7 +73,8 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
     }
     set({ selectedProjectId: projectId, detailLoading: true, error: null });
     try {
-      const [workbenchDto, tasksDto, todosDto] = await Promise.all([
+      const [nomosDto, workbenchDto, tasksDto, todosDto] = await Promise.all([
+        api.getProjectNomosState(projectId),
         api.getProjectWorkbench(projectId),
         api.listTasks(undefined, projectId),
         api.listTodos(undefined, projectId),
@@ -76,6 +83,7 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
       set({
         selectedProject: {
           ...detail,
+          nomos: mapProjectNomosStateDto(nomosDto),
           tasks: tasksDto.map(mapProjectTaskSummaryDto),
           todos: todosDto.map(mapProjectTodoSummaryDto),
         },

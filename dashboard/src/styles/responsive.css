@@ -170,6 +170,10 @@
     grid-template-columns: 1fr;
   }
 
+  .workbench-grid--tasks {
+    grid-template-columns: 1fr;
+  }
+
   .workbench-hero__stats {
     min-width: 0;
     grid-template-columns: 1fr;
@@ -212,6 +216,12 @@
     grid-template-columns: 1fr;
   }
 
+  .task-flow__facts,
+  .task-runtime-grid,
+  .task-hero-card__footer {
+    grid-template-columns: 1fr;
+  }
+
   .review-pane--queue,
   .task-pane--queue {
     border-right: 0;
@@ -224,23 +234,35 @@
     align-items: stretch;
   }
 
+  .task-toolbar__group {
+    width: 100%;
+  }
+
+  .task-toolbar__button {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .task-toolbar__status {
+    min-height: 0;
+  }
+
+  .review-toolbar__group {
+    width: 100%;
+  }
+
+  .review-toolbar__button {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .review-toolbar__status {
+    min-height: 0;
+  }
+
   .review-canvas__signals {
     min-width: 0;
     grid-template-columns: 1fr;
-  }
-
-  .review-table__head {
-    display: none;
-  }
-
-  .review-table__row {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 16px 0;
-  }
-
-  .review-table__cell--right {
-    text-align: left;
   }
 
   .dense-row {
@@ -258,6 +280,31 @@
     grid-template-columns: 1fr;
   }
 
+  .home-os__visual-zone,
+  .home-signal-field {
+    min-height: 132px;
+  }
+
+  .home-os__orbital-readout {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .home-os__orbital-core {
+    width: 56px;
+    height: 56px;
+  }
+
+  .home-os__orbital-readout .home-os__orbital-value {
+    justify-self: start;
+  }
+
+  .home-os__header-actions {
+    left: 0;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
   .home-os__terminal {
     min-height: 240px;
   }
@@ -269,6 +316,15 @@
 
   .board-grid-column__empty {
     min-height: 180px;
+  }
+
+  .board-task-card__meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .board-task-card__badges {
+    justify-content: flex-start;
   }
 
   .agents-issue-queue__scroll {

@@ -14,6 +14,10 @@ const apiMocks = vi.hoisted(() => ({
       skill_ref: 'refactoring-ui',
       resolved_path: '/tmp/skills/refactoring-ui/SKILL.md',
     },
+    {
+      skill_ref: 'frontend-design',
+      resolved_path: '/tmp/skills/frontend-design/SKILL.md',
+    },
   ])),
 }));
 const showMessage = vi.fn();
@@ -106,7 +110,7 @@ vi.mock('@/stores/templateStore', () => ({
       defaultTeamRoles: ['architect', 'developer', 'craftsman'],
       defaultTeam: [
         { role: 'architect', memberKind: 'controller', modelPreference: 'strong_reasoning', suggested: ['opus'] },
-        { role: 'developer', memberKind: 'citizen', modelPreference: 'fast_coding', suggested: ['sonnet'] },
+        { role: 'developer', memberKind: 'citizen', modelPreference: 'fast_coding', suggested: ['sonnet', 'review'] },
         { role: 'craftsman', memberKind: 'craftsman', modelPreference: 'coding_cli', suggested: ['claude_code'] },
       ],
       raw: {},
@@ -123,6 +127,8 @@ vi.mock('@/stores/agentStore', () => ({
       role: string | null;
       status: string;
       presence: 'online' | 'offline' | 'disconnected' | 'stale';
+      selectability: 'selectable' | 'restricted';
+      selectabilityReason: string | null;
       presenceReason: string | null;
       channelProviders: string[];
       hostFramework: string | null;
@@ -172,6 +178,8 @@ vi.mock('@/stores/agentStore', () => ({
         role: null,
         status: 'idle',
         presence: 'online',
+        selectability: 'selectable',
+        selectabilityReason: 'live_session',
         presenceReason: null,
         channelProviders: ['discord'],
         hostFramework: 'openclaw',
@@ -191,14 +199,38 @@ vi.mock('@/stores/agentStore', () => ({
         id: 'sonnet',
         role: null,
         status: 'idle',
-        presence: 'online',
-        presenceReason: null,
+        presence: 'offline',
+        selectability: 'selectable',
+        selectabilityReason: 'inventory_launchable',
+        presenceReason: 'inventory_only',
         channelProviders: ['discord'],
         hostFramework: 'openclaw',
         inventorySources: ['discord', 'openclaw'],
         primaryModel: null,
         workspaceDir: null,
         accountId: 'sonnet',
+        activeTaskIds: [],
+        activeSubtaskIds: [],
+        taskCount: 0,
+        subtaskCount: 0,
+        load: 0,
+        lastActiveAt: null,
+        lastSeenAt: null,
+      },
+      {
+        id: 'review',
+        role: null,
+        status: 'idle',
+        presence: 'disconnected',
+        selectability: 'restricted',
+        selectabilityReason: 'provider_disconnected',
+        presenceReason: 'health_monitor_restart',
+        channelProviders: ['discord'],
+        hostFramework: 'openclaw',
+        inventorySources: ['discord', 'openclaw'],
+        primaryModel: null,
+        workspaceDir: null,
+        accountId: 'review',
         activeTaskIds: [],
         activeSubtaskIds: [],
         taskCount: 0,
@@ -254,6 +286,7 @@ vi.mock('@/stores/agentStore', () => ({
 describe('create task page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   it('builds a private-thread payload from selected citizens while keeping craftsman separate from participants', async () => {
@@ -279,11 +312,18 @@ describe('create task page', () => {
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: '为 developer 配置专属 Skills' }));
+    fireEvent.change(within(developerCard as HTMLElement).getByLabelText('搜索 developer 专属 Skills'), {
+      target: { value: 'refactor' },
+    });
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'refactoring-ui' }));
     const craftsmanCard = screen.getByText('craftsman').closest('.detail-card');
     expect(craftsmanCard).not.toBeNull();
     fireEvent.click(within(craftsmanCard as HTMLElement).getByRole('button', { name: 'codex' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'planning-with-files' })[0]);
+    fireEvent.change(screen.getByLabelText('搜索全局 Skills'), {
+      target: { value: 'planning' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'planning-with-files' }));
     fireEvent.click(screen.getByRole('button', { name: '创建任务' }));
 
     await waitFor(() => {
@@ -390,5 +430,197 @@ describe('create task page', () => {
     const provisioning = screen.getByTestId('create-task-provisioning');
     expect(within(provisioning).getByText('主控 Agent')).toBeInTheDocument();
     expect(within(provisioning).getAllByText('opus').length).toBeGreaterThan(0);
+  });
+
+  it('keeps offline but selectable agents available in role assignment choices', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    expect(within(developerCard as HTMLElement).getByRole('button', { name: 'sonnet' })).toBeInTheDocument();
+  });
+
+  it('shows restricted suggested agents with a human-readable reason instead of silently hiding them', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'review' })).not.toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).getByText('review')).toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).getByText('连接中断，当前不可分配')).toBeInTheDocument();
+  });
+
+  it('keeps the global skill picker open by default and filters the grid with search', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    expect(screen.getByLabelText('搜索全局 Skills')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('搜索全局 Skills'), {
+      target: { value: 'refactor' },
+    });
+
+    expect(screen.getByRole('button', { name: 'refactoring-ui' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'frontend-design' })).not.toBeInTheDocument();
+  });
+
+  it('keeps role-specific skills collapsed until an override picker is opened for that role', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    expect(within(developerCard as HTMLElement).queryByLabelText('搜索 developer 专属 Skills')).not.toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: '为 developer 配置专属 Skills' }));
+
+    fireEvent.change(within(developerCard as HTMLElement).getByLabelText('搜索 developer 专属 Skills'), {
+      target: { value: 'frontend' },
+    });
+
+    expect(within(developerCard as HTMLElement).getByRole('button', { name: 'frontend-design' })).toBeInTheDocument();
+    expect(within(developerCard as HTMLElement).queryByRole('button', { name: 'planning-with-files' })).not.toBeInTheDocument();
+  });
+
+  it('prioritizes recent global skills in the visible grid order', async () => {
+    window.localStorage.setItem('agora-create-task-skill-usage', JSON.stringify([
+      {
+        skillRef: 'frontend-design',
+        surface: 'global',
+        templateType: 'coding',
+        role: null,
+        lastUsedAt: '2026-03-21T11:00:00.000Z',
+      },
+      {
+        skillRef: 'planning-with-files',
+        surface: 'role',
+        templateType: 'coding',
+        role: 'developer',
+        lastUsedAt: '2026-03-20T11:00:00.000Z',
+      },
+    ]));
+
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    const globalPanel = screen.getByTestId('global-skill-picker-results');
+    const visibleSkillButtons = within(globalPanel).getAllByRole('button').map((element) => element.getAttribute('aria-label'));
+    expect(visibleSkillButtons.slice(0, 3)).toEqual([
+      'frontend-design',
+      'planning-with-files',
+      'refactoring-ui',
+    ]);
+
+    const recommendedButton = within(globalPanel).getByRole('button', { name: 'frontend-design' });
+    expect(within(recommendedButton).getByText('推荐')).toBeInTheDocument();
+
+    const recentButton = within(globalPanel).getByRole('button', { name: 'planning-with-files' });
+    expect(within(recentButton).getByText('最近')).toBeInTheDocument();
+  });
+
+  it('shows a clear hint that selected skills can be clicked again to deselect', async () => {
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'planning-with-files' }));
+    expect(screen.getByText('点击已选 Skill 可取消')).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'planning-with-files' }).some(
+        (element) => element.getAttribute('data-skill-tooltip') === '点击取消 planning-with-files',
+      ),
+    ).toBe(true);
+
+    const developerCard = screen.getByText('developer').closest('.detail-card');
+    expect(developerCard).not.toBeNull();
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: '为 developer 配置专属 Skills' }));
+    fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'refactoring-ui' }));
+
+    expect(within(developerCard as HTMLElement).getByText('点击已选 Skill 可取消')).toBeInTheDocument();
+    expect(
+      within(developerCard as HTMLElement).getAllByRole('button', { name: 'refactoring-ui' }).some(
+        (element) => element.getAttribute('data-skill-tooltip') === '点击取消 refactoring-ui',
+      ),
+    ).toBe(true);
+  });
+
+  it('supports lightweight global filters for selected and recommended skills', async () => {
+    window.localStorage.setItem('agora-create-task-skill-usage', JSON.stringify([
+      {
+        skillRef: 'frontend-design',
+        surface: 'global',
+        templateType: 'coding',
+        role: null,
+        lastUsedAt: '2026-03-21T11:00:00.000Z',
+      },
+    ]));
+
+    render(
+      <MemoryRouter>
+        <CreateTaskPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(apiMocks.listSkills).toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'planning-with-files' }));
+    fireEvent.click(screen.getByRole('button', { name: '已选' }));
+
+    const globalPanel = screen.getByTestId('global-skill-picker-results');
+    expect(within(globalPanel).getAllByRole('button').map((element) => element.getAttribute('aria-label'))).toEqual([
+      'planning-with-files',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: '推荐' }));
+    expect(within(globalPanel).getAllByRole('button').map((element) => element.getAttribute('aria-label'))).toEqual([
+      'planning-with-files',
+      'frontend-design',
+    ]);
   });
 });

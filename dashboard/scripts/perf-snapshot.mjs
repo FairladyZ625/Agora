@@ -170,7 +170,7 @@ async function run() {
   const failures = results.flatMap((result) => result.budgetFailures.map((message) => `${result.resolvedPath}: ${message}`));
   console.log(`Performance audit report written to ${reportPath}`);
   if (!config.authenticated) {
-    console.log('Protected pages were skipped because DASHBOARD_LOGIN_USER / DASHBOARD_LOGIN_PASSWORD were not provided.');
+    console.log('Protected pages were skipped because AGORA_DASHBOARD_LOGIN_USER / AGORA_DASHBOARD_LOGIN_PASSWORD were not provided.');
   }
   if (failures.length > 0) {
     console.error('Performance budget failures:');

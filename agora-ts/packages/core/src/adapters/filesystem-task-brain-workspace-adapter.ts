@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type {
+  TaskBrainContextAudience,
   TaskBrainCloseRecapRequest,
+  TaskBrainHarvestDraftRequest,
   TaskExecutionBriefRequest,
   TaskExecutionBriefResult,
   TaskBrainWorkspaceBindingRef,
@@ -69,6 +71,11 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     }
   }
 
+  writeTaskHarvestDraft(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainHarvestDraftRequest): void {
+    const draftPath = join(binding.workspace_path, '07-outputs', 'project-harvest-draft.md');
+    writeFileSync(draftPath, renderTaskHarvestDraft(input), 'utf8');
+  }
+
   destroyWorkspace(binding: TaskBrainWorkspaceBindingRef): void {
     if (!binding.workspace_path) {
       return;
@@ -83,7 +90,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
   ) {
     const workspacePath = binding.workspace_path;
     const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
-    const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+    const projectBrainContextPaths = resolveProjectBrainContextPaths(workspacePath, input);
     writeFileSync(join(workspacePath, 'task.meta.yaml'), renderTaskMeta(input, binding), 'utf8');
     writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input, workspacePath, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '00-bootstrap.md'), renderBootstrap(input, workspacePath, currentStage), 'utf8');
@@ -95,8 +102,12 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
       writeFileSync(join(workspacePath, '04-context', 'references.md'), '', 'utf8');
       writeFileSync(join(workspacePath, '04-context', 'linked-docs.md'), '', 'utf8');
     }
-    if (input.project_brain_context?.markdown) {
-      writeFileSync(projectBrainContextPath, input.project_brain_context.markdown, 'utf8');
+    for (const [audience, context] of Object.entries(input.project_brain_contexts ?? {}) as Array<[TaskBrainContextAudience, NonNullable<TaskBrainWorkspaceRequest['project_brain_contexts']>[TaskBrainContextAudience]]>) {
+      const contextPath = projectBrainContextPaths[audience];
+      if (!context?.markdown || !contextPath) {
+        continue;
+      }
+      writeFileSync(contextPath, context.markdown, 'utf8');
     }
     for (const member of input.team_members) {
       const agentDir = join(workspacePath, '05-agents', member.agentId);
@@ -136,7 +147,7 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
     `task_state: "${input.state}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
     `execution_kind: "${resolveStageExecutionKind(currentStage) ?? ''}"`,
-    `project_brain_audience: "${input.project_brain_context?.audience ?? ''}"`,
+    `project_brain_audiences: [${Object.keys(input.project_brain_contexts ?? {}).map((audience) => `"${audience}"`).join(', ')}]`,
     '',
   ].join('\n');
 }
@@ -158,9 +169,7 @@ function renderCurrent(
     `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
     `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `- ${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
-    ...(input.project_brain_context
-      ? [`- ${brainText(input.locale, 'Project Brain 上下文', 'Project Brain Context')}: ${join(workspacePath, '04-context', 'project-brain-context.md')}`]
-      : []),
+    ...renderProjectBrainContextLinks(input, workspacePath, brainText(input.locale, 'Project Brain 上下文', 'Project Brain Context')),
     '',
   ].join('\n');
 }
@@ -188,7 +197,7 @@ function renderBootstrap(
     `- ${join(workspacePath, '01-task-brief.md')}`,
     `- ${join(workspacePath, '02-roster.md')}`,
     `- ${join(workspacePath, '03-stage-state.md')}`,
-    ...(input.project_brain_context ? [`- ${join(workspacePath, '04-context', 'project-brain-context.md')}`] : []),
+    ...renderProjectBrainContextPaths(input, workspacePath),
     '',
   ].join('\n');
 }
@@ -253,6 +262,45 @@ function renderStageState(
   ].join('\n');
 }
 
+function resolveProjectBrainContextPaths(
+  workspacePath: string,
+  input: TaskBrainWorkspaceRequest,
+): Partial<Record<TaskBrainContextAudience, string>> {
+  const paths: Partial<Record<TaskBrainContextAudience, string>> = {};
+  for (const audience of Object.keys(input.project_brain_contexts ?? {}) as TaskBrainContextAudience[]) {
+    paths[audience] = join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
+  }
+  return paths;
+}
+
+function resolveAudienceProjectBrainContextPath(
+  input: TaskBrainWorkspaceRequest,
+  workspacePath: string,
+  audience: TaskBrainContextAudience,
+) {
+  if (!input.project_brain_contexts?.[audience]) {
+    return null;
+  }
+  return join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
+}
+
+function renderProjectBrainContextLinks(
+  input: TaskBrainWorkspaceRequest,
+  workspacePath: string,
+  label: string,
+) {
+  return (Object.keys(input.project_brain_contexts ?? {}) as TaskBrainContextAudience[])
+    .map((audience) => `- ${label} (${audience}): ${join(workspacePath, '04-context', `project-brain-context-${audience}.md`)}`);
+}
+
+function renderProjectBrainContextPaths(
+  input: TaskBrainWorkspaceRequest,
+  workspacePath: string,
+) {
+  return (Object.keys(input.project_brain_contexts ?? {}) as TaskBrainContextAudience[])
+    .map((audience) => `- ${join(workspacePath, '04-context', `project-brain-context-${audience}.md`)}`);
+}
+
 function renderRoleBrief(
   input: TaskBrainWorkspaceRequest,
   workspacePath: string,
@@ -262,7 +310,15 @@ function renderRoleBrief(
   roleDocPath: string,
 ) {
   const scaffoldPath = join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md');
-  const projectBrainContextPath = join(workspacePath, '04-context', 'project-brain-context.md');
+  const projectBrainContextPath = resolveAudienceProjectBrainContextPath(
+    input,
+    workspacePath,
+    member.member_kind === 'craftsman'
+      ? 'craftsman'
+      : member.member_kind === 'citizen'
+        ? 'citizen'
+        : 'controller',
+  );
   return [
     '---',
     `role_id: "${member.role}"`,
@@ -296,7 +352,7 @@ function renderRoleBrief(
     `${brainText(input.locale, '任务工作区', 'Task workspace')}: ${workspacePath}`,
     `${brainText(input.locale, '任务简报', 'Task brief')}: ${join(workspacePath, '01-task-brief.md')}`,
     `${brainText(input.locale, '阶段状态', 'Stage state')}: ${join(workspacePath, '03-stage-state.md')}`,
-    ...(input.project_brain_context
+    ...(projectBrainContextPath
       ? [`${brainText(input.locale, 'Project Brain Context', 'Project Brain Context')}: ${projectBrainContextPath}`]
       : []),
     `${brainText(input.locale, 'Citizen Scaffold', 'Citizen Scaffold')}: ${scaffoldPath}`,
@@ -419,6 +475,47 @@ function renderTaskCloseRecap(input: TaskBrainCloseRecapRequest) {
     `## ${brainText(input.locale, '摘要', 'Summary')}`,
     '',
     ...input.summary_lines.map((line) => `- ${line}`),
+    '',
+  ].join('\n');
+}
+
+function renderTaskHarvestDraft(input: TaskBrainHarvestDraftRequest) {
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'task_harvest_draft',
+      task_id: input.task_id,
+      project_id: input.project_id ?? '',
+      title: input.title,
+      created_at: input.completed_at,
+      updated_at: input.completed_at,
+      source_task_ids: [input.task_id],
+    }),
+    `# ${brainText(input.locale, '项目沉淀候选草案', 'Project Harvest Draft')}`,
+    '',
+    `- ${brainText(input.locale, '任务', 'Task')}: ${input.task_id}`,
+    `- ${brainText(input.locale, 'Project', 'Project')}: ${input.project_id ?? '-'}`,
+    `- ${brainText(input.locale, '标题', 'Title')}: ${input.title}`,
+    `- ${brainText(input.locale, '任务状态', 'Task State')}: ${input.state}`,
+    `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `- ${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
+    `- ${brainText(input.locale, '完成人', 'Completed By')}: ${input.completed_by}`,
+    `- ${brainText(input.locale, '完成时间', 'Completed At')}: ${input.completed_at}`,
+    '',
+    `## ${brainText(input.locale, '候选沉淀', 'Candidate Write-backs')}`,
+    '',
+    `### ${brainText(input.locale, '事实候选', 'Fact Candidates')}`,
+    '',
+    ...input.summary_lines.map((line) => `- ${line}`),
+    '',
+    `${brainText(input.locale, '请把本次任务确认过的稳定事实整理到 project brain 的 fact 文档中。', 'Promote stable confirmed facts from this task into project-brain fact documents.')}`,
+    '',
+    `### ${brainText(input.locale, '决策候选', 'Decision Candidates')}`,
+    '',
+    `${brainText(input.locale, '记录本次任务中明确形成并需要长期保留的决策、边界或约束。', 'Record durable decisions, boundaries, or constraints that were made explicit in this task.')}`,
+    '',
+    `### ${brainText(input.locale, '开放问题候选', 'Open Question Candidates')}`,
+    '',
+    `${brainText(input.locale, '记录本次任务暴露但尚未解决的问题、依赖或后续跟进项。', 'Record unresolved questions, dependencies, or follow-up work exposed by this task.')}`,
     '',
   ].join('\n');
 }

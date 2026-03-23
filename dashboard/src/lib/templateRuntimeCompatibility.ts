@@ -1,4 +1,5 @@
 import type { AgentStatusItem, TemplateTeamPresetMember } from '@/types/dashboard';
+import { isSelectableAgent } from '@/lib/agentSelectability';
 import { isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 
 export interface TemplateRuntimeCompatibilityItem {
@@ -42,7 +43,7 @@ export function evaluateTemplateRuntimeCompatibility(
         missingSuggested.push(normalizedSuggested);
         continue;
       }
-      if (agent.presence === 'offline' || agent.presence === 'disconnected') {
+      if (!isSelectableAgent(agent)) {
         unavailableSuggested.push(normalizedSuggested);
         continue;
       }

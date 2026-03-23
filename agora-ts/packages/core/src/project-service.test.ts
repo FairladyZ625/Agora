@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { ProjectService } from './project-service.js';
+import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
 
@@ -205,5 +206,107 @@ describe('project service', () => {
       document_slug: 'OC-1',
       reason: 'task_recap',
     });
+  });
+
+  it('archives a project only when no active tasks remain', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    tempPaths.push(brainPackDir);
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createProject({
+      id: 'proj-archive',
+      name: 'Project Archive',
+      owner: 'archon',
+    });
+
+    expect(service.archiveProject('proj-archive')).toMatchObject({
+      id: 'proj-archive',
+      status: 'archived',
+    });
+  });
+
+  it('rejects project archive while active tasks still exist', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    tempPaths.push(brainPackDir);
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    service.createProject({
+      id: 'proj-active',
+      name: 'Project Active',
+      owner: 'archon',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir: join(process.cwd(), 'templates'),
+      taskIdGenerator: () => 'OC-PROJ-ACTIVE-1',
+      projectService: service,
+    });
+    taskService.createTask({
+      title: 'Active project task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-active',
+    });
+
+    expect(() => service.archiveProject('proj-active')).toThrow(/active tasks/i);
+  });
+
+  it('deletes an archived project when no tasks remain bound to it', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new ProjectService(db);
+    service.createProject({
+      id: 'proj-delete',
+      name: 'Project Delete',
+    });
+
+    service.archiveProject('proj-delete');
+    service.deleteProject('proj-delete');
+
+    expect(service.getProject('proj-delete')).toBeNull();
+  });
+
+  it('rejects project delete before archive or while tasks still exist', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new ProjectService(db);
+    service.createProject({
+      id: 'proj-delete-blocked',
+      name: 'Project Delete Blocked',
+    });
+
+    expect(() => service.deleteProject('proj-delete-blocked')).toThrow(/before it is archived/i);
+
+    const taskService = new TaskService(db, {
+      templatesDir: join(process.cwd(), 'templates'),
+      taskIdGenerator: () => 'OC-PROJ-DELETE-1',
+      projectService: service,
+    });
+    taskService.createTask({
+      title: 'Done project task',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-delete-blocked',
+    });
+    taskService.cancelTask('OC-PROJ-DELETE-1', {
+      reason: 'close task before project delete test',
+    });
+
+    service.archiveProject('proj-delete-blocked');
+    expect(() => service.deleteProject('proj-delete-blocked')).toThrow(/tasks are still bound/i);
   });
 });

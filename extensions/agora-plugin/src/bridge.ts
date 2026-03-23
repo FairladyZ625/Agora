@@ -5,9 +5,13 @@ import type {
   ArchonRejectTaskRequestDto,
   CraftsmanRuntimeIdentityRequestDto,
   ConfirmTaskRequestDto,
+  CreateProjectRequestDto,
   CreateTaskRequestDto,
   IngestTaskConversationEntryRequestDto,
+  ListProjectsResponseDto,
   LiveSessionDto,
+  ProjectDto,
+  ProjectWorkbenchResponseDto,
   RejectTaskRequestDto,
   SubtaskDoneRequestDto,
   TaskDto,
@@ -35,6 +39,40 @@ export class AgoraBridge {
       method: "POST",
       body,
     });
+  }
+
+  async createProject(input: {
+    name: string;
+    id?: string;
+    summary?: string;
+    owner?: string;
+    repoPath?: string;
+    initializeRepo?: boolean;
+    nomosId?: string;
+  }): Promise<ProjectDto> {
+    const body: CreateProjectRequestDto = {
+      name: input.name,
+      summary: input.summary ?? "",
+      ...(input.id ? { id: input.id } : {}),
+      ...(input.owner ? { owner: input.owner } : {}),
+      ...(input.repoPath ? { repo_path: input.repoPath } : {}),
+      ...(input.initializeRepo !== undefined ? { initialize_repo: input.initializeRepo } : {}),
+      ...(input.nomosId ? { nomos_id: input.nomosId } : {}),
+    };
+    return this.request("/api/projects", {
+      method: "POST",
+      body,
+    });
+  }
+
+  async listProjects(status?: string): Promise<ProjectDto[]> {
+    const path = status ? `/api/projects?status=${encodeURIComponent(status)}` : "/api/projects";
+    const response = await this.request<ListProjectsResponseDto>(path);
+    return response.projects;
+  }
+
+  async getProject(projectId: string): Promise<ProjectWorkbenchResponseDto> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}`);
   }
 
   async listTasks(state?: string): Promise<TaskDto[]> {

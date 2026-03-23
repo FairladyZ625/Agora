@@ -86,7 +86,7 @@ async function main() {
   const participantTokens = loadOpenClawDiscordAccountTokens(
     options.openclawConfig ? { configPath: options.openclawConfig } : {},
   );
-  for (const ref of ['opus', 'sonnet', 'glm5']) {
+  for (const ref of ['glm5', 'glm47', 'haiku']) {
     if (!participantTokens[ref]) {
       throw new Error(`OpenClaw discord token missing for required participant ${ref}`);
     }
@@ -151,9 +151,9 @@ async function main() {
       priority: 'normal',
       team_override: {
         members: [
-          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
-          { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'fast_coding' },
-          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+          { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'developer', agentId: 'glm47', member_kind: 'citizen', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
         ],
       },
       workflow_override: {
@@ -192,7 +192,7 @@ async function main() {
       throw new Error('task binding has no thread_ref');
     }
 
-    const expectedUserIds = await resolveUserIds(botClient, participantTokens, ['opus', 'sonnet', 'glm5']);
+    const expectedUserIds = await resolveUserIds(botClient, participantTokens, ['glm5', 'glm47', 'haiku']);
     const listMembers = async () => {
       const members = await botClient.listThreadMembers(threadRef!);
       return new Set(members.map((member) => String(
@@ -218,7 +218,7 @@ async function main() {
     };
     const assertParticipantStates = async (
       label: string,
-      expectedStates: Partial<Record<'opus' | 'sonnet' | 'glm5', 'joined' | 'left' | 'pending'>>,
+      expectedStates: Partial<Record<'glm5' | 'glm47' | 'haiku', 'joined' | 'left' | 'pending'>>,
     ) => {
       const participants = await waitFor(
         `${label} participant states`,
@@ -241,30 +241,30 @@ async function main() {
     };
 
     process.stdout.write(`task=${options.taskId} thread=${threadRef}\n`);
-    await assertMembership('create', ['opus', 'sonnet'], ['glm5']);
+    await assertMembership('create', ['glm5', 'glm47'], ['haiku']);
     await assertParticipantStates('create', {
-      opus: 'joined',
-      sonnet: 'joined',
-      glm5: 'pending',
+      glm5: 'joined',
+      glm47: 'joined',
+      haiku: 'pending',
     });
 
     taskService.advanceTask(options.taskId, { callerId: 'admin' });
-    await assertMembership('advance', ['opus', 'glm5'], ['sonnet']);
+    await assertMembership('advance', ['glm5', 'haiku'], ['glm47']);
     await assertParticipantStates('advance', {
-      opus: 'joined',
-      sonnet: 'left',
       glm5: 'joined',
+      glm47: 'left',
+      haiku: 'joined',
     });
 
     taskService.rejectTask(options.taskId, {
-      rejectorId: 'glm5',
+      rejectorId: 'haiku',
       reason: 'smoke reject back to draft',
     });
-    await assertMembership('reject', ['opus', 'sonnet'], ['glm5']);
+    await assertMembership('reject', ['glm5', 'glm47'], ['haiku']);
     await assertParticipantStates('reject', {
-      opus: 'joined',
-      sonnet: 'joined',
-      glm5: 'left',
+      glm5: 'joined',
+      glm47: 'joined',
+      haiku: 'left',
     });
 
     process.stdout.write(`smoke=ok db=${dbPath}\n`);

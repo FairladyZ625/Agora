@@ -20,6 +20,9 @@ export const createProjectRequestSchema = z.object({
   name: z.string().min(1),
   summary: z.string().default(''),
   owner: z.string().min(1).optional(),
+  repo_path: z.string().min(1).optional(),
+  initialize_repo: z.boolean().optional(),
+  nomos_id: z.string().min(1).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 export type CreateProjectRequestDto = z.infer<typeof createProjectRequestSchema>;

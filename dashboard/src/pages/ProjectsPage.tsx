@@ -104,10 +104,12 @@ export function ProjectsPage() {
             {projects.map((project) => (
               <Link key={project.id} to={`/projects/${project.id}`} className="data-row block">
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <strong className="type-heading-sm">{project.name}</strong>
-                    <span className="status-pill status-pill--neutral">{project.status}</span>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="type-heading-sm">{project.name}</strong>
+                  <span className="status-pill status-pill--neutral">{project.status}</span>
+                  {project.nomosId ? <span className="status-pill status-pill--neutral">{`${copy.nomosLabel}: ${project.nomosId}`}</span> : null}
+                  <span className="status-pill status-pill--neutral">{project.repoPath ? copy.repoBoundLabel : copy.noRepoLabel}</span>
+                </div>
                   <div className="type-text-xs mt-3 flex flex-wrap items-center gap-3">
                     <span>{project.id}</span>
                     {project.owner ? <span>{project.owner}</span> : null}

@@ -7,15 +7,72 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 
 const fetchProjects = vi.fn(async () => 'live');
 const fetchProjectDetail = vi.fn(async () => 'live');
+const { installProjectNomos } = vi.hoisted(() => ({
+  installProjectNomos: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    nomos: {
+      id: 'agora/default',
+      name: 'Agora Default Nomos',
+      version: '0.1.0',
+      description: 'Built-in Nomos',
+      source: 'builtin:agora-default',
+      install_mode: 'copy_on_install',
+    },
+    project_state_root: '/Users/example/.agora/projects/proj-alpha',
+    repo_shim_path: '/repo/proj-alpha/AGENTS.md',
+    repo_git_initialized: false,
+    project_state_git_initialized: true,
+    bootstrap_task_id: null,
+  })),
+}));
+const { runProjectNomosDoctor } = vi.hoisted(() => ({
+  runProjectNomosDoctor: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    db_path: '/tmp/agora.db',
+    embedding: {
+      configured: true,
+      healthy: true,
+      provider: 'openai-compatible',
+      model: 'embedding-3',
+    },
+    vector_index: {
+      configured: true,
+      provider: 'qdrant',
+      healthy: true,
+      chunk_count: 16,
+    },
+    jobs: {
+      pending: 0,
+      running: 0,
+      failed: 0,
+      succeeded: 4,
+    },
+    drift: {
+      detected: false,
+      documents_without_jobs: 0,
+    },
+  })),
+}));
 const createProject = vi.fn(async () => ({
   id: 'proj-beta',
   name: 'Project Beta',
   summary: 'New project',
   owner: 'archon',
   status: 'active',
+  nomosId: 'agora/default',
+  repoPath: null,
   createdAt: '2026-03-16T02:00:00.000Z',
   updatedAt: '2026-03-16T02:00:00.000Z',
 }));
+
+vi.mock('@/lib/api', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
+  return {
+    ...actual,
+    installProjectNomos,
+    runProjectNomosDoctor,
+  };
+});
 const updateTodo = vi.fn(async () => undefined);
 const deleteTodo = vi.fn(async () => undefined);
 const promoteTodo = vi.fn(async () => ({ task: { id: 'OC-401' } }));
@@ -28,6 +85,8 @@ const projectStoreState = {
       summary: 'Core + brain baseline',
       owner: 'archon',
       status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
       createdAt: '2026-03-16T00:00:00.000Z',
       updatedAt: '2026-03-16T01:00:00.000Z',
     },
@@ -40,8 +99,20 @@ const projectStoreState = {
       summary: 'Core + brain baseline',
       owner: 'archon',
       status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
       createdAt: '2026-03-16T00:00:00.000Z',
       updatedAt: '2026-03-16T01:00:00.000Z',
+    },
+    nomos: {
+      nomosId: 'agora/default',
+      projectStateRoot: '/Users/example/.agora/projects/proj-alpha',
+      profilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
+      profileInstalled: true,
+      repoPath: '/repo/proj-alpha',
+      repoShimInstalled: true,
+      bootstrapPromptsDir: '/Users/example/.agora/projects/proj-alpha/prompts/bootstrap',
+      lifecycleModules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
     },
     index: {
       kind: 'index',
@@ -170,6 +241,8 @@ describe('project workbench pages', () => {
 
     expect(screen.getByRole('heading', { name: 'Projects' })).toBeInTheDocument();
     expect(screen.getByText('Project Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Nomos: agora/default')).toBeInTheDocument();
+    expect(screen.getByText('Repo Bound')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Project' })).toBeInTheDocument();
   });
 
@@ -195,7 +268,7 @@ describe('project workbench pages', () => {
     });
   });
 
-  it('renders the project detail page', () => {
+  it('renders the project detail page', async () => {
     render(
       <MemoryRouter initialEntries={['/projects/proj-alpha']}>
         <Routes>
@@ -205,6 +278,32 @@ describe('project workbench pages', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nomos State' })).toBeInTheDocument();
+    expect(screen.getByText('/Users/example/.agora/projects/proj-alpha')).toBeInTheDocument();
+    expect(screen.getByText('/repo/proj-alpha')).toBeInTheDocument();
+    expect(screen.getAllByText('Yes').length).toBeGreaterThan(0);
+    expect(screen.getByText('project-bootstrap, task-context-delivery, task-closeout')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Reinstall Nomos' }));
+    await waitFor(() => {
+      expect(installProjectNomos).toHaveBeenCalledWith('proj-alpha', {
+        skip_bootstrap_task: true,
+      });
+    });
+    expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
+    expect(screen.getByText('Nomos reinstalled and project state refreshed.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Rerun Bootstrap' }));
+    await waitFor(() => {
+      expect(installProjectNomos).toHaveBeenCalledWith('proj-alpha', {
+        skip_bootstrap_task: false,
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Run Doctor' }));
+    await waitFor(() => {
+      expect(runProjectNomosDoctor).toHaveBeenCalledWith('proj-alpha');
+    });
+    expect(screen.getByText('Doctor report refreshed.')).toBeInTheDocument();
+    expect(screen.getByText('openai-compatible / Yes')).toBeInTheDocument();
+    expect(screen.getByText('qdrant / 16')).toBeInTheDocument();
     expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
     expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
     expect(screen.getByText('Alpha Architect')).toBeInTheDocument();

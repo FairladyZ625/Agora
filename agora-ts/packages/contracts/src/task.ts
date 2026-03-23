@@ -20,6 +20,7 @@ export const taskPrioritySchema = z.enum([
 export const taskControlModeSchema = z.enum([
   'normal',
   'smoke_test',
+  'regression_test',
 ]);
 
 export type TaskState = z.infer<typeof taskStateSchema>;

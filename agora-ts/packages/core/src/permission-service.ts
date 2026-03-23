@@ -25,8 +25,10 @@ export class PermissionService {
   }
 
   canAdvance(callerId: string, team: TeamDto): boolean {
-    void team;
     if (this.isArchon(callerId)) {
+      return true;
+    }
+    if (team.members.some((member) => member.agentId === callerId && member.member_kind === 'controller')) {
       return true;
     }
     return this.getAgentPermissions(callerId).canAdvance;

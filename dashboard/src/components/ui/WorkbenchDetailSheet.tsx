@@ -1,12 +1,14 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+const WORKBENCH_SHEET_PANEL_TRANSITION = 'workbench-sheet-panel';
+const WORKBENCH_SHEET_BACKDROP_TRANSITION = 'workbench-sheet-backdrop';
+
 interface WorkbenchDetailSheetProps {
   label: string;
   title: string;
   onClose: () => void;
   children: ReactNode;
-  taskId?: string;
 }
 
 export function WorkbenchDetailSheet({
@@ -14,7 +16,6 @@ export function WorkbenchDetailSheet({
   title,
   onClose,
   children,
-  taskId,
 }: WorkbenchDetailSheetProps) {
   const { t } = useTranslation();
 
@@ -32,13 +33,8 @@ export function WorkbenchDetailSheet({
     }
   };
 
-  const panelStyle: CSSProperties = taskId
-    ? ({ viewTransitionName: `task-detail-${taskId}` } as CSSProperties)
-    : {};
-
-  const backdropStyle: CSSProperties = taskId
-    ? ({ viewTransitionName: `task-backdrop-${taskId}` } as CSSProperties)
-    : {};
+  const panelStyle: CSSProperties = { viewTransitionName: WORKBENCH_SHEET_PANEL_TRANSITION };
+  const backdropStyle: CSSProperties = { viewTransitionName: WORKBENCH_SHEET_BACKDROP_TRANSITION };
 
   return (
     <div className="workbench-sheet" role="dialog" aria-label={label} aria-modal="true">

@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -33,6 +33,7 @@ function makeBrainPackDir() {
 }
 
 afterEach(() => {
+  delete process.env.AGORA_HOME_DIR;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -302,6 +303,266 @@ describe('task routes', () => {
     });
   });
 
+  it('creates a Nomos-aware project through the api and writes the repo shim/global state skeleton', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-repo-parent-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-beta');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-BOOTSTRAP',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-api',
+        name: 'Project API Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(createResponse.json()).toMatchObject({
+      id: 'proj-nomos-api',
+      name: 'Project API Nomos',
+      status: 'active',
+      metadata: {
+        repo_path: repoRoot,
+        agora: {
+          nomos: {
+            id: 'agora/default',
+          },
+        },
+      },
+    });
+    expect(existsSync(join(repoRoot, 'AGENTS.md'))).toBe(true);
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Fill Policy');
+    expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'profile.toml'), 'utf8')).toContain(
+      'id = "proj-nomos-api"',
+    );
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project API Nomos');
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
+    );
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
+  });
+
+  it('serves explicit Nomos catalog and project install state through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-gamma');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-INSTALL',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    projectService.createProject({
+      id: 'proj-nomos-rest',
+      name: 'Project REST Nomos',
+      owner: 'archon',
+    });
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos',
+    });
+    const showResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/agora/default',
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rest/nomos/install',
+      payload: {
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+    const inspectResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-rest/nomos',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      nomos: [
+        expect.objectContaining({
+          id: 'agora/default',
+          version: '0.1.0',
+        }),
+      ],
+    });
+
+    expect(showResponse.statusCode).toBe(200);
+    expect(showResponse.json()).toMatchObject({
+      id: 'agora/default',
+      pack: expect.objectContaining({
+        id: 'agora/default',
+        version: '0.1.0',
+      }),
+      seeded_assets: {
+        docs: {
+          reference: expect.arrayContaining(['methodologies.md', 'governance.md', 'lifecycle.md', 'bootstrap-fields.md']),
+          architecture: expect.arrayContaining(['operating-model.md']),
+        },
+        lifecycle: expect.arrayContaining(['project-bootstrap.md', 'task-context-delivery.md', 'task-closeout.md']),
+        prompts: {
+          bootstrap: expect.arrayContaining(['interview.md', 'existing-project.md', 'new-project.md', 'no-repo.md']),
+          closeout: expect.arrayContaining(['review.md']),
+          doctor: expect.arrayContaining(['project.md']),
+        },
+      },
+      lifecycle: expect.objectContaining({
+        modules: expect.arrayContaining(['project-bootstrap', 'task-context-delivery']),
+      }),
+    });
+
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-rest',
+      nomos: expect.objectContaining({
+        id: 'agora/default',
+      }),
+      bootstrap_task_id: 'OC-SERVER-NOMOS-INSTALL',
+    });
+
+    expect(inspectResponse.statusCode).toBe(200);
+    expect(inspectResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-rest',
+      nomos_id: 'agora/default',
+      project_state_root: join(agoraHomeDir, 'projects', 'proj-nomos-rest'),
+      repo_path: repoRoot,
+      repo_shim_installed: true,
+      profile_installed: true,
+    });
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
+    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Project REST Nomos');
+  });
+
+  it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-rerun');
+    mkdirSync(repoRoot, { recursive: true });
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-RERUN',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    projectService.createProject({
+      id: 'proj-nomos-rerun',
+      name: 'Project Rerun Nomos',
+      owner: 'archon',
+    });
+    projectService.updateProjectMetadata('proj-nomos-rerun', {
+      repo_path: repoRoot,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rerun/nomos/install',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain(repoRoot);
+  });
+
+  it('serves project-level Nomos doctor output through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const app = buildApp({
+      db,
+      projectBrainDoctorService: {
+        diagnoseProject: async (projectId: string) => ({
+          project_id: projectId,
+          db_path: '/tmp/agora.db',
+          embedding: {
+            configured: true,
+            healthy: true,
+            provider: 'openai-compatible',
+            model: 'embedding-3',
+          },
+          vector_index: {
+            configured: true,
+            provider: 'qdrant',
+            healthy: true,
+            chunk_count: 16,
+          },
+          jobs: {
+            pending: 0,
+            running: 0,
+            failed: 0,
+            succeeded: 4,
+          },
+          drift: {
+            detected: false,
+            documents_without_jobs: 0,
+          },
+        }),
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-rest/nomos/doctor',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      project_id: 'proj-nomos-rest',
+      embedding: {
+        healthy: true,
+      },
+      vector_index: {
+        provider: 'qdrant',
+        chunk_count: 16,
+      },
+      drift: {
+        detected: false,
+      },
+    });
+  });
+
   it('serves a project workbench detail bundle through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -468,6 +729,46 @@ describe('task routes', () => {
       project_id: 'proj-api-task',
       state: 'active',
     });
+  });
+
+  it('archives and deletes projects through the api with lifecycle guards', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    const app = buildApp({
+      db,
+      projectService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-api-lifecycle',
+        name: 'Project API Lifecycle',
+      },
+    });
+
+    const archiveResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-api-lifecycle/archive',
+    });
+    const deleteResponse = await app.inject({
+      method: 'DELETE',
+      url: '/api/projects/proj-api-lifecycle',
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(archiveResponse.json()).toMatchObject({
+      id: 'proj-api-lifecycle',
+      status: 'archived',
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(deleteResponse.json()).toMatchObject({
+      ok: true,
+      project_id: 'proj-api-lifecycle',
+    });
+    expect(projectService.getProject('proj-api-lifecycle')).toBeNull();
   });
 
   it('filters task list by project through the api', async () => {
@@ -869,7 +1170,7 @@ describe('task routes', () => {
     expect(response.json()).toMatchObject({
       id: 'OC-201C',
       state: 'done',
-      current_stage: 'deliver',
+      current_stage: null,
     });
   });
 
@@ -1410,7 +1711,7 @@ describe('task routes', () => {
     });
   });
 
-  it('deletes the IM context when the archive job is marked synced through the route', async () => {
+  it('approves review-pending archive jobs before sync and deletes the IM context through the route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const provisioningPort = new StubIMProvisioningPort({
@@ -1462,6 +1763,17 @@ describe('task routes', () => {
       url: '/api/archive/jobs?task_id=OC-CTX-DELETE',
     });
     const jobId = archiveJob.json()[0].id;
+    expect(archiveJob.json()[0]).toMatchObject({
+      status: 'review_pending',
+    });
+    const approved = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${jobId}/approve`,
+      payload: {
+        approver_id: 'lizeyu',
+        comment: 'closeout reviewed',
+      },
+    });
     const synced = await app.inject({
       method: 'POST',
       url: `/api/archive/jobs/${jobId}/status`,
@@ -1469,6 +1781,17 @@ describe('task routes', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({
+      id: jobId,
+      status: 'pending',
+      payload: expect.objectContaining({
+        closeout_review: expect.objectContaining({
+          state: 'approved',
+          approver_id: 'lizeyu',
+        }),
+      }),
+    });
     expect(synced.statusCode).toBe(200);
     expect(provisioningPort.archived).toEqual(
       expect.arrayContaining([

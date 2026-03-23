@@ -60,6 +60,8 @@ describe('cli composition', () => {
     expect(composition.taskService).toBeDefined();
     expect(composition.legacyRuntimeService).toBeDefined();
     expect(composition.tmuxRuntimeService).toBe(composition.legacyRuntimeService);
+    expect(Reflect.get(composition.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
+    expect(Reflect.get(composition.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     composition.db.close();
   });
 
@@ -159,6 +161,7 @@ describe('cli composition', () => {
             updateWorkspace: () => undefined,
             writeExecutionBrief: () => ({ brief_path: '/tmp/unused-brief.md' }),
             writeTaskCloseRecap: () => undefined,
+            writeTaskHarvestDraft: () => undefined,
             destroyWorkspace: () => undefined,
           };
         },

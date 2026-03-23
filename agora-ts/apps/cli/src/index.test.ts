@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -51,6 +51,13 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   delete process.env.AGORA_SKILL_TARGET_DIRS;
+  delete process.env.AGORA_DEV_REGRESSION_MODE;
+  delete process.env.AGORA_DASHBOARD_LOGIN_USER;
+  delete process.env.AGORA_DASHBOARD_LOGIN_PASSWORD;
+  delete process.env.AGORA_DASHBOARD_USER;
+  delete process.env.AGORA_DASHBOARD_PASSWORD;
+  delete process.env.DASHBOARD_LOGIN_USER;
+  delete process.env.DASHBOARD_LOGIN_PASSWORD;
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
     if (dir) {
@@ -111,6 +118,7 @@ function createDashboardQueryServiceStub(): DashboardQueryService {
     listSkills: () => [],
     listArchiveJobs: () => [],
     getArchiveJob: () => { throw new Error('unused'); },
+    approveArchiveJob: () => { throw new Error('unused'); },
     retryArchiveJob: () => { throw new Error('unused'); },
     notifyArchiveJob: () => { throw new Error('unused'); },
     updateArchiveJob: () => { throw new Error('unused'); },
@@ -302,10 +310,17 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-INDEX-BOOTSTRAP',
+      projectService,
+    });
     const program = createCliProgram({
-      projectService: new ProjectService(db, {
-        knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
-      }),
+      projectService,
+      taskService,
       stdout,
       stderr,
     }).exitOverride();
@@ -317,6 +332,173 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Project 已创建: proj-alpha');
     expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
     expect(readFileSync(join(brainPackRoot, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+  });
+
+  it('installs the built-in Nomos skeleton and repo shim through the cli project-create path', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-brain-');
+    const repoParent = makeTempDir('agora-ts-cli-project-repo-parent-');
+    const repoRoot = join(repoParent, 'repo-alpha');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-BOOTSTRAP',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-nomos',
+      '--name',
+      'Project Nomos',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已创建: proj-nomos');
+    expect(stdout.value).toContain('Nomos: agora/default@0.1.0');
+    expect(stdout.value).toContain(`Repo Shim: ${join(repoRoot, 'AGENTS.md')}`);
+    expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-BOOTSTRAP');
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'profile.toml'), 'utf8')).toContain(
+      'id = "proj-nomos"',
+    );
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project Nomos');
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
+  });
+
+  it('lists and shows the built-in Nomos pack through explicit cli commands', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['nomos', 'list'], { from: 'user' });
+    await program.parseAsync(['nomos', 'show', 'agora/default'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('agora/default\t0.1.0\tAgora Default Nomos');
+    expect(stdout.value).toContain('agora/default — Agora Default Nomos');
+    expect(stdout.value).toContain('lifecycle: project-bootstrap, task-context-delivery, task-closeout, project-archive, governance-doctor');
+    expect(stdout.value).toContain('shim sections: general_constitution, pack_index, bootstrap_method, fill_policy');
+    expect(stdout.value).toContain('seeded references: current-surface.md, methodologies.md, governance.md, lifecycle.md, bootstrap-fields.md');
+    expect(stdout.value).toContain('seeded lifecycle docs: project-bootstrap.md, task-context-delivery.md, task-closeout.md, project-archive.md, governance-doctor.md');
+    expect(stdout.value).toContain('seeded bootstrap prompts: interview.md, existing-project.md, new-project.md, no-repo.md');
+  });
+
+  it('installs Nomos for an existing project and exposes inspect-project output', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-install-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-install-repo-');
+    const repoRoot = join(repoParent, 'repo-beta');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    projectService.createProject({
+      id: 'proj-existing-nomos',
+      name: 'Existing Nomos Project',
+      owner: 'archon',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-INSTALL',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'nomos',
+      'install',
+      '--project-id',
+      'proj-existing-nomos',
+      '--repo-path',
+      repoRoot,
+      '--initialize-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync([
+      'nomos',
+      'inspect-project',
+      'proj-existing-nomos',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos 已安装: agora/default@0.1.0');
+    expect(stdout.value).toContain(`Repo Shim: ${join(repoRoot, 'AGENTS.md')}`);
+    expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-INSTALL');
+    expect(stdout.value).toContain('proj-existing-nomos — Existing Nomos Project');
+    expect(stdout.value).toContain('nomos: agora/default');
+    expect(stdout.value).toContain(`project_state_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos')}`);
+    expect(stdout.value).toContain(`repo_path: ${repoRoot}`);
+    expect(stdout.value).toContain('repo_shim_installed: true');
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Pack Index');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos', 'profile.toml'), 'utf8')).toContain(
+      'id = "proj-existing-nomos"',
+    );
+    expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Existing Nomos Project');
+  });
+
+  it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const outputRoot = makeTempDir('agora-ts-cli-nomos-pack-');
+    const installedTemplateRoot = join(process.env.AGORA_HOME_DIR!, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const program = createCliProgram({
+      stdout,
+      stderr,
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+      taskService: { getHealthSnapshot: () => ({}) } as unknown as TaskService,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'nomos',
+      'scaffold',
+      '--id', 'acme/web',
+      '--name', 'Acme Web Nomos',
+      '--description', 'Custom Nomos for Acme web delivery.',
+      '--output-dir', join(outputRoot, 'acme-web'),
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos pack 已生成');
+    expect(stdout.value).toContain('Pack: acme/web@0.1.0');
+    expect(readFileSync(join(outputRoot, 'acme-web', 'profile.toml'), 'utf8')).toContain('id = "acme/web"');
+    expect(readFileSync(join(outputRoot, 'acme-web', 'README.md'), 'utf8')).toContain('# Acme Web Nomos');
   });
 
   it('creates a project-bound task through the cli', async () => {
@@ -909,6 +1091,100 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"chunk_id": "proj-brain:decision:runtime-boundary:0"');
   });
 
+  it('best-effort drains queued index jobs after knowledge writes', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = {
+      upsertKnowledgeEntry: vi.fn().mockReturnValue({
+        path: '/brain/facts/runtime-boundary.md',
+        kind: 'fact',
+        slug: 'runtime-boundary',
+      }),
+    };
+    const projectBrainIndexWorkerService = {
+      drainPendingJobs: vi.fn().mockResolvedValue({
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        pending: 0,
+      }),
+    };
+    const program = createCliProgram({
+      projectService: projectService as never,
+      projectBrainIndexWorkerService: projectBrainIndexWorkerService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'knowledge', 'add',
+      '--project', 'proj-brain',
+      '--kind', 'fact',
+      '--slug', 'runtime-boundary',
+      '--title', 'Runtime Boundary',
+      '--body', 'Keep runtime-specific logic out of core.',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectService.upsertKnowledgeEntry).toHaveBeenCalledWith({
+      project_id: 'proj-brain',
+      kind: 'fact',
+      slug: 'runtime-boundary',
+      title: 'Runtime Boundary',
+      body: 'Keep runtime-specific logic out of core.',
+    });
+    expect(projectBrainIndexWorkerService.drainPendingJobs).toHaveBeenCalledWith({ limit: 5 });
+  });
+
+  it('prints project brain doctor output through an injected doctor service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainDoctorService = {
+      diagnoseProject: vi.fn().mockResolvedValue({
+        project_id: 'proj-brain',
+        db_path: '/Users/lizeyu/.agora/agora.db',
+        embedding: {
+          configured: true,
+          healthy: true,
+          provider: 'openai-compatible',
+          model: 'embedding-3',
+        },
+        vector_index: {
+          provider: 'qdrant',
+          healthy: true,
+          chunk_count: 5,
+        },
+        jobs: {
+          pending: 2,
+          running: 1,
+          failed: 0,
+          succeeded: 7,
+        },
+        drift: {
+          detected: false,
+          documents_without_jobs: 0,
+        },
+      }),
+    };
+    const program = createCliProgram({
+      projectBrainDoctorService: projectBrainDoctorService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'doctor',
+      '--project', 'proj-brain',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainDoctorService.diagnoseProject).toHaveBeenCalledWith('proj-brain');
+    expect(stdout.value).toContain('"project_id": "proj-brain"');
+    expect(stdout.value).toContain('"pending": 2');
+    expect(stdout.value).toContain('"provider": "qdrant"');
+  });
+
   it('routes project brain task query through an injected retrieval service', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -1317,6 +1593,197 @@ describe('agora-ts cli', () => {
     expect(created?.control?.mode).toBe('smoke_test');
   });
 
+  it('rejects live regression commands when developer regression mode is disabled', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-off',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-OFF',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await expect(program.parseAsync([
+      'regression',
+      'live',
+      '--task-id', 'OC-CLI-REG-OFF',
+      '--goal', 'should fail without env gate',
+      '--message', 'continue',
+    ], { from: 'user' })).rejects.toThrow(/AGORA_DEV_REGRESSION_MODE/);
+  });
+
+  it('runs live regression through the cli against an existing bound task', async () => {
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-on',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-ON',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'cli regression task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'drive execute stage from cli regression',
+      priority: 'normal',
+      control: { mode: 'regression_test' },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'triage',
+            mode: 'discuss',
+            gate: { type: 'command' },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'regression',
+      'live',
+      '--task-id', 'OC-CLI-REG-ON',
+      '--goal', 'drive execute stage from cli',
+      '--message', 'advance if ready',
+      '--participant', 'opus',
+      '--action', 'advance_current',
+      '--action-actor', 'archon',
+      '--json',
+    ], { from: 'user' });
+
+    const payload = JSON.parse(stdout.value);
+    expect(stderr.value).toBe('');
+    expect(payload).toMatchObject({
+      taskId: 'OC-CLI-REG-ON',
+      threadRef: 'discord-thread-cli-regression-on',
+      currentStage: 'execute',
+      state: 'active',
+    });
+    expect(provisioning.published).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_ref: 'discord-thread-cli-regression-on',
+        messages: [
+          expect.objectContaining({
+            kind: 'regression_operator',
+            participant_refs: ['opus'],
+            body: 'advance if ready',
+          }),
+        ],
+      }),
+    ]));
+  });
+
+  it('can create a regression-mode task directly from the live regression command', async () => {
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-create',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-CREATE',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'regression',
+      'live',
+      '--title', 'fresh regression task',
+      '--type', 'coding',
+      '--goal', 'create and start a fresh regression task',
+      '--message', 'start the live regression loop',
+      '--json',
+    ], { from: 'user' });
+
+    const payload = JSON.parse(stdout.value);
+    const created = taskService.getTask('OC-CLI-REG-CREATE');
+    expect(stderr.value).toBe('');
+    expect(payload).toMatchObject({
+      taskId: 'OC-CLI-REG-CREATE',
+      threadRef: 'discord-thread-cli-regression-create',
+      state: 'active',
+    });
+    expect(created?.control?.mode).toBe('regression_test');
+    expect(provisioning.published).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_ref: 'discord-thread-cli-regression-create',
+        messages: [
+          expect.objectContaining({
+            kind: 'regression_operator',
+            body: 'start the live regression loop',
+          }),
+        ],
+      }),
+    ]));
+  });
+
   it('creates tasks with global and role-scoped skill policy through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1565,28 +2032,60 @@ describe('agora-ts cli', () => {
     });
     const job = archives.insertArchiveJob({
       task_id: task.id,
-      status: 'pending',
+      status: 'review_pending',
       target_path: 'ZeYu-AI-Brain/tasks/',
-      payload: {},
+      payload: {
+        closeout_review: {
+          required: true,
+          state: 'review_pending',
+        },
+      },
       writer_agent: 'writer-agent',
     });
     expect(job).toBeDefined();
 
     await program.parseAsync(['archive', 'jobs', 'list'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'show', String(job?.id), '--json'], { from: 'user' });
+    await program.parseAsync(['archive', 'jobs', 'approve', String(job?.id), '--approver-id', 'lizeyu', '--comment', 'looks good'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'complete', String(job?.id), '--commit-hash', 'deadbeef'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'retry', String(job?.id)], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'fail', String(job?.id), '--error-message', 'writer timeout'], { from: 'user' });
 
     const finalJob = dashboardQueryService.getArchiveJob(job!.id);
     expect(stderr.value).toBe('');
-    expect(stdout.value).toContain(`\t${task.id}\tpending\t`);
+    expect(stdout.value).toContain(`\t${task.id}\treview_pending\t`);
     expect(stdout.value).toContain(`"task_id": "${task.id}"`);
+    expect(stdout.value).toContain(`archive job 已审批放行: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已完成: ${job?.id} -> synced`);
     expect(stdout.value).toContain(`archive job 已重置: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已失败: ${job?.id} -> failed`);
     expect(finalJob.status).toBe('failed');
     expect(finalJob.payload).toMatchObject({ error_message: 'writer timeout' });
+  });
+
+  it('archives and deletes projects through the cli with lifecycle guards', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-ops',
+      name: 'Project Ops',
+    });
+    const program = createCliProgram({
+      projectService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['projects', 'archive', 'proj-ops'], { from: 'user' });
+    await program.parseAsync(['projects', 'delete', 'proj-ops'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已归档: proj-ops');
+    expect(stdout.value).toContain('Project 已删除: proj-ops');
+    expect(projectService.getProject('proj-ops')).toBeNull();
   });
 
   it('runs task action commands through the cli', async () => {
@@ -1680,11 +2179,11 @@ describe('agora-ts cli', () => {
     });
     tasks.updateTask('OC-302', 1, { state: 'created' });
     tasks.updateTask('OC-302', 2, { state: 'active', current_stage: 'vote' });
-    tasks.updateTask('OC-302', 3, { state: 'blocked' });
     db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-302', 'vote');
 
     await program.parseAsync(['confirm', 'OC-302', '--voter-id', 'opus', '--vote', 'approve', '--comment', 'first'], { from: 'user' });
     await program.parseAsync(['confirm', 'OC-302', '--voter-id', 'gpt52', '--vote', 'approve', '--comment', 'second'], { from: 'user' });
+    tasks.updateTask('OC-302', 3, { state: 'blocked' });
     await program.parseAsync(['unblock', 'OC-302', '--reason', 'dependency cleared'], { from: 'user' });
 
     expect(stderr.value).toBe('');
@@ -1757,6 +2256,72 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('dashboard session 已建立: lizeyu');
     expect(stdout.value).toContain('authenticated: true');
     expect(stdout.value).toContain('dashboard session 已清除');
+  });
+
+  it('reads dashboard session login credentials from env in developer regression mode', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    process.env.AGORA_DASHBOARD_LOGIN_USER = 'regression-admin';
+    process.env.AGORA_DASHBOARD_LOGIN_PASSWORD = 'secret-pass';
+
+    const program = createCliProgram({
+      taskService: {
+        createTask: () => {
+          throw new Error('unused');
+        },
+      } as unknown as TaskService,
+      legacyRuntimeService: {
+        up: () => {
+          throw new Error('unused');
+        },
+        status: () => {
+          throw new Error('unused');
+        },
+        send: () => {
+          throw new Error('unused');
+        },
+        sendText: () => {
+          throw new Error('unused');
+        },
+        sendKeys: () => {
+          throw new Error('unused');
+        },
+        submitChoice: () => {
+          throw new Error('unused');
+        },
+        start: () => {
+          throw new Error('unused');
+        },
+        resume: () => {
+          throw new Error('unused');
+        },
+        task: () => {
+          throw new Error('unused');
+        },
+        tail: () => {
+          throw new Error('unused');
+        },
+        doctor: () => {
+          throw new Error('unused');
+        },
+        down: () => {
+          throw new Error('unused');
+        },
+        recordIdentity: () => {
+          throw new Error('unused');
+        },
+      },
+      dashboardSessionClient: createDashboardSessionClientStub(),
+      dashboardQueryService: createDashboardQueryServiceStub(),
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync(['dashboard', 'session', 'login'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('dashboard session 已建立: regression-admin');
   });
 
   it('runs local dev stack through the start command and run alias', async () => {

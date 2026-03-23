@@ -108,6 +108,8 @@ describe('dashboard expansion stores', () => {
           role: 'developer',
           status: 'busy',
           presence: 'online',
+          selectability: 'selectable',
+          selectability_reason: 'live_session',
           presence_reason: 'live_session',
           channel_providers: ['discord'],
           host_framework: 'openclaw',

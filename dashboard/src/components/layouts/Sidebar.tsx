@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { NavLink } from 'react-router';
+import { NavLink, useLocation } from 'react-router';
 import {
   Archive,
   Bot,
@@ -51,9 +51,32 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation();
   const shellCopy = useShellCopy();
+  const location = useLocation();
   const effectiveCollapsed = isMobile ? false : collapsed;
   const sidebarRef = useRef<HTMLElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  const isNavItemActive = (key: string, to: string, isActive: boolean) => {
+    const pathname = location.pathname;
+
+    if (key === 'create') {
+      return pathname === '/tasks/new';
+    }
+
+    if (key === 'tasks') {
+      return pathname === '/tasks' || (/^\/tasks\/[^/]+$/.test(pathname) && pathname !== '/tasks/new');
+    }
+
+    if (key === 'projects') {
+      return pathname === '/projects' || pathname.startsWith('/projects/');
+    }
+
+    if (key === 'reviews') {
+      return pathname === '/reviews' || pathname.startsWith('/reviews/');
+    }
+
+    return isActive || pathname === to;
+  };
 
   // M5: focus trap for mobile sidebar overlay
   useEffect(() => {
@@ -130,6 +153,9 @@ export function Sidebar({
           boxShadow: 'var(--shadow-lg)',
         }}
       >
+        {!isMobile ? (
+          <div className="sidebar-telemetry-seam" aria-hidden="true" />
+        ) : null}
         <div className="flex h-full w-full flex-col">
           <div
             className={cn(
@@ -171,10 +197,11 @@ export function Sidebar({
                   to={to}
                   end={to === '/'}
                   onClick={onCloseMobile}
-                  className={({ isActive }) =>
-                    isActive ? 'nav-link nav-link--active' : 'nav-link'
-                  }
+                  className={({ isActive }) => (
+                    isNavItemActive(key, to, isActive) ? 'nav-link nav-link--active' : 'nav-link'
+                  )}
                 >
+                  <span className="nav-link__rail" aria-hidden="true" />
                   <Icon size={18} className="shrink-0" />
                   {!effectiveCollapsed && (
                     <div className="min-w-0">
@@ -182,6 +209,8 @@ export function Sidebar({
                       <div className="nav-meta">{hint}</div>
                     </div>
                   )}
+                  <span className="nav-link__connector" aria-hidden="true" />
+                  <span className="nav-link__pulse" aria-hidden="true" />
                 </NavLink>
                 );
               })}

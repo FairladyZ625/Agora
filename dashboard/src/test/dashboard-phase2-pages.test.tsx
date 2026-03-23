@@ -189,6 +189,14 @@ describe('dashboard phase 2 routes', () => {
 
   it('shows task action controls for actionable live task details', () => {
     taskStoreState.selectedTaskId = 'OC-001';
+    taskStoreState.executionTailById = {
+      'exec-1': {
+        output: '\u001b[32mBuild passed\u001b[0m\nNext step ready',
+        available: true,
+        fetchedAt: '2026-03-07T00:15:00.000Z',
+        live: true,
+      },
+    };
     taskStoreState.selectedTaskStatus = {
       task: {
         ...taskStoreState.tasks[0],
@@ -331,8 +339,39 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByText('会话消息内容')).toBeInTheDocument();
     expect(screen.getAllByText('craftsman_completed').length).toBeGreaterThan(0);
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
-    expect(screen.getByText('执行控制面')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '执行控制面' })).toBeInTheDocument();
     expect(screen.getAllByText('Please provide the next coding instruction.').length).toBeGreaterThan(0);
+    expect(screen.getByRole('log', { name: 'Agent runtime output' })).toBeInTheDocument();
+  });
+
+  it('hides gate action controls when the selected task is no longer active', () => {
+    taskStoreState.selectedTaskId = 'OC-001';
+    taskStoreState.selectedTaskStatus = {
+      task: {
+        ...taskStoreState.tasks[0],
+        state: 'completed',
+        sourceState: 'done',
+        gateType: 'approval',
+        current_stage: 'review',
+        teamMembers: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'glm5', model_preference: 'chinese_strong' },
+        ],
+      },
+      flow_log: [],
+      progress_log: [],
+      subtasks: [],
+      currentStageRoster: undefined,
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/tasks/OC-001']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Reviewer 通过' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reviewer 打回' })).not.toBeInTheDocument();
   });
 
   it('exposes orphan cleanup from the settings surface', () => {

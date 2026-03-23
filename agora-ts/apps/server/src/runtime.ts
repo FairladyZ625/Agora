@@ -7,6 +7,15 @@ import {
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   type AgoraConfig,
 } from '@agora-ts/config';
+import {
+  OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  ProjectBrainChunkingPolicy,
+  ProjectBrainDoctorService,
+  ProjectBrainIndexQueueService,
+  ProjectBrainIndexService,
+  ProjectBrainIndexWorkerService,
+  QdrantProjectBrainVectorIndexAdapter,
+} from '@agora-ts/core';
 import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions extends ServerCompositionOptions {
@@ -63,6 +72,7 @@ function createObservationScheduler(runtime: {
       inbox_items: number;
     };
   };
+  projectBrainIndexWorkerService?: Pick<ProjectBrainIndexWorkerService, 'drainPendingJobs'>;
 }): ObservationSchedulerController {
   const { scheduler } = runtime.config;
   const intervalMs = scheduler.enabled ? scheduler.scan_interval_sec * 1000 : null;
@@ -84,6 +94,13 @@ function createObservationScheduler(runtime: {
     timer = setInterval(() => {
       try {
         tick();
+        if (runtime.projectBrainIndexWorkerService) {
+          void runtime.projectBrainIndexWorkerService
+            .drainPendingJobs({ limit: 25 })
+            .catch((error) => {
+              console.error('[agora] project brain index worker tick failed', error);
+            });
+        }
       } catch (error) {
         console.error('[agora] observation scheduler tick failed', error);
       }
@@ -102,6 +119,56 @@ function createObservationScheduler(runtime: {
       }
     },
   };
+}
+
+function parseOptionalInt(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return Number.parseInt(trimmed, 10);
+}
+
+function buildVectorIndexOptions() {
+  const vectorSize = parseOptionalInt(process.env.OPENAI_EMBEDDING_DIMENSION);
+  return {
+    ...(vectorSize !== null ? { vectorSize } : {}),
+  };
+}
+
+function createDefaultProjectBrainIndexWorkerService(runtime: {
+  db: ReturnType<typeof createAgoraDatabase>;
+  projectBrainService: ReturnType<typeof buildServerComposition>['projectBrainService'];
+}) {
+  if (!process.env.OPENAI_API_KEY || !process.env.QDRANT_URL) {
+    return undefined;
+  }
+  const indexService = new ProjectBrainIndexService({
+    projectBrainService: runtime.projectBrainService,
+    chunkingPolicy: new ProjectBrainChunkingPolicy(),
+    embeddingPort: new OpenAiCompatibleProjectBrainEmbeddingAdapter(),
+    vectorIndexPort: new QdrantProjectBrainVectorIndexAdapter(buildVectorIndexOptions()),
+  });
+  return new ProjectBrainIndexWorkerService({
+    queueService: new ProjectBrainIndexQueueService(runtime.db),
+    indexService,
+  });
+}
+
+function createDefaultProjectBrainDoctorService(runtime: {
+  config: AgoraConfig;
+  db: ReturnType<typeof createAgoraDatabase>;
+  projectBrainService: ReturnType<typeof buildServerComposition>['projectBrainService'];
+}) {
+  const embeddingPort = process.env.OPENAI_API_KEY
+    ? new OpenAiCompatibleProjectBrainEmbeddingAdapter()
+    : undefined;
+  return new ProjectBrainDoctorService({
+    dbPath: runtime.config.db_path,
+    projectBrainService: runtime.projectBrainService,
+    queueService: new ProjectBrainIndexQueueService(runtime.db),
+    ...(embeddingPort ? { embeddingPort } : {}),
+  });
 }
 
 export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
@@ -129,9 +196,29 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
   if (config.scheduler.startup_recovery_on_boot) {
     taskService.startupRecoveryScan();
   }
+  const projectBrainIndexWorkerService = options.factories?.createProjectBrainIndexWorkerService?.({
+    config,
+    runtimeEnv,
+    db,
+    templatesDir,
+    rolePackDir,
+    brainPackDir,
+    ...(options.isCraftsmanSessionAlive ? { isCraftsmanSessionAlive: options.isCraftsmanSessionAlive } : {}),
+  }, {
+    projectBrainService: composition.projectBrainService,
+  }) ?? createDefaultProjectBrainIndexWorkerService({
+    db,
+    projectBrainService: composition.projectBrainService,
+  });
+  const projectBrainDoctorService = createDefaultProjectBrainDoctorService({
+    config,
+    db,
+    projectBrainService: composition.projectBrainService,
+  });
   const observationScheduler = createObservationScheduler({
     config,
     taskService,
+    ...(projectBrainIndexWorkerService ? { projectBrainIndexWorkerService } : {}),
   });
   const dispose = () => {
     composition.discordPresenceService?.stop();
@@ -157,6 +244,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
       writeMaxRequests: config.rate_limit.write_max_requests,
     },
     observability: config.observability,
+    projectBrainDoctorService,
     dashboardDir: resolveDashboardDir(),
     observationScheduler,
     discordPresenceService: composition.discordPresenceService,

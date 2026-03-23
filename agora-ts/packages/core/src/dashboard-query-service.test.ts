@@ -232,6 +232,55 @@ describe('dashboard query service', () => {
     });
   });
 
+  it('approves a review-pending archive job before writer notify', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const archives = new ArchiveJobRepository(db);
+    const queries = new DashboardQueryService(db, { templatesDir });
+
+    const task = tasks.insertTask({
+      id: 'OC-403A',
+      title: '归档审批放行',
+      description: '',
+      type: 'document',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+    });
+    tasks.updateTask(task.id, task.version, { state: 'done' });
+    const job = archives.insertArchiveJob({
+      task_id: 'OC-403A',
+      status: 'review_pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      payload: {
+        closeout_review: {
+          required: true,
+          state: 'review_pending',
+        },
+      },
+      writer_agent: 'writer-agent',
+    });
+
+    const approved = queries.approveArchiveJob(job.id, {
+      approver_id: 'lizeyu',
+      comment: 'closeout reviewed',
+    });
+
+    expect(approved).toMatchObject({
+      id: job.id,
+      status: 'pending',
+      payload: expect.objectContaining({
+        closeout_review: expect.objectContaining({
+          state: 'approved',
+          approver_id: 'lizeyu',
+          comment: 'closeout reviewed',
+        }),
+      }),
+    });
+  });
+
   it('updates archive job statuses through the dashboard query service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -314,7 +363,11 @@ describe('dashboard query service', () => {
     expect(bindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('archived');
 
     const job = queries.listArchiveJobs({ taskId: 'OC-ARCHIVE-CTX' })[0];
-    expect(job?.status).toBe('pending');
+    expect(job?.status).toBe('review_pending');
+    queries.approveArchiveJob(job!.id, {
+      approver_id: 'lizeyu',
+      comment: 'ready to archive',
+    });
 
     queries.updateArchiveJob(job!.id, { status: 'synced', commit_hash: 'commit-1' });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -527,7 +580,7 @@ describe('dashboard query service', () => {
     expect(jobs[0]).toMatchObject({
       task_id: 'OC-402',
       task_title: '归档自动入队',
-      status: 'pending',
+      status: 'review_pending',
     });
   });
 
@@ -650,6 +703,8 @@ describe('dashboard query service', () => {
         id: 'review',
         status: 'idle',
         presence: 'offline',
+        selectability: 'selectable',
+        selectability_reason: 'inventory_launchable',
         presence_reason: 'inventory_only',
         channel_providers: ['discord'],
         host_framework: null,
@@ -853,6 +908,8 @@ describe('dashboard query service', () => {
         id: 'sonnet',
         status: 'idle',
         presence: 'disconnected',
+        selectability: 'restricted',
+        selectability_reason: 'provider_disconnected',
         presence_reason: 'health_monitor_restart',
         channel_providers: ['discord'],
         host_framework: null,
@@ -864,6 +921,8 @@ describe('dashboard query service', () => {
         id: 'review',
         status: 'idle',
         presence: 'offline',
+        selectability: 'selectable',
+        selectability_reason: 'inventory_launchable',
         presence_reason: 'inventory_only',
         channel_providers: ['discord'],
         host_framework: null,

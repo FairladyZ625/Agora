@@ -1,9 +1,11 @@
+import { Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { formatSelectabilityReason, isSelectableAgent, resolveAgentSelectability } from '@/lib/agentSelectability';
 import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createTaskDraft';
 import { listSkills } from '@/lib/api';
-import { buildCraftsmanInventory, isCraftsmanRole } from '@/lib/orchestrationRoles';
+import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 import { buildProjectBrainDraftPreamble, parseProjectBrainSourceContext } from '@/lib/projectBrainContext';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
@@ -13,6 +15,18 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTemplateStore } from '@/stores/templateStore';
+import type { AgentStatusItem } from '@/types/dashboard';
+
+const SKILL_USAGE_STORAGE_KEY = 'agora-create-task-skill-usage';
+const MAX_SKILL_USAGE_ENTRIES = 50;
+
+type SkillUsageEntry = {
+  skillRef: string;
+  surface: 'global' | 'role';
+  templateType: string;
+  role: string | null;
+  lastUsedAt: string;
+};
 
 function haveSameAssignments(left: Record<string, string>, right: Record<string, string>) {
   const leftKeys = Object.keys(left);
@@ -64,6 +78,134 @@ function toggleRoleSkillRef(
   };
 }
 
+function filterSkills(
+  skills: Array<{ skill_ref: string; resolved_path: string }>,
+  query: string,
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return skills;
+  }
+  return skills.filter((skill) =>
+    `${skill.skill_ref} ${skill.resolved_path}`.toLowerCase().includes(normalizedQuery));
+}
+
+function readSkillUsageHistory(): SkillUsageEntry[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+  const raw = window.localStorage.getItem(SKILL_USAGE_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.warn(`[CreateTaskPage] Invalid skill usage payload for storage key "${SKILL_USAGE_STORAGE_KEY}"`);
+      return [];
+    }
+    return parsed.filter((entry): entry is SkillUsageEntry =>
+      Boolean(
+        entry
+        && typeof entry === 'object'
+        && typeof entry.skillRef === 'string'
+        && typeof entry.surface === 'string'
+        && typeof entry.templateType === 'string'
+        && (typeof entry.role === 'string' || entry.role === null)
+        && typeof entry.lastUsedAt === 'string',
+      ));
+  } catch (error) {
+    console.warn(`[CreateTaskPage] Failed to parse storage key "${SKILL_USAGE_STORAGE_KEY}"`, error);
+    return [];
+  }
+}
+
+function writeSkillUsageHistory(entries: SkillUsageEntry[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(SKILL_USAGE_STORAGE_KEY, JSON.stringify(entries.slice(0, MAX_SKILL_USAGE_ENTRIES)));
+  } catch (error) {
+    console.warn(`[CreateTaskPage] Failed to persist storage key "${SKILL_USAGE_STORAGE_KEY}"`, error);
+  }
+}
+
+function getRecentTimestamps(
+  history: SkillUsageEntry[],
+  context: { surface: 'global' | 'role'; templateType: string; role: string | null },
+) {
+  const exact = new Map<string, number>();
+  const overall = new Map<string, number>();
+
+  for (const entry of history) {
+    const timestamp = Date.parse(entry.lastUsedAt);
+    if (Number.isNaN(timestamp)) {
+      continue;
+    }
+    const previousOverall = overall.get(entry.skillRef) ?? -Infinity;
+    if (timestamp > previousOverall) {
+      overall.set(entry.skillRef, timestamp);
+    }
+    const isExactMatch = entry.surface === context.surface
+      && entry.templateType === context.templateType
+      && entry.role === context.role;
+    if (!isExactMatch) {
+      continue;
+    }
+    const previousExact = exact.get(entry.skillRef) ?? -Infinity;
+    if (timestamp > previousExact) {
+      exact.set(entry.skillRef, timestamp);
+    }
+  }
+
+  return { exact, overall };
+}
+
+function resolveSkillSignal(
+  skillRef: string,
+  signals: ReturnType<typeof getRecentTimestamps>,
+): 'recommended' | 'recent' | null {
+  if ((signals.exact.get(skillRef) ?? -Infinity) > -Infinity) {
+    return 'recommended';
+  }
+  if ((signals.overall.get(skillRef) ?? -Infinity) > -Infinity) {
+    return 'recent';
+  }
+  return null;
+}
+
+function sortSkillsForPicker(
+  skills: Array<{ skill_ref: string; resolved_path: string }>,
+  selectedRefs: string[],
+  history: SkillUsageEntry[],
+  context: { surface: 'global' | 'role'; templateType: string; role: string | null },
+) {
+  const selected = new Set(selectedRefs);
+  const { exact, overall } = getRecentTimestamps(history, context);
+  return [...skills].sort((left, right) => {
+    const leftSelected = selected.has(left.skill_ref);
+    const rightSelected = selected.has(right.skill_ref);
+    if (leftSelected !== rightSelected) {
+      return leftSelected ? -1 : 1;
+    }
+
+    const leftExact = exact.get(left.skill_ref) ?? -Infinity;
+    const rightExact = exact.get(right.skill_ref) ?? -Infinity;
+    if (leftExact !== rightExact) {
+      return rightExact - leftExact;
+    }
+
+    const leftRecent = overall.get(left.skill_ref) ?? -Infinity;
+    const rightRecent = overall.get(right.skill_ref) ?? -Infinity;
+    if (leftRecent !== rightRecent) {
+      return rightRecent - leftRecent;
+    }
+
+    return left.skill_ref.localeCompare(right.skill_ref);
+  });
+}
+
 export function CreateTaskPage() {
   const { t } = useTranslation();
   const { locale } = useLocale();
@@ -91,6 +233,12 @@ export function CreateTaskPage() {
   const [availableSkills, setAvailableSkills] = useState<Array<{ skill_ref: string; resolved_path: string }>>([]);
   const [globalSkillRefs, setGlobalSkillRefs] = useState<string[]>([]);
   const [roleSkillRefs, setRoleSkillRefs] = useState<Record<string, string[]>>({});
+  const [globalSkillsOpen, setGlobalSkillsOpen] = useState(true);
+  const [globalSkillSearch, setGlobalSkillSearch] = useState('');
+  const [globalSkillFilter, setGlobalSkillFilter] = useState<'all' | 'selected' | 'recommended'>('all');
+  const [roleSkillPickerOpen, setRoleSkillPickerOpen] = useState<Record<string, boolean>>({});
+  const [roleSkillSearch, setRoleSkillSearch] = useState<Record<string, string>>({});
+  const [skillUsageHistory, setSkillUsageHistory] = useState<SkillUsageEntry[]>(() => readSkillUsageHistory());
   const [submitting, setSubmitting] = useState(false);
   const priorities = ['low', 'normal', 'high'] as const;
   const visibility = 'private' as const;
@@ -178,7 +326,66 @@ export function CreateTaskPage() {
     }
   }, [agents, assignments, craftsmanRuntime, selectedTemplate]);
 
-  const availableAgents = agents.filter((agent) => agent.presence !== 'offline' && agent.presence !== 'disconnected');
+  const availableAgents = agents.filter(isSelectableAgent);
+  const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const skillCatalog = useMemo(
+    () => [...availableSkills].sort((left, right) => left.skill_ref.localeCompare(right.skill_ref)),
+    [availableSkills],
+  );
+  const currentTemplateType = selectedTemplate?.type ?? type;
+  const globalSkillSignals = useMemo(
+    () => getRecentTimestamps(skillUsageHistory, {
+      surface: 'global',
+      templateType: currentTemplateType,
+      role: null,
+    }),
+    [currentTemplateType, skillUsageHistory],
+  );
+  const filteredGlobalSkills = useMemo(
+    () => {
+      const sorted = sortSkillsForPicker(
+        filterSkills(skillCatalog, globalSkillSearch),
+        globalSkillRefs,
+        skillUsageHistory,
+        {
+          surface: 'global',
+          templateType: currentTemplateType,
+          role: null,
+        },
+      );
+      if (globalSkillFilter === 'selected') {
+        return sorted.filter((skill) => globalSkillRefs.includes(skill.skill_ref));
+      }
+      if (globalSkillFilter === 'recommended') {
+        return sorted.filter((skill) => resolveSkillSignal(skill.skill_ref, globalSkillSignals) === 'recommended');
+      }
+      return sorted;
+    },
+    [currentTemplateType, globalSkillFilter, globalSkillRefs, globalSkillSearch, globalSkillSignals, skillCatalog, skillUsageHistory],
+  );
+  const restrictedSuggestedByRole = useMemo(() => {
+    if (!selectedTemplate) {
+      return {} as Record<string, Array<{ id: string; reason: string }>>;
+    }
+    return Object.fromEntries(selectedTemplate.defaultTeam.map((member) => {
+      if (isCraftsmanRole(member.role, member.memberKind ?? null)) {
+        return [member.role, []];
+      }
+      const restricted = member.suggested
+        .map((agentId) => normalizeRoleBindingId(member.role, agentId, member.memberKind))
+        .map((agentId) => agentById.get(agentId))
+        .filter((agent): agent is AgentStatusItem => Boolean(agent))
+        .filter((agent) => !isSelectableAgent(agent))
+        .map((agent) => ({
+          id: agent.id,
+          reason: formatSelectabilityReason(
+            resolveAgentSelectability(agent).reason,
+            createTaskCopy.selectabilityReasonLabels,
+          ),
+        }));
+      return [member.role, restricted];
+    }));
+  }, [agentById, createTaskCopy.selectabilityReasonLabels, selectedTemplate]);
   const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime);
   const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
   const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;
@@ -188,6 +395,87 @@ export function CreateTaskPage() {
         label: template.name,
       }))
     : createTaskCopy.taskTypes;
+
+  const recordSkillUsage = (
+    skillRef: string,
+    context: { surface: 'global' | 'role'; role: string | null },
+  ) => {
+    const nextEntry: SkillUsageEntry = {
+      skillRef,
+      surface: context.surface,
+      templateType: currentTemplateType,
+      role: context.role,
+      lastUsedAt: new Date().toISOString(),
+    };
+    setSkillUsageHistory((current) => {
+      const next = [
+        nextEntry,
+        ...current.filter((entry) => !(
+          entry.skillRef === nextEntry.skillRef
+          && entry.surface === nextEntry.surface
+          && entry.templateType === nextEntry.templateType
+          && entry.role === nextEntry.role
+        )),
+      ];
+      writeSkillUsageHistory(next);
+      return next;
+    });
+  };
+
+  const toggleGlobalSkill = (skillRef: string) => {
+    const adding = !globalSkillRefs.includes(skillRef);
+    setGlobalSkillRefs((current) => toggleSkillRef(current, skillRef));
+    if (adding) {
+      recordSkillUsage(skillRef, { surface: 'global', role: null });
+    }
+  };
+
+  const toggleRoleSkill = (role: string, skillRef: string) => {
+    const adding = !(roleSkillRefs[role] ?? []).includes(skillRef);
+    setRoleSkillRefs((current) => toggleRoleSkillRef(current, role, skillRef));
+    if (adding) {
+      recordSkillUsage(skillRef, { surface: 'role', role });
+    }
+  };
+
+  const renderSkillOptionList = (
+    skills: Array<{ skill_ref: string; resolved_path: string }>,
+    selectedRefs: string[],
+    signals: ReturnType<typeof getRecentTimestamps>,
+    onToggle: (skillRef: string) => void,
+  ) => {
+    if (availableSkills.length === 0) {
+      return <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>;
+    }
+    if (skills.length === 0) {
+      return <span className="type-body-sm">{createTaskCopy.noSkillResultsLabel}</span>;
+    }
+    return (
+      <div className="skill-picker__results">
+        {skills.map((skill) => {
+          const selected = selectedRefs.includes(skill.skill_ref);
+          const signal = resolveSkillSignal(skill.skill_ref, signals);
+          return (
+            <button
+              key={skill.skill_ref}
+              type="button"
+              aria-label={skill.skill_ref}
+              aria-pressed={selected}
+              onClick={() => onToggle(skill.skill_ref)}
+              className={selected ? 'skill-picker__option skill-picker__option--active' : 'skill-picker__option'}
+            >
+              {signal ? (
+                <span className="skill-picker__option-signal" aria-hidden="true">
+                  {createTaskCopy.skillSignalLabels[signal]}
+                </span>
+              ) : null}
+              <span className="skill-picker__option-name">{skill.skill_ref}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -380,21 +668,76 @@ export function CreateTaskPage() {
             </div>
 
             <div>
-              <span className="field-label">{createTaskCopy.globalSkillsLabel}</span>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {availableSkills.length > 0
-                  ? availableSkills.map((skill) => (
+              <div className="skill-picker">
+                <div className="skill-picker__header">
+                  <span className="field-label">{createTaskCopy.globalSkillsLabel}</span>
+                  <div className="skill-picker__actions">
+                    <span className="status-pill status-pill--neutral">{createTaskCopy.selectedSkillsCount(globalSkillRefs.length)}</span>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setGlobalSkillsOpen((current) => !current)}
+                    >
+                      {globalSkillsOpen ? createTaskCopy.closeGlobalSkillsAction : createTaskCopy.openGlobalSkillsAction}
+                    </button>
+                  </div>
+                </div>
+
+                {globalSkillRefs.length > 0 ? (
+                  <div className="skill-picker__selected">
+                    {globalSkillRefs.map((skillRef) => (
                       <button
-                        key={skill.skill_ref}
+                        key={skillRef}
                         type="button"
-                        aria-pressed={globalSkillRefs.includes(skill.skill_ref)}
-                        onClick={() => setGlobalSkillRefs((current) => toggleSkillRef(current, skill.skill_ref))}
-                        className={globalSkillRefs.includes(skill.skill_ref) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                        aria-pressed="true"
+                        data-skill-tooltip={createTaskCopy.deselectSkillTitle(skillRef)}
+                        onClick={() => toggleGlobalSkill(skillRef)}
+                        className="choice-pill choice-pill--active skill-picker__selected-chip"
                       >
-                        {skill.skill_ref}
+                        {skillRef}
                       </button>
-                    ))
-                  : <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>}
+                    ))}
+                  </div>
+                ) : null}
+                {globalSkillRefs.length > 0 ? (
+                  <p className="type-text-xs skill-picker__hint">{createTaskCopy.selectedSkillToggleHint}</p>
+                ) : null}
+
+                {globalSkillsOpen ? (
+                  <div className="skill-picker__panel">
+                    <label className="input-shell--centered skill-picker__search">
+                      <Search size={16} className="icon-muted" />
+                      <input
+                        type="text"
+                        value={globalSkillSearch}
+                        onChange={(event) => setGlobalSkillSearch(event.target.value)}
+                        placeholder={createTaskCopy.globalSkillsSearchPlaceholder}
+                        aria-label={createTaskCopy.globalSkillsSearchLabel}
+                        className="input-text"
+                      />
+                    </label>
+                    <div className="skill-picker__filters">
+                      {(['all', 'selected', 'recommended'] as const).map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setGlobalSkillFilter(filter)}
+                          className={globalSkillFilter === filter ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                        >
+                          {createTaskCopy.globalSkillFilterLabels[filter]}
+                        </button>
+                      ))}
+                    </div>
+                    <div data-testid="global-skill-picker-results">
+                      {renderSkillOptionList(
+                        filteredGlobalSkills,
+                        globalSkillRefs,
+                        globalSkillSignals,
+                        toggleGlobalSkill,
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -473,22 +816,99 @@ export function CreateTaskPage() {
                             ))
                           : <span className="type-body-sm">{createTaskCopy.noAgentLabel}</span>}
                       </div>
+                      {(restrictedSuggestedByRole[member.role] ?? []).length > 0 ? (
+                        <div className="mt-3">
+                          <span className="detail-card__label">{createTaskCopy.restrictedSuggestedLabel}</span>
+                          <div className="mt-2 space-y-2">
+                            {(restrictedSuggestedByRole[member.role] ?? []).map((item) => (
+                              <div key={`${member.role}-restricted-${item.id}`} className="type-body-sm">
+                                <strong>{item.id}</strong>
+                                {' · '}
+                                <span>{item.reason}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="mt-3">
-                        <span className="detail-card__label">{createTaskCopy.roleSkillsLabel}</span>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {availableSkills.length > 0
-                            ? availableSkills.map((skill) => (
+                        <div className="skill-picker">
+                          <div className="skill-picker__header">
+                            <span className="detail-card__label">{createTaskCopy.roleSkillsLabel}</span>
+                            <div className="skill-picker__actions">
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => setRoleSkillPickerOpen((current) => ({
+                                  ...current,
+                                  [member.role]: !current[member.role],
+                                }))}
+                              >
+                                {roleSkillPickerOpen[member.role]
+                                  ? createTaskCopy.closeRoleSkillsAction(member.role)
+                                  : createTaskCopy.openRoleSkillsAction(member.role)}
+                              </button>
+                            </div>
+                          </div>
+
+                          {(roleSkillRefs[member.role] ?? []).length > 0 ? (
+                            <div className="skill-picker__selected">
+                              {(roleSkillRefs[member.role] ?? []).map((skillRef) => (
                                 <button
-                                  key={`${member.role}-${skill.skill_ref}`}
+                                  key={`${member.role}-selected-${skillRef}`}
                                   type="button"
-                                  aria-pressed={(roleSkillRefs[member.role] ?? []).includes(skill.skill_ref)}
-                                  onClick={() => setRoleSkillRefs((current) => toggleRoleSkillRef(current, member.role, skill.skill_ref))}
-                                  className={(roleSkillRefs[member.role] ?? []).includes(skill.skill_ref) ? 'choice-pill choice-pill--active' : 'choice-pill'}
+                                  aria-pressed="true"
+                                  data-skill-tooltip={createTaskCopy.deselectSkillTitle(skillRef)}
+                                  onClick={() => toggleRoleSkill(member.role, skillRef)}
+                                  className="choice-pill choice-pill--active skill-picker__selected-chip"
                                 >
-                                  {skill.skill_ref}
+                                  {skillRef}
                                 </button>
-                              ))
-                            : <span className="type-body-sm">{createTaskCopy.noSkillsLabel}</span>}
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="type-body-sm">{createTaskCopy.noRoleSkillsSelectedLabel}</span>
+                          )}
+                          {(roleSkillRefs[member.role] ?? []).length > 0 ? (
+                            <p className="type-text-xs skill-picker__hint">{createTaskCopy.selectedSkillToggleHint}</p>
+                          ) : null}
+
+                          {roleSkillPickerOpen[member.role] ? (
+                            <div className="skill-picker__panel">
+                              <label className="input-shell--centered skill-picker__search">
+                                <Search size={16} className="icon-muted" />
+                                <input
+                                  type="text"
+                                  value={roleSkillSearch[member.role] ?? ''}
+                                  onChange={(event) => setRoleSkillSearch((current) => ({
+                                    ...current,
+                                    [member.role]: event.target.value,
+                                  }))}
+                                  placeholder={createTaskCopy.roleSkillsSearchPlaceholder}
+                                  aria-label={createTaskCopy.roleSkillsSearchLabel(member.role)}
+                                  className="input-text"
+                                />
+                              </label>
+                              {renderSkillOptionList(
+                                sortSkillsForPicker(
+                                  filterSkills(skillCatalog, roleSkillSearch[member.role] ?? ''),
+                                  roleSkillRefs[member.role] ?? [],
+                                  skillUsageHistory,
+                                  {
+                                    surface: 'role',
+                                    templateType: currentTemplateType,
+                                    role: member.role,
+                                  },
+                                ),
+                                roleSkillRefs[member.role] ?? [],
+                                getRecentTimestamps(skillUsageHistory, {
+                                  surface: 'role',
+                                  templateType: currentTemplateType,
+                                  role: member.role,
+                                }),
+                                (skillRef) => toggleRoleSkill(member.role, skillRef),
+                              )}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>

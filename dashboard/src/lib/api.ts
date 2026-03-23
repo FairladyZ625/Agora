@@ -67,6 +67,71 @@ import {
 import { z, type ZodType } from 'zod';
 import { parseJsonWithContext } from '@/utils/json';
 
+const projectNomosStateSchema = z.object({
+  project_id: z.string().min(1),
+  project_name: z.string().min(1),
+  nomos_id: z.string().min(1),
+  project_state_root: z.string().min(1),
+  profile_path: z.string().min(1),
+  profile_installed: z.boolean(),
+  repo_path: z.string().nullable(),
+  repo_shim_installed: z.boolean(),
+  bootstrap_prompts_dir: z.string().min(1),
+  lifecycle_modules: z.array(z.string().min(1)),
+});
+
+export type ApiProjectNomosStateDto = z.infer<typeof projectNomosStateSchema>;
+
+const projectNomosInstallSchema = z.object({
+  project_id: z.string().min(1),
+  nomos: z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    version: z.string().min(1),
+    description: z.string().min(1),
+    source: z.string().min(1),
+    install_mode: z.string().min(1),
+  }),
+  project_state_root: z.string().min(1),
+  repo_shim_path: z.string().nullable(),
+  repo_git_initialized: z.boolean(),
+  project_state_git_initialized: z.boolean(),
+  bootstrap_task_id: z.string().nullable(),
+});
+
+export type ApiProjectNomosInstallDto = z.infer<typeof projectNomosInstallSchema>;
+
+const projectNomosDoctorSchema = z.object({
+  project_id: z.string().min(1),
+  db_path: z.string().min(1),
+  embedding: z.object({
+    configured: z.boolean(),
+    healthy: z.boolean(),
+    provider: z.string().min(1),
+    model: z.string().nullable(),
+    error: z.string().optional(),
+  }),
+  vector_index: z.object({
+    configured: z.boolean(),
+    provider: z.string().min(1),
+    healthy: z.boolean(),
+    chunk_count: z.number().optional(),
+    warning: z.string().optional(),
+  }),
+  jobs: z.object({
+    pending: z.number(),
+    running: z.number(),
+    failed: z.number(),
+    succeeded: z.number(),
+  }),
+  drift: z.object({
+    detected: z.boolean(),
+    documents_without_jobs: z.number(),
+  }),
+});
+
+export type ApiProjectNomosDoctorDto = z.infer<typeof projectNomosDoctorSchema>;
+
 class ApiError extends Error {
   status: number;
   statusText: string;
@@ -702,6 +767,40 @@ export function createProject(input: {
 
 export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {
   return request<ApiProjectWorkbenchDto>(`/projects/${encodeURIComponent(projectId)}`, projectWorkbenchResponseSchema);
+}
+
+export function getProjectNomosState(projectId: string): Promise<ApiProjectNomosStateDto> {
+  return request<ApiProjectNomosStateDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos`,
+    projectNomosStateSchema,
+  );
+}
+
+export function installProjectNomos(
+  projectId: string,
+  input?: {
+    repo_path?: string;
+    initialize_repo?: boolean;
+    force_write_repo_shim?: boolean;
+    skip_bootstrap_task?: boolean;
+    creator?: string;
+  },
+): Promise<ApiProjectNomosInstallDto> {
+  return request<ApiProjectNomosInstallDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/install`,
+    projectNomosInstallSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input ?? {}),
+    },
+  );
+}
+
+export function runProjectNomosDoctor(projectId: string): Promise<ApiProjectNomosDoctorDto> {
+  return request<ApiProjectNomosDoctorDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/doctor`,
+    projectNomosDoctorSchema,
+  );
 }
 
 export function listTodos(status?: Exclude<TodoFilter, 'all'>, projectId?: string): Promise<ApiTodoDto[]> {

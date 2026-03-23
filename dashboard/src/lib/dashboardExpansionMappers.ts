@@ -55,6 +55,8 @@ function mapAgentDto(agent: ApiAgentsStatusDto['agents'][number]): AgentStatusIt
     role: agent.role,
     status: agent.status,
     presence: agent.presence,
+    selectability: agent.selectability,
+    selectabilityReason: agent.selectability_reason ?? null,
     presenceReason: agent.presence_reason ?? null,
     channelProviders: agent.channel_providers,
     hostFramework: agent.host_framework ?? null,
