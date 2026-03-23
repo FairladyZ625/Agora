@@ -1,8 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import * as childProcess from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { parseSimpleToml, parseStructuredFrontmatter, tomlString, tomlStringArray } from './nomos-serialization.js';
 import { resolveUserAgoraDir, type EnsureBundledAgoraAssetsOptions } from './runtime-assets.js';
 
 export const REPO_AGENTS_SHIM_SECTION_ORDER = [
@@ -10,7 +12,7 @@ export const REPO_AGENTS_SHIM_SECTION_ORDER = [
   'pack_index',
   'bootstrap_method',
   'fill_policy',
-] as const;
+] as const satisfies readonly string[];
 
 export const repoAgentsShimSectionSchema = z.enum(REPO_AGENTS_SHIM_SECTION_ORDER);
 export type RepoAgentsShimSection = z.infer<typeof repoAgentsShimSectionSchema>;
@@ -35,7 +37,7 @@ export const NOMOS_PROJECT_STATE_DIRECTORIES = [
   'prompts/doctor',
   'scripts',
   'skills',
-] as const;
+] as const satisfies readonly string[];
 
 export const NOMOS_LIFECYCLE_MODULES = [
   'project-bootstrap',
@@ -43,7 +45,7 @@ export const NOMOS_LIFECYCLE_MODULES = [
   'task-closeout',
   'project-archive',
   'governance-doctor',
-] as const;
+] as const satisfies readonly string[];
 
 export const nomosLifecycleModuleSchema = z.enum(NOMOS_LIFECYCLE_MODULES);
 export type NomosLifecycleModule = z.infer<typeof nomosLifecycleModuleSchema>;
@@ -168,6 +170,27 @@ export interface InstallBuiltInAgoraNomosOptions extends ResolveAgoraProjectStat
   initializeRepo?: boolean;
   forceWriteRepoShim?: boolean;
   initializeProjectStateGit?: boolean;
+}
+
+export interface PrepareProjectNomosInstallOptions extends ResolveAgoraProjectStateOptions {
+  projectId: string;
+  projectName: string;
+  projectOwner?: string | null | undefined;
+  metadata?: Record<string, unknown> | null | undefined;
+  repoPath?: string | null | undefined;
+  initializeRepo?: boolean;
+  forceWriteRepoShim?: boolean;
+}
+
+export interface PreparedProjectNomosInstallResult {
+  installedNomos: InstalledBuiltInAgoraNomosResult;
+  authoringDraft: ProjectNomosAuthoringDraftResult;
+  persistedMetadata: Record<string, unknown>;
+  runtimePaths: ProjectNomosRuntimePaths;
+  nomosState: ResolvedProjectNomosState;
+  effectiveRuntimePaths: ProjectNomosRuntimePaths;
+  effectiveNomosState: ResolvedProjectNomosState;
+  bootstrapMode: 'existing_repo' | 'new_repo' | 'no_repo';
 }
 
 export interface InstalledBuiltInAgoraNomosResult {
@@ -400,6 +423,14 @@ export const BUILT_IN_AGORA_NOMOS_PACK = {
 
 export const DEFAULT_AGORA_NOMOS_ID = BUILT_IN_AGORA_NOMOS_PACK.id;
 
+export function requireSupportedNomosId(raw: string | undefined): string {
+  const nomosId = raw?.trim() || DEFAULT_AGORA_NOMOS_ID;
+  if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
+    throw new Error(`Unsupported nomos_id: ${nomosId}`);
+  }
+  return nomosId;
+}
+
 export const DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES = [
   'project-bootstrap',
   'task-context-delivery',
@@ -418,11 +449,11 @@ export const BUILT_IN_AGORA_NOMOS_REFERENCE_DOCS = [
   'governance.md',
   'lifecycle.md',
   'bootstrap-fields.md',
-] as const;
+] as const satisfies readonly string[];
 
 export const BUILT_IN_AGORA_NOMOS_ARCHITECTURE_DOCS = [
   'operating-model.md',
-] as const;
+] as const satisfies readonly string[];
 
 export const BUILT_IN_AGORA_NOMOS_LIFECYCLE_DOCS = [
   'project-bootstrap.md',
@@ -430,22 +461,22 @@ export const BUILT_IN_AGORA_NOMOS_LIFECYCLE_DOCS = [
   'task-closeout.md',
   'project-archive.md',
   'governance-doctor.md',
-] as const;
+] as const satisfies readonly string[];
 
 export const BUILT_IN_AGORA_NOMOS_BOOTSTRAP_PROMPTS = [
   'interview.md',
   'existing-project.md',
   'new-project.md',
   'no-repo.md',
-] as const;
+] as const satisfies readonly string[];
 
 export const BUILT_IN_AGORA_NOMOS_CLOSEOUT_PROMPTS = [
   'review.md',
-] as const;
+] as const satisfies readonly string[];
 
 export const BUILT_IN_AGORA_NOMOS_DOCTOR_PROMPTS = [
   'project.md',
-] as const;
+] as const satisfies readonly string[];
 
 export function buildBuiltInAgoraNomosSeededAssets() {
   return {
@@ -866,6 +897,50 @@ export function resolveProjectNomosState(
   };
 }
 
+export function prepareProjectNomosInstall(
+  options: PrepareProjectNomosInstallOptions,
+): PreparedProjectNomosInstallResult {
+  const preInstallNomosState = resolveProjectNomosState(options.projectId, options.metadata ?? null, options);
+  const preInstallRuntimePaths = resolveProjectNomosRuntimePaths(options.projectId, options.metadata ?? null, options);
+  const installedNomos = installBuiltInAgoraNomosForProject(options.projectId, {
+    ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+    initializeRepo: options.initializeRepo ?? false,
+    forceWriteRepoShim: options.forceWriteRepoShim ?? false,
+    ...(options.userAgoraDir ? { userAgoraDir: options.userAgoraDir } : {}),
+  });
+  const authoringDraft = ensureProjectNomosAuthoringDraft(options.projectId, options.projectName, {
+    ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+    nomosId: installedNomos.profile.pack.id,
+    ...(options.userAgoraDir ? { userAgoraDir: options.userAgoraDir } : {}),
+  });
+  const persistedMetadata = mergeProjectMetadataWithNomosProfile({
+    ...(options.metadata ?? {}),
+    ...(options.repoPath ? { repo_path: options.repoPath } : {}),
+  }, installedNomos.profile);
+  const runtimePaths = resolveProjectNomosRuntimePaths(options.projectId, persistedMetadata, options);
+  const nomosState = resolveProjectNomosState(options.projectId, persistedMetadata, options);
+  const effectiveRuntimePaths = preInstallNomosState.activation_status === 'active_project'
+    ? preInstallRuntimePaths
+    : runtimePaths;
+  const effectiveNomosState = preInstallNomosState.activation_status === 'active_project'
+    ? preInstallNomosState
+    : nomosState;
+  const bootstrapMode = options.repoPath
+    ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
+    : 'no_repo';
+
+  return {
+    installedNomos,
+    authoringDraft,
+    persistedMetadata,
+    runtimePaths,
+    nomosState,
+    effectiveRuntimePaths,
+    effectiveNomosState,
+    bootstrapMode,
+  };
+}
+
 export function reviewProjectNomosDraft(
   projectId: string,
   metadata: Record<string, unknown> | null | undefined,
@@ -1022,7 +1097,7 @@ export function diffProjectNomos(
   for (const field of ['pack_id', 'name', 'version', 'description', 'lifecycle_modules', 'doctor_checks'] as const) {
     const fromValue = basePack?.[field] ?? null;
     const toValue = candidatePack?.[field] ?? null;
-    if (JSON.stringify(fromValue) === JSON.stringify(toValue)) {
+    if (isSameNomosFieldValue(fromValue, toValue)) {
       continue;
     }
     differences.push({
@@ -1167,8 +1242,11 @@ export function exportProjectNomosPack(
     throw new Error(`Cannot export Nomos pack for ${projectId}: ${target} pack is missing.`);
   }
 
-  if (options.replaceExisting && existsSync(options.outputDir)) {
-    rmSync(options.outputDir, { recursive: true, force: true });
+  if (options.replaceExisting && existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
+    removeDirectoryTree(options.outputDir, {
+      label: 'export project nomos pack',
+      requirePackMarker: true,
+    });
   }
   mkdirSync(options.outputDir, { recursive: true });
   if (readdirSync(options.outputDir).length > 0) {
@@ -1197,7 +1275,10 @@ export function installLocalNomosPackToProject(
   }
 
   if (options.replaceExisting ?? true) {
-    rmSync(layout.projectNomosDraftDir, { recursive: true, force: true });
+    removeDirectoryTree(layout.projectNomosDraftDir, {
+      label: 'install local nomos pack',
+      allowedParents: [layout.root],
+    });
   }
   mkdirSync(layout.projectNomosDraftDir, { recursive: true });
   copyDirectoryRecursive(options.packDir, layout.projectNomosDraftDir);
@@ -1245,8 +1326,11 @@ export function scaffoldNomosPack(options: ScaffoldNomosPackOptions): ScaffoldNo
     throw new Error(`Nomos pack template not found: ${options.templateDir}`);
   }
 
-  if (options.replaceExisting && existsSync(options.outputDir)) {
-    rmSync(options.outputDir, { recursive: true, force: true });
+  if (options.replaceExisting && existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
+    removeDirectoryTree(options.outputDir, {
+      label: 'scaffold nomos pack',
+      requirePackMarker: true,
+    });
   }
 
   if (existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
@@ -1455,14 +1539,6 @@ function renderRepoAgentsShimSection(
   }
 }
 
-function tomlString(value: string) {
-  return JSON.stringify(value);
-}
-
-function tomlStringArray(values: readonly string[]) {
-  return `[${values.map((value) => tomlString(value)).join(', ')}]`;
-}
-
 function resolveRepoRoot(repoPath: string | null | undefined, initializeRepo: boolean) {
   if (!repoPath) {
     if (initializeRepo) {
@@ -1496,11 +1572,15 @@ function ensureGitRepository(root: string) {
   if (existsSync(resolve(root, '.git'))) {
     return false;
   }
-  execFileSync('git', ['init', '--initial-branch=main'], {
-    cwd: root,
-    stdio: 'ignore',
-  });
-  return true;
+  try {
+    childProcess.execFileSync('git', ['init', '--initial-branch=main'], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch (error) {
+    throw new Error(`Failed to initialize git repository at ${root}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1825,78 +1905,6 @@ function loadProjectNomosPackSummary(
   };
 }
 
-function parseStructuredFrontmatter(content: string) {
-  const lines = content.split('\n');
-  if (lines[0]?.trim() !== '---') {
-    throw new Error('Project Nomos authoring spec must start with frontmatter');
-  }
-  const result: Record<string, unknown> = {};
-  for (let index = 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (line.trim() === '---') {
-      return result;
-    }
-    if (!line.trim()) {
-      continue;
-    }
-    const separator = line.indexOf(':');
-    if (separator === -1) {
-      continue;
-    }
-    const key = line.slice(0, separator).trim();
-    const rawValue = line.slice(separator + 1).trim();
-    if (!rawValue.length) {
-      const blockLines: string[] = [];
-      for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
-        const blockLine = lines[blockIndex] ?? '';
-        if (!blockLine.trim()) {
-          continue;
-        }
-        if (/^\s*- /.test(blockLine)) {
-          blockLines.push(blockLine);
-          index = blockIndex;
-          continue;
-        }
-        break;
-      }
-      result[key] = parseStructuredValue(blockLines.join('\n'));
-      continue;
-    }
-    result[key] = parseStructuredValue(rawValue);
-  }
-  throw new Error('Project Nomos authoring spec frontmatter is not closed');
-}
-
-function parseStructuredValue(rawValue: string): unknown {
-  if (!rawValue.length) {
-    return '';
-  }
-  if (rawValue.trim().startsWith('- ')) {
-    return rawValue
-      .split('\n')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.startsWith('- '))
-      .map((entry) => entry.slice(2).trim());
-  }
-  if (rawValue.includes('\n')) {
-    return rawValue
-      .split('\n')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.startsWith('- '))
-      .map((entry) => entry.slice(2).trim());
-  }
-  if (rawValue.startsWith('[')) {
-    return JSON.parse(rawValue) as unknown;
-  }
-  if (rawValue === 'null') {
-    return null;
-  }
-  if (rawValue.startsWith('"')) {
-    return JSON.parse(rawValue) as unknown;
-  }
-  return rawValue;
-}
-
 function asRequiredString(value: unknown, field: string) {
   if (typeof value === 'string' && value.trim().length > 0) {
     return value;
@@ -1947,39 +1955,60 @@ function renderListOrPlaceholder(values: readonly string[]) {
   return values.map((value) => `- ${value}`);
 }
 
-function parseSimpleToml(content: string) {
-  const root: Record<string, unknown> = {};
-  const sections: Record<string, Record<string, unknown>> = {};
-  let currentSection = '';
-
-  for (const rawLine of content.split('\n')) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
+function isSameNomosFieldValue(a: unknown, b: unknown) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) {
+      return false;
     }
-    const sectionMatch = /^\[([^\]]+)\]$/.exec(line);
-    if (sectionMatch) {
-      currentSection = sectionMatch[1] ?? '';
-      sections[currentSection] = sections[currentSection] ?? {};
-      continue;
-    }
-    const separatorIndex = line.indexOf('=');
-    if (separatorIndex < 0) {
-      continue;
-    }
-    const key = line.slice(0, separatorIndex).trim();
-    const rawValue = line.slice(separatorIndex + 1).trim();
-    const parsedValue = parseStructuredValue(rawValue);
-    if (currentSection) {
-      const section = sections[currentSection] ?? {};
-      section[key] = parsedValue;
-      sections[currentSection] = section;
-      continue;
-    }
-    root[key] = parsedValue;
+    const left = [...a].map((value) => String(value)).sort();
+    const right = [...b].map((value) => String(value)).sort();
+    return left.every((value, index) => value === right[index]);
   }
+  return a === b;
+}
 
-  return { root, sections };
+function isWithinParent(target: string, parent: string) {
+  const resolvedTarget = resolve(target);
+  const resolvedParent = resolve(parent);
+  return resolvedTarget === resolvedParent || resolvedTarget.startsWith(`${resolvedParent}/`);
+}
+
+function assertSafeRemovePath(
+  target: string,
+  options: {
+    label: string;
+    allowedParents?: string[];
+    requirePackMarker?: boolean;
+  },
+) {
+  const resolvedTarget = resolve(target);
+  const forbidden = new Set([
+    resolve('/'),
+    resolve(homedir()),
+    resolve(process.cwd()),
+  ]);
+  if (!resolvedTarget || forbidden.has(resolvedTarget)) {
+    throw new Error(`Refusing to remove unsafe path for ${options.label}: ${resolvedTarget}`);
+  }
+  if (options.allowedParents?.some((parent) => isWithinParent(resolvedTarget, parent))) {
+    return;
+  }
+  if (options.requirePackMarker && existsSync(resolve(resolvedTarget, 'profile.toml'))) {
+    return;
+  }
+  throw new Error(`Refusing to remove path outside allowed scope for ${options.label}: ${resolvedTarget}`);
+}
+
+function removeDirectoryTree(
+  target: string,
+  options: {
+    label: string;
+    allowedParents?: string[];
+    requirePackMarker?: boolean;
+  },
+) {
+  assertSafeRemovePath(target, options);
+  rmSync(target, { recursive: true, force: true });
 }
 
 function asTomlRequiredString(value: unknown, field: string) {

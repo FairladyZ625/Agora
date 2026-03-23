@@ -7,9 +7,20 @@ export interface ProjectNomosRuntimeContext {
 }
 
 export interface ProjectNomosAuthoringPort {
+  /**
+   * Rebuilds the project-specific Nomos draft from the current authoring spec.
+   *
+   * Throws when the authoring spec is invalid or when the underlying Nomos
+   * template/pack scaffold cannot be resolved.
+   */
   refineProjectNomosDraft(projectId: string): {
     draftDir: string;
     draftProfilePath: string;
   };
-  resolveProjectNomosRuntimeContext?(projectId: string): ProjectNomosRuntimeContext;
+
+  /**
+   * Returns the currently effective runtime context when the adapter can resolve
+   * active Nomos paths for the project. Callers must tolerate `undefined`.
+   */
+  resolveProjectNomosRuntimeContext?(projectId: string): ProjectNomosRuntimeContext | undefined;
 }

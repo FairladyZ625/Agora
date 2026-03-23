@@ -19,6 +19,7 @@ import {
   mergeProjectMetadataWithNomosProfile,
   nomosProjectProfileSchema,
   parseProjectNomosAuthoringSpec,
+  requireSupportedNomosId,
   refineProjectNomosDraftFromSpec,
   validateProjectNomos,
   diffProjectNomos,
@@ -408,5 +409,67 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(join(outputDir, 'constitution', 'constitution.md'), 'utf8')).toContain('Acme Web Nomos');
     expect(readFileSync(join(outputDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('Acme Web Nomos');
     expect(readFileSync(join(outputDir, 'prompts', 'bootstrap', 'interview.md'), 'utf8')).toContain('Acme Web Nomos');
+  });
+
+  it('wraps malformed frontmatter json with a domain-specific error', () => {
+    const specPath = join(makeAgoraHomeDir(), 'bad-spec.md');
+    writeFileSync(specPath, [
+      '---',
+      'project_id: "proj-error"',
+      'project_name: "Error Project"',
+      'base_nomos_id: "agora/default"',
+      'project_shape: "existing_repo"',
+      'repo_path: null',
+      'purpose: "bad json"',
+      'lifecycle_modules: ["project-bootstrap"',
+      'doctor_checks: ["constitution-present"]',
+      'methodology_keep: ["planning trio"]',
+      'methodology_change: []',
+      'open_questions: []',
+      '---',
+    ].join('\n'), 'utf8');
+
+    expect(() => parseProjectNomosAuthoringSpec(specPath)).toThrowError(/invalid value for lifecycle_modules/i);
+  });
+
+  it('refuses to recursively replace an arbitrary non-pack output directory', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const templateRoot = join(agoraHomeDir, 'template');
+    mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(templateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(templateRoot, 'README.md'), '# Template\n', 'utf8');
+    writeFileSync(join(templateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(templateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const unsafeOutputDir = join(agoraHomeDir, 'unsafe-existing');
+    mkdirSync(unsafeOutputDir, { recursive: true });
+    writeFileSync(join(unsafeOutputDir, 'random.txt'), 'keep me', 'utf8');
+
+    expect(() => scaffoldNomosPack({
+      outputDir: unsafeOutputDir,
+      templateDir: templateRoot,
+      id: 'acme/web',
+      name: 'Acme Web Nomos',
+      description: 'Custom Nomos for Acme web delivery.',
+      replaceExisting: true,
+    })).toThrowError(/Refusing to remove path outside allowed scope/i);
+  });
+
+  it('wraps git init failures with path-aware domain context', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const previousPath = process.env.PATH;
+    try {
+      process.env.PATH = '';
+      expect(() => installBuiltInAgoraNomosForProject('proj-git-fail', {
+        userAgoraDir: agoraHomeDir,
+      })).toThrowError(/Failed to initialize git repository at .*proj-git-fail/i);
+    } finally {
+      process.env.PATH = previousPath;
+    }
+  });
+
+  it('normalizes supported nomos ids through a shared helper', () => {
+    expect(requireSupportedNomosId(undefined)).toBe(DEFAULT_AGORA_NOMOS_ID);
+    expect(() => requireSupportedNomosId('custom/pack')).toThrowError(/Unsupported nomos_id/);
   });
 });
