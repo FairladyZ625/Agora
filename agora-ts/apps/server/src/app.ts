@@ -7,6 +7,7 @@ import {
   DEFAULT_AGORA_NOMOS_ID,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  diffProjectNomos,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
   installBuiltInAgoraNomosForProject,
@@ -16,6 +17,7 @@ import {
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   reviewProjectNomosDraft,
+  validateProjectNomos,
 } from '@agora-ts/config';
 import {
   craftsmanCallbackRequestSchema,
@@ -1359,6 +1361,14 @@ export function buildApp(options: BuildAppOptions = {}) {
           closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
           doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
         },
+        nomos_validation: {
+          draft: validateProjectNomos(projectId, project.metadata ?? null, { target: 'draft' }),
+          active: validateProjectNomos(projectId, project.metadata ?? null, { target: 'active' }),
+        },
+        nomos_diff: diffProjectNomos(projectId, project.metadata ?? null, {
+          base: state.activation_status === 'active_project' ? 'active' : 'builtin',
+          candidate: 'draft',
+        }),
       });
     } catch (error) {
       const translated = translateError(error);

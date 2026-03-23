@@ -1992,21 +1992,38 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const doctorService = getProjectBrainDoctorService();
       if (doctorService) {
         const result = await doctorService.diagnoseProject(options.project);
-        const nomosRuntime = projectService
+        const nomosDiagnosis = projectService
           ? (() => {
             const project = projectService.requireProject(options.project);
             const state = resolveProjectNomosState(options.project, project.metadata ?? null);
             const runtimePaths = resolveProjectNomosRuntimePaths(options.project, project.metadata ?? null);
             return {
-              nomos_id: state.nomos_id,
-              activation_status: state.activation_status,
-              bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
-              closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
-              doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+              runtime: {
+                nomos_id: state.nomos_id,
+                activation_status: state.activation_status,
+                bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+                closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+                doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+              },
+              validation: {
+                draft: validateProjectNomos(options.project, project.metadata ?? null, { target: 'draft' }),
+                active: validateProjectNomos(options.project, project.metadata ?? null, { target: 'active' }),
+              },
+              diff: diffProjectNomos(options.project, project.metadata ?? null, {
+                base: state.activation_status === 'active_project' ? 'active' : 'builtin',
+                candidate: 'draft',
+              }),
             };
           })()
           : null;
-        const payload = nomosRuntime ? { ...result, nomos_runtime: nomosRuntime } : result;
+        const payload = nomosDiagnosis
+          ? {
+            ...result,
+            nomos_runtime: nomosDiagnosis.runtime,
+            nomos_validation: nomosDiagnosis.validation,
+            nomos_diff: nomosDiagnosis.diff,
+          }
+          : result;
         if (options.json) {
           writeLine(stdout, JSON.stringify(payload, null, 2));
           return;
@@ -2016,9 +2033,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, `vector configured=${result.vector_index.configured} healthy=${result.vector_index.healthy} provider=${result.vector_index.provider} chunks=${result.vector_index.chunk_count ?? 0}`);
         writeLine(stdout, `jobs pending=${result.jobs.pending} running=${result.jobs.running} failed=${result.jobs.failed} succeeded=${result.jobs.succeeded}`);
         writeLine(stdout, `drift detected=${result.drift.detected} documents_without_jobs=${result.drift.documents_without_jobs}`);
-        if (nomosRuntime) {
-          writeLine(stdout, `nomos_runtime id=${nomosRuntime.nomos_id} activation=${nomosRuntime.activation_status}`);
-          writeLine(stdout, `nomos_doctor_prompt=${nomosRuntime.doctor_project_prompt_path}`);
+        if (nomosDiagnosis) {
+          writeLine(stdout, `nomos_runtime id=${nomosDiagnosis.runtime.nomos_id} activation=${nomosDiagnosis.runtime.activation_status}`);
+          writeLine(stdout, `nomos_doctor_prompt=${nomosDiagnosis.runtime.doctor_project_prompt_path}`);
+          writeLine(stdout, `nomos_validation draft_valid=${nomosDiagnosis.validation.draft.valid} active_valid=${nomosDiagnosis.validation.active.valid}`);
+          writeLine(stdout, `nomos_diff changed=${nomosDiagnosis.diff.changed} fields=${nomosDiagnosis.diff.differences.map((entry) => entry.field).join(',') || '-'}`);
         }
         return;
       }

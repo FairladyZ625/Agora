@@ -676,6 +676,19 @@ describe('task routes', () => {
         nomos_id: 'project/proj-nomos-rest',
         activation_status: 'active_project',
       }),
+      nomos_validation: expect.objectContaining({
+        draft: expect.objectContaining({
+          target: 'draft',
+          valid: false,
+        }),
+        active: expect.objectContaining({
+          target: 'active',
+          valid: false,
+        }),
+      }),
+      nomos_diff: expect.objectContaining({
+        changed: false,
+      }),
       drift: {
         detected: false,
       },

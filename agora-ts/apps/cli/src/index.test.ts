@@ -1425,6 +1425,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
     expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_validation"');
+    expect(stdout.value).toContain('"draft"');
+    expect(stdout.value).toContain('"nomos_diff"');
     expect(stdout.value).toContain('"nomos_id": "project/proj-brain"');
   });
 
