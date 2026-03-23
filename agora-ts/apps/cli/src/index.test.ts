@@ -528,6 +528,52 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain(`active_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-activate', 'nomos', 'project-nomos')}`);
   });
 
+  it('validates and diffs project nomos through explicit cli commands', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-validate-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-validate-repo-');
+    const repoRoot = join(repoParent, 'repo-validate');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-VALIDATE',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-validate',
+      '--name',
+      'Validate Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'validate-project', 'proj-validate'], { from: 'user' });
+    await program.parseAsync(['nomos', 'diff-project', 'proj-validate'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos validation: proj-validate (draft)');
+    expect(stdout.value).toContain('valid: true');
+    expect(stdout.value).toContain('Project Nomos diff: proj-validate');
+    expect(stdout.value).toContain('changed: true');
+    expect(stdout.value).toContain('pack_id');
+  });
+
   it('reruns bootstrap against the active project Nomos prompt after activation', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

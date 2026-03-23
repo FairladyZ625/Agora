@@ -297,6 +297,40 @@ export interface ResolvedProjectNomosState {
   active_profile_installed: boolean;
 }
 
+export type ProjectNomosValidationTarget = 'draft' | 'active';
+
+export interface ProjectNomosValidationIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  path?: string;
+}
+
+export interface ProjectNomosValidationResult {
+  project_id: string;
+  target: ProjectNomosValidationTarget;
+  valid: boolean;
+  activation_status: ProjectNomosActivationStatus;
+  pack: ProjectNomosPackSummary | null;
+  issues: ProjectNomosValidationIssue[];
+}
+
+export interface ProjectNomosDiffEntry {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+export interface ProjectNomosDiffResult {
+  project_id: string;
+  base: 'builtin' | 'active';
+  candidate: 'draft' | 'active';
+  changed: boolean;
+  base_pack: ProjectNomosPackSummary | null;
+  candidate_pack: ProjectNomosPackSummary | null;
+  differences: ProjectNomosDiffEntry[];
+}
+
 export interface ProjectNomosRuntimePaths {
   nomos_root: string;
   lifecycle_root: string;
@@ -860,6 +894,109 @@ export function resolveProjectNomosRuntimePaths(
     bootstrap_interview_prompt_path: layout.bootstrapInterviewPromptPath,
     closeout_review_prompt_path: layout.closeoutReviewPromptPath,
     doctor_project_prompt_path: layout.doctorProjectPromptPath,
+  };
+}
+
+export function validateProjectNomos(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ResolveAgoraProjectStateOptions & {
+    target?: ProjectNomosValidationTarget;
+  } = {},
+): ProjectNomosValidationResult {
+  const target = options.target ?? 'draft';
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const issues: ProjectNomosValidationIssue[] = [];
+  const pack = resolveProjectNomosPackForTarget(projectId, state, target);
+  const root = target === 'draft' ? state.draft_root : state.active_root;
+  const profilePath = target === 'draft' ? state.draft_profile_path : state.active_profile_path;
+
+  if (!pack) {
+    issues.push({
+      severity: 'error',
+      code: 'profile_missing',
+      message: `Nomos profile is missing for ${target}`,
+      path: profilePath,
+    });
+  }
+
+  for (const requiredPath of [
+    resolve(root, 'constitution', 'constitution.md'),
+    resolve(root, 'docs', 'reference', 'methodologies.md'),
+    resolve(root, 'prompts', 'bootstrap', 'interview.md'),
+  ]) {
+    if (!existsSync(requiredPath)) {
+      issues.push({
+        severity: 'error',
+        code: 'required_file_missing',
+        message: `Required Nomos file is missing: ${requiredPath}`,
+        path: requiredPath,
+      });
+    }
+  }
+
+  if (pack) {
+    for (const module of pack.lifecycle_modules) {
+      const lifecyclePath = resolve(root, 'lifecycle', `${module}.md`);
+      if (!existsSync(lifecyclePath)) {
+        issues.push({
+          severity: 'warning',
+          code: 'lifecycle_doc_missing',
+          message: `Lifecycle module ${module} has no documentation file`,
+          path: lifecyclePath,
+        });
+      }
+    }
+  }
+
+  return {
+    project_id: projectId,
+    target,
+    valid: !issues.some((issue) => issue.severity === 'error'),
+    activation_status: state.activation_status,
+    pack,
+    issues,
+  };
+}
+
+export function diffProjectNomos(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ResolveAgoraProjectStateOptions & {
+    base?: 'builtin' | 'active';
+    candidate?: 'draft' | 'active';
+  } = {},
+): ProjectNomosDiffResult {
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const base = options.base ?? 'active';
+  const candidate = options.candidate ?? 'draft';
+  const basePack = base === 'builtin'
+    ? buildBuiltInActiveNomosSummary(state.project_state_root, state.profile_path)
+    : resolveProjectNomosPackForTarget(projectId, state, 'active');
+  const candidatePack = resolveProjectNomosPackForTarget(projectId, state, candidate);
+
+  const differences: ProjectNomosDiffEntry[] = [];
+  for (const field of ['pack_id', 'name', 'version', 'description', 'lifecycle_modules', 'doctor_checks'] as const) {
+    const fromValue = basePack?.[field] ?? null;
+    const toValue = candidatePack?.[field] ?? null;
+    if (JSON.stringify(fromValue) === JSON.stringify(toValue)) {
+      continue;
+    }
+    differences.push({
+      field,
+      from: fromValue,
+      to: toValue,
+    });
+  }
+
+  return {
+    project_id: projectId,
+    base,
+    candidate,
+    changed: differences.length > 0,
+    base_pack: basePack,
+    candidate_pack: candidatePack,
+    differences,
   };
 }
 
@@ -1454,6 +1591,22 @@ function buildBuiltInActiveNomosSummary(projectStateRoot: string, profilePath: s
     root: projectStateRoot,
     profile_path: profilePath,
   };
+}
+
+function resolveProjectNomosPackForTarget(
+  projectId: string,
+  state: ResolvedProjectNomosState,
+  target: ProjectNomosValidationTarget | 'active',
+): ProjectNomosPackSummary | null {
+  if (target === 'active') {
+    return state.activation_status === 'active_project'
+      ? loadProjectNomosPackSummary(state.active_root, state.active_profile_path, 'project_state_draft')
+      : buildBuiltInActiveNomosSummary(state.project_state_root, state.profile_path);
+  }
+  if (target === 'draft') {
+    return loadProjectNomosPackSummary(state.draft_root, state.draft_profile_path, 'project_state_draft');
+  }
+  return buildBuiltInActiveNomosSummary(state.project_state_root, state.profile_path);
 }
 
 function loadProjectNomosPackSummary(

@@ -18,6 +18,8 @@ import {
   nomosProjectProfileSchema,
   parseProjectNomosAuthoringSpec,
   refineProjectNomosDraftFromSpec,
+  validateProjectNomos,
+  diffProjectNomos,
   resolveInstalledCreateNomosPackTemplateDir,
   scaffoldNomosPack,
   renderNomosProjectProfileToml,
@@ -268,6 +270,45 @@ describe('nomos pack model freeze', () => {
         },
       },
     });
+  });
+
+  it('validates draft and active project nomos targets and reports semantic diffs', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const installed = installBuiltInAgoraNomosForProject('proj-validate', { userAgoraDir: agoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-validate', 'Validate Project', {
+      userAgoraDir: agoraHomeDir,
+      nomosId: installed.profile.pack.id,
+    });
+    const metadata = mergeProjectMetadataWithNomosProfile({}, installed.profile);
+
+    const draftValidation = validateProjectNomos('proj-validate', metadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'draft',
+    });
+    const activeValidation = validateProjectNomos('proj-validate', metadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'active',
+    });
+    const diff = diffProjectNomos('proj-validate', metadata, {
+      userAgoraDir: agoraHomeDir,
+      base: 'active',
+      candidate: 'draft',
+    });
+
+    expect(draftValidation.valid).toBe(true);
+    expect(draftValidation.pack?.pack_id).toBe('project/proj-validate');
+    expect(activeValidation.valid).toBe(true);
+    expect(activeValidation.pack?.pack_id).toBe('agora/default');
+    expect(diff.changed).toBe(true);
+    expect(diff.differences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'pack_id',
+          from: 'agora/default',
+          to: 'project/proj-validate',
+        }),
+      ]),
+    );
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {

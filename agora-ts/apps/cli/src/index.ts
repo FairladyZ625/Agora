@@ -10,6 +10,7 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  diffProjectNomos,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
   refineProjectNomosDraftFromSpec,
@@ -23,6 +24,7 @@ import {
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   reviewProjectNomosDraft,
   scaffoldNomosPack,
+  validateProjectNomos,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
@@ -1118,6 +1120,65 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
       writeLine(stdout, `draft_root: ${payload.draft_root}`);
       writeLine(stdout, `active_root: ${payload.active_root}`);
+    });
+
+  nomos
+    .command('validate-project')
+    .description('校验某个 project 的 Nomos pack 是否满足激活/运行时要求')
+    .argument('<projectId>', 'project id')
+    .option('--target <target>', 'validation target: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { target?: 'draft' | 'active'; json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const validation = validateProjectNomos(project.id, project.metadata ?? null, {
+        target: options.target === 'active' ? 'active' : 'draft',
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(validation, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos validation: ${project.id} (${validation.target})`);
+      writeLine(stdout, `activation_status: ${validation.activation_status}`);
+      writeLine(stdout, `valid: ${validation.valid}`);
+      writeLine(stdout, `pack_id: ${validation.pack?.pack_id ?? '-'}`);
+      writeLine(stdout, `profile_path: ${validation.pack?.profile_path ?? '-'}`);
+      if (validation.issues.length > 0) {
+        for (const issue of validation.issues) {
+          writeLine(stdout, `${issue.severity}: ${issue.code}: ${issue.message}`);
+        }
+      }
+    });
+
+  nomos
+    .command('diff-project')
+    .description('比较某个 project 的 Nomos pack 差异')
+    .argument('<projectId>', 'project id')
+    .option('--base <base>', 'diff base: builtin | active', 'active')
+    .option('--candidate <candidate>', 'diff candidate: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: {
+      base?: 'builtin' | 'active';
+      candidate?: 'draft' | 'active';
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(projectId);
+      const diff = diffProjectNomos(project.id, project.metadata ?? null, {
+        base: options.base === 'builtin' ? 'builtin' : 'active',
+        candidate: options.candidate === 'active' ? 'active' : 'draft',
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(diff, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos diff: ${project.id}`);
+      writeLine(stdout, `base: ${diff.base}`);
+      writeLine(stdout, `candidate: ${diff.candidate}`);
+      writeLine(stdout, `changed: ${diff.changed}`);
+      writeLine(stdout, `base_pack: ${diff.base_pack?.pack_id ?? '-'}`);
+      writeLine(stdout, `candidate_pack: ${diff.candidate_pack?.pack_id ?? '-'}`);
+      for (const entry of diff.differences) {
+        writeLine(stdout, `${entry.field}: ${JSON.stringify(entry.from)} -> ${JSON.stringify(entry.to)}`);
+      }
     });
 
   nomos
