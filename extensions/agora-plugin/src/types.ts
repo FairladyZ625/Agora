@@ -69,7 +69,9 @@ export interface AgentHookContext {
 }
 
 export interface OpenClawPluginApi {
-  pluginConfig?: Record<string, unknown>;
+  pluginConfig?: Record<string, unknown> & {
+    traceNativeSlash?: boolean | string;
+  };
   logger: PluginLogger;
   runtime?: {
     events?: {

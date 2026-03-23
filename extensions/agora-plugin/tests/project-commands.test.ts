@@ -2,15 +2,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCreateWizardStore } from "../src/create-wizard-store";
 import { registerProjectCommands } from "../src/project-commands";
+import { createPluginTrace } from "../src/trace";
 
 function buildApi() {
   const commands: any[] = [];
+  const loggerMessages = {
+    info: [] as string[],
+    error: [] as string[],
+  };
   return {
     api: {
+      pluginConfig: {
+        traceNativeSlash: true,
+      },
+      logger: {
+        info(message: string) {
+          loggerMessages.info.push(message);
+        },
+        error(message: string) {
+          loggerMessages.error.push(message);
+        },
+      },
       registerCommand(command: any) {
         commands.push(command);
       },
     },
+    loggerMessages,
     getCommand(name: string) {
       return commands.find((command) => command.name === name);
     },
@@ -24,7 +41,7 @@ describe("registerProjectCommands", () => {
 
   it("returns help for unknown subcommands", async () => {
     const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, {} as any);
+    registerProjectCommands(api as any, {} as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({ args: "unknown", senderId: "u1" });
 
@@ -36,7 +53,7 @@ describe("registerProjectCommands", () => {
 
   it("starts a create wizard when project name is missing", async () => {
     const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, {} as any);
+    registerProjectCommands(api as any, {} as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({ args: "create", senderId: "u1" });
 
@@ -53,7 +70,7 @@ describe("registerProjectCommands", () => {
       owner: "u1",
     }));
     const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, { createProject } as any);
+    registerProjectCommands(api as any, { createProject } as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({
       args: 'create "Plugin Project" --id proj-plugin --summary "Seed project" --repo-path /tmp/repo --new-repo --nomos-id agora/default',
@@ -79,8 +96,8 @@ describe("registerProjectCommands", () => {
       status: "active",
       owner: "u1",
     }));
-    const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, { createProject } as any);
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any, createPluginTrace(api as any));
 
     const start = await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
     const name = await getCommand("project").handler({ args: '"Guided Project"', senderId: "u1", provider: "discord", conversationId: "hall" });
@@ -95,6 +112,8 @@ describe("registerProjectCommands", () => {
     });
     expect(skip.text).toContain("Created project proj-guided");
     expect(skip.text).toContain("Wizard complete.");
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_start"'))).toBe(true);
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_complete"'))).toBe(true);
   });
 
   it("accepts a summary in the project wizard and can cancel", async () => {
@@ -104,8 +123,8 @@ describe("registerProjectCommands", () => {
       status: "active",
       owner: "u1",
     }));
-    const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, { createProject } as any);
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any, createPluginTrace(api as any));
 
     await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
     await getCommand("project").handler({ args: '"Guided Summary Project"', senderId: "u1", provider: "discord", conversationId: "hall" });
@@ -121,6 +140,7 @@ describe("registerProjectCommands", () => {
     await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
     const cancel = await getCommand("project").handler({ args: "cancel", senderId: "u1", provider: "discord", conversationId: "hall" });
     expect(cancel.text).toBe("Project create wizard cancelled.");
+    expect(loggerMessages.info.some((message) => message.includes('"event":"wizard_cancel"'))).toBe(true);
   });
 
   it("prefers commandBody when discord native args truncate a quoted project name", async () => {
@@ -131,7 +151,7 @@ describe("registerProjectCommands", () => {
       owner: "u1",
     }));
     const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, { createProject } as any);
+    registerProjectCommands(api as any, { createProject } as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({
       args: "create Plugin Smoke",
@@ -153,7 +173,7 @@ describe("registerProjectCommands", () => {
       { id: "proj-b", status: "archived", name: "Project B" },
     ]);
     const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, { listProjects } as any);
+    registerProjectCommands(api as any, { listProjects } as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({ args: "list active", senderId: "u1" });
 
@@ -171,7 +191,7 @@ describe("registerProjectCommands", () => {
       timeline: null,
     }));
     const { api, getCommand } = buildApi();
-    registerProjectCommands(api as any, { getProject } as any);
+    registerProjectCommands(api as any, { getProject } as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({ args: "show proj-show", senderId: "u1" });
 
@@ -187,10 +207,34 @@ describe("registerProjectCommands", () => {
       listProjects: vi.fn(async () => {
         throw new Error("nope");
       }),
-    } as any);
+    } as any, createPluginTrace(api as any));
 
     const result = await getCommand("project").handler({ args: "list", senderId: "u1" });
 
     expect(result.text).toBe("Project command failed: nope");
+  });
+
+  it("emits trace logs for project native slash dispatch fields", async () => {
+    const createProject = vi.fn(async () => ({
+      id: "proj-trace",
+      name: "Trace Project",
+      status: "active",
+      owner: "u1",
+    }));
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any, createPluginTrace(api as any));
+
+    await getCommand("project").handler({
+      args: "create Trace Project",
+      commandBody: '/project create "Trace Project" --id proj-trace',
+      senderId: "u1",
+      provider: "discord",
+      conversationId: "hall",
+    });
+
+    const dispatch = loggerMessages.info.find((message) => message.includes('"event":"dispatch"'));
+    expect(dispatch).toContain('"command":"project"');
+    expect(dispatch).toContain('"command_body":"/project create \\"Trace Project\\" --id proj-trace"');
+    expect(dispatch).toContain('"wizard_session_key":"project:discord:hall:u1"');
   });
 });
