@@ -1226,18 +1226,21 @@ export function buildApp(options: BuildAppOptions = {}) {
         creator?: string;
       } | undefined) ?? {};
       const project = projectService.requireProject(projectId);
+      const metadata = project.metadata ?? null;
+      const effectiveRepoPath = payload.repo_path
+        ?? (typeof metadata?.repo_path === 'string' ? metadata.repo_path : undefined);
       const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
+        ...(effectiveRepoPath ? { repoPath: effectiveRepoPath } : {}),
         initializeRepo: payload.initialize_repo ?? false,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
       projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
         ...(project.metadata ?? {}),
-        ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
+        ...(effectiveRepoPath ? { repo_path: effectiveRepoPath } : {}),
       }, installedNomos.profile));
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
-        const bootstrapMode = payload.repo_path
+        const bootstrapMode = effectiveRepoPath
           ? ((payload.initialize_repo ?? false) ? 'new_repo' : 'existing_repo')
           : 'no_repo';
         const bootstrapTask = new ProjectBootstrapService({
@@ -1247,7 +1250,7 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_id: project.id,
           project_name: project.name,
           creator: payload.creator ?? project.owner ?? 'archon',
-          repo_path: payload.repo_path,
+          repo_path: effectiveRepoPath,
           project_state_root: installedNomos.layout.root,
           nomos_id: installedNomos.profile.pack.id,
           bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,

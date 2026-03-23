@@ -465,6 +465,48 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Project REST Nomos');
   });
 
+  it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-rerun');
+    mkdirSync(repoRoot, { recursive: true });
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-RERUN',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    projectService.createProject({
+      id: 'proj-nomos-rerun',
+      name: 'Project Rerun Nomos',
+      owner: 'archon',
+    });
+    projectService.updateProjectMetadata('proj-nomos-rerun', {
+      repo_path: repoRoot,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rerun/nomos/install',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain(repoRoot);
+  });
+
   it('serves project-level Nomos doctor output through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
