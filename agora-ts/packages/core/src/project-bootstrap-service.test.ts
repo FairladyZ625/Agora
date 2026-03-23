@@ -97,6 +97,7 @@ describe('project bootstrap service', () => {
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/nomos/project-nomos');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md');
     expect(task.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(task.description).toContain('agora nomos refine-project --project-id proj-bootstrap');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'knowledge', 'facts', 'bootstrap-current-surface.md'), 'utf8')).toContain(
       'Bootstrap Current Surface',
     );

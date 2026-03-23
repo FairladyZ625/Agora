@@ -514,6 +514,75 @@ describe('agora-ts cli', () => {
     expect(readFileSync(join(outputRoot, 'acme-web', 'README.md'), 'utf8')).toContain('# Acme Web Nomos');
   });
 
+  it('refines a seeded project Nomos draft from its structured authoring spec', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-refine-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-refine-repo-');
+    const repoRoot = join(repoParent, 'repo-refine');
+    const installedTemplateRoot = join(process.env.AGORA_HOME_DIR!, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-REFINE',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-refine',
+      '--name',
+      'Refine Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    const specPath = join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-refine', 'docs', 'reference', 'project-nomos-authoring-spec.md');
+    writeFileSync(specPath, [
+      '---',
+      'project_id: "proj-refine"',
+      'project_name: "Refine Project"',
+      'base_nomos_id: "agora/default"',
+      'project_shape: "existing_repo"',
+      `repo_path: ${JSON.stringify(repoRoot)}`,
+      'purpose: "CLI refined Nomos description."',
+      `lifecycle_modules: ${JSON.stringify(['project-bootstrap', 'task-closeout'])}`,
+      `doctor_checks: ${JSON.stringify(['constitution-present'])}`,
+      `methodology_keep: ${JSON.stringify(['planning trio'])}`,
+      `methodology_change: ${JSON.stringify(['use lighter governance'])}`,
+      `open_questions: ${JSON.stringify(['How strict should archive approval be?'])}`,
+      '---',
+      '',
+      '# Project Nomos Authoring Spec',
+    ].join('\n'), 'utf8');
+
+    await program.parseAsync(['nomos', 'refine-project', '--project-id', 'proj-refine'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos draft 已更新: proj-refine');
+    const draftProfile = readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-refine', 'nomos', 'project-nomos', 'profile.toml'), 'utf8');
+    expect(draftProfile).toContain('description = "CLI refined Nomos description."');
+    expect(draftProfile).toContain('modules = ["project-bootstrap", "task-closeout"]');
+  });
+
   it('creates a project-bound task through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
