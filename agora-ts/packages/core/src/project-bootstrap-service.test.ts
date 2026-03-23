@@ -91,6 +91,13 @@ describe('project bootstrap service', () => {
     expect(task.id).toBe('OC-HARNESS-BOOTSTRAP');
     expect(task.project_id).toBe('proj-bootstrap');
     expect(task.title).toBe('Create Project Nomos: Bootstrap Project');
+    expect(task.control).toEqual(expect.objectContaining({
+      nomos_authoring: {
+        kind: 'project_nomos',
+        project_id: 'proj-bootstrap',
+        auto_refine_on_done: true,
+      },
+    }));
     expect(task.description).toContain('Global project state root');
     expect(task.description).toContain('/tmp/bootstrap-project');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/docs/reference/project-nomos-authoring-spec.md');

@@ -60,7 +60,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, hasInstalledBrainPack, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -278,6 +278,9 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         hostResourcePort: new OsHostResourcePort(),
         liveSessionStore: deps.liveSessionStore,
         skillCatalogPort: new FilesystemSkillCatalogAdapter(),
+        projectNomosAuthoringPort: {
+          refineProjectNomosDraft: (projectId: string) => refineProjectNomosDraftFromSpec(projectId),
+        },
         craftsmanGovernance: {
           maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
           hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,

@@ -216,6 +216,11 @@ export type CreateTaskImTargetDto = z.infer<typeof createTaskImTargetSchema>;
 
 export const taskControlSchema = z.object({
   mode: taskControlModeSchema.default('normal'),
+  nomos_authoring: z.object({
+    kind: z.literal('project_nomos'),
+    project_id: z.string().min(1),
+    auto_refine_on_done: z.boolean().default(true),
+  }).strict().optional(),
 }).strict();
 export type TaskControlDto = z.infer<typeof taskControlSchema>;
 
