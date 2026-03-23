@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import {
   BUILT_IN_AGORA_NOMOS_PACK,
   DEFAULT_AGORA_NOMOS_ID,
+  DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS,
+  DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   REPO_AGENTS_SHIM_SECTION_ORDER,
+  resolveInstalledCreateNomosPackTemplateDir,
   resolveAgoraProjectStateLayout,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
+  scaffoldNomosPack,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
@@ -91,6 +95,8 @@ type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
 type CreateProjectInputLike = CreateProjectRequestDto;
 type CreateCitizenInputLike = CreateCitizenRequestDto;
 
+const CLI_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+
 export interface CliDependencies {
   taskService?: TaskService;
   projectService?: ProjectService;
@@ -144,6 +150,10 @@ function requireSupportedNomosId(raw: string | undefined) {
     throw new Error(`Unsupported nomos_id: ${nomosId}`);
   }
   return nomosId;
+}
+
+function collectStringOption(value: string, previous: string[]) {
+  return [...previous, value];
 }
 
 function writeInstalledNomosSummary(
@@ -1028,6 +1038,76 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `seeded references: ${payload.seeded_assets.docs.reference.join(', ')}`);
       writeLine(stdout, `seeded lifecycle docs: ${payload.seeded_assets.lifecycle.join(', ')}`);
       writeLine(stdout, `seeded bootstrap prompts: ${payload.seeded_assets.prompts.bootstrap.join(', ')}`);
+    });
+
+  nomos
+    .command('scaffold')
+    .description('生成一个可分享的自定义 Nomos pack 骨架')
+    .requiredOption('--id <packId>', 'pack id, e.g. acme/web')
+    .requiredOption('--name <name>', 'pack display name')
+    .requiredOption('--description <description>', 'pack description')
+    .requiredOption('--output-dir <path>', 'output directory for the generated pack')
+    .option('--version <version>', 'pack version', '0.1.0')
+    .option('--module <module>', 'lifecycle module to include', collectStringOption, [])
+    .option('--doctor-check <check>', 'doctor check to include', collectStringOption, [])
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      id: string;
+      name: string;
+      description: string;
+      outputDir: string;
+      version?: string;
+      module?: string[];
+      doctorCheck?: string[];
+      json?: boolean;
+    }) => {
+      const lifecycleModules = (options.module?.length ?? 0) > 0
+        ? options.module!.map((module) => module.trim()).map((module) => {
+          if (!NOMOS_LIFECYCLE_MODULES.includes(module as (typeof NOMOS_LIFECYCLE_MODULES)[number])) {
+            throw new Error(`Unsupported Nomos lifecycle module: ${module}`);
+          }
+          return module as (typeof NOMOS_LIFECYCLE_MODULES)[number];
+        })
+        : [...DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES];
+      const doctorChecks = (options.doctorCheck?.length ?? 0) > 0
+        ? options.doctorCheck!.map((check) => check.trim())
+        : [...DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS];
+      const installedTemplateDir = resolveInstalledCreateNomosPackTemplateDir();
+      const bundledTemplateDir = resolve(CLI_REPO_ROOT, '.skills', 'create-nomos', 'assets', 'pack-template');
+      const templateDir = existsSync(installedTemplateDir) ? installedTemplateDir : bundledTemplateDir;
+
+      const scaffolded = scaffoldNomosPack({
+        outputDir: options.outputDir,
+        templateDir,
+        id: options.id,
+        name: options.name,
+        description: options.description,
+        lifecycleModules,
+        doctorChecks,
+        ...(options.version ? { version: options.version } : {}),
+      });
+
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          pack_id: options.id,
+          pack_name: options.name,
+          version: options.version ?? '0.1.0',
+          output_dir: scaffolded.outputDir,
+          profile_path: scaffolded.profilePath,
+          constitution_path: scaffolded.constitutionPath,
+          readme_path: scaffolded.readmePath,
+          template_dir: templateDir,
+          lifecycle_modules: lifecycleModules,
+          doctor_checks: doctorChecks,
+        }, null, 2));
+        return;
+      }
+
+      writeLine(stdout, `Nomos pack 已生成: ${options.name}`);
+      writeLine(stdout, `Pack: ${options.id}@${options.version ?? '0.1.0'}`);
+      writeLine(stdout, `Output Dir: ${scaffolded.outputDir}`);
+      writeLine(stdout, `Profile: ${scaffolded.profilePath}`);
+      writeLine(stdout, `Template: ${templateDir}`);
     });
 
   nomos

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { resolveUserAgoraDir, type EnsureBundledAgoraAssetsOptions } from './runtime-assets.js';
@@ -175,6 +175,24 @@ export interface InstalledBuiltInAgoraNomosResult {
   projectStateGitInitialized: boolean;
 }
 
+export interface ScaffoldNomosPackOptions {
+  outputDir: string;
+  templateDir: string;
+  id: string;
+  name: string;
+  description: string;
+  version?: string;
+  lifecycleModules?: readonly NomosLifecycleModule[];
+  doctorChecks?: readonly string[];
+}
+
+export interface ScaffoldNomosPackResult {
+  outputDir: string;
+  profilePath: string;
+  constitutionPath: string;
+  readmePath: string;
+}
+
 const REPO_AGENTS_SHIM_SECTION_TITLES: Record<RepoAgentsShimSection, string> = {
   general_constitution: 'General Constitution',
   pack_index: 'Pack Index',
@@ -191,6 +209,18 @@ export const BUILT_IN_AGORA_NOMOS_PACK = {
 } as const;
 
 export const DEFAULT_AGORA_NOMOS_ID = BUILT_IN_AGORA_NOMOS_PACK.id;
+
+export const DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES = [
+  'project-bootstrap',
+  'task-context-delivery',
+  'task-closeout',
+] as const satisfies readonly NomosLifecycleModule[];
+
+export const DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS = [
+  'constitution-present',
+  'docs-skeleton-complete',
+  'bootstrap-prompts-present',
+] as const;
 
 export const BUILT_IN_AGORA_NOMOS_REFERENCE_DOCS = [
   'current-surface.md',
@@ -241,6 +271,10 @@ export function buildBuiltInAgoraNomosSeededAssets() {
       doctor: [...BUILT_IN_AGORA_NOMOS_DOCTOR_PROMPTS],
     },
   };
+}
+
+export function resolveInstalledCreateNomosPackTemplateDir(options: ResolveAgoraProjectStateOptions = {}) {
+  return resolve(resolveUserAgoraDir(options), 'skills', 'create-nomos', 'assets', 'pack-template');
 }
 
 export function resolveAgoraProjectsDir(options: ResolveAgoraProjectStateOptions = {}) {
@@ -450,6 +484,95 @@ export function mergeProjectMetadataWithNomosProfile(
   };
 }
 
+export function scaffoldNomosPack(options: ScaffoldNomosPackOptions): ScaffoldNomosPackResult {
+  const lifecycleModules = Array.from(new Set(options.lifecycleModules ?? DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES));
+  const doctorChecks = Array.from(new Set(options.doctorChecks ?? DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS));
+  const version = options.version?.trim() || '0.1.0';
+
+  if (!existsSync(options.templateDir)) {
+    throw new Error(`Nomos pack template not found: ${options.templateDir}`);
+  }
+
+  if (existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
+    throw new Error(`Nomos pack output directory must be empty: ${options.outputDir}`);
+  }
+
+  mkdirSync(options.outputDir, { recursive: true });
+  copyDirectoryRecursive(options.templateDir, options.outputDir);
+
+  const profilePath = resolve(options.outputDir, 'profile.toml');
+  const readmePath = resolve(options.outputDir, 'README.md');
+  const constitutionPath = resolve(options.outputDir, 'constitution', 'constitution.md');
+  const docsReferenceDir = resolve(options.outputDir, 'docs', 'reference');
+  const lifecycleDir = resolve(options.outputDir, 'lifecycle');
+  const bootstrapPromptsDir = resolve(options.outputDir, 'prompts', 'bootstrap');
+  const closeoutPromptsDir = resolve(options.outputDir, 'prompts', 'closeout');
+  const doctorPromptsDir = resolve(options.outputDir, 'prompts', 'doctor');
+
+  mkdirSync(resolve(options.outputDir, 'constitution'), { recursive: true });
+  mkdirSync(docsReferenceDir, { recursive: true });
+  mkdirSync(lifecycleDir, { recursive: true });
+  mkdirSync(bootstrapPromptsDir, { recursive: true });
+
+  writeFileSync(profilePath, renderNomosPackTemplateProfileToml({
+    id: options.id,
+    name: options.name,
+    description: options.description,
+    version,
+    lifecycleModules,
+    doctorChecks,
+  }), 'utf8');
+  writeFileSync(readmePath, renderCustomNomosReadme({
+    id: options.id,
+    name: options.name,
+    description: options.description,
+    version,
+    lifecycleModules,
+  }), 'utf8');
+  writeFileSync(constitutionPath, renderCustomNomosConstitution({
+    name: options.name,
+    description: options.description,
+  }), 'utf8');
+  writeFileSync(resolve(docsReferenceDir, 'methodologies.md'), renderCustomNomosMethodologies({
+    name: options.name,
+    lifecycleModules,
+  }), 'utf8');
+  writeFileSync(resolve(bootstrapPromptsDir, 'interview.md'), renderCustomNomosBootstrapInterview({
+    name: options.name,
+    description: options.description,
+  }), 'utf8');
+
+  for (const knownModule of NOMOS_LIFECYCLE_MODULES) {
+    const targetPath = resolve(lifecycleDir, `${knownModule}.md`);
+    rmSync(targetPath, { force: true });
+    if (!lifecycleModules.includes(knownModule)) {
+      continue;
+    }
+    writeFileSync(targetPath, renderCustomNomosLifecycleDoc(knownModule, options.name), 'utf8');
+  }
+
+  const closeoutPromptPath = resolve(closeoutPromptsDir, 'review.md');
+  rmSync(closeoutPromptPath, { force: true });
+  if (lifecycleModules.includes('task-closeout')) {
+    mkdirSync(closeoutPromptsDir, { recursive: true });
+    writeFileSync(closeoutPromptPath, renderCustomNomosCloseoutPrompt(options.name), 'utf8');
+  }
+
+  const doctorPromptPath = resolve(doctorPromptsDir, 'project.md');
+  rmSync(doctorPromptPath, { force: true });
+  if (lifecycleModules.includes('governance-doctor')) {
+    mkdirSync(doctorPromptsDir, { recursive: true });
+    writeFileSync(doctorPromptPath, renderCustomNomosDoctorPrompt(options.name), 'utf8');
+  }
+
+  return {
+    outputDir: options.outputDir,
+    profilePath,
+    constitutionPath,
+    readmePath,
+  };
+}
+
 export function renderNomosProjectProfileToml(profile: NomosProjectProfile): string {
   const lines = [
     `schema_version = ${profile.schema_version}`,
@@ -652,11 +775,159 @@ function seedBuiltInAgoraNomosFiles(layout: AgoraProjectStateLayout, profile: No
   writeFileIfMissing(layout.doctorProjectPromptPath, renderBuiltInDoctorPrompt(profile, layout));
 }
 
+function copyDirectoryRecursive(sourceDir: string, targetDir: string) {
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = resolve(sourceDir, entry.name);
+    const targetPath = resolve(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      mkdirSync(targetPath, { recursive: true });
+      copyDirectoryRecursive(sourcePath, targetPath);
+      continue;
+    }
+    copyFileSync(sourcePath, targetPath);
+  }
+}
+
 function writeFileIfMissing(path: string, content: string) {
   if (existsSync(path)) {
     return;
   }
   writeFileSync(path, content, 'utf8');
+}
+
+function renderNomosPackTemplateProfileToml(input: {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  lifecycleModules: readonly string[];
+  doctorChecks: readonly string[];
+}) {
+  return [
+    `id = ${tomlString(input.id)}`,
+    `name = ${tomlString(input.name)}`,
+    `version = ${tomlString(input.version)}`,
+    `description = ${tomlString(input.description)}`,
+    '',
+    '[constitution]',
+    'entry = "constitution/constitution.md"',
+    '',
+    '[docs]',
+    'root = "docs"',
+    '',
+    '[docs.skeleton]',
+    'create_if_missing = ["architecture", "planning", "walkthrough", "qa", "security", "reference"]',
+    '',
+    '[lifecycle]',
+    `modules = ${tomlStringArray(input.lifecycleModules)}`,
+    '',
+    '[install]',
+    'default_mode = "copy_on_install"',
+    '',
+    '[doctor]',
+    `checks = ${tomlStringArray(input.doctorChecks)}`,
+    '',
+  ].join('\n');
+}
+
+function renderCustomNomosReadme(input: {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  lifecycleModules: readonly string[];
+}) {
+  return [
+    `# ${input.name}`,
+    '',
+    input.description,
+    '',
+    '## Pack Metadata',
+    '',
+    `- id: \`${input.id}\``,
+    `- version: \`${input.version}\``,
+    `- lifecycle modules: ${input.lifecycleModules.join(', ')}`,
+    '',
+    '## Intent',
+    '',
+    'Use this Nomos when a project should start from this methodology and lifecycle baseline.',
+    '',
+  ].join('\n');
+}
+
+function renderCustomNomosConstitution(input: { name: string; description: string }) {
+  return [
+    `# ${input.name} Constitution`,
+    '',
+    input.description,
+    '',
+    'Define the pack-level rules this Nomos should enforce across projects.',
+    '',
+    '- Keep the constitution reusable across more than one project.',
+    '- Push project-specific facts into installed project state, not into the pack itself.',
+    '',
+  ].join('\n');
+}
+
+function renderCustomNomosMethodologies(input: { name: string; lifecycleModules: readonly string[] }) {
+  return [
+    '# Methodologies',
+    '',
+    `${input.name} starts projects from these default methodologies:`,
+    '',
+    '- Interview before filling project-specific context.',
+    '- Keep repo-root `AGENTS.md` thin and route detailed content into global project state.',
+    `- Default lifecycle modules: ${input.lifecycleModules.join(', ')}.`,
+    '',
+  ].join('\n');
+}
+
+function renderCustomNomosBootstrapInterview(input: { name: string; description: string }) {
+  return [
+    `# ${input.name} Bootstrap Interview`,
+    '',
+    input.description,
+    '',
+    'Interview for pack-level methodology and install defaults, not one project’s private facts.',
+    '',
+    '- What kind of projects is this Nomos for?',
+    '- What repo/project-state shape should it start from?',
+    '- What lifecycle/governance defaults should it enforce?',
+    '',
+  ].join('\n');
+}
+
+function renderCustomNomosLifecycleDoc(module: NomosLifecycleModule, name: string) {
+  switch (module) {
+    case 'project-bootstrap':
+      return `# Project Bootstrap Lifecycle\n\nDefine how ${name} initializes a new project and what the first interview must cover.\n`;
+    case 'task-context-delivery':
+      return `# Task Context Delivery Lifecycle\n\nDefine how ${name} materializes audience-specific context into task workspaces and briefs.\n`;
+    case 'task-closeout':
+      return `# Task Closeout Lifecycle\n\nDefine how ${name} collects harvest drafts, review gates, and archive transitions after task completion.\n`;
+    case 'project-archive':
+      return `# Project Archive Lifecycle\n\nDefine how ${name} archives or deletes completed projects and what checks are required first.\n`;
+    case 'governance-doctor':
+      return `# Governance Doctor Lifecycle\n\nDefine how ${name} audits constitution, docs, lifecycle, and drift health.\n`;
+  }
+}
+
+function renderCustomNomosCloseoutPrompt(name: string) {
+  return [
+    `# ${name} Closeout Review`,
+    '',
+    'Summarize what should be harvested back into project state before archive approval.',
+    '',
+  ].join('\n');
+}
+
+function renderCustomNomosDoctorPrompt(name: string) {
+  return [
+    `# ${name} Doctor`,
+    '',
+    'Review constitution, docs, lifecycle, and drift signals for this Nomos installation.',
+    '',
+  ].join('\n');
 }
 
 function renderBuiltInConstitution(profile: NomosProjectProfile) {
