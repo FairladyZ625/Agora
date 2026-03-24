@@ -227,6 +227,66 @@ const projectNomosInstallPackSchema = z.object({
 
 export type ApiProjectNomosInstallPackDto = z.infer<typeof projectNomosInstallPackSchema>;
 
+const publishedNomosCatalogSummarySchema = z.object({
+  pack_id: z.string().min(1),
+  name: z.string().min(1),
+  version: z.string().min(1),
+  description: z.string().min(1),
+  published_at: z.string().min(1),
+  published_by: z.string().nullable(),
+  source_project_id: z.string().min(1),
+  source_target: z.enum(['draft', 'active']),
+  source_repo_path: z.string().nullable(),
+});
+
+const publishedNomosCatalogEntrySchema = z.object({
+  schema_version: z.literal(1),
+  pack_id: z.string().min(1),
+  published_at: z.string().min(1),
+  published_by: z.string().nullable(),
+  published_note: z.string().nullable(),
+  source_project_id: z.string().min(1),
+  source_target: z.enum(['draft', 'active']),
+  source_activation_status: z.enum(['active_builtin', 'active_project']),
+  source_repo_path: z.string().nullable(),
+  published_root: z.string().min(1),
+  manifest_path: z.string().min(1),
+  pack: projectNomosPackSummarySchema,
+});
+
+const publishedNomosCatalogListSchema = z.object({
+  catalog_root: z.string().min(1),
+  total: z.number(),
+  summaries: z.array(publishedNomosCatalogSummarySchema),
+  entries: z.array(publishedNomosCatalogEntrySchema),
+});
+
+export type ApiPublishedNomosCatalogSummaryDto = z.infer<typeof publishedNomosCatalogSummarySchema>;
+export type ApiPublishedNomosCatalogEntryDto = z.infer<typeof publishedNomosCatalogEntrySchema>;
+export type ApiPublishedNomosCatalogListDto = z.infer<typeof publishedNomosCatalogListSchema>;
+
+const projectNomosPublishSchema = z.object({
+  project_id: z.string().min(1),
+  target: z.enum(['draft', 'active']),
+  catalog_root: z.string().min(1),
+  catalog_pack_root: z.string().min(1),
+  manifest_path: z.string().min(1),
+  entry: publishedNomosCatalogEntrySchema,
+});
+
+export type ApiProjectNomosPublishDto = z.infer<typeof projectNomosPublishSchema>;
+
+const projectNomosInstallCatalogPackSchema = z.object({
+  project_id: z.string().min(1),
+  pack: projectNomosPackSummarySchema,
+  installed_root: z.string().min(1),
+  installed_profile_path: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()),
+  catalog_entry: publishedNomosCatalogEntrySchema,
+});
+
+export type ApiProjectNomosInstallCatalogPackDto = z.infer<typeof projectNomosInstallCatalogPackSchema>;
+
 class ApiError extends Error {
   status: number;
   statusText: string;
@@ -972,6 +1032,50 @@ export function installProjectNomosPack(projectId: string, packDir: string): Pro
       method: 'POST',
       body: JSON.stringify({
         pack_dir: packDir,
+      }),
+    },
+  );
+}
+
+export function publishProjectNomosToCatalog(
+  projectId: string,
+  input?: { target?: 'draft' | 'active'; published_by?: string; published_note?: string },
+): Promise<ApiProjectNomosPublishDto> {
+  return request<ApiProjectNomosPublishDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/publish`,
+    projectNomosPublishSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input ?? {}),
+    },
+  );
+}
+
+export function listPublishedNomosCatalog(): Promise<ApiPublishedNomosCatalogListDto> {
+  return request<ApiPublishedNomosCatalogListDto>(
+    '/nomos/catalog',
+    publishedNomosCatalogListSchema,
+  );
+}
+
+export function showPublishedNomosCatalog(packId: string): Promise<ApiPublishedNomosCatalogEntryDto> {
+  return request<ApiPublishedNomosCatalogEntryDto>(
+    `/nomos/catalog/${packId}`,
+    publishedNomosCatalogEntrySchema,
+  );
+}
+
+export function installCatalogNomosPack(
+  projectId: string,
+  packId: string,
+): Promise<ApiProjectNomosInstallCatalogPackDto> {
+  return request<ApiProjectNomosInstallCatalogPackDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/install-catalog-pack`,
+    projectNomosInstallCatalogPackSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        pack_id: packId,
       }),
     },
   );

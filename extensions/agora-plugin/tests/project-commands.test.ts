@@ -231,7 +231,7 @@ describe("registerProjectCommands", () => {
     expect(activate.text).toContain("status=active_project");
   });
 
-  it("bridges project nomos validate, diff, export, and install-pack actions", async () => {
+  it("bridges project nomos validate, diff, publish, catalog, export, and install surfaces", async () => {
     const validateProjectNomos = vi.fn(async () => ({
       project_id: "proj-nomos",
       target: "draft",
@@ -252,17 +252,49 @@ describe("registerProjectCommands", () => {
       output_dir: "/tmp/pack-out",
       pack: { pack_id: "project/proj-nomos" },
     }));
+    const publishProjectNomos = vi.fn(async () => ({
+      project_id: "proj-nomos",
+      target: "draft",
+      entry: { pack_id: "project/proj-nomos", published_by: "u1", published_note: "shareable" },
+      catalog_pack_root: "/tmp/catalog/project/proj-nomos",
+    }));
+    const listPublishedNomosCatalog = vi.fn(async () => ({
+      catalog_root: "/tmp/catalog",
+      total: 1,
+      summaries: [
+        { pack_id: "project/proj-nomos", version: "0.1.0", source_project_id: "proj-nomos", source_target: "draft" },
+      ],
+    }));
+    const showPublishedNomosCatalog = vi.fn(async () => ({
+      pack_id: "project/proj-nomos",
+      source_project_id: "proj-nomos",
+      source_target: "draft",
+      source_activation_status: "active_builtin",
+      published_by: "u1",
+      published_note: "shareable",
+      published_root: "/tmp/catalog/project/proj-nomos",
+    }));
     const installProjectNomosPack = vi.fn(async () => ({
       project_id: "proj-target",
       pack: { pack_id: "project/proj-nomos" },
       installed_root: "/tmp/state/nomos/project-nomos",
     }));
+    const installCatalogNomosPack = vi.fn(async () => ({
+      project_id: "proj-target",
+      pack: { pack_id: "project/proj-nomos" },
+      installed_root: "/tmp/state/nomos/project-nomos",
+      catalog_entry: { pack_id: "project/proj-nomos" },
+    }));
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, {
       validateProjectNomos,
       diffProjectNomos,
+      publishProjectNomos,
+      listPublishedNomosCatalog,
+      showPublishedNomosCatalog,
       exportProjectNomos,
       installProjectNomosPack,
+      installCatalogNomosPack,
     } as any, createPluginTrace(api as any));
 
     const validate = await getCommand("project").handler({ args: "nomos validate proj-nomos --target draft", senderId: "u1" });
@@ -270,8 +302,24 @@ describe("registerProjectCommands", () => {
       args: "nomos diff proj-nomos --base builtin --candidate draft",
       senderId: "u1",
     });
+    const published = await getCommand("project").handler({
+      args: "nomos publish proj-nomos --note shareable",
+      senderId: "u1",
+    });
+    const catalogList = await getCommand("project").handler({
+      args: "nomos catalog-list",
+      senderId: "u1",
+    });
+    const catalogShow = await getCommand("project").handler({
+      args: "nomos catalog-show project/proj-nomos",
+      senderId: "u1",
+    });
     const exported = await getCommand("project").handler({
       args: "nomos export proj-nomos --output-dir /tmp/pack-out",
+      senderId: "u1",
+    });
+    const catalogInstalled = await getCommand("project").handler({
+      args: "nomos install-from-catalog proj-target --pack-id project/proj-nomos",
       senderId: "u1",
     });
     const installed = await getCommand("project").handler({
@@ -283,8 +331,16 @@ describe("registerProjectCommands", () => {
     expect(validate.text).toContain("valid=yes");
     expect(diffProjectNomos).toHaveBeenCalledWith("proj-nomos", { base: "builtin", candidate: "draft" });
     expect(diff.text).toContain("fields=pack_id");
+    expect(publishProjectNomos).toHaveBeenCalledWith("proj-nomos", { actor: "u1", note: "shareable", target: "draft" });
+    expect(published.text).toContain("published_by=u1");
+    expect(listPublishedNomosCatalog).toHaveBeenCalledWith();
+    expect(catalogList.text).toContain("Nomos catalog (1)");
+    expect(showPublishedNomosCatalog).toHaveBeenCalledWith("project/proj-nomos");
+    expect(catalogShow.text).toContain("note=shareable");
     expect(exportProjectNomos).toHaveBeenCalledWith("proj-nomos", "/tmp/pack-out", "draft");
     expect(exported.text).toContain("output=/tmp/pack-out");
+    expect(installCatalogNomosPack).toHaveBeenCalledWith("proj-target", "project/proj-nomos");
+    expect(catalogInstalled.text).toContain("Installed catalog Nomos into proj-target");
     expect(installProjectNomosPack).toHaveBeenCalledWith("proj-target", "/tmp/pack-out");
     expect(installed.text).toContain("draft_root=/tmp/state/nomos/project-nomos");
   });

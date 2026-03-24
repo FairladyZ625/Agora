@@ -178,10 +178,13 @@ async function captureDashboardScreenshots(input: {
     await page.waitForTimeout(1500);
     let reviewVisible = false;
     let validationVisible = false;
-    let diffVisible = false;
-    let exportVisible = false;
-    let installVisible = false;
-    let activationVisible = false;
+	    let diffVisible = false;
+	    let exportVisible = false;
+	    let publishVisible = false;
+	    let catalogVisible = false;
+	    let installCatalogVisible = false;
+	    let installVisible = false;
+	    let activationVisible = false;
     await page.getByRole('button', { name: 'Review Draft' }).click();
     await page.getByText('Can Activate').waitFor({ timeout: 3000 });
     reviewVisible = true;
@@ -194,13 +197,26 @@ async function captureDashboardScreenshots(input: {
     await page.getByRole('button', { name: 'Activate Draft' }).click();
     await page.getByText('Project Nomos activated.').waitFor({ timeout: 3000 });
     activationVisible = true;
-    await page.getByLabel('Export Dir').fill(${JSON.stringify(input.exportDir)});
-    await page.getByRole('button', { name: 'Export Pack' }).click();
-    await page.getByText('Nomos pack exported.').waitFor({ timeout: 3000 });
-    exportVisible = true;
-    await page.getByLabel('Pack Dir').fill(${JSON.stringify(input.exportDir)});
-    await page.getByRole('button', { name: 'Install Pack' }).click();
-    await page.getByText('Nomos pack installed into draft.').waitFor({ timeout: 3000 });
+	    await page.getByLabel('Export Dir').fill(${JSON.stringify(input.exportDir)});
+	    await page.getByRole('button', { name: 'Export Pack' }).click();
+	    await page.getByText('Nomos pack exported.').waitFor({ timeout: 3000 });
+	    exportVisible = true;
+	    await page.getByLabel('Publish Note').fill('dashboard smoke');
+	    await page.getByRole('button', { name: 'Publish To Catalog' }).click();
+	    await page.getByText('Nomos pack published to catalog.').waitFor({ timeout: 3000 });
+	    publishVisible = true;
+	    await page.getByRole('button', { name: 'Refresh Catalog' }).click();
+	    await page.getByText('Nomos Catalog').waitFor({ timeout: 3000 });
+	    catalogVisible = true;
+	    await page.getByLabel('Catalog Pack Id').fill(${JSON.stringify(`project/${input.projectId}`)});
+	    await page.getByRole('button', { name: 'Show Catalog Entry' }).click();
+	    await page.getByTestId('project-nomos-catalog-panel').locator('pre').waitFor({ timeout: 3000 });
+	    await page.getByRole('button', { name: 'Install From Catalog' }).click();
+	    await page.getByText('Catalog pack installed into draft.').waitFor({ timeout: 3000 });
+	    installCatalogVisible = true;
+	    await page.getByLabel('Pack Dir').fill(${JSON.stringify(input.exportDir)});
+	    await page.getByRole('button', { name: 'Install Pack' }).click();
+	    await page.getByText('Nomos pack installed into draft.').waitFor({ timeout: 3000 });
     installVisible = true;
     await page.screenshot({ path: ${JSON.stringify(input.detailScreenshotPath)}, fullPage: true });
     const bodyText = await page.locator('body').innerText();
@@ -217,11 +233,14 @@ async function captureDashboardScreenshots(input: {
         && bodyText.includes('Run Doctor'),
       reviewVisible,
       validationVisible,
-      diffVisible,
-      exportVisible,
-      installVisible,
-      activationVisible,
-    }));
+	      diffVisible,
+	      exportVisible,
+	      publishVisible,
+	      catalogVisible,
+	      installCatalogVisible,
+	      installVisible,
+	      activationVisible,
+	    }));
     await browser.close();
   `;
 
@@ -260,6 +279,9 @@ async function captureDashboardScreenshots(input: {
     validationVisible: boolean;
     diffVisible: boolean;
     exportVisible: boolean;
+    publishVisible: boolean;
+    catalogVisible: boolean;
+    installCatalogVisible: boolean;
     installVisible: boolean;
     activationVisible: boolean;
   };
@@ -492,7 +514,8 @@ async function main() {
     });
     if (!dashboardUi.nomosVisible || !dashboardUi.actionVisible || !dashboardUi.reviewVisible
       || !dashboardUi.validationVisible || !dashboardUi.diffVisible || !dashboardUi.activationVisible
-      || !dashboardUi.exportVisible || !dashboardUi.installVisible) {
+      || !dashboardUi.exportVisible || !dashboardUi.publishVisible || !dashboardUi.catalogVisible
+      || !dashboardUi.installCatalogVisible || !dashboardUi.installVisible) {
       throw new Error(`dashboard nomos click-path incomplete: ${JSON.stringify(dashboardUi)}`);
     }
 
@@ -510,6 +533,9 @@ async function main() {
       diff_visible: dashboardUi.diffVisible,
       activation_visible: dashboardUi.activationVisible,
       export_visible: dashboardUi.exportVisible,
+      publish_visible: dashboardUi.publishVisible,
+      catalog_visible: dashboardUi.catalogVisible,
+      install_catalog_visible: dashboardUi.installCatalogVisible,
       install_visible: dashboardUi.installVisible,
       detail_excerpt: dashboardUi.bodyText,
     };

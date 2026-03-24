@@ -227,6 +227,26 @@ async function main() {
       commandBody: `/project nomos export ${projectId} --output-dir ${exportDir}`,
       senderId: "smoke-user",
     });
+    const projectNomosPublish = await api.runCommand("project", {
+      args: `nomos publish ${projectId} --note plugin-smoke`,
+      commandBody: `/project nomos publish ${projectId} --note plugin-smoke`,
+      senderId: "smoke-user",
+    });
+    const projectNomosCatalogList = await api.runCommand("project", {
+      args: "nomos catalog-list",
+      commandBody: "/project nomos catalog-list",
+      senderId: "smoke-user",
+    });
+    const projectNomosCatalogShow = await api.runCommand("project", {
+      args: `nomos catalog-show project/${projectId}`,
+      commandBody: `/project nomos catalog-show project/${projectId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallFromCatalog = await api.runCommand("project", {
+      args: `nomos install-from-catalog ${targetProjectId} --pack-id project/${projectId}`,
+      commandBody: `/project nomos install-from-catalog ${targetProjectId} --pack-id project/${projectId}`,
+      senderId: "smoke-user",
+    });
     const projectNomosInstallPack = await api.runCommand("project", {
       args: `nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
       commandBody: `/project nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
@@ -259,6 +279,18 @@ async function main() {
     }
     if (!projectNomosExport.text.includes(`output=${exportDir}`)) {
       throw new Error(`project nomos export failed: ${projectNomosExport.text}`);
+    }
+    if (!projectNomosPublish.text.includes(`Published Nomos for ${projectId}`)) {
+      throw new Error(`project nomos publish failed: ${projectNomosPublish.text}`);
+    }
+    if (!projectNomosCatalogList.text.includes(`project/${projectId}`)) {
+      throw new Error(`project nomos catalog-list failed: ${projectNomosCatalogList.text}`);
+    }
+    if (!projectNomosCatalogShow.text.includes(`Nomos catalog entry project/${projectId}`)) {
+      throw new Error(`project nomos catalog-show failed: ${projectNomosCatalogShow.text}`);
+    }
+    if (!projectNomosInstallFromCatalog.text.includes(`Installed catalog Nomos into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-from-catalog failed: ${projectNomosInstallFromCatalog.text}`);
     }
     if (!projectNomosInstallPack.text.includes(`Installed Nomos pack into ${targetProjectId}`)) {
       throw new Error(`project nomos install-pack failed: ${projectNomosInstallPack.text}`);
@@ -423,6 +455,10 @@ async function main() {
             project_nomos_activate: projectNomosActivate.text,
             target_project_create: targetCreate.text,
             project_nomos_export: projectNomosExport.text,
+            project_nomos_publish: projectNomosPublish.text,
+            project_nomos_catalog_list: projectNomosCatalogList.text,
+            project_nomos_catalog_show: projectNomosCatalogShow.text,
+            project_nomos_install_from_catalog: projectNomosInstallFromCatalog.text,
             project_nomos_install_pack: projectNomosInstallPack.text,
             task_create: taskCreate.text,
           },
