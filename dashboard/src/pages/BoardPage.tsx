@@ -131,7 +131,7 @@ export function BoardPage() {
           <div className="board-focus__stack">
             {reviewColumn && reviewColumn.tasks.length > 0 ? (
               reviewColumn.tasks.map((task) => (
-                <Link key={task.id} to={`/reviews/${task.id}`} className="decision-card board-task-card board-task-card--focus">
+                <Link key={task.id} to={`/reviews?selected=${task.id}`} className="decision-card board-task-card board-task-card--focus">
                   <div className="board-task-card__meta">
                     <span className="type-mono-sm board-task-card__id">{task.id}</span>
                     <div className="board-task-card__badges">
