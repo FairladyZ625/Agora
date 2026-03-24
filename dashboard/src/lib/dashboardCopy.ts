@@ -226,6 +226,7 @@ export function useBoardPageCopy() {
     createAction: t('board.createAction'),
     emptyTitle: t('board.emptyTitle'),
     emptySummary: t('board.emptySummary'),
+    reviewFocusKicker: t('board.reviewFocusKicker'),
     columns: {
       pending: t('board.columns.pending'),
       inProgress: t('board.columns.inProgress'),

@@ -283,6 +283,7 @@ export const resources = {
         createAction: '创建任务',
         emptyTitle: '当前列为空',
         emptySummary: '新的任务会按真实状态自动进入对应列。',
+        reviewFocusKicker: '需要处理',
         columns: {
           pending: '待处理',
           inProgress: '进行中',
@@ -1480,6 +1481,7 @@ export const resources = {
         createAction: 'Create task',
         emptyTitle: 'This column is empty',
         emptySummary: 'New tasks will enter the correct column according to their live state.',
+        reviewFocusKicker: 'Needs action',
         columns: {
           pending: 'To do',
           inProgress: 'In progress',

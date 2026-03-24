@@ -652,6 +652,7 @@
 }
 
 .workbench-grid--tasks {
+  margin-top: 0;
   grid-template-columns: var(--tasks-workspace-columns);
 }
 
