@@ -647,6 +647,18 @@ describe('dashboard expansion api client', () => {
     expectFetchCall('/api/tasks?project_id=proj-alpha', { method: 'GET' });
   });
 
+  it('includes dashboard session credentials on generic task and project api requests', async () => {
+    const api = await import('@/lib/api');
+
+    await api.listTasks(undefined, 'proj-alpha');
+    await api.listProjects();
+    await api.getProjectWorkbench('proj-alpha');
+
+    expectFetchCall('/api/tasks?project_id=proj-alpha', { method: 'GET', credentials: 'include' });
+    expectFetchCall('/api/projects', { method: 'GET', credentials: 'include' });
+    expectFetchCall('/api/projects/proj-alpha', { method: 'GET', credentials: 'include' });
+  });
+
   it('loads template summaries and full template details from the real backend routes', async () => {
     const api = await import('@/lib/api');
 

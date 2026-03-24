@@ -279,6 +279,7 @@ async function request<T>(path: string, schema: ZodType<T>, init?: RequestInit):
   const url = resolveRequestUrl(`${apiBase}${path}`);
   const res = await fetch(url, {
     method: init?.method ?? 'GET',
+    credentials: init?.credentials ?? 'include',
     ...init,
     headers: { ...headers, ...(init?.headers as Record<string, string>) },
   });
