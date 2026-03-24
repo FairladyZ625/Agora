@@ -5,11 +5,13 @@ import { join } from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import {
+  expectedMarkersForSlashCommand,
   isDiscordLoginUrl,
   isDiscordPendingResponse,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
   resolveSmokeCommandTemplate,
+  slashCommandAssertionPassed,
   shouldSettleDiscordResponse,
   splitSlashCommand,
 } from "./discord-web-slash-lib.ts";
@@ -72,6 +74,7 @@ async function main() {
     afterTail: parsed.afterTail,
     deltaTail: parsed.deltaTail,
     responseSettled: parsed.responseSettled,
+    assertionsPassed: parsed.assertionsPassed,
     beforeScreenshot,
     afterScreenshot,
     note: loginRequired
@@ -171,9 +174,11 @@ function buildBrowserScript(input: {
     let page = null;
     let connectionMode = 'launch';
     const readBodyText = async () => await page.locator('body').innerText();
+    const expectedMarkersForSlashCommand = ${expectedMarkersForSlashCommand.toString()};
+    const slashCommandAssertionPassed = ${slashCommandAssertionPassed.toString()};
     const isDiscordPendingResponse = ${isDiscordPendingResponse.toString()};
     const shouldSettleDiscordResponse = ${shouldSettleDiscordResponse.toString()};
-    const waitForSettledResponse = async (beforeText) => {
+    const waitForSettledResponse = async (beforeText, command) => {
       const timeoutMs = 20000;
       const minQuietMs = 2500;
       const startedAt = Date.now();
@@ -201,6 +206,8 @@ function buildBrowserScript(input: {
             settled: true,
             waitedMs: Date.now() - startedAt,
             observedPending,
+            expectedMarkers: expectedMarkersForSlashCommand(command),
+            assertionPassed: slashCommandAssertionPassed(command, currentText),
             bodyTail: currentText.slice(-1200),
           };
         }
@@ -210,6 +217,8 @@ function buildBrowserScript(input: {
         settled: false,
         waitedMs: Date.now() - startedAt,
         observedPending: observedPending || isDiscordPendingResponse(currentText),
+        expectedMarkers: expectedMarkersForSlashCommand(command),
+        assertionPassed: slashCommandAssertionPassed(command, currentText),
         bodyTail: currentText.slice(-1200),
       };
     };
@@ -252,7 +261,7 @@ function buildBrowserScript(input: {
           commandsSent.push(command);
           commandResults.push({
             command,
-            ...(await waitForSettledResponse(commandBeforeText)),
+            ...(await waitForSettledResponse(commandBeforeText, command)),
           });
         }
       }
@@ -269,6 +278,7 @@ function buildBrowserScript(input: {
           ? afterBodyText.slice(Math.max(beforeBodyText.length - 200, 0))
           : afterBodyText.slice(-1200),
         responseSettled: commandResults.every((entry) => entry.settled),
+        assertionsPassed: commandResults.every((entry) => entry.assertionPassed),
       }));
       await new Promise((resolve) => setTimeout(resolve, 50));
       process.exit(0);

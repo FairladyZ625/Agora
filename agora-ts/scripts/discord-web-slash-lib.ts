@@ -68,6 +68,34 @@ export function resolveSmokeCommandTemplate(command: string, replacements: {
   return resolved;
 }
 
+export function expectedMarkersForSlashCommand(command: string) {
+  const trimmed = command.trim();
+  if (/^\/project\s+list\b/i.test(trimmed)) {
+    return ["| active |"];
+  }
+  if (/^\/project\s+show\b/i.test(trimmed)) {
+    return ["knowledge=", "index="];
+  }
+  if (/^\/task\s+list\b/i.test(trimmed)) {
+    return ["OC-", "| active |"];
+  }
+  if (/^\/task\s+status\b/i.test(trimmed)) {
+    return ["flow_log=", "subtasks="];
+  }
+  if (/^\/task$/i.test(trimmed)) {
+    return ["Agora /task commands:", "Most common:"];
+  }
+  if (/^\/project$/i.test(trimmed)) {
+    return ["Agora /project commands:", "/project list active"];
+  }
+  return [];
+}
+
+export function slashCommandAssertionPassed(command: string, bodyText: string) {
+  const markers = expectedMarkersForSlashCommand(command);
+  return markers.every((marker) => bodyText.includes(marker));
+}
+
 export function isDiscordPendingResponse(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return /正在响应|responding|thinking|typing/i.test(normalized);

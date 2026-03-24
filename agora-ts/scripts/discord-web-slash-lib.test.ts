@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  expectedMarkersForSlashCommand,
   isDiscordLoginUrl,
   isDiscordPendingResponse,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
   resolveSmokeCommandTemplate,
+  slashCommandAssertionPassed,
   splitSlashCommand,
   shouldSettleDiscordResponse,
 } from "./discord-web-slash-lib";
@@ -90,6 +92,29 @@ describe("resolveSmokeCommandTemplate", () => {
     expect(() => resolveSmokeCommandTemplate("/project show {{firstActiveProjectId}}", {})).toThrow(
       "missing replacement for {{firstActiveProjectId}}",
     );
+  });
+});
+
+describe("expectedMarkersForSlashCommand", () => {
+  it("returns stable markers for known query/help commands", () => {
+    expect(expectedMarkersForSlashCommand("/project show proj-api")).toEqual(["knowledge=", "index="]);
+    expect(expectedMarkersForSlashCommand("/task status OC-1")).toEqual(["flow_log=", "subtasks="]);
+    expect(expectedMarkersForSlashCommand("/task")).toEqual(["Agora /task commands:", "Most common:"]);
+  });
+});
+
+describe("slashCommandAssertionPassed", () => {
+  it("passes when the response body includes expected markers", () => {
+    expect(
+      slashCommandAssertionPassed(
+        "/project show proj-api",
+        "proj-api | active | API Project\nknowledge=3, recaps=0, citizens=0\nindex=present, timeline=present",
+      ),
+    ).toBe(true);
+  });
+
+  it("fails when expected markers are missing", () => {
+    expect(slashCommandAssertionPassed("/task status OC-1", "OC-1 | active | review")).toBe(false);
   });
 });
 
