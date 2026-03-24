@@ -389,17 +389,25 @@ describe('nomos pack model freeze', () => {
     const published = publishProjectNomosPack('proj-publish-source', sourceMetadata, {
       userAgoraDir: agoraHomeDir,
       target: 'draft',
+      publishedBy: 'archon',
+      publishedNote: 'ready for reuse',
     });
 
     expect(existsSync(join(published.catalog_pack_root, 'profile.toml'))).toBe(true);
     expect(existsSync(published.manifest_path)).toBe(true);
     expect(published.entry.pack_id).toBe('project/proj-publish-source');
+    expect(published.entry.published_by).toBe('archon');
+    expect(published.entry.published_note).toBe('ready for reuse');
+    expect(published.entry.source_activation_status).toBe('active_builtin');
 
     const listed = listPublishedNomosCatalog({ userAgoraDir: agoraHomeDir });
+    expect(listed.total).toBe(1);
+    expect(listed.summaries[0]?.published_by).toBe('archon');
     expect(listed.entries.map((entry) => entry.pack_id)).toContain('project/proj-publish-source');
 
     const inspected = inspectPublishedNomosCatalogPack('project/proj-publish-source', { userAgoraDir: agoraHomeDir });
     expect(inspected.source_project_id).toBe('proj-publish-source');
+    expect(inspected.source_repo_path).toBeNull();
 
     const targetInstalled = installBuiltInAgoraNomosForProject('proj-publish-target', { userAgoraDir: agoraHomeDir });
     const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);

@@ -1011,7 +1011,10 @@ describe('task routes', () => {
     const publishResponse = await app.inject({
       method: 'POST',
       url: '/api/projects/proj-catalog-source/nomos/publish',
-      payload: {},
+      payload: {
+        published_by: 'archon',
+        published_note: 'shared from api',
+      },
     });
     const listResponse = await app.inject({
       method: 'GET',
@@ -1035,10 +1038,19 @@ describe('task routes', () => {
       target: 'draft',
       entry: expect.objectContaining({
         pack_id: 'project/proj-catalog-source',
+        published_by: 'archon',
+        published_note: 'shared from api',
       }),
     });
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json()).toMatchObject({
+      total: 1,
+      summaries: expect.arrayContaining([
+        expect.objectContaining({
+          pack_id: 'project/proj-catalog-source',
+          published_by: 'archon',
+        }),
+      ]),
       entries: expect.arrayContaining([
         expect.objectContaining({
           pack_id: 'project/proj-catalog-source',
@@ -1049,6 +1061,8 @@ describe('task routes', () => {
     expect(showResponse.json()).toMatchObject({
       pack_id: 'project/proj-catalog-source',
       source_project_id: 'proj-catalog-source',
+      published_by: 'archon',
+      published_note: 'shared from api',
     });
     expect(installResponse.statusCode).toBe(200);
     expect(installResponse.json()).toMatchObject({

@@ -713,7 +713,11 @@ describe('agora-ts cli', () => {
       '--repo-path', targetRepoRoot,
       '--new-repo',
     ], { from: 'user' });
-    await program.parseAsync(['nomos', 'publish-project', 'proj-cli-publish-source'], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'publish-project', 'proj-cli-publish-source',
+      '--actor', 'archon',
+      '--note', 'shareable baseline',
+    ], { from: 'user' });
     await program.parseAsync(['nomos', 'show-published', 'project/proj-cli-publish-source'], { from: 'user' });
     await program.parseAsync([
       'nomos', 'install-from-catalog',
@@ -723,7 +727,9 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos pack 已发布到 catalog: proj-cli-publish-source');
+    expect(stdout.value).toContain('published_by: archon');
     expect(stdout.value).toContain('project/proj-cli-publish-source — CLI Publish Source Nomos');
+    expect(stdout.value).toContain('published_note: shareable baseline');
     expect(stdout.value).toContain('Catalog Nomos pack 已安装到 draft: proj-cli-publish-target');
   });
 

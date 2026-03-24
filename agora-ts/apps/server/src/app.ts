@@ -1356,10 +1356,14 @@ export function buildApp(options: BuildAppOptions = {}) {
       const { projectId } = request.params as { projectId: string };
       const payload = (request.body as {
         target?: 'draft' | 'active';
+        published_by?: string;
+        published_note?: string;
       } | undefined) ?? {};
       const project = projectService.requireProject(projectId);
       return reply.send(publishProjectNomosPack(project.id, project.metadata ?? null, {
         target: payload.target === 'active' ? 'active' : 'draft',
+        ...(payload.published_by ? { publishedBy: payload.published_by } : {}),
+        ...(payload.published_note ? { publishedNote: payload.published_note } : {}),
       }));
     } catch (error) {
       const translated = translateError(error);
