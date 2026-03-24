@@ -48,6 +48,26 @@ export function splitSlashCommand(command: string) {
   };
 }
 
+export function resolveSmokeCommandTemplate(command: string, replacements: {
+  firstActiveProjectId?: string;
+  firstActiveTaskId?: string;
+}) {
+  let resolved = command;
+  if (resolved.includes("{{firstActiveProjectId}}")) {
+    if (!replacements.firstActiveProjectId) {
+      throw new Error("missing replacement for {{firstActiveProjectId}}");
+    }
+    resolved = resolved.replaceAll("{{firstActiveProjectId}}", replacements.firstActiveProjectId);
+  }
+  if (resolved.includes("{{firstActiveTaskId}}")) {
+    if (!replacements.firstActiveTaskId) {
+      throw new Error("missing replacement for {{firstActiveTaskId}}");
+    }
+    resolved = resolved.replaceAll("{{firstActiveTaskId}}", replacements.firstActiveTaskId);
+  }
+  return resolved;
+}
+
 export function isDiscordPendingResponse(text: string) {
   const normalized = text.replace(/\s+/g, " ").trim();
   return /正在响应|responding|thinking|typing/i.test(normalized);

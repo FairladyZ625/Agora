@@ -4,6 +4,7 @@ import {
   isDiscordPendingResponse,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
+  resolveSmokeCommandTemplate,
   splitSlashCommand,
   shouldSettleDiscordResponse,
 } from "./discord-web-slash-lib";
@@ -68,6 +69,27 @@ describe("splitSlashCommand", () => {
       commandName: "/task",
       argsText: "",
     });
+  });
+});
+
+describe("resolveSmokeCommandTemplate", () => {
+  it("replaces active entity placeholders", () => {
+    expect(
+      resolveSmokeCommandTemplate("/project show {{firstActiveProjectId}}", {
+        firstActiveProjectId: "proj-api",
+      }),
+    ).toBe("/project show proj-api");
+    expect(
+      resolveSmokeCommandTemplate("/task status {{firstActiveTaskId}}", {
+        firstActiveTaskId: "OC-1",
+      }),
+    ).toBe("/task status OC-1");
+  });
+
+  it("throws when required replacements are missing", () => {
+    expect(() => resolveSmokeCommandTemplate("/project show {{firstActiveProjectId}}", {})).toThrow(
+      "missing replacement for {{firstActiveProjectId}}",
+    );
   });
 });
 

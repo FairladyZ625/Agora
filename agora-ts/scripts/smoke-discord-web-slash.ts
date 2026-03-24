@@ -9,6 +9,7 @@ import {
   isDiscordPendingResponse,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
+  resolveSmokeCommandTemplate,
   shouldSettleDiscordResponse,
   splitSlashCommand,
 } from "./discord-web-slash-lib.ts";
@@ -16,6 +17,7 @@ import {
 type Options = {
   channelUrl: string;
   profileDir: string;
+  dbPath: string;
   outDir: string;
   commands: string[];
   probeOnly: boolean;
@@ -31,6 +33,9 @@ async function main() {
 
   const processList = await captureCommand("ps", ["aux"]);
   const remoteDebuggingPort = parseRunningChromeRemoteDebuggingPort(processList, options.profileDir);
+  const commands = options.probeOnly
+    ? []
+    : await resolveSmokeCommands(options.commands, options.dbPath);
   const dashboardRoot = join(process.cwd(), "..", "dashboard");
   const playwrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH
     || join(homedir(), "Library", "Caches", "ms-playwright");
@@ -39,7 +44,7 @@ async function main() {
   const commandScript = buildBrowserScript({
     channelUrl: options.channelUrl,
     profileDir: options.profileDir,
-    commands: options.commands,
+    commands,
     probeOnly: options.probeOnly,
     headless: options.headless,
     remoteDebuggingPort,
@@ -60,6 +65,7 @@ async function main() {
     profileDir: options.profileDir,
     remoteDebuggingPort,
     commandsAttempted: options.commands,
+    commandsResolved: commands,
     commandsSent: parsed.commandsSent,
     commandResults: parsed.commandResults,
     beforeTail: parsed.beforeTail,
@@ -77,6 +83,7 @@ async function main() {
 function parseArgs(args: string[]): Options {
   const defaults = {
     profileDir: process.env.DISCORD_WEB_PROFILE_DIR || join(homedir(), "Library", "Caches", "ms-playwright", "mcp-chrome"),
+    dbPath: process.env.AGORA_DB_PATH || join(homedir(), ".agora", "agora.db"),
     outDir: mkdtempSync(join(tmpdir(), "agora-discord-web-slash-")),
     commands: [] as string[],
     probeOnly: false,
@@ -96,6 +103,10 @@ function parseArgs(args: string[]): Options {
         break;
       case "--out-dir":
         defaults.outDir = args[index + 1] || defaults.outDir;
+        index += 1;
+        break;
+      case "--db-path":
+        defaults.dbPath = args[index + 1] || defaults.dbPath;
         index += 1;
         break;
       case "--command":
@@ -125,11 +136,22 @@ function parseArgs(args: string[]): Options {
   return {
     channelUrl,
     profileDir: defaults.profileDir,
+    dbPath: defaults.dbPath,
     outDir: defaults.outDir,
     commands,
     probeOnly: defaults.probeOnly,
     headless: defaults.headless,
   };
+}
+
+async function resolveSmokeCommands(commands: string[], dbPath: string) {
+  const needsProjectId = commands.some((command) => command.includes("{{firstActiveProjectId}}"));
+  const needsTaskId = commands.some((command) => command.includes("{{firstActiveTaskId}}"));
+  const replacements = {
+    firstActiveProjectId: needsProjectId ? await lookupSingleValue(dbPath, "select id from projects where status = 'active' order by rowid desc limit 1;") : undefined,
+    firstActiveTaskId: needsTaskId ? await lookupSingleValue(dbPath, "select id from tasks where state = 'active' order by rowid desc limit 1;") : undefined,
+  };
+  return commands.map((command) => resolveSmokeCommandTemplate(command, replacements));
 }
 
 function buildBrowserScript(input: {
@@ -308,6 +330,11 @@ async function runNodeScript(script: string, cwd: string, env: NodeJS.ProcessEnv
       reject(new Error(stderr || stdout || `browser script failed with code ${code ?? "unknown"}`));
     });
   });
+}
+
+async function lookupSingleValue(dbPath: string, sql: string) {
+  const output = await captureCommand("sqlite3", [dbPath, sql]);
+  return output.trim() || undefined;
 }
 
 function parseResultPayload(output: string) {
