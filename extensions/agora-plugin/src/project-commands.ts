@@ -326,6 +326,67 @@ async function handleNomos(bridge: AgoraBridge, args: string[], senderId: string
         ].join("\n"),
       };
     }
+    case "publish": {
+      const projectId = rest[0];
+      const note = flagValue(rest.slice(1), "--note");
+      if (!projectId) {
+        return { text: "Usage: /project nomos publish <project_id> [--note <text>] [--target draft|active]" };
+      }
+      const target = (flagValue(rest.slice(1), "--target") as "draft" | "active" | undefined) ?? "draft";
+      const published = await bridge.publishProjectNomos(projectId, {
+        target: target === "active" ? "active" : "draft",
+        actor: senderId,
+        ...(note ? { note } : {}),
+      });
+      return {
+        text: [
+          `Published Nomos for ${published.project_id}`,
+          `target=${published.target}`,
+          `pack=${published.entry.pack_id}`,
+          `published_by=${published.entry.published_by ?? "none"}`,
+        ].join("\n"),
+      };
+    }
+    case "catalog-list": {
+      const listed = await bridge.listPublishedNomosCatalog();
+      return {
+        text: [
+          `Nomos catalog (${listed.total})`,
+          ...listed.summaries.slice(0, 10).map((entry) => `${entry.pack_id} | ${entry.version} | ${entry.source_project_id}/${entry.source_target}`),
+        ].join("\n"),
+      };
+    }
+    case "catalog-show": {
+      const packId = rest[0];
+      if (!packId) {
+        return { text: "Usage: /project nomos catalog-show <pack_id>" };
+      }
+      const entry = await bridge.showPublishedNomosCatalog(packId);
+      return {
+        text: [
+          `Nomos catalog entry ${entry.pack_id}`,
+          `source=${entry.source_project_id}/${entry.source_target}`,
+          `activation=${entry.source_activation_status}`,
+          `published_by=${entry.published_by ?? "none"}`,
+          `note=${entry.published_note ?? "none"}`,
+        ].join("\n"),
+      };
+    }
+    case "install-from-catalog": {
+      const projectId = rest[0];
+      const packId = flagValue(rest.slice(1), "--pack-id");
+      if (!projectId || !packId) {
+        return { text: "Usage: /project nomos install-from-catalog <project_id> --pack-id <pack_id>" };
+      }
+      const installed = await bridge.installCatalogNomosPack(projectId, packId);
+      return {
+        text: [
+          `Installed catalog Nomos into ${installed.project_id}`,
+          `pack=${installed.pack.pack_id}`,
+          `draft_root=${installed.installed_root}`,
+        ].join("\n"),
+      };
+    }
     case "install-pack": {
       const projectId = rest[0];
       const packDir = flagValue(rest.slice(1), "--pack-dir");
@@ -426,7 +487,11 @@ function formatNomosHelp() {
     "/project nomos activate <project_id>",
     "/project nomos validate <project_id> [--target draft|active]",
     "/project nomos diff <project_id> [--base builtin|active] [--candidate draft|active]",
+    "/project nomos publish <project_id> [--note <text>] [--target draft|active]",
+    "/project nomos catalog-list",
+    "/project nomos catalog-show <pack_id>",
     "/project nomos export <project_id> --output-dir <dir> [--target draft|active]",
+    "/project nomos install-from-catalog <project_id> --pack-id <pack_id>",
     "/project nomos install-pack <project_id> --pack-dir <dir>",
   ].join("\n");
 }

@@ -174,6 +174,120 @@ const { exportProjectNomos, installProjectNomosPack } = vi.hoisted(() => ({
     metadata: {},
   })),
 }));
+const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNomosCatalog, installCatalogNomosPack } = vi.hoisted(() => ({
+  publishProjectNomosToCatalog: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    target: 'draft',
+    catalog_root: '/Users/example/.agora/nomos/catalog',
+    catalog_pack_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+    manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+    entry: {
+      schema_version: 1,
+      pack_id: 'project/proj-alpha',
+      published_at: '2026-03-24T12:00:00.000Z',
+      published_by: 'archon',
+      published_note: 'shareable baseline',
+      source_project_id: 'proj-alpha',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: '/repo/proj-alpha',
+      published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+      manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-alpha',
+        name: 'Project Alpha Nomos',
+        version: '0.1.0',
+        description: 'Project draft',
+        lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+        profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      },
+    },
+  })),
+  listPublishedNomosCatalog: vi.fn(async () => ({
+    catalog_root: '/Users/example/.agora/nomos/catalog',
+    total: 1,
+    summaries: [{
+      pack_id: 'project/proj-alpha',
+      name: 'Project Alpha Nomos',
+      version: '0.1.0',
+      description: 'Project draft',
+      published_at: '2026-03-24T12:00:00.000Z',
+      published_by: 'archon',
+      source_project_id: 'proj-alpha',
+      source_target: 'draft',
+      source_repo_path: '/repo/proj-alpha',
+    }],
+    entries: [],
+  })),
+  showPublishedNomosCatalog: vi.fn(async () => ({
+    schema_version: 1,
+    pack_id: 'project/proj-alpha',
+    published_at: '2026-03-24T12:00:00.000Z',
+    published_by: 'archon',
+    published_note: 'shareable baseline',
+    source_project_id: 'proj-alpha',
+    source_target: 'draft',
+    source_activation_status: 'active_builtin',
+    source_repo_path: '/repo/proj-alpha',
+    published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+    manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+    pack: {
+      pack_id: 'project/proj-alpha',
+      name: 'Project Alpha Nomos',
+      version: '0.1.0',
+      description: 'Project draft',
+      lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+      doctor_checks: ['constitution-present'],
+      source: 'project_state_draft',
+      root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    },
+  })),
+  installCatalogNomosPack: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    pack: {
+      pack_id: 'project/proj-alpha',
+      name: 'Project Alpha Nomos',
+      version: '0.1.0',
+      description: 'Project draft',
+      lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+      doctor_checks: ['constitution-present'],
+      source: 'project_state_draft',
+      root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    },
+    installed_root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+    installed_profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    metadata: {},
+    catalog_entry: {
+      schema_version: 1,
+      pack_id: 'project/proj-alpha',
+      published_at: '2026-03-24T12:00:00.000Z',
+      published_by: 'archon',
+      published_note: 'shareable baseline',
+      source_project_id: 'proj-alpha',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: '/repo/proj-alpha',
+      published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+      manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-alpha',
+        name: 'Project Alpha Nomos',
+        version: '0.1.0',
+        description: 'Project draft',
+        lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+        profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      },
+    },
+  })),
+}));
 const createProject = vi.fn(async () => ({
   id: 'proj-beta',
   name: 'Project Beta',
@@ -198,6 +312,10 @@ vi.mock('@/lib/api', async () => {
     diffProjectNomos,
     exportProjectNomos,
     installProjectNomosPack,
+    publishProjectNomosToCatalog,
+    listPublishedNomosCatalog,
+    showPublishedNomosCatalog,
+    installCatalogNomosPack,
   };
 });
 const updateTodo = vi.fn(async () => undefined);
@@ -424,7 +542,9 @@ describe('project workbench pages', () => {
     expect(screen.getByRole('button', { name: 'Validate Draft' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Diff Draft' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export Pack' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish To Catalog' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Install Pack' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reinstall Nomos' }));
     await waitFor(() => {
       expect(installProjectNomos).toHaveBeenCalledWith('proj-alpha', {
@@ -470,6 +590,29 @@ describe('project workbench pages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export Pack' }));
     await waitFor(() => {
       expect(exportProjectNomos).toHaveBeenCalledWith('proj-alpha', '/tmp/exported-pack', 'draft');
+    });
+    fireEvent.change(screen.getByLabelText('Publish Note'), { target: { value: 'shareable baseline' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Publish To Catalog' }));
+    await waitFor(() => {
+      expect(publishProjectNomosToCatalog).toHaveBeenCalledWith('proj-alpha', {
+        target: 'draft',
+        published_by: 'archon',
+        published_note: 'shareable baseline',
+      });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Catalog' }));
+    await waitFor(() => {
+      expect(listPublishedNomosCatalog).toHaveBeenCalledWith();
+    });
+    expect(screen.getByTestId('project-nomos-catalog-panel')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Catalog Pack Id'), { target: { value: 'project/proj-alpha' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Show Catalog Entry' }));
+    await waitFor(() => {
+      expect(showPublishedNomosCatalog).toHaveBeenCalledWith('project/proj-alpha');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Install From Catalog' }));
+    await waitFor(() => {
+      expect(installCatalogNomosPack).toHaveBeenCalledWith('proj-alpha', 'project/proj-alpha');
     });
     fireEvent.change(screen.getByLabelText('Pack Dir'), { target: { value: '/tmp/exported-pack' } });
     fireEvent.click(screen.getByRole('button', { name: 'Install Pack' }));

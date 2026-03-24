@@ -63,11 +63,15 @@ export function ProjectDetailPage() {
   const [nomosActionMessage, setNomosActionMessage] = useState<string | null>(null);
   const [exportDir, setExportDir] = useState('');
   const [packDir, setPackDir] = useState('');
+  const [publishNote, setPublishNote] = useState('');
+  const [catalogPackId, setCatalogPackId] = useState('');
   const [doctorReport, setDoctorReport] = useState<Awaited<ReturnType<typeof api.runProjectNomosDoctor>> | null>(null);
   const [reviewReport, setReviewReport] = useState<ProjectNomosReview | null>(null);
   const [activationReport, setActivationReport] = useState<ProjectNomosActivation | null>(null);
   const [validationReport, setValidationReport] = useState<ProjectNomosValidation | null>(null);
   const [diffReport, setDiffReport] = useState<ProjectNomosDiff | null>(null);
+  const [catalogList, setCatalogList] = useState<Awaited<ReturnType<typeof api.listPublishedNomosCatalog>> | null>(null);
+  const [catalogEntry, setCatalogEntry] = useState<Awaited<ReturnType<typeof api.showPublishedNomosCatalog>> | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -105,7 +109,7 @@ export function ProjectDetailPage() {
   const nomos = selectedProject.nomos;
 
   const runNomosAction = async (
-    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack',
+    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack' | 'publish' | 'catalog-list' | 'catalog-show' | 'install-catalog',
   ) => {
     if (!projectId) {
       return;
@@ -140,6 +144,27 @@ export function ProjectDetailPage() {
       } else if (mode === 'export') {
         const result = await api.exportProjectNomos(projectId, exportDir, 'draft');
         setNomosActionMessage(`${copy.nomosExportSuccess} ${result.output_dir}`);
+      } else if (mode === 'publish') {
+        const result = await api.publishProjectNomosToCatalog(projectId, {
+          target: 'draft',
+          published_by: selectedProject.project.owner ?? 'archon',
+          ...(publishNote.trim().length > 0 ? { published_note: publishNote.trim() } : {}),
+        });
+        setCatalogPackId(result.entry.pack_id);
+        setCatalogEntry(result.entry);
+        setNomosActionMessage(`${copy.nomosPublishSuccess} ${result.entry.pack_id}`);
+      } else if (mode === 'catalog-list') {
+        const result = await api.listPublishedNomosCatalog();
+        setCatalogList(result);
+        setNomosActionMessage(copy.refreshCatalogAction);
+      } else if (mode === 'catalog-show') {
+        const result = await api.showPublishedNomosCatalog(catalogPackId);
+        setCatalogEntry(result);
+        setNomosActionMessage(copy.showCatalogEntryAction);
+      } else if (mode === 'install-catalog') {
+        const result = await api.installCatalogNomosPack(projectId, catalogPackId);
+        await selectProject(projectId);
+        setNomosActionMessage(`${copy.nomosInstallCatalogSuccess} ${result.installed_root}`);
       } else if (mode === 'install-pack') {
         const result = await api.installProjectNomosPack(projectId, packDir);
         await selectProject(projectId);
@@ -248,9 +273,41 @@ export function ProjectDetailPage() {
                 type="button"
                 className="button-secondary"
                 disabled={nomosActionPending}
+                onClick={() => void runNomosAction('publish')}
+              >
+                {copy.publishNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
                 onClick={() => void runNomosAction('install-pack')}
               >
                 {copy.installPackAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('catalog-list')}
+              >
+                {copy.refreshCatalogAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending || !catalogPackId}
+                onClick={() => void runNomosAction('catalog-show')}
+              >
+                {copy.showCatalogEntryAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending || !catalogPackId}
+                onClick={() => void runNomosAction('install-catalog')}
+              >
+                {copy.installCatalogPackAction}
               </button>
               <button
                 type="button"
@@ -339,6 +396,26 @@ export function ProjectDetailPage() {
                 value={packDir}
                 onChange={(event) => setPackDir(event.target.value)}
                 placeholder="/tmp/exported-pack"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="field-label" htmlFor="nomos-publish-note">{copy.publishNoteLabel}</label>
+              <input
+                id="nomos-publish-note"
+                className="input-shell"
+                value={publishNote}
+                onChange={(event) => setPublishNote(event.target.value)}
+                placeholder="shareable baseline"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="field-label" htmlFor="nomos-catalog-pack-id">{copy.catalogPackIdLabel}</label>
+              <input
+                id="nomos-catalog-pack-id"
+                className="input-shell"
+                value={catalogPackId}
+                onChange={(event) => setCatalogPackId(event.target.value)}
+                placeholder="project/proj-alpha"
               />
             </div>
           </div>
@@ -434,6 +511,44 @@ export function ProjectDetailPage() {
               </div>
             </div>
           ) : null}
+          <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-4" data-testid="project-nomos-catalog-panel">
+            <div className="space-y-2">
+              <p className="field-label">{copy.catalogTitle}</p>
+              <p className="type-body-sm break-all">
+                {copy.catalogRootLabel}
+                {': '}
+                {catalogList?.catalog_root ?? copy.noneLabel}
+              </p>
+            </div>
+            {catalogList && catalogList.summaries.length > 0 ? (
+              <ul className="mt-4 space-y-2">
+                {catalogList.summaries.map((entry) => (
+                  <li key={entry.pack_id} className="type-body-sm">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => {
+                        setCatalogPackId(entry.pack_id);
+                        void runNomosAction('catalog-show');
+                      }}
+                    >
+                      {entry.pack_id}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 type-body-sm">{copy.catalogEmpty}</p>
+            )}
+            {catalogEntry ? (
+              <div className="mt-4 space-y-2">
+                <p className="field-label">{copy.catalogSelectionTitle}</p>
+                <pre className="type-caption whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-elevated)] p-3">
+                  {renderJson(catalogEntry as unknown as Record<string, unknown>)}
+                </pre>
+              </div>
+            ) : null}
+          </div>
           {doctorReport ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">

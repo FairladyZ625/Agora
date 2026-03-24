@@ -140,6 +140,26 @@ export class AgoraBridge {
     });
   }
 
+  async publishProjectNomos(projectId: string, input: {
+    target?: "draft" | "active";
+    actor?: string;
+    note?: string;
+  } = {}): Promise<{
+    project_id: string;
+    target: "draft" | "active";
+    entry: { pack_id: string; published_by: string | null; published_note: string | null };
+    catalog_pack_root: string;
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/publish`, {
+      method: "POST",
+      body: {
+        target: input.target ?? "draft",
+        ...(input.actor ? { published_by: input.actor } : {}),
+        ...(input.note ? { published_note: input.note } : {}),
+      },
+    });
+  }
+
   async installProjectNomosPack(projectId: string, packDir: string): Promise<{
     project_id: string;
     pack: { pack_id: string };
@@ -148,6 +168,45 @@ export class AgoraBridge {
     return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-pack`, {
       method: "POST",
       body: { pack_dir: packDir },
+    });
+  }
+
+  async listPublishedNomosCatalog(): Promise<{
+    catalog_root: string;
+    total: number;
+    summaries: Array<{
+      pack_id: string;
+      version: string;
+      published_by: string | null;
+      source_project_id: string;
+      source_target: "draft" | "active";
+    }>;
+  }> {
+    return this.request("/api/nomos/catalog");
+  }
+
+  async showPublishedNomosCatalog(packId: string): Promise<{
+    pack_id: string;
+    published_by: string | null;
+    published_note: string | null;
+    source_project_id: string;
+    source_target: "draft" | "active";
+    source_activation_status: "active_builtin" | "active_project";
+    source_repo_path: string | null;
+    published_root: string;
+  }> {
+    return this.request(`/api/nomos/catalog/${packId}`);
+  }
+
+  async installCatalogNomosPack(projectId: string, packId: string): Promise<{
+    project_id: string;
+    pack: { pack_id: string };
+    installed_root: string;
+    catalog_entry: { pack_id: string };
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-catalog-pack`, {
+      method: "POST",
+      body: { pack_id: packId },
     });
   }
 
