@@ -130,6 +130,7 @@
   - 先读 [docs/11-REFERENCE/testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/testing-standard.md)
   - Discord 冒烟再读 [docs/11-REFERENCE/discord-smoke-testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/discord-smoke-testing-standard.md)
   - plugin / OpenClaw / native slash 真人入口排障再读 [docs/11-REFERENCE/plugin-debugging-lessons.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/plugin-debugging-lessons.md)
+  - 若任务本身是在治理 regression / smoke / QA 进度，再读 [docs/11-REFERENCE/regression-ssot-governance.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/regression-ssot-governance.md)
 - Dashboard / 前端任务：
   - 先读 [docs/11-REFERENCE/dashboard-frontend-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/dashboard-frontend-standard.md)
 - 交付总结 / 复盘：
