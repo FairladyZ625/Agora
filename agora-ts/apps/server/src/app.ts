@@ -292,6 +292,7 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     return false;
   }
   return url.startsWith('/api/tasks')
+    || url.startsWith('/api/projects')
     || url.startsWith('/api/agents/')
     || url === '/api/agents/status'
     || url.startsWith('/api/archive/')
