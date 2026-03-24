@@ -301,14 +301,17 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     || url.startsWith('/api/templates')
     || url.startsWith('/api/craftsmen/runtime/')
     || url.startsWith('/api/craftsmen/executions/')
-    || url.startsWith('/api/craftsmen/tasks/');
+    || url.startsWith('/api/craftsmen/tasks/')
+    || url.startsWith('/api/nomos')
+    || url === '/api/skills'
+    || url.startsWith('/api/inbox')
+    || url === '/api/craftsmen/governance';
 }
 
-function isHumanReviewRoute(method: string, url: string) {
-  if (method !== 'POST') {
-    return false;
-  }
-  return url.endsWith('/archon-approve') || url.endsWith('/archon-reject');
+function isDashboardSessionBypassRoute(url: string) {
+  // Valid dashboard session bypasses bearer auth for all /api/* routes.
+  // /api/dashboard/* is handled separately by isDashboardSessionRoute/isDashboardUserRoute.
+  return url.startsWith('/api/') && !url.startsWith('/api/dashboard/');
 }
 
 function isDashboardUserRoute(url: string) {
@@ -750,8 +753,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       && (
         isDashboardSessionRoute(request.url)
         || (isDashboardUserRoute(request.url) && dashboardSession)
-        || (isDashboardProtectedApiRoute(request.method, request.url) && dashboardSession)
-        || (isHumanReviewRoute(request.method, request.url) && dashboardSession)
+        || (isDashboardSessionBypassRoute(request.url) && dashboardSession)
       )
     ) {
       return;

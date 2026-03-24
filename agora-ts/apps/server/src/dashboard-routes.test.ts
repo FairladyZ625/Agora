@@ -807,6 +807,43 @@ describe('dashboard routes', () => {
     expect(agents.statusCode).toBe(200);
     expect(agents.json().craftsman_runtime).toBeTruthy();
   });
+
+  it('session bypasses bearer auth for previously missing GET routes (skills, nomos, inbox)', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const app = buildApp({
+      db,
+      apiAuth: { enabled: true, token: 'test-token' },
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: { username: 'lizeyu', password: 'secret-pass' },
+    });
+    const cookie = login.headers['set-cookie'];
+    const sessionCookie = Array.isArray(cookie) ? cookie[0] : String(cookie);
+
+    const skills = await app.inject({ method: 'GET', url: '/api/skills', headers: { cookie: sessionCookie } });
+    const nomos = await app.inject({ method: 'GET', url: '/api/nomos', headers: { cookie: sessionCookie } });
+    const inbox = await app.inject({ method: 'GET', url: '/api/inbox', headers: { cookie: sessionCookie } });
+
+    // All should succeed (not 401) with a valid session
+    expect(skills.statusCode).not.toBe(401);
+    expect(nomos.statusCode).not.toBe(401);
+    expect(inbox.statusCode).not.toBe(401);
+
+    // Without session, all should 401
+    const skillsNoAuth = await app.inject({ method: 'GET', url: '/api/skills' });
+    expect(skillsNoAuth.statusCode).toBe(401);
+  });
 });
 
 function createTmuxExec() {
