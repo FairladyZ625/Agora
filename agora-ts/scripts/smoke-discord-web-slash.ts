@@ -1,0 +1,248 @@
+#!/usr/bin/env tsx
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir, homedir } from "node:os";
+import { join } from "node:path";
+import process from "node:process";
+import { spawn } from "node:child_process";
+import {
+  isDiscordLoginUrl,
+  normalizeDiscordSmokeCommands,
+  parseRunningChromeRemoteDebuggingPort,
+  splitSlashCommand,
+} from "./discord-web-slash-lib.ts";
+
+type Options = {
+  channelUrl: string;
+  profileDir: string;
+  outDir: string;
+  commands: string[];
+  probeOnly: boolean;
+  headless: boolean;
+};
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  if (!existsSync(options.profileDir)) {
+    throw new Error(`profile dir does not exist: ${options.profileDir}`);
+  }
+  mkdirSync(options.outDir, { recursive: true });
+
+  const processList = await captureCommand("ps", ["aux"]);
+  const remoteDebuggingPort = parseRunningChromeRemoteDebuggingPort(processList, options.profileDir);
+  const dashboardRoot = join(process.cwd(), "..", "dashboard");
+  const playwrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH
+    || join(homedir(), "Library", "Caches", "ms-playwright");
+  const beforeScreenshot = join(options.outDir, "discord-before.png");
+  const afterScreenshot = join(options.outDir, "discord-after.png");
+  const commandScript = buildBrowserScript({
+    channelUrl: options.channelUrl,
+    profileDir: options.profileDir,
+    commands: options.commands,
+    probeOnly: options.probeOnly,
+    headless: options.headless,
+    remoteDebuggingPort,
+    beforeScreenshot,
+    afterScreenshot,
+  });
+
+  const output = await runNodeScript(commandScript, dashboardRoot, {
+    PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
+  });
+  const parsed = JSON.parse(output) as Record<string, unknown>;
+  const currentUrl = String(parsed.currentUrl || "");
+  const loginRequired = isDiscordLoginUrl(currentUrl);
+  process.stdout.write(`${JSON.stringify({
+    status: loginRequired ? "login_required" : "ok",
+    connectionMode: parsed.connectionMode,
+    currentUrl,
+    profileDir: options.profileDir,
+    remoteDebuggingPort,
+    commandsAttempted: options.commands,
+    commandsSent: parsed.commandsSent,
+    beforeScreenshot,
+    afterScreenshot,
+    note: loginRequired
+      ? "Discord Web redirected to login; complete login in the persistent profile and retry."
+      : "Discord Web slash smoke executed; verify screenshots and pair with debug:plugin:slash if needed.",
+  }, null, 2)}\n`);
+}
+
+function parseArgs(args: string[]): Options {
+  const defaults = {
+    profileDir: process.env.DISCORD_WEB_PROFILE_DIR || join(homedir(), "Library", "Caches", "ms-playwright", "mcp-chrome"),
+    outDir: mkdtempSync(join(tmpdir(), "agora-discord-web-slash-")),
+    commands: [] as string[],
+    probeOnly: false,
+    headless: false,
+  };
+  let channelUrl = process.env.DISCORD_WEB_TARGET_URL || "";
+  for (let index = 0; index < args.length; index += 1) {
+    const token = args[index];
+    switch (token) {
+      case "--channel-url":
+        channelUrl = args[index + 1] || "";
+        index += 1;
+        break;
+      case "--profile-dir":
+        defaults.profileDir = args[index + 1] || defaults.profileDir;
+        index += 1;
+        break;
+      case "--out-dir":
+        defaults.outDir = args[index + 1] || defaults.outDir;
+        index += 1;
+        break;
+      case "--command":
+        defaults.commands.push(args[index + 1] || "");
+        index += 1;
+        break;
+      case "--probe-only":
+        defaults.probeOnly = true;
+        break;
+      case "--headless":
+        defaults.headless = true;
+        break;
+      default:
+        throw new Error(`unknown arg: ${token}`);
+    }
+  }
+  if (!channelUrl) {
+    throw new Error("missing --channel-url (or DISCORD_WEB_TARGET_URL)");
+  }
+  const commands = defaults.probeOnly
+    ? []
+    : normalizeDiscordSmokeCommands(
+        defaults.commands.length
+          ? defaults.commands
+          : ["/task create", "/task guided-task-debug", "/task coding", "/project list active"],
+      );
+  return {
+    channelUrl,
+    profileDir: defaults.profileDir,
+    outDir: defaults.outDir,
+    commands,
+    probeOnly: defaults.probeOnly,
+    headless: defaults.headless,
+  };
+}
+
+function buildBrowserScript(input: {
+  channelUrl: string;
+  profileDir: string;
+  commands: string[];
+  probeOnly: boolean;
+  headless: boolean;
+  remoteDebuggingPort: number | null;
+  beforeScreenshot: string;
+  afterScreenshot: string;
+}) {
+  return `
+    import { chromium } from 'playwright';
+    let browser = null;
+    let context = null;
+    let page = null;
+    let connectionMode = 'launch';
+    try {
+      if (${input.remoteDebuggingPort !== null}) {
+        const version = await fetch('http://127.0.0.1:${input.remoteDebuggingPort ?? 0}/json/version').then((response) => response.json());
+        browser = await chromium.connectOverCDP(version.webSocketDebuggerUrl);
+        context = browser.contexts()[0] ?? await browser.newContext();
+        page = context.pages()[0] ?? await context.newPage();
+        connectionMode = 'connect';
+      } else {
+        context = await chromium.launchPersistentContext(${JSON.stringify(input.profileDir)}, {
+          channel: 'chrome',
+          headless: ${input.headless},
+        });
+        page = context.pages()[0] ?? await context.newPage();
+      }
+      await page.goto(${JSON.stringify(input.channelUrl)}, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await page.screenshot({ path: ${JSON.stringify(input.beforeScreenshot)}, fullPage: true });
+      const commandsSent = [];
+      if (!page.url().includes('/login') && !${input.probeOnly}) {
+        const textbox = page.locator('div[role="textbox"]').last();
+        await textbox.waitFor({ timeout: 10000 });
+        for (const command of ${JSON.stringify(input.commands)}) {
+          const { commandName, argsText } = ${splitSlashCommand.toString()}(command);
+          await textbox.click();
+          await page.keyboard.type(commandName);
+          await page.waitForTimeout(800);
+          await page.keyboard.press('Tab');
+          await page.waitForTimeout(500);
+          if (argsText) {
+            await page.keyboard.type(argsText);
+            await page.waitForTimeout(300);
+          }
+          await page.keyboard.press('Enter');
+          commandsSent.push(command);
+          await page.waitForTimeout(2000);
+        }
+      }
+      await page.screenshot({ path: ${JSON.stringify(input.afterScreenshot)}, fullPage: true });
+      console.log(JSON.stringify({
+        connectionMode,
+        currentUrl: page.url(),
+        commandsSent,
+      }));
+      process.exit(0);
+    } finally {
+      if (connectionMode === 'launch' && context) {
+        await context.close();
+      }
+    }
+  `;
+}
+
+async function captureCommand(command: string, args: string[]) {
+  return await new Promise<string>((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: process.env,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolvePromise(stdout);
+        return;
+      }
+      reject(new Error(stderr || stdout || `${command} ${args.join(" ")} failed with code ${code ?? "unknown"}`));
+    });
+  });
+}
+
+async function runNodeScript(script: string, cwd: string, env: NodeJS.ProcessEnv) {
+  return await new Promise<string>((resolvePromise, reject) => {
+    const child = spawn("node", ["--input-type=module", "-e", script], {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        ...env,
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolvePromise(stdout.trim());
+        return;
+      }
+      reject(new Error(stderr || stdout || `browser script failed with code ${code ?? "unknown"}`));
+    });
+  });
+}
+
+void main();

@@ -24,6 +24,7 @@
     "smoke:nomos:reuse": "npm run build && tsx scripts/smoke-nomos-reuse.ts",
     "smoke:discord:inbound-action": "npm run build && tsx scripts/smoke-discord-inbound-action.ts",
     "smoke:discord:regression": "AGORA_DEV_REGRESSION_MODE=true npm run build && tsx scripts/smoke-discord-regression.ts",
+    "smoke:discord:web-slash": "npx tsx scripts/smoke-discord-web-slash.ts",
     "smoke:plugin:live": "npx tsx scripts/smoke-plugin-live.ts",
     "debug:plugin:slash": "npx tsx scripts/debug-plugin-native-slash.ts",
     "dev:server": "concurrently -k -n build,server -c auto \"npm run dev:build:watch\" \"npm run dev:server:app\"",
