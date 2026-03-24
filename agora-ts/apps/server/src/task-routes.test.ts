@@ -964,6 +964,104 @@ describe('task routes', () => {
     });
   });
 
+  it('publishes a project pack into local catalog and installs it from catalog through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-target-')), 'repo');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-catalog-source',
+        name: 'Catalog Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-catalog-target',
+        name: 'Catalog Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const publishResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-catalog-source/nomos/publish',
+      payload: {},
+    });
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/catalog',
+    });
+    const showResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/catalog/project/proj-catalog-source',
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-catalog-target/nomos/install-catalog-pack',
+      payload: {
+        pack_id: 'project/proj-catalog-source',
+      },
+    });
+
+    expect(publishResponse.statusCode).toBe(200);
+    expect(publishResponse.json()).toMatchObject({
+      project_id: 'proj-catalog-source',
+      target: 'draft',
+      entry: expect.objectContaining({
+        pack_id: 'project/proj-catalog-source',
+      }),
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          pack_id: 'project/proj-catalog-source',
+        }),
+      ]),
+    });
+    expect(showResponse.statusCode).toBe(200);
+    expect(showResponse.json()).toMatchObject({
+      pack_id: 'project/proj-catalog-source',
+      source_project_id: 'proj-catalog-source',
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-catalog-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-catalog-source',
+      }),
+      catalog_entry: expect.objectContaining({
+        pack_id: 'project/proj-catalog-source',
+      }),
+    });
+  });
+
   it('creates a task bound to a project through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

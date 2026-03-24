@@ -250,6 +250,58 @@ export interface InstallLocalNomosPackToProjectResult {
   metadata: Record<string, unknown>;
 }
 
+export interface AgoraNomosCatalogLayout {
+  userAgoraDir: string;
+  root: string;
+  packsRoot: string;
+}
+
+export interface PublishedNomosCatalogEntry {
+  schema_version: 1;
+  pack_id: string;
+  published_at: string;
+  source_project_id: string;
+  source_target: 'draft' | 'active';
+  published_root: string;
+  manifest_path: string;
+  pack: ProjectNomosPackSummary;
+}
+
+export interface PublishProjectNomosPackOptions extends ResolveAgoraProjectStateOptions {
+  target?: 'draft' | 'active';
+  packId?: string | null;
+  publishedAt?: string;
+  replaceExisting?: boolean;
+}
+
+export interface PublishProjectNomosPackResult {
+  project_id: string;
+  target: 'draft' | 'active';
+  catalog_root: string;
+  catalog_pack_root: string;
+  manifest_path: string;
+  entry: PublishedNomosCatalogEntry;
+}
+
+export interface ListPublishedNomosCatalogOptions extends ResolveAgoraProjectStateOptions {
+  includeInvalid?: boolean;
+}
+
+export interface ListPublishedNomosCatalogResult {
+  catalog_root: string;
+  entries: PublishedNomosCatalogEntry[];
+}
+
+export interface InstallCatalogNomosPackToProjectOptions extends ResolveAgoraProjectStateOptions {
+  packId: string;
+  metadata?: Record<string, unknown> | null | undefined;
+  replaceExisting?: boolean;
+}
+
+export interface InstallCatalogNomosPackToProjectResult extends InstallLocalNomosPackToProjectResult {
+  catalog_entry: PublishedNomosCatalogEntry;
+}
+
 export interface EnsureProjectNomosAuthoringDraftOptions extends ResolveAgoraProjectStateOptions {
   repoPath?: string | null;
   nomosId?: string | null;
@@ -624,6 +676,16 @@ export function refineProjectNomosDraftFromSpec(
 
 export function resolveAgoraProjectsDir(options: ResolveAgoraProjectStateOptions = {}) {
   return resolve(resolveUserAgoraDir(options), 'projects');
+}
+
+export function resolveAgoraNomosCatalogLayout(options: ResolveAgoraProjectStateOptions = {}): AgoraNomosCatalogLayout {
+  const userAgoraDir = resolveUserAgoraDir(options);
+  const root = resolve(userAgoraDir, 'nomos', 'catalog');
+  return {
+    userAgoraDir,
+    root,
+    packsRoot: resolve(root, 'packs'),
+  };
 }
 
 export function resolveAgoraProjectStateLayout(
@@ -1262,6 +1324,50 @@ export function exportProjectNomosPack(
   };
 }
 
+export function publishProjectNomosPack(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: PublishProjectNomosPackOptions = {},
+): PublishProjectNomosPackResult {
+  const target = options.target ?? 'draft';
+  const exported = exportProjectNomosPack(projectId, metadata, {
+    ...options,
+    target,
+    outputDir: resolveCatalogPackRoot(options.packId ?? null, projectId, metadata, target, options),
+    replaceExisting: options.replaceExisting ?? true,
+  });
+  if (!exported.pack) {
+    throw new Error(`Cannot publish Nomos pack for ${projectId}: ${target} pack is missing.`);
+  }
+
+  const catalogLayout = resolveAgoraNomosCatalogLayout(options);
+  const manifestPath = resolve(exported.output_dir, 'catalog-entry.json');
+  const entry: PublishedNomosCatalogEntry = {
+    schema_version: 1,
+    pack_id: exported.pack.pack_id,
+    published_at: options.publishedAt ?? new Date().toISOString(),
+    source_project_id: projectId,
+    source_target: target,
+    published_root: exported.output_dir,
+    manifest_path: manifestPath,
+    pack: {
+      ...exported.pack,
+      root: exported.output_dir,
+      profile_path: resolve(exported.output_dir, 'profile.toml'),
+    },
+  };
+  writeFileSync(manifestPath, JSON.stringify(entry, null, 2), 'utf8');
+
+  return {
+    project_id: projectId,
+    target,
+    catalog_root: catalogLayout.root,
+    catalog_pack_root: exported.output_dir,
+    manifest_path: manifestPath,
+    entry,
+  };
+}
+
 export function installLocalNomosPackToProject(
   projectId: string,
   metadata: Record<string, unknown> | null | undefined,
@@ -1314,6 +1420,58 @@ export function installLocalNomosPackToProject(
     installed_root: layout.projectNomosDraftDir,
     installed_profile_path: layout.projectNomosDraftProfilePath,
     metadata: nextMetadata,
+  };
+}
+
+export function listPublishedNomosCatalog(
+  options: ListPublishedNomosCatalogOptions = {},
+): ListPublishedNomosCatalogResult {
+  const layout = resolveAgoraNomosCatalogLayout(options);
+  if (!existsSync(layout.packsRoot)) {
+    return { catalog_root: layout.root, entries: [] };
+  }
+
+  const entries = listCatalogManifestPaths(layout.packsRoot)
+    .map((manifestPath) => {
+      try {
+        return loadPublishedNomosCatalogEntry(manifestPath);
+      } catch {
+        return options.includeInvalid ? null : null;
+      }
+    })
+    .filter((entry): entry is PublishedNomosCatalogEntry => entry !== null)
+    .sort((left, right) => right.published_at.localeCompare(left.published_at));
+
+  return {
+    catalog_root: layout.root,
+    entries,
+  };
+}
+
+export function inspectPublishedNomosCatalogPack(
+  packId: string,
+  options: ResolveAgoraProjectStateOptions = {},
+): PublishedNomosCatalogEntry {
+  const manifestPath = resolveCatalogManifestPath(packId, options);
+  return loadPublishedNomosCatalogEntry(manifestPath);
+}
+
+export function installCatalogNomosPackToProject(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: InstallCatalogNomosPackToProjectOptions,
+): InstallCatalogNomosPackToProjectResult {
+  const entry = inspectPublishedNomosCatalogPack(options.packId, options);
+  const installOptions: InstallLocalNomosPackToProjectOptions = {
+    ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
+    ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
+    ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
+    packDir: entry.published_root,
+  };
+  const installed = installLocalNomosPackToProject(projectId, metadata, installOptions);
+  return {
+    ...installed,
+    catalog_entry: entry,
   };
 }
 
@@ -1624,6 +1782,21 @@ function copyDirectoryRecursive(sourceDir: string, targetDir: string) {
   }
 }
 
+function listCatalogManifestPaths(rootDir: string): string[] {
+  const entries: string[] = [];
+  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
+    const entryPath = resolve(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      entries.push(...listCatalogManifestPaths(entryPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name === 'catalog-entry.json') {
+      entries.push(entryPath);
+    }
+  }
+  return entries;
+}
+
 function writeFileIfMissing(path: string, content: string) {
   if (existsSync(path)) {
     return;
@@ -1859,6 +2032,35 @@ function buildBuiltInActiveNomosSummary(projectStateRoot: string, profilePath: s
   };
 }
 
+function resolveCatalogPackRoot(
+  requestedPackId: string | null,
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  target: 'draft' | 'active',
+  options: ResolveAgoraProjectStateOptions = {},
+): string {
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const pack = resolveProjectNomosPackForTarget(projectId, state, target);
+  const packId = requestedPackId?.trim() || pack?.pack_id;
+  if (!packId) {
+    throw new Error(`Cannot resolve published Nomos pack id for ${projectId}.`);
+  }
+  return resolveCatalogPackDir(packId, options);
+}
+
+function resolveCatalogPackDir(packId: string, options: ResolveAgoraProjectStateOptions = {}) {
+  const layout = resolveAgoraNomosCatalogLayout(options);
+  const segments = packId.split('/').map((segment) => segment.trim()).filter(Boolean);
+  if (segments.length === 0) {
+    throw new Error(`Nomos pack id is invalid: ${packId}`);
+  }
+  return resolve(layout.packsRoot, ...segments);
+}
+
+function resolveCatalogManifestPath(packId: string, options: ResolveAgoraProjectStateOptions = {}) {
+  return resolve(resolveCatalogPackDir(packId, options), 'catalog-entry.json');
+}
+
 function resolveProjectNomosPackForTarget(
   projectId: string,
   state: ResolvedProjectNomosState,
@@ -1902,6 +2104,34 @@ function loadProjectNomosPackSummary(
     source,
     root,
     profile_path: profilePath,
+  };
+}
+
+function loadPublishedNomosCatalogEntry(manifestPath: string): PublishedNomosCatalogEntry {
+  if (!existsSync(manifestPath)) {
+    throw new Error(`Nomos catalog manifest is missing: ${manifestPath}`);
+  }
+  const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+  const pack = asRecord(raw.pack);
+  return {
+    schema_version: 1,
+    pack_id: asRequiredString(raw.pack_id, 'pack_id'),
+    published_at: asRequiredString(raw.published_at, 'published_at'),
+    source_project_id: asRequiredString(raw.source_project_id, 'source_project_id'),
+    source_target: (asRequiredString(raw.source_target, 'source_target') === 'active' ? 'active' : 'draft'),
+    published_root: asRequiredString(raw.published_root, 'published_root'),
+    manifest_path: asRequiredString(raw.manifest_path, 'manifest_path'),
+    pack: {
+      pack_id: asRequiredString(pack.pack_id, 'pack.pack_id'),
+      name: asRequiredString(pack.name, 'pack.name'),
+      version: asRequiredString(pack.version, 'pack.version'),
+      description: asRequiredString(pack.description, 'pack.description'),
+      lifecycle_modules: asStringArray(pack.lifecycle_modules),
+      doctor_checks: asStringArray(pack.doctor_checks),
+      source: asRequiredString(pack.source, 'pack.source'),
+      root: asRequiredString(pack.root, 'pack.root'),
+      profile_path: asRequiredString(pack.profile_path, 'pack.profile_path'),
+    },
   };
 }
 
