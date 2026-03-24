@@ -8,6 +8,10 @@ export * from './nomos.js';
 export * from './runtime-assets.js';
 export {
   diffProjectNomos,
+  inspectPublishedNomosCatalogPack,
+  installCatalogNomosPackToProject,
+  listPublishedNomosCatalog,
+  publishProjectNomosPack,
   validateProjectNomos,
 } from './nomos.js';
 

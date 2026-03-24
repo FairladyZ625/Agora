@@ -12,11 +12,15 @@ import {
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
+  installCatalogNomosPackToProject,
   installBuiltInAgoraNomosForProject,
+  listPublishedNomosCatalog,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   prepareProjectNomosInstall,
+  publishProjectNomosPack,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
   resolveProjectNomosState,
@@ -1344,6 +1348,25 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/projects/:projectId/nomos/publish', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        target?: 'draft' | 'active';
+      } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      return reply.send(publishProjectNomosPack(project.id, project.metadata ?? null, {
+        target: payload.target === 'active' ? 'active' : 'draft',
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/projects/:projectId/nomos/install-pack', async (request, reply) => {
     if (!projectService) {
       return reply.status(503).send({ message: 'Project service is not configured' });
@@ -1359,6 +1382,46 @@ export function buildApp(options: BuildAppOptions = {}) {
       });
       projectService.updateProjectMetadata(project.id, installed.metadata);
       return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-catalog-pack', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        pack_id: string;
+      } | undefined) ?? { pack_id: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installCatalogNomosPackToProject(project.id, project.metadata ?? null, {
+        packId: payload.pack_id,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/catalog', async (_request, reply) => {
+    try {
+      return reply.send(listPublishedNomosCatalog());
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/catalog/*', async (request, reply) => {
+    try {
+      const { '*': packId = '' } = request.params as { '*': string };
+      return reply.send(inspectPublishedNomosCatalogPack(packId));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

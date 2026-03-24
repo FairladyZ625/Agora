@@ -15,7 +15,11 @@ import {
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
+  installCatalogNomosPackToProject,
+  listPublishedNomosCatalog,
+  publishProjectNomosPack,
   refineProjectNomosDraftFromSpec,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
@@ -1120,6 +1124,44 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   nomos
+    .command('list-published')
+    .description('列出本机 local catalog 中已发布的 Nomos pack')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const listed = listPublishedNomosCatalog();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(listed, null, 2));
+        return;
+      }
+      writeLine(stdout, `catalog_root: ${listed.catalog_root}`);
+      if (listed.entries.length === 0) {
+        writeLine(stdout, 'entries: 0');
+        return;
+      }
+      for (const entry of listed.entries) {
+        writeLine(stdout, `${entry.pack_id} — ${entry.pack.version} (${entry.source_project_id}/${entry.source_target})`);
+      }
+    });
+
+  nomos
+    .command('show-published')
+    .description('查看 local catalog 中某个已发布的 Nomos pack')
+    .argument('<packId>', 'published pack id')
+    .option('--json', '输出 JSON', false)
+    .action((packId: string, options: { json?: boolean }) => {
+      const entry = inspectPublishedNomosCatalogPack(packId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(entry, null, 2));
+        return;
+      }
+      writeLine(stdout, `${entry.pack_id} — ${entry.pack.name}`);
+      writeLine(stdout, `published_at: ${entry.published_at}`);
+      writeLine(stdout, `source_project_id: ${entry.source_project_id}`);
+      writeLine(stdout, `source_target: ${entry.source_target}`);
+      writeLine(stdout, `published_root: ${entry.published_root}`);
+    });
+
+  nomos
     .command('export-project')
     .description('导出某个 project 当前的 draft/active Nomos pack 到本地目录')
     .argument('<projectId>', 'project id')
@@ -1147,6 +1189,27 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   nomos
+    .command('publish-project')
+    .description('把某个 project 当前的 draft/active Nomos pack 发布到本机 local catalog')
+    .argument('<projectId>', 'project id')
+    .option('--target <target>', 'publish target: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { target?: 'draft' | 'active'; json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const published = publishProjectNomosPack(project.id, project.metadata ?? null, {
+        target: options.target === 'active' ? 'active' : 'draft',
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(published, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos pack 已发布到 catalog: ${project.id}`);
+      writeLine(stdout, `target: ${published.target}`);
+      writeLine(stdout, `pack_id: ${published.entry.pack_id}`);
+      writeLine(stdout, `catalog_pack_root: ${published.catalog_pack_root}`);
+    });
+
+  nomos
     .command('install-pack')
     .description('把本地 Nomos pack 安装到某个 project 的 draft 槽位')
     .requiredOption('--project-id <projectId>', 'project id')
@@ -1167,6 +1230,31 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, `Nomos pack 已安装到 draft: ${project.id}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
+    .command('install-from-catalog')
+    .description('把 local catalog 中的已发布 Nomos pack 安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--pack-id <packId>', 'published pack id')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      packId: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installCatalogNomosPackToProject(project.id, project.metadata ?? null, {
+        packId: options.packId,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Catalog Nomos pack 已安装到 draft: ${project.id}`);
       writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
       writeLine(stdout, `installed_root: ${installed.installed_root}`);
     });

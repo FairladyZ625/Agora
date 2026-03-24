@@ -14,11 +14,15 @@ import {
   exportProjectNomosPack,
   ensureAgoraProjectStateLayout,
   ensureProjectNomosAuthoringDraft,
+  inspectPublishedNomosCatalogPack,
+  installCatalogNomosPackToProject,
   installLocalNomosPackToProject,
   installBuiltInAgoraNomosForProject,
+  listPublishedNomosCatalog,
   mergeProjectMetadataWithNomosProfile,
   nomosProjectProfileSchema,
   parseProjectNomosAuthoringSpec,
+  publishProjectNomosPack,
   requireSupportedNomosId,
   refineProjectNomosDraftFromSpec,
   validateProjectNomos,
@@ -364,13 +368,53 @@ describe('nomos pack model freeze', () => {
 
     expect(installed.pack.pack_id).toBe('project/proj-source');
     expect(existsSync(installed.installed_root)).toBe(true);
-    expect(installed.metadata.agora?.nomos?.draft_profile_path).toContain('/projects/proj-target/nomos/project-nomos/profile.toml');
+    expect(((installed.metadata as { agora?: { nomos?: { draft_profile_path?: string } } }).agora?.nomos?.draft_profile_path)).toContain('/projects/proj-target/nomos/project-nomos/profile.toml');
     const targetValidation = validateProjectNomos('proj-target', installed.metadata, {
       userAgoraDir: agoraHomeDir,
       target: 'draft',
     });
     expect(targetValidation.valid).toBe(true);
     expect(targetValidation.pack?.pack_id).toBe('project/proj-source');
+  });
+
+  it('publishes a project draft pack into the local catalog and installs it from catalog into another project', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-publish-source', { userAgoraDir: agoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-publish-source', 'Publish Source', {
+      userAgoraDir: agoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+
+    const published = publishProjectNomosPack('proj-publish-source', sourceMetadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'draft',
+    });
+
+    expect(existsSync(join(published.catalog_pack_root, 'profile.toml'))).toBe(true);
+    expect(existsSync(published.manifest_path)).toBe(true);
+    expect(published.entry.pack_id).toBe('project/proj-publish-source');
+
+    const listed = listPublishedNomosCatalog({ userAgoraDir: agoraHomeDir });
+    expect(listed.entries.map((entry) => entry.pack_id)).toContain('project/proj-publish-source');
+
+    const inspected = inspectPublishedNomosCatalogPack('project/proj-publish-source', { userAgoraDir: agoraHomeDir });
+    expect(inspected.source_project_id).toBe('proj-publish-source');
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-publish-target', { userAgoraDir: agoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installCatalogNomosPackToProject('proj-publish-target', targetMetadata, {
+      userAgoraDir: agoraHomeDir,
+      packId: 'project/proj-publish-source',
+    });
+
+    expect(installed.pack.pack_id).toBe('project/proj-publish-source');
+    expect(installed.catalog_entry.pack_id).toBe('project/proj-publish-source');
+    const targetValidation = validateProjectNomos('proj-publish-target', installed.metadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'draft',
+    });
+    expect(targetValidation.valid).toBe(true);
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {

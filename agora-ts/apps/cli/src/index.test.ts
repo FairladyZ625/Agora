@@ -677,6 +677,56 @@ describe('agora-ts cli', () => {
     );
   });
 
+  it('publishes a project pack to the local catalog and installs it from catalog into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-catalog-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-source-repo-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-target-repo-'), 'repo-target');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-publish-source',
+      '--name', 'CLI Publish Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-publish-target',
+      '--name', 'CLI Publish Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync(['nomos', 'publish-project', 'proj-cli-publish-source'], { from: 'user' });
+    await program.parseAsync(['nomos', 'show-published', 'project/proj-cli-publish-source'], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-catalog',
+      '--project-id', 'proj-cli-publish-target',
+      '--pack-id', 'project/proj-cli-publish-source',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos pack 已发布到 catalog: proj-cli-publish-source');
+    expect(stdout.value).toContain('project/proj-cli-publish-source — CLI Publish Source Nomos');
+    expect(stdout.value).toContain('Catalog Nomos pack 已安装到 draft: proj-cli-publish-target');
+  });
+
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

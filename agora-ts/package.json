@@ -22,6 +22,7 @@
     "smoke:hybrid:init": "npm run build && tsx scripts/smoke-hybrid-init.ts",
     "smoke:nomos:layered": "npm run build && tsx scripts/smoke-nomos-layered.ts",
     "smoke:nomos:reuse": "npm run build && tsx scripts/smoke-nomos-reuse.ts",
+    "smoke:nomos:catalog": "npm run build && tsx scripts/smoke-nomos-catalog.ts",
     "smoke:discord:inbound-action": "npm run build && tsx scripts/smoke-discord-inbound-action.ts",
     "smoke:discord:regression": "AGORA_DEV_REGRESSION_MODE=true npm run build && tsx scripts/smoke-discord-regression.ts",
     "smoke:plugin:live": "npx tsx scripts/smoke-plugin-live.ts",
