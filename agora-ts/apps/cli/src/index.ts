@@ -1134,12 +1134,13 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, `catalog_root: ${listed.catalog_root}`);
+      writeLine(stdout, `total: ${listed.total}`);
       if (listed.entries.length === 0) {
         writeLine(stdout, 'entries: 0');
         return;
       }
-      for (const entry of listed.entries) {
-        writeLine(stdout, `${entry.pack_id} — ${entry.pack.version} (${entry.source_project_id}/${entry.source_target})`);
+      for (const entry of listed.summaries) {
+        writeLine(stdout, `${entry.pack_id} — ${entry.version} (${entry.source_project_id}/${entry.source_target})`);
       }
     });
 
@@ -1156,8 +1157,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `${entry.pack_id} — ${entry.pack.name}`);
       writeLine(stdout, `published_at: ${entry.published_at}`);
+      writeLine(stdout, `published_by: ${entry.published_by ?? '-'}`);
       writeLine(stdout, `source_project_id: ${entry.source_project_id}`);
       writeLine(stdout, `source_target: ${entry.source_target}`);
+      writeLine(stdout, `source_activation_status: ${entry.source_activation_status}`);
+      writeLine(stdout, `source_repo_path: ${entry.source_repo_path ?? '-'}`);
+      writeLine(stdout, `published_note: ${entry.published_note ?? '-'}`);
       writeLine(stdout, `published_root: ${entry.published_root}`);
     });
 
@@ -1193,11 +1198,15 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('把某个 project 当前的 draft/active Nomos pack 发布到本机 local catalog')
     .argument('<projectId>', 'project id')
     .option('--target <target>', 'publish target: draft | active', 'draft')
+    .option('--actor <actor>', 'published by actor id')
+    .option('--note <note>', 'publish note')
     .option('--json', '输出 JSON', false)
-    .action((projectId: string, options: { target?: 'draft' | 'active'; json?: boolean }) => {
+    .action((projectId: string, options: { target?: 'draft' | 'active'; actor?: string; note?: string; json?: boolean }) => {
       const project = projectService.requireProject(projectId);
       const published = publishProjectNomosPack(project.id, project.metadata ?? null, {
         target: options.target === 'active' ? 'active' : 'draft',
+        ...(options.actor ? { publishedBy: options.actor } : {}),
+        ...(options.note ? { publishedNote: options.note } : {}),
       });
       if (options.json) {
         writeLine(stdout, JSON.stringify(published, null, 2));
@@ -1206,6 +1215,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Project Nomos pack 已发布到 catalog: ${project.id}`);
       writeLine(stdout, `target: ${published.target}`);
       writeLine(stdout, `pack_id: ${published.entry.pack_id}`);
+      writeLine(stdout, `published_by: ${published.entry.published_by ?? '-'}`);
       writeLine(stdout, `catalog_pack_root: ${published.catalog_pack_root}`);
     });
 

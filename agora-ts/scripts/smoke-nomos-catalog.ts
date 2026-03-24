@@ -74,6 +74,8 @@ async function main() {
     const published = await runCli([
       'nomos', 'publish-project',
       'proj-nomos-catalog-source',
+      '--actor', 'archon',
+      '--note', 'catalog smoke',
       '--json',
     ], { configPath, dbPath });
     const listed = await runCli([
@@ -98,16 +100,20 @@ async function main() {
     ], { configPath, dbPath });
 
     const publishPayload = JSON.parse(published.stdout) as {
-      entry?: { pack_id?: string };
+      entry?: { pack_id?: string; published_by?: string; published_note?: string };
       catalog_pack_root?: string;
       manifest_path?: string;
     };
     const listPayload = JSON.parse(listed.stdout) as {
+      total?: number;
+      summaries?: Array<{ pack_id?: string; published_by?: string }>;
       entries?: Array<{ pack_id?: string }>;
     };
     const showPayload = JSON.parse(shown.stdout) as {
       pack_id?: string;
       published_root?: string;
+      published_by?: string;
+      published_note?: string;
     };
     const installPayload = JSON.parse(installed.stdout) as {
       pack?: { pack_id?: string };
@@ -121,16 +127,22 @@ async function main() {
     if (publishPayload.entry?.pack_id !== 'project/proj-nomos-catalog-source') {
       throw new Error(`unexpected published pack id: ${published.stdout}`);
     }
+    if (publishPayload.entry?.published_by !== 'archon' || publishPayload.entry?.published_note !== 'catalog smoke') {
+      throw new Error(`published metadata missing: ${published.stdout}`);
+    }
     if (!publishPayload.catalog_pack_root || !existsSync(join(publishPayload.catalog_pack_root, 'profile.toml'))) {
       throw new Error(`published catalog root missing profile.toml: ${published.stdout}`);
     }
     if (!publishPayload.manifest_path || !existsSync(publishPayload.manifest_path)) {
       throw new Error(`published manifest missing: ${published.stdout}`);
     }
+    if (listPayload.total !== 1 || !listPayload.summaries?.some((entry) => entry.pack_id === 'project/proj-nomos-catalog-source' && entry.published_by === 'archon')) {
+      throw new Error(`catalog summary missing published metadata: ${listed.stdout}`);
+    }
     if (!listPayload.entries?.some((entry) => entry.pack_id === 'project/proj-nomos-catalog-source')) {
       throw new Error(`catalog listing missing published pack: ${listed.stdout}`);
     }
-    if (showPayload.pack_id !== 'project/proj-nomos-catalog-source') {
+    if (showPayload.pack_id !== 'project/proj-nomos-catalog-source' || showPayload.published_by !== 'archon' || showPayload.published_note !== 'catalog smoke') {
       throw new Error(`show-published returned wrong pack: ${shown.stdout}`);
     }
     if (installPayload.pack?.pack_id !== 'project/proj-nomos-catalog-source'

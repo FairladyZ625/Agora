@@ -260,8 +260,12 @@ export interface PublishedNomosCatalogEntry {
   schema_version: 1;
   pack_id: string;
   published_at: string;
+  published_by: string | null;
+  published_note: string | null;
   source_project_id: string;
   source_target: 'draft' | 'active';
+  source_activation_status: ProjectNomosActivationStatus;
+  source_repo_path: string | null;
   published_root: string;
   manifest_path: string;
   pack: ProjectNomosPackSummary;
@@ -271,7 +275,21 @@ export interface PublishProjectNomosPackOptions extends ResolveAgoraProjectState
   target?: 'draft' | 'active';
   packId?: string | null;
   publishedAt?: string;
+  publishedBy?: string | null;
+  publishedNote?: string | null;
   replaceExisting?: boolean;
+}
+
+export interface PublishedNomosCatalogSummary {
+  pack_id: string;
+  name: string;
+  version: string;
+  description: string;
+  published_at: string;
+  published_by: string | null;
+  source_project_id: string;
+  source_target: 'draft' | 'active';
+  source_repo_path: string | null;
 }
 
 export interface PublishProjectNomosPackResult {
@@ -289,6 +307,8 @@ export interface ListPublishedNomosCatalogOptions extends ResolveAgoraProjectSta
 
 export interface ListPublishedNomosCatalogResult {
   catalog_root: string;
+  total: number;
+  summaries: PublishedNomosCatalogSummary[];
   entries: PublishedNomosCatalogEntry[];
 }
 
@@ -1330,6 +1350,7 @@ export function publishProjectNomosPack(
   options: PublishProjectNomosPackOptions = {},
 ): PublishProjectNomosPackResult {
   const target = options.target ?? 'draft';
+  const state = resolveProjectNomosState(projectId, metadata, options);
   const exported = exportProjectNomosPack(projectId, metadata, {
     ...options,
     target,
@@ -1346,8 +1367,12 @@ export function publishProjectNomosPack(
     schema_version: 1,
     pack_id: exported.pack.pack_id,
     published_at: options.publishedAt ?? new Date().toISOString(),
+    published_by: options.publishedBy?.trim() || null,
+    published_note: options.publishedNote?.trim() || null,
     source_project_id: projectId,
     source_target: target,
+    source_activation_status: state.activation_status,
+    source_repo_path: state.repo_path,
     published_root: exported.output_dir,
     manifest_path: manifestPath,
     pack: {
@@ -1428,7 +1453,7 @@ export function listPublishedNomosCatalog(
 ): ListPublishedNomosCatalogResult {
   const layout = resolveAgoraNomosCatalogLayout(options);
   if (!existsSync(layout.packsRoot)) {
-    return { catalog_root: layout.root, entries: [] };
+    return { catalog_root: layout.root, total: 0, summaries: [], entries: [] };
   }
 
   const entries = listCatalogManifestPaths(layout.packsRoot)
@@ -1444,6 +1469,8 @@ export function listPublishedNomosCatalog(
 
   return {
     catalog_root: layout.root,
+    total: entries.length,
+    summaries: entries.map((entry) => buildPublishedCatalogSummary(entry)),
     entries,
   };
 }
@@ -2117,8 +2144,12 @@ function loadPublishedNomosCatalogEntry(manifestPath: string): PublishedNomosCat
     schema_version: 1,
     pack_id: asRequiredString(raw.pack_id, 'pack_id'),
     published_at: asRequiredString(raw.published_at, 'published_at'),
+    published_by: asOptionalString(raw.published_by),
+    published_note: asOptionalString(raw.published_note),
     source_project_id: asRequiredString(raw.source_project_id, 'source_project_id'),
     source_target: (asRequiredString(raw.source_target, 'source_target') === 'active' ? 'active' : 'draft'),
+    source_activation_status: ((asRequiredString(raw.source_activation_status, 'source_activation_status') === 'active_project') ? 'active_project' : 'active_builtin'),
+    source_repo_path: asOptionalString(raw.source_repo_path),
     published_root: asRequiredString(raw.published_root, 'published_root'),
     manifest_path: asRequiredString(raw.manifest_path, 'manifest_path'),
     pack: {
@@ -2132,6 +2163,20 @@ function loadPublishedNomosCatalogEntry(manifestPath: string): PublishedNomosCat
       root: asRequiredString(pack.root, 'pack.root'),
       profile_path: asRequiredString(pack.profile_path, 'pack.profile_path'),
     },
+  };
+}
+
+function buildPublishedCatalogSummary(entry: PublishedNomosCatalogEntry): PublishedNomosCatalogSummary {
+  return {
+    pack_id: entry.pack_id,
+    name: entry.pack.name,
+    version: entry.pack.version,
+    description: entry.pack.description,
+    published_at: entry.published_at,
+    published_by: entry.published_by,
+    source_project_id: entry.source_project_id,
+    source_target: entry.source_target,
+    source_repo_path: entry.source_repo_path,
   };
 }
 
