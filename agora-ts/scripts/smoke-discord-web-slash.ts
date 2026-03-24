@@ -6,8 +6,10 @@ import process from "node:process";
 import { spawn } from "node:child_process";
 import {
   isDiscordLoginUrl,
+  isDiscordPendingResponse,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
+  shouldSettleDiscordResponse,
   splitSlashCommand,
 } from "./discord-web-slash-lib.ts";
 
@@ -48,7 +50,7 @@ async function main() {
   const output = await runNodeScript(commandScript, dashboardRoot, {
     PLAYWRIGHT_BROWSERS_PATH: playwrightBrowsersPath,
   });
-  const parsed = JSON.parse(output) as Record<string, unknown>;
+  const parsed = parseResultPayload(output);
   const currentUrl = String(parsed.currentUrl || "");
   const loginRequired = isDiscordLoginUrl(currentUrl);
   process.stdout.write(`${JSON.stringify({
@@ -59,6 +61,11 @@ async function main() {
     remoteDebuggingPort,
     commandsAttempted: options.commands,
     commandsSent: parsed.commandsSent,
+    commandResults: parsed.commandResults,
+    beforeTail: parsed.beforeTail,
+    afterTail: parsed.afterTail,
+    deltaTail: parsed.deltaTail,
+    responseSettled: parsed.responseSettled,
     beforeScreenshot,
     afterScreenshot,
     note: loginRequired
@@ -141,6 +148,49 @@ function buildBrowserScript(input: {
     let context = null;
     let page = null;
     let connectionMode = 'launch';
+    const readBodyText = async () => await page.locator('body').innerText();
+    const isDiscordPendingResponse = ${isDiscordPendingResponse.toString()};
+    const shouldSettleDiscordResponse = ${shouldSettleDiscordResponse.toString()};
+    const waitForSettledResponse = async (beforeText) => {
+      const timeoutMs = 20000;
+      const minQuietMs = 2500;
+      const startedAt = Date.now();
+      let lastText = beforeText;
+      let lastChangedAt = startedAt;
+      let observedPending = false;
+      while (Date.now() - startedAt < timeoutMs) {
+        await page.waitForTimeout(1000);
+        const currentText = await readBodyText();
+        if (currentText !== lastText) {
+          lastText = currentText;
+          lastChangedAt = Date.now();
+        }
+        if (isDiscordPendingResponse(currentText)) {
+          observedPending = true;
+        }
+        const quietMs = Date.now() - lastChangedAt;
+        if (shouldSettleDiscordResponse({
+          beforeText,
+          currentText,
+          quietMs,
+          minQuietMs,
+        })) {
+          return {
+            settled: true,
+            waitedMs: Date.now() - startedAt,
+            observedPending,
+            bodyTail: currentText.slice(-1200),
+          };
+        }
+      }
+      const currentText = await readBodyText();
+      return {
+        settled: false,
+        waitedMs: Date.now() - startedAt,
+        observedPending: observedPending || isDiscordPendingResponse(currentText),
+        bodyTail: currentText.slice(-1200),
+      };
+    };
     try {
       if (${input.remoteDebuggingPort !== null}) {
         const version = await fetch('http://127.0.0.1:${input.remoteDebuggingPort ?? 0}/json/version').then((response) => response.json());
@@ -158,11 +208,14 @@ function buildBrowserScript(input: {
       await page.goto(${JSON.stringify(input.channelUrl)}, { waitUntil: 'domcontentloaded', timeout: 15000 });
       await page.waitForTimeout(2000);
       await page.screenshot({ path: ${JSON.stringify(input.beforeScreenshot)}, fullPage: true });
+      const beforeBodyText = await readBodyText();
       const commandsSent = [];
+      const commandResults = [];
       if (!page.url().includes('/login') && !${input.probeOnly}) {
         const textbox = page.locator('div[role="textbox"]').last();
         await textbox.waitFor({ timeout: 10000 });
         for (const command of ${JSON.stringify(input.commands)}) {
+          const commandBeforeText = await readBodyText();
           const { commandName, argsText } = ${splitSlashCommand.toString()}(command);
           await textbox.click();
           await page.keyboard.type(commandName);
@@ -175,15 +228,27 @@ function buildBrowserScript(input: {
           }
           await page.keyboard.press('Enter');
           commandsSent.push(command);
-          await page.waitForTimeout(2000);
+          commandResults.push({
+            command,
+            ...(await waitForSettledResponse(commandBeforeText)),
+          });
         }
       }
       await page.screenshot({ path: ${JSON.stringify(input.afterScreenshot)}, fullPage: true });
-      console.log(JSON.stringify({
+      const afterBodyText = await readBodyText();
+      console.log('__AGORA_RESULT__' + JSON.stringify({
         connectionMode,
         currentUrl: page.url(),
         commandsSent,
+        commandResults,
+        beforeTail: beforeBodyText.slice(-1200),
+        afterTail: afterBodyText.slice(-1200),
+        deltaTail: afterBodyText.length > beforeBodyText.length
+          ? afterBodyText.slice(Math.max(beforeBodyText.length - 200, 0))
+          : afterBodyText.slice(-1200),
+        responseSettled: commandResults.every((entry) => entry.settled),
       }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       process.exit(0);
     } finally {
       if (connectionMode === 'launch' && context) {
@@ -243,6 +308,18 @@ async function runNodeScript(script: string, cwd: string, env: NodeJS.ProcessEnv
       reject(new Error(stderr || stdout || `browser script failed with code ${code ?? "unknown"}`));
     });
   });
+}
+
+function parseResultPayload(output: string) {
+  const line = output
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.startsWith("__AGORA_RESULT__"))
+    .at(-1);
+  if (!line) {
+    throw new Error(`missing __AGORA_RESULT__ payload in output:\n${output}`);
+  }
+  return JSON.parse(line.slice("__AGORA_RESULT__".length)) as Record<string, unknown>;
 }
 
 void main();

@@ -47,3 +47,19 @@ export function splitSlashCommand(command: string) {
     argsText: trimmed.slice(firstSpace + 1).trim(),
   };
 }
+
+export function isDiscordPendingResponse(text: string) {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return /正在响应|responding|thinking|typing/i.test(normalized);
+}
+
+export function shouldSettleDiscordResponse(input: {
+  beforeText: string;
+  currentText: string;
+  quietMs: number;
+  minQuietMs: number;
+}) {
+  const { beforeText, currentText, quietMs, minQuietMs } = input;
+  const hasNewOutput = currentText.trim() !== beforeText.trim();
+  return hasNewOutput && quietMs >= minQuietMs && !isDiscordPendingResponse(currentText);
+}

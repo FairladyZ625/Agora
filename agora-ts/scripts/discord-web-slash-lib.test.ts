@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   isDiscordLoginUrl,
+  isDiscordPendingResponse,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
   splitSlashCommand,
+  shouldSettleDiscordResponse,
 } from "./discord-web-slash-lib";
 
 describe("parseRunningChromeRemoteDebuggingPort", () => {
@@ -66,5 +68,48 @@ describe("splitSlashCommand", () => {
       commandName: "/task",
       argsText: "",
     });
+  });
+});
+
+describe("isDiscordPendingResponse", () => {
+  it("detects Discord in-progress response markers", () => {
+    expect(isDiscordPendingResponse("Chronicle-Agent正在响应……")).toBe(true);
+    expect(isDiscordPendingResponse("Chronicle-Agent is responding")).toBe(true);
+    expect(isDiscordPendingResponse("proj-api | active | API Project")).toBe(false);
+  });
+});
+
+describe("shouldSettleDiscordResponse", () => {
+  it("waits for new non-pending output and a quiet period", () => {
+    expect(
+      shouldSettleDiscordResponse({
+        beforeText: "before",
+        currentText: "before\nproj-api | active | API Project",
+        quietMs: 2600,
+        minQuietMs: 2500,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not settle while the response is still pending", () => {
+    expect(
+      shouldSettleDiscordResponse({
+        beforeText: "before",
+        currentText: "before\nChronicle-Agent正在响应……",
+        quietMs: 2600,
+        minQuietMs: 2500,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not settle before a quiet period elapses", () => {
+    expect(
+      shouldSettleDiscordResponse({
+        beforeText: "before",
+        currentText: "before\nproj-api | active | API Project",
+        quietMs: 800,
+        minQuietMs: 2500,
+      }),
+    ).toBe(false);
   });
 });
