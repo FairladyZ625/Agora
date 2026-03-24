@@ -60,8 +60,25 @@ async function main() {
   const parsed = parseResultPayload(output);
   const currentUrl = String(parsed.currentUrl || "");
   const loginRequired = isDiscordLoginUrl(currentUrl);
+  const responseSettled = parsed.responseSettled === true;
+  const assertionsPassed = parsed.assertionsPassed === true;
+  const shouldFail = !options.probeOnly && (loginRequired || !responseSettled || !assertionsPassed);
+  const status = loginRequired
+    ? "login_required"
+    : !responseSettled
+      ? "response_unsettled"
+      : !assertionsPassed
+        ? "assertion_failed"
+        : "ok";
+  const failureReason = !shouldFail
+    ? undefined
+    : loginRequired
+      ? "discord_web_session_requires_login"
+      : !responseSettled
+        ? "slash_response_did_not_settle"
+        : "slash_response_assertion_failed";
   process.stdout.write(`${JSON.stringify({
-    status: loginRequired ? "login_required" : "ok",
+    status,
     connectionMode: parsed.connectionMode,
     currentUrl,
     profileDir: options.profileDir,
@@ -73,14 +90,18 @@ async function main() {
     beforeTail: parsed.beforeTail,
     afterTail: parsed.afterTail,
     deltaTail: parsed.deltaTail,
-    responseSettled: parsed.responseSettled,
-    assertionsPassed: parsed.assertionsPassed,
+    responseSettled,
+    assertionsPassed,
+    failureReason,
     beforeScreenshot,
     afterScreenshot,
     note: loginRequired
       ? "Discord Web redirected to login; complete login in the persistent profile and retry."
       : "Discord Web slash smoke executed; verify screenshots and pair with debug:plugin:slash if needed.",
   }, null, 2)}\n`);
+  if (shouldFail) {
+    process.exitCode = 1;
+  }
 }
 
 function parseArgs(args: string[]): Options {
