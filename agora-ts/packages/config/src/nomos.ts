@@ -37,6 +37,7 @@ export const NOMOS_PROJECT_STATE_DIRECTORIES = [
   'prompts/doctor',
   'scripts',
   'skills',
+  'nomos/project-nomos-active',
 ] as const satisfies readonly string[];
 
 export const NOMOS_LIFECYCLE_MODULES = [
@@ -147,6 +148,8 @@ export interface AgoraProjectStateLayout {
   nomosDir: string;
   projectNomosDraftDir: string;
   projectNomosDraftProfilePath: string;
+  projectNomosActiveDir: string;
+  projectNomosActiveProfilePath: string;
   lifecycleProjectBootstrapPath: string;
   lifecycleTaskContextDeliveryPath: string;
   lifecycleTaskCloseoutPath: string;
@@ -901,6 +904,8 @@ export function resolveAgoraProjectStateLayout(
     nomosDir,
     projectNomosDraftDir: resolve(nomosDir, 'project-nomos'),
     projectNomosDraftProfilePath: resolve(nomosDir, 'project-nomos', 'profile.toml'),
+    projectNomosActiveDir: resolve(nomosDir, 'project-nomos-active'),
+    projectNomosActiveProfilePath: resolve(nomosDir, 'project-nomos-active', 'profile.toml'),
     lifecycleProjectBootstrapPath: resolve(root, 'lifecycle', 'project-bootstrap.md'),
     lifecycleTaskContextDeliveryPath: resolve(root, 'lifecycle', 'task-context-delivery.md'),
     lifecycleTaskCloseoutPath: resolve(root, 'lifecycle', 'task-closeout.md'),
@@ -1083,12 +1088,12 @@ export function resolveProjectNomosState(
   const activeRoot = typeof existingNomos.active_root === 'string'
     ? existingNomos.active_root
     : activationStatus === 'active_project'
-      ? draftRoot
+      ? layout.projectNomosActiveDir
       : layout.root;
   const activeProfilePath = typeof existingNomos.active_profile_path === 'string'
     ? existingNomos.active_profile_path
     : activationStatus === 'active_project'
-      ? draftProfilePath
+      ? layout.projectNomosActiveProfilePath
       : layout.profilePath;
   const nomosId = typeof existingNomos.id === 'string' && existingNomos.id.length > 0
     ? existingNomos.id
@@ -1176,12 +1181,6 @@ export function reviewProjectNomosDraft(
   const draftSummary = state.draft_profile_installed
     ? loadProjectNomosPackSummary(state.draft_root, state.draft_profile_path, 'project_state_draft')
     : null;
-  if (draftSummary) {
-    const expectedPackId = `project/${projectId}`;
-    if (draftSummary.pack_id !== expectedPackId) {
-      issues.push(`Draft Nomos pack id must be ${expectedPackId}, received ${draftSummary.pack_id}`);
-    }
-  }
   for (const requiredPath of [
     resolve(state.draft_root, 'constitution', 'constitution.md'),
     resolve(state.draft_root, 'docs', 'reference', 'methodologies.md'),
@@ -1414,6 +1413,15 @@ export function activateProjectNomosDraft(
   }
 
   const activatedAt = options.activatedAt ?? new Date().toISOString();
+  const layout = resolveAgoraProjectStateLayout(projectId, options);
+  if (existsSync(layout.projectNomosActiveDir)) {
+    removeDirectoryTree(layout.projectNomosActiveDir, {
+      label: 'activate project nomos draft',
+      allowedParents: [layout.nomosDir],
+    });
+  }
+  mkdirSync(layout.projectNomosActiveDir, { recursive: true });
+  copyDirectoryRecursive(review.draft.root, layout.projectNomosActiveDir);
   const existing = options.metadata ?? {};
   const existingAgora = asRecord(existing.agora);
   const existingNomos = asRecord(existingAgora.nomos);
@@ -1431,8 +1439,8 @@ export function activateProjectNomosDraft(
         activation_status: 'active_project',
         draft_root: review.draft.root,
         draft_profile_path: review.draft.profile_path,
-        active_root: review.draft.root,
-        active_profile_path: review.draft.profile_path,
+        active_root: layout.projectNomosActiveDir,
+        active_profile_path: layout.projectNomosActiveProfilePath,
         activated_at: activatedAt,
         activated_by: options.actor,
       },
@@ -1443,8 +1451,8 @@ export function activateProjectNomosDraft(
     project_id: projectId,
     nomos_id: review.draft.pack_id,
     activation_status: 'active_project',
-    active_root: review.draft.root,
-    active_profile_path: review.draft.profile_path,
+    active_root: layout.projectNomosActiveDir,
+    active_profile_path: layout.projectNomosActiveProfilePath,
     activated_at: activatedAt,
     activated_by: options.actor,
     metadata: nextMetadata,

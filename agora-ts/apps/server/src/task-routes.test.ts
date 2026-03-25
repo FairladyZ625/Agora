@@ -546,7 +546,7 @@ describe('task routes', () => {
       project_id: 'proj-nomos-activate',
       nomos_id: 'project/proj-nomos-activate',
       activation_status: 'active_project',
-      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos'),
+      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos-active'),
     });
   });
 
@@ -601,7 +601,7 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain('Bootstrap mode: `existing_repo`');
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(repoRoot);
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(
-      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos-active', 'prompts', 'bootstrap', 'interview.md'),
     );
   });
 

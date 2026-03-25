@@ -673,7 +673,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(taskService.getTask('OC-NOMOS-RERUN-2')?.description).toContain(
-      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos-active', 'prompts', 'bootstrap', 'interview.md'),
     );
   });
 

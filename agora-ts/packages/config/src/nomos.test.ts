@@ -30,6 +30,7 @@ import {
   registerNomosSource,
   requireSupportedNomosId,
   refineProjectNomosDraftFromSpec,
+  activateProjectNomosDraft,
   inspectRegisteredNomosSource,
   listRegisteredNomosSources,
   installNomosFromRegisteredSource,
@@ -608,6 +609,52 @@ describe('nomos pack model freeze', () => {
     });
     expect(validation.valid).toBe(true);
     expect(validation.pack?.pack_id).toBe('project/proj-registered-install-source');
+  });
+
+  it('allows activating an imported registered-source pack as the active nomos', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-registered-activate-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-registered-activate-source', 'Registered Activate Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-registered-activate-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'registered-activate-pack-root'),
+    });
+
+    registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-activate-source',
+      sourceDir: exported.output_dir,
+    });
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-registered-activate-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromRegisteredSource('proj-registered-activate-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-activate-source',
+    });
+
+    const activated = activateProjectNomosDraft('proj-registered-activate-target', {
+      userAgoraDir: targetAgoraHomeDir,
+      metadata: installed.metadata,
+      actor: 'archon',
+    });
+
+    expect(activated.nomos_id).toBe('project/proj-registered-activate-source');
+    expect(activated.activation_status).toBe('active_project');
+
+    const activeValidation = validateProjectNomos('proj-registered-activate-target', activated.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      target: 'active',
+    });
+    expect(activeValidation.valid).toBe(true);
+    expect(activeValidation.pack?.pack_id).toBe('project/proj-registered-activate-source');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {
