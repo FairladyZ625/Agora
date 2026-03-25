@@ -4,7 +4,9 @@ import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import {
+  extractDiscordResponseDelta,
   expectedMarkersForSlashCommand,
   isDiscordLoginUrl,
   isDiscordPendingResponse,
@@ -24,6 +26,8 @@ type Options = {
   commands: string[];
   probeOnly: boolean;
   headless: boolean;
+  settleTimeoutMs: number;
+  minQuietMs: number;
 };
 
 async function main() {
@@ -112,6 +116,8 @@ function parseArgs(args: string[]): Options {
     commands: [] as string[],
     probeOnly: false,
     headless: false,
+    settleTimeoutMs: 20_000,
+    minQuietMs: 2_500,
   };
   let channelUrl = process.env.DISCORD_WEB_TARGET_URL || "";
   for (let index = 0; index < args.length; index += 1) {
@@ -143,6 +149,14 @@ function parseArgs(args: string[]): Options {
       case "--headless":
         defaults.headless = true;
         break;
+      case "--settle-timeout-ms":
+        defaults.settleTimeoutMs = Number(args[index + 1] || defaults.settleTimeoutMs);
+        index += 1;
+        break;
+      case "--min-quiet-ms":
+        defaults.minQuietMs = Number(args[index + 1] || defaults.minQuietMs);
+        index += 1;
+        break;
       default:
         throw new Error(`unknown arg: ${token}`);
     }
@@ -165,6 +179,8 @@ function parseArgs(args: string[]): Options {
     commands,
     probeOnly: defaults.probeOnly,
     headless: defaults.headless,
+    settleTimeoutMs: defaults.settleTimeoutMs,
+    minQuietMs: defaults.minQuietMs,
   };
 }
 
@@ -198,10 +214,9 @@ function buildBrowserScript(input: {
     const expectedMarkersForSlashCommand = ${expectedMarkersForSlashCommand.toString()};
     const slashCommandAssertionPassed = ${slashCommandAssertionPassed.toString()};
     const isDiscordPendingResponse = ${isDiscordPendingResponse.toString()};
+    const extractDiscordResponseDelta = ${extractDiscordResponseDelta.toString()};
     const shouldSettleDiscordResponse = ${shouldSettleDiscordResponse.toString()};
-    const waitForSettledResponse = async (beforeText, command) => {
-      const timeoutMs = 20000;
-      const minQuietMs = 2500;
+    const waitForSettledResponse = async (beforeText, command, timeoutMs, minQuietMs) => {
       const startedAt = Date.now();
       let lastText = beforeText;
       let lastChangedAt = startedAt;
@@ -213,22 +228,25 @@ function buildBrowserScript(input: {
           lastText = currentText;
           lastChangedAt = Date.now();
         }
-        if (isDiscordPendingResponse(currentText)) {
+        const currentDelta = extractDiscordResponseDelta(beforeText, currentText);
+        if (isDiscordPendingResponse(currentDelta)) {
           observedPending = true;
         }
         const quietMs = Date.now() - lastChangedAt;
+        const assertionPassed = slashCommandAssertionPassed(command, currentText);
         if (shouldSettleDiscordResponse({
           beforeText,
           currentText,
           quietMs,
           minQuietMs,
+          assertionPassed,
         })) {
           return {
             settled: true,
             waitedMs: Date.now() - startedAt,
             observedPending,
             expectedMarkers: expectedMarkersForSlashCommand(command),
-            assertionPassed: slashCommandAssertionPassed(command, currentText),
+            assertionPassed,
             bodyTail: currentText.slice(-1200),
           };
         }
@@ -270,6 +288,9 @@ function buildBrowserScript(input: {
           const commandBeforeText = await readBodyText();
           const { commandName, argsText } = ${splitSlashCommand.toString()}(command);
           await textbox.click();
+          await page.keyboard.press('Meta+A');
+          await page.keyboard.press('Backspace');
+          await page.waitForTimeout(150);
           await page.keyboard.type(commandName);
           await page.waitForTimeout(800);
           await page.keyboard.press('Tab');
@@ -282,7 +303,7 @@ function buildBrowserScript(input: {
           commandsSent.push(command);
           commandResults.push({
             command,
-            ...(await waitForSettledResponse(commandBeforeText, command)),
+            ...(await waitForSettledResponse(commandBeforeText, command, ${input.settleTimeoutMs}, ${input.minQuietMs})),
           });
         }
       }
@@ -380,4 +401,10 @@ function parseResultPayload(output: string) {
   return JSON.parse(line.slice("__AGORA_RESULT__".length)) as Record<string, unknown>;
 }
 
-void main();
+const isDirectExecution = process.argv[1]
+  ? pathToFileURL(process.argv[1]).href === import.meta.url
+  : false;
+
+if (isDirectExecution) {
+  void main();
+}

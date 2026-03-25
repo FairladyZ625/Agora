@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractDiscordResponseDelta,
   expectedMarkersForSlashCommand,
   isDiscordLoginUrl,
   isDiscordPendingResponse,
@@ -126,6 +127,21 @@ describe("isDiscordPendingResponse", () => {
   });
 });
 
+describe("extractDiscordResponseDelta", () => {
+  it("returns only the appended tail when the new body extends the previous body", () => {
+    expect(
+      extractDiscordResponseDelta(
+        "before\nline-a",
+        "before\nline-a\nline-b",
+      ),
+    ).toBe("\nline-b");
+  });
+
+  it("falls back to the current body when the full text is reflowed", () => {
+    expect(extractDiscordResponseDelta("before", "rewritten")).toBe("rewritten");
+  });
+});
+
 describe("shouldSettleDiscordResponse", () => {
   it("waits for new non-pending output and a quiet period", () => {
     expect(
@@ -147,6 +163,18 @@ describe("shouldSettleDiscordResponse", () => {
         minQuietMs: 2500,
       }),
     ).toBe(false);
+  });
+
+  it("settles once the expected markers are present even if older pending text remains elsewhere in the page", () => {
+    expect(
+      shouldSettleDiscordResponse({
+        beforeText: "old text\nChronicle-Agent正在响应……",
+        currentText: "old text\nChronicle-Agent正在响应……\nproj-api | active | API Project",
+        quietMs: 2600,
+        minQuietMs: 2500,
+        assertionPassed: true,
+      }),
+    ).toBe(true);
   });
 
   it("does not settle before a quiet period elapses", () => {

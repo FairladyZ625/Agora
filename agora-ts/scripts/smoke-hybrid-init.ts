@@ -3,10 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 import { createCliProgram } from '../apps/cli/src/index.js';
 import { setupHybridRetrieval } from '../apps/cli/src/hybrid-retrieval-setup.js';
-import { findAgoraProjectRoot } from '../packages/config/src/env.js';
+import { findAgoraProjectRoot, loadAgoraDotEnv } from '../packages/config/src/env.js';
 
 class BufferStream {
   chunks: string[] = [];
@@ -52,13 +53,31 @@ function requireOption(value: string | undefined, name: string) {
   return trimmed;
 }
 
+export function resolveHybridSmokeDefaults(startDir: string) {
+  const projectRoot = findAgoraProjectRoot(startDir);
+  const dotEnv = loadAgoraDotEnv(projectRoot);
+  return {
+    projectRoot,
+    rootEnvPath: join(projectRoot, '.env'),
+    apiKey: process.env.OPENAI_API_KEY ?? dotEnv.OPENAI_API_KEY ?? '',
+    baseUrl: process.env.OPENAI_BASE_URL ?? dotEnv.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+    model: process.env.OPENAI_EMBEDDING_MODEL ?? dotEnv.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
+    dimension: process.env.OPENAI_EMBEDDING_DIMENSION ?? dotEnv.OPENAI_EMBEDDING_DIMENSION ?? '',
+    qdrantUrl: process.env.QDRANT_URL ?? dotEnv.QDRANT_URL ?? '',
+    qdrantApiKey: process.env.QDRANT_API_KEY ?? dotEnv.QDRANT_API_KEY ?? '',
+  };
+}
+
 async function main() {
+  const envDefaults = resolveHybridSmokeDefaults(process.cwd());
   const program = new Command();
   program
-    .option('--api-key <key>', 'embedding api key', process.env.OPENAI_API_KEY)
-    .option('--base-url <url>', 'embedding base url', process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1')
-    .option('--model <model>', 'embedding model', process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small')
-    .option('--dimension <dimension>', 'embedding dimension', process.env.OPENAI_EMBEDDING_DIMENSION ?? '')
+    .option('--api-key <key>', 'embedding api key', envDefaults.apiKey)
+    .option('--base-url <url>', 'embedding base url', envDefaults.baseUrl)
+    .option('--model <model>', 'embedding model', envDefaults.model)
+    .option('--dimension <dimension>', 'embedding dimension', envDefaults.dimension)
+    .option('--qdrant-url <url>', 'qdrant url', envDefaults.qdrantUrl)
+    .option('--qdrant-api-key <key>', 'qdrant api key', envDefaults.qdrantApiKey)
     .option('--keep-temp', 'keep temporary smoke dir', false)
     .parse(process.argv);
 
@@ -67,6 +86,8 @@ async function main() {
     baseUrl: string;
     model: string;
     dimension?: string;
+    qdrantUrl?: string;
+    qdrantApiKey?: string;
     keepTemp: boolean;
   }>();
 
@@ -74,8 +95,8 @@ async function main() {
   const configPath = join(smokeRoot, 'agora.json');
   const dbPath = join(smokeRoot, 'agora.db');
   const brainPackRoot = join(smokeRoot, 'agora-ai-brain');
-  const projectRoot = findAgoraProjectRoot(process.cwd());
-  const rootEnvPath = join(projectRoot, '.env');
+  const projectRoot = envDefaults.projectRoot;
+  const rootEnvPath = envDefaults.rootEnvPath;
   const originalEnv = existsSync(rootEnvPath) ? readFileSync(rootEnvPath, 'utf8') : null;
   process.env.AGORA_BRAIN_PACK_ROOT = brainPackRoot;
   process.env.AGORA_DB_PATH = dbPath;
@@ -107,6 +128,8 @@ async function main() {
         model: requireOption(options.model, 'OPENAI_EMBEDDING_MODEL'),
         dimension: options.dimension?.trim() ?? '',
       },
+      qdrantUrl: options.qdrantUrl?.trim() || undefined,
+      qdrantApiKey: options.qdrantApiKey?.trim() || undefined,
     });
 
     await runCli(['projects', 'create', '--id', 'proj-hybrid-init-smoke', '--name', 'Hybrid Init Smoke'], { configPath, dbPath });
@@ -173,4 +196,10 @@ async function main() {
   }
 }
 
-void main();
+const isDirectExecution = process.argv[1]
+  ? pathToFileURL(process.argv[1]).href === import.meta.url
+  : false;
+
+if (isDirectExecution) {
+  void main();
+}

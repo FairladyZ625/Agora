@@ -101,13 +101,27 @@ export function isDiscordPendingResponse(text: string) {
   return /正在响应|responding|thinking|typing/i.test(normalized);
 }
 
+export function extractDiscordResponseDelta(beforeText: string, currentText: string) {
+  if (currentText.startsWith(beforeText)) {
+    return currentText.slice(beforeText.length);
+  }
+  return currentText;
+}
+
 export function shouldSettleDiscordResponse(input: {
   beforeText: string;
   currentText: string;
   quietMs: number;
   minQuietMs: number;
+  assertionPassed?: boolean;
 }) {
-  const { beforeText, currentText, quietMs, minQuietMs } = input;
+  const { beforeText, currentText, quietMs, minQuietMs, assertionPassed = false } = input;
   const hasNewOutput = currentText.trim() !== beforeText.trim();
-  return hasNewOutput && quietMs >= minQuietMs && !isDiscordPendingResponse(currentText);
+  if (!hasNewOutput || quietMs < minQuietMs) {
+    return false;
+  }
+  if (assertionPassed) {
+    return true;
+  }
+  return !isDiscordPendingResponse(extractDiscordResponseDelta(beforeText, currentText));
 }
