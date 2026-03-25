@@ -262,11 +262,12 @@ describe("registerProjectCommands", () => {
       catalog_root: "/tmp/catalog",
       total: 1,
       summaries: [
-        { pack_id: "project/proj-nomos", version: "0.1.0", source_project_id: "proj-nomos", source_target: "draft" },
+        { pack_id: "project/proj-nomos", version: "0.1.0", source_kind: "project_publish", source_project_id: "proj-nomos", source_target: "draft" },
       ],
     }));
     const showPublishedNomosCatalog = vi.fn(async () => ({
       pack_id: "project/proj-nomos",
+      source_kind: "project_publish",
       source_project_id: "proj-nomos",
       source_target: "draft",
       source_activation_status: "active_builtin",
@@ -285,6 +286,25 @@ describe("registerProjectCommands", () => {
       installed_root: "/tmp/state/nomos/project-nomos",
       catalog_entry: { pack_id: "project/proj-nomos" },
     }));
+    const importNomosSource = vi.fn(async () => ({
+      source_dir: "/tmp/nomos-source",
+      source_kind: "pack_root",
+      manifest_path: null,
+      entry: {
+        pack_id: "project/proj-nomos",
+        source_kind: "pack_root",
+        source_project_id: "external",
+      },
+    }));
+    const installNomosFromSource = vi.fn(async () => ({
+      project_id: "proj-target",
+      pack: { pack_id: "project/proj-nomos" },
+      installed_root: "/tmp/state/nomos/project-nomos",
+      imported: {
+        source_kind: "pack_root",
+        entry: { pack_id: "project/proj-nomos" },
+      },
+    }));
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, {
       validateProjectNomos,
@@ -295,6 +315,8 @@ describe("registerProjectCommands", () => {
       exportProjectNomos,
       installProjectNomosPack,
       installCatalogNomosPack,
+      importNomosSource,
+      installNomosFromSource,
     } as any, createPluginTrace(api as any));
 
     const validate = await getCommand("project").handler({ args: "nomos validate proj-nomos --target draft", senderId: "u1" });
@@ -326,6 +348,14 @@ describe("registerProjectCommands", () => {
       args: "nomos install-pack proj-target --pack-dir /tmp/pack-out",
       senderId: "u1",
     });
+    const importedSource = await getCommand("project").handler({
+      args: "nomos import-source --source-dir /tmp/nomos-source",
+      senderId: "u1",
+    });
+    const installedSource = await getCommand("project").handler({
+      args: "nomos install-from-source proj-target --source-dir /tmp/nomos-source",
+      senderId: "u1",
+    });
 
     expect(validateProjectNomos).toHaveBeenCalledWith("proj-nomos", "draft");
     expect(validate.text).toContain("valid=yes");
@@ -336,6 +366,7 @@ describe("registerProjectCommands", () => {
     expect(listPublishedNomosCatalog).toHaveBeenCalledWith();
     expect(catalogList.text).toContain("Nomos catalog (1)");
     expect(showPublishedNomosCatalog).toHaveBeenCalledWith("project/proj-nomos");
+    expect(catalogShow.text).toContain("source_kind=project_publish");
     expect(catalogShow.text).toContain("note=shareable");
     expect(exportProjectNomos).toHaveBeenCalledWith("proj-nomos", "/tmp/pack-out", "draft");
     expect(exported.text).toContain("output=/tmp/pack-out");
@@ -343,6 +374,10 @@ describe("registerProjectCommands", () => {
     expect(catalogInstalled.text).toContain("Installed catalog Nomos into proj-target");
     expect(installProjectNomosPack).toHaveBeenCalledWith("proj-target", "/tmp/pack-out");
     expect(installed.text).toContain("draft_root=/tmp/state/nomos/project-nomos");
+    expect(importNomosSource).toHaveBeenCalledWith("/tmp/nomos-source");
+    expect(importedSource.text).toContain("source_kind=pack_root");
+    expect(installNomosFromSource).toHaveBeenCalledWith("proj-target", "/tmp/nomos-source");
+    expect(installedSource.text).toContain("Installed source Nomos into proj-target");
   });
 
   it("surfaces bridge failures as project command errors", async () => {

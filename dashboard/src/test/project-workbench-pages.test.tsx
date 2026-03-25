@@ -174,6 +174,110 @@ const { exportProjectNomos, installProjectNomosPack } = vi.hoisted(() => ({
     metadata: {},
   })),
 }));
+const { importNomosSource, installProjectNomosFromSource } = vi.hoisted(() => ({
+  importNomosSource: vi.fn(async () => ({
+    source_dir: '/tmp/nomos-source',
+    source_kind: 'pack_root',
+    manifest_path: null,
+    entry: {
+      schema_version: 1,
+      pack_id: 'project/proj-alpha',
+      published_at: '2026-03-25T12:00:00.000Z',
+      source_kind: 'pack_root',
+      published_by: null,
+      published_note: null,
+      source_project_id: 'external',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: '/tmp/nomos-source',
+      published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+      manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-alpha',
+        name: 'Project Alpha Nomos',
+        version: '0.1.0',
+        description: 'Project draft',
+        lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+        profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      },
+    },
+  })),
+  installProjectNomosFromSource: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    pack: {
+      pack_id: 'project/proj-alpha',
+      name: 'Project Alpha Nomos',
+      version: '0.1.0',
+      description: 'Project draft',
+      lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+      doctor_checks: ['constitution-present'],
+      source: 'project_state_draft',
+      root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    },
+    installed_root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+    installed_profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    metadata: {},
+    catalog_entry: {
+      schema_version: 1,
+      pack_id: 'project/proj-alpha',
+      published_at: '2026-03-25T12:00:00.000Z',
+      source_kind: 'pack_root',
+      published_by: null,
+      published_note: null,
+      source_project_id: 'external',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: '/tmp/nomos-source',
+      published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+      manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-alpha',
+        name: 'Project Alpha Nomos',
+        version: '0.1.0',
+        description: 'Project draft',
+        lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+        profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      },
+    },
+    imported: {
+      source_dir: '/tmp/nomos-source',
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: {
+        schema_version: 1,
+        pack_id: 'project/proj-alpha',
+        source_kind: 'pack_root',
+        published_at: '2026-03-25T12:00:00.000Z',
+        published_by: null,
+        published_note: null,
+        source_project_id: 'external',
+        source_target: 'draft',
+        source_activation_status: 'active_builtin',
+        source_repo_path: '/tmp/nomos-source',
+        published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+        manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+        pack: {
+          pack_id: 'project/proj-alpha',
+          name: 'Project Alpha Nomos',
+          version: '0.1.0',
+          description: 'Project draft',
+          lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+          doctor_checks: ['constitution-present'],
+          source: 'project_state_draft',
+          root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+          profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+        },
+      },
+    },
+  })),
+}));
 const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNomosCatalog, installCatalogNomosPack } = vi.hoisted(() => ({
   publishProjectNomosToCatalog: vi.fn(async () => ({
     project_id: 'proj-alpha',
@@ -185,6 +289,7 @@ const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNo
       schema_version: 1,
       pack_id: 'project/proj-alpha',
       published_at: '2026-03-24T12:00:00.000Z',
+      source_kind: 'project_publish',
       published_by: 'archon',
       published_note: 'shareable baseline',
       source_project_id: 'proj-alpha',
@@ -215,6 +320,7 @@ const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNo
       version: '0.1.0',
       description: 'Project draft',
       published_at: '2026-03-24T12:00:00.000Z',
+      source_kind: 'project_publish',
       published_by: 'archon',
       source_project_id: 'proj-alpha',
       source_target: 'draft',
@@ -226,6 +332,7 @@ const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNo
     schema_version: 1,
     pack_id: 'project/proj-alpha',
     published_at: '2026-03-24T12:00:00.000Z',
+    source_kind: 'project_publish',
     published_by: 'archon',
     published_note: 'shareable baseline',
     source_project_id: 'proj-alpha',
@@ -266,6 +373,7 @@ const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNo
       schema_version: 1,
       pack_id: 'project/proj-alpha',
       published_at: '2026-03-24T12:00:00.000Z',
+      source_kind: 'project_publish',
       published_by: 'archon',
       published_note: 'shareable baseline',
       source_project_id: 'proj-alpha',
@@ -311,7 +419,9 @@ vi.mock('@/lib/api', async () => {
     validateProjectNomos,
     diffProjectNomos,
     exportProjectNomos,
+    importNomosSource,
     installProjectNomosPack,
+    installProjectNomosFromSource,
     publishProjectNomosToCatalog,
     listPublishedNomosCatalog,
     showPublishedNomosCatalog,
@@ -543,6 +653,8 @@ describe('project workbench pages', () => {
     expect(screen.getByRole('button', { name: 'Diff Draft' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Export Pack' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish To Catalog' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import Source' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Install From Source' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Install Pack' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reinstall Nomos' }));
@@ -618,6 +730,18 @@ describe('project workbench pages', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Install Pack' }));
     await waitFor(() => {
       expect(installProjectNomosPack).toHaveBeenCalledWith('proj-alpha', '/tmp/exported-pack');
+    });
+    fireEvent.change(screen.getByLabelText('Source Dir'), { target: { value: '/tmp/nomos-source' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Import Source' }));
+    await waitFor(() => {
+      expect(importNomosSource).toHaveBeenCalledWith('/tmp/nomos-source');
+    });
+    const sourcePanel = screen.getByTestId('project-nomos-source-panel');
+    expect(sourcePanel).toBeInTheDocument();
+    expect(within(sourcePanel).getAllByText(/Source Kind:\s*pack_root/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Install From Source' }));
+    await waitFor(() => {
+      expect(installProjectNomosFromSource).toHaveBeenCalledWith('proj-alpha', '/tmp/nomos-source');
     });
     expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
     expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();

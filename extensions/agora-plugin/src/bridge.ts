@@ -177,6 +177,7 @@ export class AgoraBridge {
     summaries: Array<{
       pack_id: string;
       version: string;
+      source_kind: "project_publish" | "share_bundle" | "pack_root";
       published_by: string | null;
       source_project_id: string;
       source_target: "draft" | "active";
@@ -187,6 +188,7 @@ export class AgoraBridge {
 
   async showPublishedNomosCatalog(packId: string): Promise<{
     pack_id: string;
+    source_kind: "project_publish" | "share_bundle" | "pack_root";
     published_by: string | null;
     published_note: string | null;
     source_project_id: string;
@@ -207,6 +209,30 @@ export class AgoraBridge {
     return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-catalog-pack`, {
       method: "POST",
       body: { pack_id: packId },
+    });
+  }
+
+  async importNomosSource(sourceDir: string): Promise<{
+    source_dir: string;
+    source_kind: "share_bundle" | "pack_root";
+    manifest_path: string | null;
+    entry: { pack_id: string; source_kind: "project_publish" | "share_bundle" | "pack_root"; source_project_id: string };
+  }> {
+    return this.request("/api/nomos/sources/import", {
+      method: "POST",
+      body: { source_dir: sourceDir },
+    });
+  }
+
+  async installNomosFromSource(projectId: string, sourceDir: string): Promise<{
+    project_id: string;
+    pack: { pack_id: string };
+    installed_root: string;
+    imported: { source_kind: "share_bundle" | "pack_root"; entry: { pack_id: string } };
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-from-source`, {
+      method: "POST",
+      body: { source_dir: sourceDir },
     });
   }
 

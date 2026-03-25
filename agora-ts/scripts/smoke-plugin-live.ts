@@ -252,6 +252,16 @@ async function main() {
       commandBody: `/project nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
       senderId: "smoke-user",
     });
+    const projectNomosImportSource = await api.runCommand("project", {
+      args: `nomos import-source --source-dir ${exportDir}`,
+      commandBody: `/project nomos import-source --source-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallFromSource = await api.runCommand("project", {
+      args: `nomos install-from-source ${targetProjectId} --source-dir ${exportDir}`,
+      commandBody: `/project nomos install-from-source ${targetProjectId} --source-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
 
     if (!projectCreate.text.includes(`Created project ${projectId}`)) {
       throw new Error(`project create failed: ${projectCreate.text}`);
@@ -294,6 +304,12 @@ async function main() {
     }
     if (!projectNomosInstallPack.text.includes(`Installed Nomos pack into ${targetProjectId}`)) {
       throw new Error(`project nomos install-pack failed: ${projectNomosInstallPack.text}`);
+    }
+    if (!projectNomosImportSource.text.includes(`Imported Nomos source project/${projectId}`)) {
+      throw new Error(`project nomos import-source failed: ${projectNomosImportSource.text}`);
+    }
+    if (!projectNomosInstallFromSource.text.includes(`Installed source Nomos into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-from-source failed: ${projectNomosInstallFromSource.text}`);
     }
 
     const taskCreate = await api.runCommand("task", {
@@ -460,6 +476,8 @@ async function main() {
             project_nomos_catalog_show: projectNomosCatalogShow.text,
             project_nomos_install_from_catalog: projectNomosInstallFromCatalog.text,
             project_nomos_install_pack: projectNomosInstallPack.text,
+            project_nomos_import_source: projectNomosImportSource.text,
+            project_nomos_install_from_source: projectNomosInstallFromSource.text,
             task_create: taskCreate.text,
           },
           live_session: sessions[0],

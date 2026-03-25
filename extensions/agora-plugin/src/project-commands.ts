@@ -352,7 +352,7 @@ async function handleNomos(bridge: AgoraBridge, args: string[], senderId: string
       return {
         text: [
           `Nomos catalog (${listed.total})`,
-          ...listed.summaries.slice(0, 10).map((entry) => `${entry.pack_id} | ${entry.version} | ${entry.source_project_id}/${entry.source_target}`),
+          ...listed.summaries.slice(0, 10).map((entry) => `${entry.pack_id} | ${entry.version} | ${entry.source_kind} | ${entry.source_project_id}/${entry.source_target}`),
         ].join("\n"),
       };
     }
@@ -365,6 +365,7 @@ async function handleNomos(bridge: AgoraBridge, args: string[], senderId: string
       return {
         text: [
           `Nomos catalog entry ${entry.pack_id}`,
+          `source_kind=${entry.source_kind}`,
           `source=${entry.source_project_id}/${entry.source_target}`,
           `activation=${entry.source_activation_status}`,
           `published_by=${entry.published_by ?? "none"}`,
@@ -397,6 +398,36 @@ async function handleNomos(bridge: AgoraBridge, args: string[], senderId: string
       return {
         text: [
           `Installed Nomos pack into ${installed.project_id}`,
+          `pack=${installed.pack.pack_id}`,
+          `draft_root=${installed.installed_root}`,
+        ].join("\n"),
+      };
+    }
+    case "import-source": {
+      const sourceDir = flagValue(rest, "--source-dir") ?? rest[0];
+      if (!sourceDir) {
+        return { text: "Usage: /project nomos import-source --source-dir <dir>" };
+      }
+      const imported = await bridge.importNomosSource(sourceDir);
+      return {
+        text: [
+          `Imported Nomos source ${imported.entry.pack_id}`,
+          `source_kind=${imported.source_kind}`,
+          `source_dir=${imported.source_dir}`,
+        ].join("\n"),
+      };
+    }
+    case "install-from-source": {
+      const projectId = rest[0];
+      const sourceDir = flagValue(rest.slice(1), "--source-dir");
+      if (!projectId || !sourceDir) {
+        return { text: "Usage: /project nomos install-from-source <project_id> --source-dir <dir>" };
+      }
+      const installed = await bridge.installNomosFromSource(projectId, sourceDir);
+      return {
+        text: [
+          `Installed source Nomos into ${installed.project_id}`,
+          `source_kind=${installed.imported.source_kind}`,
           `pack=${installed.pack.pack_id}`,
           `draft_root=${installed.installed_root}`,
         ].join("\n"),
@@ -493,6 +524,8 @@ function formatNomosHelp() {
     "/project nomos export <project_id> --output-dir <dir> [--target draft|active]",
     "/project nomos install-from-catalog <project_id> --pack-id <pack_id>",
     "/project nomos install-pack <project_id> --pack-dir <dir>",
+    "/project nomos import-source --source-dir <dir>",
+    "/project nomos install-from-source <project_id> --source-dir <dir>",
   ].join("\n");
 }
 
