@@ -801,6 +801,70 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-share-target');
   });
 
+  it('imports a direct pack root source and installs it into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-pack-root-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-pack-root-source-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-pack-root-target-'), 'repo-target');
+    const directPackDir = join(makeTempDir('agora-ts-cli-nomos-pack-root-export-'), 'direct-pack');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-pack-root-source',
+      '--name', 'CLI Pack Root Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-pack-root-target',
+      '--name', 'CLI Pack Root Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-project',
+      'proj-cli-pack-root-source',
+      '--output-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'import-source',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'sync-source',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-source',
+      '--project-id', 'proj-cli-pack-root-target',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos pack 已导出: proj-cli-pack-root-source');
+    expect(stdout.value).toContain('Nomos source 已导入: project/proj-cli-pack-root-source');
+    expect(stdout.value).toContain('source_kind: pack_root');
+    expect(stdout.value).toContain('Nomos source 已同步: project/proj-cli-pack-root-source');
+    expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-pack-root-target');
+  });
+
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

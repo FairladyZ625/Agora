@@ -1195,6 +1195,104 @@ describe('task routes', () => {
     expect(readFileSync(join(bundleDir, 'nomos-share-bundle.json'), 'utf8')).toContain('project/proj-share-source');
   });
 
+  it('imports a direct pack root source and installs it into another project through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-target-')), 'repo');
+    const directPackDir = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-export-')), 'direct-pack');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(directPackDir.replace(/\/direct-pack$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-pack-root-source',
+        name: 'Pack Root Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-pack-root-target',
+        name: 'Pack Root Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-pack-root-source/nomos/export',
+      payload: {
+        output_dir: directPackDir,
+      },
+    });
+    const importResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/sources/import',
+      payload: {
+        source_dir: directPackDir,
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-pack-root-target/nomos/install-from-source',
+      payload: {
+        source_dir: directPackDir,
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(importResponse.statusCode).toBe(200);
+    expect(importResponse.json()).toMatchObject({
+      source_dir: directPackDir,
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: expect.objectContaining({
+        pack_id: 'project/proj-pack-root-source',
+        source_kind: 'pack_root',
+        source_project_id: 'external',
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-pack-root-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-pack-root-source',
+      }),
+      imported: expect.objectContaining({
+        source_kind: 'pack_root',
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-pack-root-source',
+        }),
+      }),
+    });
+    expect(existsSync(join(directPackDir, 'profile.toml'))).toBe(true);
+  });
+
   it('creates a task bound to a project through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

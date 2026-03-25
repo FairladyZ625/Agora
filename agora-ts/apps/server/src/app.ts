@@ -13,6 +13,7 @@ import {
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
@@ -1377,6 +1378,22 @@ export function buildApp(options: BuildAppOptions = {}) {
         replace_existing?: boolean;
       } | undefined) ?? { source_dir: '' };
       return reply.send(importNomosShareBundle({
+        sourceDir: payload.source_dir,
+        ...(payload.replace_existing !== undefined ? { replaceExisting: payload.replace_existing } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/sources/import', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_dir: string;
+        replace_existing?: boolean;
+      } | undefined) ?? { source_dir: '' };
+      return reply.send(importNomosSource({
         sourceDir: payload.source_dir,
         ...(payload.replace_existing !== undefined ? { replaceExisting: payload.replace_existing } : {}),
       }));
