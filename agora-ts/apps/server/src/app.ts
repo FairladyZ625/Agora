@@ -9,13 +9,16 @@ import {
   buildBuiltInAgoraNomosProjectProfile,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
+  exportNomosShareBundle,
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
   installBuiltInAgoraNomosForProject,
+  installNomosFromSource,
   listPublishedNomosCatalog,
   mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
@@ -1351,6 +1354,38 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/nomos/bundles/export', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        pack_id: string;
+        output_dir: string;
+      } | undefined) ?? { pack_id: '', output_dir: '' };
+      return reply.send(exportNomosShareBundle({
+        packId: payload.pack_id,
+        outputDir: payload.output_dir,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/bundles/import', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_dir: string;
+        replace_existing?: boolean;
+      } | undefined) ?? { source_dir: '' };
+      return reply.send(importNomosShareBundle({
+        sourceDir: payload.source_dir,
+        ...(payload.replace_existing !== undefined ? { replaceExisting: payload.replace_existing } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/projects/:projectId/nomos/publish', async (request, reply) => {
     if (!projectService) {
       return reply.status(503).send({ message: 'Project service is not configured' });
@@ -1407,6 +1442,27 @@ export function buildApp(options: BuildAppOptions = {}) {
       const project = projectService.requireProject(projectId);
       const installed = installCatalogNomosPackToProject(project.id, project.metadata ?? null, {
         packId: payload.pack_id,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-from-source', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        source_dir: string;
+      } | undefined) ?? { source_dir: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installNomosFromSource(project.id, project.metadata ?? null, {
+        sourceDir: payload.source_dir,
       });
       projectService.updateProjectMetadata(project.id, installed.metadata);
       return reply.send(installed);

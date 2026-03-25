@@ -12,11 +12,14 @@ import {
   REPO_AGENTS_SHIM_SECTION_ORDER,
   buildBuiltInAgoraNomosProjectProfile,
   exportProjectNomosPack,
+  exportNomosShareBundle,
   ensureAgoraProjectStateLayout,
   ensureProjectNomosAuthoringDraft,
+  importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installCatalogNomosPackToProject,
   installLocalNomosPackToProject,
+  installNomosFromSource,
   installBuiltInAgoraNomosForProject,
   listPublishedNomosCatalog,
   mergeProjectMetadataWithNomosProfile,
@@ -423,6 +426,61 @@ describe('nomos pack model freeze', () => {
       target: 'draft',
     });
     expect(targetValidation.valid).toBe(true);
+  });
+
+  it('exports a published catalog pack into a share bundle and reuses it from source in another project', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const sharedBundleDir = join(makeAgoraHomeDir(), 'shared-bundle');
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-share-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-share-source', 'Share Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    publishProjectNomosPack('proj-share-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      publishedBy: 'archon',
+      publishedNote: 'remote share bundle',
+    });
+
+    const exported = exportNomosShareBundle({
+      userAgoraDir: sourceAgoraHomeDir,
+      packId: 'project/proj-share-source',
+      outputDir: sharedBundleDir,
+    });
+
+    expect(exported.pack_id).toBe('project/proj-share-source');
+    expect(existsSync(join(sharedBundleDir, 'profile.toml'))).toBe(true);
+    expect(existsSync(join(sharedBundleDir, 'nomos-share-bundle.json'))).toBe(true);
+    expect(exported.manifest.pack.pack_id).toBe('project/proj-share-source');
+    expect(exported.manifest.source.published_by).toBe('archon');
+
+    const imported = importNomosShareBundle({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceDir: sharedBundleDir,
+    });
+
+    expect(imported.entry.pack_id).toBe('project/proj-share-source');
+    expect(existsSync(join(imported.entry.published_root, 'profile.toml'))).toBe(true);
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-share-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromSource('proj-share-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceDir: sharedBundleDir,
+    });
+
+    expect(installed.pack.pack_id).toBe('project/proj-share-source');
+    expect(installed.imported.entry.pack_id).toBe('project/proj-share-source');
+    const targetValidation = validateProjectNomos('proj-share-target', installed.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      target: 'draft',
+    });
+    expect(targetValidation.valid).toBe(true);
+    expect(targetValidation.pack?.pack_id).toBe('project/proj-share-source');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {

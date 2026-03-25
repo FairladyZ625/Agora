@@ -12,12 +12,15 @@ import {
   buildBuiltInAgoraNomosProjectProfile,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
+  exportNomosShareBundle,
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
+  installNomosFromSource,
   listPublishedNomosCatalog,
   publishProjectNomosPack,
   refineProjectNomosDraftFromSpec,
@@ -1167,6 +1170,61 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   nomos
+    .command('export-bundle')
+    .description('把 local catalog 中的已发布 Nomos pack 导出为可分享 bundle')
+    .requiredOption('--pack-id <packId>', 'published pack id')
+    .requiredOption('--output-dir <path>', 'output directory for share bundle')
+    .option('--json', '输出 JSON', false)
+    .action((options: { packId: string; outputDir: string; json?: boolean }) => {
+      const exported = exportNomosShareBundle({
+        packId: options.packId,
+        outputDir: options.outputDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(exported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos share bundle 已导出: ${exported.pack_id}`);
+      writeLine(stdout, `output_dir: ${exported.output_dir}`);
+      writeLine(stdout, `manifest_path: ${exported.manifest_path}`);
+    });
+
+  nomos
+    .command('import-bundle')
+    .description('把 share bundle 导入当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'bundle source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosShareBundle({
+        sourceDir: options.sourceDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos share bundle 已导入: ${imported.entry.pack_id}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('sync-bundle')
+    .description('重新同步 share bundle 到当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'bundle source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosShareBundle({
+        sourceDir: options.sourceDir,
+        replaceExisting: true,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos share bundle 已同步: ${imported.entry.pack_id}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
     .command('export-project')
     .description('导出某个 project 当前的 draft/active Nomos pack 到本地目录')
     .argument('<projectId>', 'project id')
@@ -1265,6 +1323,31 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, `Catalog Nomos pack 已安装到 draft: ${project.id}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
+    .command('install-from-source')
+    .description('从 share bundle source 直接导入并安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--source-dir <path>', 'bundle source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      sourceDir: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installNomosFromSource(project.id, project.metadata ?? null, {
+        sourceDir: options.sourceDir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已导入并安装: ${project.id}`);
       writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
       writeLine(stdout, `installed_root: ${installed.installed_root}`);
     });

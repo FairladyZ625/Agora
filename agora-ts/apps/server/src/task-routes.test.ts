@@ -965,6 +965,8 @@ describe('task routes', () => {
   });
 
   it('publishes a project pack into local catalog and installs it from catalog through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
@@ -1074,6 +1076,123 @@ describe('task routes', () => {
         pack_id: 'project/proj-catalog-source',
       }),
     });
+  });
+
+  it('exports a published bundle, imports it, and installs it from source through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-share-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-share-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-share-target-')), 'repo');
+    const bundleDir = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-share-bundle-')), 'bundle');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(bundleDir.replace(/\/bundle$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-share-source',
+        name: 'Share Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-share-target',
+        name: 'Share Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const publishResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-share-source/nomos/publish',
+      payload: {
+        published_by: 'archon',
+        published_note: 'shared bundle',
+      },
+    });
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/bundles/export',
+      payload: {
+        pack_id: 'project/proj-share-source',
+        output_dir: bundleDir,
+      },
+    });
+    const importResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/bundles/import',
+      payload: {
+        source_dir: bundleDir,
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-share-target/nomos/install-from-source',
+      payload: {
+        source_dir: bundleDir,
+      },
+    });
+
+    expect(publishResponse.statusCode).toBe(200);
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.json()).toMatchObject({
+      pack_id: 'project/proj-share-source',
+      output_dir: bundleDir,
+      manifest: expect.objectContaining({
+        pack: expect.objectContaining({
+          pack_id: 'project/proj-share-source',
+        }),
+        source: expect.objectContaining({
+          published_by: 'archon',
+          published_note: 'shared bundle',
+        }),
+      }),
+    });
+    expect(importResponse.statusCode).toBe(200);
+    expect(importResponse.json()).toMatchObject({
+      source_dir: bundleDir,
+      entry: expect.objectContaining({
+        pack_id: 'project/proj-share-source',
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-share-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-share-source',
+      }),
+      imported: expect.objectContaining({
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-share-source',
+        }),
+      }),
+    });
+    expect(existsSync(join(bundleDir, 'nomos-share-bundle.json'))).toBe(true);
+    expect(readFileSync(join(bundleDir, 'nomos-share-bundle.json'), 'utf8')).toContain('project/proj-share-source');
   });
 
   it('creates a task bound to a project through the api', async () => {
