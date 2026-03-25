@@ -733,6 +733,74 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Catalog Nomos pack 已安装到 draft: proj-cli-publish-target');
   });
 
+  it('exports a published Nomos bundle and installs it from source into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-share-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-share-source-repo-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-share-target-repo-'), 'repo-target');
+    const bundleDir = join(makeTempDir('agora-ts-cli-nomos-share-bundle-'), 'bundle');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-share-source',
+      '--name', 'CLI Share Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-share-target',
+      '--name', 'CLI Share Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'publish-project', 'proj-cli-share-source',
+      '--actor', 'archon',
+      '--note', 'share bundle baseline',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-bundle',
+      '--pack-id', 'project/proj-cli-share-source',
+      '--output-dir', bundleDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'import-bundle',
+      '--source-dir', bundleDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'sync-bundle',
+      '--source-dir', bundleDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-source',
+      '--project-id', 'proj-cli-share-target',
+      '--source-dir', bundleDir,
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos share bundle 已导出: project/proj-cli-share-source');
+    expect(stdout.value).toContain('Nomos share bundle 已导入: project/proj-cli-share-source');
+    expect(stdout.value).toContain('Nomos share bundle 已同步: project/proj-cli-share-source');
+    expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-share-target');
+  });
+
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

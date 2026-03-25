@@ -322,6 +322,65 @@ export interface InstallCatalogNomosPackToProjectResult extends InstallLocalNomo
   catalog_entry: PublishedNomosCatalogEntry;
 }
 
+export interface NomosShareBundleManifest {
+  schema_version: 1;
+  bundle_kind: 'nomos_share_bundle';
+  exported_at: string;
+  pack: {
+    pack_id: string;
+    name: string;
+    version: string;
+    description: string;
+    lifecycle_modules: string[];
+    doctor_checks: string[];
+    source: string;
+  };
+  source: {
+    catalog_pack_id: string;
+    source_project_id: string;
+    source_target: 'draft' | 'active';
+    source_activation_status: ProjectNomosActivationStatus;
+    source_repo_path: string | null;
+    published_by: string | null;
+    published_note: string | null;
+  };
+}
+
+export interface ExportNomosShareBundleOptions extends ResolveAgoraProjectStateOptions {
+  packId: string;
+  outputDir: string;
+  replaceExisting?: boolean;
+  exportedAt?: string;
+}
+
+export interface ExportNomosShareBundleResult {
+  pack_id: string;
+  output_dir: string;
+  manifest_path: string;
+  manifest: NomosShareBundleManifest;
+}
+
+export interface ImportNomosShareBundleOptions extends ResolveAgoraProjectStateOptions {
+  sourceDir: string;
+  replaceExisting?: boolean;
+}
+
+export interface ImportNomosShareBundleResult {
+  source_dir: string;
+  manifest_path: string;
+  entry: PublishedNomosCatalogEntry;
+}
+
+export interface InstallNomosFromSourceOptions extends ResolveAgoraProjectStateOptions {
+  sourceDir: string;
+  metadata?: Record<string, unknown> | null | undefined;
+  replaceExisting?: boolean;
+}
+
+export interface InstallNomosFromSourceResult extends InstallCatalogNomosPackToProjectResult {
+  imported: ImportNomosShareBundleResult;
+}
+
 export interface EnsureProjectNomosAuthoringDraftOptions extends ResolveAgoraProjectStateOptions {
   repoPath?: string | null;
   nomosId?: string | null;
@@ -1502,6 +1561,127 @@ export function installCatalogNomosPackToProject(
   };
 }
 
+export function exportNomosShareBundle(
+  options: ExportNomosShareBundleOptions,
+): ExportNomosShareBundleResult {
+  const entry = inspectPublishedNomosCatalogPack(options.packId, options);
+  if (options.replaceExisting && existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
+    removeDirectoryTree(options.outputDir, {
+      label: 'export nomos share bundle',
+      requirePackMarker: true,
+    });
+  }
+  mkdirSync(options.outputDir, { recursive: true });
+  if (readdirSync(options.outputDir).length > 0) {
+    throw new Error(`Nomos share bundle output directory must be empty: ${options.outputDir}`);
+  }
+  copyDirectoryRecursive(entry.published_root, options.outputDir);
+
+  const manifest: NomosShareBundleManifest = {
+    schema_version: 1,
+    bundle_kind: 'nomos_share_bundle',
+    exported_at: options.exportedAt ?? new Date().toISOString(),
+    pack: {
+      pack_id: entry.pack.pack_id,
+      name: entry.pack.name,
+      version: entry.pack.version,
+      description: entry.pack.description,
+      lifecycle_modules: [...entry.pack.lifecycle_modules],
+      doctor_checks: [...entry.pack.doctor_checks],
+      source: entry.pack.source,
+    },
+    source: {
+      catalog_pack_id: entry.pack_id,
+      source_project_id: entry.source_project_id,
+      source_target: entry.source_target,
+      source_activation_status: entry.source_activation_status,
+      source_repo_path: entry.source_repo_path,
+      published_by: entry.published_by,
+      published_note: entry.published_note,
+    },
+  };
+  const manifestPath = resolve(options.outputDir, 'nomos-share-bundle.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+  return {
+    pack_id: entry.pack_id,
+    output_dir: options.outputDir,
+    manifest_path: manifestPath,
+    manifest,
+  };
+}
+
+export function importNomosShareBundle(
+  options: ImportNomosShareBundleOptions,
+): ImportNomosShareBundleResult {
+  const manifestPath = resolve(options.sourceDir, 'nomos-share-bundle.json');
+  const manifest = loadNomosShareBundleManifest(manifestPath);
+  const catalogPackRoot = resolveCatalogPackDir(manifest.pack.pack_id, options);
+  if (options.replaceExisting ?? true) {
+    removeDirectoryTree(catalogPackRoot, {
+      label: 'import nomos share bundle',
+      requirePackMarker: true,
+      allowedParents: [resolveAgoraNomosCatalogLayout(options).packsRoot],
+    });
+  }
+  mkdirSync(catalogPackRoot, { recursive: true });
+  copyDirectoryRecursive(options.sourceDir, catalogPackRoot);
+
+  const importedEntry: PublishedNomosCatalogEntry = {
+    schema_version: 1,
+    pack_id: manifest.pack.pack_id,
+    published_at: manifest.exported_at,
+    published_by: manifest.source.published_by,
+    published_note: manifest.source.published_note,
+    source_project_id: manifest.source.source_project_id,
+    source_target: manifest.source.source_target,
+    source_activation_status: manifest.source.source_activation_status,
+    source_repo_path: manifest.source.source_repo_path,
+    published_root: catalogPackRoot,
+    manifest_path: resolve(catalogPackRoot, 'catalog-entry.json'),
+    pack: {
+      pack_id: manifest.pack.pack_id,
+      name: manifest.pack.name,
+      version: manifest.pack.version,
+      description: manifest.pack.description,
+      lifecycle_modules: [...manifest.pack.lifecycle_modules],
+      doctor_checks: [...manifest.pack.doctor_checks],
+      source: manifest.pack.source,
+      root: catalogPackRoot,
+      profile_path: resolve(catalogPackRoot, 'profile.toml'),
+    },
+  };
+  writeFileSync(importedEntry.manifest_path, JSON.stringify(importedEntry, null, 2), 'utf8');
+
+  return {
+    source_dir: options.sourceDir,
+    manifest_path: manifestPath,
+    entry: importedEntry,
+  };
+}
+
+export function installNomosFromSource(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: InstallNomosFromSourceOptions,
+): InstallNomosFromSourceResult {
+  const imported = importNomosShareBundle({
+    sourceDir: options.sourceDir,
+    ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
+    ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
+  });
+  const installed = installCatalogNomosPackToProject(projectId, metadata, {
+    packId: imported.entry.pack_id,
+    ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
+    ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
+    ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
+  });
+  return {
+    ...installed,
+    imported,
+  };
+}
+
 export function scaffoldNomosPack(options: ScaffoldNomosPackOptions): ScaffoldNomosPackResult {
   const lifecycleModules = Array.from(new Set(options.lifecycleModules ?? DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES));
   const doctorChecks = Array.from(new Set(options.doctorChecks ?? DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS));
@@ -2162,6 +2342,38 @@ function loadPublishedNomosCatalogEntry(manifestPath: string): PublishedNomosCat
       source: asRequiredString(pack.source, 'pack.source'),
       root: asRequiredString(pack.root, 'pack.root'),
       profile_path: asRequiredString(pack.profile_path, 'pack.profile_path'),
+    },
+  };
+}
+
+function loadNomosShareBundleManifest(manifestPath: string): NomosShareBundleManifest {
+  if (!existsSync(manifestPath)) {
+    throw new Error(`Nomos share bundle manifest is missing: ${manifestPath}`);
+  }
+  const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+  const pack = asRecord(raw.pack);
+  const source = asRecord(raw.source);
+  return {
+    schema_version: 1,
+    bundle_kind: 'nomos_share_bundle',
+    exported_at: asRequiredString(raw.exported_at, 'exported_at'),
+    pack: {
+      pack_id: asRequiredString(pack.pack_id, 'pack.pack_id'),
+      name: asRequiredString(pack.name, 'pack.name'),
+      version: asRequiredString(pack.version, 'pack.version'),
+      description: asRequiredString(pack.description, 'pack.description'),
+      lifecycle_modules: asStringArray(pack.lifecycle_modules),
+      doctor_checks: asStringArray(pack.doctor_checks),
+      source: asRequiredString(pack.source, 'pack.source'),
+    },
+    source: {
+      catalog_pack_id: asRequiredString(source.catalog_pack_id, 'source.catalog_pack_id'),
+      source_project_id: asRequiredString(source.source_project_id, 'source.source_project_id'),
+      source_target: (asRequiredString(source.source_target, 'source.source_target') === 'active' ? 'active' : 'draft'),
+      source_activation_status: ((asRequiredString(source.source_activation_status, 'source.source_activation_status') === 'active_project') ? 'active_project' : 'active_builtin'),
+      source_repo_path: asOptionalString(source.source_repo_path),
+      published_by: asOptionalString(source.published_by),
+      published_note: asOptionalString(source.published_note),
     },
   };
 }

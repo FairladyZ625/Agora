@@ -8,8 +8,11 @@ export * from './nomos.js';
 export * from './runtime-assets.js';
 export {
   diffProjectNomos,
+  exportNomosShareBundle,
   inspectPublishedNomosCatalogPack,
+  importNomosShareBundle,
   installCatalogNomosPackToProject,
+  installNomosFromSource,
   listPublishedNomosCatalog,
   publishProjectNomosPack,
   validateProjectNomos,
