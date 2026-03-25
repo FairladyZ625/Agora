@@ -260,6 +260,7 @@ export interface PublishedNomosCatalogEntry {
   schema_version: 1;
   pack_id: string;
   published_at: string;
+  source_kind: 'project_publish' | 'share_bundle' | 'pack_root';
   published_by: string | null;
   published_note: string | null;
   source_project_id: string;
@@ -286,6 +287,7 @@ export interface PublishedNomosCatalogSummary {
   version: string;
   description: string;
   published_at: string;
+  source_kind: 'project_publish' | 'share_bundle' | 'pack_root';
   published_by: string | null;
   source_project_id: string;
   source_target: 'draft' | 'active';
@@ -371,6 +373,19 @@ export interface ImportNomosShareBundleResult {
   entry: PublishedNomosCatalogEntry;
 }
 
+export interface ImportNomosSourceOptions extends ResolveAgoraProjectStateOptions {
+  sourceDir: string;
+  replaceExisting?: boolean;
+  importedAt?: string;
+}
+
+export interface ImportNomosSourceResult {
+  source_dir: string;
+  source_kind: 'share_bundle' | 'pack_root';
+  manifest_path: string | null;
+  entry: PublishedNomosCatalogEntry;
+}
+
 export interface InstallNomosFromSourceOptions extends ResolveAgoraProjectStateOptions {
   sourceDir: string;
   metadata?: Record<string, unknown> | null | undefined;
@@ -378,7 +393,7 @@ export interface InstallNomosFromSourceOptions extends ResolveAgoraProjectStateO
 }
 
 export interface InstallNomosFromSourceResult extends InstallCatalogNomosPackToProjectResult {
-  imported: ImportNomosShareBundleResult;
+  imported: ImportNomosSourceResult;
 }
 
 export interface EnsureProjectNomosAuthoringDraftOptions extends ResolveAgoraProjectStateOptions {
@@ -1426,6 +1441,7 @@ export function publishProjectNomosPack(
     schema_version: 1,
     pack_id: exported.pack.pack_id,
     published_at: options.publishedAt ?? new Date().toISOString(),
+    source_kind: 'project_publish',
     published_by: options.publishedBy?.trim() || null,
     published_note: options.publishedNote?.trim() || null,
     source_project_id: projectId,
@@ -1631,6 +1647,7 @@ export function importNomosShareBundle(
     schema_version: 1,
     pack_id: manifest.pack.pack_id,
     published_at: manifest.exported_at,
+    source_kind: 'share_bundle',
     published_by: manifest.source.published_by,
     published_note: manifest.source.published_note,
     source_project_id: manifest.source.source_project_id,
@@ -1660,12 +1677,72 @@ export function importNomosShareBundle(
   };
 }
 
+export function importNomosSource(
+  options: ImportNomosSourceOptions,
+): ImportNomosSourceResult {
+  const bundleManifestPath = resolve(options.sourceDir, 'nomos-share-bundle.json');
+  if (existsSync(bundleManifestPath)) {
+    const imported = importNomosShareBundle(options);
+    return {
+      source_dir: imported.source_dir,
+      source_kind: 'share_bundle',
+      manifest_path: imported.manifest_path,
+      entry: imported.entry,
+    };
+  }
+
+  const sourceProfilePath = resolve(options.sourceDir, 'profile.toml');
+  const sourcePack = loadProjectNomosPackSummary(options.sourceDir, sourceProfilePath, 'external_pack_root');
+  if (!sourcePack) {
+    throw new Error(`Nomos source directory is invalid: ${options.sourceDir}`);
+  }
+
+  const catalogPackRoot = resolveCatalogPackDir(sourcePack.pack_id, options);
+  if (options.replaceExisting ?? true) {
+    removeDirectoryTree(catalogPackRoot, {
+      label: 'import nomos source',
+      requirePackMarker: true,
+      allowedParents: [resolveAgoraNomosCatalogLayout(options).packsRoot],
+    });
+  }
+  mkdirSync(catalogPackRoot, { recursive: true });
+  copyDirectoryRecursive(options.sourceDir, catalogPackRoot);
+
+  const importedEntry: PublishedNomosCatalogEntry = {
+    schema_version: 1,
+    pack_id: sourcePack.pack_id,
+    published_at: options.importedAt ?? new Date().toISOString(),
+    source_kind: 'pack_root',
+    published_by: null,
+    published_note: null,
+    source_project_id: 'external',
+    source_target: 'draft',
+    source_activation_status: 'active_builtin',
+    source_repo_path: options.sourceDir,
+    published_root: catalogPackRoot,
+    manifest_path: resolve(catalogPackRoot, 'catalog-entry.json'),
+    pack: {
+      ...sourcePack,
+      root: catalogPackRoot,
+      profile_path: resolve(catalogPackRoot, 'profile.toml'),
+    },
+  };
+  writeFileSync(importedEntry.manifest_path, JSON.stringify(importedEntry, null, 2), 'utf8');
+
+  return {
+    source_dir: options.sourceDir,
+    source_kind: 'pack_root',
+    manifest_path: null,
+    entry: importedEntry,
+  };
+}
+
 export function installNomosFromSource(
   projectId: string,
   metadata: Record<string, unknown> | null | undefined,
   options: InstallNomosFromSourceOptions,
 ): InstallNomosFromSourceResult {
-  const imported = importNomosShareBundle({
+  const imported = importNomosSource({
     sourceDir: options.sourceDir,
     ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
     ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
@@ -2324,6 +2401,7 @@ function loadPublishedNomosCatalogEntry(manifestPath: string): PublishedNomosCat
     schema_version: 1,
     pack_id: asRequiredString(raw.pack_id, 'pack_id'),
     published_at: asRequiredString(raw.published_at, 'published_at'),
+    source_kind: asPublishedNomosSourceKind(raw.source_kind),
     published_by: asOptionalString(raw.published_by),
     published_note: asOptionalString(raw.published_note),
     source_project_id: asRequiredString(raw.source_project_id, 'source_project_id'),
@@ -2378,6 +2456,13 @@ function loadNomosShareBundleManifest(manifestPath: string): NomosShareBundleMan
   };
 }
 
+function asPublishedNomosSourceKind(value: unknown): PublishedNomosCatalogEntry['source_kind'] {
+  if (value === 'share_bundle' || value === 'pack_root' || value === 'project_publish') {
+    return value;
+  }
+  return 'project_publish';
+}
+
 function buildPublishedCatalogSummary(entry: PublishedNomosCatalogEntry): PublishedNomosCatalogSummary {
   return {
     pack_id: entry.pack_id,
@@ -2385,6 +2470,7 @@ function buildPublishedCatalogSummary(entry: PublishedNomosCatalogEntry): Publis
     version: entry.pack.version,
     description: entry.pack.description,
     published_at: entry.published_at,
+    source_kind: entry.source_kind,
     published_by: entry.published_by,
     source_project_id: entry.source_project_id,
     source_target: entry.source_target,

@@ -16,6 +16,7 @@ import {
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
@@ -1143,7 +1144,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       for (const entry of listed.summaries) {
-        writeLine(stdout, `${entry.pack_id} — ${entry.version} (${entry.source_project_id}/${entry.source_target})`);
+        writeLine(stdout, `${entry.pack_id} — ${entry.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target})`);
       }
     });
 
@@ -1160,6 +1161,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `${entry.pack_id} — ${entry.pack.name}`);
       writeLine(stdout, `published_at: ${entry.published_at}`);
+      writeLine(stdout, `source_kind: ${entry.source_kind}`);
       writeLine(stdout, `published_by: ${entry.published_by ?? '-'}`);
       writeLine(stdout, `source_project_id: ${entry.source_project_id}`);
       writeLine(stdout, `source_target: ${entry.source_target}`);
@@ -1221,6 +1223,43 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, `Nomos share bundle 已同步: ${imported.entry.pack_id}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('import-source')
+    .description('把 external source（share bundle 或直接 pack root）导入当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosSource({
+        sourceDir: options.sourceDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已导入: ${imported.entry.pack_id}`);
+      writeLine(stdout, `source_kind: ${imported.source_kind}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('sync-source')
+    .description('重新同步 external source（share bundle 或直接 pack root）到当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosSource({
+        sourceDir: options.sourceDir,
+        replaceExisting: true,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已同步: ${imported.entry.pack_id}`);
+      writeLine(stdout, `source_kind: ${imported.source_kind}`);
       writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
     });
 
@@ -1348,6 +1387,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, `Nomos source 已导入并安装: ${project.id}`);
+      writeLine(stdout, `source_kind: ${installed.imported.source_kind}`);
       writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
       writeLine(stdout, `installed_root: ${installed.installed_root}`);
     });

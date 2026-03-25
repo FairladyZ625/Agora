@@ -57,9 +57,11 @@ async function runCli(args: string[], options: { configPath: string; dbPath: str
 async function main() {
   const root = mkdtempSync(join(tmpdir(), 'agora-nomos-remote-share-smoke-'));
   const sourceHome = join(root, 'source-home');
-  const targetHome = join(root, 'target-home');
+  const bundleTargetHome = join(root, 'bundle-target-home');
+  const packRootTargetHome = join(root, 'pack-root-target-home');
   const sourceRepo = join(root, 'source-repo');
-  const targetRepo = join(root, 'target-repo');
+  const bundleTargetRepo = join(root, 'bundle-target-repo');
+  const packRootTargetRepo = join(root, 'pack-root-target-repo');
   const sharedBundleDir = join(root, 'shared-bundle');
 
   const previousHome = process.env.HOME;
@@ -88,35 +90,61 @@ async function main() {
       '--output-dir', sharedBundleDir,
       '--json',
     ], sourceMachine);
+    const directPackRoot = join(sourceMachine.agoraDir, 'projects', 'proj-remote-share-source', 'nomos', 'project-nomos');
 
-    const targetMachine = setMachineEnv(targetHome);
+    const bundleTargetMachine = setMachineEnv(bundleTargetHome);
     await runCli([
       'projects', 'create',
-      '--id', 'proj-remote-share-target',
-      '--name', 'Remote Share Target',
-      '--repo-path', targetRepo,
+      '--id', 'proj-remote-share-bundle-target',
+      '--name', 'Remote Share Bundle Target',
+      '--repo-path', bundleTargetRepo,
       '--new-repo',
-    ], targetMachine);
+    ], bundleTargetMachine);
     const installed = await runCli([
       'nomos', 'install-from-source',
-      '--project-id', 'proj-remote-share-target',
+      '--project-id', 'proj-remote-share-bundle-target',
       '--source-dir', sharedBundleDir,
       '--json',
-    ], targetMachine);
+    ], bundleTargetMachine);
     const listed = await runCli([
       'nomos', 'list-published',
       '--json',
-    ], targetMachine);
+    ], bundleTargetMachine);
     const shown = await runCli([
       'nomos', 'show-published',
       'project/proj-remote-share-source',
       '--json',
-    ], targetMachine);
+    ], bundleTargetMachine);
     const validated = await runCli([
       'nomos', 'validate-project',
-      'proj-remote-share-target',
+      'proj-remote-share-bundle-target',
       '--json',
-    ], targetMachine);
+    ], bundleTargetMachine);
+
+    const packRootTargetMachine = setMachineEnv(packRootTargetHome);
+    await runCli([
+      'projects', 'create',
+      '--id', 'proj-remote-share-pack-root-target',
+      '--name', 'Remote Share Pack Root Target',
+      '--repo-path', packRootTargetRepo,
+      '--new-repo',
+    ], packRootTargetMachine);
+    const importedSource = await runCli([
+      'nomos', 'import-source',
+      '--source-dir', directPackRoot,
+      '--json',
+    ], packRootTargetMachine);
+    const installedPackRoot = await runCli([
+      'nomos', 'install-from-source',
+      '--project-id', 'proj-remote-share-pack-root-target',
+      '--source-dir', directPackRoot,
+      '--json',
+    ], packRootTargetMachine);
+    const validatedPackRoot = await runCli([
+      'nomos', 'validate-project',
+      'proj-remote-share-pack-root-target',
+      '--json',
+    ], packRootTargetMachine);
 
     const exportPayload = JSON.parse(exported.stdout) as { pack_id?: string; manifest_path?: string };
     const installPayload = JSON.parse(installed.stdout) as {
@@ -133,6 +161,18 @@ async function main() {
       published_note?: string;
     };
     const validatePayload = JSON.parse(validated.stdout) as {
+      valid?: boolean;
+      pack?: { pack_id?: string };
+    };
+    const importedSourcePayload = JSON.parse(importedSource.stdout) as {
+      source_kind?: string;
+      entry?: { pack_id?: string; source_kind?: string; source_project_id?: string };
+    };
+    const installedPackRootPayload = JSON.parse(installedPackRoot.stdout) as {
+      pack?: { pack_id?: string };
+      imported?: { source_kind?: string; entry?: { pack_id?: string } };
+    };
+    const validatedPackRootPayload = JSON.parse(validatedPackRoot.stdout) as {
       valid?: boolean;
       pack?: { pack_id?: string };
     };
@@ -161,14 +201,30 @@ async function main() {
     if (validatePayload.valid !== true || validatePayload.pack?.pack_id !== 'project/proj-remote-share-source') {
       throw new Error(`target validation failed: ${validated.stdout}`);
     }
+    if (importedSourcePayload.source_kind !== 'pack_root'
+      || importedSourcePayload.entry?.pack_id !== 'project/proj-remote-share-source'
+      || importedSourcePayload.entry?.source_project_id !== 'external') {
+      throw new Error(`pack-root import payload mismatch: ${importedSource.stdout}`);
+    }
+    if (installedPackRootPayload.pack?.pack_id !== 'project/proj-remote-share-source'
+      || installedPackRootPayload.imported?.source_kind !== 'pack_root') {
+      throw new Error(`pack-root install payload mismatch: ${installedPackRoot.stdout}`);
+    }
+    if (validatedPackRootPayload.valid !== true || validatedPackRootPayload.pack?.pack_id !== 'project/proj-remote-share-source') {
+      throw new Error(`pack-root validation failed: ${validatedPackRoot.stdout}`);
+    }
 
     console.log(JSON.stringify({
       root,
       shared_bundle_dir: sharedBundleDir,
+      direct_pack_root: directPackRoot,
       source_pack_id: exportPayload.pack_id ?? null,
-      target_installed_pack_id: installPayload.pack?.pack_id ?? null,
-      imported_catalog_total: listPayload.total ?? 0,
-      validate_ok: validatePayload.valid ?? false,
+      bundle_target_installed_pack_id: installPayload.pack?.pack_id ?? null,
+      bundle_imported_catalog_total: listPayload.total ?? 0,
+      bundle_validate_ok: validatePayload.valid ?? false,
+      pack_root_source_kind: importedSourcePayload.source_kind ?? null,
+      pack_root_target_installed_pack_id: installedPackRootPayload.pack?.pack_id ?? null,
+      pack_root_validate_ok: validatedPackRootPayload.valid ?? false,
     }, null, 2));
   } finally {
     if (previousHome === undefined) {
