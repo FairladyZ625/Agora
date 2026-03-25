@@ -16,14 +16,18 @@ import {
   exportProjectNomosPack,
   ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
+  inspectRegisteredNomosSource,
   importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
+  installNomosFromRegisteredSource,
   installNomosFromSource,
   listPublishedNomosCatalog,
+  listRegisteredNomosSources,
   publishProjectNomosPack,
+  registerNomosSource,
   refineProjectNomosDraftFromSpec,
   installBuiltInAgoraNomosForProject,
   mergeProjectMetadataWithNomosProfile,
@@ -37,6 +41,7 @@ import {
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   reviewProjectNomosDraft,
   scaffoldNomosPack,
+  syncRegisteredNomosSource,
   validateProjectNomos,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
@@ -1264,6 +1269,83 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   nomos
+    .command('register-source')
+    .description('把 external source 注册为可长期同步的 source descriptor')
+    .requiredOption('--source-id <sourceId>', 'source descriptor id')
+    .requiredOption('--source-dir <path>', 'source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceId: string; sourceDir: string; json?: boolean }) => {
+      const entry = registerNomosSource({
+        sourceId: options.sourceId,
+        sourceDir: options.sourceDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(entry, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已注册: ${entry.source_id}`);
+      writeLine(stdout, `source_kind: ${entry.source_kind}`);
+      writeLine(stdout, `source_dir: ${entry.source_dir}`);
+    });
+
+  nomos
+    .command('list-sources')
+    .description('列出已注册的 Nomos sources')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const listed = listRegisteredNomosSources();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(listed, null, 2));
+        return;
+      }
+      writeLine(stdout, `registry_root: ${listed.registry_root}`);
+      writeLine(stdout, `total: ${listed.total}`);
+      if (listed.entries.length === 0) {
+        writeLine(stdout, 'entries: 0');
+        return;
+      }
+      for (const entry of listed.entries) {
+        writeLine(stdout, `${entry.source_id} — ${entry.source_kind} (${entry.last_sync_status})`);
+      }
+    });
+
+  nomos
+    .command('show-source')
+    .description('查看已注册的 Nomos source descriptor')
+    .argument('<sourceId>', 'registered source id')
+    .option('--json', '输出 JSON', false)
+    .action((sourceId: string, options: { json?: boolean }) => {
+      const entry = inspectRegisteredNomosSource(sourceId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(entry, null, 2));
+        return;
+      }
+      writeLine(stdout, `${entry.source_id} — ${entry.source_kind}`);
+      writeLine(stdout, `source_dir: ${entry.source_dir}`);
+      writeLine(stdout, `last_sync_status: ${entry.last_sync_status}`);
+      writeLine(stdout, `last_catalog_pack_id: ${entry.last_catalog_pack_id ?? '-'}`);
+    });
+
+  nomos
+    .command('sync-registered-source')
+    .description('同步已注册的 Nomos source 到当前机器的 local catalog')
+    .requiredOption('--source-id <sourceId>', 'registered source id')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceId: string; json?: boolean }) => {
+      const synced = syncRegisteredNomosSource({
+        sourceId: options.sourceId,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(synced, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已同步: ${synced.source.source_id}`);
+      writeLine(stdout, `source_kind: ${synced.source.source_kind}`);
+      writeLine(stdout, `imported_source_kind: ${synced.imported.source_kind}`);
+      writeLine(stdout, `pack_id: ${synced.imported.entry.pack_id}`);
+    });
+
+  nomos
     .command('export-project')
     .description('导出某个 project 当前的 draft/active Nomos pack 到本地目录')
     .argument('<projectId>', 'project id')
@@ -1388,6 +1470,32 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `Nomos source 已导入并安装: ${project.id}`);
       writeLine(stdout, `source_kind: ${installed.imported.source_kind}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
+    .command('install-from-registered-source')
+    .description('从已注册 source 同步并安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--source-id <sourceId>', 'registered source id')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      sourceId: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installNomosFromRegisteredSource(project.id, project.metadata ?? null, {
+        sourceId: options.sourceId,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Registered Nomos source 已同步并安装: ${project.id}`);
+      writeLine(stdout, `source_id: ${installed.source.source_id}`);
       writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
       writeLine(stdout, `installed_root: ${installed.installed_root}`);
     });

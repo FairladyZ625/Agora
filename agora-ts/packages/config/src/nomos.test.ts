@@ -27,8 +27,13 @@ import {
   nomosProjectProfileSchema,
   parseProjectNomosAuthoringSpec,
   publishProjectNomosPack,
+  registerNomosSource,
   requireSupportedNomosId,
   refineProjectNomosDraftFromSpec,
+  inspectRegisteredNomosSource,
+  listRegisteredNomosSources,
+  installNomosFromRegisteredSource,
+  syncRegisteredNomosSource,
   validateProjectNomos,
   diffProjectNomos,
   diagnoseProjectNomosDrift,
@@ -528,6 +533,81 @@ describe('nomos pack model freeze', () => {
     });
     expect(targetValidation.valid).toBe(true);
     expect(targetValidation.pack?.pack_id).toBe('project/proj-pack-source');
+  });
+
+  it('registers a pack-root source descriptor and syncs it into the local catalog', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-registered-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-registered-source', 'Registered Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-registered-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'registered-pack-root'),
+    });
+
+    const registered = registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-source',
+      sourceDir: exported.output_dir,
+    });
+    expect(registered.source_kind).toBe('pack_root');
+    expect(inspectRegisteredNomosSource('team/registered-source', { userAgoraDir: targetAgoraHomeDir }).source_dir).toBe(exported.output_dir);
+
+    const synced = syncRegisteredNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-source',
+    });
+    expect(synced.source.last_sync_status).toBe('ok');
+    expect(synced.source.last_catalog_pack_id).toBe('project/proj-registered-source');
+
+    const listed = listRegisteredNomosSources({ userAgoraDir: targetAgoraHomeDir });
+    expect(listed.total).toBe(1);
+    expect(listed.entries[0]?.source_id).toBe('team/registered-source');
+  });
+
+  it('installs a registered source into a target project draft slot', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-registered-install-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-registered-install-source', 'Registered Install Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-registered-install-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'registered-install-pack-root'),
+    });
+
+    registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-install-source',
+      sourceDir: exported.output_dir,
+    });
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-registered-install-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromRegisteredSource('proj-registered-install-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-install-source',
+    });
+
+    expect(installed.source.source_id).toBe('team/registered-install-source');
+    expect(installed.pack.pack_id).toBe('project/proj-registered-install-source');
+    const validation = validateProjectNomos('proj-registered-install-target', installed.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      target: 'draft',
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.pack?.pack_id).toBe('project/proj-registered-install-source');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {
