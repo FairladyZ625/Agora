@@ -2705,6 +2705,10 @@ describe('task service', () => {
   it('auto-refines a project nomos draft when a fixed authoring task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    new ProjectService(db).createProject({
+      id: 'proj-nomos-loop',
+      name: 'Project Nomos Loop',
+    });
     const refineProjectNomosDraft = vi.fn(() => ({
       draftDir: '/tmp/project-nomos',
       draftProfilePath: '/tmp/project-nomos/profile.toml',
@@ -2723,6 +2727,7 @@ describe('task service', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
+      project_id: 'proj-nomos-loop',
       control: {
         mode: 'normal',
         nomos_authoring: {
@@ -2767,6 +2772,10 @@ describe('task service', () => {
   it('auto-refines a project nomos draft when a fixed authoring task is force-advanced to done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    new ProjectService(db).createProject({
+      id: 'proj-nomos-loop-force',
+      name: 'Project Nomos Loop Force',
+    });
     const refineProjectNomosDraft = vi.fn(() => ({
       draftDir: '/tmp/project-nomos',
       draftProfilePath: '/tmp/project-nomos/profile.toml',
@@ -2785,6 +2794,7 @@ describe('task service', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
+      project_id: 'proj-nomos-loop-force',
       control: {
         mode: 'normal',
         nomos_authoring: {
@@ -2824,6 +2834,101 @@ describe('task service', () => {
       current_stage: null,
     });
     expect(refineProjectNomosDraft).toHaveBeenCalledWith('proj-nomos-loop-force');
+  });
+
+  it('rejects project nomos authoring tasks that are not bound to a project', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-AUTHORING-3',
+    });
+
+    expect(() => service.createTask({
+      title: 'Create Project Nomos: Missing Project',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      control: {
+        mode: 'normal',
+        nomos_authoring: {
+          kind: 'project_nomos',
+          project_id: 'proj-nomos-loop',
+          auto_refine_on_done: true,
+        },
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'author', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['author'],
+          nodes: [
+            { id: 'author', kind: 'stage', gate: { type: 'command' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'author__complete__done', from: 'author', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    })).toThrow('project_nomos authoring tasks must be bound to a project');
+  });
+
+  it('rejects project nomos authoring tasks when control and task project ids differ', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-AUTHORING-4',
+    });
+
+    expect(() => service.createTask({
+      title: 'Create Project Nomos: Mismatch',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-alpha',
+      control: {
+        mode: 'normal',
+        nomos_authoring: {
+          kind: 'project_nomos',
+          project_id: 'proj-beta',
+          auto_refine_on_done: true,
+        },
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'author', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['author'],
+          nodes: [
+            { id: 'author', kind: 'stage', gate: { type: 'command' } },
+            { id: 'done', kind: 'terminal' },
+          ],
+          edges: [
+            { id: 'author__complete__done', from: 'author', to: 'done', kind: 'complete' },
+          ],
+        },
+      },
+    })).toThrow('project_nomos authoring project mismatch: task=proj-alpha control=proj-beta');
   });
 
   it('clears current_stage and blocks further gate decisions after force advancing a terminal stage to done', () => {

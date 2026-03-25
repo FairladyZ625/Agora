@@ -379,6 +379,7 @@ export class TaskService {
     const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
     const projectId = input.project_id ?? null;
+    const nomosAuthoring = input.control?.nomos_authoring;
     const firstStageId = workflow.graph?.entry_nodes[0] ?? workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;
     let active: StoredTask;
@@ -386,6 +387,14 @@ export class TaskService {
 
     this.db.exec('BEGIN');
     try {
+      if (nomosAuthoring?.kind === 'project_nomos') {
+        if (!projectId) {
+          throw new Error('project_nomos authoring tasks must be bound to a project');
+        }
+        if (nomosAuthoring.project_id !== projectId) {
+          throw new Error(`project_nomos authoring project mismatch: task=${projectId} control=${nomosAuthoring.project_id}`);
+        }
+      }
       if (projectId) {
         this.projectService.requireProject(projectId);
       }
@@ -880,10 +889,13 @@ export class TaskService {
     if (!authoring || authoring.kind !== 'project_nomos' || authoring.auto_refine_on_done === false) {
       return;
     }
+    if (!task.project_id) {
+      return;
+    }
     if (!this.projectNomosAuthoringPort) {
       throw new Error('Project Nomos authoring port is not configured');
     }
-    this.projectNomosAuthoringPort.refineProjectNomosDraft(authoring.project_id);
+    this.projectNomosAuthoringPort.refineProjectNomosDraft(task.project_id);
   }
 
   completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {
