@@ -977,6 +977,20 @@
   color: var(--color-primary);
 }
 
+.project-detail-subpanel {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  padding: 1rem;
+}
+
+.project-detail-json-preview {
+  margin: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  padding: 0.75rem;
+}
+
 .home-os__terminal {
   flex: 1;
   min-height: 320px;

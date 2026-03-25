@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -108,5 +108,26 @@ describe('runtime assets', () => {
     expect(readFileSync(join(userCodexSkillsDir, 'create-nomos', 'SKILL.md'), 'utf8')).toContain('create nomos');
     expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'references', 'pack-schema.md'), 'utf8')).toContain('schema');
     expect(readFileSync(join(userAgoraDir, 'skills', 'create-nomos', 'assets', 'pack-template', 'profile.toml'), 'utf8')).toContain('example/test');
+  });
+
+  it('replaces broken skill symlinks when syncing bundled skills into user targets', () => {
+    const projectRoot = makeTempDir();
+    const bundledSkillsDir = join(projectRoot, '.skills');
+    const userAgoraDir = makeTempDir();
+    const userAgentsSkillsDir = makeTempDir();
+
+    mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
+    writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
+
+    symlinkSync(join(projectRoot, 'missing-skill-target'), join(userAgentsSkillsDir, 'agora-bootstrap'));
+
+    expect(() => ensureBundledAgoraAssetsInstalled({
+      projectRoot,
+      bundledSkillsDir,
+      userAgoraDir,
+      userSkillDirs: [userAgentsSkillsDir],
+    })).not.toThrow();
+
+    expect(readFileSync(join(userAgentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('bootstrap');
   });
 });

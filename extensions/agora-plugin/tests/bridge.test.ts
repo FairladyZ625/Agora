@@ -272,4 +272,68 @@ describe("AgoraBridge", () => {
       }),
     );
   });
+
+  it("omits optional actor identity headers for current-task actions when actor/provider is missing", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-778" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.approveCurrent({
+      threadRef: "thread-8",
+    });
+    await bridge.rejectCurrent({
+      conversationRef: "channel-10",
+      reason: "needs follow-up",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8420/api/im/tasks/current/approve",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          thread_ref: "thread-8",
+          comment: "",
+        }),
+        headers: expect.not.objectContaining({
+          "x-agora-human-provider": expect.anything(),
+          "x-agora-human-external-id": expect.anything(),
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8420/api/im/tasks/current/reject",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          conversation_ref: "channel-10",
+          reason: "needs follow-up",
+        }),
+        headers: expect.not.objectContaining({
+          "x-agora-human-provider": expect.anything(),
+          "x-agora-human-external-id": expect.anything(),
+        }),
+      }),
+    );
+  });
+
+  it("returns an empty object for successful empty responses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    const payload = await (bridge as any).request("/api/empty-success");
+
+    expect(payload).toEqual({});
+  });
+
+  it("falls back to the raw error body when json error payload does not contain detail", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ message: "no detail field" }), { status: 422 })),
+    );
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await expect(bridge.listTasks()).rejects.toThrow('Agora API 422: {"message":"no detail field"}');
+  });
 });

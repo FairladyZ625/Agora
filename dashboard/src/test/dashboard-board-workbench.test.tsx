@@ -48,12 +48,12 @@ describe('board workbench layout', () => {
     fetchTasks.mockClear();
   });
 
-  it('splits the board into summary, state grid, and interrupted focus modules', () => {
+  it('splits the board into masthead, state grid, and review focus modules', () => {
     renderPage();
 
-    expect(screen.getByTestId('board-state-summary')).toBeInTheDocument();
+    expect(screen.getAllByText('任务看板').length).toBeGreaterThan(0);
     expect(screen.getByTestId('board-state-grid')).toBeInTheDocument();
-    expect(screen.getByTestId('board-interrupted-focus')).toBeInTheDocument();
+    expect(screen.getByTestId('board-review-focus')).toBeInTheDocument();
     expect(screen.getAllByText('等待人工恢复的执行链路').length).toBeGreaterThan(0);
     expect(screen.getAllByText('审批退回后的清理任务').length).toBeGreaterThan(0);
   });

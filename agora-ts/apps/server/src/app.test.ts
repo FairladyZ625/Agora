@@ -419,7 +419,6 @@ describe('agora-ts server bootstrap', () => {
       name: 'Session API Project',
       owner: 'archon',
       summary: 'project route should honor dashboard session',
-      status: 'active',
       metadata: {},
     });
     const app = buildApp({

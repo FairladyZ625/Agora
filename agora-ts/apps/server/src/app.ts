@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { join, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   BUILT_IN_AGORA_NOMOS_PACK,
@@ -11,17 +11,14 @@ import {
   diffProjectNomos,
   exportNomosShareBundle,
   exportProjectNomosPack,
-  ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
   importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
-  installBuiltInAgoraNomosForProject,
   installNomosFromSource,
   listPublishedNomosCatalog,
-  mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   prepareProjectNomosInstall,
   publishProjectNomosPack,
@@ -246,20 +243,6 @@ function parseBasicCredentials(authorization?: string) {
     username: decoded.slice(0, separatorIndex),
     password: decoded.slice(separatorIndex + 1),
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
-  const agora = asRecord(project.metadata?.agora);
-  const nomos = asRecord(agora?.nomos);
-  return typeof nomos?.id === 'string' && nomos.id.length > 0
-    ? nomos.id
-    : DEFAULT_AGORA_NOMOS_ID;
 }
 
 function parseCookies(header?: string) {
@@ -1094,10 +1077,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = createProjectRequestSchema.parse(request.body);
-      const nomosId = requireSupportedNomosId(payload.nomos_id);
-      const bootstrapMode = payload.repo_path
-        ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
-        : 'no_repo';
+      requireSupportedNomosId(payload.nomos_id);
       const project = projectService.createProject({
         ...(payload.id ? { id: payload.id } : {}),
         name: payload.name,
@@ -1128,7 +1108,9 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
           project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
           bootstrap_prompt_path: preparedNomos.runtimePaths.bootstrap_interview_prompt_path,
-          bootstrap_mode: bootstrapMode,
+          bootstrap_mode: payload.repo_path
+            ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
+            : 'no_repo',
         });
       }
       return reply.send(projectService.requireProject(project.id));
@@ -1297,9 +1279,6 @@ export function buildApp(options: BuildAppOptions = {}) {
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
-        const bootstrapMode = effectiveRepoPath
-          ? ((payload.initialize_repo ?? false) ? 'new_repo' : 'existing_repo')
-          : 'no_repo';
         const bootstrapTask = new ProjectBootstrapService({
           projectService,
           taskService,

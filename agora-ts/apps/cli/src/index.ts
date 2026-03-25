@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import {
@@ -14,7 +14,6 @@ import {
   diffProjectNomos,
   exportNomosShareBundle,
   exportProjectNomosPack,
-  ensureProjectNomosAuthoringDraft,
   activateProjectNomosDraft,
   importNomosSource,
   importNomosShareBundle,
@@ -25,8 +24,6 @@ import {
   listPublishedNomosCatalog,
   publishProjectNomosPack,
   refineProjectNomosDraftFromSpec,
-  installBuiltInAgoraNomosForProject,
-  mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
@@ -165,20 +162,6 @@ function collectOption(value: string, previous: string[] = []) {
 
 function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
-  const agora = asRecord(project.metadata?.agora);
-  const nomos = asRecord(agora?.nomos);
-  return typeof nomos?.id === 'string' && nomos.id.length > 0
-    ? nomos.id
-    : DEFAULT_AGORA_NOMOS_ID;
 }
 
 function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {

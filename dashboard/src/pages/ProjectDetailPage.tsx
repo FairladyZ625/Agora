@@ -416,7 +416,7 @@ export function ProjectDetailPage() {
                 className="input-shell"
                 value={exportDir}
                 onChange={(event) => setExportDir(event.target.value)}
-                placeholder="/tmp/exported-pack"
+                placeholder={copy.exportDirPlaceholder}
               />
             </div>
             <div className="space-y-2">
@@ -426,7 +426,7 @@ export function ProjectDetailPage() {
                 className="input-shell"
                 value={packDir}
                 onChange={(event) => setPackDir(event.target.value)}
-                placeholder="/tmp/exported-pack"
+                placeholder={copy.packDirPlaceholder}
               />
             </div>
             <div className="space-y-2 lg:col-span-2">
@@ -436,7 +436,7 @@ export function ProjectDetailPage() {
                 className="input-shell"
                 value={sourceDir}
                 onChange={(event) => setSourceDir(event.target.value)}
-                placeholder="/tmp/nomos-source"
+                placeholder={copy.sourceDirPlaceholder}
               />
             </div>
             <div className="space-y-2">
@@ -446,7 +446,7 @@ export function ProjectDetailPage() {
                 className="input-shell"
                 value={publishNote}
                 onChange={(event) => setPublishNote(event.target.value)}
-                placeholder="shareable baseline"
+                placeholder={copy.publishNotePlaceholder}
               />
             </div>
             <div className="space-y-2">
@@ -456,7 +456,7 @@ export function ProjectDetailPage() {
                 className="input-shell"
                 value={catalogPackId}
                 onChange={(event) => setCatalogPackId(event.target.value)}
-                placeholder="project/proj-alpha"
+                placeholder={copy.catalogPackIdPlaceholder}
               />
             </div>
           </div>
@@ -552,7 +552,7 @@ export function ProjectDetailPage() {
               </div>
             </div>
           ) : null}
-          <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-4" data-testid="project-nomos-catalog-panel">
+          <div className="project-detail-subpanel mt-5" data-testid="project-nomos-catalog-panel">
             <div className="space-y-2">
               <p className="field-label">{copy.catalogTitle}</p>
               <p className="type-body-sm break-all">
@@ -589,14 +589,14 @@ export function ProjectDetailPage() {
                   {': '}
                   {catalogEntry.source_kind}
                 </p>
-                <pre className="type-caption whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-elevated)] p-3">
+                <pre className="project-detail-json-preview type-caption whitespace-pre-wrap">
                   {renderJson(catalogEntry as unknown as Record<string, unknown>)}
                 </pre>
               </div>
             ) : null}
           </div>
           {importedSource ? (
-            <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-4" data-testid="project-nomos-source-panel">
+            <div className="project-detail-subpanel mt-5" data-testid="project-nomos-source-panel">
               <div className="space-y-2">
                 <p className="field-label">{copy.importedSourceTitle}</p>
                 <p className="type-body-sm">

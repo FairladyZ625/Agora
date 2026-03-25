@@ -1473,7 +1473,6 @@ export function installLocalNomosPackToProject(
   metadata: Record<string, unknown> | null | undefined,
   options: InstallLocalNomosPackToProjectOptions,
 ): InstallLocalNomosPackToProjectResult {
-  const state = resolveProjectNomosState(projectId, metadata, options);
   const layout = resolveAgoraProjectStateLayout(projectId, options);
   const sourceProfilePath = resolve(options.packDir, 'profile.toml');
   if (!existsSync(options.packDir) || !existsSync(sourceProfilePath)) {

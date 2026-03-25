@@ -589,6 +589,18 @@ vi.mock('@/stores/todoStore', () => ({
 }));
 
 describe('project workbench pages', () => {
+  async function renderProjectDetailPage() {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha']}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Project Alpha' });
+  }
+
   beforeEach(async () => {
     vi.clearAllMocks();
     await setLocale('en-US');
@@ -630,14 +642,8 @@ describe('project workbench pages', () => {
     });
   });
 
-  it('renders the project detail page', async () => {
-    render(
-      <MemoryRouter initialEntries={['/projects/proj-alpha']}>
-        <Routes>
-          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
+  it('renders the project detail shell and nomos summary', async () => {
+    await renderProjectDetailPage();
 
     expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Nomos State' })).toBeInTheDocument();
@@ -657,13 +663,33 @@ describe('project workbench pages', () => {
     expect(screen.getByRole('button', { name: 'Install From Source' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Install Pack' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
+    expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
+    expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
+    expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
+    expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
+    expect(screen.getAllByText('Active Tasks').length).toBeGreaterThan(0);
+    expect(screen.getByText('Waiting Review')).toBeInTheDocument();
+    expect(screen.getAllByText('Pending Todos').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Bootstrap flow' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
+    expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Project Brain' })).toBeInTheDocument();
+    expect(screen.getByText('Citizen Preview')).toBeInTheDocument();
+    expect(screen.getByText('Think in systems.')).toBeInTheDocument();
+    expect(screen.getByText('openclaw')).toBeInTheDocument();
+  });
+
+  it('runs project nomos management actions', async () => {
+    await renderProjectDetailPage();
+
     fireEvent.click(screen.getByRole('button', { name: 'Reinstall Nomos' }));
     await waitFor(() => {
       expect(installProjectNomos).toHaveBeenCalledWith('proj-alpha', {
         skip_bootstrap_task: true,
       });
     });
-    expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
     expect(screen.getByText('Nomos reinstalled and project state refreshed.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Rerun Bootstrap' }));
     await waitFor(() => {
@@ -698,6 +724,11 @@ describe('project workbench pages', () => {
       expect(activateProjectNomos).toHaveBeenCalledWith('proj-alpha', 'archon');
     });
     expect(screen.getByText('Project Nomos activated.')).toBeInTheDocument();
+  });
+
+  it('runs nomos catalog and source import actions', async () => {
+    await renderProjectDetailPage();
+
     fireEvent.change(screen.getByLabelText('Export Dir'), { target: { value: '/tmp/exported-pack' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export Pack' }));
     await waitFor(() => {
@@ -743,21 +774,11 @@ describe('project workbench pages', () => {
     await waitFor(() => {
       expect(installProjectNomosFromSource).toHaveBeenCalledWith('proj-alpha', '/tmp/nomos-source');
     });
-    expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
-    expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
-    expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
-    expect(screen.getAllByText('Active Tasks').length).toBeGreaterThan(0);
-    expect(screen.getByText('Waiting Review')).toBeInTheDocument();
-    expect(screen.getAllByText('Pending Todos').length).toBeGreaterThan(0);
-    expect(screen.getByRole('link', { name: 'Bootstrap flow' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
-    expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Project Brain' })).toBeInTheDocument();
-    expect(screen.getByText('Citizen Preview')).toBeInTheDocument();
-    expect(screen.getByText('Think in systems.')).toBeInTheDocument();
-    expect(screen.getByText('openclaw')).toBeInTheDocument();
+  });
+
+  it('renders project detail drill-downs and todo filters', async () => {
+    await renderProjectDetailPage();
+
     fireEvent.click(screen.getByRole('button', { name: 'Open recap Bootstrap recap' }));
     expect(screen.getByRole('dialog', { name: 'PROJECT RECAP' })).toBeInTheDocument();
     expect(screen.getByText('Task recap line.')).toBeInTheDocument();

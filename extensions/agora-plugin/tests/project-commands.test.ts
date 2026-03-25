@@ -416,4 +416,70 @@ describe("registerProjectCommands", () => {
     expect(dispatch).toContain('"command_body":"/project create \\"Trace Project\\" --id proj-trace"');
     expect(dispatch).toContain('"wizard_session_key":"project:discord:hall:u1"');
   });
+
+  it("supports explicit owner parsing on one-shot create commands", async () => {
+    const createProject = vi.fn(async () => ({
+      id: "proj-owner",
+      name: "Owner Project",
+      status: "active",
+      owner: "owner-1",
+    }));
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, { createProject } as any, createPluginTrace(api as any));
+
+    const result = await getCommand("project").handler({
+      args: 'create "Owner Project" --owner owner-1',
+      senderId: "u1",
+    });
+
+    expect(createProject).toHaveBeenCalledWith({
+      name: "Owner Project",
+      owner: "owner-1",
+    });
+    expect(result.text).toContain("owner=owner-1");
+  });
+
+  it("keeps the wizard prompt alive for empty/help input and ignores recognized subcommands", async () => {
+    const listProjects = vi.fn(async () => [
+      { id: "proj-a", status: "active", name: "Project A" },
+    ]);
+    const { api, getCommand, loggerMessages } = buildApi();
+    registerProjectCommands(api as any, { listProjects } as any, createPluginTrace(api as any));
+
+    await getCommand("project").handler({ args: "create", senderId: "u1", provider: "discord", conversationId: "hall" });
+    const help = await getCommand("project").handler({ args: "help", senderId: "u1", provider: "discord", conversationId: "hall" });
+    const handoff = await getCommand("project").handler({ args: "list active", senderId: "u1", provider: "discord", conversationId: "hall" });
+
+    expect(help.text).toContain("Step 1/2");
+    expect(handoff.text).toContain("proj-a | active | Project A");
+    expect(listProjects).toHaveBeenCalledWith("active");
+    expect(loggerMessages.info.some((message) => message.includes('"note":"help_or_empty"'))).toBe(true);
+  });
+
+  it("returns usage guidance for incomplete nomos commands and help for unknown nomos actions", async () => {
+    const { api, getCommand } = buildApi();
+    registerProjectCommands(api as any, {} as any, createPluginTrace(api as any));
+
+    const validate = await getCommand("project").handler({ args: "nomos validate", senderId: "u1" });
+    const diff = await getCommand("project").handler({ args: "nomos diff", senderId: "u1" });
+    const exportResult = await getCommand("project").handler({ args: "nomos export proj-only", senderId: "u1" });
+    const publish = await getCommand("project").handler({ args: "nomos publish", senderId: "u1" });
+    const catalogShow = await getCommand("project").handler({ args: "nomos catalog-show", senderId: "u1" });
+    const installCatalog = await getCommand("project").handler({ args: "nomos install-from-catalog proj-only", senderId: "u1" });
+    const installPack = await getCommand("project").handler({ args: "nomos install-pack proj-only", senderId: "u1" });
+    const importSource = await getCommand("project").handler({ args: "nomos import-source", senderId: "u1" });
+    const installSource = await getCommand("project").handler({ args: "nomos install-from-source proj-only", senderId: "u1" });
+    const help = await getCommand("project").handler({ args: "nomos nonsense", senderId: "u1" });
+
+    expect(validate.text).toContain("Usage: /project nomos validate");
+    expect(diff.text).toContain("Usage: /project nomos diff");
+    expect(exportResult.text).toContain("Usage: /project nomos export");
+    expect(publish.text).toContain("Usage: /project nomos publish");
+    expect(catalogShow.text).toContain("Usage: /project nomos catalog-show");
+    expect(installCatalog.text).toContain("Usage: /project nomos install-from-catalog");
+    expect(installPack.text).toContain("Usage: /project nomos install-pack");
+    expect(importSource.text).toContain("Usage: /project nomos import-source");
+    expect(installSource.text).toContain("Usage: /project nomos install-from-source");
+    expect(help.text).toContain("Agora /project nomos commands:");
+  });
 });

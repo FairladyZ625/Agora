@@ -1,6 +1,6 @@
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 export interface EnsureBundledAgoraAssetsOptions {
   projectRoot: string;
@@ -66,29 +66,20 @@ export function ensureBundledAgoraAssetsInstalled(
 
     for (const { name, sourceDir } of sourceSkillDirs) {
       const agoraTargetDir = resolve(userAgoraDir, 'skills', name);
-      cpSync(sourceDir, agoraTargetDir, {
-        recursive: true,
-        force: true,
-      });
+      replaceRuntimeAssetTree(sourceDir, agoraTargetDir);
       installedSkillTargets.push(agoraTargetDir);
       bundledSkillNames.push(name);
 
       for (const userSkillsDir of userSkillDirs) {
         mkdirSync(userSkillsDir, { recursive: true });
         const targetDir = resolve(userSkillsDir, name);
-        cpSync(sourceDir, targetDir, {
-          recursive: true,
-          force: true,
-        });
+        replaceRuntimeAssetTree(sourceDir, targetDir);
         installedSkillTargets.push(targetDir);
       }
     }
 
     if (!existsSync(agoraSkillDir) && bundledSkillNames.includes('agora-bootstrap')) {
-      cpSync(resolve(bundledSkillsDir, 'agora-bootstrap'), agoraSkillDir, {
-        recursive: true,
-        force: true,
-      });
+      replaceRuntimeAssetTree(resolve(bundledSkillsDir, 'agora-bootstrap'), agoraSkillDir);
     } else if (existsSync(resolve(userAgoraDir, 'skills', 'agora-bootstrap'))) {
       // Keep the historical field pointing at the bootstrap skill for existing callers.
     }
@@ -131,8 +122,17 @@ export function syncBundledBrainPackContents(sourceRoot: string, targetRoot: str
 }
 
 function syncRuntimeAssetEntry(sourcePath: string, targetPath: string) {
-  const stat = lstatSync(sourcePath);
+  const sourceLstat = lstatSync(sourcePath);
+  if (sourceLstat.isSymbolicLink()) {
+    syncRuntimeAssetEntry(resolve(dirname(sourcePath), readSymlinkTarget(sourcePath)), targetPath);
+    return;
+  }
+  const stat = statSync(sourcePath);
+  const targetStat = tryLstat(targetPath);
   if (stat.isDirectory()) {
+    if (targetStat && !targetStat.isDirectory()) {
+      rmSync(targetPath, { recursive: true, force: true });
+    }
     mkdirSync(targetPath, { recursive: true });
     for (const child of readdirSync(sourcePath, { withFileTypes: true })) {
       syncRuntimeAssetEntry(resolve(sourcePath, child.name), resolve(targetPath, child.name));
@@ -140,7 +140,31 @@ function syncRuntimeAssetEntry(sourcePath: string, targetPath: string) {
     return;
   }
 
+  if (targetStat?.isDirectory()) {
+    rmSync(targetPath, { recursive: true, force: true });
+  }
+  mkdirSync(dirname(targetPath), { recursive: true });
   copyFileSync(sourcePath, targetPath);
+}
+
+function replaceRuntimeAssetTree(sourcePath: string, targetPath: string) {
+  rmSync(targetPath, {
+    recursive: true,
+    force: true,
+  });
+  syncRuntimeAssetEntry(sourcePath, targetPath);
+}
+
+function tryLstat(targetPath: string) {
+  try {
+    return lstatSync(targetPath);
+  } catch {
+    return null;
+  }
+}
+
+function readSymlinkTarget(sourcePath: string) {
+  return readlinkSync(sourcePath);
 }
 
 export function hasInstalledBrainPack(targetRoot: string) {
