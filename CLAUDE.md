@@ -95,6 +95,17 @@
   - walkthrough
 - SSoT 与 planning 必须双向绑定。
 
+### 讨论落地规则（Architecture Capture）
+
+- 任何非平凡的设计讨论（brainstorming / architecture discussion），不管最终实现到哪一步，都必须把全貌落成架构文档。
+- 讨论产出必须包含两类内容：
+  - **已确认的设计** — 明确的模型、流程、原则、边界
+  - **未决事项** — 还没想清楚的问题、待讨论的方向、挂起的话题
+- 两类内容都必须落盘，不允许只记录已确认的部分而丢弃未决的部分。
+- 如果一个设计涉及多个子话题（如数据模型、控制器、存储、IM 投影等），应在 `docs/03-ARCHITECTURE/` 下建立独立子目录，每个子话题一个文档，加一个 README 作为索引。
+- 讨论来源（对话 ID、日期、参与者）必须在文档中标注，方便后续回溯。
+- 禁止"讨论完只写了第一部分，后面的想法丢在聊天记录里"。如果一次讨论没有全部落盘，必须至少留一个 `undecided.md` 记录剩余话题的现状和方向。
+
 ## 4. Mandatory Completion Loop
 
 - 代码实现默认遵循 TDD：先测，后实现，再回归。
@@ -123,6 +134,10 @@
 
   - 先读 [docs/11-REFERENCE/agora-core-decoupling-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/agora-core-decoupling-standard.md)
   - 再读 [docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md](/Users/lizeyu/Projects/Agora/docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md)
+- 组织化 / membership / executive controller / agent team 相关任务：
+
+  - 先读 [docs/03-ARCHITECTURE/org-aware-work-os/README.md](/Users/lizeyu/Projects/Agora/docs/03-ARCHITECTURE/org-aware-work-os/README.md)（索引 + 全貌）
+  - 再按需读子文档（01-05）
 - 文档治理 / planning / walkthrough / SSoT 相关任务：
 
   - 先读 [docs/11-REFERENCE/docs-library-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/docs-library-standard.md)
