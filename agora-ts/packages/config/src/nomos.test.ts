@@ -35,6 +35,7 @@ import {
   renderNomosProjectProfileToml,
   renderRepoAgentsShim,
   resolveAgoraProjectStateLayout,
+  resolveProjectNomosState,
 } from './nomos.js';
 
 const tempPaths: string[] = [];
@@ -258,13 +259,21 @@ describe('nomos pack model freeze', () => {
   });
 
   it('merges persisted project metadata with the installed Nomos boundary', () => {
-    const profile = buildBuiltInAgoraNomosProjectProfile('proj-meta', { userAgoraDir: makeAgoraHomeDir() });
+    const agoraHomeDir = makeAgoraHomeDir();
+    const profile = buildBuiltInAgoraNomosProjectProfile('proj-meta', { userAgoraDir: agoraHomeDir });
     const metadata = mergeProjectMetadataWithNomosProfile({
       tier: 'internal',
       agora: {
         existing_flag: true,
+        nomos: {
+          draft_root: '/tmp/unsafe-draft',
+          draft_profile_path: '/tmp/unsafe-draft/profile.toml',
+          active_root: '/tmp/unsafe-active',
+          active_profile_path: '/tmp/unsafe-active/profile.toml',
+        },
       },
     }, profile);
+    const state = resolveProjectNomosState('proj-meta', metadata, { userAgoraDir: agoraHomeDir });
 
     expect(metadata).toMatchObject({
       tier: 'internal',
@@ -277,9 +286,15 @@ describe('nomos pack model freeze', () => {
           install_mode: 'copy_on_install',
           root_template: '~/.agora/projects/<project-id>',
           activation_status: 'active_builtin',
+          draft_root: join(agoraHomeDir, 'projects', 'proj-meta', 'nomos', 'project-nomos'),
+          draft_profile_path: join(agoraHomeDir, 'projects', 'proj-meta', 'nomos', 'project-nomos', 'profile.toml'),
+          active_root: join(agoraHomeDir, 'projects', 'proj-meta'),
+          active_profile_path: join(agoraHomeDir, 'projects', 'proj-meta', 'profile.toml'),
         },
       },
     });
+    expect(state.draft_root).toBe(join(agoraHomeDir, 'projects', 'proj-meta', 'nomos', 'project-nomos'));
+    expect(state.active_root).toBe(join(agoraHomeDir, 'projects', 'proj-meta'));
   });
 
   it('validates draft and active project nomos targets and reports semantic diffs', () => {
@@ -377,6 +392,32 @@ describe('nomos pack model freeze', () => {
     });
     expect(targetValidation.valid).toBe(true);
     expect(targetValidation.pack?.pack_id).toBe('project/proj-source');
+  });
+
+  it('rejects export targets nested under the source pack root', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-export-nested', { userAgoraDir: agoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-export-nested', 'Nested Export Project', {
+      userAgoraDir: agoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const nestedOutputDir = join(
+      agoraHomeDir,
+      'projects',
+      'proj-export-nested',
+      'nomos',
+      'project-nomos',
+      'exports',
+      'bundle',
+    );
+
+    expect(() => exportProjectNomosPack('proj-export-nested', sourceMetadata, {
+      userAgoraDir: agoraHomeDir,
+      target: 'draft',
+      outputDir: nestedOutputDir,
+    })).toThrowError(/must not be nested under the source pack root/);
+    expect(existsSync(nestedOutputDir)).toBe(false);
   });
 
   it('publishes a project draft pack into the local catalog and installs it from catalog into another project', () => {

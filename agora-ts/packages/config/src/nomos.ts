@@ -982,6 +982,7 @@ export function mergeProjectMetadataWithNomosProfile(
     agora: {
       ...existingAgora,
       nomos: {
+        ...existingNomos,
         id: profile.pack.id,
         version: profile.pack.version,
         source: profile.pack.source,
@@ -992,7 +993,6 @@ export function mergeProjectMetadataWithNomosProfile(
         draft_profile_path: defaultDraftProfilePath,
         active_root: projectStateRoot,
         active_profile_path: resolve(projectStateRoot, 'profile.toml'),
-        ...existingNomos,
       },
     },
   };
@@ -1008,22 +1008,14 @@ export function resolveProjectNomosState(
   const existingNomos = asRecord(existingAgora.nomos);
   const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
   const activationStatus = projectNomosActivationStatusSchema.catch('active_builtin').parse(existingNomos.activation_status);
-  const draftRoot = typeof existingNomos.draft_root === 'string'
-    ? existingNomos.draft_root
-    : layout.projectNomosDraftDir;
-  const draftProfilePath = typeof existingNomos.draft_profile_path === 'string'
-    ? existingNomos.draft_profile_path
-    : layout.projectNomosDraftProfilePath;
-  const activeRoot = typeof existingNomos.active_root === 'string'
-    ? existingNomos.active_root
-    : activationStatus === 'active_project'
-      ? draftRoot
-      : layout.root;
-  const activeProfilePath = typeof existingNomos.active_profile_path === 'string'
-    ? existingNomos.active_profile_path
-    : activationStatus === 'active_project'
-      ? draftProfilePath
-      : layout.profilePath;
+  const draftRoot = layout.projectNomosDraftDir;
+  const draftProfilePath = layout.projectNomosDraftProfilePath;
+  const activeRoot = activationStatus === 'active_project'
+    ? draftRoot
+    : layout.root;
+  const activeProfilePath = activationStatus === 'active_project'
+    ? draftProfilePath
+    : layout.profilePath;
   const nomosId = typeof existingNomos.id === 'string' && existingNomos.id.length > 0
     ? existingNomos.id
     : DEFAULT_AGORA_NOMOS_ID;
@@ -1393,27 +1385,31 @@ export function exportProjectNomosPack(
   const target = options.target ?? 'draft';
   const state = resolveProjectNomosState(projectId, metadata, options);
   const root = target === 'active' ? state.active_root : state.draft_root;
+  const outputDir = resolve(options.outputDir);
   const pack = resolveProjectNomosPackForTarget(projectId, state, target);
   if (!pack || !existsSync(root)) {
     throw new Error(`Cannot export Nomos pack for ${projectId}: ${target} pack is missing.`);
   }
+  if (isWithinParent(outputDir, root)) {
+    throw new Error(`Nomos export output directory must not be nested under the source pack root: ${outputDir}`);
+  }
 
-  if (options.replaceExisting && existsSync(options.outputDir) && readdirSync(options.outputDir).length > 0) {
-    removeDirectoryTree(options.outputDir, {
+  if (options.replaceExisting && existsSync(outputDir) && readdirSync(outputDir).length > 0) {
+    removeDirectoryTree(outputDir, {
       label: 'export project nomos pack',
       requirePackMarker: true,
     });
   }
-  mkdirSync(options.outputDir, { recursive: true });
-  if (readdirSync(options.outputDir).length > 0) {
-    throw new Error(`Nomos export output directory must be empty: ${options.outputDir}`);
+  mkdirSync(outputDir, { recursive: true });
+  if (readdirSync(outputDir).length > 0) {
+    throw new Error(`Nomos export output directory must be empty: ${outputDir}`);
   }
-  copyDirectoryRecursive(root, options.outputDir);
+  copyDirectoryRecursive(root, outputDir);
 
   return {
     project_id: projectId,
     target,
-    output_dir: options.outputDir,
+    output_dir: outputDir,
     pack,
   };
 }
