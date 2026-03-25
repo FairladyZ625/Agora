@@ -63,6 +63,7 @@ export function ProjectDetailPage() {
   const [nomosActionMessage, setNomosActionMessage] = useState<string | null>(null);
   const [exportDir, setExportDir] = useState('');
   const [packDir, setPackDir] = useState('');
+  const [sourceDir, setSourceDir] = useState('');
   const [publishNote, setPublishNote] = useState('');
   const [catalogPackId, setCatalogPackId] = useState('');
   const [doctorReport, setDoctorReport] = useState<Awaited<ReturnType<typeof api.runProjectNomosDoctor>> | null>(null);
@@ -72,6 +73,7 @@ export function ProjectDetailPage() {
   const [diffReport, setDiffReport] = useState<ProjectNomosDiff | null>(null);
   const [catalogList, setCatalogList] = useState<Awaited<ReturnType<typeof api.listPublishedNomosCatalog>> | null>(null);
   const [catalogEntry, setCatalogEntry] = useState<Awaited<ReturnType<typeof api.showPublishedNomosCatalog>> | null>(null);
+  const [importedSource, setImportedSource] = useState<Awaited<ReturnType<typeof api.importNomosSource>> | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -109,7 +111,7 @@ export function ProjectDetailPage() {
   const nomos = selectedProject.nomos;
 
   const runNomosAction = async (
-    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack' | 'publish' | 'catalog-list' | 'catalog-show' | 'install-catalog',
+    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack' | 'publish' | 'catalog-list' | 'catalog-show' | 'install-catalog' | 'import-source' | 'install-source',
   ) => {
     if (!projectId) {
       return;
@@ -165,6 +167,19 @@ export function ProjectDetailPage() {
         const result = await api.installCatalogNomosPack(projectId, catalogPackId);
         await selectProject(projectId);
         setNomosActionMessage(`${copy.nomosInstallCatalogSuccess} ${result.installed_root}`);
+      } else if (mode === 'import-source') {
+        const result = await api.importNomosSource(sourceDir);
+        setImportedSource(result);
+        setCatalogEntry(result.entry);
+        setCatalogPackId(result.entry.pack_id);
+        setNomosActionMessage(`${copy.nomosImportSourceSuccess} ${result.entry.pack_id}`);
+      } else if (mode === 'install-source') {
+        const result = await api.installProjectNomosFromSource(projectId, sourceDir);
+        await selectProject(projectId);
+        setImportedSource(result.imported);
+        setCatalogEntry(result.imported.entry);
+        setCatalogPackId(result.imported.entry.pack_id);
+        setNomosActionMessage(`${copy.nomosInstallSourceSuccess} ${result.installed_root}`);
       } else if (mode === 'install-pack') {
         const result = await api.installProjectNomosPack(projectId, packDir);
         await selectProject(projectId);
@@ -276,6 +291,22 @@ export function ProjectDetailPage() {
                 onClick={() => void runNomosAction('publish')}
               >
                 {copy.publishNomosAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('import-source')}
+              >
+                {copy.importSourceAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('install-source')}
+              >
+                {copy.installFromSourceAction}
               </button>
               <button
                 type="button"
@@ -396,6 +427,16 @@ export function ProjectDetailPage() {
                 value={packDir}
                 onChange={(event) => setPackDir(event.target.value)}
                 placeholder="/tmp/exported-pack"
+              />
+            </div>
+            <div className="space-y-2 lg:col-span-2">
+              <label className="field-label" htmlFor="nomos-source-dir">{copy.sourceDirLabel}</label>
+              <input
+                id="nomos-source-dir"
+                className="input-shell"
+                value={sourceDir}
+                onChange={(event) => setSourceDir(event.target.value)}
+                placeholder="/tmp/nomos-source"
               />
             </div>
             <div className="space-y-2">
@@ -543,12 +584,39 @@ export function ProjectDetailPage() {
             {catalogEntry ? (
               <div className="mt-4 space-y-2">
                 <p className="field-label">{copy.catalogSelectionTitle}</p>
+                <p className="type-body-sm">
+                  {copy.sourceKindLabel}
+                  {': '}
+                  {catalogEntry.source_kind}
+                </p>
                 <pre className="type-caption whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-elevated)] p-3">
                   {renderJson(catalogEntry as unknown as Record<string, unknown>)}
                 </pre>
               </div>
             ) : null}
           </div>
+          {importedSource ? (
+            <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-4" data-testid="project-nomos-source-panel">
+              <div className="space-y-2">
+                <p className="field-label">{copy.importedSourceTitle}</p>
+                <p className="type-body-sm">
+                  {copy.sourceKindLabel}
+                  {': '}
+                  {importedSource.source_kind}
+                </p>
+                <p className="type-body-sm break-all">
+                  {copy.sourceDirLabel}
+                  {': '}
+                  {importedSource.source_dir}
+                </p>
+                <p className="type-body-sm break-all">
+                  {copy.catalogPackIdLabel}
+                  {': '}
+                  {importedSource.entry.pack_id}
+                </p>
+              </div>
+            </div>
+          ) : null}
           {doctorReport ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">

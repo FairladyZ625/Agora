@@ -233,6 +233,7 @@ const publishedNomosCatalogSummarySchema = z.object({
   version: z.string().min(1),
   description: z.string().min(1),
   published_at: z.string().min(1),
+  source_kind: z.enum(['project_publish', 'share_bundle', 'pack_root']),
   published_by: z.string().nullable(),
   source_project_id: z.string().min(1),
   source_target: z.enum(['draft', 'active']),
@@ -243,6 +244,7 @@ const publishedNomosCatalogEntrySchema = z.object({
   schema_version: z.literal(1),
   pack_id: z.string().min(1),
   published_at: z.string().min(1),
+  source_kind: z.enum(['project_publish', 'share_bundle', 'pack_root']),
   published_by: z.string().nullable(),
   published_note: z.string().nullable(),
   source_project_id: z.string().min(1),
@@ -286,6 +288,27 @@ const projectNomosInstallCatalogPackSchema = z.object({
 });
 
 export type ApiProjectNomosInstallCatalogPackDto = z.infer<typeof projectNomosInstallCatalogPackSchema>;
+
+const nomosSourceImportSchema = z.object({
+  source_dir: z.string().min(1),
+  source_kind: z.enum(['share_bundle', 'pack_root']),
+  manifest_path: z.string().nullable(),
+  entry: publishedNomosCatalogEntrySchema,
+});
+
+export type ApiNomosSourceImportDto = z.infer<typeof nomosSourceImportSchema>;
+
+const projectNomosInstallFromSourceSchema = z.object({
+  project_id: z.string().min(1),
+  pack: projectNomosPackSummarySchema,
+  installed_root: z.string().min(1),
+  installed_profile_path: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()),
+  catalog_entry: publishedNomosCatalogEntrySchema,
+  imported: nomosSourceImportSchema,
+});
+
+export type ApiProjectNomosInstallFromSourceDto = z.infer<typeof projectNomosInstallFromSourceSchema>;
 
 class ApiError extends Error {
   status: number;
@@ -1076,6 +1099,35 @@ export function installCatalogNomosPack(
       method: 'POST',
       body: JSON.stringify({
         pack_id: packId,
+      }),
+    },
+  );
+}
+
+export function importNomosSource(sourceDir: string): Promise<ApiNomosSourceImportDto> {
+  return request<ApiNomosSourceImportDto>(
+    '/nomos/sources/import',
+    nomosSourceImportSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        source_dir: sourceDir,
+      }),
+    },
+  );
+}
+
+export function installProjectNomosFromSource(
+  projectId: string,
+  sourceDir: string,
+): Promise<ApiProjectNomosInstallFromSourceDto> {
+  return request<ApiProjectNomosInstallFromSourceDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/install-from-source`,
+    projectNomosInstallFromSourceSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        source_dir: sourceDir,
       }),
     },
   );

@@ -184,6 +184,9 @@ async function captureDashboardScreenshots(input: {
 	    let catalogVisible = false;
 	    let installCatalogVisible = false;
 	    let installVisible = false;
+	    let importSourceVisible = false;
+	    let installSourceVisible = false;
+	    let sourcePanelVisible = false;
 	    let activationVisible = false;
     await page.getByRole('button', { name: 'Review Draft' }).click();
     await page.getByText('Can Activate').waitFor({ timeout: 3000 });
@@ -218,6 +221,15 @@ async function captureDashboardScreenshots(input: {
 	    await page.getByRole('button', { name: 'Install Pack' }).click();
 	    await page.getByText('Nomos pack installed into draft.').waitFor({ timeout: 3000 });
     installVisible = true;
+	    await page.getByLabel('Source Dir').fill(${JSON.stringify(input.exportDir)});
+	    await page.getByRole('button', { name: 'Import Source' }).click();
+	    await page.getByText('Nomos source imported into catalog.').waitFor({ timeout: 3000 });
+	    importSourceVisible = true;
+	    await page.getByRole('button', { name: 'Install From Source' }).click();
+	    await page.getByText('Nomos source imported and installed into draft.').waitFor({ timeout: 3000 });
+	    installSourceVisible = true;
+	    await page.getByTestId('project-nomos-source-panel').waitFor({ timeout: 3000 });
+	    sourcePanelVisible = true;
     await page.screenshot({ path: ${JSON.stringify(input.detailScreenshotPath)}, fullPage: true });
     const bodyText = await page.locator('body').innerText();
     console.log(JSON.stringify({
@@ -228,6 +240,8 @@ async function captureDashboardScreenshots(input: {
         && bodyText.includes('Activate Draft')
         && bodyText.includes('Validate Draft')
         && bodyText.includes('Diff Draft')
+        && bodyText.includes('Import Source')
+        && bodyText.includes('Install From Source')
         && bodyText.includes('Reinstall Nomos')
         && bodyText.includes('Rerun Bootstrap')
         && bodyText.includes('Run Doctor'),
@@ -239,6 +253,9 @@ async function captureDashboardScreenshots(input: {
 	      catalogVisible,
 	      installCatalogVisible,
 	      installVisible,
+	      importSourceVisible,
+	      installSourceVisible,
+	      sourcePanelVisible,
 	      activationVisible,
 	    }));
     await browser.close();
@@ -283,6 +300,9 @@ async function captureDashboardScreenshots(input: {
     catalogVisible: boolean;
     installCatalogVisible: boolean;
     installVisible: boolean;
+    importSourceVisible: boolean;
+    installSourceVisible: boolean;
+    sourcePanelVisible: boolean;
     activationVisible: boolean;
   };
 }
@@ -515,7 +535,8 @@ async function main() {
     if (!dashboardUi.nomosVisible || !dashboardUi.actionVisible || !dashboardUi.reviewVisible
       || !dashboardUi.validationVisible || !dashboardUi.diffVisible || !dashboardUi.activationVisible
       || !dashboardUi.exportVisible || !dashboardUi.publishVisible || !dashboardUi.catalogVisible
-      || !dashboardUi.installCatalogVisible || !dashboardUi.installVisible) {
+      || !dashboardUi.installCatalogVisible || !dashboardUi.installVisible
+      || !dashboardUi.importSourceVisible || !dashboardUi.installSourceVisible || !dashboardUi.sourcePanelVisible) {
       throw new Error(`dashboard nomos click-path incomplete: ${JSON.stringify(dashboardUi)}`);
     }
 
@@ -537,6 +558,9 @@ async function main() {
       catalog_visible: dashboardUi.catalogVisible,
       install_catalog_visible: dashboardUi.installCatalogVisible,
       install_visible: dashboardUi.installVisible,
+      import_source_visible: dashboardUi.importSourceVisible,
+      install_source_visible: dashboardUi.installSourceVisible,
+      source_panel_visible: dashboardUi.sourcePanelVisible,
       detail_excerpt: dashboardUi.bodyText,
     };
 
