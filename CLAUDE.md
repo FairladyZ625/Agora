@@ -30,6 +30,17 @@
 - provider-specific 数据只能作为 adapter 状态或投影，不能成为长期 Core 主模型。
 - `apps/server` 与 `apps/cli` 是 composition root，负责绑定 adapter，不负责承载核心业务语义。
 
+## 1.5 First-Principles / Proposal Discipline
+
+- 任何需求分析、方案设计、代码实现都必须先用第一性原理思考。
+- 不允许默认假设提出需求的人已经完全想清楚目标、动机、约束与验收口径。
+- 必须从原始需求和问题本身出发拆解语义；如果动机、目标或边界不清晰，应先停下来澄清，再继续设计或实现。
+- 当需要给出修改方案或重构方案时，必须同时满足以下约束：
+  - 不允许给出兼容性、补丁性、兜底性方案，除非用户明确要求保留兼容。
+  - 不允许过度设计；必须选择满足需求且不违反上位原则的最短实现路径。
+  - 不允许自行扩展到用户未要求的方案范围，不得擅自加入降级路径、旁路机制或额外业务分支。
+  - 必须保证方案逻辑自洽，并经过完整主链路推演与验证。
+
 ## 2. Entry Surface Rules
 
 - Dashboard 是人类操作入口；CLI / REST 是 Agent 与自动化入口。
@@ -103,22 +114,36 @@
 
 ## 5. Task-Type Reading Matrix
 
+- 对外部贡献者说明：
+
+  - 若你没有私有 `docs/` 仓访问权限，先读根目录 `CONTRIBUTING.md`
+  - 再读公开镜像 `Doc/agents-contributor-reference.md`
+  - 下列私有 `docs/` 路径仍是维护者内部权威入口；公开参考以 `Doc/reference/` 为准
 - 架构 / adapter / runtime / IM / craftsman 相关任务：
+
   - 先读 [docs/11-REFERENCE/agora-core-decoupling-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/agora-core-decoupling-standard.md)
   - 再读 [docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md](/Users/lizeyu/Projects/Agora/docs/03-ARCHITECTURE/2026-03-09-agora-core-orchestration-rebaseline.md)
 - 文档治理 / planning / walkthrough / SSoT 相关任务：
+
   - 先读 [docs/11-REFERENCE/docs-library-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/docs-library-standard.md)
   - 再读 [docs/11-REFERENCE/implementation-ssot-governance.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/implementation-ssot-governance.md)
 - 开发执行 / 回写流程：
+
   - 先读 [docs/11-REFERENCE/execution-workflow-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/execution-workflow-standard.md)
 - 测试 / scenario / 冒烟：
+
   - 先读 [docs/11-REFERENCE/testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/testing-standard.md)
   - Discord 冒烟再读 [docs/11-REFERENCE/discord-smoke-testing-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/discord-smoke-testing-standard.md)
+  - plugin / OpenClaw / native slash 真人入口排障再读 [docs/11-REFERENCE/plugin-debugging-lessons.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/plugin-debugging-lessons.md)
+  - 若任务本身是在治理 regression / smoke / QA 进度，再读 [docs/11-REFERENCE/regression-ssot-governance.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/regression-ssot-governance.md)
 - Dashboard / 前端任务：
+
   - 先读 [docs/11-REFERENCE/dashboard-frontend-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/dashboard-frontend-standard.md)
 - 交付总结 / 复盘：
+
   - 先读 [docs/11-REFERENCE/walkthrough-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/walkthrough-standard.md)
 - 其他工程质量门与通用工程规则：
+
   - 先读 [docs/11-REFERENCE/engineering-standard.md](/Users/lizeyu/Projects/Agora/docs/11-REFERENCE/engineering-standard.md)
 
 ## 6. Repo Map
@@ -136,6 +161,15 @@
 
 - 当前默认实现口径是 `agora-ts/`，旧 Python 只作 legacy 参考。
 - 默认运行时数据库路径是 `~/.agora/agora.db`。
+- `project brain` hybrid retrieval 现在依赖两类外部运行时：
+  - embedding provider：`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_EMBEDDING_MODEL`、`OPENAI_EMBEDDING_DIMENSION`
+  - vector index：`QDRANT_URL`、可选 `QDRANT_API_KEY`
+- 默认产品路径是 `./agora init` 的可选 hybrid retrieval setup：
+  - 收集 embedding 配置
+  - probe embedding API
+  - 复用或通过 Docker 拉起本机 `Qdrant`
+  - 成功后写入仓库根目录 `.env`
+- 这些变量仍从仓库根目录 `.env` 注入；若你修改这条能力线，必须同步更新 `.env.example`、README 与 public whitepaper。
 - 当前仍处于高频重构阶段，默认优先级：
   - 先把模型做对
   - 再考虑兼容
