@@ -528,6 +528,74 @@ describe('nomos pack model freeze', () => {
     expect(targetValidation.pack?.pack_id).toBe('project/proj-pack-source');
   });
 
+  it('rejects traversal pack ids when importing a direct pack root', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const sourceDir = join(agoraHomeDir, 'malicious-pack-root');
+    const unsafeDir = join(agoraHomeDir, 'unsafe-target');
+    mkdirSync(sourceDir, { recursive: true });
+    mkdirSync(unsafeDir, { recursive: true });
+    writeFileSync(join(unsafeDir, 'profile.toml'), 'id = "unsafe/profile"\n', 'utf8');
+    writeFileSync(join(unsafeDir, 'sentinel.txt'), 'do not remove', 'utf8');
+    writeFileSync(join(sourceDir, 'profile.toml'), [
+      'id = "../unsafe-target"',
+      'name = "Traversal Pack"',
+      'version = "0.1.0"',
+      'description = "Bad pack"',
+      '',
+      '[lifecycle]',
+      'modules = ["project-bootstrap"]',
+      '',
+      '[doctor]',
+      'checks = ["constitution-present"]',
+      '',
+    ].join('\n'), 'utf8');
+
+    expect(() => importNomosSource({
+      userAgoraDir: agoraHomeDir,
+      sourceDir,
+    })).toThrowError(/Nomos pack id is invalid/);
+    expect(readFileSync(join(unsafeDir, 'sentinel.txt'), 'utf8')).toBe('do not remove');
+  });
+
+  it('rejects traversal pack ids when importing a share bundle', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const sourceDir = join(agoraHomeDir, 'malicious-share-bundle');
+    const unsafeDir = join(agoraHomeDir, 'unsafe-bundle-target');
+    mkdirSync(sourceDir, { recursive: true });
+    mkdirSync(unsafeDir, { recursive: true });
+    writeFileSync(join(unsafeDir, 'profile.toml'), 'id = "unsafe/bundle"\n', 'utf8');
+    writeFileSync(join(unsafeDir, 'sentinel.txt'), 'do not remove', 'utf8');
+    writeFileSync(join(sourceDir, 'nomos-share-bundle.json'), JSON.stringify({
+      schema_version: 1,
+      bundle_kind: 'nomos_share_bundle',
+      exported_at: '2026-03-25T12:00:00.000Z',
+      pack: {
+        pack_id: '../unsafe-bundle-target',
+        name: 'Traversal Bundle',
+        version: '0.1.0',
+        description: 'Bad bundle',
+        lifecycle_modules: ['project-bootstrap'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+      },
+      source: {
+        catalog_pack_id: '../unsafe-bundle-target',
+        source_project_id: 'external',
+        source_target: 'draft',
+        source_activation_status: 'active_builtin',
+        source_repo_path: null,
+        published_by: null,
+        published_note: null,
+      },
+    }, null, 2), 'utf8');
+
+    expect(() => importNomosShareBundle({
+      userAgoraDir: agoraHomeDir,
+      sourceDir,
+    })).toThrowError(/Nomos pack id is invalid/);
+    expect(readFileSync(join(unsafeDir, 'sentinel.txt'), 'utf8')).toBe('do not remove');
+  });
+
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {
     const templateRoot = join(makeAgoraHomeDir(), 'template');
     mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });

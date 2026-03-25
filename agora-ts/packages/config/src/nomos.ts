@@ -2337,7 +2337,23 @@ function resolveCatalogPackDir(packId: string, options: ResolveAgoraProjectState
   if (segments.length === 0) {
     throw new Error(`Nomos pack id is invalid: ${packId}`);
   }
-  return resolve(layout.packsRoot, ...segments);
+  for (const segment of segments) {
+    if (
+      segment === '.'
+      || segment === '..'
+      || segment.includes('/')
+      || segment.includes('\\')
+      || segment.includes('\0')
+      || segment.includes(':')
+    ) {
+      throw new Error(`Nomos pack id is invalid: ${packId}`);
+    }
+  }
+  const resolved = resolve(layout.packsRoot, ...segments);
+  if (!isWithinParent(resolved, layout.packsRoot)) {
+    throw new Error(`Nomos pack id is invalid: ${packId}`);
+  }
+  return resolved;
 }
 
 function resolveCatalogManifestPath(packId: string, options: ResolveAgoraProjectStateOptions = {}) {
@@ -2562,8 +2578,11 @@ function assertSafeRemovePath(
   if (!resolvedTarget || forbidden.has(resolvedTarget)) {
     throw new Error(`Refusing to remove unsafe path for ${options.label}: ${resolvedTarget}`);
   }
-  if (options.allowedParents?.some((parent) => isWithinParent(resolvedTarget, parent))) {
-    return;
+  if (options.allowedParents && options.allowedParents.length > 0) {
+    if (options.allowedParents.some((parent) => isWithinParent(resolvedTarget, parent))) {
+      return;
+    }
+    throw new Error(`Refusing to remove path outside allowed scope for ${options.label}: ${resolvedTarget}`);
   }
   if (options.requirePackMarker && existsSync(resolve(resolvedTarget, 'profile.toml'))) {
     return;
