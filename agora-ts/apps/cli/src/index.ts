@@ -1298,7 +1298,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       for (const entry of listed.entries) {
         const trust = assessRegisteredNomosSourceTrust(entry);
-        writeLine(stdout, `${entry.source_id} — ${entry.source_kind} (${entry.last_sync_status}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
+        writeLine(stdout, `${entry.source_id} — ${entry.source_kind}/${entry.authority_kind} (${entry.last_sync_status}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
       }
     });
 
@@ -1315,6 +1315,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `${entry.source_id} — ${entry.source_kind}`);
       writeLine(stdout, `source_dir: ${entry.source_dir}`);
+      writeLine(stdout, `authority_kind: ${entry.authority_kind}`);
+      writeLine(stdout, `authority_id: ${entry.authority_id ?? '-'}`);
+      writeLine(stdout, `authority_label: ${entry.authority_label ?? '-'}`);
       writeLine(stdout, `last_sync_status: ${entry.last_sync_status}`);
       writeLine(stdout, `last_catalog_pack_id: ${entry.last_catalog_pack_id ?? '-'}`);
       const trust = assessRegisteredNomosSourceTrust(entry);

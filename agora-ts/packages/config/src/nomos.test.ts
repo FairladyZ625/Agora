@@ -792,6 +792,56 @@ describe('nomos pack model freeze', () => {
     expect(listed.entries[0]?.source_id).toBe('team/registered-source');
   });
 
+  it('reads authority metadata from a source descriptor and upgrades trusted share-bundle sources', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+    const sharedBundleDir = join(sourceAgoraHomeDir, 'authority-share-bundle');
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-authority-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-authority-source', 'Authority Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    publishProjectNomosPack('proj-authority-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      publishedBy: 'archon',
+      publishedNote: 'authority source',
+    });
+    exportNomosShareBundle({
+      userAgoraDir: sourceAgoraHomeDir,
+      packId: 'project/proj-authority-source',
+      outputDir: sharedBundleDir,
+    });
+    writeFileSync(join(sharedBundleDir, 'nomos-source.json'), JSON.stringify({
+      schema_version: 1,
+      authority_kind: 'first_party',
+      authority_id: 'agora-core',
+      authority_label: 'Agora Core Registry',
+    }, null, 2), 'utf8');
+
+    const registered = registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/authority-source',
+      sourceDir: sharedBundleDir,
+    });
+    expect(registered.authority_kind).toBe('first_party');
+    expect(registered.authority_id).toBe('agora-core');
+    expect(registered.authority_label).toBe('Agora Core Registry');
+    expect(registered.authority_descriptor_path).toBe(join(sharedBundleDir, 'nomos-source.json'));
+
+    const synced = syncRegisteredNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/authority-source',
+    });
+    const trust = assessRegisteredNomosSourceTrust(synced.source);
+    expect(trust.authority_kind).toBe('first_party');
+    expect(trust.trust_state).toBe('trusted');
+    expect(trust.freshness_state).toBe('current');
+    expect(trust.activation_eligibility).toBe('allowed');
+  });
+
   it('installs a registered source into a target project draft slot', () => {
     const sourceAgoraHomeDir = makeAgoraHomeDir();
     const targetAgoraHomeDir = makeAgoraHomeDir();

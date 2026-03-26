@@ -271,6 +271,10 @@ export interface RegisteredNomosSourceEntry {
   source_id: string;
   source_kind: 'share_bundle' | 'pack_root' | 'git_working_copy';
   source_dir: string;
+  authority_kind: 'manual_local' | 'curated_team' | 'first_party';
+  authority_id: string | null;
+  authority_label: string | null;
+  authority_descriptor_path: string | null;
   registered_at: string;
   last_synced_at: string | null;
   last_sync_status: 'never' | 'ok' | 'error';
@@ -295,6 +299,9 @@ export interface NomosProvenanceAssessment {
 export interface RegisterNomosSourceOptions extends ResolveAgoraProjectStateOptions {
   sourceId: string;
   sourceDir: string;
+  authorityKind?: RegisteredNomosSourceEntry['authority_kind'];
+  authorityId?: string | null;
+  authorityLabel?: string | null;
   replaceExisting?: boolean;
   registeredAt?: string;
 }
@@ -353,8 +360,18 @@ export interface PublishedNomosCatalogTrustReport extends NomosProvenanceAssessm
 export interface RegisteredNomosSourceTrustReport extends NomosProvenanceAssessment {
   source_id: string;
   source_kind: RegisteredNomosSourceEntry['source_kind'];
+  authority_kind: RegisteredNomosSourceEntry['authority_kind'];
   last_sync_status: RegisteredNomosSourceEntry['last_sync_status'];
   last_catalog_pack_id: string | null;
+}
+
+interface NomosSourceDescriptor {
+  schema_version: 1;
+  source_id: string | null;
+  authority_kind: RegisteredNomosSourceEntry['authority_kind'];
+  authority_id: string | null;
+  authority_label: string | null;
+  descriptor_path: string;
 }
 
 export const NOMOS_REGISTERED_SOURCE_STALE_AFTER_MS = 1000 * 60 * 60 * 24 * 7;
@@ -655,6 +672,9 @@ export interface ProjectNomosOriginRecord {
   catalog_pack_id: string | null;
   source_id: string | null;
   source_kind: PublishedNomosCatalogEntry['source_kind'] | RegisteredNomosSourceEntry['source_kind'] | null;
+  authority_kind: RegisteredNomosSourceEntry['authority_kind'] | null;
+  authority_id: string | null;
+  authority_label: string | null;
   source_project_id: string | null;
   source_target: 'draft' | 'active' | null;
   source_activation_status: ProjectNomosActivationStatus | null;
@@ -671,6 +691,9 @@ export interface ProjectNomosResolvedProvenance extends NomosProvenanceAssessmen
   catalog_pack_id: string | null;
   source_id: string | null;
   source_kind: ProjectNomosOriginRecord['source_kind'];
+  authority_kind: ProjectNomosOriginRecord['authority_kind'];
+  authority_id: ProjectNomosOriginRecord['authority_id'];
+  authority_label: ProjectNomosOriginRecord['authority_label'];
 }
 
 const REPO_AGENTS_SHIM_SECTION_TITLES: Record<RepoAgentsShimSection, string> = {
@@ -1203,6 +1226,9 @@ function resolveStoredProjectNomosOrigin(
     catalog_pack_id: asOptionalString(raw.catalog_pack_id),
     source_id: asOptionalString(raw.source_id),
     source_kind: asOptionalProjectNomosOriginSourceKind(raw.source_kind),
+    authority_kind: asOptionalRegisteredNomosSourceAuthorityKind(raw.authority_kind),
+    authority_id: asOptionalString(raw.authority_id),
+    authority_label: asOptionalString(raw.authority_label),
     source_project_id: asOptionalString(raw.source_project_id),
     source_target: asOptionalProjectNomosOriginTarget(raw.source_target),
     source_activation_status: asOptionalProjectNomosActivationStatus(raw.source_activation_status),
@@ -1255,6 +1281,9 @@ export function resolveProjectNomosProvenance(
       catalog_pack_id: null,
       source_id: null,
       source_kind: 'project_publish',
+      authority_kind: null,
+      authority_id: null,
+      authority_label: null,
       trust_state: 'trusted',
       freshness_state: 'current',
       activation_eligibility: 'allowed',
@@ -1271,6 +1300,9 @@ export function resolveProjectNomosProvenance(
       catalog_pack_id: null,
       source_id: null,
       source_kind: null,
+      authority_kind: null,
+      authority_id: null,
+      authority_label: null,
       trust_state: 'trusted',
       freshness_state: 'current',
       activation_eligibility: 'allowed',
@@ -1284,6 +1316,10 @@ export function resolveProjectNomosProvenance(
       source_id: stored.source_id ?? 'unknown-source',
       source_kind: (stored.source_kind as RegisteredNomosSourceEntry['source_kind'] | null) ?? 'pack_root',
       source_dir: stored.source_repo_path ?? '',
+      authority_kind: stored.authority_kind ?? 'manual_local',
+      authority_id: stored.authority_id,
+      authority_label: stored.authority_label,
+      authority_descriptor_path: null,
       registered_at: stored.imported_at ?? stored.synced_at ?? new Date(0).toISOString(),
       last_synced_at: stored.synced_at,
       last_sync_status: stored.synced_at ? 'ok' : 'never',
@@ -1302,6 +1338,9 @@ export function resolveProjectNomosProvenance(
       catalog_pack_id: stored.catalog_pack_id,
       source_id: stored.source_id,
       source_kind: stored.source_kind,
+      authority_kind: stored.authority_kind,
+      authority_id: stored.authority_id,
+      authority_label: stored.authority_label,
       trust_state: trust.trust_state,
       freshness_state: trust.freshness_state,
       activation_eligibility: trust.activation_eligibility,
@@ -1342,6 +1381,9 @@ export function resolveProjectNomosProvenance(
       catalog_pack_id: stored.catalog_pack_id,
       source_id: stored.source_id,
       source_kind: stored.source_kind,
+      authority_kind: stored.authority_kind,
+      authority_id: stored.authority_id,
+      authority_label: stored.authority_label,
       trust_state: trust.trust_state,
       freshness_state: trust.freshness_state,
       activation_eligibility: trust.activation_eligibility,
@@ -1356,6 +1398,9 @@ export function resolveProjectNomosProvenance(
     catalog_pack_id: stored.catalog_pack_id,
     source_id: stored.source_id,
     source_kind: stored.source_kind,
+    authority_kind: stored.authority_kind,
+    authority_id: stored.authority_id,
+    authority_label: stored.authority_label,
     trust_state: 'trusted',
     freshness_state: 'current',
     activation_eligibility: 'allowed',
@@ -1455,6 +1500,9 @@ export function reviewProjectNomosDraft(
       catalog_pack_id: null,
       source_id: null,
       source_kind: 'project_publish',
+      authority_kind: null,
+      authority_id: null,
+      authority_label: null,
       trust_state: 'trusted',
       freshness_state: 'current',
       activation_eligibility: 'allowed',
@@ -1724,6 +1772,9 @@ export function activateProjectNomosDraft(
     catalog_pack_id: null,
     source_id: null,
     source_kind: null,
+    authority_kind: null,
+    authority_id: null,
+    authority_label: null,
     source_project_id: projectId,
     source_target: 'draft',
     source_activation_status: existingNomos.activation_status === 'active_project' ? 'active_project' : 'active_builtin',
@@ -1942,6 +1993,9 @@ export function installCatalogNomosPackToProject(
       catalog_pack_id: entry.pack_id,
       source_id: null,
       source_kind: entry.source_kind,
+      authority_kind: null,
+      authority_id: null,
+      authority_label: null,
       source_project_id: entry.source_project_id,
       source_target: entry.source_target,
       source_activation_status: entry.source_activation_status,
@@ -2140,6 +2194,9 @@ export function installNomosFromSource(
     catalog_pack_id: imported.entry.pack_id,
     source_id: null,
     source_kind: imported.entry.source_kind,
+    authority_kind: null,
+    authority_id: null,
+    authority_label: null,
     source_project_id: imported.entry.source_project_id,
     source_target: imported.entry.source_target,
     source_activation_status: imported.entry.source_activation_status,
@@ -2159,6 +2216,10 @@ export function registerNomosSource(
   options: RegisterNomosSourceOptions,
 ): RegisteredNomosSourceEntry {
   const sourceKind = detectNomosSourceDescriptorKind(options.sourceDir);
+  const descriptor = loadNomosSourceDescriptor(options.sourceDir);
+  if (descriptor?.source_id && descriptor.source_id !== options.sourceId) {
+    throw new Error(`Nomos source descriptor source_id does not match registration id: ${options.sourceId}`);
+  }
   const entryPath = resolveRegisteredSourceEntryPath(options.sourceId, options);
   if (existsSync(entryPath) && !(options.replaceExisting ?? false)) {
     throw new Error(`Nomos source is already registered: ${options.sourceId}`);
@@ -2170,6 +2231,10 @@ export function registerNomosSource(
     source_id: options.sourceId,
     source_kind: sourceKind,
     source_dir: options.sourceDir,
+    authority_kind: options.authorityKind ?? descriptor?.authority_kind ?? 'manual_local',
+    authority_id: options.authorityId ?? descriptor?.authority_id ?? null,
+    authority_label: options.authorityLabel ?? descriptor?.authority_label ?? null,
+    authority_descriptor_path: descriptor?.descriptor_path ?? null,
     registered_at: options.registeredAt ?? new Date().toISOString(),
     last_synced_at: null,
     last_sync_status: 'never',
@@ -2295,6 +2360,15 @@ export function assessRegisteredNomosSourceTrust(
       break;
   }
 
+  if (entry.authority_kind === 'first_party' && entry.source_kind === 'share_bundle') {
+    trustState = 'trusted';
+    reasons.push('source authority is first-party');
+  } else if (entry.authority_kind === 'curated_team') {
+    reasons.push('source authority is curated-team');
+  } else {
+    reasons.push('source authority is manual-local');
+  }
+
   if (entry.last_sync_status === 'ok') {
     const syncedAtMs = entry.last_synced_at ? Date.parse(entry.last_synced_at) : Number.NaN;
     if (!Number.isFinite(syncedAtMs)) {
@@ -2327,6 +2401,7 @@ export function assessRegisteredNomosSourceTrust(
   return {
     source_id: entry.source_id,
     source_kind: entry.source_kind,
+    authority_kind: entry.authority_kind,
     last_sync_status: entry.last_sync_status,
     last_catalog_pack_id: entry.last_catalog_pack_id,
     trust_state: trustState,
@@ -2395,6 +2470,9 @@ export function installNomosFromRegisteredSource(
     catalog_pack_id: synced.imported.entry.pack_id,
     source_id: synced.source.source_id,
     source_kind: synced.source.source_kind,
+    authority_kind: synced.source.authority_kind,
+    authority_id: synced.source.authority_id,
+    authority_label: synced.source.authority_label,
     source_project_id: synced.imported.entry.source_project_id,
     source_target: synced.imported.entry.source_target,
     source_activation_status: synced.imported.entry.source_activation_status,
@@ -3144,6 +3222,10 @@ function loadRegisteredNomosSourceEntry(entryPath: string): RegisteredNomosSourc
     source_id: asRequiredString(raw.source_id, 'source_id'),
     source_kind: asRegisteredNomosSourceKind(raw.source_kind),
     source_dir: asRequiredString(raw.source_dir, 'source_dir'),
+    authority_kind: asRegisteredNomosSourceAuthorityKind(raw.authority_kind),
+    authority_id: asOptionalString(raw.authority_id),
+    authority_label: asOptionalString(raw.authority_label),
+    authority_descriptor_path: asOptionalString(raw.authority_descriptor_path),
     registered_at: asRequiredString(raw.registered_at, 'registered_at'),
     last_synced_at: asOptionalString(raw.last_synced_at),
     last_sync_status: asRegisteredNomosSyncStatus(raw.last_sync_status),
@@ -3192,6 +3274,22 @@ function loadNomosShareBundleManifest(manifestPath: string): NomosShareBundleMan
   };
 }
 
+function loadNomosSourceDescriptor(sourceDir: string): NomosSourceDescriptor | null {
+  const descriptorPath = resolve(sourceDir, 'nomos-source.json');
+  if (!existsSync(descriptorPath)) {
+    return null;
+  }
+  const raw = JSON.parse(readFileSync(descriptorPath, 'utf8')) as Record<string, unknown>;
+  return {
+    schema_version: 1,
+    source_id: asOptionalString(raw.source_id),
+    authority_kind: asRegisteredNomosSourceAuthorityKind(raw.authority_kind),
+    authority_id: asOptionalString(raw.authority_id),
+    authority_label: asOptionalString(raw.authority_label),
+    descriptor_path: descriptorPath,
+  };
+}
+
 function asPublishedNomosSourceKind(value: unknown): PublishedNomosCatalogEntry['source_kind'] {
   if (value === 'share_bundle' || value === 'pack_root' || value === 'project_publish') {
     return value;
@@ -3204,6 +3302,20 @@ function asRegisteredNomosSourceKind(value: unknown): RegisteredNomosSourceEntry
     return value;
   }
   throw new Error(`Unsupported Nomos source kind: ${String(value)}`);
+}
+
+function asRegisteredNomosSourceAuthorityKind(value: unknown): RegisteredNomosSourceEntry['authority_kind'] {
+  if (value === 'first_party' || value === 'curated_team' || value === 'manual_local') {
+    return value;
+  }
+  return 'manual_local';
+}
+
+function asOptionalRegisteredNomosSourceAuthorityKind(value: unknown): RegisteredNomosSourceEntry['authority_kind'] | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return asRegisteredNomosSourceAuthorityKind(value);
 }
 
 function asOptionalProjectNomosOriginSourceKind(value: unknown): ProjectNomosOriginRecord['source_kind'] {

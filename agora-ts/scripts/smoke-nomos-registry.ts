@@ -63,6 +63,15 @@ function updatePackVersion(profilePath: string, nextVersion: string) {
   writeFileSync(profilePath, updated, 'utf8');
 }
 
+function writeSourceDescriptor(sourceDir: string) {
+  writeFileSync(join(sourceDir, 'nomos-source.json'), JSON.stringify({
+    schema_version: 1,
+    authority_kind: 'first_party',
+    authority_id: 'agora-core',
+    authority_label: 'Agora Core Registry',
+  }, null, 2), 'utf8');
+}
+
 async function main() {
   const root = mkdtempSync(join(tmpdir(), 'agora-nomos-registry-smoke-'));
   const sourceHome = join(root, 'source-home');
@@ -95,6 +104,7 @@ async function main() {
       '--pack-id', 'project/proj-registry-source',
       '--output-dir', sharedSourceDir,
     ], sourceMachine);
+    writeSourceDescriptor(sharedSourceDir);
 
     const targetMachine = setMachineEnv(targetHome);
     await runCli([
@@ -161,6 +171,7 @@ async function main() {
       '--pack-id', 'project/proj-registry-source',
       '--output-dir', sharedSourceDir,
     ], sourceMachine);
+    writeSourceDescriptor(sharedSourceDir);
 
     const syncedV2 = await runCli([
       'nomos', 'sync-registered-source',
@@ -207,9 +218,9 @@ async function main() {
       'team/registry-demo',
     ], targetMachine);
 
-    const registeredPayload = JSON.parse(registered.stdout) as { source_id?: string; source_kind?: string };
+    const registeredPayload = JSON.parse(registered.stdout) as { source_id?: string; source_kind?: string; authority_kind?: string };
     const listedPayload = JSON.parse(listed.stdout) as { total?: number; entries?: Array<{ source_id?: string; last_sync_status?: string }> };
-    const shownPayload = JSON.parse(shown.stdout) as { source_id?: string; last_sync_status?: string };
+    const shownPayload = JSON.parse(shown.stdout) as { source_id?: string; last_sync_status?: string; authority_kind?: string };
     const syncedV1Payload = JSON.parse(syncedV1.stdout) as {
       source?: { last_sync_status?: string; last_catalog_pack_id?: string };
       imported?: { entry?: { pack_id?: string; pack?: { version?: string } } };
@@ -232,13 +243,17 @@ async function main() {
       last_synced_at?: string;
     };
 
-    if (registeredPayload.source_id !== 'team/registry-demo' || registeredPayload.source_kind !== 'share_bundle') {
+    if (registeredPayload.source_id !== 'team/registry-demo'
+      || registeredPayload.source_kind !== 'share_bundle'
+      || registeredPayload.authority_kind !== 'first_party') {
       throw new Error(`unexpected register payload: ${registered.stdout}`);
     }
     if (listedPayload.total !== 1 || !listedPayload.entries?.some((entry) => entry.source_id === 'team/registry-demo')) {
       throw new Error(`registered source not listed: ${listed.stdout}`);
     }
-    if (shownPayload.source_id !== 'team/registry-demo' || shownPayload.last_sync_status !== 'never') {
+    if (shownPayload.source_id !== 'team/registry-demo'
+      || shownPayload.last_sync_status !== 'never'
+      || shownPayload.authority_kind !== 'first_party') {
       throw new Error(`unexpected show-source payload before sync: ${shown.stdout}`);
     }
     if (syncedV1Payload.source?.last_sync_status !== 'ok'

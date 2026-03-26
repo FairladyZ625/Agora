@@ -935,7 +935,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Nomos source 已注册: team/cli-registered-source');
     expect(stdout.value).toContain('registry_root:');
-    expect(stdout.value).toContain('team/cli-registered-source — pack_root (never) trust=untrusted freshness=unknown activate=blocked');
+    expect(stdout.value).toContain('team/cli-registered-source — pack_root/manual_local (never) trust=untrusted freshness=unknown activate=blocked');
+    expect(stdout.value).toContain('authority_kind: manual_local');
     expect(stdout.value).toContain('trust_state: untrusted');
     expect(stdout.value).toContain('freshness_state: unknown');
     expect(stdout.value).toContain('activation_eligibility: blocked');
