@@ -164,6 +164,42 @@ describe('cli composition', () => {
     composition.db.close();
   });
 
+  it('wires archive notifier, receipt ingestor, and IM cleanup deps into dashboard queries', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(configPath, JSON.stringify({
+      db_path: dbPath,
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'test-token',
+          default_channel_id: 'discord-parent',
+        },
+      },
+    }));
+
+    const stubProvisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent',
+      thread_ref: 'discord-thread',
+    });
+
+    const composition = createCliComposition(
+      { configPath },
+      {
+        createIMProvisioningPort: () => stubProvisioning,
+      },
+    );
+
+    expect(Reflect.get(composition.dashboardQueryService as object, 'archiveJobNotifier')?.constructor?.name).toBe('FileArchiveJobNotifier');
+    expect(Reflect.get(composition.dashboardQueryService as object, 'archiveJobReceiptIngestor')?.constructor?.name).toBe('FileArchiveJobReceiptIngestor');
+    expect(Reflect.get(composition.dashboardQueryService as object, 'taskContextBindingService')).toBe(composition.taskContextBindingService);
+    expect(Reflect.get(composition.dashboardQueryService as object, 'imProvisioningPort')).toBe(stubProvisioning);
+    composition.db.close();
+  });
+
   it('uses the configured runtime brain pack root instead of the repo skeleton path', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');

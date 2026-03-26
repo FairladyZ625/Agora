@@ -13,7 +13,7 @@ import {
   type AgoraConfig,
 } from '@agora-ts/config';
 import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
-import { resolve as resolvePath } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
   CitizenService,
@@ -27,6 +27,8 @@ import {
   CraftsmanDispatcher,
   DirectAcpxRuntimePort,
   DashboardQueryService,
+  FileArchiveJobNotifier,
+  FileArchiveJobReceiptIngestor,
   FilesystemSkillCatalogAdapter,
   FilesystemProjectBrainQueryAdapter,
   FilesystemProjectKnowledgeAdapter,
@@ -152,7 +154,17 @@ export interface CliCompositionFactories {
   createTaskConversationService: (context: CliCompositionContext) => TaskConversationService;
   createTemplateAuthoringService: (context: CliCompositionContext) => TemplateAuthoringService;
   createRolePackService: (context: CliCompositionContext) => RolePackService;
-  createDashboardQueryService: (context: CliCompositionContext) => DashboardQueryService;
+  createArchiveJobNotifier: (context: CliCompositionContext) => FileArchiveJobNotifier;
+  createArchiveJobReceiptIngestor: (context: CliCompositionContext) => FileArchiveJobReceiptIngestor;
+  createDashboardQueryService: (
+    context: CliCompositionContext,
+    deps: {
+      archiveJobNotifier: FileArchiveJobNotifier;
+      archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;
+      imProvisioningPort: IMProvisioningPort | undefined;
+      taskContextBindingService: TaskContextBindingService;
+    },
+  ) => DashboardQueryService;
   createTaskBrainBindingService: (context: CliCompositionContext) => TaskBrainBindingService;
   createTaskBrainWorkspacePort: (context: CliCompositionContext) => TaskBrainWorkspacePort;
   createProjectBrainEmbeddingPort: (context: CliCompositionContext) => ProjectBrainEmbeddingPort | undefined;
@@ -373,8 +385,22 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       db: context.db,
       rolePacksDir: context.rolePackDir,
     }),
-    createDashboardQueryService: (context) => new DashboardQueryService(context.db, {
+    createArchiveJobNotifier: (context) => {
+      const outboxDir = process.env.AGORA_ARCHIVE_WRITER_OUTBOX_DIR
+        ?? join(dirname(resolvePath(context.config.db_path)), 'archive-outbox');
+      return new FileArchiveJobNotifier({ outboxDir });
+    },
+    createArchiveJobReceiptIngestor: (context) => {
+      const receiptDir = process.env.AGORA_ARCHIVE_WRITER_RECEIPT_DIR
+        ?? join(dirname(resolvePath(context.config.db_path)), 'archive-receipts');
+      return new FileArchiveJobReceiptIngestor({ receiptDir });
+    },
+    createDashboardQueryService: (context, deps) => new DashboardQueryService(context.db, {
       templatesDir: context.templatesDir,
+      archiveJobNotifier: deps.archiveJobNotifier,
+      archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor,
+      taskContextBindingService: deps.taskContextBindingService,
+      ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
       skillCatalogPort: new FilesystemSkillCatalogAdapter(),
     }),
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
@@ -509,7 +535,14 @@ export function createCliComposition(
   const humanAccountService = factories.createHumanAccountService(context);
   const taskConversationService = factories.createTaskConversationService(context);
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
-  const dashboardQueryService = factories.createDashboardQueryService(context);
+  const archiveJobNotifier = factories.createArchiveJobNotifier(context);
+  const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
+  const dashboardQueryService = factories.createDashboardQueryService(context, {
+    archiveJobNotifier,
+    archiveJobReceiptIngestor,
+    imProvisioningPort,
+    taskContextBindingService,
+  });
   return {
     config,
     db,

@@ -12,7 +12,7 @@ import {
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
-import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, TaskContextBindingService, TaskParticipationService, TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, StubIMProvisioningPort, TaskContextBindingService, TaskParticipationService, TaskService, TmuxRuntimeService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';
 
@@ -512,6 +512,62 @@ describe('dashboard routes', () => {
       },
     });
     expect(readdirSync(receiptDir)).toEqual(['archive-job-1.processed.json']);
+  });
+
+  it('waits for archive synced cleanup before returning the status update route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindings = new TaskContextBindingService(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent',
+      thread_ref: 'discord-thread-route-cleanup',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-ROUTE-ARCHIVE-CLEANUP',
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+    });
+    const dashboardQueries = new DashboardQueryService(db, {
+      templatesDir,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+    });
+
+    taskService.createTask({
+      title: 'archive cleanup route',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    taskService.cancelTask('OC-ROUTE-ARCHIVE-CLEANUP', { reason: 'archive synced cleanup regression' });
+
+    const archiveJob = dashboardQueries.listArchiveJobs({ taskId: 'OC-ROUTE-ARCHIVE-CLEANUP' })[0];
+    expect(archiveJob?.status).toBe('pending');
+
+    const app = buildApp({ taskService, dashboardQueryService: dashboardQueries, taskContextBindingService: bindings });
+    const markArchiveSynced = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${archiveJob?.id}/status`,
+      payload: { status: 'synced', commit_hash: 'route-cleanup-commit' },
+    });
+
+    expect(markArchiveSynced.statusCode).toBe(200);
+    expect(markArchiveSynced.json()).toMatchObject({ status: 'synced', commit_hash: 'route-cleanup-commit' });
+    expect(provisioning.archived).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        thread_ref: 'discord-thread-route-cleanup',
+        mode: 'delete',
+      }),
+    ]));
+    expect(bindings.listBindings('OC-ROUTE-ARCHIVE-CLEANUP')[0]?.status).toBe('destroyed');
   });
 
   it('ingests live openclaw sessions and exposes them through dashboard status routes', async () => {
