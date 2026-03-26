@@ -489,6 +489,7 @@ describe('DiscordIMProvisioningAdapter', () => {
   });
 
   it('removeParticipant removes a joined participant through the Agora bot', async () => {
+    vi.useFakeTimers();
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce({
@@ -499,35 +500,105 @@ describe('DiscordIMProvisioningAdapter', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ([{ user_id: 'someone-else' }]),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'someone-else' }]),
       });
     vi.stubGlobal('fetch', mockFetch);
 
-    const adapter = new DiscordIMProvisioningAdapter({
-      botToken: 'main-token',
-      defaultChannelId: 'chan-default',
-      primaryAccountId: 'main',
-      participantTokens: {
-        sonnet: 'token-sonnet',
-      },
-    });
+    try {
+      const adapter = new DiscordIMProvisioningAdapter({
+        botToken: 'main-token',
+        defaultChannelId: 'chan-default',
+        primaryAccountId: 'main',
+        participantTokens: {
+          sonnet: 'token-sonnet',
+        },
+      });
 
-    const result = await adapter.removeParticipant({
-      binding_id: 'bind-rm-1',
-      participant_ref: 'sonnet',
-      thread_ref: 'thread-rm-1',
-    });
+      const removePromise = adapter.removeParticipant({
+        binding_id: 'bind-rm-1',
+        participant_ref: 'sonnet',
+        thread_ref: 'thread-rm-1',
+      });
+      await vi.advanceTimersByTimeAsync(1200);
+      const result = await removePromise;
 
-    expect(result).toEqual({ status: 'removed', detail: null });
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      'https://discord.com/api/v10/channels/thread-rm-1/thread-members/discord-user-sonnet',
-      expect.objectContaining({
-        method: 'DELETE',
-        headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
-      }),
-    );
+      expect(result).toEqual({ status: 'removed', detail: null });
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://discord.com/api/v10/channels/thread-rm-1/thread-members/discord-user-sonnet',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 
-    vi.unstubAllGlobals();
+  it('removeParticipant retries when stabilized verification shows the participant reappeared', async () => {
+    vi.useFakeTimers();
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'discord-user-sonnet', username: 'sonnet' }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'someone-else' }]),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'discord-user-sonnet' }, { user_id: 'someone-else' }]),
+      })
+      .mockResolvedValueOnce({ ok: true, text: async () => '' })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'someone-else' }]),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ([{ user_id: 'someone-else' }]),
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    try {
+      const adapter = new DiscordIMProvisioningAdapter({
+        botToken: 'main-token',
+        defaultChannelId: 'chan-default',
+        primaryAccountId: 'main',
+        participantTokens: {
+          sonnet: 'token-sonnet',
+        },
+      });
+
+      const removePromise = adapter.removeParticipant({
+        binding_id: 'bind-rm-stabilized-1',
+        participant_ref: 'sonnet',
+        thread_ref: 'thread-rm-stabilized',
+      });
+      await vi.advanceTimersByTimeAsync(3600);
+      const result = await removePromise;
+
+      expect(result).toEqual({ status: 'removed', detail: null });
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        5,
+        'https://discord.com/api/v10/channels/thread-rm-stabilized/thread-members/discord-user-sonnet',
+        expect.objectContaining({
+          method: 'DELETE',
+          headers: expect.objectContaining({ Authorization: 'Bot main-token' }),
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('removeParticipant treats member-list verification failures as removed with detail', async () => {
