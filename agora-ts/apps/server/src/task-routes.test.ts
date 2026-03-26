@@ -529,6 +529,14 @@ describe('task routes', () => {
     expect(reviewResponse.json()).toMatchObject({
       project_id: 'proj-nomos-activate',
       can_activate: true,
+      active_provenance: expect.objectContaining({
+        kind: 'builtin',
+        trust_state: 'trusted',
+      }),
+      draft_provenance: expect.objectContaining({
+        kind: 'local_authoring',
+        trust_state: 'trusted',
+      }),
       draft: expect.objectContaining({
         pack_id: 'project/proj-nomos-activate',
       }),
@@ -676,6 +684,10 @@ describe('task routes', () => {
         nomos_id: 'project/proj-nomos-rest',
         activation_status: 'active_project',
       }),
+      nomos_provenance: {
+        draft: null,
+        active: null,
+      },
       nomos_validation: expect.objectContaining({
         draft: expect.objectContaining({
           target: 'draft',
@@ -745,6 +757,11 @@ describe('task routes', () => {
       project_id: 'proj-nomos-validate',
       target: 'draft',
       valid: true,
+      provenance: expect.objectContaining({
+        kind: 'local_authoring',
+        trust_state: 'trusted',
+        activation_eligibility: 'allowed',
+      }),
       pack: expect.objectContaining({
         pack_id: 'project/proj-nomos-validate',
       }),

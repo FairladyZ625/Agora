@@ -30,6 +30,7 @@ import {
   registerNomosSource,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
+  resolveProjectNomosProvenance,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   reviewProjectNomosDraft,
@@ -1623,6 +1624,10 @@ export function buildApp(options: BuildAppOptions = {}) {
           bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
           closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
           doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+        },
+        nomos_provenance: {
+          draft: resolveProjectNomosProvenance(projectId, project.metadata ?? null, { target: 'draft' }),
+          active: resolveProjectNomosProvenance(projectId, project.metadata ?? null, { target: 'active' }),
         },
         nomos_validation: {
           draft: validateProjectNomos(projectId, project.metadata ?? null, { target: 'draft' }),

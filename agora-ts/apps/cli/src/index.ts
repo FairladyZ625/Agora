@@ -34,6 +34,7 @@ import {
   prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
+  resolveProjectNomosProvenance,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   resolveInstalledCreateNomosPackTemplateDir,
@@ -1517,6 +1518,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `valid: ${validation.valid}`);
       writeLine(stdout, `pack_id: ${validation.pack?.pack_id ?? '-'}`);
       writeLine(stdout, `profile_path: ${validation.pack?.profile_path ?? '-'}`);
+      writeLine(stdout, `provenance_kind: ${validation.provenance?.kind ?? '-'}`);
+      writeLine(stdout, `trust_state: ${validation.provenance?.trust_state ?? '-'}`);
+      writeLine(stdout, `freshness_state: ${validation.provenance?.freshness_state ?? '-'}`);
+      writeLine(stdout, `activation_eligibility: ${validation.provenance?.activation_eligibility ?? '-'}`);
       if (validation.issues.length > 0) {
         for (const issue of validation.issues) {
           writeLine(stdout, `${issue.severity}: ${issue.code}: ${issue.message}`);
@@ -1572,6 +1577,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `activation_status: ${review.activation_status}`);
       writeLine(stdout, `can_activate: ${review.can_activate}`);
       writeLine(stdout, `draft_pack: ${review.draft?.pack_id ?? '-'}`);
+      writeLine(stdout, `active_provenance_kind: ${review.active_provenance.kind}`);
+      writeLine(stdout, `active_trust_state: ${review.active_provenance.trust_state}`);
+      writeLine(stdout, `draft_provenance_kind: ${review.draft_provenance?.kind ?? '-'}`);
+      writeLine(stdout, `draft_trust_state: ${review.draft_provenance?.trust_state ?? '-'}`);
       if (review.issues.length > 0) {
         writeLine(stdout, `issues: ${review.issues.join(' | ')}`);
       }
@@ -2360,6 +2369,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
                 draft: validateProjectNomos(options.project, project.metadata ?? null, { target: 'draft' }),
                 active: validateProjectNomos(options.project, project.metadata ?? null, { target: 'active' }),
               },
+              provenance: {
+                draft: resolveProjectNomosProvenance(options.project, project.metadata ?? null, { target: 'draft' }),
+                active: resolveProjectNomosProvenance(options.project, project.metadata ?? null, { target: 'active' }),
+              },
               diff: diffProjectNomos(options.project, project.metadata ?? null, {
                 base: state.activation_status === 'active_project' ? 'active' : 'builtin',
                 candidate: 'draft',
@@ -2373,6 +2386,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
             ...result,
             nomos_runtime: nomosDiagnosis.runtime,
             nomos_validation: nomosDiagnosis.validation,
+            nomos_provenance: nomosDiagnosis.provenance,
             nomos_diff: nomosDiagnosis.diff,
             nomos_drift: nomosDiagnosis.drift,
           }
@@ -2390,6 +2404,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
           writeLine(stdout, `nomos_runtime id=${nomosDiagnosis.runtime.nomos_id} activation=${nomosDiagnosis.runtime.activation_status}`);
           writeLine(stdout, `nomos_doctor_prompt=${nomosDiagnosis.runtime.doctor_project_prompt_path}`);
           writeLine(stdout, `nomos_validation draft_valid=${nomosDiagnosis.validation.draft.valid} active_valid=${nomosDiagnosis.validation.active.valid}`);
+          writeLine(
+            stdout,
+            `nomos_provenance draft=${nomosDiagnosis.provenance.draft?.kind ?? '-'}:${nomosDiagnosis.provenance.draft?.trust_state ?? '-'}:${nomosDiagnosis.provenance.draft?.activation_eligibility ?? '-'} active=${nomosDiagnosis.provenance.active?.kind ?? '-'}:${nomosDiagnosis.provenance.active?.trust_state ?? '-'}:${nomosDiagnosis.provenance.active?.activation_eligibility ?? '-'}`,
+          );
           writeLine(stdout, `nomos_diff changed=${nomosDiagnosis.diff.changed} fields=${nomosDiagnosis.diff.differences.map((entry) => entry.field).join(',') || '-'}`);
           writeLine(stdout, `nomos_drift risk=${nomosDiagnosis.drift.risk_level} blockers=${nomosDiagnosis.drift.activation_blockers} warnings=${nomosDiagnosis.drift.structural_warnings}`);
         }

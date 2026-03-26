@@ -522,6 +522,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos draft review: proj-activate');
     expect(stdout.value).toContain('can_activate: true');
+    expect(stdout.value).toContain('active_provenance_kind: builtin');
+    expect(stdout.value).toContain('draft_provenance_kind: local_authoring');
     expect(stdout.value).toContain('Project Nomos 已激活: project/proj-activate');
     expect(stdout.value).toContain('nomos: project/proj-activate');
     expect(stdout.value).toContain('activation_status: active_project');
@@ -569,6 +571,9 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos validation: proj-validate (draft)');
     expect(stdout.value).toContain('valid: true');
+    expect(stdout.value).toContain('provenance_kind: local_authoring');
+    expect(stdout.value).toContain('trust_state: trusted');
+    expect(stdout.value).toContain('activation_eligibility: allowed');
     expect(stdout.value).toContain('Project Nomos diff: proj-validate');
     expect(stdout.value).toContain('changed: true');
     expect(stdout.value).toContain('pack_id');
@@ -1744,6 +1749,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
     expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_provenance"');
     expect(stdout.value).toContain('"nomos_validation"');
     expect(stdout.value).toContain('"draft"');
     expect(stdout.value).toContain('"nomos_diff"');

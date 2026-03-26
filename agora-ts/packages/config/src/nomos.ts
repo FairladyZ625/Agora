@@ -243,6 +243,7 @@ export interface InstallLocalNomosPackToProjectOptions extends ResolveAgoraProje
   packDir: string;
   metadata?: Record<string, unknown> | null | undefined;
   replaceExisting?: boolean;
+  draftOrigin?: ProjectNomosOriginRecord | null;
 }
 
 export interface InstallLocalNomosPackToProjectResult {
@@ -539,6 +540,8 @@ export interface ProjectNomosReviewResult {
   issues: string[];
   active: ProjectNomosPackSummary;
   draft: ProjectNomosPackSummary | null;
+  active_provenance: ProjectNomosResolvedProvenance;
+  draft_provenance: ProjectNomosResolvedProvenance | null;
 }
 
 export interface ActivateProjectNomosDraftOptions extends ResolveAgoraProjectStateOptions {
@@ -592,6 +595,7 @@ export interface ProjectNomosValidationResult {
   valid: boolean;
   activation_status: ProjectNomosActivationStatus;
   pack: ProjectNomosPackSummary | null;
+  provenance: ProjectNomosResolvedProvenance | null;
   issues: ProjectNomosValidationIssue[];
 }
 
@@ -634,6 +638,37 @@ export interface ProjectNomosRuntimePaths {
   bootstrap_interview_prompt_path: string;
   closeout_review_prompt_path: string;
   doctor_project_prompt_path: string;
+}
+
+export type ProjectNomosOriginKind =
+  | 'builtin'
+  | 'local_authoring'
+  | 'catalog_pack'
+  | 'source_import'
+  | 'registered_source';
+
+export interface ProjectNomosOriginRecord {
+  kind: ProjectNomosOriginKind;
+  pack_id: string | null;
+  catalog_pack_id: string | null;
+  source_id: string | null;
+  source_kind: PublishedNomosCatalogEntry['source_kind'] | RegisteredNomosSourceEntry['source_kind'] | null;
+  source_project_id: string | null;
+  source_target: 'draft' | 'active' | null;
+  source_activation_status: ProjectNomosActivationStatus | null;
+  published_by: string | null;
+  source_repo_path: string | null;
+  imported_at: string | null;
+  synced_at: string | null;
+}
+
+export interface ProjectNomosResolvedProvenance extends NomosProvenanceAssessment {
+  target: ProjectNomosValidationTarget;
+  kind: ProjectNomosOriginKind;
+  pack_id: string | null;
+  catalog_pack_id: string | null;
+  source_id: string | null;
+  source_kind: ProjectNomosOriginRecord['source_kind'];
 }
 
 const REPO_AGENTS_SHIM_SECTION_TITLES: Record<RepoAgentsShimSection, string> = {
@@ -1149,6 +1184,183 @@ export function resolveProjectNomosState(
   };
 }
 
+function resolveStoredProjectNomosOrigin(
+  metadata: Record<string, unknown> | null | undefined,
+  key: 'draft_origin' | 'active_origin',
+): ProjectNomosOriginRecord | null {
+  const existingAgora = asRecord(metadata?.agora);
+  const existingNomos = asRecord(existingAgora.nomos);
+  const raw = asRecord(existingNomos[key]);
+  const kind = asOptionalString(raw.kind);
+  if (!kind) {
+    return null;
+  }
+  return {
+    kind: asProjectNomosOriginKind(kind),
+    pack_id: asOptionalString(raw.pack_id),
+    catalog_pack_id: asOptionalString(raw.catalog_pack_id),
+    source_id: asOptionalString(raw.source_id),
+    source_kind: asOptionalProjectNomosOriginSourceKind(raw.source_kind),
+    source_project_id: asOptionalString(raw.source_project_id),
+    source_target: asOptionalProjectNomosOriginTarget(raw.source_target),
+    source_activation_status: asOptionalProjectNomosActivationStatus(raw.source_activation_status),
+    published_by: asOptionalString(raw.published_by),
+    source_repo_path: asOptionalString(raw.source_repo_path),
+    imported_at: asOptionalString(raw.imported_at),
+    synced_at: asOptionalString(raw.synced_at),
+  };
+}
+
+function withProjectNomosOrigin(
+  metadata: Record<string, unknown> | null | undefined,
+  key: 'draft_origin' | 'active_origin',
+  origin: ProjectNomosOriginRecord,
+): Record<string, unknown> {
+  const existing = metadata ?? {};
+  const existingAgora = asRecord(existing.agora);
+  const existingNomos = asRecord(existingAgora.nomos);
+  return {
+    ...existing,
+    agora: {
+      ...existingAgora,
+      nomos: {
+        ...existingNomos,
+        [key]: origin,
+      },
+    },
+  };
+}
+
+export function resolveProjectNomosProvenance(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ResolveAgoraProjectStateOptions & {
+    target?: ProjectNomosValidationTarget;
+  } = {},
+): ProjectNomosResolvedProvenance | null {
+  const target = options.target ?? 'draft';
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  const pack = resolveProjectNomosPackForTarget(projectId, state, target);
+  if (!pack && !(target === 'active' && state.activation_status === 'active_builtin')) {
+    return null;
+  }
+
+  if (target === 'active' && state.activation_status === 'active_builtin') {
+    return {
+      target,
+      kind: 'builtin',
+      pack_id: DEFAULT_AGORA_NOMOS_ID,
+      catalog_pack_id: null,
+      source_id: null,
+      source_kind: 'project_publish',
+      trust_state: 'trusted',
+      freshness_state: 'current',
+      activation_eligibility: 'allowed',
+      reasons: ['built-in Agora Nomos is the current trusted baseline'],
+    };
+  }
+
+  const stored = resolveStoredProjectNomosOrigin(metadata, target === 'draft' ? 'draft_origin' : 'active_origin');
+  if (!stored) {
+    return {
+      target,
+      kind: 'local_authoring',
+      pack_id: pack?.pack_id ?? null,
+      catalog_pack_id: null,
+      source_id: null,
+      source_kind: null,
+      trust_state: 'trusted',
+      freshness_state: 'current',
+      activation_eligibility: 'allowed',
+      reasons: ['pack originates from local project authoring state'],
+    };
+  }
+
+  if (stored.kind === 'registered_source') {
+    const trust = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: stored.source_id ?? 'unknown-source',
+      source_kind: (stored.source_kind as RegisteredNomosSourceEntry['source_kind'] | null) ?? 'pack_root',
+      source_dir: stored.source_repo_path ?? '',
+      registered_at: stored.imported_at ?? stored.synced_at ?? new Date(0).toISOString(),
+      last_synced_at: stored.synced_at,
+      last_sync_status: stored.synced_at ? 'ok' : 'never',
+      last_sync_error: null,
+      last_catalog_pack_id: stored.catalog_pack_id,
+      last_imported_source_kind: stored.source_kind === 'share_bundle' || stored.source_kind === 'pack_root'
+        ? stored.source_kind
+        : null,
+      last_manifest_path: null,
+      entry_path: '',
+    });
+    return {
+      target,
+      kind: stored.kind,
+      pack_id: stored.pack_id,
+      catalog_pack_id: stored.catalog_pack_id,
+      source_id: stored.source_id,
+      source_kind: stored.source_kind,
+      trust_state: trust.trust_state,
+      freshness_state: trust.freshness_state,
+      activation_eligibility: trust.activation_eligibility,
+      reasons: trust.reasons,
+    };
+  }
+
+  if (stored.kind === 'catalog_pack' || stored.kind === 'source_import') {
+    const trust = assessPublishedNomosCatalogEntryTrust({
+      schema_version: 1,
+      pack_id: stored.catalog_pack_id ?? stored.pack_id ?? (pack?.pack_id ?? projectId),
+      published_at: stored.imported_at ?? new Date(0).toISOString(),
+      source_kind: (stored.source_kind as PublishedNomosCatalogEntry['source_kind'] | null) ?? 'pack_root',
+      published_by: stored.published_by,
+      published_note: null,
+      source_project_id: stored.source_project_id ?? 'external',
+      source_target: stored.source_target ?? 'draft',
+      source_activation_status: stored.source_activation_status ?? 'active_builtin',
+      source_repo_path: stored.source_repo_path,
+      published_root: '',
+      manifest_path: '',
+      pack: pack ?? {
+        pack_id: stored.pack_id ?? projectId,
+        name: stored.pack_id ?? projectId,
+        version: '0.0.0',
+        description: '',
+        lifecycle_modules: [],
+        doctor_checks: [],
+        source: 'project_state_draft',
+        root: '',
+        profile_path: '',
+      },
+    });
+    return {
+      target,
+      kind: stored.kind,
+      pack_id: stored.pack_id,
+      catalog_pack_id: stored.catalog_pack_id,
+      source_id: stored.source_id,
+      source_kind: stored.source_kind,
+      trust_state: trust.trust_state,
+      freshness_state: trust.freshness_state,
+      activation_eligibility: trust.activation_eligibility,
+      reasons: trust.reasons,
+    };
+  }
+
+  return {
+    target,
+    kind: stored.kind,
+    pack_id: stored.pack_id,
+    catalog_pack_id: stored.catalog_pack_id,
+    source_id: stored.source_id,
+    source_kind: stored.source_kind,
+    trust_state: 'trusted',
+    freshness_state: 'current',
+    activation_eligibility: 'allowed',
+    reasons: ['pack originates from local project authoring state'],
+  };
+}
+
 export function prepareProjectNomosInstall(
   options: PrepareProjectNomosInstallOptions,
 ): PreparedProjectNomosInstallResult {
@@ -1231,6 +1443,27 @@ export function reviewProjectNomosDraft(
     issues,
     active: activeSummary,
     draft: draftSummary,
+    active_provenance: resolveProjectNomosProvenance(projectId, metadata, {
+      ...options,
+      target: 'active',
+    }) ?? {
+      target: 'active',
+      kind: 'builtin',
+      pack_id: DEFAULT_AGORA_NOMOS_ID,
+      catalog_pack_id: null,
+      source_id: null,
+      source_kind: 'project_publish',
+      trust_state: 'trusted',
+      freshness_state: 'current',
+      activation_eligibility: 'allowed',
+      reasons: ['built-in Agora Nomos is the current trusted baseline'],
+    },
+    draft_provenance: draftSummary
+      ? resolveProjectNomosProvenance(projectId, metadata, {
+        ...options,
+        target: 'draft',
+      })
+      : null,
   };
 }
 
@@ -1319,6 +1552,12 @@ export function validateProjectNomos(
     valid: !issues.some((issue) => issue.severity === 'error'),
     activation_status: state.activation_status,
     pack,
+    provenance: pack
+      ? resolveProjectNomosProvenance(projectId, metadata, {
+        ...options,
+        target,
+      })
+      : null,
     issues,
   };
 }
@@ -1436,6 +1675,12 @@ export function activateProjectNomosDraft(
       ...review.issues,
     ].join(' '));
   }
+  if (review.draft_provenance?.activation_eligibility === 'blocked') {
+    throw new Error([
+      `Cannot activate project Nomos draft for ${projectId}: provenance is blocked.`,
+      ...review.draft_provenance.reasons,
+    ].join(' '));
+  }
 
   const activatedAt = options.activatedAt ?? new Date().toISOString();
   const layout = resolveAgoraProjectStateLayout(projectId, options);
@@ -1450,7 +1695,7 @@ export function activateProjectNomosDraft(
   const existing = options.metadata ?? {};
   const existingAgora = asRecord(existing.agora);
   const existingNomos = asRecord(existingAgora.nomos);
-  const nextMetadata = {
+  const nextMetadataBase = {
     ...existing,
     agora: {
       ...existingAgora,
@@ -1471,6 +1716,21 @@ export function activateProjectNomosDraft(
       },
     },
   };
+  const activeOrigin = resolveStoredProjectNomosOrigin(options.metadata, 'draft_origin') ?? {
+    kind: 'local_authoring',
+    pack_id: review.draft.pack_id,
+    catalog_pack_id: null,
+    source_id: null,
+    source_kind: null,
+    source_project_id: projectId,
+    source_target: 'draft',
+    source_activation_status: existingNomos.activation_status === 'active_project' ? 'active_project' : 'active_builtin',
+    published_by: null,
+    source_repo_path: asOptionalString(existing.repo_path),
+    imported_at: null,
+    synced_at: null,
+  };
+  const nextMetadata = withProjectNomosOrigin(nextMetadataBase, 'active_origin', activeOrigin);
 
   return {
     project_id: projectId,
@@ -1603,7 +1863,7 @@ export function installLocalNomosPackToProject(
   const existing = options.metadata ?? metadata ?? {};
   const existingAgora = asRecord(asRecord(existing).agora);
   const existingNomos = asRecord(existingAgora.nomos);
-  const nextMetadata = {
+  const nextMetadataBase = {
     ...existing,
     agora: {
       ...existingAgora,
@@ -1615,6 +1875,9 @@ export function installLocalNomosPackToProject(
       },
     },
   } as Record<string, unknown>;
+  const nextMetadata = options.draftOrigin
+    ? withProjectNomosOrigin(nextMetadataBase, 'draft_origin', options.draftOrigin)
+    : nextMetadataBase;
 
   return {
     project_id: projectId,
@@ -1671,6 +1934,20 @@ export function installCatalogNomosPackToProject(
     ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
     ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
     packDir: entry.published_root,
+    draftOrigin: {
+      kind: 'catalog_pack',
+      pack_id: entry.pack.pack_id,
+      catalog_pack_id: entry.pack_id,
+      source_id: null,
+      source_kind: entry.source_kind,
+      source_project_id: entry.source_project_id,
+      source_target: entry.source_target,
+      source_activation_status: entry.source_activation_status,
+      published_by: entry.published_by,
+      source_repo_path: entry.source_repo_path,
+      imported_at: entry.published_at,
+      synced_at: null,
+    },
   };
   const installed = installLocalNomosPackToProject(projectId, metadata, installOptions);
   return {
@@ -1855,8 +2132,23 @@ export function installNomosFromSource(
     ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
     ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
   });
+  const metadataWithSourceOrigin = withProjectNomosOrigin(installed.metadata, 'draft_origin', {
+    kind: 'source_import',
+    pack_id: imported.entry.pack.pack_id,
+    catalog_pack_id: imported.entry.pack_id,
+    source_id: null,
+    source_kind: imported.entry.source_kind,
+    source_project_id: imported.entry.source_project_id,
+    source_target: imported.entry.source_target,
+    source_activation_status: imported.entry.source_activation_status,
+    published_by: imported.entry.published_by,
+    source_repo_path: imported.entry.source_repo_path,
+    imported_at: imported.entry.published_at,
+    synced_at: null,
+  });
   return {
     ...installed,
+    metadata: metadataWithSourceOrigin,
     imported,
   };
 }
@@ -2084,8 +2376,23 @@ export function installNomosFromRegisteredSource(
     ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
     ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
   });
+  const metadataWithRegisteredOrigin = withProjectNomosOrigin(installed.metadata, 'draft_origin', {
+    kind: 'registered_source',
+    pack_id: synced.imported.entry.pack.pack_id,
+    catalog_pack_id: synced.imported.entry.pack_id,
+    source_id: synced.source.source_id,
+    source_kind: synced.source.source_kind,
+    source_project_id: synced.imported.entry.source_project_id,
+    source_target: synced.imported.entry.source_target,
+    source_activation_status: synced.imported.entry.source_activation_status,
+    published_by: synced.imported.entry.published_by,
+    source_repo_path: synced.source.source_dir,
+    imported_at: synced.imported.entry.published_at,
+    synced_at: synced.source.last_synced_at,
+  });
   return {
     ...installed,
+    metadata: metadataWithRegisteredOrigin,
     source: synced.source,
     imported: synced.imported,
   };
@@ -2884,6 +3191,37 @@ function asRegisteredNomosSourceKind(value: unknown): RegisteredNomosSourceEntry
     return value;
   }
   throw new Error(`Unsupported Nomos source kind: ${String(value)}`);
+}
+
+function asOptionalProjectNomosOriginSourceKind(value: unknown): ProjectNomosOriginRecord['source_kind'] {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value === 'project_publish' || value === 'share_bundle' || value === 'pack_root' || value === 'git_working_copy') {
+    return value;
+  }
+  return null;
+}
+
+function asProjectNomosOriginKind(value: unknown): ProjectNomosOriginKind {
+  if (value === 'builtin' || value === 'local_authoring' || value === 'catalog_pack' || value === 'source_import' || value === 'registered_source') {
+    return value;
+  }
+  throw new Error(`Unsupported project Nomos origin kind: ${String(value)}`);
+}
+
+function asOptionalProjectNomosOriginTarget(value: unknown): 'draft' | 'active' | null {
+  if (value === 'draft' || value === 'active') {
+    return value;
+  }
+  return null;
+}
+
+function asOptionalProjectNomosActivationStatus(value: unknown): ProjectNomosActivationStatus | null {
+  if (value === 'active_builtin' || value === 'active_project') {
+    return value;
+  }
+  return null;
 }
 
 function asRegisteredNomosSyncStatus(value: unknown): RegisteredNomosSourceEntry['last_sync_status'] {
