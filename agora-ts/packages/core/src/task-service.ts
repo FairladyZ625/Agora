@@ -67,6 +67,7 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import { StageRosterService } from './stage-roster-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
@@ -135,6 +136,7 @@ export interface TaskServiceOptions {
   hostResourcePort?: HostResourcePort;
   liveSessionStore?: LiveSessionStore;
   skillCatalogPort?: SkillCatalogPort;
+  projectNomosAuthoringPort?: ProjectNomosAuthoringPort;
   craftsmanGovernance?: {
     maxConcurrentRunning?: number | null;
     maxConcurrentPerAgent?: number | null;
@@ -281,6 +283,7 @@ export class TaskService {
   private readonly hostResourcePort: HostResourcePort | undefined;
   private readonly liveSessionStore: LiveSessionStore | undefined;
   private readonly skillCatalogPort: SkillCatalogPort | undefined;
+  private readonly projectNomosAuthoringPort: ProjectNomosAuthoringPort | undefined;
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
   private readonly escalationPolicy: EscalationPolicy;
   private readonly pendingBackgroundOperations = new Set<Promise<void>>();
@@ -332,6 +335,7 @@ export class TaskService {
     this.hostResourcePort = options.hostResourcePort;
     this.liveSessionStore = options.liveSessionStore;
     this.skillCatalogPort = options.skillCatalogPort;
+    this.projectNomosAuthoringPort = options.projectNomosAuthoringPort;
     this.craftsmanGovernance = {
       maxConcurrentRunning: options.craftsmanGovernance?.maxConcurrentRunning ?? null,
       maxConcurrentPerAgent: options.craftsmanGovernance?.maxConcurrentPerAgent ?? null,
@@ -375,6 +379,7 @@ export class TaskService {
     const team = this.enrichTeam(requestedTeam);
     const taskId = this.taskIdGenerator();
     const projectId = input.project_id ?? null;
+    const nomosAuthoring = input.control?.nomos_authoring;
     const firstStageId = workflow.graph?.entry_nodes[0] ?? workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;
     let active: StoredTask;
@@ -382,6 +387,14 @@ export class TaskService {
 
     this.db.exec('BEGIN');
     try {
+      if (nomosAuthoring?.kind === 'project_nomos') {
+        if (!projectId) {
+          throw new Error('project_nomos authoring tasks must be bound to a project');
+        }
+        if (nomosAuthoring.project_id !== projectId) {
+          throw new Error(`project_nomos authoring project mismatch: task=${projectId} control=${nomosAuthoring.project_id}`);
+        }
+      }
       if (projectId) {
         this.projectService.requireProject(projectId);
       }
@@ -788,6 +801,7 @@ export class TaskService {
     this.exitStage(task.id, advance.currentStage.id, 'advance');
 
     if (advance.completesTask) {
+      this.runTaskDoneAutomation(task);
       const done = this.taskRepository.updateTask(task.id, task.version, {
         state: TaskState.DONE,
         current_stage: null,
@@ -868,6 +882,20 @@ export class TaskService {
       this.reconcileStageParticipants(updated, nextStage);
     }
     return updated;
+  }
+
+  private runTaskDoneAutomation(task: StoredTask) {
+    const authoring = task.control?.nomos_authoring;
+    if (!authoring || authoring.kind !== 'project_nomos' || authoring.auto_refine_on_done === false) {
+      return;
+    }
+    if (!task.project_id) {
+      return;
+    }
+    if (!this.projectNomosAuthoringPort) {
+      throw new Error('Project Nomos authoring port is not configured');
+    }
+    this.projectNomosAuthoringPort.refineProjectNomosDraft(task.project_id);
   }
 
   completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {
@@ -1632,6 +1660,7 @@ export class TaskService {
     });
 
     if (advance.completesTask) {
+      this.runTaskDoneAutomation(task);
       const done = this.taskRepository.updateTask(taskId, task.version, {
         state: TaskState.DONE,
         current_stage: null,
@@ -3726,6 +3755,9 @@ export class TaskService {
 
     const task = this.getTaskOrThrow(taskId);
     const binding = this.taskBrainBindingService?.getActiveBinding(task.id);
+    const nomosRuntime = task.project_id && this.projectNomosAuthoringPort?.resolveProjectNomosRuntimeContext
+      ? this.projectNomosAuthoringPort.resolveProjectNomosRuntimeContext(task.project_id)
+      : null;
     return this.archiveJobRepository.insertArchiveJob({
       task_id: task.id,
       status: 'review_pending',
@@ -3749,6 +3781,7 @@ export class TaskService {
           ],
           ...(binding?.workspace_path ? { workspace_path: binding.workspace_path } : {}),
           ...(binding?.workspace_path ? { harvest_draft_path: join(binding.workspace_path, '07-outputs', 'project-harvest-draft.md') } : {}),
+          ...(nomosRuntime ? { nomos_runtime: nomosRuntime } : {}),
         },
       },
       writer_agent: 'writer-agent',

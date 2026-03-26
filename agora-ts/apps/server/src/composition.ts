@@ -60,7 +60,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, hasInstalledBrainPack, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -278,6 +278,21 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         hostResourcePort: new OsHostResourcePort(),
         liveSessionStore: deps.liveSessionStore,
         skillCatalogPort: new FilesystemSkillCatalogAdapter(),
+        projectNomosAuthoringPort: {
+          refineProjectNomosDraft: (projectId: string) => refineProjectNomosDraftFromSpec(projectId),
+          resolveProjectNomosRuntimeContext: (projectId: string) => {
+            const project = deps.projectService.requireProject(projectId);
+            const state = resolveProjectNomosState(projectId, project.metadata ?? null);
+            const runtimePaths = resolveProjectNomosRuntimePaths(projectId, project.metadata ?? null);
+            return {
+              nomos_id: state.nomos_id,
+              activation_status: state.activation_status,
+              bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+              closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+              doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+            };
+          },
+        },
         craftsmanGovernance: {
           maxConcurrentPerAgent: context.config.craftsmen.max_concurrent_per_agent,
           hostMemoryWarningUtilizationLimit: context.config.craftsmen.host_memory_warning_utilization_limit,

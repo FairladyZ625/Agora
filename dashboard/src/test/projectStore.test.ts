@@ -140,6 +140,7 @@ describe('project store', () => {
       project_id: 'proj-alpha',
       project_name: 'Project Alpha',
       nomos_id: 'agora/default',
+      activation_status: 'active_builtin',
       project_state_root: '/tmp/state',
       profile_path: '/tmp/state/profile.toml',
       profile_installed: true,
@@ -147,6 +148,12 @@ describe('project store', () => {
       repo_shim_installed: false,
       bootstrap_prompts_dir: '/tmp/state/prompts',
       lifecycle_modules: ['bootstrap'],
+      draft_root: '/tmp/state/nomos/project-nomos',
+      draft_profile_path: '/tmp/state/nomos/project-nomos/profile.toml',
+      draft_profile_installed: true,
+      active_root: '/tmp/state',
+      active_profile_path: '/tmp/state/profile.toml',
+      active_profile_installed: true,
     });
     vi.spyOn(api, 'getProjectWorkbench').mockResolvedValue(buildProjectWorkbenchDto());
     vi.spyOn(api, 'listTasks').mockResolvedValue([buildTaskDto()]);

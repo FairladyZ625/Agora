@@ -11,6 +11,30 @@ import { createCliComposition } from './composition.js';
 const tempDirs: string[] = [];
 const originalCwd = process.cwd();
 const originalHome = process.env.HOME;
+const originalEnv = {
+  AGORA_BRAIN_PACK_ROOT: process.env.AGORA_BRAIN_PACK_ROOT,
+  AGORA_HOME_DIR: process.env.AGORA_HOME_DIR,
+  AGORA_SKILL_TARGET_DIRS: process.env.AGORA_SKILL_TARGET_DIRS,
+  AGORA_CRAFTSMAN_CLI_MODE: process.env.AGORA_CRAFTSMAN_CLI_MODE,
+  AGORA_OPENCLAW_CONFIG_PATH: process.env.AGORA_OPENCLAW_CONFIG_PATH,
+  AGORA_DB_PATH: process.env.AGORA_DB_PATH,
+  AGORA_CONFIG_PATH: process.env.AGORA_CONFIG_PATH,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
+  OPENAI_EMBEDDING_DIMENSION: process.env.OPENAI_EMBEDDING_DIMENSION,
+  QDRANT_URL: process.env.QDRANT_URL,
+  QDRANT_API_KEY: process.env.QDRANT_API_KEY,
+} as const;
+
+function restoreEnv(name: keyof typeof originalEnv) {
+  const value = originalEnv[name];
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
 
 function makeTempDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-cli-composition-'));
@@ -25,19 +49,19 @@ afterEach(() => {
   } else {
     process.env.HOME = originalHome;
   }
-  delete process.env.AGORA_BRAIN_PACK_ROOT;
-  delete process.env.AGORA_HOME_DIR;
-  delete process.env.AGORA_SKILL_TARGET_DIRS;
-  delete process.env.AGORA_CRAFTSMAN_CLI_MODE;
-  delete process.env.AGORA_OPENCLAW_CONFIG_PATH;
-  delete process.env.AGORA_DB_PATH;
-  delete process.env.AGORA_CONFIG_PATH;
-  delete process.env.OPENAI_API_KEY;
-  delete process.env.OPENAI_BASE_URL;
-  delete process.env.OPENAI_EMBEDDING_MODEL;
-  delete process.env.OPENAI_EMBEDDING_DIMENSION;
-  delete process.env.QDRANT_URL;
-  delete process.env.QDRANT_API_KEY;
+  restoreEnv('AGORA_BRAIN_PACK_ROOT');
+  restoreEnv('AGORA_HOME_DIR');
+  restoreEnv('AGORA_SKILL_TARGET_DIRS');
+  restoreEnv('AGORA_CRAFTSMAN_CLI_MODE');
+  restoreEnv('AGORA_OPENCLAW_CONFIG_PATH');
+  restoreEnv('AGORA_DB_PATH');
+  restoreEnv('AGORA_CONFIG_PATH');
+  restoreEnv('OPENAI_API_KEY');
+  restoreEnv('OPENAI_BASE_URL');
+  restoreEnv('OPENAI_EMBEDDING_MODEL');
+  restoreEnv('OPENAI_EMBEDDING_DIMENSION');
+  restoreEnv('QDRANT_URL');
+  restoreEnv('QDRANT_API_KEY');
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -51,12 +75,12 @@ describe('cli composition', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    delete process.env.AGORA_DB_PATH;
     process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
 
     const composition = createCliComposition({ configPath });
 
-    expect(composition.config.db_path).toBe(dbPath);
     expect(composition.taskService).toBeDefined();
     expect(composition.legacyRuntimeService).toBeDefined();
     expect(composition.tmuxRuntimeService).toBe(composition.legacyRuntimeService);
@@ -342,6 +366,7 @@ describe('cli composition', () => {
     const composition = createCliComposition({ configPath });
 
     composition.db.close();
+    expect(composition.config.db_path).toBe(expectedDbPath);
     expect(existsSync(expectedDbPath)).toBe(true);
     expect(existsSync(repoLocalDbPath)).toBe(false);
   });

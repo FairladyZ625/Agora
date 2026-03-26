@@ -50,13 +50,15 @@ When `./agora init` detects OpenClaw and you confirm the action, it can automate
 - local Agora admin bootstrap
 - local Agora Discord bot config
 - local `agora-plugin` build
-- safe `openclaw.json` plugin registration / wiring:
-  - `plugins.allow`
+- safe `openclaw.json` plugin registration / wiring aligned with the official plugin CLI path:
+  - `openclaw plugins install -l ./extensions/agora-plugin`
   - `plugins.load.paths`
   - `plugins.entries.agora.enabled`
   - `plugins.entries.agora.config.serverUrl`
   - `plugins.entries.agora.config.apiToken`
   - path-based `plugins.installs.agora` metadata
+
+`plugins.allow` is a separate trust-tightening choice, not the primary install path itself.
 
 ### Agora intentionally does not automate
 
@@ -294,6 +296,7 @@ openclaw plugins info agora
 Expected outcome:
 
 - OpenClaw sees the `agora` plugin
+- the plugin points at your stable repo path, not a temporary worktree
 - the plugin points at your local Agora server
 
 If API auth is enabled in Agora, verify the plugin config also contains the matching bearer token.
@@ -302,14 +305,17 @@ If API auth is enabled in Agora, verify the plugin config also contains the matc
 
 The automated setup is intentionally narrow.
 
-It may create or update:
+The primary 3.22 path creates or updates:
 
-- `plugins.allow`
 - `plugins.load.paths`
 - `plugins.entries.agora.enabled`
 - `plugins.entries.agora.config.serverUrl`
 - `plugins.entries.agora.config.apiToken`
 - `plugins.installs.agora`
+
+Optional hardening may also add:
+
+- `plugins.allow`
 
 It should not modify:
 
@@ -331,6 +337,7 @@ Check:
 - are you in the full Agora source repository?
 - does `extensions/agora-plugin/package.json` exist?
 - is OpenClaw installed on this machine?
+- if you run the manual path, did you use `openclaw plugins install -l ./extensions/agora-plugin` from the stable repo root?
 
 Agora can only automate the local plugin if the plugin source is actually present.
 

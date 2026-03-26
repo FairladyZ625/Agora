@@ -153,6 +153,7 @@ async function captureDashboardScreenshots(input: {
   origin: string;
   cookie: string;
   projectId: string;
+  exportDir: string;
   projectsScreenshotPath: string;
   detailScreenshotPath: string;
   playwrightBrowsersPath: string;
@@ -175,14 +176,88 @@ async function captureDashboardScreenshots(input: {
     await page.screenshot({ path: ${JSON.stringify(input.projectsScreenshotPath)}, fullPage: true });
     await page.goto(${JSON.stringify(`${input.origin}/dashboard/projects/${input.projectId}`)}, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1500);
+    let reviewVisible = false;
+    let validationVisible = false;
+	    let diffVisible = false;
+	    let exportVisible = false;
+	    let publishVisible = false;
+	    let catalogVisible = false;
+	    let installCatalogVisible = false;
+	    let installVisible = false;
+	    let importSourceVisible = false;
+	    let installSourceVisible = false;
+	    let sourcePanelVisible = false;
+	    let activationVisible = false;
+    await page.getByRole('button', { name: 'Review Draft' }).click();
+    await page.getByText('Can Activate').waitFor({ timeout: 3000 });
+    reviewVisible = true;
+    await page.getByRole('button', { name: 'Validate Draft' }).click();
+    await page.getByText('Validation Issues').waitFor({ timeout: 3000 });
+    validationVisible = true;
+    await page.getByRole('button', { name: 'Diff Draft' }).click();
+    await page.getByText('Changed Fields').waitFor({ timeout: 3000 });
+    diffVisible = true;
+    await page.getByRole('button', { name: 'Activate Draft' }).click();
+    await page.getByText('Project Nomos activated.').waitFor({ timeout: 3000 });
+    activationVisible = true;
+	    await page.getByLabel('Export Dir').fill(${JSON.stringify(input.exportDir)});
+	    await page.getByRole('button', { name: 'Export Pack' }).click();
+	    await page.getByText('Nomos pack exported.').waitFor({ timeout: 3000 });
+	    exportVisible = true;
+	    await page.getByLabel('Publish Note').fill('dashboard smoke');
+	    await page.getByRole('button', { name: 'Publish To Catalog' }).click();
+	    await page.getByText('Nomos pack published to catalog.').waitFor({ timeout: 3000 });
+	    publishVisible = true;
+	    await page.getByRole('button', { name: 'Refresh Catalog' }).click();
+	    await page.getByText('Nomos Catalog').waitFor({ timeout: 3000 });
+	    catalogVisible = true;
+	    await page.getByLabel('Catalog Pack Id').fill(${JSON.stringify(`project/${input.projectId}`)});
+	    await page.getByRole('button', { name: 'Show Catalog Entry' }).click();
+	    await page.getByTestId('project-nomos-catalog-panel').locator('pre').waitFor({ timeout: 3000 });
+	    await page.getByRole('button', { name: 'Install From Catalog' }).click();
+	    await page.getByText('Catalog pack installed into draft.').waitFor({ timeout: 3000 });
+	    installCatalogVisible = true;
+	    await page.getByLabel('Pack Dir').fill(${JSON.stringify(input.exportDir)});
+	    await page.getByRole('button', { name: 'Install Pack' }).click();
+	    await page.getByText('Nomos pack installed into draft.').waitFor({ timeout: 3000 });
+    installVisible = true;
+	    await page.getByLabel('Source Dir').fill(${JSON.stringify(input.exportDir)});
+	    await page.getByRole('button', { name: 'Import Source' }).click();
+	    await page.getByText('Nomos source imported into catalog.').waitFor({ timeout: 3000 });
+	    importSourceVisible = true;
+	    await page.getByRole('button', { name: 'Install From Source' }).click();
+	    await page.getByText('Nomos source imported and installed into draft.').waitFor({ timeout: 3000 });
+	    installSourceVisible = true;
+	    await page.getByTestId('project-nomos-source-panel').waitFor({ timeout: 3000 });
+	    sourcePanelVisible = true;
     await page.screenshot({ path: ${JSON.stringify(input.detailScreenshotPath)}, fullPage: true });
     const bodyText = await page.locator('body').innerText();
     console.log(JSON.stringify({
       detailUrl: page.url(),
       bodyText: bodyText.slice(0, 1600),
       nomosVisible: bodyText.includes('Nomos State'),
-      actionVisible: bodyText.includes('Reinstall Nomos') && bodyText.includes('Rerun Bootstrap') && bodyText.includes('Run Doctor'),
-    }));
+      actionVisible: bodyText.includes('Review Draft')
+        && bodyText.includes('Activate Draft')
+        && bodyText.includes('Validate Draft')
+        && bodyText.includes('Diff Draft')
+        && bodyText.includes('Import Source')
+        && bodyText.includes('Install From Source')
+        && bodyText.includes('Reinstall Nomos')
+        && bodyText.includes('Rerun Bootstrap')
+        && bodyText.includes('Run Doctor'),
+      reviewVisible,
+      validationVisible,
+	      diffVisible,
+	      exportVisible,
+	      publishVisible,
+	      catalogVisible,
+	      installCatalogVisible,
+	      installVisible,
+	      importSourceVisible,
+	      installSourceVisible,
+	      sourcePanelVisible,
+	      activationVisible,
+	    }));
     await browser.close();
   `;
 
@@ -217,6 +292,18 @@ async function captureDashboardScreenshots(input: {
     bodyText: string;
     nomosVisible: boolean;
     actionVisible: boolean;
+    reviewVisible: boolean;
+    validationVisible: boolean;
+    diffVisible: boolean;
+    exportVisible: boolean;
+    publishVisible: boolean;
+    catalogVisible: boolean;
+    installCatalogVisible: boolean;
+    installVisible: boolean;
+    importSourceVisible: boolean;
+    installSourceVisible: boolean;
+    sourcePanelVisible: boolean;
+    activationVisible: boolean;
   };
 }
 
@@ -241,6 +328,7 @@ async function main() {
   const dashboardUser = 'smoke-admin';
   const projectsScreenshotPath = join(smokeRoot, 'dashboard-projects.png');
   const detailScreenshotPath = join(smokeRoot, 'dashboard-project-detail.png');
+  const dashboardExportDir = join(smokeRoot, 'dashboard-exported-pack');
 
   const restoreEnv = {
     HOME: process.env.HOME,
@@ -439,10 +527,18 @@ async function main() {
       origin: dashboardOrigin,
       cookie: dashboardCookie,
       projectId: bootstrapProjectId,
+      exportDir: dashboardExportDir,
       projectsScreenshotPath,
       detailScreenshotPath,
       playwrightBrowsersPath,
     });
+    if (!dashboardUi.nomosVisible || !dashboardUi.actionVisible || !dashboardUi.reviewVisible
+      || !dashboardUi.validationVisible || !dashboardUi.diffVisible || !dashboardUi.activationVisible
+      || !dashboardUi.exportVisible || !dashboardUi.publishVisible || !dashboardUi.catalogVisible
+      || !dashboardUi.installCatalogVisible || !dashboardUi.installVisible
+      || !dashboardUi.importSourceVisible || !dashboardUi.installSourceVisible || !dashboardUi.sourcePanelVisible) {
+      throw new Error(`dashboard nomos click-path incomplete: ${JSON.stringify(dashboardUi)}`);
+    }
 
     const dashboardLayer = {
       project_id: bootstrapProjectId,
@@ -453,6 +549,18 @@ async function main() {
       detail_url: dashboardUi.detailUrl,
       nomos_visible: dashboardUi.nomosVisible,
       actions_visible: dashboardUi.actionVisible,
+      review_visible: dashboardUi.reviewVisible,
+      validation_visible: dashboardUi.validationVisible,
+      diff_visible: dashboardUi.diffVisible,
+      activation_visible: dashboardUi.activationVisible,
+      export_visible: dashboardUi.exportVisible,
+      publish_visible: dashboardUi.publishVisible,
+      catalog_visible: dashboardUi.catalogVisible,
+      install_catalog_visible: dashboardUi.installCatalogVisible,
+      install_visible: dashboardUi.installVisible,
+      import_source_visible: dashboardUi.importSourceVisible,
+      install_source_visible: dashboardUi.installSourceVisible,
+      source_panel_visible: dashboardUi.sourcePanelVisible,
       detail_excerpt: dashboardUi.bodyText,
     };
 

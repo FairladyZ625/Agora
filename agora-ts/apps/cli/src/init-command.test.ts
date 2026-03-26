@@ -18,6 +18,34 @@ const configState = {
 };
 const tempPaths: string[] = [];
 
+function makeBundledAssetFixtures() {
+  const bundledSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-src-'));
+  const bundledBrainPackDir = mkdtempSync(join(tmpdir(), 'agora-init-brain-src-'));
+  const userAgoraDir = mkdtempSync(join(tmpdir(), 'agora-init-home-'));
+  const userAgentsSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-agents-skill-dst-'));
+  const userCodexSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-codex-skill-dst-'));
+  tempPaths.push(bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userAgentsSkillsDir, userCodexSkillsDir);
+
+  mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
+  mkdirSync(join(bundledSkillsDir, 'create-nomos', 'references'), { recursive: true });
+  writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
+  writeFileSync(join(bundledSkillsDir, 'create-nomos', 'SKILL.md'), '# create nomos\n');
+  writeFileSync(join(bundledSkillsDir, 'create-nomos', 'references', 'pack-schema.md'), '# schema\n');
+
+  mkdirSync(join(bundledBrainPackDir, 'roles'), { recursive: true });
+  mkdirSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY'), { recursive: true });
+  writeFileSync(join(bundledBrainPackDir, 'README.md'), '# brain\n');
+  writeFileSync(join(bundledBrainPackDir, 'roles', 'controller.md'), '# controller\n');
+  writeFileSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY', 'task.meta.yaml'), 'task_id: "seed"\n');
+
+  return {
+    bundledSkillsDir,
+    bundledBrainPackDir,
+    userAgoraDir,
+    userSkillDirs: [userAgentsSkillsDir, userCodexSkillsDir] as [string, string],
+  };
+}
+
 vi.mock('@inquirer/prompts', () => ({
   input: vi.fn(async () => promptState.inputs.shift() ?? ''),
   select: vi.fn(async () => promptState.selectValue),
@@ -57,22 +85,7 @@ describe('runInitCommand', () => {
     promptState.inputs = ['admin', 'secret-pass'];
     promptState.confirmValues = [false];
     const bootstrapAdmin = vi.fn();
-    const bundledSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-skill-src-'));
-    const bundledBrainPackDir = mkdtempSync(join(tmpdir(), 'agora-init-brain-src-'));
-    const userAgoraDir = mkdtempSync(join(tmpdir(), 'agora-init-home-'));
-    const userAgentsSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-agents-skill-dst-'));
-    const userCodexSkillsDir = mkdtempSync(join(tmpdir(), 'agora-init-codex-skill-dst-'));
-    tempPaths.push(bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userAgentsSkillsDir, userCodexSkillsDir);
-    mkdirSync(join(bundledSkillsDir, 'agora-bootstrap'), { recursive: true });
-    mkdirSync(join(bundledSkillsDir, 'create-nomos', 'references'), { recursive: true });
-    writeFileSync(join(bundledSkillsDir, 'agora-bootstrap', 'SKILL.md'), '# bootstrap\n');
-    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'SKILL.md'), '# create nomos\n');
-    writeFileSync(join(bundledSkillsDir, 'create-nomos', 'references', 'pack-schema.md'), '# schema\n');
-    mkdirSync(join(bundledBrainPackDir, 'roles'), { recursive: true });
-    mkdirSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY'), { recursive: true });
-    writeFileSync(join(bundledBrainPackDir, 'README.md'), '# brain\n');
-    writeFileSync(join(bundledBrainPackDir, 'roles', 'controller.md'), '# controller\n');
-    writeFileSync(join(bundledBrainPackDir, 'tasks', 'OC-SEED-SHOULD-NOT-COPY', 'task.meta.yaml'), 'task_id: "seed"\n');
+    const { bundledSkillsDir, bundledBrainPackDir, userAgoraDir, userSkillDirs } = makeBundledAssetFixtures();
 
     await runInitCommand({
       humanAccountService: {
@@ -81,7 +94,7 @@ describe('runInitCommand', () => {
       bundledSkillsDir,
       bundledBrainPackDir,
       userAgoraDir,
-      userSkillDirs: [userAgentsSkillsDir, userCodexSkillsDir],
+      userSkillDirs,
     });
 
     expect(configState.saved).toMatchObject({
@@ -99,6 +112,7 @@ describe('runInitCommand', () => {
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'roles', 'controller.md'))).toBe(true);
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks'))).toBe(true);
     expect(existsSync(join(userAgoraDir, 'agora-ai-brain', 'tasks', 'OC-SEED-SHOULD-NOT-COPY'))).toBe(false);
+    const [userAgentsSkillsDir, userCodexSkillsDir] = userSkillDirs;
     expect(existsSync(join(userAgentsSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(userCodexSkillsDir, 'agora-bootstrap', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(userAgoraDir, 'skills', 'create-nomos', 'SKILL.md'))).toBe(true);
@@ -113,6 +127,7 @@ describe('runInitCommand', () => {
     promptState.inputs = ['admin', 'secret-pass'];
     promptState.confirmValues = [false];
     const setupHybridRetrieval = vi.fn();
+    const assetFixtures = makeBundledAssetFixtures();
 
     await runInitCommand({
       runtimeEnvironment: {
@@ -120,6 +135,7 @@ describe('runInitCommand', () => {
         serverUrl: 'http://127.0.0.1:18420',
       },
       setupHybridRetrieval,
+      ...assetFixtures,
     });
 
     expect(setupHybridRetrieval).not.toHaveBeenCalled();
@@ -147,6 +163,7 @@ describe('runInitCommand', () => {
         model: 'embedding-3',
       },
     }));
+    const assetFixtures = makeBundledAssetFixtures();
 
     await runInitCommand({
       runtimeEnvironment: {
@@ -154,6 +171,7 @@ describe('runInitCommand', () => {
         serverUrl: 'http://127.0.0.1:18420',
       },
       setupHybridRetrieval,
+      ...assetFixtures,
     });
 
     expect(setupHybridRetrieval).toHaveBeenCalledWith({
@@ -181,6 +199,7 @@ describe('runInitCommand', () => {
       throw new Error('docker is unavailable');
     });
     const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const assetFixtures = makeBundledAssetFixtures();
 
     try {
       await runInitCommand({
@@ -189,6 +208,7 @@ describe('runInitCommand', () => {
           serverUrl: 'http://127.0.0.1:18420',
         },
         setupHybridRetrieval,
+        ...assetFixtures,
       });
     } finally {
       consoleSpy.mockRestore();
@@ -199,5 +219,48 @@ describe('runInitCommand', () => {
       im: { provider: 'none' },
     });
     expect(setupHybridRetrieval).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists discord settings and binds the admin identity when discord is selected', async () => {
+    promptState.selectValue = 'discord';
+    promptState.inputs = [
+      'archon',
+      'secret-pass',
+      'discord-bot-token',
+      '1234567890',
+      'discord-user-42',
+    ];
+    promptState.confirmValues = [true, false];
+    const bootstrapAdmin = vi.fn();
+    const bindIdentity = vi.fn();
+    const assetFixtures = makeBundledAssetFixtures();
+
+    await runInitCommand({
+      humanAccountService: {
+        bootstrapAdmin,
+        bindIdentity,
+      } as never,
+      ...assetFixtures,
+    });
+
+    expect(configState.saved).toMatchObject({
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-bot-token',
+          default_channel_id: '1234567890',
+          notify_on_task_create: true,
+        },
+      },
+    });
+    expect(bootstrapAdmin).toHaveBeenCalledWith({
+      username: 'archon',
+      password: 'secret-pass',
+    });
+    expect(bindIdentity).toHaveBeenCalledWith({
+      username: 'archon',
+      provider: 'discord',
+      externalUserId: 'discord-user-42',
+    });
   });
 });

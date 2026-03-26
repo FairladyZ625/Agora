@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_AGORA_HOST = '127.0.0.1';
@@ -63,12 +63,29 @@ export function findAgoraProjectRoot(startDir: string): string {
 }
 
 export function loadAgoraDotEnv(projectRoot: string): Record<string, string> {
-  const envPath = resolve(projectRoot, '.env');
-  if (!existsSync(envPath)) {
+  const envPath = resolveAgoraDotEnvPath(projectRoot);
+  if (!envPath) {
     return {};
   }
 
   return parseEnvFile(readFileSync(envPath, 'utf8'));
+}
+
+export function resolveAgoraDotEnvPath(projectRoot: string): string | null {
+  const directEnvPath = resolve(projectRoot, '.env');
+  if (existsSync(directEnvPath)) {
+    return directEnvPath;
+  }
+
+  const parent = dirname(projectRoot);
+  if (basename(parent) === '.worktrees') {
+    const sharedEnvPath = resolve(parent, '..', '.env');
+    if (existsSync(sharedEnvPath)) {
+      return sharedEnvPath;
+    }
+  }
+
+  return null;
 }
 
 export function normalizePathLikeEnvValue(key: string, value: string | undefined): string | undefined {

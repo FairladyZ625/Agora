@@ -54,7 +54,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
     });
   });
 
-  api.on?.("before_agent_start", (event, ctx) => {
+  api.on?.("before_prompt_build", (event, ctx) => {
     const sessionKey = ctx.sessionKey;
     const agentId = ctx.agentId ?? parseAgentId(sessionKey);
     if (!sessionKey || !agentId) {
@@ -68,7 +68,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       conversation_id: inferConversationId(sessionKey),
       thread_id: null,
       status: "active",
-      last_event: "before_agent_start",
+      last_event: "before_prompt_build",
       last_event_at: new Date().toISOString(),
       metadata: {
         trigger: ctx.trigger,

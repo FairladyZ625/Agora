@@ -309,6 +309,12 @@ describe('task routes', () => {
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-home-'));
     tempPaths.push(agoraHomeDir);
     process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const installedTemplateRoot = join(agoraHomeDir, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
     const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-repo-parent-'));
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-beta');
@@ -354,9 +360,14 @@ describe('task routes', () => {
     expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-nomos-api"',
     );
-    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project API Nomos');
+    expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'docs', 'reference', 'project-nomos-authoring-spec.md'), 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(join(agoraHomeDir, 'projects', 'proj-nomos-api', 'nomos', 'project-nomos', 'profile.toml'), 'utf8')).toContain('id = "project/proj-nomos-api"');
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.title).toBe('Create Project Nomos: Project API Nomos');
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
       join(agoraHomeDir, 'projects', 'proj-nomos-api', 'prompts', 'bootstrap', 'interview.md'),
+    );
+    expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-api', 'docs', 'reference', 'project-nomos-authoring-spec.md'),
     );
     expect(taskService.getTask('OC-SERVER-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
   });
@@ -456,16 +467,90 @@ describe('task routes', () => {
     expect(inspectResponse.json()).toMatchObject({
       project_id: 'proj-nomos-rest',
       nomos_id: 'agora/default',
+      activation_status: 'active_builtin',
       project_state_root: join(agoraHomeDir, 'projects', 'proj-nomos-rest'),
       repo_path: repoRoot,
       repo_shim_installed: true,
       profile_installed: true,
     });
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
-    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Project REST Nomos');
+    expect(taskService.getTask('OC-SERVER-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Project REST Nomos');
   });
 
-  it('reuses persisted repo_path when rerunning Nomos bootstrap through the api', async () => {
+  it('reviews and activates a project-specific nomos draft through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-activate');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-ACTIVATE',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-activate',
+        name: 'Project Activate Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const reviewResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-activate/nomos/review',
+    });
+    const activateResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-activate/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
+    });
+    const inspectResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-activate/nomos',
+    });
+
+    expect(reviewResponse.statusCode).toBe(200);
+    expect(reviewResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      can_activate: true,
+      draft: expect.objectContaining({
+        pack_id: 'project/proj-nomos-activate',
+      }),
+    });
+
+    expect(activateResponse.statusCode).toBe(200);
+    expect(activateResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      nomos_id: 'project/proj-nomos-activate',
+      activation_status: 'active_project',
+    });
+
+    expect(inspectResponse.statusCode).toBe(200);
+    expect(inspectResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-activate',
+      nomos_id: 'project/proj-nomos-activate',
+      activation_status: 'active_project',
+      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos'),
+    });
+  });
+
+  it('reuses persisted repo_path and active Nomos bootstrap prompt when rerunning Nomos bootstrap through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-rerun-home-'));
@@ -476,9 +561,10 @@ describe('task routes', () => {
     const repoRoot = join(repoParent, 'repo-rerun');
     mkdirSync(repoRoot, { recursive: true });
     const projectService = new ProjectService(db);
+    let taskCounter = 0;
     const taskService = new TaskService(db, {
       templatesDir,
-      taskIdGenerator: () => 'OC-SERVER-NOMOS-RERUN',
+      taskIdGenerator: () => `OC-SERVER-NOMOS-RERUN-${++taskCounter}`,
       projectService,
     });
     const app = buildApp({
@@ -487,13 +573,22 @@ describe('task routes', () => {
       taskService,
     });
 
-    projectService.createProject({
-      id: 'proj-nomos-rerun',
-      name: 'Project Rerun Nomos',
-      owner: 'archon',
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-rerun',
+        name: 'Project Rerun Nomos',
+        repo_path: repoRoot,
+        initialize_repo: false,
+      },
     });
-    projectService.updateProjectMetadata('proj-nomos-rerun', {
-      repo_path: repoRoot,
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-rerun/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
     });
 
     const response = await app.inject({
@@ -503,15 +598,35 @@ describe('task routes', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain('Bootstrap mode: `existing_repo`');
-    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN')?.description).toContain(repoRoot);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(repoRoot);
+    expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(
+      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
   });
 
   it('serves project-level Nomos doctor output through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-nomos-rest',
+      name: 'Project REST Nomos',
+      metadata: {
+        repo_path: '/tmp/repo',
+        agora: {
+          nomos: {
+            id: 'project/proj-nomos-rest',
+            activation_status: 'active_project',
+            active_root: '/tmp/project-nomos-rest',
+            active_profile_path: '/tmp/project-nomos-rest/profile.toml',
+          },
+        },
+      },
+    });
     const app = buildApp({
       db,
+      projectService,
       projectBrainDoctorService: {
         diagnoseProject: async (projectId: string) => ({
           project_id: projectId,
@@ -557,9 +672,165 @@ describe('task routes', () => {
         provider: 'qdrant',
         chunk_count: 16,
       },
+      nomos_runtime: expect.objectContaining({
+        nomos_id: 'project/proj-nomos-rest',
+        activation_status: 'active_project',
+      }),
+      nomos_validation: expect.objectContaining({
+        draft: expect.objectContaining({
+          target: 'draft',
+          valid: false,
+        }),
+        active: expect.objectContaining({
+          target: 'active',
+          valid: false,
+        }),
+      }),
+      nomos_diff: expect.objectContaining({
+        changed: false,
+      }),
+      nomos_drift: expect.objectContaining({
+        risk_level: 'high',
+        activation_blockers: expect.any(Number),
+      }),
       drift: {
         detected: false,
       },
+    });
+  });
+
+  it('serves project-level Nomos validate and diff output through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-validate-home-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-validate-repo-'));
+    tempPaths.push(repoParent);
+    const repoRoot = join(repoParent, 'repo-validate');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-VALIDATE',
+      projectService,
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-validate',
+        name: 'Project Validate Nomos',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const validateResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-validate/nomos/validate?target=draft',
+    });
+    const diffResponse = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-nomos-validate/nomos/diff?base=builtin&candidate=draft',
+    });
+
+    expect(validateResponse.statusCode).toBe(200);
+    expect(validateResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-validate',
+      target: 'draft',
+      valid: true,
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-validate',
+      }),
+    });
+    expect(diffResponse.statusCode).toBe(200);
+    expect(diffResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-validate',
+      base: 'builtin',
+      candidate: 'draft',
+      changed: true,
+      candidate_pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-validate',
+      }),
+    });
+  });
+
+  it('exports a project nomos pack and installs it into another project draft slot through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const app = buildApp({
+      db,
+      projectService,
+    });
+    const repoRoot = mkdtempSync(join(tmpdir(), 'agora-nomos-export-source-'));
+    const targetRepoRoot = mkdtempSync(join(tmpdir(), 'agora-nomos-export-target-'));
+    const exportDir = mkdtempSync(join(tmpdir(), 'agora-nomos-export-pack-'));
+    tempPaths.push(repoRoot, targetRepoRoot, exportDir);
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-source',
+        name: 'Nomos Source',
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-target',
+        name: 'Nomos Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-source/nomos/export',
+      payload: {
+        output_dir: exportDir,
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-target/nomos/install-pack',
+      payload: {
+        pack_dir: exportDir,
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-source',
+      target: 'draft',
+      output_dir: exportDir,
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-source',
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-nomos-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-nomos-source',
+      }),
     });
   });
 
@@ -691,6 +962,335 @@ describe('task routes', () => {
         }),
       ],
     });
+  });
+
+  it('publishes a project pack into local catalog and installs it from catalog through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-target-')), 'repo');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-catalog-source',
+        name: 'Catalog Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-catalog-target',
+        name: 'Catalog Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const publishResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-catalog-source/nomos/publish',
+      payload: {
+        published_by: 'archon',
+        published_note: 'shared from api',
+      },
+    });
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/catalog',
+    });
+    const showResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/catalog/project/proj-catalog-source',
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-catalog-target/nomos/install-catalog-pack',
+      payload: {
+        pack_id: 'project/proj-catalog-source',
+      },
+    });
+
+    expect(publishResponse.statusCode).toBe(200);
+    expect(publishResponse.json()).toMatchObject({
+      project_id: 'proj-catalog-source',
+      target: 'draft',
+      entry: expect.objectContaining({
+        pack_id: 'project/proj-catalog-source',
+        published_by: 'archon',
+        published_note: 'shared from api',
+      }),
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      total: 1,
+      summaries: expect.arrayContaining([
+        expect.objectContaining({
+          pack_id: 'project/proj-catalog-source',
+          published_by: 'archon',
+        }),
+      ]),
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          pack_id: 'project/proj-catalog-source',
+        }),
+      ]),
+    });
+    expect(showResponse.statusCode).toBe(200);
+    expect(showResponse.json()).toMatchObject({
+      pack_id: 'project/proj-catalog-source',
+      source_project_id: 'proj-catalog-source',
+      published_by: 'archon',
+      published_note: 'shared from api',
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-catalog-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-catalog-source',
+      }),
+      catalog_entry: expect.objectContaining({
+        pack_id: 'project/proj-catalog-source',
+      }),
+    });
+  });
+
+  it('exports a published bundle, imports it, and installs it from source through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-share-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-share-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-share-target-')), 'repo');
+    const bundleDir = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-share-bundle-')), 'bundle');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(bundleDir.replace(/\/bundle$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-share-source',
+        name: 'Share Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-share-target',
+        name: 'Share Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const publishResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-share-source/nomos/publish',
+      payload: {
+        published_by: 'archon',
+        published_note: 'shared bundle',
+      },
+    });
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/bundles/export',
+      payload: {
+        pack_id: 'project/proj-share-source',
+        output_dir: bundleDir,
+      },
+    });
+    const importResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/bundles/import',
+      payload: {
+        source_dir: bundleDir,
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-share-target/nomos/install-from-source',
+      payload: {
+        source_dir: bundleDir,
+      },
+    });
+
+    expect(publishResponse.statusCode).toBe(200);
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.json()).toMatchObject({
+      pack_id: 'project/proj-share-source',
+      output_dir: bundleDir,
+      manifest: expect.objectContaining({
+        pack: expect.objectContaining({
+          pack_id: 'project/proj-share-source',
+        }),
+        source: expect.objectContaining({
+          published_by: 'archon',
+          published_note: 'shared bundle',
+        }),
+      }),
+    });
+    expect(importResponse.statusCode).toBe(200);
+    expect(importResponse.json()).toMatchObject({
+      source_dir: bundleDir,
+      entry: expect.objectContaining({
+        pack_id: 'project/proj-share-source',
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-share-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-share-source',
+      }),
+      imported: expect.objectContaining({
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-share-source',
+        }),
+      }),
+    });
+    expect(existsSync(join(bundleDir, 'nomos-share-bundle.json'))).toBe(true);
+    expect(readFileSync(join(bundleDir, 'nomos-share-bundle.json'), 'utf8')).toContain('project/proj-share-source');
+  });
+
+  it('imports a direct pack root source and installs it into another project through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-target-')), 'repo');
+    const directPackDir = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-pack-root-export-')), 'direct-pack');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(directPackDir.replace(/\/direct-pack$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    const sourceResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-pack-root-source',
+        name: 'Pack Root Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    const targetResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-pack-root-target',
+        name: 'Pack Root Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(sourceResponse.statusCode).toBe(200);
+    expect(targetResponse.statusCode).toBe(200);
+
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-pack-root-source/nomos/export',
+      payload: {
+        output_dir: directPackDir,
+      },
+    });
+    const importResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/sources/import',
+      payload: {
+        source_dir: directPackDir,
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-pack-root-target/nomos/install-from-source',
+      payload: {
+        source_dir: directPackDir,
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(importResponse.statusCode).toBe(200);
+    expect(importResponse.json()).toMatchObject({
+      source_dir: directPackDir,
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: expect.objectContaining({
+        pack_id: 'project/proj-pack-root-source',
+        source_kind: 'pack_root',
+        source_project_id: 'external',
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-pack-root-target',
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-pack-root-source',
+      }),
+      imported: expect.objectContaining({
+        source_kind: 'pack_root',
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-pack-root-source',
+        }),
+      }),
+    });
+    expect(existsSync(join(directPackDir, 'profile.toml'))).toBe(true);
   });
 
   it('creates a task bound to a project through the api', async () => {

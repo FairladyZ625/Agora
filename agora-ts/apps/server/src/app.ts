@@ -1,17 +1,33 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { join, resolve, sep } from 'node:path';
+import { resolve, sep } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import {
   BUILT_IN_AGORA_NOMOS_PACK,
   DEFAULT_AGORA_NOMOS_ID,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
-  installBuiltInAgoraNomosForProject,
-  mergeProjectMetadataWithNomosProfile,
+  diagnoseProjectNomosDrift,
+  diffProjectNomos,
+  exportNomosShareBundle,
+  exportProjectNomosPack,
+  activateProjectNomosDraft,
+  importNomosSource,
+  importNomosShareBundle,
+  inspectPublishedNomosCatalogPack,
+  installLocalNomosPackToProject,
+  installCatalogNomosPackToProject,
+  installNomosFromSource,
+  listPublishedNomosCatalog,
   NOMOS_LIFECYCLE_MODULES,
+  prepareProjectNomosInstall,
+  publishProjectNomosPack,
   REPO_AGENTS_SHIM_SECTION_ORDER,
-  resolveAgoraProjectStateLayout,
+  requireSupportedNomosId,
+  resolveProjectNomosState,
+  resolveProjectNomosRuntimePaths,
+  reviewProjectNomosDraft,
+  validateProjectNomos,
 } from '@agora-ts/config';
 import {
   craftsmanCallbackRequestSchema,
@@ -229,20 +245,6 @@ function parseBasicCredentials(authorization?: string) {
   };
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
-  const agora = asRecord(project.metadata?.agora);
-  const nomos = asRecord(agora?.nomos);
-  return typeof nomos?.id === 'string' && nomos.id.length > 0
-    ? nomos.id
-    : DEFAULT_AGORA_NOMOS_ID;
-}
-
 function parseCookies(header?: string) {
   const cookies = new Map<string, string>();
   if (!header) {
@@ -277,6 +279,7 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     return false;
   }
   return url.startsWith('/api/tasks')
+    || url.startsWith('/api/projects')
     || url.startsWith('/api/agents/')
     || url === '/api/agents/status'
     || url.startsWith('/api/archive/')
@@ -285,14 +288,17 @@ function isDashboardProtectedApiRoute(method: string, url: string) {
     || url.startsWith('/api/templates')
     || url.startsWith('/api/craftsmen/runtime/')
     || url.startsWith('/api/craftsmen/executions/')
-    || url.startsWith('/api/craftsmen/tasks/');
+    || url.startsWith('/api/craftsmen/tasks/')
+    || url.startsWith('/api/nomos')
+    || url === '/api/skills'
+    || url.startsWith('/api/inbox')
+    || url === '/api/craftsmen/governance';
 }
 
-function isHumanReviewRoute(method: string, url: string) {
-  if (method !== 'POST') {
-    return false;
-  }
-  return url.endsWith('/archon-approve') || url.endsWith('/archon-reject');
+function isDashboardSessionBypassRoute(url: string) {
+  // Valid dashboard session bypasses bearer auth for all /api/* routes.
+  // /api/dashboard/* is handled separately by isDashboardSessionRoute/isDashboardUserRoute.
+  return url.startsWith('/api/') && !url.startsWith('/api/dashboard/');
 }
 
 function isDashboardUserRoute(url: string) {
@@ -734,8 +740,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       && (
         isDashboardSessionRoute(request.url)
         || (isDashboardUserRoute(request.url) && dashboardSession)
-        || (isDashboardProtectedApiRoute(request.method, request.url) && dashboardSession)
-        || (isHumanReviewRoute(request.method, request.url) && dashboardSession)
+        || (isDashboardSessionBypassRoute(request.url) && dashboardSession)
       )
     ) {
       return;
@@ -1072,13 +1077,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const payload = createProjectRequestSchema.parse(request.body);
-      const nomosId = payload.nomos_id?.trim() || DEFAULT_AGORA_NOMOS_ID;
-      if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
-        throw new Error(`Unsupported nomos_id: ${nomosId}`);
-      }
-      const bootstrapMode = payload.repo_path
-        ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
-        : 'no_repo';
+      requireSupportedNomosId(payload.nomos_id);
       const project = projectService.createProject({
         ...(payload.id ? { id: payload.id } : {}),
         name: payload.name,
@@ -1086,14 +1085,15 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.owner ? { owner: payload.owner } : {}),
         ...(payload.metadata ? { metadata: payload.metadata } : {}),
       });
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(payload.repo_path ? { repoPath: payload.repo_path } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: payload.metadata ?? {},
+        repoPath: payload.repo_path,
         initializeRepo: payload.initialize_repo ?? false,
       });
-      const persistedProject = projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(payload.metadata ?? {}),
-        ...(payload.repo_path ? { repo_path: payload.repo_path } : {}),
-      }, installedNomos.profile));
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       if (taskService) {
         new ProjectBootstrapService({
           projectService,
@@ -1103,13 +1103,17 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_name: project.name,
           creator: project.owner ?? 'archon',
           repo_path: payload.repo_path,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.nomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.runtimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: payload.repo_path
+            ? (payload.initialize_repo ? 'new_repo' : 'existing_repo')
+            : 'no_repo',
         });
       }
-      return reply.send(persistedProject);
+      return reply.send(projectService.requireProject(project.id));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1191,20 +1195,54 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const { projectId } = request.params as { projectId: string };
       const project = projectService.requireProject(projectId);
-      const layout = resolveAgoraProjectStateLayout(projectId);
-      const metadata = project.metadata ?? null;
-      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
       return reply.send({
-        project_id: project.id,
+        ...resolveProjectNomosState(project.id, project.metadata ?? null),
         project_name: project.name,
-        nomos_id: readProjectNomosId(project),
-        project_state_root: layout.root,
-        profile_path: layout.profilePath,
-        profile_installed: existsSync(layout.profilePath),
-        repo_path: repoPath,
-        repo_shim_installed: Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md'))),
-        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
-        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/review', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const project = projectService.requireProject(projectId);
+      return reply.send(reviewProjectNomosDraft(project.id, project.metadata ?? null));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/activate', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as { actor?: string } | undefined) ?? {};
+      if (!payload.actor?.trim()) {
+        throw new Error('actor is required');
+      }
+      const project = projectService.requireProject(projectId);
+      const activation = activateProjectNomosDraft(project.id, {
+        metadata: project.metadata ?? null,
+        actor: payload.actor,
+      });
+      projectService.updateProjectMetadata(project.id, activation.metadata);
+      return reply.send({
+        project_id: activation.project_id,
+        nomos_id: activation.nomos_id,
+        activation_status: activation.activation_status,
+        active_root: activation.active_root,
+        active_profile_path: activation.active_profile_path,
+        activated_at: activation.activated_at,
+        activated_by: activation.activated_by,
       });
     } catch (error) {
       const translated = translateError(error);
@@ -1229,20 +1267,18 @@ export function buildApp(options: BuildAppOptions = {}) {
       const metadata = project.metadata ?? null;
       const effectiveRepoPath = payload.repo_path
         ?? (typeof metadata?.repo_path === 'string' ? metadata.repo_path : undefined);
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(effectiveRepoPath ? { repoPath: effectiveRepoPath } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: project.metadata ?? {},
+        repoPath: effectiveRepoPath,
         initializeRepo: payload.initialize_repo ?? false,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
-      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(project.metadata ?? {}),
-        ...(effectiveRepoPath ? { repo_path: effectiveRepoPath } : {}),
-      }, installedNomos.profile));
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
-        const bootstrapMode = effectiveRepoPath
-          ? ((payload.initialize_repo ?? false) ? 'new_repo' : 'existing_repo')
-          : 'no_repo';
         const bootstrapTask = new ProjectBootstrapService({
           projectService,
           taskService,
@@ -1251,22 +1287,238 @@ export function buildApp(options: BuildAppOptions = {}) {
           project_name: project.name,
           creator: payload.creator ?? project.owner ?? 'archon',
           repo_path: effectiveRepoPath,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.effectiveNomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.effectiveRuntimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: preparedNomos.bootstrapMode,
         });
         bootstrapTaskId = bootstrapTask.id;
       }
       return reply.send({
         project_id: project.id,
-        nomos: installedNomos.profile.pack,
-        project_state_root: installedNomos.layout.root,
-        repo_shim_path: installedNomos.repoShimPath,
-        repo_git_initialized: installedNomos.repoGitInitialized,
-        project_state_git_initialized: installedNomos.projectStateGitInitialized,
+        nomos: preparedNomos.installedNomos.profile.pack,
+        project_state_root: preparedNomos.installedNomos.layout.root,
+        repo_shim_path: preparedNomos.installedNomos.repoShimPath,
+        repo_git_initialized: preparedNomos.installedNomos.repoGitInitialized,
+        project_state_git_initialized: preparedNomos.installedNomos.projectStateGitInitialized,
+        project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+        project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
         bootstrap_task_id: bootstrapTaskId,
       });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/export', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        output_dir: string;
+        target?: 'draft' | 'active';
+      } | undefined) ?? { output_dir: '' };
+      const project = projectService.requireProject(projectId);
+      return reply.send(exportProjectNomosPack(project.id, project.metadata ?? null, {
+        outputDir: payload.output_dir,
+        target: payload.target === 'active' ? 'active' : 'draft',
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/bundles/export', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        pack_id: string;
+        output_dir: string;
+      } | undefined) ?? { pack_id: '', output_dir: '' };
+      return reply.send(exportNomosShareBundle({
+        packId: payload.pack_id,
+        outputDir: payload.output_dir,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/bundles/import', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_dir: string;
+        replace_existing?: boolean;
+      } | undefined) ?? { source_dir: '' };
+      return reply.send(importNomosShareBundle({
+        sourceDir: payload.source_dir,
+        ...(payload.replace_existing !== undefined ? { replaceExisting: payload.replace_existing } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/sources/import', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_dir: string;
+        replace_existing?: boolean;
+      } | undefined) ?? { source_dir: '' };
+      return reply.send(importNomosSource({
+        sourceDir: payload.source_dir,
+        ...(payload.replace_existing !== undefined ? { replaceExisting: payload.replace_existing } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/publish', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        target?: 'draft' | 'active';
+        published_by?: string;
+        published_note?: string;
+      } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      return reply.send(publishProjectNomosPack(project.id, project.metadata ?? null, {
+        target: payload.target === 'active' ? 'active' : 'draft',
+        ...(payload.published_by ? { publishedBy: payload.published_by } : {}),
+        ...(payload.published_note ? { publishedNote: payload.published_note } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-pack', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        pack_dir: string;
+      } | undefined) ?? { pack_dir: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installLocalNomosPackToProject(project.id, project.metadata ?? null, {
+        packDir: payload.pack_dir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-catalog-pack', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        pack_id: string;
+      } | undefined) ?? { pack_id: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installCatalogNomosPackToProject(project.id, project.metadata ?? null, {
+        packId: payload.pack_id,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-from-source', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        source_dir: string;
+      } | undefined) ?? { source_dir: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installNomosFromSource(project.id, project.metadata ?? null, {
+        sourceDir: payload.source_dir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/catalog', async (_request, reply) => {
+    try {
+      return reply.send(listPublishedNomosCatalog());
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/catalog/*', async (request, reply) => {
+    try {
+      const { '*': packId = '' } = request.params as { '*': string };
+      return reply.send(inspectPublishedNomosCatalogPack(packId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/validate', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const query = (request.query as { target?: 'draft' | 'active' } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      return reply.send(validateProjectNomos(project.id, project.metadata ?? null, {
+        target: query.target === 'active' ? 'active' : 'draft',
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/nomos/diff', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const query = (request.query as {
+        base?: 'builtin' | 'active';
+        candidate?: 'draft' | 'active';
+      } | undefined) ?? {};
+      const project = projectService.requireProject(projectId);
+      return reply.send(diffProjectNomos(project.id, project.metadata ?? null, {
+        base: query.base === 'builtin' ? 'builtin' : 'active',
+        candidate: query.candidate === 'active' ? 'active' : 'draft',
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1279,7 +1531,32 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
     try {
       const { projectId } = request.params as { projectId: string };
-      return reply.send(await projectBrainDoctorService.diagnoseProject(projectId));
+      const report = await projectBrainDoctorService.diagnoseProject(projectId);
+      if (!projectService) {
+        return reply.send(report);
+      }
+      const project = projectService.requireProject(projectId);
+      const state = resolveProjectNomosState(projectId, project.metadata ?? null);
+      const runtimePaths = resolveProjectNomosRuntimePaths(projectId, project.metadata ?? null);
+      return reply.send({
+        ...report,
+        nomos_runtime: {
+          nomos_id: state.nomos_id,
+          activation_status: state.activation_status,
+          bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+          closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+          doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+        },
+        nomos_validation: {
+          draft: validateProjectNomos(projectId, project.metadata ?? null, { target: 'draft' }),
+          active: validateProjectNomos(projectId, project.metadata ?? null, { target: 'active' }),
+        },
+        nomos_diff: diffProjectNomos(projectId, project.metadata ?? null, {
+          base: state.activation_status === 'active_project' ? 'active' : 'builtin',
+          candidate: 'draft',
+        }),
+        nomos_drift: diagnoseProjectNomosDrift(projectId, project.metadata ?? null),
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

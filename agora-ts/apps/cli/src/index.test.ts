@@ -342,6 +342,12 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-brain-');
     const repoParent = makeTempDir('agora-ts-cli-project-repo-parent-');
     const repoRoot = join(repoParent, 'repo-alpha');
+    const installedTemplateRoot = join(process.env.AGORA_HOME_DIR!, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
     const projectService = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
@@ -374,13 +380,20 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Nomos: agora/default@0.1.0');
     expect(stdout.value).toContain(`Repo Shim: ${join(repoRoot, 'AGENTS.md')}`);
     expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-BOOTSTRAP');
+    expect(stdout.value).toContain(`Project Nomos Spec: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md')}`);
+    expect(stdout.value).toContain(`Project Nomos Draft: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'nomos', 'project-nomos')}`);
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-nomos"',
     );
-    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Bootstrap Project Harness: Project Nomos');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'), 'utf8')).toContain('Project Nomos Authoring Spec');
+    expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'nomos', 'project-nomos', 'profile.toml'), 'utf8')).toContain('id = "project/proj-nomos"');
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.title).toBe('Create Project Nomos: Project Nomos');
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
       join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
+    expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md'),
     );
     expect(taskService.getTask('OC-NOMOS-BOOTSTRAP')?.description).toContain('Bootstrap mode: `new_repo`');
   });
@@ -456,6 +469,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Bootstrap Task: OC-NOMOS-INSTALL');
     expect(stdout.value).toContain('proj-existing-nomos — Existing Nomos Project');
     expect(stdout.value).toContain('nomos: agora/default');
+    expect(stdout.value).toContain('activation_status: active_builtin');
     expect(stdout.value).toContain(`project_state_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos')}`);
     expect(stdout.value).toContain(`repo_path: ${repoRoot}`);
     expect(stdout.value).toContain('repo_shim_installed: true');
@@ -463,7 +477,392 @@ describe('agora-ts cli', () => {
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-existing-nomos"',
     );
-    expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Bootstrap Project Harness: Existing Nomos Project');
+    expect(taskService.getTask('OC-NOMOS-INSTALL')?.title).toBe('Create Project Nomos: Existing Nomos Project');
+  });
+
+  it('reviews and activates a project-specific nomos draft through explicit cli commands', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-activate-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-activate-repo-');
+    const repoRoot = join(repoParent, 'repo-activate');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-ACTIVATE',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-activate',
+      '--name',
+      'Activate Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'review-project', 'proj-activate'], { from: 'user' });
+    await program.parseAsync(['nomos', 'activate-project', '--project-id', 'proj-activate', '--actor', 'archon'], { from: 'user' });
+    await program.parseAsync(['nomos', 'inspect-project', 'proj-activate'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos draft review: proj-activate');
+    expect(stdout.value).toContain('can_activate: true');
+    expect(stdout.value).toContain('Project Nomos 已激活: project/proj-activate');
+    expect(stdout.value).toContain('nomos: project/proj-activate');
+    expect(stdout.value).toContain('activation_status: active_project');
+    expect(stdout.value).toContain(`active_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-activate', 'nomos', 'project-nomos')}`);
+  });
+
+  it('validates and diffs project nomos through explicit cli commands', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-validate-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-validate-repo-');
+    const repoRoot = join(repoParent, 'repo-validate');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-VALIDATE',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-validate',
+      '--name',
+      'Validate Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'validate-project', 'proj-validate'], { from: 'user' });
+    await program.parseAsync(['nomos', 'diff-project', 'proj-validate'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos validation: proj-validate (draft)');
+    expect(stdout.value).toContain('valid: true');
+    expect(stdout.value).toContain('Project Nomos diff: proj-validate');
+    expect(stdout.value).toContain('changed: true');
+    expect(stdout.value).toContain('pack_id');
+  });
+
+  it('exports a project nomos pack and installs it into another project through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-reuse-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-reuse-repo-');
+    const sourceRepoRoot = join(repoParent, 'repo-source');
+    const targetRepoRoot = join(repoParent, 'repo-target');
+    const exportDir = join(repoParent, 'exported-pack');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const generatedTaskIds = ['OC-NOMOS-REUSE-1', 'OC-NOMOS-REUSE-2'];
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => generatedTaskIds.shift() ?? 'OC-NOMOS-REUSE-X',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-source',
+      '--name', 'Source Project',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-target',
+      '--name', 'Target Project',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-project', 'proj-source',
+      '--output-dir', exportDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-pack',
+      '--project-id', 'proj-target',
+      '--pack-dir', exportDir,
+    ], { from: 'user' });
+    await program.parseAsync(['nomos', 'validate-project', 'proj-target'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos pack 已导出: proj-source');
+    expect(stdout.value).toContain('Nomos pack 已安装到 draft: proj-target');
+    expect(stdout.value).toContain('Project Nomos validation: proj-target (draft)');
+    expect(stdout.value).toContain('pack_id: project/proj-source');
+  });
+
+  it('reruns bootstrap against the active project Nomos prompt after activation', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-rerun-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-rerun-repo-');
+    const repoRoot = join(repoParent, 'repo-rerun');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    let taskCounter = 0;
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => `OC-NOMOS-RERUN-${++taskCounter}`,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-rerun',
+      '--name',
+      'Rerun Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    await program.parseAsync(['nomos', 'activate-project', '--project-id', 'proj-rerun', '--actor', 'archon'], { from: 'user' });
+    await program.parseAsync(['nomos', 'install', '--project-id', 'proj-rerun'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask('OC-NOMOS-RERUN-2')?.description).toContain(
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+    );
+  });
+
+  it('publishes a project pack to the local catalog and installs it from catalog into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-catalog-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-source-repo-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-target-repo-'), 'repo-target');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-publish-source',
+      '--name', 'CLI Publish Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-publish-target',
+      '--name', 'CLI Publish Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'publish-project', 'proj-cli-publish-source',
+      '--actor', 'archon',
+      '--note', 'shareable baseline',
+    ], { from: 'user' });
+    await program.parseAsync(['nomos', 'show-published', 'project/proj-cli-publish-source'], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-catalog',
+      '--project-id', 'proj-cli-publish-target',
+      '--pack-id', 'project/proj-cli-publish-source',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos pack 已发布到 catalog: proj-cli-publish-source');
+    expect(stdout.value).toContain('published_by: archon');
+    expect(stdout.value).toContain('project/proj-cli-publish-source — CLI Publish Source Nomos');
+    expect(stdout.value).toContain('published_note: shareable baseline');
+    expect(stdout.value).toContain('Catalog Nomos pack 已安装到 draft: proj-cli-publish-target');
+  });
+
+  it('exports a published Nomos bundle and installs it from source into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-share-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-share-source-repo-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-share-target-repo-'), 'repo-target');
+    const bundleDir = join(makeTempDir('agora-ts-cli-nomos-share-bundle-'), 'bundle');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-share-source',
+      '--name', 'CLI Share Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-share-target',
+      '--name', 'CLI Share Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'publish-project', 'proj-cli-share-source',
+      '--actor', 'archon',
+      '--note', 'share bundle baseline',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-bundle',
+      '--pack-id', 'project/proj-cli-share-source',
+      '--output-dir', bundleDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'import-bundle',
+      '--source-dir', bundleDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'sync-bundle',
+      '--source-dir', bundleDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-source',
+      '--project-id', 'proj-cli-share-target',
+      '--source-dir', bundleDir,
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos share bundle 已导出: project/proj-cli-share-source');
+    expect(stdout.value).toContain('Nomos share bundle 已导入: project/proj-cli-share-source');
+    expect(stdout.value).toContain('Nomos share bundle 已同步: project/proj-cli-share-source');
+    expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-share-target');
+  });
+
+  it('imports a direct pack root source and installs it into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-pack-root-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-pack-root-source-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-pack-root-target-'), 'repo-target');
+    const directPackDir = join(makeTempDir('agora-ts-cli-nomos-pack-root-export-'), 'direct-pack');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-pack-root-source',
+      '--name', 'CLI Pack Root Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-pack-root-target',
+      '--name', 'CLI Pack Root Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-project',
+      'proj-cli-pack-root-source',
+      '--output-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'import-source',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'sync-source',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-source',
+      '--project-id', 'proj-cli-pack-root-target',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos pack 已导出: proj-cli-pack-root-source');
+    expect(stdout.value).toContain('Nomos source 已导入: project/proj-cli-pack-root-source');
+    expect(stdout.value).toContain('source_kind: pack_root');
+    expect(stdout.value).toContain('Nomos source 已同步: project/proj-cli-pack-root-source');
+    expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-pack-root-target');
   });
 
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
@@ -499,6 +898,75 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Pack: acme/web@0.1.0');
     expect(readFileSync(join(outputRoot, 'acme-web', 'profile.toml'), 'utf8')).toContain('id = "acme/web"');
     expect(readFileSync(join(outputRoot, 'acme-web', 'README.md'), 'utf8')).toContain('# Acme Web Nomos');
+  });
+
+  it('refines a seeded project Nomos draft from its structured authoring spec', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-refine-');
+    const repoParent = makeTempDir('agora-ts-cli-project-nomos-refine-repo-');
+    const repoRoot = join(repoParent, 'repo-refine');
+    const installedTemplateRoot = join(process.env.AGORA_HOME_DIR!, 'skills', 'create-nomos', 'assets', 'pack-template');
+    mkdirSync(join(installedTemplateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(installedTemplateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOMOS-REFINE',
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects',
+      'create',
+      '--id',
+      'proj-refine',
+      '--name',
+      'Refine Project',
+      '--repo-path',
+      repoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+
+    const specPath = join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-refine', 'docs', 'reference', 'project-nomos-authoring-spec.md');
+    writeFileSync(specPath, [
+      '---',
+      'project_id: "proj-refine"',
+      'project_name: "Refine Project"',
+      'base_nomos_id: "agora/default"',
+      'project_shape: "existing_repo"',
+      `repo_path: ${JSON.stringify(repoRoot)}`,
+      'purpose: "CLI refined Nomos description."',
+      `lifecycle_modules: ${JSON.stringify(['project-bootstrap', 'task-closeout'])}`,
+      `doctor_checks: ${JSON.stringify(['constitution-present'])}`,
+      `methodology_keep: ${JSON.stringify(['planning trio'])}`,
+      `methodology_change: ${JSON.stringify(['use lighter governance'])}`,
+      `open_questions: ${JSON.stringify(['How strict should archive approval be?'])}`,
+      '---',
+      '',
+      '# Project Nomos Authoring Spec',
+    ].join('\n'), 'utf8');
+
+    await program.parseAsync(['nomos', 'refine-project', '--project-id', 'proj-refine'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project Nomos draft 已更新: proj-refine');
+    const draftProfile = readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-refine', 'nomos', 'project-nomos', 'profile.toml'), 'utf8');
+    expect(draftProfile).toContain('description = "CLI refined Nomos description."');
+    expect(draftProfile).toContain('modules = ["project-bootstrap", "task-closeout"]');
   });
 
   it('creates a project-bound task through the cli', async () => {
@@ -1139,6 +1607,24 @@ describe('agora-ts cli', () => {
   it('prints project brain doctor output through an injected doctor service', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-brain',
+      name: 'Brain Project',
+      metadata: {
+        repo_path: '/tmp/repo',
+        agora: {
+          nomos: {
+            id: 'project/proj-brain',
+            activation_status: 'active_project',
+            active_root: '/tmp/project-nomos',
+            active_profile_path: '/tmp/project-nomos/profile.toml',
+          },
+        },
+      },
+    });
     const projectBrainDoctorService = {
       diagnoseProject: vi.fn().mockResolvedValue({
         project_id: 'proj-brain',
@@ -1167,6 +1653,7 @@ describe('agora-ts cli', () => {
       }),
     };
     const program = createCliProgram({
+      projectService,
       projectBrainDoctorService: projectBrainDoctorService as never,
       stdout,
       stderr,
@@ -1183,6 +1670,13 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"project_id": "proj-brain"');
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
+    expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_validation"');
+    expect(stdout.value).toContain('"draft"');
+    expect(stdout.value).toContain('"nomos_diff"');
+    expect(stdout.value).toContain('"nomos_drift"');
+    expect(stdout.value).toContain('"risk_level": "high"');
+    expect(stdout.value).toContain('"nomos_id": "project/proj-brain"');
   });
 
   it('routes project brain task query through an injected retrieval service', async () => {

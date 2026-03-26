@@ -6,6 +6,18 @@ export * from './dev-start.js';
 export * from './env.js';
 export * from './nomos.js';
 export * from './runtime-assets.js';
+export {
+  diffProjectNomos,
+  exportNomosShareBundle,
+  importNomosSource,
+  inspectPublishedNomosCatalogPack,
+  importNomosShareBundle,
+  installCatalogNomosPackToProject,
+  installNomosFromSource,
+  listPublishedNomosCatalog,
+  publishProjectNomosPack,
+  validateProjectNomos,
+} from './nomos.js';
 
 export function agoraDataDirPath(): string {
   return join(homedir(), '.agora');

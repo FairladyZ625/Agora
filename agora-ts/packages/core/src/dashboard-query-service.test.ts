@@ -672,7 +672,7 @@ describe('dashboard query service', () => {
       conversation_id: 'main',
       thread_id: null,
       status: 'active',
-      last_event: 'before_agent_start',
+      last_event: 'before_prompt_build',
       last_event_at: '2026-03-08T06:47:13.657Z',
       metadata: {},
     });

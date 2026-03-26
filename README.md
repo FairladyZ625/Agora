@@ -198,7 +198,14 @@ cd Agora
 ./agora start
 ```
 
-If OpenClaw is detected, `./agora init` can now optionally build and wire the local Agora plugin into `openclaw.json`.
+If OpenClaw is detected, `./agora init` can optionally help wire the local Agora plugin into `openclaw.json`.
+The stable manual path is still:
+
+```bash
+openclaw plugins install -l ./extensions/agora-plugin
+openclaw config set plugins.entries.agora.config.serverUrl http://127.0.0.1:18420
+```
+
 It only automates safe plugin registration and Agora server wiring.
 It does **not** rewrite OpenClaw Discord policy such as bot rosters, `allowBots`, `requireMention`, or guild/channel allowlists.
 

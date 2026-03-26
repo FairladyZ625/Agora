@@ -25,7 +25,7 @@ type HookName =
   | "session_end"
   | "message_received"
   | "message_sent"
-  | "before_agent_start"
+  | "before_prompt_build"
   | "agent_end";
 
 type RegisteredCommand = {
@@ -194,6 +194,74 @@ async function main() {
       commandBody: `/project show ${projectId}`,
       senderId: "smoke-user",
     });
+    const projectNomosReview = await api.runCommand("project", {
+      args: `nomos review ${projectId}`,
+      commandBody: `/project nomos review ${projectId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosValidate = await api.runCommand("project", {
+      args: `nomos validate ${projectId} --target draft`,
+      commandBody: `/project nomos validate ${projectId} --target draft`,
+      senderId: "smoke-user",
+    });
+    const projectNomosDiff = await api.runCommand("project", {
+      args: `nomos diff ${projectId} --base builtin --candidate draft`,
+      commandBody: `/project nomos diff ${projectId} --base builtin --candidate draft`,
+      senderId: "smoke-user",
+    });
+    const projectNomosActivate = await api.runCommand("project", {
+      args: `nomos activate ${projectId}`,
+      commandBody: `/project nomos activate ${projectId}`,
+      senderId: "smoke-user",
+    });
+    const targetProjectId = "proj-plugin-live-target";
+    const targetProjectName = "Plugin Live Target";
+    const targetCreate = await api.runCommand("project", {
+      args: `create ${targetProjectName}`,
+      commandBody: `/project create "${targetProjectName}" --id ${targetProjectId}`,
+      senderId: "smoke-user",
+    });
+    const exportDir = join(tempRoot, "plugin-exported-pack");
+    const projectNomosExport = await api.runCommand("project", {
+      args: `nomos export ${projectId} --output-dir ${exportDir}`,
+      commandBody: `/project nomos export ${projectId} --output-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosPublish = await api.runCommand("project", {
+      args: `nomos publish ${projectId} --note plugin-smoke`,
+      commandBody: `/project nomos publish ${projectId} --note plugin-smoke`,
+      senderId: "smoke-user",
+    });
+    const projectNomosCatalogList = await api.runCommand("project", {
+      args: "nomos catalog-list",
+      commandBody: "/project nomos catalog-list",
+      senderId: "smoke-user",
+    });
+    const projectNomosCatalogShow = await api.runCommand("project", {
+      args: `nomos catalog-show project/${projectId}`,
+      commandBody: `/project nomos catalog-show project/${projectId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallFromCatalog = await api.runCommand("project", {
+      args: `nomos install-from-catalog ${targetProjectId} --pack-id project/${projectId}`,
+      commandBody: `/project nomos install-from-catalog ${targetProjectId} --pack-id project/${projectId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallPack = await api.runCommand("project", {
+      args: `nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
+      commandBody: `/project nomos install-pack ${targetProjectId} --pack-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosImportSource = await api.runCommand("project", {
+      args: `nomos import-source --source-dir ${exportDir}`,
+      commandBody: `/project nomos import-source --source-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallFromSource = await api.runCommand("project", {
+      args: `nomos install-from-source ${targetProjectId} --source-dir ${exportDir}`,
+      commandBody: `/project nomos install-from-source ${targetProjectId} --source-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
 
     if (!projectCreate.text.includes(`Created project ${projectId}`)) {
       throw new Error(`project create failed: ${projectCreate.text}`);
@@ -203,6 +271,45 @@ async function main() {
     }
     if (!projectShow.text.includes(`${projectId} | active | ${projectName}`)) {
       throw new Error(`project show mismatch: ${projectShow.text}`);
+    }
+    if (!projectNomosReview.text.includes(`Nomos review for ${projectId}`)) {
+      throw new Error(`project nomos review failed: ${projectNomosReview.text}`);
+    }
+    if (!projectNomosValidate.text.includes("valid=yes")) {
+      throw new Error(`project nomos validate failed: ${projectNomosValidate.text}`);
+    }
+    if (!projectNomosDiff.text.includes("changed=yes")) {
+      throw new Error(`project nomos diff failed: ${projectNomosDiff.text}`);
+    }
+    if (!projectNomosActivate.text.includes("status=active_project")) {
+      throw new Error(`project nomos activate failed: ${projectNomosActivate.text}`);
+    }
+    if (!targetCreate.text.includes(`Created project ${targetProjectId}`)) {
+      throw new Error(`target project create failed: ${targetCreate.text}`);
+    }
+    if (!projectNomosExport.text.includes(`output=${exportDir}`)) {
+      throw new Error(`project nomos export failed: ${projectNomosExport.text}`);
+    }
+    if (!projectNomosPublish.text.includes(`Published Nomos for ${projectId}`)) {
+      throw new Error(`project nomos publish failed: ${projectNomosPublish.text}`);
+    }
+    if (!projectNomosCatalogList.text.includes(`project/${projectId}`)) {
+      throw new Error(`project nomos catalog-list failed: ${projectNomosCatalogList.text}`);
+    }
+    if (!projectNomosCatalogShow.text.includes(`Nomos catalog entry project/${projectId}`)) {
+      throw new Error(`project nomos catalog-show failed: ${projectNomosCatalogShow.text}`);
+    }
+    if (!projectNomosInstallFromCatalog.text.includes(`Installed catalog Nomos into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-from-catalog failed: ${projectNomosInstallFromCatalog.text}`);
+    }
+    if (!projectNomosInstallPack.text.includes(`Installed Nomos pack into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-pack failed: ${projectNomosInstallPack.text}`);
+    }
+    if (!projectNomosImportSource.text.includes(`Imported Nomos source project/${projectId}`)) {
+      throw new Error(`project nomos import-source failed: ${projectNomosImportSource.text}`);
+    }
+    if (!projectNomosInstallFromSource.text.includes(`Installed source Nomos into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-from-source failed: ${projectNomosInstallFromSource.text}`);
     }
 
     const taskCreate = await api.runCommand("task", {
@@ -234,8 +341,8 @@ async function main() {
       { sessionId: "sess-plugin-live-1", sessionKey, agentId: "smoke" },
     );
     await api.emitHook(
-      "before_agent_start",
-      { prompt: "run plugin live smoke" },
+      "before_prompt_build",
+      { prompt: "run plugin live smoke", messages: [] },
       {
         agentId: "smoke",
         sessionId: "sess-plugin-live-1",
@@ -358,6 +465,19 @@ async function main() {
             project_create: projectCreate.text,
             project_list: projectList.text,
             project_show: projectShow.text,
+            project_nomos_review: projectNomosReview.text,
+            project_nomos_validate: projectNomosValidate.text,
+            project_nomos_diff: projectNomosDiff.text,
+            project_nomos_activate: projectNomosActivate.text,
+            target_project_create: targetCreate.text,
+            project_nomos_export: projectNomosExport.text,
+            project_nomos_publish: projectNomosPublish.text,
+            project_nomos_catalog_list: projectNomosCatalogList.text,
+            project_nomos_catalog_show: projectNomosCatalogShow.text,
+            project_nomos_install_from_catalog: projectNomosInstallFromCatalog.text,
+            project_nomos_install_pack: projectNomosInstallPack.text,
+            project_nomos_import_source: projectNomosImportSource.text,
+            project_nomos_install_from_source: projectNomosInstallFromSource.text,
             task_create: taskCreate.text,
           },
           live_session: sessions[0],

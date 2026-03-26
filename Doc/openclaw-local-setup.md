@@ -14,7 +14,16 @@ Agora is already running locally:
 
 ## Configure Plugin Endpoint
 
-Point OpenClaw's Agora plugin config to your local Agora service:
+Install or relink the Agora plugin from the stable repo path first:
+
+```bash
+cd /Users/lizeyu/Projects/Agora
+openclaw plugins install -l ./extensions/agora-plugin
+```
+
+Do not point OpenClaw at a temporary agent worktree. Use the stable repo path unless you are intentionally testing an unreleased plugin change.
+
+Then point OpenClaw's Agora plugin config to your local Agora service:
 
 ```bash
 openclaw config set plugins.entries.agora.config.serverUrl http://127.0.0.1:18420
@@ -39,6 +48,12 @@ Check the plugin:
 ```bash
 openclaw plugins info agora
 ```
+
+Expected:
+
+- `Status: loaded`
+- `Source path: ~/Projects/Agora/extensions/agora-plugin`
+- `Install path: ~/Projects/Agora/extensions/agora-plugin`
 
 ## Use The Plugin In Discord
 

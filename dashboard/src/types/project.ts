@@ -12,6 +12,7 @@ export interface ProjectSummary {
 
 export interface ProjectNomosState {
   nomosId: string;
+  activationStatus: 'active_builtin' | 'active_project';
   projectStateRoot: string;
   profilePath: string;
   profileInstalled: boolean;
@@ -19,6 +20,75 @@ export interface ProjectNomosState {
   repoShimInstalled: boolean;
   bootstrapPromptsDir: string;
   lifecycleModules: string[];
+  draftRoot: string;
+  draftProfilePath: string;
+  draftProfileInstalled: boolean;
+  activeRoot: string;
+  activeProfilePath: string;
+  activeProfileInstalled: boolean;
+}
+
+export interface ProjectNomosPackSummary {
+  packId: string;
+  name: string;
+  version: string;
+  description: string;
+  lifecycleModules: string[];
+  doctorChecks: string[];
+  source: string;
+  root: string;
+  profilePath: string;
+}
+
+export interface ProjectNomosReview {
+  projectId: string;
+  activationStatus: 'active_builtin' | 'active_project';
+  canActivate: boolean;
+  issues: string[];
+  active: ProjectNomosPackSummary;
+  draft: ProjectNomosPackSummary | null;
+}
+
+export interface ProjectNomosValidationIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  path?: string;
+}
+
+export interface ProjectNomosValidation {
+  projectId: string;
+  target: 'draft' | 'active';
+  valid: boolean;
+  activationStatus: 'active_builtin' | 'active_project';
+  pack: ProjectNomosPackSummary | null;
+  issues: ProjectNomosValidationIssue[];
+}
+
+export interface ProjectNomosDiffEntry {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+export interface ProjectNomosDiff {
+  projectId: string;
+  base: 'builtin' | 'active';
+  candidate: 'draft' | 'active';
+  changed: boolean;
+  basePack: ProjectNomosPackSummary | null;
+  candidatePack: ProjectNomosPackSummary | null;
+  differences: ProjectNomosDiffEntry[];
+}
+
+export interface ProjectNomosActivation {
+  projectId: string;
+  nomosId: string;
+  activationStatus: 'active_project';
+  activeRoot: string;
+  activeProfilePath: string;
+  activatedAt: string;
+  activatedBy: string;
 }
 
 export interface ProjectIndexDoc {

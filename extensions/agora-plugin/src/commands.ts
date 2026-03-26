@@ -1,12 +1,36 @@
 import { AgoraBridge } from "./bridge";
 import { resolveCommandTokens } from "./command-args";
+import { createWizardStore, resolveCreateWizardSessionKey } from "./create-wizard-store";
+import { noopPluginTrace, type PluginTrace } from "./trace";
 import type { CommandContext, CommandResult, OpenClawPluginApi } from "./types";
 
 export { tokenize } from "./command-args";
 
 const SUPPORTED_TASK_TYPES = ["coding", "coding_heavy", "research", "document", "quick", "brainstorm"] as const;
+const TASK_SUBCOMMANDS = new Set([
+  "create",
+  "list",
+  "status",
+  "advance",
+  "approve",
+  "reject",
+  "archon-approve",
+  "archon-reject",
+  "confirm",
+  "subtask-done",
+  "force-advance",
+  "pause",
+  "resume",
+  "cancel",
+  "unblock",
+  "cleanup",
+]);
 
-export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge): void {
+export function registerTaskCommands(
+  api: OpenClawPluginApi,
+  bridge: AgoraBridge,
+  trace: PluginTrace = noopPluginTrace,
+): void {
   api.registerCommand({
     name: "task",
     description: "Agora task management",
@@ -16,8 +40,30 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
       const tokens = resolveCommandTokens("task", ctx);
       const [subcommand, ...rest] = tokens;
       const senderId = ctx.senderId || ctx.from || "unknown";
+      const wizardSessionKey = resolveCreateWizardSessionKey("task", ctx);
+      const wizardSession = createWizardStore.get(wizardSessionKey);
+      trace.slash(ctx, {
+        event: "dispatch",
+        command: "task",
+        subcommand,
+        tokens,
+        wizardSessionKey,
+        wizardState: wizardSession ? `${wizardSession.kind}:${wizardSession.step}` : undefined,
+      });
 
       try {
+        const wizardResult = await maybeHandleTaskWizard({
+          bridge,
+          ctx,
+          tokens,
+          subcommand,
+          senderId,
+          wizardSessionKey,
+          trace,
+        });
+        if (wizardResult) {
+          return wizardResult;
+        }
         switch (subcommand) {
           case "create":
             return await handleCreate(bridge, rest, senderId);
@@ -62,9 +108,128 @@ export function registerTaskCommands(api: OpenClawPluginApi, bridge: AgoraBridge
   });
 }
 
+async function maybeHandleTaskWizard(input: {
+  bridge: AgoraBridge;
+  ctx: CommandContext;
+  tokens: string[];
+  subcommand?: string;
+  senderId: string;
+  wizardSessionKey: string;
+  trace: PluginTrace;
+}): Promise<CommandResult | null> {
+  const session = createWizardStore.get(input.wizardSessionKey);
+  if (input.subcommand === "create" && input.tokens.length === 1) {
+    createWizardStore.set(input.wizardSessionKey, {
+      kind: "task",
+      step: "title",
+      senderId: input.senderId,
+    });
+    input.trace.slash(input.ctx, {
+      event: "wizard_start",
+      command: "task",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: "task:title",
+    });
+    return { text: formatTaskWizardTitlePrompt() };
+  }
+  if (!session || session.kind !== "task") {
+    return null;
+  }
+  if (input.subcommand === "create" && input.tokens.length > 1) {
+    createWizardStore.clear(input.wizardSessionKey);
+    return null;
+  }
+  if (!shouldConsumeWizardInput(input.tokens, input.subcommand, TASK_SUBCOMMANDS)) {
+    return null;
+  }
+
+  const answer = normalizeWizardAnswer(input.tokens);
+  if (!answer || answer === "help") {
+    input.trace.slash(input.ctx, {
+      event: "wizard_prompt",
+      command: "task",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: `${session.kind}:${session.step}`,
+      note: "help_or_empty",
+    });
+    return {
+      text: session.step === "title"
+        ? formatTaskWizardTitlePrompt()
+        : formatTaskWizardTypePrompt(session.title ?? ""),
+    };
+  }
+  if (answer === "cancel") {
+    createWizardStore.clear(input.wizardSessionKey);
+    input.trace.slash(input.ctx, {
+      event: "wizard_cancel",
+      command: "task",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: `${session.kind}:${session.step}`,
+    });
+    return { text: "Task create wizard cancelled." };
+  }
+
+  if (session.step === "title") {
+    createWizardStore.set(input.wizardSessionKey, {
+      kind: "task",
+      step: "type",
+      senderId: input.senderId,
+      title: answer,
+    });
+    input.trace.slash(input.ctx, {
+      event: "wizard_prompt",
+      command: "task",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: "task:type",
+      note: `title=${answer}`,
+    });
+    return { text: formatTaskWizardTypePrompt(answer) };
+  }
+
+  if (answer !== "skip" && !isTaskType(answer)) {
+    input.trace.slash(input.ctx, {
+      event: "wizard_invalid",
+      command: "task",
+      subcommand: input.subcommand,
+      tokens: input.tokens,
+      wizardSessionKey: input.wizardSessionKey,
+      wizardState: `${session.kind}:${session.step}`,
+      note: `invalid_type=${answer}`,
+    });
+    return { text: formatTaskWizardInvalidType(answer, session.title ?? "") };
+  }
+
+  const type = answer === "skip" ? "coding" : answer;
+  const task = await input.bridge.createTask(session.title ?? "Untitled Task", type, input.senderId);
+  createWizardStore.clear(input.wizardSessionKey);
+  input.trace.slash(input.ctx, {
+    event: "wizard_complete",
+    command: "task",
+    subcommand: input.subcommand,
+    tokens: input.tokens,
+    wizardSessionKey: input.wizardSessionKey,
+    wizardState: "task:type",
+    note: `task_id=${task.id}`,
+  });
+  return {
+    text: [
+      `Created ${task.id} (${task.type}) - ${task.title}`,
+      "Wizard complete.",
+    ].join("\n"),
+  };
+}
+
 async function handleCreate(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
   if (args.length < 1) {
-    return { text: formatCreateGuidance() };
+    return { text: formatTaskWizardTitlePrompt() };
   }
 
   let type = "coding";
@@ -337,16 +502,32 @@ function formatHelpWithContext(ctx?: { threadId?: string; conversationId?: strin
   ].join("\n");
 }
 
-function formatCreateGuidance(): string {
+function formatTaskWizardTitlePrompt(): string {
   return [
-    "Ready to create a task.",
-    "Usage: /task create <title> [type]",
-    "Default type: coding",
+    "Task create wizard",
+    "Step 1/2: send the task title.",
+    'Example: /task "Fix dashboard create flow"',
+    "Send `/task cancel` to exit.",
+  ].join("\n");
+}
+
+function formatTaskWizardTypePrompt(title: string): string {
+  return [
+    "Task create wizard",
+    `Title: ${title}`,
+    "Step 2/2: send the task type, or `/task skip` to use the default `coding`.",
     `Supported task types: ${SUPPORTED_TASK_TYPES.join(", ")}`,
-    "",
-    "Examples:",
-    '- /task create "fix dashboard create flow" coding',
-    '- /task create "write release notes" document',
+    "Example: /task coding",
+  ].join("\n");
+}
+
+function formatTaskWizardInvalidType(type: string, title: string): string {
+  return [
+    "Task create wizard",
+    `Title: ${title}`,
+    `Unknown task type: "${type}"`,
+    `Supported task types: ${SUPPORTED_TASK_TYPES.join(", ")}`,
+    "Send `/task skip` to use the default `coding`, or `/task cancel` to exit.",
   ].join("\n");
 }
 
@@ -369,4 +550,21 @@ function looksLikeTypeToken(value: string): boolean {
 
 function looksLikeTaskId(value?: string): boolean {
   return typeof value === "string" && /^OC[-A-Z0-9]/i.test(value);
+}
+
+function shouldConsumeWizardInput(tokens: string[], subcommand: string | undefined, commands: Set<string>) {
+  if (tokens.length === 0) {
+    return true;
+  }
+  if (tokens.length === 1 && (tokens[0] === "cancel" || tokens[0] === "help" || tokens[0] === "skip")) {
+    return true;
+  }
+  if (!subcommand) {
+    return true;
+  }
+  return !commands.has(subcommand);
+}
+
+function normalizeWizardAnswer(tokens: string[]) {
+  return tokens.join(" ").trim();
 }

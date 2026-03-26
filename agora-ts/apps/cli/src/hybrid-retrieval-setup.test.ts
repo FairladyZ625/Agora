@@ -237,4 +237,27 @@ describe('setupHybridRetrieval', () => {
 
     expect(readFileSync(envPath, 'utf8')).toBe('AGORA_SERVER_HOST=127.0.0.1\n');
   });
+
+  it('aborts when qdrant never becomes healthy', async () => {
+    const dir = makeTempDir();
+    const deps = createDeps({
+      runCommand: vi.fn(async ({ args }: { args: string[] }) => {
+        if (args[0] === 'inspect') {
+          return { stdout: 'true\n', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      }),
+      fetchJson: vi.fn(async (url: string) => {
+        if (url.endsWith('/readyz')) {
+          return { ok: false, status: 503, bodyText: 'still starting', bodyJson: null };
+        }
+        return { ok: true, status: 200, bodyText: '{}', bodyJson: {} };
+      }),
+    });
+
+    await expect(setupHybridRetrieval({
+      envPath: join(dir, '.env'),
+      embedding,
+    }, deps)).rejects.toThrow('qdrant health probe failed');
+  });
 });

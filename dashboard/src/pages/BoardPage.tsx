@@ -35,7 +35,7 @@ export function BoardPage() {
     },
     [boardCopy, tasks],
   );
-  const interruptedColumn = columns.find((column) => column.state === 'interrupted');
+  const reviewColumn = columns.find((column) => column.state === 'gate_waiting');
 
   return (
     <div className="space-y-6">
@@ -61,15 +61,6 @@ export function BoardPage() {
           </div>
         </div>
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5" data-testid="board-state-summary">
-        {columns.map((column) => (
-          <div key={column.state} className="surface-panel surface-panel--workspace">
-            <p className="metric-label">{column.label}</p>
-            <p className="metric-value">{column.tasks.length}</p>
-          </div>
-        ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-3">
@@ -128,19 +119,19 @@ export function BoardPage() {
           </div>
         </div>
 
-        <div className="surface-panel surface-panel--workspace" data-testid="board-interrupted-focus">
+        <div className="surface-panel surface-panel--workspace" data-testid="board-review-focus">
           <div className="board-focus__head">
             <div>
-              <p className="page-kicker">{boardCopy.kicker}</p>
-              <h3 className="section-title">{boardCopy.columns.interrupted}</h3>
+              <p className="page-kicker">{boardCopy.reviewFocusKicker}</p>
+              <h3 className="section-title">{boardCopy.columns.gateWaiting}</h3>
             </div>
-            <span className="status-pill status-pill--neutral">{interruptedColumn?.tasks.length ?? 0}</span>
+            <span className="status-pill status-pill--neutral">{reviewColumn?.tasks.length ?? 0}</span>
           </div>
 
           <div className="board-focus__stack">
-            {interruptedColumn && interruptedColumn.tasks.length > 0 ? (
-              interruptedColumn.tasks.map((task) => (
-                <Link key={task.id} to={`/tasks/${task.id}`} className="decision-card board-task-card board-task-card--focus">
+            {reviewColumn && reviewColumn.tasks.length > 0 ? (
+              reviewColumn.tasks.map((task) => (
+                <Link key={task.id} to={`/reviews?selected=${task.id}`} className="decision-card board-task-card board-task-card--focus">
                   <div className="board-task-card__meta">
                     <span className="type-mono-sm board-task-card__id">{task.id}</span>
                     <div className="board-task-card__badges">

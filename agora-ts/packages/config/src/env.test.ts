@@ -7,7 +7,9 @@ import {
   DEFAULT_AGORA_FRONTEND_PORT,
   DEFAULT_AGORA_HOST,
   findAgoraProjectRoot,
+  loadAgoraDotEnv,
   resolveAgoraRuntimeEnvironment,
+  resolveAgoraDotEnvPath,
 } from './env.js';
 
 const tempDirs: string[] = [];
@@ -129,5 +131,21 @@ describe('agora runtime env', () => {
     mkdirSync(nestedDir, { recursive: true });
 
     expect(findAgoraProjectRoot(nestedDir)).toBe(root);
+  });
+
+  it('falls back to the shared repo .env for project worktrees under .worktrees/', () => {
+    const root = makeAgoraRoot();
+    const worktreesRoot = join(root, '.worktrees');
+    const worktreeRoot = join(worktreesRoot, 'feature-a');
+    mkdirSync(join(worktreeRoot, 'agora-ts'), { recursive: true });
+    mkdirSync(join(worktreeRoot, 'dashboard'), { recursive: true });
+    writeFileSync(join(worktreeRoot, 'AGENTS.md'), '# test worktree\n');
+    writeFileSync(join(root, '.env'), 'OPENAI_API_KEY=shared-key\nQDRANT_URL=http://127.0.0.1:6333\n');
+
+    expect(resolveAgoraDotEnvPath(worktreeRoot)).toBe(join(root, '.env'));
+    expect(loadAgoraDotEnv(worktreeRoot)).toEqual({
+      OPENAI_API_KEY: 'shared-key',
+      QDRANT_URL: 'http://127.0.0.1:6333',
+    });
   });
 });

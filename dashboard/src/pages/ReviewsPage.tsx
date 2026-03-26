@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, CheckCircle2, Filter, ShieldAlert, XCircle } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { useReviewsPageCopy } from '@/lib/dashboardCopy';
@@ -27,8 +27,9 @@ export function ReviewsPage() {
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const { reviewId } = useParams<{ reviewId: string }>();
+  const [searchParams] = useSearchParams();
   const isMobile = useMediaQuery('(max-width: 767px)');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('selected'));
   const [scope, setScope] = useState<QueueScope>('all');
   const [note, setNote] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);

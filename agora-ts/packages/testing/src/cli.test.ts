@@ -99,6 +99,18 @@ describe('agora-ts scenario cli', () => {
     );
   }, 30000);
 
+  it('renders the full matrix as text when json is not requested', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+
+    const exitCode = await runScenarioCli(['all'], { stdout, stderr });
+
+    expect(exitCode).toBe(0);
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('happy-path');
+    expect(stdout.value).toContain('\tdone\t');
+  });
+
   it('returns usage guidance for unknown commands', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

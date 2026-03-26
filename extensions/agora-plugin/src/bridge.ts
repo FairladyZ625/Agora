@@ -75,6 +75,167 @@ export class AgoraBridge {
     return this.request(`/api/projects/${encodeURIComponent(projectId)}`);
   }
 
+  async reviewProjectNomos(projectId: string): Promise<{
+    project_id: string;
+    activation_status: "active_builtin" | "active_project";
+    can_activate: boolean;
+    issues: string[];
+    active: { pack_id: string };
+    draft: { pack_id: string } | null;
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/review`);
+  }
+
+  async activateProjectNomos(projectId: string, actor: string): Promise<{
+    project_id: string;
+    nomos_id: string;
+    activation_status: "active_project";
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/activate`, {
+      method: "POST",
+      body: { actor },
+    });
+  }
+
+  async validateProjectNomos(projectId: string, target: "draft" | "active" = "draft"): Promise<{
+    project_id: string;
+    target: "draft" | "active";
+    valid: boolean;
+    issues: Array<{ message: string }>;
+    pack: { pack_id: string } | null;
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/validate?target=${encodeURIComponent(target)}`);
+  }
+
+  async diffProjectNomos(
+    projectId: string,
+    input: { base?: "builtin" | "active"; candidate?: "draft" | "active" } = {},
+  ): Promise<{
+    project_id: string;
+    changed: boolean;
+    differences: Array<{ field: string }>;
+    base: "builtin" | "active";
+    candidate: "draft" | "active";
+  }> {
+    const params = new URLSearchParams();
+    if (input.base) {
+      params.set("base", input.base);
+    }
+    if (input.candidate) {
+      params.set("candidate", input.candidate);
+    }
+    const query = params.toString();
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/diff${query ? `?${query}` : ""}`);
+  }
+
+  async exportProjectNomos(projectId: string, outputDir: string, target: "draft" | "active" = "draft"): Promise<{
+    project_id: string;
+    target: "draft" | "active";
+    output_dir: string;
+    pack: { pack_id: string } | null;
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/export`, {
+      method: "POST",
+      body: { output_dir: outputDir, target },
+    });
+  }
+
+  async publishProjectNomos(projectId: string, input: {
+    target?: "draft" | "active";
+    actor?: string;
+    note?: string;
+  } = {}): Promise<{
+    project_id: string;
+    target: "draft" | "active";
+    entry: { pack_id: string; published_by: string | null; published_note: string | null };
+    catalog_pack_root: string;
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/publish`, {
+      method: "POST",
+      body: {
+        target: input.target ?? "draft",
+        ...(input.actor ? { published_by: input.actor } : {}),
+        ...(input.note ? { published_note: input.note } : {}),
+      },
+    });
+  }
+
+  async installProjectNomosPack(projectId: string, packDir: string): Promise<{
+    project_id: string;
+    pack: { pack_id: string };
+    installed_root: string;
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-pack`, {
+      method: "POST",
+      body: { pack_dir: packDir },
+    });
+  }
+
+  async listPublishedNomosCatalog(): Promise<{
+    catalog_root: string;
+    total: number;
+    summaries: Array<{
+      pack_id: string;
+      version: string;
+      source_kind: "project_publish" | "share_bundle" | "pack_root";
+      published_by: string | null;
+      source_project_id: string;
+      source_target: "draft" | "active";
+    }>;
+  }> {
+    return this.request("/api/nomos/catalog");
+  }
+
+  async showPublishedNomosCatalog(packId: string): Promise<{
+    pack_id: string;
+    source_kind: "project_publish" | "share_bundle" | "pack_root";
+    published_by: string | null;
+    published_note: string | null;
+    source_project_id: string;
+    source_target: "draft" | "active";
+    source_activation_status: "active_builtin" | "active_project";
+    source_repo_path: string | null;
+    published_root: string;
+  }> {
+    return this.request(`/api/nomos/catalog/${packId}`);
+  }
+
+  async installCatalogNomosPack(projectId: string, packId: string): Promise<{
+    project_id: string;
+    pack: { pack_id: string };
+    installed_root: string;
+    catalog_entry: { pack_id: string };
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-catalog-pack`, {
+      method: "POST",
+      body: { pack_id: packId },
+    });
+  }
+
+  async importNomosSource(sourceDir: string): Promise<{
+    source_dir: string;
+    source_kind: "share_bundle" | "pack_root";
+    manifest_path: string | null;
+    entry: { pack_id: string; source_kind: "project_publish" | "share_bundle" | "pack_root"; source_project_id: string };
+  }> {
+    return this.request("/api/nomos/sources/import", {
+      method: "POST",
+      body: { source_dir: sourceDir },
+    });
+  }
+
+  async installNomosFromSource(projectId: string, sourceDir: string): Promise<{
+    project_id: string;
+    pack: { pack_id: string };
+    installed_root: string;
+    imported: { source_kind: "share_bundle" | "pack_root"; entry: { pack_id: string } };
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-from-source`, {
+      method: "POST",
+      body: { source_dir: sourceDir },
+    });
+  }
+
   async listTasks(state?: string): Promise<TaskDto[]> {
     const path = state ? `/api/tasks?state=${encodeURIComponent(state)}` : "/api/tasks";
     return this.request(path);

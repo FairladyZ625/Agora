@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import {
@@ -10,14 +10,31 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
-  installBuiltInAgoraNomosForProject,
-  mergeProjectMetadataWithNomosProfile,
+  diagnoseProjectNomosDrift,
+  diffProjectNomos,
+  exportNomosShareBundle,
+  exportProjectNomosPack,
+  activateProjectNomosDraft,
+  importNomosSource,
+  importNomosShareBundle,
+  inspectPublishedNomosCatalogPack,
+  installLocalNomosPackToProject,
+  installCatalogNomosPackToProject,
+  installNomosFromSource,
+  listPublishedNomosCatalog,
+  publishProjectNomosPack,
+  refineProjectNomosDraftFromSpec,
   NOMOS_LIFECYCLE_MODULES,
+  prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
+  requireSupportedNomosId,
+  resolveProjectNomosState,
+  resolveProjectNomosRuntimePaths,
   resolveInstalledCreateNomosPackTemplateDir,
-  resolveAgoraProjectStateLayout,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
+  reviewProjectNomosDraft,
   scaffoldNomosPack,
+  validateProjectNomos,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
@@ -143,30 +160,8 @@ function collectOption(value: string, previous: string[] = []) {
   return [...previous, value];
 }
 
-function requireSupportedNomosId(raw: string | undefined) {
-  const nomosId = raw?.trim() || DEFAULT_AGORA_NOMOS_ID;
-  if (nomosId !== DEFAULT_AGORA_NOMOS_ID) {
-    throw new Error(`Unsupported nomos_id: ${nomosId}`);
-  }
-  return nomosId;
-}
-
 function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
-}
-
-function readProjectNomosId(project: { metadata?: Record<string, unknown> | null | undefined }) {
-  const agora = asRecord(project.metadata?.agora);
-  const nomos = asRecord(agora?.nomos);
-  return typeof nomos?.id === 'string' && nomos.id.length > 0
-    ? nomos.id
-    : DEFAULT_AGORA_NOMOS_ID;
 }
 
 function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
@@ -1095,22 +1090,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--json', '输出 JSON', false)
     .action((projectId: string, options: { json?: boolean }) => {
       const project = projectService.requireProject(projectId);
-      const layout = resolveAgoraProjectStateLayout(projectId);
-      const metadata = project.metadata ?? null;
-      const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
-      const profileInstalled = existsSync(layout.profilePath);
-      const repoShimInstalled = Boolean(repoPath && existsSync(join(repoPath, 'AGENTS.md')));
       const payload = {
-        project_id: project.id,
+        ...resolveProjectNomosState(project.id, project.metadata ?? null),
         project_name: project.name,
-        nomos_id: readProjectNomosId(project),
-        project_state_root: layout.root,
-        profile_path: layout.profilePath,
-        profile_installed: profileInstalled,
-        repo_path: repoPath,
-        repo_shim_installed: repoShimInstalled,
-        bootstrap_prompts_dir: layout.bootstrapPromptsDir,
-        lifecycle_modules: [...NOMOS_LIFECYCLE_MODULES],
       };
       if (options.json) {
         writeLine(stdout, JSON.stringify(payload, null, 2));
@@ -1118,11 +1100,411 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `${payload.project_id} — ${payload.project_name}`);
       writeLine(stdout, `nomos: ${payload.nomos_id}`);
+      writeLine(stdout, `activation_status: ${payload.activation_status}`);
       writeLine(stdout, `project_state_root: ${payload.project_state_root}`);
       writeLine(stdout, `profile_installed: ${payload.profile_installed}`);
       writeLine(stdout, `repo_path: ${payload.repo_path ?? '-'}`);
       writeLine(stdout, `repo_shim_installed: ${payload.repo_shim_installed}`);
       writeLine(stdout, `bootstrap_prompts_dir: ${payload.bootstrap_prompts_dir}`);
+      writeLine(stdout, `draft_root: ${payload.draft_root}`);
+      writeLine(stdout, `active_root: ${payload.active_root}`);
+    });
+
+  nomos
+    .command('list-published')
+    .description('列出本机 local catalog 中已发布的 Nomos pack')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const listed = listPublishedNomosCatalog();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(listed, null, 2));
+        return;
+      }
+      writeLine(stdout, `catalog_root: ${listed.catalog_root}`);
+      writeLine(stdout, `total: ${listed.total}`);
+      if (listed.entries.length === 0) {
+        writeLine(stdout, 'entries: 0');
+        return;
+      }
+      for (const entry of listed.summaries) {
+        writeLine(stdout, `${entry.pack_id} — ${entry.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target})`);
+      }
+    });
+
+  nomos
+    .command('show-published')
+    .description('查看 local catalog 中某个已发布的 Nomos pack')
+    .argument('<packId>', 'published pack id')
+    .option('--json', '输出 JSON', false)
+    .action((packId: string, options: { json?: boolean }) => {
+      const entry = inspectPublishedNomosCatalogPack(packId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(entry, null, 2));
+        return;
+      }
+      writeLine(stdout, `${entry.pack_id} — ${entry.pack.name}`);
+      writeLine(stdout, `published_at: ${entry.published_at}`);
+      writeLine(stdout, `source_kind: ${entry.source_kind}`);
+      writeLine(stdout, `published_by: ${entry.published_by ?? '-'}`);
+      writeLine(stdout, `source_project_id: ${entry.source_project_id}`);
+      writeLine(stdout, `source_target: ${entry.source_target}`);
+      writeLine(stdout, `source_activation_status: ${entry.source_activation_status}`);
+      writeLine(stdout, `source_repo_path: ${entry.source_repo_path ?? '-'}`);
+      writeLine(stdout, `published_note: ${entry.published_note ?? '-'}`);
+      writeLine(stdout, `published_root: ${entry.published_root}`);
+    });
+
+  nomos
+    .command('export-bundle')
+    .description('把 local catalog 中的已发布 Nomos pack 导出为可分享 bundle')
+    .requiredOption('--pack-id <packId>', 'published pack id')
+    .requiredOption('--output-dir <path>', 'output directory for share bundle')
+    .option('--json', '输出 JSON', false)
+    .action((options: { packId: string; outputDir: string; json?: boolean }) => {
+      const exported = exportNomosShareBundle({
+        packId: options.packId,
+        outputDir: options.outputDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(exported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos share bundle 已导出: ${exported.pack_id}`);
+      writeLine(stdout, `output_dir: ${exported.output_dir}`);
+      writeLine(stdout, `manifest_path: ${exported.manifest_path}`);
+    });
+
+  nomos
+    .command('import-bundle')
+    .description('把 share bundle 导入当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'bundle source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosShareBundle({
+        sourceDir: options.sourceDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos share bundle 已导入: ${imported.entry.pack_id}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('sync-bundle')
+    .description('重新同步 share bundle 到当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'bundle source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosShareBundle({
+        sourceDir: options.sourceDir,
+        replaceExisting: true,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos share bundle 已同步: ${imported.entry.pack_id}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('import-source')
+    .description('把 external source（share bundle 或直接 pack root）导入当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosSource({
+        sourceDir: options.sourceDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已导入: ${imported.entry.pack_id}`);
+      writeLine(stdout, `source_kind: ${imported.source_kind}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('sync-source')
+    .description('重新同步 external source（share bundle 或直接 pack root）到当前机器的 local catalog')
+    .requiredOption('--source-dir <path>', 'source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceDir: string; json?: boolean }) => {
+      const imported = importNomosSource({
+        sourceDir: options.sourceDir,
+        replaceExisting: true,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(imported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已同步: ${imported.entry.pack_id}`);
+      writeLine(stdout, `source_kind: ${imported.source_kind}`);
+      writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('export-project')
+    .description('导出某个 project 当前的 draft/active Nomos pack 到本地目录')
+    .argument('<projectId>', 'project id')
+    .requiredOption('--output-dir <path>', 'output directory for exported pack')
+    .option('--target <target>', 'export target: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: {
+      outputDir: string;
+      target?: 'draft' | 'active';
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(projectId);
+      const exported = exportProjectNomosPack(project.id, project.metadata ?? null, {
+        target: options.target === 'active' ? 'active' : 'draft',
+        outputDir: options.outputDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(exported, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos pack 已导出: ${project.id}`);
+      writeLine(stdout, `target: ${exported.target}`);
+      writeLine(stdout, `output_dir: ${exported.output_dir}`);
+      writeLine(stdout, `pack_id: ${exported.pack?.pack_id ?? '-'}`);
+    });
+
+  nomos
+    .command('publish-project')
+    .description('把某个 project 当前的 draft/active Nomos pack 发布到本机 local catalog')
+    .argument('<projectId>', 'project id')
+    .option('--target <target>', 'publish target: draft | active', 'draft')
+    .option('--actor <actor>', 'published by actor id')
+    .option('--note <note>', 'publish note')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { target?: 'draft' | 'active'; actor?: string; note?: string; json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const published = publishProjectNomosPack(project.id, project.metadata ?? null, {
+        target: options.target === 'active' ? 'active' : 'draft',
+        ...(options.actor ? { publishedBy: options.actor } : {}),
+        ...(options.note ? { publishedNote: options.note } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(published, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos pack 已发布到 catalog: ${project.id}`);
+      writeLine(stdout, `target: ${published.target}`);
+      writeLine(stdout, `pack_id: ${published.entry.pack_id}`);
+      writeLine(stdout, `published_by: ${published.entry.published_by ?? '-'}`);
+      writeLine(stdout, `catalog_pack_root: ${published.catalog_pack_root}`);
+    });
+
+  nomos
+    .command('install-pack')
+    .description('把本地 Nomos pack 安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--pack-dir <path>', 'local pack directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      packDir: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installLocalNomosPackToProject(project.id, project.metadata ?? null, {
+        packDir: options.packDir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos pack 已安装到 draft: ${project.id}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
+    .command('install-from-catalog')
+    .description('把 local catalog 中的已发布 Nomos pack 安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--pack-id <packId>', 'published pack id')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      packId: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installCatalogNomosPackToProject(project.id, project.metadata ?? null, {
+        packId: options.packId,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Catalog Nomos pack 已安装到 draft: ${project.id}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
+    .command('install-from-source')
+    .description('从 share bundle source 直接导入并安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--source-dir <path>', 'bundle source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      sourceDir: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installNomosFromSource(project.id, project.metadata ?? null, {
+        sourceDir: options.sourceDir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已导入并安装: ${project.id}`);
+      writeLine(stdout, `source_kind: ${installed.imported.source_kind}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
+    .command('validate-project')
+    .description('校验某个 project 的 Nomos pack 是否满足激活/运行时要求')
+    .argument('<projectId>', 'project id')
+    .option('--target <target>', 'validation target: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { target?: 'draft' | 'active'; json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const validation = validateProjectNomos(project.id, project.metadata ?? null, {
+        target: options.target === 'active' ? 'active' : 'draft',
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(validation, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos validation: ${project.id} (${validation.target})`);
+      writeLine(stdout, `activation_status: ${validation.activation_status}`);
+      writeLine(stdout, `valid: ${validation.valid}`);
+      writeLine(stdout, `pack_id: ${validation.pack?.pack_id ?? '-'}`);
+      writeLine(stdout, `profile_path: ${validation.pack?.profile_path ?? '-'}`);
+      if (validation.issues.length > 0) {
+        for (const issue of validation.issues) {
+          writeLine(stdout, `${issue.severity}: ${issue.code}: ${issue.message}`);
+        }
+      }
+    });
+
+  nomos
+    .command('diff-project')
+    .description('比较某个 project 的 Nomos pack 差异')
+    .argument('<projectId>', 'project id')
+    .option('--base <base>', 'diff base: builtin | active', 'active')
+    .option('--candidate <candidate>', 'diff candidate: draft | active', 'draft')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: {
+      base?: 'builtin' | 'active';
+      candidate?: 'draft' | 'active';
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(projectId);
+      const diff = diffProjectNomos(project.id, project.metadata ?? null, {
+        base: options.base === 'builtin' ? 'builtin' : 'active',
+        candidate: options.candidate === 'active' ? 'active' : 'draft',
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(diff, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos diff: ${project.id}`);
+      writeLine(stdout, `base: ${diff.base}`);
+      writeLine(stdout, `candidate: ${diff.candidate}`);
+      writeLine(stdout, `changed: ${diff.changed}`);
+      writeLine(stdout, `base_pack: ${diff.base_pack?.pack_id ?? '-'}`);
+      writeLine(stdout, `candidate_pack: ${diff.candidate_pack?.pack_id ?? '-'}`);
+      for (const entry of diff.differences) {
+        writeLine(stdout, `${entry.field}: ${JSON.stringify(entry.from)} -> ${JSON.stringify(entry.to)}`);
+      }
+    });
+
+  nomos
+    .command('review-project')
+    .description('review 某个 project 当前的 draft Nomos 是否可激活')
+    .argument('<projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((projectId: string, options: { json?: boolean }) => {
+      const project = projectService.requireProject(projectId);
+      const review = reviewProjectNomosDraft(project.id, project.metadata ?? null);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(review, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos draft review: ${project.id}`);
+      writeLine(stdout, `activation_status: ${review.activation_status}`);
+      writeLine(stdout, `can_activate: ${review.can_activate}`);
+      writeLine(stdout, `draft_pack: ${review.draft?.pack_id ?? '-'}`);
+      if (review.issues.length > 0) {
+        writeLine(stdout, `issues: ${review.issues.join(' | ')}`);
+      }
+    });
+
+  nomos
+    .command('activate-project')
+    .description('激活某个 project 当前的 draft Nomos')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--actor <actor>', 'activation actor')
+    .option('--json', '输出 JSON', false)
+    .action((options: { projectId: string; actor: string; json?: boolean }) => {
+      const project = projectService.requireProject(options.projectId);
+      const activation = activateProjectNomosDraft(project.id, {
+        metadata: project.metadata ?? null,
+        actor: options.actor,
+      });
+      projectService.updateProjectMetadata(project.id, activation.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: activation.project_id,
+          nomos_id: activation.nomos_id,
+          activation_status: activation.activation_status,
+          active_root: activation.active_root,
+          active_profile_path: activation.active_profile_path,
+          activated_at: activation.activated_at,
+          activated_by: activation.activated_by,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos 已激活: ${activation.nomos_id}`);
+      writeLine(stdout, `project_id: ${activation.project_id}`);
+      writeLine(stdout, `activation_status: ${activation.activation_status}`);
+      writeLine(stdout, `active_root: ${activation.active_root}`);
+    });
+
+  nomos
+    .command('refine-project')
+    .description('根据 project-nomos authoring spec 重写该 project 的 draft pack')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .option('--json', '输出 JSON', false)
+    .action((options: { projectId: string; json?: boolean }) => {
+      const refined = refineProjectNomosDraftFromSpec(options.projectId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          project_id: options.projectId,
+          spec: refined.spec,
+          draft_dir: refined.draftDir,
+          draft_profile_path: refined.draftProfilePath,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `Project Nomos draft 已更新: ${options.projectId}`);
+      writeLine(stdout, `Draft Dir: ${refined.draftDir}`);
+      writeLine(stdout, `Profile: ${refined.draftProfilePath}`);
     });
 
   nomos
@@ -1145,20 +1527,18 @@ export function createCliProgram(deps: CliDependencies = {}) {
       json?: boolean;
     }) => {
       const project = projectService.requireProject(options.projectId);
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(options.repoPath ? { repoPath: options.repoPath } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: project.metadata ?? {},
+        repoPath: options.repoPath,
         initializeRepo: options.initializeRepo ?? false,
         forceWriteRepoShim: options.forceWriteRepoShim ?? false,
       });
-      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(project.metadata ?? {}),
-        ...(options.repoPath ? { repo_path: options.repoPath } : {}),
-      }, installedNomos.profile));
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       let bootstrapTaskId: string | null = null;
       if (!options.skipBootstrapTask && taskService) {
-        const bootstrapMode = options.repoPath
-          ? ((options.initializeRepo ?? false) ? 'new_repo' : 'existing_repo')
-          : 'no_repo';
         const bootstrapTask = new ProjectBootstrapService({
           projectService,
           taskService,
@@ -1167,33 +1547,39 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_name: project.name,
           creator: options.creator ?? project.owner ?? 'archon',
           repo_path: options.repoPath,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.effectiveNomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.effectiveRuntimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: preparedNomos.bootstrapMode,
         });
         bootstrapTaskId = bootstrapTask.id;
       }
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           project_id: project.id,
-          nomos: installedNomos.profile.pack,
-          project_state_root: installedNomos.layout.root,
-          repo_shim_path: installedNomos.repoShimPath,
-          repo_git_initialized: installedNomos.repoGitInitialized,
-          project_state_git_initialized: installedNomos.projectStateGitInitialized,
+          nomos: preparedNomos.installedNomos.profile.pack,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          repo_shim_path: preparedNomos.installedNomos.repoShimPath,
+          repo_git_initialized: preparedNomos.installedNomos.repoGitInitialized,
+          project_state_git_initialized: preparedNomos.installedNomos.projectStateGitInitialized,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
           bootstrap_task_id: bootstrapTaskId,
         }, null, 2));
         return;
       }
-      writeLine(stdout, `Nomos 已安装: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Nomos 已安装: ${preparedNomos.installedNomos.profile.pack.id}@${preparedNomos.installedNomos.profile.pack.version}`);
       writeLine(stdout, `Project: ${project.id}`);
-      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
-      if (installedNomos.repoShimPath) {
-        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      writeLine(stdout, `Project State: ${preparedNomos.installedNomos.layout.root}`);
+      if (preparedNomos.installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${preparedNomos.installedNomos.repoShimPath}`);
       }
-      writeLine(stdout, `Repo Git Initialized: ${installedNomos.repoGitInitialized}`);
-      writeLine(stdout, `Project State Git Initialized: ${installedNomos.projectStateGitInitialized}`);
+      writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
+      writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
+      writeLine(stdout, `Repo Git Initialized: ${preparedNomos.installedNomos.repoGitInitialized}`);
+      writeLine(stdout, `Project State Git Initialized: ${preparedNomos.installedNomos.projectStateGitInitialized}`);
       if (bootstrapTaskId) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTaskId}`);
       }
@@ -1271,17 +1657,15 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.metadataJson ? { metadata: parseJsonOption(options.metadataJson, '--metadata-json') } : {}),
       }) satisfies CreateProjectInputLike;
       const project = projectService.createProject(input);
-      const installedNomos = installBuiltInAgoraNomosForProject(project.id, {
-        ...(input.repo_path ? { repoPath: input.repo_path } : {}),
+      const preparedNomos = prepareProjectNomosInstall({
+        projectId: project.id,
+        projectName: project.name,
+        projectOwner: project.owner,
+        metadata: input.metadata ?? {},
+        repoPath: input.repo_path,
         initializeRepo: input.initialize_repo ?? false,
       });
-      projectService.updateProjectMetadata(project.id, mergeProjectMetadataWithNomosProfile({
-        ...(input.metadata ?? {}),
-        ...(input.repo_path ? { repo_path: input.repo_path } : {}),
-      }, installedNomos.profile));
-      const bootstrapMode = input.repo_path
-        ? (input.initialize_repo ? 'new_repo' : 'existing_repo')
-        : 'no_repo';
+      projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
       const bootstrapTask = taskService
         ? new ProjectBootstrapService({
           projectService,
@@ -1291,20 +1675,24 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_name: project.name,
           creator: project.owner ?? 'archon',
           repo_path: input.repo_path,
-          project_state_root: installedNomos.layout.root,
-          nomos_id: installedNomos.profile.pack.id,
-          bootstrap_prompt_path: installedNomos.layout.bootstrapInterviewPromptPath,
-          bootstrap_mode: bootstrapMode,
+          project_state_root: preparedNomos.installedNomos.layout.root,
+          nomos_id: preparedNomos.nomosState.nomos_id,
+          project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
+          project_nomos_draft_root: preparedNomos.authoringDraft.draftDir,
+          bootstrap_prompt_path: preparedNomos.runtimePaths.bootstrap_interview_prompt_path,
+          bootstrap_mode: preparedNomos.bootstrapMode,
         })
         : null;
       writeLine(stdout, `Project 已创建: ${project.id}`);
       writeLine(stdout, `名称: ${project.name}`);
       writeLine(stdout, `状态: ${project.status}`);
-      writeLine(stdout, `Nomos: ${installedNomos.profile.pack.id}@${installedNomos.profile.pack.version}`);
-      writeLine(stdout, `Project State: ${installedNomos.layout.root}`);
-      if (installedNomos.repoShimPath) {
-        writeLine(stdout, `Repo Shim: ${installedNomos.repoShimPath}`);
+      writeLine(stdout, `Nomos: ${preparedNomos.installedNomos.profile.pack.id}@${preparedNomos.installedNomos.profile.pack.version}`);
+      writeLine(stdout, `Project State: ${preparedNomos.installedNomos.layout.root}`);
+      if (preparedNomos.installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${preparedNomos.installedNomos.repoShimPath}`);
       }
+      writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
+      writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
       if (bootstrapTask) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
       }
@@ -1833,8 +2221,42 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const doctorService = getProjectBrainDoctorService();
       if (doctorService) {
         const result = await doctorService.diagnoseProject(options.project);
+        const nomosDiagnosis = projectService
+          ? (() => {
+            const project = projectService.requireProject(options.project);
+            const state = resolveProjectNomosState(options.project, project.metadata ?? null);
+            const runtimePaths = resolveProjectNomosRuntimePaths(options.project, project.metadata ?? null);
+            return {
+              runtime: {
+                nomos_id: state.nomos_id,
+                activation_status: state.activation_status,
+                bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
+                closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
+                doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+              },
+              validation: {
+                draft: validateProjectNomos(options.project, project.metadata ?? null, { target: 'draft' }),
+                active: validateProjectNomos(options.project, project.metadata ?? null, { target: 'active' }),
+              },
+              diff: diffProjectNomos(options.project, project.metadata ?? null, {
+                base: state.activation_status === 'active_project' ? 'active' : 'builtin',
+                candidate: 'draft',
+              }),
+              drift: diagnoseProjectNomosDrift(options.project, project.metadata ?? null),
+            };
+          })()
+          : null;
+        const payload = nomosDiagnosis
+          ? {
+            ...result,
+            nomos_runtime: nomosDiagnosis.runtime,
+            nomos_validation: nomosDiagnosis.validation,
+            nomos_diff: nomosDiagnosis.diff,
+            nomos_drift: nomosDiagnosis.drift,
+          }
+          : result;
         if (options.json) {
-          writeLine(stdout, JSON.stringify(result, null, 2));
+          writeLine(stdout, JSON.stringify(payload, null, 2));
           return;
         }
         writeLine(stdout, `project=${result.project_id} db=${result.db_path}`);
@@ -1842,6 +2264,13 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, `vector configured=${result.vector_index.configured} healthy=${result.vector_index.healthy} provider=${result.vector_index.provider} chunks=${result.vector_index.chunk_count ?? 0}`);
         writeLine(stdout, `jobs pending=${result.jobs.pending} running=${result.jobs.running} failed=${result.jobs.failed} succeeded=${result.jobs.succeeded}`);
         writeLine(stdout, `drift detected=${result.drift.detected} documents_without_jobs=${result.drift.documents_without_jobs}`);
+        if (nomosDiagnosis) {
+          writeLine(stdout, `nomos_runtime id=${nomosDiagnosis.runtime.nomos_id} activation=${nomosDiagnosis.runtime.activation_status}`);
+          writeLine(stdout, `nomos_doctor_prompt=${nomosDiagnosis.runtime.doctor_project_prompt_path}`);
+          writeLine(stdout, `nomos_validation draft_valid=${nomosDiagnosis.validation.draft.valid} active_valid=${nomosDiagnosis.validation.active.valid}`);
+          writeLine(stdout, `nomos_diff changed=${nomosDiagnosis.diff.changed} fields=${nomosDiagnosis.diff.differences.map((entry) => entry.field).join(',') || '-'}`);
+          writeLine(stdout, `nomos_drift risk=${nomosDiagnosis.drift.risk_level} blockers=${nomosDiagnosis.drift.activation_blockers} warnings=${nomosDiagnosis.drift.structural_warnings}`);
+        }
         return;
       }
       const payload = {

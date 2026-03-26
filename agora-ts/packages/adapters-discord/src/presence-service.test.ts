@@ -1,8 +1,13 @@
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { WebSocket, type RawData } from 'ws';
 import {
   DiscordGatewayPresenceService,
+  MinimalDiscordGatewayPresenceClient,
   createDiscordGatewayWebSocketProxyAgent,
+  extractHeartbeatInterval,
+  parseGatewayPayload,
   type DiscordGatewayPresenceClient,
 } from './presence-service.js';
 
@@ -33,6 +38,20 @@ function createClientStub() {
     }),
   };
   return { client, login, destroy, setPresence, errorListeners };
+}
+
+function createWebSocketStub() {
+  const socket = new EventEmitter() as EventEmitter & {
+    readyState: number;
+    send: ReturnType<typeof vi.fn>;
+    close: ReturnType<typeof vi.fn>;
+  };
+  socket.readyState = WebSocket.OPEN;
+  socket.send = vi.fn();
+  socket.close = vi.fn(() => {
+    socket.emit('close', 1000);
+  });
+  return socket;
 }
 
 describe('DiscordGatewayPresenceService', () => {
@@ -140,5 +159,78 @@ describe('DiscordGatewayPresenceService', () => {
     service.stop();
 
     expect(stub.destroy).toHaveBeenCalled();
+  });
+
+  it('parses gateway payloads from all supported raw-data forms', () => {
+    const payload = { op: 10, d: { heartbeat_interval: 1000 } };
+    const text = JSON.stringify(payload);
+
+    expect(parseGatewayPayload(text as unknown as RawData)).toEqual(payload);
+    expect(parseGatewayPayload(Buffer.from(text, 'utf8') as RawData)).toEqual(payload);
+    expect(parseGatewayPayload([Buffer.from(text, 'utf8')] as unknown as RawData)).toEqual(payload);
+    expect(parseGatewayPayload(new TextEncoder().encode(text).buffer as RawData)).toEqual(payload);
+  });
+
+  it('extracts heartbeat intervals and rejects malformed hello payloads', () => {
+    expect(extractHeartbeatInterval({ heartbeat_interval: 5000 })).toBe(5000);
+    expect(() => extractHeartbeatInterval({})).toThrow('heartbeat_interval');
+  });
+
+  it('completes the minimal gateway ready handshake and sends presence updates', async () => {
+    vi.useFakeTimers();
+    const socket = createWebSocketStub();
+    const client = new MinimalDiscordGatewayPresenceClient({
+      proxy: { enabled: false, httpsProxy: null, httpProxy: null },
+      logger: {},
+      initialPresence: {
+        since: null,
+        status: 'online',
+        activities: [{ name: 'Agora', type: 3 }],
+        afk: false,
+      },
+      webSocketFactory: () => socket as never,
+    });
+
+    const ready = client.login('discord-token');
+    socket.emit('message', JSON.stringify({ op: 10, d: { heartbeat_interval: 25 } }));
+    socket.emit('message', JSON.stringify({ op: 0, t: 'READY', s: 7, d: {} }));
+
+    await expect(ready).resolves.toBe('discord-token');
+    expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('"op":2'));
+
+    await client.user?.setPresence({
+      since: null,
+      status: 'idle',
+      activities: [],
+      afk: false,
+    });
+    expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('"op":3'));
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('"op":1'));
+    client.destroy();
+    vi.useRealTimers();
+  });
+
+  it('rejects login when the gateway requests reconnect before readiness', async () => {
+    const socket = createWebSocketStub();
+    const client = new MinimalDiscordGatewayPresenceClient({
+      proxy: { enabled: false, httpsProxy: null, httpProxy: null },
+      logger: {},
+      initialPresence: {
+        since: null,
+        status: 'online',
+        activities: [],
+        afk: false,
+      },
+      webSocketFactory: () => socket as never,
+    });
+    client.on('error', () => {});
+
+    const ready = client.login('discord-token');
+    socket.emit('message', JSON.stringify({ op: 10, d: { heartbeat_interval: 25 } }));
+    socket.emit('message', JSON.stringify({ op: 7 }));
+
+    await expect(ready).rejects.toThrow('requested reconnect');
   });
 });

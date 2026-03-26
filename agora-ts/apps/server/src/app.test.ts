@@ -4,8 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { TaskService } from '@agora-ts/core';
-import type { DashboardQueryService } from '@agora-ts/core';
+import { DashboardQueryService, ProjectService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -409,6 +408,109 @@ describe('agora-ts server bootstrap', () => {
     expect(allowed.json()).toMatchObject({
       task: { id: 'OC-SESSION-API' },
     });
+  });
+
+  it('allows project read APIs from a dashboard session even when bearer auth is enabled', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-session-api',
+      name: 'Session API Project',
+      owner: 'archon',
+      summary: 'project route should honor dashboard session',
+      metadata: {},
+    });
+    const app = buildApp({
+      db,
+      projectService,
+      apiAuth: {
+        enabled: true,
+        token: 'test-token',
+      },
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/projects',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      projects: [
+        expect.objectContaining({
+          id: 'proj-session-api',
+          name: 'Session API Project',
+        }),
+      ],
+    });
+  });
+
+  it('allows POST operations from a dashboard session when bearer auth is enabled', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = new TaskService(db, { templatesDir });
+    const dashboardQueryService = new DashboardQueryService(db, { templatesDir });
+    const app = buildApp({
+      db,
+      taskService,
+      dashboardQueryService,
+      apiAuth: {
+        enabled: true,
+        token: 'test-token',
+      },
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: ['lizeyu'],
+        password: 'secret-pass',
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: { username: 'lizeyu', password: 'secret-pass' },
+    });
+    const cookie = login.headers['set-cookie'];
+    const sessionCookie = Array.isArray(cookie) ? cookie[0] : String(cookie);
+
+    // POST /api/todos should succeed with session (was 401 before blanket bypass)
+    const createTodo = await app.inject({
+      method: 'POST',
+      url: '/api/todos',
+      headers: { cookie: sessionCookie },
+      payload: { text: 'session todo' },
+    });
+    expect(createTodo.statusCode).toBe(200);
+
+    // POST without session should still 401
+    const noSession = await app.inject({
+      method: 'POST',
+      url: '/api/todos',
+      payload: { text: 'no session' },
+    });
+    expect(noSession.statusCode).toBe(401);
   });
 
   it('waits for task service background operations when the app closes', async () => {
