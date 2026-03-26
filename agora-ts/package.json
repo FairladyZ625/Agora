@@ -24,6 +24,7 @@
     "smoke:nomos:reuse": "npm run build && tsx scripts/smoke-nomos-reuse.ts",
     "smoke:nomos:catalog": "npm run build && tsx scripts/smoke-nomos-catalog.ts",
     "smoke:nomos:remote-share": "npm run build && tsx scripts/smoke-nomos-remote-share.ts",
+    "smoke:nomos:registry": "npm run build && tsx scripts/smoke-nomos-registry.ts",
     "smoke:discord:inbound-action": "npm run build && tsx scripts/smoke-discord-inbound-action.ts",
     "smoke:discord:regression": "AGORA_DEV_REGRESSION_MODE=true npm run build && tsx scripts/smoke-discord-regression.ts",
     "smoke:discord:web-slash": "npx tsx scripts/smoke-discord-web-slash.ts",

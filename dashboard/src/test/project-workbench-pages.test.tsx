@@ -278,6 +278,192 @@ const { importNomosSource, installProjectNomosFromSource } = vi.hoisted(() => ({
     },
   })),
 }));
+const {
+  registerNomosSource,
+  listRegisteredNomosSources,
+  showRegisteredNomosSource,
+  syncRegisteredNomosSource,
+  installProjectNomosFromRegisteredSource,
+} = vi.hoisted(() => ({
+  registerNomosSource: vi.fn(async () => ({
+    schema_version: 1,
+    source_id: 'shared/proj-alpha',
+    source_kind: 'pack_root',
+    source_dir: '/tmp/nomos-source',
+    registered_at: '2026-03-25T12:10:00.000Z',
+    last_synced_at: null,
+    last_sync_status: 'never',
+    last_sync_error: null,
+    last_catalog_pack_id: null,
+    last_imported_source_kind: null,
+    last_manifest_path: null,
+    entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+  })),
+  listRegisteredNomosSources: vi.fn(async () => ({
+    registry_root: '/Users/example/.agora/nomos/sources',
+    total: 1,
+    entries: [{
+      schema_version: 1,
+      source_id: 'shared/proj-alpha',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/nomos-source',
+      registered_at: '2026-03-25T12:10:00.000Z',
+      last_synced_at: '2026-03-25T12:15:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-alpha',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+    }],
+  })),
+  showRegisteredNomosSource: vi.fn(async () => ({
+    schema_version: 1,
+    source_id: 'shared/proj-alpha',
+    source_kind: 'pack_root',
+    source_dir: '/tmp/nomos-source',
+    registered_at: '2026-03-25T12:10:00.000Z',
+    last_synced_at: '2026-03-25T12:15:00.000Z',
+    last_sync_status: 'ok',
+    last_sync_error: null,
+    last_catalog_pack_id: 'project/proj-alpha',
+    last_imported_source_kind: 'pack_root',
+    last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+    entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+  })),
+  syncRegisteredNomosSource: vi.fn(async () => ({
+    source: {
+      schema_version: 1,
+      source_id: 'shared/proj-alpha',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/nomos-source',
+      registered_at: '2026-03-25T12:10:00.000Z',
+      last_synced_at: '2026-03-25T12:20:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-alpha',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+    },
+    imported: {
+      source_dir: '/tmp/nomos-source',
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: {
+        schema_version: 1,
+        pack_id: 'project/proj-alpha',
+        published_at: '2026-03-25T12:20:00.000Z',
+        source_kind: 'pack_root',
+        published_by: null,
+        published_note: null,
+        source_project_id: 'external',
+        source_target: 'draft',
+        source_activation_status: 'active_builtin',
+        source_repo_path: '/tmp/nomos-source',
+        published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+        manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+        pack: {
+          pack_id: 'project/proj-alpha',
+          name: 'Project Alpha Nomos',
+          version: '0.1.0',
+          description: 'Project draft',
+          lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+          doctor_checks: ['constitution-present'],
+          source: 'project_state_draft',
+          root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+          profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+        },
+      },
+    },
+  })),
+  installProjectNomosFromRegisteredSource: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    pack: {
+      pack_id: 'project/proj-alpha',
+      name: 'Project Alpha Nomos',
+      version: '0.1.0',
+      description: 'Project draft',
+      lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+      doctor_checks: ['constitution-present'],
+      source: 'project_state_draft',
+      root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    },
+    installed_root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+    installed_profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    metadata: {},
+    catalog_entry: {
+      schema_version: 1,
+      pack_id: 'project/proj-alpha',
+      published_at: '2026-03-25T12:20:00.000Z',
+      source_kind: 'pack_root',
+      published_by: null,
+      published_note: null,
+      source_project_id: 'external',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: '/tmp/nomos-source',
+      published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+      manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-alpha',
+        name: 'Project Alpha Nomos',
+        version: '0.1.0',
+        description: 'Project draft',
+        lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+        profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      },
+    },
+    source: {
+      schema_version: 1,
+      source_id: 'shared/proj-alpha',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/nomos-source',
+      registered_at: '2026-03-25T12:10:00.000Z',
+      last_synced_at: '2026-03-25T12:20:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-alpha',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+    },
+    imported: {
+      source_dir: '/tmp/nomos-source',
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: {
+        schema_version: 1,
+        pack_id: 'project/proj-alpha',
+        published_at: '2026-03-25T12:20:00.000Z',
+        source_kind: 'pack_root',
+        published_by: null,
+        published_note: null,
+        source_project_id: 'external',
+        source_target: 'draft',
+        source_activation_status: 'active_builtin',
+        source_repo_path: '/tmp/nomos-source',
+        published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+        manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+        pack: {
+          pack_id: 'project/proj-alpha',
+          name: 'Project Alpha Nomos',
+          version: '0.1.0',
+          description: 'Project draft',
+          lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+          doctor_checks: ['constitution-present'],
+          source: 'project_state_draft',
+          root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+          profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+        },
+      },
+    },
+  })),
+}));
 const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNomosCatalog, installCatalogNomosPack } = vi.hoisted(() => ({
   publishProjectNomosToCatalog: vi.fn(async () => ({
     project_id: 'proj-alpha',
@@ -420,8 +606,13 @@ vi.mock('@/lib/api', async () => {
     diffProjectNomos,
     exportProjectNomos,
     importNomosSource,
+    registerNomosSource,
+    listRegisteredNomosSources,
+    showRegisteredNomosSource,
+    syncRegisteredNomosSource,
     installProjectNomosPack,
     installProjectNomosFromSource,
+    installProjectNomosFromRegisteredSource,
     publishProjectNomosToCatalog,
     listPublishedNomosCatalog,
     showPublishedNomosCatalog,
@@ -661,6 +852,8 @@ describe('project workbench pages', () => {
     expect(screen.getByRole('button', { name: 'Publish To Catalog' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Import Source' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Install From Source' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Register Source' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh Sources' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Install Pack' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
     expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
@@ -770,6 +963,28 @@ describe('project workbench pages', () => {
     const sourcePanel = screen.getByTestId('project-nomos-source-panel');
     expect(sourcePanel).toBeInTheDocument();
     expect(within(sourcePanel).getAllByText(/Source Kind:\s*pack_root/).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText('Source Id'), { target: { value: 'shared/proj-alpha' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Register Source' }));
+    await waitFor(() => {
+      expect(registerNomosSource).toHaveBeenCalledWith('shared/proj-alpha', '/tmp/nomos-source');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Sources' }));
+    await waitFor(() => {
+      expect(listRegisteredNomosSources).toHaveBeenCalledWith();
+    });
+    expect(screen.getByTestId('project-nomos-registered-sources-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show Source Entry' }));
+    await waitFor(() => {
+      expect(showRegisteredNomosSource).toHaveBeenCalledWith('shared/proj-alpha');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sync Registered Source' }));
+    await waitFor(() => {
+      expect(syncRegisteredNomosSource).toHaveBeenCalledWith('shared/proj-alpha');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Install From Registered Source' }));
+    await waitFor(() => {
+      expect(installProjectNomosFromRegisteredSource).toHaveBeenCalledWith('proj-alpha', 'shared/proj-alpha');
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Install From Source' }));
     await waitFor(() => {
       expect(installProjectNomosFromSource).toHaveBeenCalledWith('proj-alpha', '/tmp/nomos-source');

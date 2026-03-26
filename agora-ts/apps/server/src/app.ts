@@ -12,21 +12,28 @@ import {
   exportNomosShareBundle,
   exportProjectNomosPack,
   activateProjectNomosDraft,
+  inspectRegisteredNomosSource,
   importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
+  installBuiltInAgoraNomosForProject,
+  installNomosFromRegisteredSource,
   installNomosFromSource,
   listPublishedNomosCatalog,
+  listRegisteredNomosSources,
+  mergeProjectMetadataWithNomosProfile,
   NOMOS_LIFECYCLE_MODULES,
   prepareProjectNomosInstall,
   publishProjectNomosPack,
+  registerNomosSource,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   reviewProjectNomosDraft,
+  syncRegisteredNomosSource,
   validateProjectNomos,
 } from '@agora-ts/config';
 import {
@@ -1382,6 +1389,55 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/nomos/sources/register', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_id: string;
+        source_dir: string;
+      } | undefined) ?? { source_id: '', source_dir: '' };
+      return reply.send(registerNomosSource({
+        sourceId: payload.source_id,
+        sourceDir: payload.source_dir,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/sources', async (_request, reply) => {
+    try {
+      return reply.send(listRegisteredNomosSources());
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/sources/*', async (request, reply) => {
+    try {
+      const { '*': sourceId = '' } = request.params as { '*': string };
+      return reply.send(inspectRegisteredNomosSource(sourceId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/sources/sync', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_id: string;
+      } | undefined) ?? { source_id: '' };
+      return reply.send(syncRegisteredNomosSource({
+        sourceId: payload.source_id,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/projects/:projectId/nomos/publish', async (request, reply) => {
     if (!projectService) {
       return reply.status(503).send({ message: 'Project service is not configured' });
@@ -1459,6 +1515,27 @@ export function buildApp(options: BuildAppOptions = {}) {
       const project = projectService.requireProject(projectId);
       const installed = installNomosFromSource(project.id, project.metadata ?? null, {
         sourceDir: payload.source_dir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-registered-source', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        source_id: string;
+      } | undefined) ?? { source_id: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installNomosFromRegisteredSource(project.id, project.metadata ?? null, {
+        sourceId: payload.source_id,
       });
       projectService.updateProjectMetadata(project.id, installed.metadata);
       return reply.send(installed);

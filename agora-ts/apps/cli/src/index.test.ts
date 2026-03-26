@@ -673,7 +673,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(taskService.getTask('OC-NOMOS-RERUN-2')?.description).toContain(
-      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos-active', 'prompts', 'bootstrap', 'interview.md'),
     );
   });
 
@@ -863,6 +863,73 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('source_kind: pack_root');
     expect(stdout.value).toContain('Nomos source 已同步: project/proj-cli-pack-root-source');
     expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-pack-root-target');
+  });
+
+  it('registers a Nomos source and installs it by source id into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-registered-source-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-registered-source-repo-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-registered-target-repo-'), 'repo-target');
+    const directPackDir = join(makeTempDir('agora-ts-cli-nomos-registered-export-'), 'direct-pack');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-registered-source',
+      '--name', 'CLI Registered Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-registered-target',
+      '--name', 'CLI Registered Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-project',
+      'proj-cli-registered-source',
+      '--output-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'register-source',
+      '--source-id', 'team/cli-registered-source',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync(['nomos', 'list-sources'], { from: 'user' });
+    await program.parseAsync(['nomos', 'show-source', 'team/cli-registered-source'], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'sync-registered-source',
+      '--source-id', 'team/cli-registered-source',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-registered-source',
+      '--project-id', 'proj-cli-registered-target',
+      '--source-id', 'team/cli-registered-source',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos source 已注册: team/cli-registered-source');
+    expect(stdout.value).toContain('registry_root:');
+    expect(stdout.value).toContain('team/cli-registered-source — pack_root');
+    expect(stdout.value).toContain('Nomos source 已同步: team/cli-registered-source');
+    expect(stdout.value).toContain('Registered Nomos source 已同步并安装: proj-cli-registered-target');
   });
 
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {

@@ -37,6 +37,7 @@ export const NOMOS_PROJECT_STATE_DIRECTORIES = [
   'prompts/doctor',
   'scripts',
   'skills',
+  'nomos/project-nomos-active',
 ] as const satisfies readonly string[];
 
 export const NOMOS_LIFECYCLE_MODULES = [
@@ -147,6 +148,8 @@ export interface AgoraProjectStateLayout {
   nomosDir: string;
   projectNomosDraftDir: string;
   projectNomosDraftProfilePath: string;
+  projectNomosActiveDir: string;
+  projectNomosActiveProfilePath: string;
   lifecycleProjectBootstrapPath: string;
   lifecycleTaskContextDeliveryPath: string;
   lifecycleTaskCloseoutPath: string;
@@ -254,6 +257,62 @@ export interface AgoraNomosCatalogLayout {
   userAgoraDir: string;
   root: string;
   packsRoot: string;
+}
+
+export interface AgoraNomosSourceRegistryLayout {
+  userAgoraDir: string;
+  root: string;
+  sourcesRoot: string;
+}
+
+export interface RegisteredNomosSourceEntry {
+  schema_version: 1;
+  source_id: string;
+  source_kind: 'share_bundle' | 'pack_root' | 'git_working_copy';
+  source_dir: string;
+  registered_at: string;
+  last_synced_at: string | null;
+  last_sync_status: 'never' | 'ok' | 'error';
+  last_sync_error: string | null;
+  last_catalog_pack_id: string | null;
+  last_imported_source_kind: 'share_bundle' | 'pack_root' | null;
+  last_manifest_path: string | null;
+  entry_path: string;
+}
+
+export interface RegisterNomosSourceOptions extends ResolveAgoraProjectStateOptions {
+  sourceId: string;
+  sourceDir: string;
+  replaceExisting?: boolean;
+  registeredAt?: string;
+}
+
+export interface ListRegisteredNomosSourcesResult {
+  registry_root: string;
+  total: number;
+  entries: RegisteredNomosSourceEntry[];
+}
+
+export interface SyncRegisteredNomosSourceOptions extends ResolveAgoraProjectStateOptions {
+  sourceId: string;
+  replaceExisting?: boolean;
+  syncedAt?: string;
+}
+
+export interface SyncRegisteredNomosSourceResult {
+  source: RegisteredNomosSourceEntry;
+  imported: ImportNomosSourceResult;
+}
+
+export interface InstallNomosFromRegisteredSourceOptions extends ResolveAgoraProjectStateOptions {
+  sourceId: string;
+  metadata?: Record<string, unknown> | null | undefined;
+  replaceExisting?: boolean;
+}
+
+export interface InstallNomosFromRegisteredSourceResult extends InstallCatalogNomosPackToProjectResult {
+  source: RegisteredNomosSourceEntry;
+  imported: ImportNomosSourceResult;
 }
 
 export interface PublishedNomosCatalogEntry {
@@ -782,6 +841,16 @@ export function resolveAgoraNomosCatalogLayout(options: ResolveAgoraProjectState
   };
 }
 
+export function resolveAgoraNomosSourceRegistryLayout(options: ResolveAgoraProjectStateOptions = {}): AgoraNomosSourceRegistryLayout {
+  const userAgoraDir = resolveUserAgoraDir(options);
+  const root = resolve(userAgoraDir, 'nomos', 'sources');
+  return {
+    userAgoraDir,
+    root,
+    sourcesRoot: resolve(root, 'entries'),
+  };
+}
+
 export function resolveAgoraProjectStateLayout(
   projectId: string,
   options: ResolveAgoraProjectStateOptions = {},
@@ -835,6 +904,8 @@ export function resolveAgoraProjectStateLayout(
     nomosDir,
     projectNomosDraftDir: resolve(nomosDir, 'project-nomos'),
     projectNomosDraftProfilePath: resolve(nomosDir, 'project-nomos', 'profile.toml'),
+    projectNomosActiveDir: resolve(nomosDir, 'project-nomos-active'),
+    projectNomosActiveProfilePath: resolve(nomosDir, 'project-nomos-active', 'profile.toml'),
     lifecycleProjectBootstrapPath: resolve(root, 'lifecycle', 'project-bootstrap.md'),
     lifecycleTaskContextDeliveryPath: resolve(root, 'lifecycle', 'task-context-delivery.md'),
     lifecycleTaskCloseoutPath: resolve(root, 'lifecycle', 'task-closeout.md'),
@@ -1008,14 +1079,22 @@ export function resolveProjectNomosState(
   const existingNomos = asRecord(existingAgora.nomos);
   const repoPath = typeof metadata?.repo_path === 'string' ? metadata.repo_path : null;
   const activationStatus = projectNomosActivationStatusSchema.catch('active_builtin').parse(existingNomos.activation_status);
-  const draftRoot = layout.projectNomosDraftDir;
-  const draftProfilePath = layout.projectNomosDraftProfilePath;
-  const activeRoot = activationStatus === 'active_project'
-    ? draftRoot
-    : layout.root;
-  const activeProfilePath = activationStatus === 'active_project'
-    ? draftProfilePath
-    : layout.profilePath;
+  const draftRoot = typeof existingNomos.draft_root === 'string'
+    ? existingNomos.draft_root
+    : layout.projectNomosDraftDir;
+  const draftProfilePath = typeof existingNomos.draft_profile_path === 'string'
+    ? existingNomos.draft_profile_path
+    : layout.projectNomosDraftProfilePath;
+  const activeRoot = typeof existingNomos.active_root === 'string'
+    ? existingNomos.active_root
+    : activationStatus === 'active_project'
+      ? layout.projectNomosActiveDir
+      : layout.root;
+  const activeProfilePath = typeof existingNomos.active_profile_path === 'string'
+    ? existingNomos.active_profile_path
+    : activationStatus === 'active_project'
+      ? layout.projectNomosActiveProfilePath
+      : layout.profilePath;
   const nomosId = typeof existingNomos.id === 'string' && existingNomos.id.length > 0
     ? existingNomos.id
     : DEFAULT_AGORA_NOMOS_ID;
@@ -1102,12 +1181,6 @@ export function reviewProjectNomosDraft(
   const draftSummary = state.draft_profile_installed
     ? loadProjectNomosPackSummary(state.draft_root, state.draft_profile_path, 'project_state_draft')
     : null;
-  if (draftSummary) {
-    const expectedPackId = `project/${projectId}`;
-    if (draftSummary.pack_id !== expectedPackId) {
-      issues.push(`Draft Nomos pack id must be ${expectedPackId}, received ${draftSummary.pack_id}`);
-    }
-  }
   for (const requiredPath of [
     resolve(state.draft_root, 'constitution', 'constitution.md'),
     resolve(state.draft_root, 'docs', 'reference', 'methodologies.md'),
@@ -1340,6 +1413,15 @@ export function activateProjectNomosDraft(
   }
 
   const activatedAt = options.activatedAt ?? new Date().toISOString();
+  const layout = resolveAgoraProjectStateLayout(projectId, options);
+  if (existsSync(layout.projectNomosActiveDir)) {
+    removeDirectoryTree(layout.projectNomosActiveDir, {
+      label: 'activate project nomos draft',
+      allowedParents: [layout.nomosDir],
+    });
+  }
+  mkdirSync(layout.projectNomosActiveDir, { recursive: true });
+  copyDirectoryRecursive(review.draft.root, layout.projectNomosActiveDir);
   const existing = options.metadata ?? {};
   const existingAgora = asRecord(existing.agora);
   const existingNomos = asRecord(existingAgora.nomos);
@@ -1357,8 +1439,8 @@ export function activateProjectNomosDraft(
         activation_status: 'active_project',
         draft_root: review.draft.root,
         draft_profile_path: review.draft.profile_path,
-        active_root: review.draft.root,
-        active_profile_path: review.draft.profile_path,
+        active_root: layout.projectNomosActiveDir,
+        active_profile_path: layout.projectNomosActiveProfilePath,
         activated_at: activatedAt,
         activated_by: options.actor,
       },
@@ -1369,8 +1451,8 @@ export function activateProjectNomosDraft(
     project_id: projectId,
     nomos_id: review.draft.pack_id,
     activation_status: 'active_project',
-    active_root: review.draft.root,
-    active_profile_path: review.draft.profile_path,
+    active_root: layout.projectNomosActiveDir,
+    active_profile_path: layout.projectNomosActiveProfilePath,
     activated_at: activatedAt,
     activated_by: options.actor,
     metadata: nextMetadata,
@@ -1754,6 +1836,122 @@ export function installNomosFromSource(
   };
 }
 
+export function registerNomosSource(
+  options: RegisterNomosSourceOptions,
+): RegisteredNomosSourceEntry {
+  const sourceKind = detectNomosSourceDescriptorKind(options.sourceDir);
+  const entryPath = resolveRegisteredSourceEntryPath(options.sourceId, options);
+  if (existsSync(entryPath) && !(options.replaceExisting ?? false)) {
+    throw new Error(`Nomos source is already registered: ${options.sourceId}`);
+  }
+
+  mkdirSync(dirname(entryPath), { recursive: true });
+  const entry: RegisteredNomosSourceEntry = {
+    schema_version: 1,
+    source_id: options.sourceId,
+    source_kind: sourceKind,
+    source_dir: options.sourceDir,
+    registered_at: options.registeredAt ?? new Date().toISOString(),
+    last_synced_at: null,
+    last_sync_status: 'never',
+    last_sync_error: null,
+    last_catalog_pack_id: null,
+    last_imported_source_kind: null,
+    last_manifest_path: null,
+    entry_path: entryPath,
+  };
+  writeRegisteredNomosSourceEntry(entry);
+  return entry;
+}
+
+export function listRegisteredNomosSources(
+  options: ResolveAgoraProjectStateOptions = {},
+): ListRegisteredNomosSourcesResult {
+  const layout = resolveAgoraNomosSourceRegistryLayout(options);
+  if (!existsSync(layout.sourcesRoot)) {
+    return {
+      registry_root: layout.root,
+      total: 0,
+      entries: [],
+    };
+  }
+  const entries = listSourceEntryPaths(layout.sourcesRoot)
+    .map((entryPath) => loadRegisteredNomosSourceEntry(entryPath))
+    .sort((left, right) => right.registered_at.localeCompare(left.registered_at));
+  return {
+    registry_root: layout.root,
+    total: entries.length,
+    entries,
+  };
+}
+
+export function inspectRegisteredNomosSource(
+  sourceId: string,
+  options: ResolveAgoraProjectStateOptions = {},
+): RegisteredNomosSourceEntry {
+  return loadRegisteredNomosSourceEntry(resolveRegisteredSourceEntryPath(sourceId, options));
+}
+
+export function syncRegisteredNomosSource(
+  options: SyncRegisteredNomosSourceOptions,
+): SyncRegisteredNomosSourceResult {
+  const entry = inspectRegisteredNomosSource(options.sourceId, options);
+  try {
+    const imported = importNomosSource({
+      sourceDir: entry.source_dir,
+      ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
+      replaceExisting: options.replaceExisting ?? true,
+      ...(options.syncedAt !== undefined ? { importedAt: options.syncedAt } : {}),
+    });
+    const nextEntry: RegisteredNomosSourceEntry = {
+      ...entry,
+      last_synced_at: options.syncedAt ?? new Date().toISOString(),
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: imported.entry.pack_id,
+      last_imported_source_kind: imported.source_kind,
+      last_manifest_path: imported.entry.manifest_path,
+    };
+    writeRegisteredNomosSourceEntry(nextEntry);
+    return {
+      source: nextEntry,
+      imported,
+    };
+  } catch (error) {
+    const nextEntry: RegisteredNomosSourceEntry = {
+      ...entry,
+      last_synced_at: options.syncedAt ?? new Date().toISOString(),
+      last_sync_status: 'error',
+      last_sync_error: error instanceof Error ? error.message : String(error),
+    };
+    writeRegisteredNomosSourceEntry(nextEntry);
+    throw error;
+  }
+}
+
+export function installNomosFromRegisteredSource(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: InstallNomosFromRegisteredSourceOptions,
+): InstallNomosFromRegisteredSourceResult {
+  const synced = syncRegisteredNomosSource({
+    sourceId: options.sourceId,
+    ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
+    ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
+  });
+  const installed = installCatalogNomosPackToProject(projectId, metadata, {
+    packId: synced.imported.entry.pack_id,
+    ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
+    ...(options.userAgoraDir !== undefined ? { userAgoraDir: options.userAgoraDir } : {}),
+    ...(options.replaceExisting !== undefined ? { replaceExisting: options.replaceExisting } : {}),
+  });
+  return {
+    ...installed,
+    source: synced.source,
+    imported: synced.imported,
+  };
+}
+
 export function scaffoldNomosPack(options: ScaffoldNomosPackOptions): ScaffoldNomosPackResult {
   const lifecycleModules = Array.from(new Set(options.lifecycleModules ?? DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES));
   const doctorChecks = Array.from(new Set(options.doctorChecks ?? DEFAULT_CUSTOM_NOMOS_PACK_DOCTOR_CHECKS));
@@ -2070,6 +2268,21 @@ function listCatalogManifestPaths(rootDir: string): string[] {
       continue;
     }
     if (entry.isFile() && entry.name === 'catalog-entry.json') {
+      entries.push(entryPath);
+    }
+  }
+  return entries;
+}
+
+function listSourceEntryPaths(rootDir: string): string[] {
+  const entries: string[] = [];
+  for (const entry of readdirSync(rootDir, { withFileTypes: true })) {
+    const entryPath = resolve(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      entries.push(...listSourceEntryPaths(entryPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name === 'source-entry.json') {
       entries.push(entryPath);
     }
   }
@@ -2435,6 +2648,59 @@ function loadPublishedNomosCatalogEntry(manifestPath: string): PublishedNomosCat
   };
 }
 
+function resolveRegisteredSourceEntryPath(
+  sourceId: string,
+  options: ResolveAgoraProjectStateOptions = {},
+) {
+  const layout = resolveAgoraNomosSourceRegistryLayout(options);
+  const segments = sourceId.split('/').map((segment) => segment.trim()).filter(Boolean);
+  if (segments.length === 0) {
+    throw new Error(`Nomos source id is invalid: ${sourceId}`);
+  }
+  return resolve(layout.sourcesRoot, ...segments, 'source-entry.json');
+}
+
+function detectNomosSourceDescriptorKind(
+  sourceDir: string,
+): RegisteredNomosSourceEntry['source_kind'] {
+  if (existsSync(resolve(sourceDir, 'nomos-share-bundle.json'))) {
+    return 'share_bundle';
+  }
+  if (existsSync(resolve(sourceDir, 'profile.toml')) && existsSync(resolve(sourceDir, '.git'))) {
+    return 'git_working_copy';
+  }
+  if (existsSync(resolve(sourceDir, 'profile.toml'))) {
+    return 'pack_root';
+  }
+  throw new Error(`Nomos source directory is invalid: ${sourceDir}`);
+}
+
+function loadRegisteredNomosSourceEntry(entryPath: string): RegisteredNomosSourceEntry {
+  if (!existsSync(entryPath)) {
+    throw new Error(`Nomos source entry is missing: ${entryPath}`);
+  }
+  const raw = JSON.parse(readFileSync(entryPath, 'utf8')) as Record<string, unknown>;
+  return {
+    schema_version: 1,
+    source_id: asRequiredString(raw.source_id, 'source_id'),
+    source_kind: asRegisteredNomosSourceKind(raw.source_kind),
+    source_dir: asRequiredString(raw.source_dir, 'source_dir'),
+    registered_at: asRequiredString(raw.registered_at, 'registered_at'),
+    last_synced_at: asOptionalString(raw.last_synced_at),
+    last_sync_status: asRegisteredNomosSyncStatus(raw.last_sync_status),
+    last_sync_error: asOptionalString(raw.last_sync_error),
+    last_catalog_pack_id: asOptionalString(raw.last_catalog_pack_id),
+    last_imported_source_kind: asOptionalImportedSourceKind(raw.last_imported_source_kind),
+    last_manifest_path: asOptionalString(raw.last_manifest_path),
+    entry_path: entryPath,
+  };
+}
+
+function writeRegisteredNomosSourceEntry(entry: RegisteredNomosSourceEntry) {
+  mkdirSync(dirname(entry.entry_path), { recursive: true });
+  writeFileSync(entry.entry_path, JSON.stringify(entry, null, 2), 'utf8');
+}
+
 function loadNomosShareBundleManifest(manifestPath: string): NomosShareBundleManifest {
   if (!existsSync(manifestPath)) {
     throw new Error(`Nomos share bundle manifest is missing: ${manifestPath}`);
@@ -2472,6 +2738,30 @@ function asPublishedNomosSourceKind(value: unknown): PublishedNomosCatalogEntry[
     return value;
   }
   return 'project_publish';
+}
+
+function asRegisteredNomosSourceKind(value: unknown): RegisteredNomosSourceEntry['source_kind'] {
+  if (value === 'share_bundle' || value === 'pack_root' || value === 'git_working_copy') {
+    return value;
+  }
+  throw new Error(`Unsupported Nomos source kind: ${String(value)}`);
+}
+
+function asRegisteredNomosSyncStatus(value: unknown): RegisteredNomosSourceEntry['last_sync_status'] {
+  if (value === 'never' || value === 'ok' || value === 'error') {
+    return value;
+  }
+  return 'never';
+}
+
+function asOptionalImportedSourceKind(value: unknown): ImportNomosSourceResult['source_kind'] | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value === 'share_bundle' || value === 'pack_root') {
+    return value;
+  }
+  throw new Error(`Unsupported imported source kind: ${String(value)}`);
 }
 
 function buildPublishedCatalogSummary(entry: PublishedNomosCatalogEntry): PublishedNomosCatalogSummary {

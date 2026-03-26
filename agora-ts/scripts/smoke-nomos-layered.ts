@@ -187,6 +187,11 @@ async function captureDashboardScreenshots(input: {
 	    let importSourceVisible = false;
 	    let installSourceVisible = false;
 	    let sourcePanelVisible = false;
+      let registerSourceVisible = false;
+      let sourcesListVisible = false;
+      let sourceShowVisible = false;
+      let syncRegisteredSourceVisible = false;
+      let installRegisteredSourceVisible = false;
 	    let activationVisible = false;
     await page.getByRole('button', { name: 'Review Draft' }).click();
     await page.getByText('Can Activate').waitFor({ timeout: 3000 });
@@ -225,6 +230,22 @@ async function captureDashboardScreenshots(input: {
 	    await page.getByRole('button', { name: 'Import Source' }).click();
 	    await page.getByText('Nomos source imported into catalog.').waitFor({ timeout: 3000 });
 	    importSourceVisible = true;
+      await page.getByLabel('Source Id').fill('shared/dashboard-smoke');
+      await page.getByRole('button', { name: 'Register Source' }).click();
+      await page.getByText('Nomos source registered into the source registry.').waitFor({ timeout: 3000 });
+      registerSourceVisible = true;
+      await page.getByRole('button', { name: 'Refresh Sources' }).click();
+      await page.getByText('Registered Sources').waitFor({ timeout: 3000 });
+      sourcesListVisible = true;
+      await page.getByRole('button', { name: 'Show Source Entry' }).click();
+      await page.getByTestId('project-nomos-registered-sources-panel').locator('pre').waitFor({ timeout: 3000 });
+      sourceShowVisible = true;
+      await page.getByRole('button', { name: 'Sync Registered Source' }).click();
+      await page.getByText('Registered source synced into the catalog.').waitFor({ timeout: 3000 });
+      syncRegisteredSourceVisible = true;
+      await page.getByRole('button', { name: 'Install From Registered Source' }).click();
+      await page.getByText('Registered source installed into draft.').waitFor({ timeout: 3000 });
+      installRegisteredSourceVisible = true;
 	    await page.getByRole('button', { name: 'Install From Source' }).click();
 	    await page.getByText('Nomos source imported and installed into draft.').waitFor({ timeout: 3000 });
 	    installSourceVisible = true;
@@ -242,6 +263,11 @@ async function captureDashboardScreenshots(input: {
         && bodyText.includes('Diff Draft')
         && bodyText.includes('Import Source')
         && bodyText.includes('Install From Source')
+        && bodyText.includes('Register Source')
+        && bodyText.includes('Refresh Sources')
+        && bodyText.includes('Show Source Entry')
+        && bodyText.includes('Sync Registered Source')
+        && bodyText.includes('Install From Registered Source')
         && bodyText.includes('Reinstall Nomos')
         && bodyText.includes('Rerun Bootstrap')
         && bodyText.includes('Run Doctor'),
@@ -256,6 +282,11 @@ async function captureDashboardScreenshots(input: {
 	      importSourceVisible,
 	      installSourceVisible,
 	      sourcePanelVisible,
+        registerSourceVisible,
+        sourcesListVisible,
+        sourceShowVisible,
+        syncRegisteredSourceVisible,
+        installRegisteredSourceVisible,
 	      activationVisible,
 	    }));
     await browser.close();
@@ -303,6 +334,11 @@ async function captureDashboardScreenshots(input: {
     importSourceVisible: boolean;
     installSourceVisible: boolean;
     sourcePanelVisible: boolean;
+    registerSourceVisible: boolean;
+    sourcesListVisible: boolean;
+    sourceShowVisible: boolean;
+    syncRegisteredSourceVisible: boolean;
+    installRegisteredSourceVisible: boolean;
     activationVisible: boolean;
   };
 }
@@ -536,7 +572,9 @@ async function main() {
       || !dashboardUi.validationVisible || !dashboardUi.diffVisible || !dashboardUi.activationVisible
       || !dashboardUi.exportVisible || !dashboardUi.publishVisible || !dashboardUi.catalogVisible
       || !dashboardUi.installCatalogVisible || !dashboardUi.installVisible
-      || !dashboardUi.importSourceVisible || !dashboardUi.installSourceVisible || !dashboardUi.sourcePanelVisible) {
+      || !dashboardUi.importSourceVisible || !dashboardUi.installSourceVisible || !dashboardUi.sourcePanelVisible
+      || !dashboardUi.registerSourceVisible || !dashboardUi.sourcesListVisible || !dashboardUi.sourceShowVisible
+      || !dashboardUi.syncRegisteredSourceVisible || !dashboardUi.installRegisteredSourceVisible) {
       throw new Error(`dashboard nomos click-path incomplete: ${JSON.stringify(dashboardUi)}`);
     }
 
@@ -561,6 +599,11 @@ async function main() {
       import_source_visible: dashboardUi.importSourceVisible,
       install_source_visible: dashboardUi.installSourceVisible,
       source_panel_visible: dashboardUi.sourcePanelVisible,
+      register_source_visible: dashboardUi.registerSourceVisible,
+      sources_list_visible: dashboardUi.sourcesListVisible,
+      source_show_visible: dashboardUi.sourceShowVisible,
+      sync_registered_source_visible: dashboardUi.syncRegisteredSourceVisible,
+      install_registered_source_visible: dashboardUi.installRegisteredSourceVisible,
       detail_excerpt: dashboardUi.bodyText,
     };
 

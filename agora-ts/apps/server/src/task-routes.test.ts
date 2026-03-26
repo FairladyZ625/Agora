@@ -546,7 +546,7 @@ describe('task routes', () => {
       project_id: 'proj-nomos-activate',
       nomos_id: 'project/proj-nomos-activate',
       activation_status: 'active_project',
-      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos'),
+      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos-active'),
     });
   });
 
@@ -601,7 +601,7 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain('Bootstrap mode: `existing_repo`');
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(repoRoot);
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(
-      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos-active', 'prompts', 'bootstrap', 'interview.md'),
     );
   });
 
@@ -1291,6 +1291,142 @@ describe('task routes', () => {
       }),
     });
     expect(existsSync(join(directPackDir, 'profile.toml'))).toBe(true);
+  });
+
+  it('registers a source descriptor, syncs it, and installs it by source id through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-source-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-target-')), 'repo');
+    const directPackDir = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-export-')), 'direct-pack');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(directPackDir.replace(/\/direct-pack$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-registered-source',
+        name: 'Registered Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-registered-target',
+        name: 'Registered Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-registered-source/nomos/export',
+      payload: {
+        output_dir: directPackDir,
+      },
+    });
+    const registerResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/sources/register',
+      payload: {
+        source_id: 'team/server-registered-source',
+        source_dir: directPackDir,
+      },
+    });
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/sources',
+    });
+    const showResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/sources/team/server-registered-source',
+    });
+    const syncResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/sources/sync',
+      payload: {
+        source_id: 'team/server-registered-source',
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-registered-target/nomos/install-registered-source',
+      payload: {
+        source_id: 'team/server-registered-source',
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(registerResponse.statusCode).toBe(200);
+    expect(registerResponse.json()).toMatchObject({
+      source_id: 'team/server-registered-source',
+      source_kind: 'pack_root',
+      source_dir: directPackDir,
+      last_sync_status: 'never',
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      total: 1,
+      entries: [
+        expect.objectContaining({
+          source_id: 'team/server-registered-source',
+        }),
+      ],
+    });
+    expect(showResponse.statusCode).toBe(200);
+    expect(showResponse.json()).toMatchObject({
+      source_id: 'team/server-registered-source',
+      source_dir: directPackDir,
+    });
+    expect(syncResponse.statusCode).toBe(200);
+    expect(syncResponse.json()).toMatchObject({
+      source: expect.objectContaining({
+        source_id: 'team/server-registered-source',
+        last_sync_status: 'ok',
+        last_catalog_pack_id: 'project/proj-registered-source',
+      }),
+      imported: expect.objectContaining({
+        source_kind: 'pack_root',
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-registered-source',
+        }),
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-registered-target',
+      source: expect.objectContaining({
+        source_id: 'team/server-registered-source',
+      }),
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-registered-source',
+      }),
+      imported: expect.objectContaining({
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-registered-source',
+        }),
+      }),
+    });
   });
 
   it('creates a task bound to a project through the api', async () => {
