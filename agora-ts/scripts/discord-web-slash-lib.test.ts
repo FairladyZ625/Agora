@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  type DiscordSmokeCommandSpec,
   extractDiscordResponseDelta,
   expectedMarkersForSlashCommand,
   isDiscordLoginUrl,
   isDiscordPendingResponse,
+  normalizeDiscordSmokeCommandSpecs,
   normalizeDiscordSmokeCommands,
   parseRunningChromeRemoteDebuggingPort,
   resolveSmokeCommandTemplate,
@@ -49,6 +51,20 @@ describe("normalizeDiscordSmokeCommands", () => {
         "/task coding",
       ]),
     ).toEqual(["/task create", "/task coding"]);
+  });
+});
+
+describe("normalizeDiscordSmokeCommandSpecs", () => {
+  it("trims commands and responders and drops blanks", () => {
+    const specs: DiscordSmokeCommandSpec[] = [
+      { command: "  /project  ", responder: "  Codex Main  " },
+      { command: "   " },
+      { command: "/task" },
+    ];
+    expect(normalizeDiscordSmokeCommandSpecs(specs)).toEqual([
+      { command: "/project", responder: "Codex Main" },
+      { command: "/task", responder: undefined },
+    ]);
   });
 });
 
@@ -184,6 +200,19 @@ describe("shouldSettleDiscordResponse", () => {
         currentText: "before\nproj-api | active | API Project",
         quietMs: 800,
         minQuietMs: 2500,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not settle early when a command has explicit markers that are still missing", () => {
+    expect(
+      shouldSettleDiscordResponse({
+        beforeText: "before",
+        currentText: "before\nsome unrelated output",
+        quietMs: 2600,
+        minQuietMs: 2500,
+        assertionPassed: false,
+        hasExpectedMarkers: true,
       }),
     ).toBe(false);
   });

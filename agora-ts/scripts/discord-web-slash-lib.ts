@@ -26,6 +26,20 @@ export function normalizeDiscordSmokeCommands(commands: string[]) {
     .filter((command) => command.length > 0);
 }
 
+export type DiscordSmokeCommandSpec = {
+  command: string;
+  responder?: string;
+};
+
+export function normalizeDiscordSmokeCommandSpecs(specs: DiscordSmokeCommandSpec[]) {
+  return specs
+    .map((spec) => ({
+      command: spec.command.trim(),
+      responder: spec.responder?.trim() || undefined,
+    }))
+    .filter((spec) => spec.command.length > 0);
+}
+
 export function isDiscordLoginUrl(url: string) {
   return /discord\.com\/login/i.test(url);
 }
@@ -114,14 +128,18 @@ export function shouldSettleDiscordResponse(input: {
   quietMs: number;
   minQuietMs: number;
   assertionPassed?: boolean;
+  hasExpectedMarkers?: boolean;
 }) {
-  const { beforeText, currentText, quietMs, minQuietMs, assertionPassed = false } = input;
+  const { beforeText, currentText, quietMs, minQuietMs, assertionPassed = false, hasExpectedMarkers = false } = input;
   const hasNewOutput = currentText.trim() !== beforeText.trim();
   if (!hasNewOutput || quietMs < minQuietMs) {
     return false;
   }
   if (assertionPassed) {
     return true;
+  }
+  if (hasExpectedMarkers) {
+    return false;
   }
   return !isDiscordPendingResponse(extractDiscordResponseDelta(beforeText, currentText));
 }
