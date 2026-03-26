@@ -558,6 +558,147 @@ describe('task routes', () => {
     });
   });
 
+  it('requires a dashboard session to activate a review-required project nomos draft through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const sourceAgoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-source-home-'));
+    const targetAgoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-target-home-'));
+    tempPaths.push(sourceAgoraHomeDir);
+    tempPaths.push(targetAgoraHomeDir);
+    const previousAgoraHomeDir = process.env.AGORA_HOME_DIR;
+
+    process.env.AGORA_HOME_DIR = sourceAgoraHomeDir;
+    const sourceRepoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-source-repo-'));
+    tempPaths.push(sourceRepoParent);
+    const sourceRepoRoot = join(sourceRepoParent, 'repo-source');
+    const sourceProjectService = new ProjectService(db);
+    const sourceTaskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-REVIEWREQ-SOURCE',
+      projectService: sourceProjectService,
+    });
+    const sourceApp = buildApp({
+      db,
+      projectService: sourceProjectService,
+      taskService: sourceTaskService,
+    });
+    await sourceApp.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-reviewreq-source',
+        name: 'Project Review Required Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    await sourceApp.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-source/nomos/publish',
+      payload: {
+        target: 'draft',
+        actor: 'archon',
+        note: 'review required source',
+      },
+    });
+    const bundleRoot = join(sourceAgoraHomeDir, 'review-required-share-bundle');
+    await sourceApp.inject({
+      method: 'POST',
+      url: '/api/nomos/bundles/export',
+      payload: {
+        pack_id: 'project/proj-nomos-reviewreq-source',
+        output_dir: bundleRoot,
+      },
+    });
+    writeFileSync(join(bundleRoot, 'nomos-source.json'), JSON.stringify({
+      schema_version: 1,
+      authority_kind: 'curated_team',
+      authority_id: 'team-curation',
+      authority_label: 'Team Curated Source',
+    }, null, 2), 'utf8');
+
+    process.env.AGORA_HOME_DIR = targetAgoraHomeDir;
+    const targetRepoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-target-repo-'));
+    tempPaths.push(targetRepoParent);
+    const targetRepoRoot = join(targetRepoParent, 'repo-target');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-REVIEWREQ-TARGET',
+      projectService,
+    });
+    const humanAccountService = new HumanAccountService(db);
+    humanAccountService.bootstrapAdmin({ username: 'lizeyu', password: 'secret-pass' });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+      humanAccountService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        sessionTtlHours: 24,
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-reviewreq-target',
+        name: 'Project Review Required Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-target/nomos/install-from-source',
+      payload: {
+        source_dir: bundleRoot,
+      },
+    });
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-target/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: { username: 'lizeyu', password: 'secret-pass' },
+    });
+    const cookie = login.headers['set-cookie'];
+    const sessionCookie = Array.isArray(cookie) ? cookie[0] : String(cookie);
+    const allowed = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-target/nomos/activate',
+      headers: { cookie: sessionCookie },
+      payload: {
+        actor: 'spoofed-actor',
+      },
+    });
+
+    expect(denied.statusCode).toBe(400);
+    expect(denied.body).toContain('human review is required');
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      project_id: 'proj-nomos-reviewreq-target',
+      activation_status: 'active_project',
+      activated_by: 'lizeyu',
+    });
+
+    if (previousAgoraHomeDir === undefined) {
+      delete process.env.AGORA_HOME_DIR;
+    } else {
+      process.env.AGORA_HOME_DIR = previousAgoraHomeDir;
+    }
+  });
+
   it('reuses persisted repo_path and active Nomos bootstrap prompt when rerunning Nomos bootstrap through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

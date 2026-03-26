@@ -917,10 +917,17 @@ describe('nomos pack model freeze', () => {
       sourceId: 'team/registered-activate-source',
     });
 
+    expect(() => activateProjectNomosDraft('proj-registered-activate-target', {
+      userAgoraDir: targetAgoraHomeDir,
+      metadata: installed.metadata,
+      actor: 'archon',
+    })).toThrowError(/human review is required/i);
+
     const activated = activateProjectNomosDraft('proj-registered-activate-target', {
       userAgoraDir: targetAgoraHomeDir,
       metadata: installed.metadata,
       actor: 'archon',
+      allowReviewRequired: true,
     });
 
     expect(activated.nomos_id).toBe('project/proj-registered-activate-source');

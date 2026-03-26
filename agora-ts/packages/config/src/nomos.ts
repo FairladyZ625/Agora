@@ -567,6 +567,7 @@ export interface ActivateProjectNomosDraftOptions extends ResolveAgoraProjectSta
   metadata?: Record<string, unknown> | null | undefined;
   actor: string;
   activatedAt?: string;
+  allowReviewRequired?: boolean;
 }
 
 export interface ActivateProjectNomosDraftResult {
@@ -1728,6 +1729,12 @@ export function activateProjectNomosDraft(
   if (review.draft_provenance?.activation_eligibility === 'blocked') {
     throw new Error([
       `Cannot activate project Nomos draft for ${projectId}: provenance is blocked.`,
+      ...review.draft_provenance.reasons,
+    ].join(' '));
+  }
+  if (review.draft_provenance?.activation_eligibility === 'review_required' && !options.allowReviewRequired) {
+    throw new Error([
+      `Cannot activate project Nomos draft for ${projectId}: human review is required.`,
       ...review.draft_provenance.reasons,
     ].join(' '));
   }

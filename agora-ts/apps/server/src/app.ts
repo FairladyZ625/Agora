@@ -1237,10 +1237,12 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!payload.actor?.trim()) {
         throw new Error('actor is required');
       }
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       const project = projectService.requireProject(projectId);
       const activation = activateProjectNomosDraft(project.id, {
         metadata: project.metadata ?? null,
-        actor: payload.actor,
+        actor: humanActor?.username ?? payload.actor,
+        allowReviewRequired: humanActor?.source === 'dashboard',
       });
       projectService.updateProjectMetadata(project.id, activation.metadata);
       return reply.send({
