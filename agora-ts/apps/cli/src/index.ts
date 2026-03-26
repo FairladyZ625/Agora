@@ -10,6 +10,8 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  assessPublishedNomosCatalogEntryTrust,
+  assessRegisteredNomosSourceTrust,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
   exportNomosShareBundle,
@@ -1131,8 +1133,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, 'entries: 0');
         return;
       }
-      for (const entry of listed.summaries) {
-        writeLine(stdout, `${entry.pack_id} — ${entry.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target})`);
+      for (const entry of listed.entries) {
+        const trust = assessPublishedNomosCatalogEntryTrust(entry);
+        writeLine(stdout, `${entry.pack_id} — ${entry.pack.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
       }
     });
 
@@ -1157,6 +1160,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `source_repo_path: ${entry.source_repo_path ?? '-'}`);
       writeLine(stdout, `published_note: ${entry.published_note ?? '-'}`);
       writeLine(stdout, `published_root: ${entry.published_root}`);
+      const trust = assessPublishedNomosCatalogEntryTrust(entry);
+      writeLine(stdout, `trust_state: ${trust.trust_state}`);
+      writeLine(stdout, `freshness_state: ${trust.freshness_state}`);
+      writeLine(stdout, `activation_eligibility: ${trust.activation_eligibility}`);
+      writeLine(stdout, `trust_reasons: ${trust.reasons.join(' | ')}`);
     });
 
   nomos
@@ -1288,7 +1296,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       for (const entry of listed.entries) {
-        writeLine(stdout, `${entry.source_id} — ${entry.source_kind} (${entry.last_sync_status})`);
+        const trust = assessRegisteredNomosSourceTrust(entry);
+        writeLine(stdout, `${entry.source_id} — ${entry.source_kind} (${entry.last_sync_status}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
       }
     });
 
@@ -1307,6 +1316,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `source_dir: ${entry.source_dir}`);
       writeLine(stdout, `last_sync_status: ${entry.last_sync_status}`);
       writeLine(stdout, `last_catalog_pack_id: ${entry.last_catalog_pack_id ?? '-'}`);
+      const trust = assessRegisteredNomosSourceTrust(entry);
+      writeLine(stdout, `trust_state: ${trust.trust_state}`);
+      writeLine(stdout, `freshness_state: ${trust.freshness_state}`);
+      writeLine(stdout, `activation_eligibility: ${trust.activation_eligibility}`);
+      writeLine(stdout, `trust_reasons: ${trust.reasons.join(' | ')}`);
     });
 
   nomos

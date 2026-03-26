@@ -280,6 +280,17 @@ export interface RegisteredNomosSourceEntry {
   entry_path: string;
 }
 
+export type NomosTrustState = 'trusted' | 'caution' | 'untrusted';
+export type NomosFreshnessState = 'current' | 'stale' | 'unknown';
+export type NomosActivationEligibility = 'allowed' | 'review_required' | 'blocked';
+
+export interface NomosProvenanceAssessment {
+  trust_state: NomosTrustState;
+  freshness_state: NomosFreshnessState;
+  activation_eligibility: NomosActivationEligibility;
+  reasons: string[];
+}
+
 export interface RegisterNomosSourceOptions extends ResolveAgoraProjectStateOptions {
   sourceId: string;
   sourceDir: string;
@@ -329,6 +340,20 @@ export interface PublishedNomosCatalogEntry {
   published_root: string;
   manifest_path: string;
   pack: ProjectNomosPackSummary;
+}
+
+export interface PublishedNomosCatalogTrustReport extends NomosProvenanceAssessment {
+  pack_id: string;
+  source_kind: PublishedNomosCatalogEntry['source_kind'];
+  source_project_id: string;
+  source_target: 'draft' | 'active';
+}
+
+export interface RegisteredNomosSourceTrustReport extends NomosProvenanceAssessment {
+  source_id: string;
+  source_kind: RegisteredNomosSourceEntry['source_kind'];
+  last_sync_status: RegisteredNomosSourceEntry['last_sync_status'];
+  last_catalog_pack_id: string | null;
 }
 
 export interface PublishProjectNomosPackOptions extends ResolveAgoraProjectStateOptions {
@@ -1890,6 +1915,120 @@ export function inspectRegisteredNomosSource(
   options: ResolveAgoraProjectStateOptions = {},
 ): RegisteredNomosSourceEntry {
   return loadRegisteredNomosSourceEntry(resolveRegisteredSourceEntryPath(sourceId, options));
+}
+
+export function assessPublishedNomosCatalogEntryTrust(
+  entry: PublishedNomosCatalogEntry,
+): PublishedNomosCatalogTrustReport {
+  const reasons: string[] = [];
+  let trustState: NomosTrustState = 'trusted';
+
+  if (entry.source_kind === 'pack_root') {
+    trustState = 'untrusted';
+    reasons.push('direct pack-root provenance is not independently attestable');
+  } else if (entry.source_kind === 'share_bundle') {
+    trustState = 'caution';
+    reasons.push('share bundle provenance is portable but still indirect');
+  }
+
+  if (entry.source_activation_status !== 'active_project') {
+    trustState = trustState === 'untrusted' ? trustState : 'caution';
+    reasons.push('source pack was not published from an active project-specific Nomos');
+  }
+
+  if (!entry.published_by) {
+    trustState = trustState === 'trusted' ? 'caution' : trustState;
+    reasons.push('published_by is missing');
+  }
+
+  if (!entry.source_repo_path) {
+    trustState = trustState === 'trusted' ? 'caution' : trustState;
+    reasons.push('source_repo_path is missing');
+  }
+
+  const freshnessState: NomosFreshnessState = 'current';
+  const activationEligibility: NomosActivationEligibility = trustState === 'trusted'
+    ? 'allowed'
+    : trustState === 'caution'
+      ? 'review_required'
+      : 'blocked';
+
+  if (reasons.length === 0) {
+    reasons.push('published provenance meets the current trusted baseline');
+  }
+
+  return {
+    pack_id: entry.pack_id,
+    source_kind: entry.source_kind,
+    source_project_id: entry.source_project_id,
+    source_target: entry.source_target,
+    trust_state: trustState,
+    freshness_state: freshnessState,
+    activation_eligibility: activationEligibility,
+    reasons,
+  };
+}
+
+export function assessRegisteredNomosSourceTrust(
+  entry: RegisteredNomosSourceEntry,
+): RegisteredNomosSourceTrustReport {
+  const reasons: string[] = [];
+  let trustState: NomosTrustState = 'trusted';
+
+  if (entry.source_kind === 'pack_root') {
+    trustState = 'untrusted';
+    reasons.push('registered source points at a raw pack root');
+  } else if (entry.source_kind === 'share_bundle') {
+    trustState = 'caution';
+    reasons.push('registered source points at a portable share bundle');
+  } else if (entry.source_kind === 'git_working_copy') {
+    trustState = 'caution';
+    reasons.push('registered source points at a mutable git working copy');
+  }
+
+  let freshnessState: NomosFreshnessState;
+  switch (entry.last_sync_status) {
+    case 'ok':
+      freshnessState = 'current';
+      break;
+    case 'error':
+      freshnessState = 'stale';
+      reasons.push('last sync ended in error');
+      break;
+    default:
+      freshnessState = 'unknown';
+      reasons.push('source has never been synced');
+      break;
+  }
+
+  if (entry.last_sync_status === 'ok' && !entry.last_catalog_pack_id) {
+    trustState = trustState === 'trusted' ? 'caution' : trustState;
+    freshnessState = 'unknown';
+    reasons.push('last sync succeeded but no catalog pack id was recorded');
+  }
+
+  const activationEligibility: NomosActivationEligibility = freshnessState === 'stale'
+    ? 'blocked'
+    : trustState === 'trusted' && freshnessState === 'current'
+      ? 'allowed'
+      : trustState === 'untrusted'
+        ? 'blocked'
+        : 'review_required';
+
+  if (reasons.length === 0) {
+    reasons.push('registered source meets the current trusted baseline');
+  }
+
+  return {
+    source_id: entry.source_id,
+    source_kind: entry.source_kind,
+    last_sync_status: entry.last_sync_status,
+    last_catalog_pack_id: entry.last_catalog_pack_id,
+    trust_state: trustState,
+    freshness_state: freshnessState,
+    activation_eligibility: activationEligibility,
+    reasons,
+  };
 }
 
 export function syncRegisteredNomosSource(

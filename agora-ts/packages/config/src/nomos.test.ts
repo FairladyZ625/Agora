@@ -29,6 +29,8 @@ import {
   requireSupportedNomosId,
   refineProjectNomosDraftFromSpec,
   activateProjectNomosDraft,
+  assessPublishedNomosCatalogEntryTrust,
+  assessRegisteredNomosSourceTrust,
   inspectRegisteredNomosSource,
   listRegisteredNomosSources,
   installNomosFromRegisteredSource,
@@ -762,6 +764,101 @@ describe('nomos pack model freeze', () => {
     });
     expect(activeValidation.valid).toBe(true);
     expect(activeValidation.pack?.pack_id).toBe('project/proj-registered-activate-source');
+  });
+
+  it('assesses trust and activation posture for published catalog entries', () => {
+    const trusted = assessPublishedNomosCatalogEntryTrust({
+      schema_version: 1,
+      pack_id: 'project/proj-trusted',
+      published_at: '2026-03-26T00:00:00.000Z',
+      source_kind: 'project_publish',
+      published_by: 'archon',
+      published_note: 'baseline',
+      source_project_id: 'proj-trusted',
+      source_target: 'draft',
+      source_activation_status: 'active_project',
+      source_repo_path: '/repo/proj-trusted',
+      published_root: '/catalog/project/proj-trusted',
+      manifest_path: '/catalog/project/proj-trusted/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-trusted',
+        name: 'Trusted',
+        version: '0.1.0',
+        description: 'trusted',
+        lifecycle_modules: ['project-bootstrap'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/catalog/project/proj-trusted',
+        profile_path: '/catalog/project/proj-trusted/profile.toml',
+      },
+    });
+    const untrusted = assessPublishedNomosCatalogEntryTrust({
+      schema_version: 1,
+      pack_id: 'project/proj-untrusted',
+      published_at: '2026-03-26T00:00:00.000Z',
+      source_kind: 'pack_root',
+      published_by: null,
+      published_note: null,
+      source_project_id: 'external',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: null,
+      published_root: '/catalog/project/proj-untrusted',
+      manifest_path: '/catalog/project/proj-untrusted/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-untrusted',
+        name: 'Untrusted',
+        version: '0.1.0',
+        description: 'untrusted',
+        lifecycle_modules: ['project-bootstrap'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/catalog/project/proj-untrusted',
+        profile_path: '/catalog/project/proj-untrusted/profile.toml',
+      },
+    });
+
+    expect(trusted.trust_state).toBe('trusted');
+    expect(trusted.activation_eligibility).toBe('allowed');
+    expect(untrusted.trust_state).toBe('untrusted');
+    expect(untrusted.activation_eligibility).toBe('blocked');
+  });
+
+  it('assesses trust and freshness for registered sources', () => {
+    const caution = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: 'team/git-source',
+      source_kind: 'git_working_copy',
+      source_dir: '/repo/git-source',
+      registered_at: '2026-03-26T00:00:00.000Z',
+      last_synced_at: null,
+      last_sync_status: 'never',
+      last_sync_error: null,
+      last_catalog_pack_id: null,
+      last_imported_source_kind: null,
+      last_manifest_path: null,
+      entry_path: '/registry/team/git-source/source-entry.json',
+    });
+    const stale = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: 'team/pack-root',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/pack-root',
+      registered_at: '2026-03-26T00:00:00.000Z',
+      last_synced_at: '2026-03-26T01:00:00.000Z',
+      last_sync_status: 'error',
+      last_sync_error: 'network failed',
+      last_catalog_pack_id: 'project/proj-pack-root',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/catalog/project/proj-pack-root/catalog-entry.json',
+      entry_path: '/registry/team/pack-root/source-entry.json',
+    });
+
+    expect(caution.trust_state).toBe('caution');
+    expect(caution.freshness_state).toBe('unknown');
+    expect(caution.activation_eligibility).toBe('review_required');
+    expect(stale.freshness_state).toBe('stale');
+    expect(stale.activation_eligibility).toBe('blocked');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {
