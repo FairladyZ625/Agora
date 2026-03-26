@@ -64,6 +64,7 @@ export function ProjectDetailPage() {
   const [exportDir, setExportDir] = useState('');
   const [packDir, setPackDir] = useState('');
   const [sourceDir, setSourceDir] = useState('');
+  const [sourceId, setSourceId] = useState('');
   const [publishNote, setPublishNote] = useState('');
   const [catalogPackId, setCatalogPackId] = useState('');
   const [doctorReport, setDoctorReport] = useState<Awaited<ReturnType<typeof api.runProjectNomosDoctor>> | null>(null);
@@ -74,6 +75,9 @@ export function ProjectDetailPage() {
   const [catalogList, setCatalogList] = useState<Awaited<ReturnType<typeof api.listPublishedNomosCatalog>> | null>(null);
   const [catalogEntry, setCatalogEntry] = useState<Awaited<ReturnType<typeof api.showPublishedNomosCatalog>> | null>(null);
   const [importedSource, setImportedSource] = useState<Awaited<ReturnType<typeof api.importNomosSource>> | null>(null);
+  const [registeredSourceList, setRegisteredSourceList] = useState<Awaited<ReturnType<typeof api.listRegisteredNomosSources>> | null>(null);
+  const [registeredSourceEntry, setRegisteredSourceEntry] = useState<Awaited<ReturnType<typeof api.showRegisteredNomosSource>> | null>(null);
+  const [registeredSourceSync, setRegisteredSourceSync] = useState<Awaited<ReturnType<typeof api.syncRegisteredNomosSource>> | null>(null);
 
   useEffect(() => {
     void selectProject(projectId ?? null);
@@ -111,7 +115,7 @@ export function ProjectDetailPage() {
   const nomos = selectedProject.nomos;
 
   const runNomosAction = async (
-    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack' | 'publish' | 'catalog-list' | 'catalog-show' | 'install-catalog' | 'import-source' | 'install-source',
+    mode: 'reinstall' | 'bootstrap' | 'doctor' | 'review' | 'activate' | 'validate' | 'diff' | 'export' | 'install-pack' | 'publish' | 'catalog-list' | 'catalog-show' | 'install-catalog' | 'import-source' | 'install-source' | 'register-source' | 'sources-list' | 'source-show' | 'sync-source' | 'install-registered-source',
   ) => {
     if (!projectId) {
       return;
@@ -173,6 +177,37 @@ export function ProjectDetailPage() {
         setCatalogEntry(result.entry);
         setCatalogPackId(result.entry.pack_id);
         setNomosActionMessage(`${copy.nomosImportSourceSuccess} ${result.entry.pack_id}`);
+      } else if (mode === 'register-source') {
+        const result = await api.registerNomosSource(sourceId, sourceDir);
+        setRegisteredSourceEntry(result);
+        setSourceId(result.source_id);
+        setNomosActionMessage(`${copy.nomosRegisterSourceSuccess} ${result.source_id}`);
+      } else if (mode === 'sources-list') {
+        const result = await api.listRegisteredNomosSources();
+        setRegisteredSourceList(result);
+        setNomosActionMessage(copy.refreshSourcesAction);
+      } else if (mode === 'source-show') {
+        const result = await api.showRegisteredNomosSource(sourceId);
+        setRegisteredSourceEntry(result);
+        setNomosActionMessage(copy.showSourceEntryAction);
+      } else if (mode === 'sync-source') {
+        const result = await api.syncRegisteredNomosSource(sourceId);
+        setRegisteredSourceSync(result);
+        setRegisteredSourceEntry(result.source);
+        setCatalogEntry(result.imported.entry);
+        setCatalogPackId(result.imported.entry.pack_id);
+        setNomosActionMessage(`${copy.nomosSyncSourceSuccess} ${result.source.source_id}`);
+      } else if (mode === 'install-registered-source') {
+        const result = await api.installProjectNomosFromRegisteredSource(projectId, sourceId);
+        await selectProject(projectId);
+        setRegisteredSourceEntry(result.source);
+        setRegisteredSourceSync({
+          source: result.source,
+          imported: result.imported,
+        });
+        setCatalogEntry(result.catalog_entry);
+        setCatalogPackId(result.catalog_entry.pack_id);
+        setNomosActionMessage(`${copy.nomosInstallRegisteredSourceSuccess} ${result.installed_root}`);
       } else if (mode === 'install-source') {
         const result = await api.installProjectNomosFromSource(projectId, sourceDir);
         await selectProject(projectId);
@@ -344,6 +379,46 @@ export function ProjectDetailPage() {
                 type="button"
                 className="button-secondary"
                 disabled={nomosActionPending}
+                onClick={() => void runNomosAction('register-source')}
+              >
+                {copy.registerSourceAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
+                onClick={() => void runNomosAction('sources-list')}
+              >
+                {copy.refreshSourcesAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending || !sourceId}
+                onClick={() => void runNomosAction('source-show')}
+              >
+                {copy.showSourceEntryAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending || !sourceId}
+                onClick={() => void runNomosAction('sync-source')}
+              >
+                {copy.syncRegisteredSourceAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending || !sourceId}
+                onClick={() => void runNomosAction('install-registered-source')}
+              >
+                {copy.installRegisteredSourceAction}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={nomosActionPending}
                 onClick={() => void runNomosAction('reinstall')}
               >
                 {copy.reinstallNomosAction}
@@ -437,6 +512,16 @@ export function ProjectDetailPage() {
                 value={sourceDir}
                 onChange={(event) => setSourceDir(event.target.value)}
                 placeholder="/tmp/nomos-source"
+              />
+            </div>
+            <div className="space-y-2 lg:col-span-2">
+              <label className="field-label" htmlFor="nomos-source-id">{copy.sourceIdLabel}</label>
+              <input
+                id="nomos-source-id"
+                className="input-shell"
+                value={sourceId}
+                onChange={(event) => setSourceId(event.target.value)}
+                placeholder="shared/acme-web"
               />
             </div>
             <div className="space-y-2">
@@ -617,6 +702,54 @@ export function ProjectDetailPage() {
               </div>
             </div>
           ) : null}
+          <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-4" data-testid="project-nomos-registered-sources-panel">
+            <div className="space-y-2">
+              <p className="field-label">{copy.registeredSourcesTitle}</p>
+              <p className="type-body-sm break-all">
+                {copy.registeredSourcesRootLabel}
+                {': '}
+                {registeredSourceList?.registry_root ?? copy.noneLabel}
+              </p>
+            </div>
+            {registeredSourceList && registeredSourceList.entries.length > 0 ? (
+              <ul className="mt-4 space-y-2">
+                {registeredSourceList.entries.map((entry) => (
+                  <li key={entry.source_id} className="type-body-sm">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => {
+                        setSourceId(entry.source_id);
+                        void runNomosAction('source-show');
+                      }}
+                    >
+                      {entry.source_id}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 type-body-sm">{copy.registeredSourcesEmpty}</p>
+            )}
+            {registeredSourceEntry ? (
+              <div className="mt-4 space-y-2">
+                <p className="field-label">{copy.registeredSourceSelectionTitle}</p>
+                <p className="type-body-sm">
+                  {copy.sourceKindLabel}
+                  {': '}
+                  {registeredSourceEntry.source_kind}
+                </p>
+                <pre className="type-caption whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-elevated)] p-3">
+                  {renderJson(registeredSourceEntry as unknown as Record<string, unknown>)}
+                </pre>
+                {registeredSourceSync ? (
+                  <pre className="type-caption whitespace-pre-wrap rounded-[var(--radius-sm)] bg-[var(--surface-elevated)] p-3">
+                    {renderJson(registeredSourceSync as unknown as Record<string, unknown>)}
+                  </pre>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           {doctorReport ? (
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">

@@ -257,6 +257,32 @@ async function main() {
       commandBody: `/project nomos import-source --source-dir ${exportDir}`,
       senderId: "smoke-user",
     });
+    const registeredSourceId = "shared/plugin-live";
+    const projectNomosRegisterSource = await api.runCommand("project", {
+      args: `nomos register-source --source-id ${registeredSourceId} --source-dir ${exportDir}`,
+      commandBody: `/project nomos register-source --source-id ${registeredSourceId} --source-dir ${exportDir}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosSourcesList = await api.runCommand("project", {
+      args: "nomos sources-list",
+      commandBody: "/project nomos sources-list",
+      senderId: "smoke-user",
+    });
+    const projectNomosSourceShow = await api.runCommand("project", {
+      args: `nomos source-show ${registeredSourceId}`,
+      commandBody: `/project nomos source-show ${registeredSourceId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosSyncRegisteredSource = await api.runCommand("project", {
+      args: `nomos sync-registered-source --source-id ${registeredSourceId}`,
+      commandBody: `/project nomos sync-registered-source --source-id ${registeredSourceId}`,
+      senderId: "smoke-user",
+    });
+    const projectNomosInstallFromRegisteredSource = await api.runCommand("project", {
+      args: `nomos install-from-registered-source ${targetProjectId} --source-id ${registeredSourceId}`,
+      commandBody: `/project nomos install-from-registered-source ${targetProjectId} --source-id ${registeredSourceId}`,
+      senderId: "smoke-user",
+    });
     const projectNomosInstallFromSource = await api.runCommand("project", {
       args: `nomos install-from-source ${targetProjectId} --source-dir ${exportDir}`,
       commandBody: `/project nomos install-from-source ${targetProjectId} --source-dir ${exportDir}`,
@@ -307,6 +333,21 @@ async function main() {
     }
     if (!projectNomosImportSource.text.includes(`Imported Nomos source project/${projectId}`)) {
       throw new Error(`project nomos import-source failed: ${projectNomosImportSource.text}`);
+    }
+    if (!projectNomosRegisterSource.text.includes(`Registered Nomos source ${registeredSourceId}`)) {
+      throw new Error(`project nomos register-source failed: ${projectNomosRegisterSource.text}`);
+    }
+    if (!projectNomosSourcesList.text.includes(registeredSourceId)) {
+      throw new Error(`project nomos sources-list failed: ${projectNomosSourcesList.text}`);
+    }
+    if (!projectNomosSourceShow.text.includes(`Nomos source ${registeredSourceId}`)) {
+      throw new Error(`project nomos source-show failed: ${projectNomosSourceShow.text}`);
+    }
+    if (!projectNomosSyncRegisteredSource.text.includes(`Synced Nomos source ${registeredSourceId}`)) {
+      throw new Error(`project nomos sync-registered-source failed: ${projectNomosSyncRegisteredSource.text}`);
+    }
+    if (!projectNomosInstallFromRegisteredSource.text.includes(`Installed registered source into ${targetProjectId}`)) {
+      throw new Error(`project nomos install-from-registered-source failed: ${projectNomosInstallFromRegisteredSource.text}`);
     }
     if (!projectNomosInstallFromSource.text.includes(`Installed source Nomos into ${targetProjectId}`)) {
       throw new Error(`project nomos install-from-source failed: ${projectNomosInstallFromSource.text}`);
@@ -477,6 +518,11 @@ async function main() {
             project_nomos_install_from_catalog: projectNomosInstallFromCatalog.text,
             project_nomos_install_pack: projectNomosInstallPack.text,
             project_nomos_import_source: projectNomosImportSource.text,
+            project_nomos_register_source: projectNomosRegisterSource.text,
+            project_nomos_sources_list: projectNomosSourcesList.text,
+            project_nomos_source_show: projectNomosSourceShow.text,
+            project_nomos_sync_registered_source: projectNomosSyncRegisteredSource.text,
+            project_nomos_install_from_registered_source: projectNomosInstallFromRegisteredSource.text,
             project_nomos_install_from_source: projectNomosInstallFromSource.text,
             task_create: taskCreate.text,
           },

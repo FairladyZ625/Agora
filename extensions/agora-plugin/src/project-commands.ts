@@ -417,6 +417,76 @@ async function handleNomos(bridge: AgoraBridge, args: string[], senderId: string
         ].join("\n"),
       };
     }
+    case "register-source": {
+      const sourceId = flagValue(rest, "--source-id");
+      const sourceDir = flagValue(rest, "--source-dir");
+      if (!sourceId || !sourceDir) {
+        return { text: "Usage: /project nomos register-source --source-id <source_id> --source-dir <dir>" };
+      }
+      const registered = await bridge.registerNomosSource(sourceId, sourceDir);
+      return {
+        text: [
+          `Registered Nomos source ${registered.source_id}`,
+          `source_kind=${registered.source_kind}`,
+          `source_dir=${registered.source_dir}`,
+        ].join("\n"),
+      };
+    }
+    case "sources-list": {
+      const listed = await bridge.listRegisteredNomosSources();
+      return {
+        text: [
+          `Nomos sources (${listed.total})`,
+          ...listed.entries.slice(0, 10).map((entry) => `${entry.source_id} | ${entry.source_kind} | ${entry.last_sync_status}`),
+        ].join("\n"),
+      };
+    }
+    case "source-show": {
+      const sourceId = rest[0];
+      if (!sourceId) {
+        return { text: "Usage: /project nomos source-show <source_id>" };
+      }
+      const entry = await bridge.showRegisteredNomosSource(sourceId);
+      return {
+        text: [
+          `Nomos source ${entry.source_id}`,
+          `source_kind=${entry.source_kind}`,
+          `source_dir=${entry.source_dir}`,
+          `last_sync_status=${entry.last_sync_status}`,
+          `last_catalog_pack_id=${entry.last_catalog_pack_id ?? "none"}`,
+        ].join("\n"),
+      };
+    }
+    case "sync-registered-source": {
+      const sourceId = flagValue(rest, "--source-id") ?? rest[0];
+      if (!sourceId) {
+        return { text: "Usage: /project nomos sync-registered-source --source-id <source_id>" };
+      }
+      const synced = await bridge.syncRegisteredNomosSource(sourceId);
+      return {
+        text: [
+          `Synced Nomos source ${synced.source.source_id}`,
+          `source_kind=${synced.source.source_kind}`,
+          `pack=${synced.imported.entry.pack_id}`,
+        ].join("\n"),
+      };
+    }
+    case "install-from-registered-source": {
+      const projectId = rest[0];
+      const sourceId = flagValue(rest.slice(1), "--source-id");
+      if (!projectId || !sourceId) {
+        return { text: "Usage: /project nomos install-from-registered-source <project_id> --source-id <source_id>" };
+      }
+      const installed = await bridge.installNomosFromRegisteredSource(projectId, sourceId);
+      return {
+        text: [
+          `Installed registered source into ${installed.project_id}`,
+          `source_id=${installed.source.source_id}`,
+          `pack=${installed.pack.pack_id}`,
+          `draft_root=${installed.installed_root}`,
+        ].join("\n"),
+      };
+    }
     case "install-from-source": {
       const projectId = rest[0];
       const sourceDir = flagValue(rest.slice(1), "--source-dir");
@@ -507,7 +577,7 @@ function formatHelp() {
     "/project create <name> [--id <project_id>] [--summary <summary>] [--repo-path <path>] [--new-repo] [--nomos-id <nomos_id>] [--owner <owner>]",
     "/project list [status]",
     "/project show <project_id>",
-    "/project nomos <review|activate|validate|diff|export|install-pack> ...",
+    "/project nomos <review|activate|validate|diff|export|publish|catalog-list|install-pack|register-source|sources-list> ...",
   ].join("\n");
 }
 
@@ -525,6 +595,11 @@ function formatNomosHelp() {
     "/project nomos install-from-catalog <project_id> --pack-id <pack_id>",
     "/project nomos install-pack <project_id> --pack-dir <dir>",
     "/project nomos import-source --source-dir <dir>",
+    "/project nomos register-source --source-id <source_id> --source-dir <dir>",
+    "/project nomos sources-list",
+    "/project nomos source-show <source_id>",
+    "/project nomos sync-registered-source --source-id <source_id>",
+    "/project nomos install-from-registered-source <project_id> --source-id <source_id>",
     "/project nomos install-from-source <project_id> --source-dir <dir>",
   ].join("\n");
 }

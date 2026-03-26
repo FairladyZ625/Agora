@@ -224,6 +224,62 @@ export class AgoraBridge {
     });
   }
 
+  async registerNomosSource(sourceId: string, sourceDir: string): Promise<{
+    source_id: string;
+    source_kind: "share_bundle" | "pack_root" | "git_working_copy";
+    source_dir: string;
+    last_sync_status: "never" | "ok" | "error";
+    last_catalog_pack_id: string | null;
+  }> {
+    return this.request("/api/nomos/sources/register", {
+      method: "POST",
+      body: { source_id: sourceId, source_dir: sourceDir },
+    });
+  }
+
+  async listRegisteredNomosSources(): Promise<{
+    registry_root: string;
+    total: number;
+    entries: Array<{
+      source_id: string;
+      source_kind: "share_bundle" | "pack_root" | "git_working_copy";
+      source_dir: string;
+      last_sync_status: "never" | "ok" | "error";
+      last_catalog_pack_id: string | null;
+    }>;
+  }> {
+    return this.request("/api/nomos/sources");
+  }
+
+  async showRegisteredNomosSource(sourceId: string): Promise<{
+    source_id: string;
+    source_kind: "share_bundle" | "pack_root" | "git_working_copy";
+    source_dir: string;
+    last_sync_status: "never" | "ok" | "error";
+    last_catalog_pack_id: string | null;
+  }> {
+    return this.request(`/api/nomos/sources/${sourceId}`);
+  }
+
+  async syncRegisteredNomosSource(sourceId: string): Promise<{
+    source: {
+      source_id: string;
+      source_kind: "share_bundle" | "pack_root" | "git_working_copy";
+      source_dir: string;
+      last_sync_status: "never" | "ok" | "error";
+      last_catalog_pack_id: string | null;
+    };
+    imported: {
+      source_kind: "share_bundle" | "pack_root";
+      entry: { pack_id: string };
+    };
+  }> {
+    return this.request("/api/nomos/sources/sync", {
+      method: "POST",
+      body: { source_id: sourceId },
+    });
+  }
+
   async installNomosFromSource(projectId: string, sourceDir: string): Promise<{
     project_id: string;
     pack: { pack_id: string };
@@ -233,6 +289,28 @@ export class AgoraBridge {
     return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-from-source`, {
       method: "POST",
       body: { source_dir: sourceDir },
+    });
+  }
+
+  async installNomosFromRegisteredSource(projectId: string, sourceId: string): Promise<{
+    project_id: string;
+    pack: { pack_id: string };
+    installed_root: string;
+    source: {
+      source_id: string;
+      source_kind: "share_bundle" | "pack_root" | "git_working_copy";
+      source_dir: string;
+      last_sync_status: "never" | "ok" | "error";
+      last_catalog_pack_id: string | null;
+    };
+    imported: {
+      source_kind: "share_bundle" | "pack_root";
+      entry: { pack_id: string };
+    };
+  }> {
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/nomos/install-registered-source`, {
+      method: "POST",
+      body: { source_id: sourceId },
     });
   }
 

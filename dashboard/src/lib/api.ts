@@ -298,6 +298,38 @@ const nomosSourceImportSchema = z.object({
 
 export type ApiNomosSourceImportDto = z.infer<typeof nomosSourceImportSchema>;
 
+const registeredNomosSourceEntrySchema = z.object({
+  schema_version: z.literal(1),
+  source_id: z.string().min(1),
+  source_kind: z.enum(['share_bundle', 'pack_root', 'git_working_copy']),
+  source_dir: z.string().min(1),
+  registered_at: z.string().min(1),
+  last_synced_at: z.string().nullable(),
+  last_sync_status: z.enum(['never', 'ok', 'error']),
+  last_sync_error: z.string().nullable(),
+  last_catalog_pack_id: z.string().nullable(),
+  last_imported_source_kind: z.enum(['share_bundle', 'pack_root']).nullable(),
+  last_manifest_path: z.string().nullable(),
+  entry_path: z.string().min(1),
+});
+
+export type ApiRegisteredNomosSourceEntryDto = z.infer<typeof registeredNomosSourceEntrySchema>;
+
+const registeredNomosSourceListSchema = z.object({
+  registry_root: z.string().min(1),
+  total: z.number(),
+  entries: z.array(registeredNomosSourceEntrySchema),
+});
+
+export type ApiRegisteredNomosSourceListDto = z.infer<typeof registeredNomosSourceListSchema>;
+
+const syncRegisteredNomosSourceSchema = z.object({
+  source: registeredNomosSourceEntrySchema,
+  imported: nomosSourceImportSchema,
+});
+
+export type ApiSyncRegisteredNomosSourceDto = z.infer<typeof syncRegisteredNomosSourceSchema>;
+
 const projectNomosInstallFromSourceSchema = z.object({
   project_id: z.string().min(1),
   pack: projectNomosPackSummarySchema,
@@ -309,6 +341,19 @@ const projectNomosInstallFromSourceSchema = z.object({
 });
 
 export type ApiProjectNomosInstallFromSourceDto = z.infer<typeof projectNomosInstallFromSourceSchema>;
+
+const projectNomosInstallFromRegisteredSourceSchema = z.object({
+  project_id: z.string().min(1),
+  pack: projectNomosPackSummarySchema,
+  installed_root: z.string().min(1),
+  installed_profile_path: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()),
+  catalog_entry: publishedNomosCatalogEntrySchema,
+  source: registeredNomosSourceEntrySchema,
+  imported: nomosSourceImportSchema,
+});
+
+export type ApiProjectNomosInstallFromRegisteredSourceDto = z.infer<typeof projectNomosInstallFromRegisteredSourceSchema>;
 
 class ApiError extends Error {
   status: number;
@@ -1117,6 +1162,50 @@ export function importNomosSource(sourceDir: string): Promise<ApiNomosSourceImpo
   );
 }
 
+export function registerNomosSource(
+  sourceId: string,
+  sourceDir: string,
+): Promise<ApiRegisteredNomosSourceEntryDto> {
+  return request<ApiRegisteredNomosSourceEntryDto>(
+    '/nomos/sources/register',
+    registeredNomosSourceEntrySchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: sourceId,
+        source_dir: sourceDir,
+      }),
+    },
+  );
+}
+
+export function listRegisteredNomosSources(): Promise<ApiRegisteredNomosSourceListDto> {
+  return request<ApiRegisteredNomosSourceListDto>(
+    '/nomos/sources',
+    registeredNomosSourceListSchema,
+  );
+}
+
+export function showRegisteredNomosSource(sourceId: string): Promise<ApiRegisteredNomosSourceEntryDto> {
+  return request<ApiRegisteredNomosSourceEntryDto>(
+    `/nomos/sources/${sourceId}`,
+    registeredNomosSourceEntrySchema,
+  );
+}
+
+export function syncRegisteredNomosSource(sourceId: string): Promise<ApiSyncRegisteredNomosSourceDto> {
+  return request<ApiSyncRegisteredNomosSourceDto>(
+    '/nomos/sources/sync',
+    syncRegisteredNomosSourceSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: sourceId,
+      }),
+    },
+  );
+}
+
 export function installProjectNomosFromSource(
   projectId: string,
   sourceDir: string,
@@ -1128,6 +1217,22 @@ export function installProjectNomosFromSource(
       method: 'POST',
       body: JSON.stringify({
         source_dir: sourceDir,
+      }),
+    },
+  );
+}
+
+export function installProjectNomosFromRegisteredSource(
+  projectId: string,
+  sourceId: string,
+): Promise<ApiProjectNomosInstallFromRegisteredSourceDto> {
+  return request<ApiProjectNomosInstallFromRegisteredSourceDto>(
+    `/projects/${encodeURIComponent(projectId)}/nomos/install-registered-source`,
+    projectNomosInstallFromRegisteredSourceSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: sourceId,
       }),
     },
   );
