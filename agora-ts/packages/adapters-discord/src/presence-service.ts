@@ -107,7 +107,7 @@ function createDiscordGatewayWebSocket(
   return new WebSocket(DISCORD_GATEWAY_URL, [], options);
 }
 
-class MinimalDiscordGatewayPresenceClient extends EventEmitter implements DiscordGatewayPresenceClient {
+export class MinimalDiscordGatewayPresenceClient extends EventEmitter implements DiscordGatewayPresenceClient {
   user: DiscordGatewayPresenceClient['user'] = null;
 
   private readonly proxy: {
@@ -277,7 +277,7 @@ class MinimalDiscordGatewayPresenceClient extends EventEmitter implements Discor
   }
 }
 
-function parseGatewayPayload(data: RawData): GatewayPayload {
+export function parseGatewayPayload(data: RawData): GatewayPayload {
   const text = typeof data === 'string'
     ? data
     : Buffer.isBuffer(data)
@@ -293,7 +293,7 @@ function parseGatewayPayload(data: RawData): GatewayPayload {
   return JSON.parse(text) as GatewayPayload;
 }
 
-function extractHeartbeatInterval(payload: unknown) {
+export function extractHeartbeatInterval(payload: unknown) {
   if (
     typeof payload === 'object'
     && payload !== null

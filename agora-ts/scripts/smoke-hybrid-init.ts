@@ -9,7 +9,7 @@ import { createCliProgram } from '../apps/cli/src/index.js';
 import { setupHybridRetrieval } from '../apps/cli/src/hybrid-retrieval-setup.js';
 import { findAgoraProjectRoot, loadAgoraDotEnv } from '../packages/config/src/env.js';
 
-class BufferStream {
+export class BufferStream {
   chunks: string[] = [];
 
   write(chunk: string) {
@@ -21,7 +21,7 @@ class BufferStream {
   }
 }
 
-async function runCli(args: string[], options: { configPath: string; dbPath: string }) {
+export async function runCli(args: string[], options: { configPath: string; dbPath: string }) {
   const stdout = new BufferStream();
   const stderr = new BufferStream();
   const previousExitCode = process.exitCode;
@@ -45,7 +45,7 @@ async function runCli(args: string[], options: { configPath: string; dbPath: str
   return result;
 }
 
-function requireOption(value: string | undefined, name: string) {
+export function requireOption(value: string | undefined, name: string) {
   const trimmed = value?.trim();
   if (!trimmed) {
     throw new Error(`${name} is required`);
@@ -68,7 +68,7 @@ export function resolveHybridSmokeDefaults(startDir: string) {
   };
 }
 
-async function main() {
+export async function runSmokeHybridInitMain() {
   const envDefaults = resolveHybridSmokeDefaults(process.cwd());
   const program = new Command();
   program
@@ -201,5 +201,5 @@ const isDirectExecution = process.argv[1]
   : false;
 
 if (isDirectExecution) {
-  void main();
+  void runSmokeHybridInitMain();
 }

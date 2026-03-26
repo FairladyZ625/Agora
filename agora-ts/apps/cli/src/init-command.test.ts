@@ -220,4 +220,47 @@ describe('runInitCommand', () => {
     });
     expect(setupHybridRetrieval).toHaveBeenCalledTimes(1);
   });
+
+  it('persists discord settings and binds the admin identity when discord is selected', async () => {
+    promptState.selectValue = 'discord';
+    promptState.inputs = [
+      'archon',
+      'secret-pass',
+      'discord-bot-token',
+      '1234567890',
+      'discord-user-42',
+    ];
+    promptState.confirmValues = [true, false];
+    const bootstrapAdmin = vi.fn();
+    const bindIdentity = vi.fn();
+    const assetFixtures = makeBundledAssetFixtures();
+
+    await runInitCommand({
+      humanAccountService: {
+        bootstrapAdmin,
+        bindIdentity,
+      } as never,
+      ...assetFixtures,
+    });
+
+    expect(configState.saved).toMatchObject({
+      im: {
+        provider: 'discord',
+        discord: {
+          bot_token: 'discord-bot-token',
+          default_channel_id: '1234567890',
+          notify_on_task_create: true,
+        },
+      },
+    });
+    expect(bootstrapAdmin).toHaveBeenCalledWith({
+      username: 'archon',
+      password: 'secret-pass',
+    });
+    expect(bindIdentity).toHaveBeenCalledWith({
+      username: 'archon',
+      provider: 'discord',
+      externalUserId: 'discord-user-42',
+    });
+  });
 });

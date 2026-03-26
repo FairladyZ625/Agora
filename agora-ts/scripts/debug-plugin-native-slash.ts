@@ -84,14 +84,14 @@ async function main() {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-function readConfig(path: string): OpenClawConfig | null {
+export function readConfig(path: string): OpenClawConfig | null {
   if (!existsSync(path)) {
     return null;
   }
   return JSON.parse(readFileSync(path, "utf8")) as OpenClawConfig;
 }
 
-function parseBoolean(value: unknown): boolean | null {
+export function parseBoolean(value: unknown): boolean | null {
   if (typeof value === "boolean") {
     return value;
   }
@@ -133,7 +133,7 @@ export function isLikelyRuntimeDrift(versionMismatch: boolean | null, logFreshne
   return Boolean(versionMismatch) || ((staleGatewayLog || staleCommandsLog) && freshErrLog);
 }
 
-function readOpenClawCliVersion() {
+export function readOpenClawCliVersion() {
   const result = spawnSync("openclaw", ["--version"], {
     encoding: "utf8",
   });
@@ -145,7 +145,7 @@ function readOpenClawCliVersion() {
   return match?.[1] ?? null;
 }
 
-async function probeGateway(url: string) {
+export async function probeGateway(url: string) {
   try {
     const response = await fetch(url);
     const text = await response.text();

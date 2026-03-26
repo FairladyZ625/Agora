@@ -16,7 +16,7 @@ export const DEFAULT_SETTLE_TIMEOUT_MS = 10_000;
 export const DEFAULT_MIN_QUIET_MS = 1_500;
 export const DEFAULT_PROCESS_TIMEOUT_MS = 75_000;
 
-async function main() {
+export async function runSmokeDiscordWebQueryMain() {
   const passThroughArgs = process.argv.slice(2);
   const args = buildDiscordWebQueryArgs(passThroughArgs);
   const exitCode = await run("npx", ["tsx", ...args]);
@@ -70,5 +70,5 @@ const isDirectExecution = process.argv[1]
   : false;
 
 if (isDirectExecution) {
-  void main();
+  void runSmokeDiscordWebQueryMain();
 }

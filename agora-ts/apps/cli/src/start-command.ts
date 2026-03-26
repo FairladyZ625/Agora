@@ -42,7 +42,7 @@ function bundledCliRoot(): string {
   return fileURLToPath(new URL('../../../../', import.meta.url));
 }
 
-async function defaultStartCommandRunner(request: StartCommandRunnerRequest): Promise<void> {
+export async function defaultStartCommandRunner(request: StartCommandRunnerRequest): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(request.command, request.args, {
       cwd: request.cwd,
