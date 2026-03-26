@@ -10,6 +10,8 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  assessPublishedNomosCatalogEntryTrust,
+  assessRegisteredNomosSourceTrust,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
   exportNomosShareBundle,
@@ -32,6 +34,7 @@ import {
   prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
+  resolveProjectNomosProvenance,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   resolveInstalledCreateNomosPackTemplateDir,
@@ -1131,8 +1134,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, 'entries: 0');
         return;
       }
-      for (const entry of listed.summaries) {
-        writeLine(stdout, `${entry.pack_id} — ${entry.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target})`);
+      for (const entry of listed.entries) {
+        const trust = assessPublishedNomosCatalogEntryTrust(entry);
+        writeLine(stdout, `${entry.pack_id} — ${entry.pack.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
       }
     });
 
@@ -1157,6 +1161,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `source_repo_path: ${entry.source_repo_path ?? '-'}`);
       writeLine(stdout, `published_note: ${entry.published_note ?? '-'}`);
       writeLine(stdout, `published_root: ${entry.published_root}`);
+      const trust = assessPublishedNomosCatalogEntryTrust(entry);
+      writeLine(stdout, `trust_state: ${trust.trust_state}`);
+      writeLine(stdout, `freshness_state: ${trust.freshness_state}`);
+      writeLine(stdout, `activation_eligibility: ${trust.activation_eligibility}`);
+      writeLine(stdout, `trust_reasons: ${trust.reasons.join(' | ')}`);
     });
 
   nomos
@@ -1288,7 +1297,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       for (const entry of listed.entries) {
-        writeLine(stdout, `${entry.source_id} — ${entry.source_kind} (${entry.last_sync_status})`);
+        const trust = assessRegisteredNomosSourceTrust(entry);
+        writeLine(stdout, `${entry.source_id} — ${entry.source_kind}/${entry.authority_kind} (${entry.last_sync_status}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
       }
     });
 
@@ -1305,8 +1315,16 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
       writeLine(stdout, `${entry.source_id} — ${entry.source_kind}`);
       writeLine(stdout, `source_dir: ${entry.source_dir}`);
+      writeLine(stdout, `authority_kind: ${entry.authority_kind}`);
+      writeLine(stdout, `authority_id: ${entry.authority_id ?? '-'}`);
+      writeLine(stdout, `authority_label: ${entry.authority_label ?? '-'}`);
       writeLine(stdout, `last_sync_status: ${entry.last_sync_status}`);
       writeLine(stdout, `last_catalog_pack_id: ${entry.last_catalog_pack_id ?? '-'}`);
+      const trust = assessRegisteredNomosSourceTrust(entry);
+      writeLine(stdout, `trust_state: ${trust.trust_state}`);
+      writeLine(stdout, `freshness_state: ${trust.freshness_state}`);
+      writeLine(stdout, `activation_eligibility: ${trust.activation_eligibility}`);
+      writeLine(stdout, `trust_reasons: ${trust.reasons.join(' | ')}`);
     });
 
   nomos
@@ -1503,6 +1521,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `valid: ${validation.valid}`);
       writeLine(stdout, `pack_id: ${validation.pack?.pack_id ?? '-'}`);
       writeLine(stdout, `profile_path: ${validation.pack?.profile_path ?? '-'}`);
+      writeLine(stdout, `provenance_kind: ${validation.provenance?.kind ?? '-'}`);
+      writeLine(stdout, `trust_state: ${validation.provenance?.trust_state ?? '-'}`);
+      writeLine(stdout, `freshness_state: ${validation.provenance?.freshness_state ?? '-'}`);
+      writeLine(stdout, `activation_eligibility: ${validation.provenance?.activation_eligibility ?? '-'}`);
       if (validation.issues.length > 0) {
         for (const issue of validation.issues) {
           writeLine(stdout, `${issue.severity}: ${issue.code}: ${issue.message}`);
@@ -1558,6 +1580,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `activation_status: ${review.activation_status}`);
       writeLine(stdout, `can_activate: ${review.can_activate}`);
       writeLine(stdout, `draft_pack: ${review.draft?.pack_id ?? '-'}`);
+      writeLine(stdout, `active_provenance_kind: ${review.active_provenance.kind}`);
+      writeLine(stdout, `active_trust_state: ${review.active_provenance.trust_state}`);
+      writeLine(stdout, `draft_provenance_kind: ${review.draft_provenance?.kind ?? '-'}`);
+      writeLine(stdout, `draft_trust_state: ${review.draft_provenance?.trust_state ?? '-'}`);
       if (review.issues.length > 0) {
         writeLine(stdout, `issues: ${review.issues.join(' | ')}`);
       }
@@ -2346,6 +2372,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
                 draft: validateProjectNomos(options.project, project.metadata ?? null, { target: 'draft' }),
                 active: validateProjectNomos(options.project, project.metadata ?? null, { target: 'active' }),
               },
+              provenance: {
+                draft: resolveProjectNomosProvenance(options.project, project.metadata ?? null, { target: 'draft' }),
+                active: resolveProjectNomosProvenance(options.project, project.metadata ?? null, { target: 'active' }),
+              },
               diff: diffProjectNomos(options.project, project.metadata ?? null, {
                 base: state.activation_status === 'active_project' ? 'active' : 'builtin',
                 candidate: 'draft',
@@ -2359,6 +2389,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
             ...result,
             nomos_runtime: nomosDiagnosis.runtime,
             nomos_validation: nomosDiagnosis.validation,
+            nomos_provenance: nomosDiagnosis.provenance,
             nomos_diff: nomosDiagnosis.diff,
             nomos_drift: nomosDiagnosis.drift,
           }
@@ -2376,6 +2407,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
           writeLine(stdout, `nomos_runtime id=${nomosDiagnosis.runtime.nomos_id} activation=${nomosDiagnosis.runtime.activation_status}`);
           writeLine(stdout, `nomos_doctor_prompt=${nomosDiagnosis.runtime.doctor_project_prompt_path}`);
           writeLine(stdout, `nomos_validation draft_valid=${nomosDiagnosis.validation.draft.valid} active_valid=${nomosDiagnosis.validation.active.valid}`);
+          writeLine(
+            stdout,
+            `nomos_provenance draft=${nomosDiagnosis.provenance.draft?.kind ?? '-'}:${nomosDiagnosis.provenance.draft?.trust_state ?? '-'}:${nomosDiagnosis.provenance.draft?.activation_eligibility ?? '-'} active=${nomosDiagnosis.provenance.active?.kind ?? '-'}:${nomosDiagnosis.provenance.active?.trust_state ?? '-'}:${nomosDiagnosis.provenance.active?.activation_eligibility ?? '-'}`,
+          );
           writeLine(stdout, `nomos_diff changed=${nomosDiagnosis.diff.changed} fields=${nomosDiagnosis.diff.differences.map((entry) => entry.field).join(',') || '-'}`);
           writeLine(stdout, `nomos_drift risk=${nomosDiagnosis.drift.risk_level} blockers=${nomosDiagnosis.drift.activation_blockers} warnings=${nomosDiagnosis.drift.structural_warnings}`);
         }

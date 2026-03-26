@@ -522,6 +522,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos draft review: proj-activate');
     expect(stdout.value).toContain('can_activate: true');
+    expect(stdout.value).toContain('active_provenance_kind: builtin');
+    expect(stdout.value).toContain('draft_provenance_kind: local_authoring');
     expect(stdout.value).toContain('Project Nomos 已激活: project/proj-activate');
     expect(stdout.value).toContain('nomos: project/proj-activate');
     expect(stdout.value).toContain('activation_status: active_project');
@@ -569,6 +571,9 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos validation: proj-validate (draft)');
     expect(stdout.value).toContain('valid: true');
+    expect(stdout.value).toContain('provenance_kind: local_authoring');
+    expect(stdout.value).toContain('trust_state: trusted');
+    expect(stdout.value).toContain('activation_eligibility: allowed');
     expect(stdout.value).toContain('Project Nomos diff: proj-validate');
     expect(stdout.value).toContain('changed: true');
     expect(stdout.value).toContain('pack_id');
@@ -729,6 +734,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Project Nomos pack 已发布到 catalog: proj-cli-publish-source');
     expect(stdout.value).toContain('published_by: archon');
     expect(stdout.value).toContain('project/proj-cli-publish-source — CLI Publish Source Nomos');
+    expect(stdout.value).toContain('trust_state: caution');
+    expect(stdout.value).toContain('freshness_state: current');
+    expect(stdout.value).toContain('activation_eligibility: review_required');
     expect(stdout.value).toContain('published_note: shareable baseline');
     expect(stdout.value).toContain('Catalog Nomos pack 已安装到 draft: proj-cli-publish-target');
   });
@@ -927,7 +935,11 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Nomos source 已注册: team/cli-registered-source');
     expect(stdout.value).toContain('registry_root:');
-    expect(stdout.value).toContain('team/cli-registered-source — pack_root');
+    expect(stdout.value).toContain('team/cli-registered-source — pack_root/manual_local (never) trust=untrusted freshness=unknown activate=blocked');
+    expect(stdout.value).toContain('authority_kind: manual_local');
+    expect(stdout.value).toContain('trust_state: untrusted');
+    expect(stdout.value).toContain('freshness_state: unknown');
+    expect(stdout.value).toContain('activation_eligibility: blocked');
     expect(stdout.value).toContain('Nomos source 已同步: team/cli-registered-source');
     expect(stdout.value).toContain('Registered Nomos source 已同步并安装: proj-cli-registered-target');
   });
@@ -1738,6 +1750,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
     expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_provenance"');
     expect(stdout.value).toContain('"nomos_validation"');
     expect(stdout.value).toContain('"draft"');
     expect(stdout.value).toContain('"nomos_diff"');
