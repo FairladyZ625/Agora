@@ -85,8 +85,14 @@ async function main() {
       '--new-repo',
     ], sourceMachine);
     await runCli([
-      'nomos', 'export-project',
+      'nomos', 'publish-project',
       'proj-registry-source',
+      '--actor', 'archon',
+      '--note', 'registry smoke source',
+    ], sourceMachine);
+    await runCli([
+      'nomos', 'export-bundle',
+      '--pack-id', 'project/proj-registry-source',
       '--output-dir', sharedSourceDir,
     ], sourceMachine);
 
@@ -142,7 +148,19 @@ async function main() {
       '--json',
     ], targetMachine);
 
-    updatePackVersion(join(sharedSourceDir, 'profile.toml'), '0.2.0');
+    updatePackVersion(join(sourceMachine.agoraDir, 'projects', 'proj-registry-source', 'nomos', 'project-nomos', 'profile.toml'), '0.2.0');
+    rmSync(sharedSourceDir, { recursive: true, force: true });
+    await runCli([
+      'nomos', 'publish-project',
+      'proj-registry-source',
+      '--actor', 'archon',
+      '--note', 'registry smoke source v2',
+    ], sourceMachine);
+    await runCli([
+      'nomos', 'export-bundle',
+      '--pack-id', 'project/proj-registry-source',
+      '--output-dir', sharedSourceDir,
+    ], sourceMachine);
 
     const syncedV2 = await runCli([
       'nomos', 'sync-registered-source',
@@ -167,6 +185,27 @@ async function main() {
       'proj-registry-target',
       '--json',
     ], targetMachine);
+    const sourceEntryPath = join(
+      targetMachine.agoraDir,
+      'nomos',
+      'sources',
+      'entries',
+      'team',
+      'registry-demo',
+      'source-entry.json',
+    );
+    const agedEntry = JSON.parse(readFileSync(sourceEntryPath, 'utf8')) as Record<string, unknown>;
+    agedEntry.last_synced_at = '2026-03-01T00:00:00.000Z';
+    writeFileSync(sourceEntryPath, JSON.stringify(agedEntry, null, 2), 'utf8');
+    const shownStale = await runCli([
+      'nomos', 'show-source',
+      'team/registry-demo',
+      '--json',
+    ], targetMachine);
+    const shownStaleHuman = await runCli([
+      'nomos', 'show-source',
+      'team/registry-demo',
+    ], targetMachine);
 
     const registeredPayload = JSON.parse(registered.stdout) as { source_id?: string; source_kind?: string };
     const listedPayload = JSON.parse(listed.stdout) as { total?: number; entries?: Array<{ source_id?: string; last_sync_status?: string }> };
@@ -186,8 +225,14 @@ async function main() {
     const installedV2Payload = JSON.parse(installedV2.stdout) as { pack?: { pack_id?: string; version?: string } };
     const diffedPayload = JSON.parse(diffed.stdout) as { changed?: boolean; candidate_pack?: { version?: string }; differences?: Array<{ field?: string }> };
     const reviewedV2Payload = JSON.parse(reviewedV2.stdout) as { can_activate?: boolean; draft?: { version?: string } };
+    const shownStalePayload = JSON.parse(shownStale.stdout) as {
+      source_id?: string;
+      source_kind?: string;
+      last_sync_status?: string;
+      last_synced_at?: string;
+    };
 
-    if (registeredPayload.source_id !== 'team/registry-demo' || registeredPayload.source_kind !== 'pack_root') {
+    if (registeredPayload.source_id !== 'team/registry-demo' || registeredPayload.source_kind !== 'share_bundle') {
       throw new Error(`unexpected register payload: ${registered.stdout}`);
     }
     if (listedPayload.total !== 1 || !listedPayload.entries?.some((entry) => entry.source_id === 'team/registry-demo')) {
@@ -228,6 +273,16 @@ async function main() {
     if (reviewedV2Payload.can_activate !== true || reviewedV2Payload.draft?.version !== '0.2.0') {
       throw new Error(`unexpected second review payload: ${reviewedV2.stdout}`);
     }
+    if (shownStalePayload.source_id !== 'team/registry-demo'
+      || shownStalePayload.source_kind !== 'share_bundle'
+      || shownStalePayload.last_sync_status !== 'ok'
+      || shownStalePayload.last_synced_at !== '2026-03-01T00:00:00.000Z') {
+      throw new Error(`unexpected stale source payload: ${shownStale.stdout}`);
+    }
+    if (!shownStaleHuman.stdout.includes('freshness_state: stale')
+      || !shownStaleHuman.stdout.includes('activation_eligibility: blocked')) {
+      throw new Error(`stale source was not surfaced as blocked: ${shownStaleHuman.stdout}`);
+    }
 
     console.log(JSON.stringify({
       root,
@@ -238,6 +293,7 @@ async function main() {
       active_version_before_update: validatedActiveV1Payload.pack?.version ?? null,
       draft_version_after_update: reviewedV2Payload.draft?.version ?? null,
       diff_changed: diffedPayload.changed ?? false,
+      stale_source_last_synced_at: shownStalePayload.last_synced_at ?? null,
     }, null, 2));
   } finally {
     if (previousHome === undefined) {

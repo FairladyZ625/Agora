@@ -984,6 +984,25 @@ describe('nomos pack model freeze', () => {
     expect(caution.activation_eligibility).toBe('review_required');
     expect(stale.freshness_state).toBe('stale');
     expect(stale.activation_eligibility).toBe('blocked');
+
+    const aged = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: 'team/share-aged',
+      source_kind: 'share_bundle',
+      source_dir: '/tmp/share-aged',
+      registered_at: '2026-03-26T00:00:00.000Z',
+      last_synced_at: '2026-03-01T00:00:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-share-aged',
+      last_imported_source_kind: 'share_bundle',
+      last_manifest_path: '/catalog/project/proj-share-aged/catalog-entry.json',
+      entry_path: '/registry/team/share-aged/source-entry.json',
+    });
+    expect(aged.trust_state).toBe('caution');
+    expect(aged.freshness_state).toBe('stale');
+    expect(aged.activation_eligibility).toBe('blocked');
+    expect(aged.reasons).toContain('last successful sync is older than the freshness threshold');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {

@@ -357,6 +357,8 @@ export interface RegisteredNomosSourceTrustReport extends NomosProvenanceAssessm
   last_catalog_pack_id: string | null;
 }
 
+export const NOMOS_REGISTERED_SOURCE_STALE_AFTER_MS = 1000 * 60 * 60 * 24 * 7;
+
 export interface PublishProjectNomosPackOptions extends ResolveAgoraProjectStateOptions {
   target?: 'draft' | 'active';
   packId?: string | null;
@@ -2291,6 +2293,17 @@ export function assessRegisteredNomosSourceTrust(
       freshnessState = 'unknown';
       reasons.push('source has never been synced');
       break;
+  }
+
+  if (entry.last_sync_status === 'ok') {
+    const syncedAtMs = entry.last_synced_at ? Date.parse(entry.last_synced_at) : Number.NaN;
+    if (!Number.isFinite(syncedAtMs)) {
+      freshnessState = 'stale';
+      reasons.push('last sync timestamp is missing or invalid');
+    } else if (Date.now() - syncedAtMs > NOMOS_REGISTERED_SOURCE_STALE_AFTER_MS) {
+      freshnessState = 'stale';
+      reasons.push('last successful sync is older than the freshness threshold');
+    }
   }
 
   if (entry.last_sync_status === 'ok' && !entry.last_catalog_pack_id) {
