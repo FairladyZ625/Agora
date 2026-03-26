@@ -549,8 +549,13 @@ describe('dashboard routes', () => {
     await taskService.drainBackgroundOperations();
     taskService.cancelTask('OC-ROUTE-ARCHIVE-CLEANUP', { reason: 'archive synced cleanup regression' });
 
-    const archiveJob = dashboardQueries.listArchiveJobs({ taskId: 'OC-ROUTE-ARCHIVE-CLEANUP' })[0];
-    expect(archiveJob?.status).toBe('pending');
+    const reviewPendingJob = dashboardQueries.listArchiveJobs({ taskId: 'OC-ROUTE-ARCHIVE-CLEANUP' })[0];
+    expect(reviewPendingJob?.status).toBe('review_pending');
+    const archiveJob = dashboardQueries.approveArchiveJob(reviewPendingJob!.id, {
+      approver_id: 'lizeyu',
+      comment: 'route cleanup test approval',
+    });
+    expect(archiveJob.status).toBe('pending');
 
     const app = buildApp({ taskService, dashboardQueryService: dashboardQueries, taskContextBindingService: bindings });
     const markArchiveSynced = await app.inject({
