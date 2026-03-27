@@ -1155,9 +1155,12 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(projectStateDir);
     const projectService = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     projectService.createProject({
@@ -1207,10 +1210,14 @@ describe('task service', () => {
     const taskHarvestDraftPath = join(workspacePath, '07-outputs', 'project-harvest-draft.md');
     const projectRecapPath = join(brainPackDir, 'projects', 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
     const archiveProjectionPath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'archive', 'OC-PROJECT-RECAP.md');
+    const projectStateArchivePath = join(projectStateDir, 'proj-recap', 'archive', 'OC-PROJECT-RECAP.md');
+    const projectStateTasksIndexPath = join(projectStateDir, 'proj-recap', 'tasks', 'index.md');
+    const projectStateArchiveIndexPath = join(projectStateDir, 'proj-recap', 'archive', 'index.md');
 
     expect(done.state).toBe('done');
     expect(existsSync(activeProjectionPath)).toBe(false);
     expect(existsSync(archiveProjectionPath)).toBe(true);
+    expect(existsSync(projectStateArchivePath)).toBe(true);
     expect(existsSync(taskRecapPath)).toBe(true);
     expect(existsSync(taskHarvestDraftPath)).toBe(true);
     expect(existsSync(projectRecapPath)).toBe(true);
@@ -1227,10 +1234,15 @@ describe('task service', () => {
     expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('Projection: archive');
     expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../../recaps/OC-PROJECT-RECAP.md]]');
     expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../OC-PROJECT-RECAP/07-outputs/project-harvest-draft.md]]');
+    expect(readFileSync(projectStateArchivePath, 'utf8')).toContain('doc_type: project_state_task_projection');
+    expect(readFileSync(projectStateArchivePath, 'utf8')).toContain('Brain Pack Projection Path:');
+    expect(readFileSync(projectStateArchivePath, 'utf8')).toContain('Runtime Workspace Path:');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain(
       '[[tasks/archive/OC-PROJECT-RECAP.md]] | Project recap task | state=done',
     );
+    expect(readFileSync(projectStateTasksIndexPath, 'utf8')).toContain('Active Task Mirrors: proj-recap');
+    expect(readFileSync(projectStateArchiveIndexPath, 'utf8')).toContain('[[OC-PROJECT-RECAP.md]] | Project recap task | state=done');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain(
       'doc=[[tasks/archive/OC-PROJECT-RECAP.md]]',

@@ -60,7 +60,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveAgoraProjectStateLayout, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -369,6 +369,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     }),
     createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
       brainPackRoot: context.brainPackDir,
+      projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,

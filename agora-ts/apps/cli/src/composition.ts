@@ -5,6 +5,7 @@ import {
   hasInstalledBrainPack,
   loadAgoraConfig,
   normalizePathLikeEnvValue,
+  resolveAgoraProjectStateLayout,
   refineProjectNomosDraftFromSpec,
   resolveProjectNomosRuntimePaths,
   resolveProjectNomosState,
@@ -281,6 +282,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
     createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
       brainPackRoot: context.brainPackDir,
+      projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
