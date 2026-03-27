@@ -1194,13 +1194,23 @@ describe('task service', () => {
       },
     });
 
+    const activeProjectionPath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'active', 'OC-PROJECT-RECAP.md');
+    expect(existsSync(activeProjectionPath)).toBe(true);
+    expect(readFileSync(activeProjectionPath, 'utf8')).toContain('Projection: active');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain(
+      '[[tasks/active/OC-PROJECT-RECAP.md]] | Project recap task | state=active',
+    );
+
     const done = service.advanceTask('OC-PROJECT-RECAP', { callerId: 'archon' });
     const workspacePath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'OC-PROJECT-RECAP');
     const taskRecapPath = join(workspacePath, '07-outputs', 'task-close-recap.md');
     const taskHarvestDraftPath = join(workspacePath, '07-outputs', 'project-harvest-draft.md');
     const projectRecapPath = join(brainPackDir, 'projects', 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
+    const archiveProjectionPath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'archive', 'OC-PROJECT-RECAP.md');
 
     expect(done.state).toBe('done');
+    expect(existsSync(activeProjectionPath)).toBe(false);
+    expect(existsSync(archiveProjectionPath)).toBe(true);
     expect(existsSync(taskRecapPath)).toBe(true);
     expect(existsSync(taskHarvestDraftPath)).toBe(true);
     expect(existsSync(projectRecapPath)).toBe(true);
@@ -1214,8 +1224,17 @@ describe('task service', () => {
     expect(readFileSync(taskHarvestDraftPath, 'utf8')).toContain('事实候选');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('Projection: archive');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../../recaps/OC-PROJECT-RECAP.md]]');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../OC-PROJECT-RECAP/07-outputs/project-harvest-draft.md]]');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain(
+      '[[tasks/archive/OC-PROJECT-RECAP.md]] | Project recap task | state=done',
+    );
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');
+    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain(
+      'doc=[[tasks/archive/OC-PROJECT-RECAP.md]]',
+    );
   });
 
   it('promotes project-bound todos into tasks that keep the same project_id', () => {
