@@ -637,6 +637,7 @@ describe('task routes', () => {
       dashboardAuth: {
         enabled: true,
         method: 'session',
+        allowedUsers: [],
         sessionTtlHours: 24,
       },
     });

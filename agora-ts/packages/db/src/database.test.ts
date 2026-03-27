@@ -75,6 +75,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '019_runtime_session_reconcile_state.sql',
       '020_task_skill_policy.sql',
       '021_project_brain_index_jobs.sql',
+      '022_task_state_normalization.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -121,6 +122,43 @@ describe('agora-ts sqlite bootstrap', () => {
 
     expect(() => runMigrations(db)).not.toThrow();
     expect(listAppliedMigrations(db)).toContain('020_task_skill_policy.sql');
+  });
+
+  it('normalizes legacy task states when replaying the task state migration', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+
+    const cases = [
+      { id: 'OC-LEGACY-CLOSED', state: 'closed', expected: 'cancelled' },
+      { id: 'OC-LEGACY-COMPLETED', state: 'completed', expected: 'done' },
+      { id: 'OC-LEGACY-INPROGRESS', state: 'in_progress', expected: 'active' },
+      { id: 'OC-LEGACY-GATE', state: 'gate_waiting', expected: 'active' },
+      { id: 'OC-LEGACY-PENDING', state: 'pending', expected: 'created' },
+    ] as const;
+
+    for (const item of cases) {
+      tasks.insertTask({
+        id: item.id,
+        title: item.id,
+        description: '',
+        type: 'coding',
+        priority: 'normal',
+        creator: 'archon',
+        team: { members: [] },
+        workflow: { stages: [] },
+      });
+      db.prepare('UPDATE tasks SET state = ? WHERE id = ?').run(item.state, item.id);
+    }
+
+    db.prepare("DELETE FROM schema_migrations WHERE name = '022_task_state_normalization.sql'").run();
+
+    expect(() => runMigrations(db)).not.toThrow();
+
+    for (const item of cases) {
+      expect(tasks.getTask(item.id)?.state).toBe(item.expected);
+    }
+    expect(listAppliedMigrations(db)).toContain('022_task_state_normalization.sql');
   });
 
   it('can persist role definitions inside the single sqlite database', () => {

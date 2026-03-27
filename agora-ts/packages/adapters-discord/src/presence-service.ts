@@ -15,6 +15,7 @@ export interface DiscordGatewayPresenceServiceOptions {
   enabled?: boolean;
   status?: DiscordGatewayPresenceStatus;
   activityName?: string | null;
+  reconnectDelayMs?: number;
   proxyBootstrap?: () => {
     enabled: boolean;
     httpsProxy: string | null;
@@ -123,6 +124,7 @@ export class MinimalDiscordGatewayPresenceClient extends EventEmitter implements
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private sequence: number | null = null;
   private ready = false;
+  private destroying = false;
 
   constructor(options: {
     proxy: {
@@ -143,6 +145,7 @@ export class MinimalDiscordGatewayPresenceClient extends EventEmitter implements
 
   login(token: string): Promise<string> {
     this.destroy();
+    this.destroying = false;
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -177,11 +180,18 @@ export class MinimalDiscordGatewayPresenceClient extends EventEmitter implements
       socket.on('close', (code) => {
         this.clearHeartbeat();
         this.socket = null;
+        const wasReady = this.ready;
         this.ready = false;
         this.user = null;
+        const intentional = this.destroying;
+        this.destroying = false;
         if (!settled) {
           settled = true;
           reject(new Error(`discord gateway closed before ready (${code})`));
+          return;
+        }
+        if (wasReady && !intentional) {
+          this.emit('error', new Error(`discord gateway closed after presence became ready (${code})`));
         }
       });
     });
@@ -192,6 +202,7 @@ export class MinimalDiscordGatewayPresenceClient extends EventEmitter implements
     this.ready = false;
     this.user = null;
     if (this.socket) {
+      this.destroying = true;
       try {
         this.socket.close();
       } finally {
@@ -229,9 +240,9 @@ export class MinimalDiscordGatewayPresenceClient extends EventEmitter implements
         this.sendHeartbeat();
         break;
       case 7:
-        throw new Error('discord gateway requested reconnect before presence became ready');
+        throw new Error(`discord gateway requested reconnect ${this.ready ? 'after' : 'before'} presence became ready`);
       case 9:
-        throw new Error('discord gateway invalidated session before presence became ready');
+        throw new Error(`discord gateway invalidated session ${this.ready ? 'after' : 'before'} presence became ready`);
       case 0:
         if (payload.t === 'READY') {
           this.ready = true;
@@ -323,6 +334,8 @@ export class DiscordGatewayPresenceService {
   private readonly clientFactory: NonNullable<DiscordGatewayPresenceServiceOptions['clientFactory']>;
   private client: DiscordGatewayPresenceClient | null = null;
   private readonly logger: NonNullable<DiscordGatewayPresenceServiceOptions['logger']>;
+  private readonly reconnectDelayMs: number;
+  private reconnectTimer: NodeJS.Timeout | null = null;
   private started = false;
 
   constructor(options: DiscordGatewayPresenceServiceOptions) {
@@ -330,6 +343,7 @@ export class DiscordGatewayPresenceService {
     this.enabled = options.enabled ?? true;
     this.status = options.status ?? 'online';
     this.activityName = options.activityName?.trim() ? options.activityName.trim() : 'Agora';
+    this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
     this.proxyBootstrap = options.proxyBootstrap ?? (() => {
       const resolved = resolveDiscordProxyEnvironment();
       return {
@@ -347,7 +361,10 @@ export class DiscordGatewayPresenceService {
       return;
     }
     this.started = true;
+    this.connect();
+  }
 
+  private connect() {
     const proxy = this.proxyBootstrap();
     if (proxy.enabled) {
       const proxyTarget = sanitizeProxyForLogs(proxy.httpsProxy ?? proxy.httpProxy);
@@ -367,6 +384,9 @@ export class DiscordGatewayPresenceService {
     const client = this.client;
 
     client.once('ready', () => {
+      if (this.client !== client) {
+        return;
+      }
       if (!client.user) {
         this.logger.warn?.('[agora] discord presence ready without user');
         return;
@@ -388,12 +408,19 @@ export class DiscordGatewayPresenceService {
     });
 
     client.on('error', (error) => {
+      if (this.client !== client || !this.started) {
+        return;
+      }
       this.logger.error?.('[agora] discord gateway presence client error', error);
+      this.scheduleReconnect(client);
     });
 
     void client.login(this.botToken).catch((error) => {
-      this.started = false;
+      if (this.client !== client || !this.started) {
+        return;
+      }
       this.logger.error?.('[agora] discord gateway presence login failed', error);
+      this.scheduleReconnect(client);
     });
   }
 
@@ -402,7 +429,28 @@ export class DiscordGatewayPresenceService {
       return;
     }
     this.started = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.client?.destroy();
     this.client = null;
+  }
+
+  private scheduleReconnect(client: DiscordGatewayPresenceClient) {
+    if (!this.started || this.client !== client || this.reconnectTimer) {
+      return;
+    }
+    this.client?.destroy();
+    this.client = null;
+    this.logger.warn?.(`[agora] discord gateway presence reconnect scheduled in ${this.reconnectDelayMs}ms`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.started) {
+        return;
+      }
+      this.connect();
+    }, this.reconnectDelayMs);
+    this.reconnectTimer.unref?.();
   }
 }

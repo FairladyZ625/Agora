@@ -90,6 +90,7 @@ export function runMigrations(db: AgoraDatabase): void {
     '019_runtime_session_reconcile_state.sql',
     '020_task_skill_policy.sql',
     '021_project_brain_index_jobs.sql',
+    '022_task_state_normalization.sql',
   ];
   const migrationsDir = resolveMigrationsDir();
 

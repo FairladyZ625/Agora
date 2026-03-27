@@ -284,4 +284,90 @@ describe('LiveRegressionActor', () => {
       }),
     ]));
   });
+
+  it('routes approve_current through the inbound action gateway for archon_review stages', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-4',
+    });
+    const bindings = new TaskContextBindingService(db);
+    const conversations = new TaskConversationService(db, {
+      now: () => new Date('2026-03-21T11:20:01.000Z'),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-4',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor archon review task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'archon review progression through inbound gateway',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'archon_review' },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T11:20:00.000Z'),
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-4' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Approve the current archon review stage',
+      message: 'Approve the current review stage if the regression contract allows it.',
+      taskAction: {
+        kind: 'approve_current',
+        actor_ref: 'archon',
+        comment: 'regression approval',
+      },
+    });
+
+    expect(result.currentStage).toBe('execute');
+    expect(result.state).toBe('active');
+    expect(conversations.listByTask('OC-REG-ACTOR-4')).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        direction: 'outbound',
+        metadata: expect.objectContaining({
+          regression_goal: 'Approve the current archon review stage',
+          task_action_kind: 'approve_current',
+          task_action_actor: 'archon',
+        }),
+      }),
+    ]));
+  });
 });

@@ -85,6 +85,25 @@
 - 每个阶段前读取 `task_plan.md`，每个阶段后更新状态。
 - 研究发现写入 `findings.md`，验证结果写入 `progress.md`。
 
+### 默认工作树规则（Worktree First）
+
+- 所有非平凡代码实现任务，默认先开独立 git worktree，再开始写代码。
+- 以下场景一律视为“应开 worktree”：
+  - 跨多个子项目或多文件的实现/重构
+  - 会持续多轮迭代的任务
+  - regression / smoke / harness / workflow 语义改动
+  - 当前主工作区已经有未提交改动，且本轮任务不是专门在这些改动上继续
+- 只有以下情况可不新开 worktree：
+  - 纯只读分析
+  - 纯文档小修
+  - 用户明确要求直接在当前工作区修改
+  - 当前任务就是接着本工作区已存在的同一批改动继续收尾
+- 开始实现前，必须在 `task_plan.md` 或 `progress.md` 记录：
+  - 使用的 worktree 路径
+  - 对应分支名
+  - 若未开 worktree，必须写明原因
+- 若执行过程中发现当前工作区是脏的，且脏改动与本轮任务无关，应暂停直接编码，先切到新 worktree，再继续。
+
 ### SSoT 规则
 
 - `docs/Agora-实施排期-Agora-TS.md` 是 `agora-ts/` 的实施单一入口。

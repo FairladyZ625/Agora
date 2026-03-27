@@ -16,6 +16,16 @@ function makeTempDir() {
   return dir;
 }
 
+function configureRuntimeEnv(dir: string) {
+  const agoraHomeDir = join(dir, 'agora-home');
+  process.env.AGORA_HOME_DIR = agoraHomeDir;
+  process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+  return {
+    agoraHomeDir,
+    brainPackRoot: process.env.AGORA_BRAIN_PACK_ROOT!,
+  };
+}
+
 function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
   vi.doMock('node:fs', () => ({
     existsSync: vi.fn(existsSyncImpl),
@@ -133,9 +143,9 @@ afterEach(() => {
 describe('server runtime', () => {
   it('loads config and wires task/dashboard services', () => {
     const dir = makeTempDir();
+    const env = configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -158,15 +168,15 @@ describe('server runtime', () => {
     expect(runtime.taskConversationService).toBeDefined();
     expect(Reflect.get(runtime.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(Reflect.get(runtime.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
-    expect(readFileSync(join(process.env.AGORA_BRAIN_PACK_ROOT!, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
+    expect(readFileSync(join(env.brainPackRoot, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     runtime.db.close();
   });
 
   it('starts discord presence service when provided by composition', () => {
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -200,9 +210,9 @@ describe('server runtime', () => {
   it('disposes runtime-owned services on shutdown', () => {
     vi.useFakeTimers();
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -256,9 +266,9 @@ describe('server runtime', () => {
 
   it('runs startup recovery on boot when configured', () => {
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -331,9 +341,9 @@ describe('server runtime', () => {
   it('runs schedulerized observation ticks on the configured interval', () => {
     vi.useFakeTimers();
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -399,9 +409,9 @@ describe('server runtime', () => {
   it('drains project brain index jobs during observation ticks when an index worker is provided', () => {
     vi.useFakeTimers();
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -456,9 +466,9 @@ describe('server runtime', () => {
 
   it('accepts composition factory overrides for legacy runtime dependencies', () => {
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -487,9 +497,9 @@ describe('server runtime', () => {
 
   it('wires acp craftsman ports into server composition when server mode is acp', () => {
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     process.env.AGORA_CRAFTSMAN_SERVER_MODE = 'acp';
     writeFileSync(
       configPath,
@@ -538,13 +548,11 @@ describe('server runtime', () => {
 
   it('self-heals bundled bootstrap skill into runtime-visible skill roots on startup', () => {
     const dir = makeTempDir();
+    const env = configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    const agoraHomeDir = join(dir, 'agora-home');
     const agentsSkillsDir = join(dir, 'agents-skills');
     const codexSkillsDir = join(dir, 'codex-skills');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
-    process.env.AGORA_HOME_DIR = agoraHomeDir;
     process.env.AGORA_SKILL_TARGET_DIRS = [agentsSkillsDir, codexSkillsDir].join(',');
     writeFileSync(
       configPath,
@@ -555,7 +563,7 @@ describe('server runtime', () => {
 
     const runtime = createServerRuntime({ configPath });
 
-    expect(readFileSync(join(agoraHomeDir, 'skills', 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
+    expect(readFileSync(join(env.agoraHomeDir, 'skills', 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     expect(readFileSync(join(agentsSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     expect(readFileSync(join(codexSkillsDir, 'agora-bootstrap', 'SKILL.md'), 'utf8')).toContain('agora-bootstrap');
     runtime.db.close();
@@ -563,9 +571,9 @@ describe('server runtime', () => {
 
   it('uses stable default archive outbox and receipt directories when env paths are unset', () => {
     const dir = makeTempDir();
+    configureRuntimeEnv(dir);
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
-    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     writeFileSync(
       configPath,
       JSON.stringify({
@@ -640,6 +648,7 @@ describe('server runtime', () => {
     mockRuntimeModules((path) => path === '/tmp/custom-dashboard-dist');
 
     process.env.AGORA_DASHBOARD_DIR = '/tmp/custom-dashboard-dist';
+    process.env.AGORA_HOME_DIR = '/tmp/agora-home';
     const { createServerRuntime: createServerRuntimeWithMocks } = await import('./runtime.js');
     const runtime = createServerRuntimeWithMocks({ configPath: '/tmp/agora.json' });
 
@@ -649,6 +658,7 @@ describe('server runtime', () => {
     vi.resetModules();
     mockRuntimeModules(() => false);
 
+    process.env.AGORA_HOME_DIR = '/tmp/agora-home';
     const { createServerRuntime: createServerRuntimeWithoutDist } = await import('./runtime.js');
     const noDistRuntime = createServerRuntimeWithoutDist({ configPath: '/tmp/agora.json' });
 
