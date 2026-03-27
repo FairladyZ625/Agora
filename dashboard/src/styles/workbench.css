@@ -724,6 +724,33 @@
   flex: 1;
 }
 
+.task-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-project-group + .task-project-group {
+  margin-top: 12px;
+}
+
+.task-project-group__header,
+.task-project-group__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-project-group__header {
+  padding: 0 4px;
+}
+
+.task-project-group__title {
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .task-queue-row {
   align-items: center;
   gap: var(--workbench-section-gap);
