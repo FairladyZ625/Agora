@@ -114,6 +114,9 @@ describe('project bootstrap service', () => {
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'knowledge', 'open-questions', 'bootstrap-open-questions.md'), 'utf8')).toContain(
       'Bootstrap Open Questions',
     );
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'fact', 'bootstrap-current-surface')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'decision', 'bootstrap-known-constraints')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'open_question', 'bootstrap-open-questions')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
     expect(existsSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-HARNESS-BOOTSTRAP', '00-bootstrap.md'))).toBe(true);
   });
 });

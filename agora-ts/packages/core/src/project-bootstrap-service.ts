@@ -31,9 +31,7 @@ export class ProjectBootstrapService {
 
   createHarnessBootstrapTask(input: CreateProjectHarnessBootstrapTaskInput): StoredTask {
     this.projectService.requireProject(input.project_id);
-    this.seedNomosBootstrapScaffolds(input.project_id);
-
-    return this.taskService.createTask({
+    const task = this.taskService.createTask({
       title: `Create Project Nomos: ${input.project_name}`,
       type: 'coding',
       creator: input.creator?.trim() || 'archon',
@@ -49,9 +47,11 @@ export class ProjectBootstrapService {
         },
       },
     });
+    this.seedNomosBootstrapScaffolds(input.project_id, task.id);
+    return task;
   }
 
-  private seedNomosBootstrapScaffolds(projectId: string) {
+  private seedNomosBootstrapScaffolds(projectId: string, sourceTaskId: string) {
     const documents = [
       {
         kind: 'fact' as const,
@@ -97,6 +97,7 @@ export class ProjectBootstrapService {
           title: document.title,
           summary: document.summary,
           body: document.body,
+          source_task_ids: [sourceTaskId],
         });
       } catch (error) {
         if (!(error instanceof Error) || error.message !== 'Project knowledge port is not configured') {
