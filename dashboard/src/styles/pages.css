@@ -1908,6 +1908,39 @@
   max-width: 16ch;
 }
 
+.board-toolbar__project-select {
+  min-width: 220px;
+}
+
+.board-task-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board-task-group + .board-task-group {
+  margin-top: 8px;
+}
+
+.board-task-group__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.board-task-group__title {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.board-task-group__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .board-task-card {
   display: flex;
   flex-direction: column;

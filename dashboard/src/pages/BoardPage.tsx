@@ -1,19 +1,38 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useTaskStore } from '@/stores/taskStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { StateBadge, PriorityBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { useBoardPageCopy } from '@/lib/dashboardCopy';
+import {
+  ALL_PROJECTS_FILTER_VALUE,
+  buildTaskProjectGroups,
+  filterTasksByProject,
+} from '@/lib/taskProjectPresentation';
 
 export function BoardPage() {
   const boardCopy = useBoardPageCopy();
   const tasks = useTaskStore((state) => state.tasks);
   const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
+  const projects = useProjectStore((state) => state.projects);
+  const fetchProjects = useProjectStore((state) => state.fetchProjects);
+  const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS_FILTER_VALUE);
 
   useEffect(() => {
     void fetchTasks();
   }, [fetchTasks]);
+
+  useEffect(() => {
+    void fetchProjects();
+  }, [fetchProjects]);
+
+  const visibleTasks = useMemo(() => filterTasksByProject(tasks, projectFilter), [projectFilter, tasks]);
+  const availableProjectGroups = useMemo(
+    () => buildTaskProjectGroups(tasks, projects, boardCopy.unassignedProjectLabel),
+    [boardCopy.unassignedProjectLabel, projects, tasks],
+  );
 
   const columns = useMemo(
     () => {
@@ -27,13 +46,16 @@ export function BoardPage() {
 
       return boardColumns.map((column) => ({
         ...column,
-        tasks:
+        groups: buildTaskProjectGroups(
           column.state === 'interrupted'
-            ? tasks.filter((task) => ['paused', 'blocked', 'cancelled'].includes(task.state))
-            : tasks.filter((task) => task.state === column.state),
+            ? visibleTasks.filter((task) => ['paused', 'blocked', 'cancelled'].includes(task.state))
+            : visibleTasks.filter((task) => task.state === column.state),
+          projects,
+          boardCopy.unassignedProjectLabel,
+        ),
       }));
     },
-    [boardCopy, tasks],
+    [boardCopy, projects, visibleTasks],
   );
   const reviewColumn = columns.find((column) => column.state === 'gate_waiting');
 
@@ -51,10 +73,26 @@ export function BoardPage() {
               {columns.slice(0, 3).map((column) => (
                 <div key={column.state} className="inline-stat">
                   <span className="inline-stat__label">{column.label}</span>
-                  <span className="inline-stat__value">{column.tasks.length}</span>
+                  <span className="inline-stat__value">{column.groups.reduce((sum, group) => sum + group.tasks.length, 0)}</span>
                 </div>
               ))}
             </div>
+            <label className="space-y-2">
+              <span className="field-label">{boardCopy.projectFilterLabel}</span>
+              <select
+                aria-label={boardCopy.projectFilterLabel}
+                className="input-shell board-toolbar__project-select"
+                value={projectFilter}
+                onChange={(event) => setProjectFilter(event.target.value)}
+              >
+                <option value={ALL_PROJECTS_FILTER_VALUE}>{boardCopy.allProjectsOption}</option>
+                {availableProjectGroups.map((group) => (
+                  <option key={group.key} value={group.key}>
+                    {group.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <Link to="/tasks/new" className="button-primary">
               {boardCopy.createAction}
             </Link>
@@ -82,31 +120,43 @@ export function BoardPage() {
                   <div className="board-grid-column__titleblock">
                     <h4 className="section-title">{column.label}</h4>
                   </div>
-                  <span className="status-pill status-pill--neutral">{column.tasks.length}</span>
+                  <span className="status-pill status-pill--neutral">{column.groups.reduce((sum, group) => sum + group.tasks.length, 0)}</span>
                 </div>
 
                 <div className="board-grid-column__stack">
-                  {column.tasks.map((task) => (
-                    <Link key={task.id} to={`/tasks/${task.id}`} className="decision-card board-task-card">
-                      <div className="board-task-card__meta">
-                        <span className="type-mono-sm board-task-card__id">{task.id}</span>
-                        <div className="board-task-card__badges">
-                          <StateBadge state={task.state} />
-                          <PriorityBadge priority={task.priority} />
-                        </div>
+                  {column.groups.map((group) => (
+                    <section key={group.key} className="board-task-group">
+                      <div className="board-task-group__header">
+                        <span className="field-label">{boardCopy.projectFilterLabel}</span>
+                        <strong className="board-task-group__title">{group.label}</strong>
                       </div>
-                      <h5 className="board-task-card__title">{task.title}</h5>
-                      <div className="board-task-card__support">
-                        <span>{task.workflowLabel}</span>
-                        <span>{task.teamLabel}</span>
+
+                      <div className="board-task-group__stack">
+                        {group.tasks.map((task) => (
+                          <Link key={task.id} to={`/tasks/${task.id}`} className="decision-card board-task-card">
+                            <div className="board-task-card__meta">
+                              <span className="type-mono-sm board-task-card__id">{task.id}</span>
+                              <div className="board-task-card__badges">
+                                <StateBadge state={task.state} />
+                                <PriorityBadge priority={task.priority} />
+                              </div>
+                            </div>
+                            <h5 className="board-task-card__title">{task.title}</h5>
+                            <div className="board-task-card__support">
+                              <span>{group.label}</span>
+                              <span>{task.workflowLabel}</span>
+                              <span>{task.teamLabel}</span>
+                            </div>
+                            <div className="board-task-card__footer">
+                              <span className="board-task-card__timestamp">{formatRelativeTimestamp(task.updated_at)}</span>
+                            </div>
+                          </Link>
+                        ))}
                       </div>
-                      <div className="board-task-card__footer">
-                        <span className="board-task-card__timestamp">{formatRelativeTimestamp(task.updated_at)}</span>
-                      </div>
-                    </Link>
+                    </section>
                   ))}
 
-                  {column.tasks.length === 0 ? (
+                  {column.groups.length === 0 ? (
                     <div className="empty-state board-grid-column__empty">
                       <p className="type-heading-sm">{boardCopy.emptyTitle}</p>
                       <p className="type-body-sm">{boardCopy.emptySummary}</p>
@@ -125,29 +175,42 @@ export function BoardPage() {
               <p className="page-kicker">{boardCopy.reviewFocusKicker}</p>
               <h3 className="section-title">{boardCopy.columns.gateWaiting}</h3>
             </div>
-            <span className="status-pill status-pill--neutral">{reviewColumn?.tasks.length ?? 0}</span>
+            <span className="status-pill status-pill--neutral">
+              {reviewColumn?.groups.reduce((sum, group) => sum + group.tasks.length, 0) ?? 0}
+            </span>
           </div>
 
           <div className="board-focus__stack">
-            {reviewColumn && reviewColumn.tasks.length > 0 ? (
-              reviewColumn.tasks.map((task) => (
-                <Link key={task.id} to={`/reviews?selected=${task.id}`} className="decision-card board-task-card board-task-card--focus">
-                  <div className="board-task-card__meta">
-                    <span className="type-mono-sm board-task-card__id">{task.id}</span>
-                    <div className="board-task-card__badges">
-                      <StateBadge state={task.state} />
-                      <PriorityBadge priority={task.priority} />
-                    </div>
+            {reviewColumn && reviewColumn.groups.length > 0 ? (
+              reviewColumn.groups.map((group) => (
+                <section key={group.key} className="board-task-group">
+                  <div className="board-task-group__header">
+                    <span className="field-label">{boardCopy.projectFilterLabel}</span>
+                    <strong className="board-task-group__title">{group.label}</strong>
                   </div>
-                  <h4 className="board-task-card__title">{task.title}</h4>
-                  <div className="board-task-card__support">
-                    <span>{task.workflowLabel}</span>
-                    <span>{task.teamLabel}</span>
+                  <div className="board-task-group__stack">
+                    {group.tasks.map((task) => (
+                      <Link key={task.id} to={`/reviews?selected=${task.id}`} className="decision-card board-task-card board-task-card--focus">
+                        <div className="board-task-card__meta">
+                          <span className="type-mono-sm board-task-card__id">{task.id}</span>
+                          <div className="board-task-card__badges">
+                            <StateBadge state={task.state} />
+                            <PriorityBadge priority={task.priority} />
+                          </div>
+                        </div>
+                        <h4 className="board-task-card__title">{task.title}</h4>
+                        <div className="board-task-card__support">
+                          <span>{group.label}</span>
+                          <span>{task.workflowLabel}</span>
+                          <span>{task.teamLabel}</span>
+                        </div>
+                        <div className="board-task-card__footer">
+                          <span className="board-task-card__timestamp">{formatRelativeTimestamp(task.updated_at)}</span>
+                        </div>
+                      </Link>
+                    ))}
                   </div>
-                  <div className="board-task-card__footer">
-                    <span className="board-task-card__timestamp">{formatRelativeTimestamp(task.updated_at)}</span>
-                  </div>
-                </Link>
+                </section>
               ))
             ) : (
               <div className="empty-state">

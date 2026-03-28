@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useTasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { WorkflowGraphView } from '@/components/features/WorkflowGraphView';
@@ -15,6 +16,12 @@ import { RuntimeLogViewer } from '@/components/ui/RuntimeLogViewer';
 import { normalizeCraftsmanId } from '@/lib/orchestrationRoles';
 import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta, getStateMeta } from '@/lib/taskMeta';
+import {
+  buildTaskProjectFilterOptions,
+  buildTaskProjectGroups,
+  buildTaskProjectNameMap,
+  getTaskProjectPresentation,
+} from '@/lib/taskProjectPresentation';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { CraftsmanExecution, Subtask, TaskAction, TaskBlueprint, TaskConversationEntry, TaskStatus } from '@/types/task';
 
@@ -168,6 +175,8 @@ export function TasksPage() {
   const detailLoading = useTaskStore((state) => state.detailLoading);
   const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
+  const projects = useProjectStore((state) => state.projects);
+  const fetchProjects = useProjectStore((state) => state.fetchProjects);
   const selectTask = useTaskStore((state) => state.selectTask);
   const runTaskAction = useTaskStore((state) => state.runTaskAction);
   const observeCraftsmen = useTaskStore((state) => state.observeCraftsmen);
@@ -192,6 +201,7 @@ export function TasksPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [stateFilter, setStateFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
+  const [projectFilter, setProjectFilter] = useState<string[]>([]);
   const [teamFilter, setTeamFilter] = useState<string[]>([]);
   const [workflowFilter, setWorkflowFilter] = useState<string[]>([]);
   const [actionActor, setActionActor] = useState('');
@@ -206,6 +216,10 @@ export function TasksPage() {
   }, [fetchTasks]);
 
   useEffect(() => {
+    void fetchProjects();
+  }, [fetchProjects]);
+
+  useEffect(() => {
     if (!selectedExecutionId) {
       return;
     }
@@ -216,12 +230,18 @@ export function TasksPage() {
   }, [selectedExecutionId, executionTailById, executionTailLoadingById, fetchCraftsmanExecutionTail]);
 
   const taskList = tasks;
+  const projectNameMap = useMemo(() => buildTaskProjectNameMap(projects), [projects]);
   const availableTeams = useMemo(() => [...new Set(taskList.map((task) => task.teamLabel))], [taskList]);
   const availableWorkflows = useMemo(() => [...new Set(taskList.map((task) => task.workflowLabel))], [taskList]);
+  const availableProjects = useMemo(
+    () => buildTaskProjectFilterOptions(taskList, projects, tasksPageCopy.unassignedProjectLabel),
+    [projects, taskList, tasksPageCopy.unassignedProjectLabel],
+  );
 
   const filteredTasks = useMemo(() => {
     const lowered = deferredQuery.trim().toLowerCase();
     return taskList.filter((task) => {
+      const projectPresentation = getTaskProjectPresentation(task, projectNameMap, tasksPageCopy.unassignedProjectLabel);
       const matchesQuery =
         lowered.length === 0 ||
         task.id.toLowerCase().includes(lowered) ||
@@ -229,11 +249,26 @@ export function TasksPage() {
         task.creator.toLowerCase().includes(lowered);
       const matchesState = stateFilter.length === 0 || stateFilter.includes(task.state);
       const matchesPriority = priorityFilter.length === 0 || priorityFilter.includes(task.priority);
+      const matchesProject = projectFilter.length === 0 || projectFilter.includes(projectPresentation.filterValue);
       const matchesTeam = teamFilter.length === 0 || teamFilter.includes(task.teamLabel);
       const matchesWorkflow = workflowFilter.length === 0 || workflowFilter.includes(task.workflowLabel);
-      return matchesQuery && matchesState && matchesPriority && matchesTeam && matchesWorkflow;
+      return matchesQuery && matchesState && matchesPriority && matchesProject && matchesTeam && matchesWorkflow;
     });
-  }, [deferredQuery, priorityFilter, stateFilter, taskList, teamFilter, workflowFilter]);
+  }, [
+    deferredQuery,
+    priorityFilter,
+    projectFilter,
+    projectNameMap,
+    stateFilter,
+    taskList,
+    tasksPageCopy.unassignedProjectLabel,
+    teamFilter,
+    workflowFilter,
+  ]);
+  const groupedFilteredTasks = useMemo(
+    () => buildTaskProjectGroups(filteredTasks, projects, tasksPageCopy.unassignedProjectLabel),
+    [filteredTasks, projects, tasksPageCopy.unassignedProjectLabel],
+  );
 
   useEffect(() => {
     if (taskId) {
@@ -274,7 +309,8 @@ export function TasksPage() {
   const shouldShowDetailError = Boolean(taskId && !detailLoading && !routeTaskStatus && !routeTask && error);
   const shouldShowDetailEmpty = Boolean(taskId && !detailLoading && !routeTaskStatus && !routeTask && !error);
 
-  const activeFilterCount = stateFilter.length + priorityFilter.length + teamFilter.length + workflowFilter.length;
+  const activeFilterCount =
+    stateFilter.length + priorityFilter.length + projectFilter.length + teamFilter.length + workflowFilter.length;
   const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
   const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
   const canRunGateActions = activeTask?.sourceState === 'active';
@@ -351,6 +387,12 @@ export function TasksPage() {
       onToggle: (value: string) => setPriorityFilter((current) => toggleValue(current, value)),
     },
     {
+      label: tasksPageCopy.filterSectionLabels.project,
+      options: availableProjects,
+      selected: projectFilter,
+      onToggle: (value: string) => setProjectFilter((current) => toggleValue(current, value)),
+    },
+    {
       label: tasksPageCopy.filterSectionLabels.team,
       options: availableTeams.map((item) => ({
         value: item,
@@ -370,11 +412,23 @@ export function TasksPage() {
       selected: workflowFilter,
       onToggle: (value: string) => setWorkflowFilter((current) => toggleValue(current, value)),
     },
-  ], [taskList, stateFilter, priorityFilter, teamFilter, workflowFilter, availableTeams, availableWorkflows, tasksPageCopy]);
+  ], [
+    availableProjects,
+    availableTeams,
+    availableWorkflows,
+    priorityFilter,
+    projectFilter,
+    stateFilter,
+    taskList,
+    tasksPageCopy,
+    teamFilter,
+    workflowFilter,
+  ]);
 
   const clearFilters = () => {
     setStateFilter([]);
     setPriorityFilter([]);
+    setProjectFilter([]);
     setTeamFilter([]);
     setWorkflowFilter([]);
   };
@@ -727,35 +781,50 @@ export function TasksPage() {
 
           <div className="workbench-scroll workbench-scroll--list task-pane__scroll">
             <div className="dense-list">
-              {filteredTasks.map((task, index) => (
-                <StaggeredItem key={task.id} index={index}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActionActor('');
-                      if (isMobile) {
-                        navigate(`/tasks/${task.id}`);
-                        return;
-                      }
-                      void selectTask(task.id);
-                    }}
-                    className={task.id === activeTask?.id ? 'dense-row task-queue-row dense-row--active' : 'dense-row task-queue-row'}
-                  >
-                    <div className="dense-row__main task-queue-row__main">
-                      <div className="dense-row__titleblock">
-                        <span className="type-mono-xs task-queue-row__id">{task.id}</span>
-                        <strong className="dense-row__title task-queue-row__title">{task.title}</strong>
-                      </div>
-                      <div className="dense-row__meta task-queue-row__meta">
-                        <StateBadge state={task.state} />
-                        <PriorityBadge priority={task.priority} />
-                        <span>{task.teamLabel}</span>
-                        <span>{task.workflowLabel}</span>
-                      </div>
+              {groupedFilteredTasks.map((group) => (
+                <section key={group.key} className="task-project-group">
+                  <div className="task-project-group__header">
+                    <div>
+                      <p className="field-label">{tasksPageCopy.projectLabel}</p>
+                      <h4 className="task-project-group__title">{group.label}</h4>
                     </div>
-                    <span className="dense-row__time task-queue-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
-                  </button>
-                </StaggeredItem>
+                    <span className="status-pill status-pill--neutral">{group.tasks.length}</span>
+                  </div>
+
+                  <div className="task-project-group__list">
+                    {group.tasks.map((task, index) => (
+                      <StaggeredItem key={task.id} index={index}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActionActor('');
+                            if (isMobile) {
+                              navigate(`/tasks/${task.id}`);
+                              return;
+                            }
+                            void selectTask(task.id);
+                          }}
+                          className={task.id === activeTask?.id ? 'dense-row task-queue-row dense-row--active' : 'dense-row task-queue-row'}
+                        >
+                          <div className="dense-row__main task-queue-row__main">
+                            <div className="dense-row__titleblock">
+                              <span className="type-mono-xs task-queue-row__id">{task.id}</span>
+                              <strong className="dense-row__title task-queue-row__title">{task.title}</strong>
+                            </div>
+                            <div className="dense-row__meta task-queue-row__meta">
+                              <StateBadge state={task.state} />
+                              <PriorityBadge priority={task.priority} />
+                              <span>{group.label}</span>
+                              <span>{task.teamLabel}</span>
+                              <span>{task.workflowLabel}</span>
+                            </div>
+                          </div>
+                          <span className="dense-row__time task-queue-row__time">{formatRelativeTimestamp(task.updated_at)}</span>
+                        </button>
+                      </StaggeredItem>
+                    ))}
+                  </div>
+                </section>
               ))}
 
               {filteredTasks.length === 0 ? (
