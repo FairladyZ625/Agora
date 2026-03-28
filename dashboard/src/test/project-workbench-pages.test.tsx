@@ -667,6 +667,40 @@ const projectStoreState = {
       activeProfilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
       activeProfileInstalled: true,
     },
+    overview: {
+      status: 'active',
+      owner: 'archon',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+      stats: {
+        knowledgeCount: 1,
+        citizenCount: 1,
+        recapCount: 1,
+        taskCount: 2,
+        activeTaskCount: 2,
+        reviewTaskCount: 1,
+        todoCount: 2,
+        pendingTodoCount: 1,
+      },
+    },
+    surfaces: {
+      index: {
+        kind: 'index',
+        slug: 'index',
+        title: 'Project Alpha',
+        path: '/brain/projects/proj-alpha/index.md',
+        content: '# Project Alpha',
+        updatedAt: '2026-03-16T01:00:00.000Z',
+      },
+      timeline: {
+        kind: 'timeline',
+        slug: 'timeline',
+        title: 'Project Alpha Timeline',
+        path: '/brain/projects/proj-alpha/timeline.md',
+        content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
+        sourceTaskIds: ['OC-100'],
+        updatedAt: '2026-03-16T01:30:00.000Z',
+      },
+    },
     index: {
       kind: 'index',
       slug: 'index',
@@ -718,6 +752,75 @@ const projectStoreState = {
         runtimeMetadata: { mode: 'preview', version: 1 },
       },
     ],
+    work: {
+      tasks: [
+        {
+          id: 'OC-100',
+          title: 'Bootstrap flow',
+          state: 'in_progress',
+          projectId: 'proj-alpha',
+        },
+        {
+          id: 'OC-101',
+          title: 'Review handoff',
+          state: 'gate_waiting',
+          projectId: 'proj-alpha',
+        },
+      ],
+      todos: [
+        {
+          id: 3,
+          text: '补 Project 入口',
+          status: 'pending',
+          projectId: 'proj-alpha',
+        },
+        {
+          id: 4,
+          text: '清理旧按钮',
+          status: 'done',
+          projectId: 'proj-alpha',
+        },
+      ],
+      recaps: [
+        {
+          taskId: 'OC-100',
+          title: 'Bootstrap recap',
+          summaryPath: '/brain/projects/proj-alpha/recaps/OC-100.md',
+          content: '# Bootstrap recap\n\nTask recap line.\n\nNext step: wire dashboard reader.',
+          updatedAt: '2026-03-16T01:00:00.000Z',
+        },
+      ],
+      knowledge: [
+        {
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/projects/proj-alpha/knowledge/decisions/runtime-boundary.md',
+          content: 'Keep runtime adapters outside core.',
+          sourceTaskIds: ['OC-100'],
+          updatedAt: '2026-03-16T01:00:00.000Z',
+        },
+      ],
+    },
+    operator: {
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      citizens: [
+        {
+          citizenId: 'citizen-alpha',
+          roleId: 'architect',
+          displayName: 'Alpha Architect',
+          status: 'active',
+          persona: 'Think in systems.',
+          boundaries: ['Keep adapters outside core.'],
+          skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
+          channelPolicies: { discord: { posting: 'human_gate' } },
+          brainScaffoldMode: 'role_default',
+          runtimeAdapter: 'openclaw',
+          runtimeMetadata: { mode: 'preview', version: 1 },
+        },
+      ],
+    },
     tasks: [
       {
         id: 'OC-100',
@@ -837,45 +940,37 @@ describe('project workbench pages', () => {
     await renderProjectDetailPage();
 
     expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Nomos State' })).toBeInTheDocument();
-    expect(screen.getAllByText('/Users/example/.agora/projects/proj-alpha').length).toBeGreaterThan(0);
-    expect(screen.getByText('/repo/proj-alpha')).toBeInTheDocument();
-    expect(screen.getAllByText('Yes').length).toBeGreaterThan(0);
-    expect(screen.getByText('project-bootstrap, task-context-delivery, task-closeout')).toBeInTheDocument();
-    expect(screen.getByText('active_builtin')).toBeInTheDocument();
-    expect(screen.getByText('/Users/example/.agora/projects/proj-alpha/nomos/project-nomos')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Activate Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Validate Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Diff Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Export Pack' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish To Catalog' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Import Source' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Install From Source' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Register Source' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Refresh Sources' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Install Pack' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Project overview' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Project surfaces' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Current work' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Operator tools' })).toBeInTheDocument();
     expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
+    expect(screen.getByText('Project Alpha Timeline')).toBeInTheDocument();
     expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
     expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
-    expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
     expect(screen.getAllByText('Active Tasks').length).toBeGreaterThan(0);
     expect(screen.getByText('Waiting Review')).toBeInTheDocument();
     expect(screen.getAllByText('Pending Todos').length).toBeGreaterThan(0);
+    expect(screen.getByText('In progress')).toBeInTheDocument();
+    expect(screen.getByText('Waiting review')).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Bootstrap flow' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
     expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open Project Brain' })).toBeInTheDocument();
-    expect(screen.getByText('Citizen Preview')).toBeInTheDocument();
-    expect(screen.getByText('Think in systems.')).toBeInTheDocument();
-    expect(screen.getByText('openclaw')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show operator tools' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
+    expect(screen.queryByText('/repo/proj-alpha')).not.toBeInTheDocument();
   });
 
   it('runs project nomos management actions', async () => {
     await renderProjectDetailPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
+    expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
+    expect(screen.getByText('Think in systems.')).toBeInTheDocument();
+    expect(screen.getByText('openclaw')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Reinstall Nomos' }));
     await waitFor(() => {
@@ -921,6 +1016,7 @@ describe('project workbench pages', () => {
 
   it('runs nomos catalog and source import actions', async () => {
     await renderProjectDetailPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
 
     fireEvent.change(screen.getByLabelText('Export Dir'), { target: { value: '/tmp/exported-pack' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export Pack' }));
@@ -1003,6 +1099,7 @@ describe('project workbench pages', () => {
     expect(knowledgeDialog).toBeInTheDocument();
     expect(within(knowledgeDialog).getByText('OC-100')).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: /关闭|Close/ })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open citizen Alpha Architect' }));
     const citizenDialog = screen.getByRole('dialog', { name: 'CITIZEN PREVIEW' });
     expect(citizenDialog).toBeInTheDocument();
@@ -1020,5 +1117,18 @@ describe('project workbench pages', () => {
     expect(updateTodo).toHaveBeenCalledWith(3, { status: 'done' });
     expect(promoteTodo).toHaveBeenCalledWith(3, { type: 'quick', creator: 'archon', priority: 'normal' });
     expect(deleteTodo).toHaveBeenCalledWith(3);
+  });
+
+  it('keeps operator controls collapsed until explicitly expanded', async () => {
+    await renderProjectDetailPage();
+
+    expect(screen.queryAllByText('/Users/example/.agora/projects/proj-alpha')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Refresh Catalog' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
+
+    expect(screen.getAllByText('/Users/example/.agora/projects/proj-alpha').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Hide operator tools' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
   });
 });

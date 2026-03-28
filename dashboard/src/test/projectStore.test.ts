@@ -39,22 +39,56 @@ function buildProjectDto(overrides: Partial<ApiProjectDto> = {}): ApiProjectDto 
 function buildProjectWorkbenchDto(): ApiProjectWorkbenchDto {
   return {
     project: buildProjectDto(),
-    index: {
-      title: 'Project Index',
-      path: 'docs/index.md',
-      content: '# Index',
-      updated_at: '2026-03-23T02:00:00.000Z',
+    overview: {
+      status: 'active',
+      owner: 'archon',
+      updated_at: '2026-03-23T01:00:00.000Z',
+      counts: {
+        knowledge: 0,
+        citizens: 0,
+        recaps: 0,
+        tasks_total: 1,
+        active_tasks: 1,
+        review_tasks: 0,
+        todos_total: 1,
+        pending_todos: 1,
+      },
     },
-    timeline: {
-      title: 'Timeline',
-      path: 'docs/timeline.md',
-      content: '# Timeline',
-      source_task_ids: ['OC-123'],
-      updated_at: '2026-03-23T03:00:00.000Z',
+    surfaces: {
+      index: {
+        project_id: 'proj-alpha',
+        kind: 'index',
+        slug: 'index',
+        title: 'Project Index',
+        path: 'docs/index.md',
+        content: '# Index',
+        created_at: '2026-03-23T00:00:00.000Z',
+        updated_at: '2026-03-23T02:00:00.000Z',
+        source_task_ids: [],
+      },
+      timeline: {
+        project_id: 'proj-alpha',
+        kind: 'timeline',
+        slug: 'timeline',
+        title: 'Timeline',
+        path: 'docs/timeline.md',
+        content: '# Timeline',
+        created_at: '2026-03-23T00:00:00.000Z',
+        source_task_ids: ['OC-123'],
+        updated_at: '2026-03-23T03:00:00.000Z',
+      },
     },
-    recaps: [],
-    knowledge: [],
-    citizens: [],
+    work: {
+      tasks: [buildTaskDto()],
+      todos: [buildTodoDto()],
+      recaps: [],
+      knowledge: [],
+    },
+    operator: {
+      nomos_id: 'agora/default',
+      repo_path: '/tmp/proj-alpha',
+      citizens: [],
+    },
   } as unknown as ApiProjectWorkbenchDto;
 }
 
@@ -135,7 +169,7 @@ describe('project store', () => {
     expect(useProjectStore.getState().creating).toBe(false);
   });
 
-  it('selects a project and hydrates nomos, workbench, tasks, and todos', async () => {
+  it('selects a project and hydrates nomos plus the grouped workbench bundle', async () => {
     vi.spyOn(api, 'getProjectNomosState').mockResolvedValue({
       project_id: 'proj-alpha',
       project_name: 'Project Alpha',
@@ -156,8 +190,8 @@ describe('project store', () => {
       active_profile_installed: true,
     });
     vi.spyOn(api, 'getProjectWorkbench').mockResolvedValue(buildProjectWorkbenchDto());
-    vi.spyOn(api, 'listTasks').mockResolvedValue([buildTaskDto()]);
-    vi.spyOn(api, 'listTodos').mockResolvedValue([buildTodoDto()]);
+    const listTasksSpy = vi.spyOn(api, 'listTasks').mockResolvedValue([buildTaskDto()]);
+    const listTodosSpy = vi.spyOn(api, 'listTodos').mockResolvedValue([buildTodoDto()]);
 
     await useProjectStore.getState().selectProject('proj-alpha');
 
@@ -165,9 +199,17 @@ describe('project store', () => {
     expect(useProjectStore.getState().selectedProject).toEqual(expect.objectContaining({
       project: expect.objectContaining({ id: 'proj-alpha' }),
       nomos: expect.objectContaining({ nomosId: 'agora/default' }),
+      overview: expect.objectContaining({
+        stats: expect.objectContaining({
+          taskCount: 1,
+          todoCount: 1,
+        }),
+      }),
       tasks: [expect.objectContaining({ id: 'OC-123' })],
       todos: [expect.objectContaining({ id: 1 })],
     }));
+    expect(listTasksSpy).not.toHaveBeenCalled();
+    expect(listTodosSpy).not.toHaveBeenCalled();
     expect(useProjectStore.getState().detailLoading).toBe(false);
   });
 
@@ -177,6 +219,36 @@ describe('project store', () => {
       selectedProject: {
         project: { id: 'proj-alpha', name: 'Project Alpha', summary: '', owner: 'archon', status: 'active', nomosId: null, repoPath: null, createdAt: '', updatedAt: '' },
         nomos: null,
+        overview: {
+          status: 'active',
+          owner: 'archon',
+          updatedAt: '',
+          stats: {
+            knowledgeCount: 0,
+            citizenCount: 0,
+            recapCount: 0,
+            taskCount: 0,
+            activeTaskCount: 0,
+            reviewTaskCount: 0,
+            todoCount: 0,
+            pendingTodoCount: 0,
+          },
+        },
+        surfaces: {
+          index: null,
+          timeline: null,
+        },
+        work: {
+          tasks: [],
+          todos: [],
+          recaps: [],
+          knowledge: [],
+        },
+        operator: {
+          nomosId: null,
+          repoPath: null,
+          citizens: [],
+        },
         index: null,
         timeline: null,
         recaps: [],
@@ -193,8 +265,6 @@ describe('project store', () => {
 
     vi.spyOn(api, 'getProjectNomosState').mockRejectedValue(new Error('detail failed'));
     vi.spyOn(api, 'getProjectWorkbench').mockResolvedValue(buildProjectWorkbenchDto());
-    vi.spyOn(api, 'listTasks').mockResolvedValue([buildTaskDto()]);
-    vi.spyOn(api, 'listTodos').mockResolvedValue([buildTodoDto()]);
 
     await useProjectStore.getState().selectProject('proj-alpha');
 

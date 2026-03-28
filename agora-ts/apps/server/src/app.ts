@@ -78,7 +78,6 @@ import {
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
   listProjectsResponseSchema,
-  projectWorkbenchResponseSchema,
   promoteTodoRequestSchema,
   probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
@@ -1180,14 +1179,46 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!project) {
         return reply.status(404).send({ message: `Project ${params.projectId} not found` });
       }
-      return reply.send(projectWorkbenchResponseSchema.parse({
+      const tasks = options.taskService?.listTasks(undefined, params.projectId) ?? [];
+      const todos = options.dashboardQueryService?.listTodos({ project_id: params.projectId }) ?? [];
+      const recapEntries = projectService.listProjectRecaps(params.projectId);
+      const knowledgeEntries = projectService.listKnowledgeEntries(params.projectId);
+      const citizens = citizenService.listCitizens(params.projectId);
+      const nomosState = resolveProjectNomosState(project.id, project.metadata ?? null);
+      const activeTaskStates = new Set(['active', 'in_progress', 'gate_waiting', 'paused', 'blocked']);
+      return reply.send({
         project,
-        index: projectBrainService.getDocument(params.projectId, 'index'),
-        timeline: projectBrainService.getDocument(params.projectId, 'timeline'),
-        recaps: projectService.listProjectRecaps(params.projectId),
-        knowledge: projectService.listKnowledgeEntries(params.projectId),
-        citizens: citizenService.listCitizens(params.projectId),
-      }));
+        overview: {
+          status: project.status,
+          owner: project.owner,
+          updated_at: project.updated_at,
+          counts: {
+            knowledge: knowledgeEntries.length,
+            citizens: citizens.length,
+            recaps: recapEntries.length,
+            tasks_total: tasks.length,
+            active_tasks: tasks.filter((task) => activeTaskStates.has(task.state)).length,
+            review_tasks: tasks.filter((task) => task.state === 'gate_waiting').length,
+            todos_total: todos.length,
+            pending_todos: todos.filter((todo) => todo.status === 'pending').length,
+          },
+        },
+        surfaces: {
+          index: projectBrainService.getDocument(params.projectId, 'index'),
+          timeline: projectBrainService.getDocument(params.projectId, 'timeline'),
+        },
+        work: {
+          tasks,
+          todos,
+          recaps: recapEntries,
+          knowledge: knowledgeEntries,
+        },
+        operator: {
+          nomos_id: nomosState.nomos_id,
+          repo_path: nomosState.repo_path,
+          citizens,
+        },
+      });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -91,37 +91,38 @@ export function ProjectBrainPage() {
     );
   }
 
+  const { project, surfaces, work, operator } = selectedProject;
   const brainItems: BrainItem[] = [];
-  if (selectedProject.index) {
+  if (surfaces.index) {
     brainItems.push({
         key: 'index',
-        label: selectedProject.index.title ?? copy.indexFallbackTitle,
+        label: surfaces.index.title ?? copy.indexFallbackTitle,
         kind: 'core' as const,
-        searchText: `${selectedProject.index.title ?? ''} ${selectedProject.index.content}`,
+        searchText: `${surfaces.index.title ?? ''} ${surfaces.index.content}`,
         detail: {
-          title: selectedProject.index.title ?? copy.indexFallbackTitle,
-          path: selectedProject.index.path,
-          content: selectedProject.index.content,
+          title: surfaces.index.title ?? copy.indexFallbackTitle,
+          path: surfaces.index.path,
+          content: surfaces.index.content,
           sourceTaskIds: [],
         },
       });
   }
-  if (selectedProject.timeline) {
+  if (surfaces.timeline) {
     brainItems.push({
         key: 'timeline',
-        label: selectedProject.timeline.title ?? copy.timelineFallbackTitle,
+        label: surfaces.timeline.title ?? copy.timelineFallbackTitle,
         kind: 'core' as const,
-        searchText: `${selectedProject.timeline.title ?? ''} ${selectedProject.timeline.content}`,
+        searchText: `${surfaces.timeline.title ?? ''} ${surfaces.timeline.content}`,
         detail: {
-          title: selectedProject.timeline.title ?? copy.timelineFallbackTitle,
-          path: selectedProject.timeline.path,
-          content: selectedProject.timeline.content,
-          sourceTaskIds: selectedProject.timeline.sourceTaskIds,
+          title: surfaces.timeline.title ?? copy.timelineFallbackTitle,
+          path: surfaces.timeline.path,
+          content: surfaces.timeline.content,
+          sourceTaskIds: surfaces.timeline.sourceTaskIds,
         },
       });
   }
   brainItems.push(
-    ...selectedProject.recaps.map((recap) => ({
+    ...work.recaps.map((recap) => ({
       key: `recap:${recap.taskId}`,
       label: recap.title ?? recap.taskId,
       kind: 'recap' as const,
@@ -133,7 +134,7 @@ export function ProjectBrainPage() {
         taskId: recap.taskId,
       },
     })),
-    ...selectedProject.knowledge.map((doc) => ({
+    ...work.knowledge.map((doc) => ({
       key: `knowledge:${doc.kind}:${doc.slug}`,
       label: doc.title ?? doc.slug,
       kind: 'knowledge' as const,
@@ -145,7 +146,7 @@ export function ProjectBrainPage() {
         sourceTaskIds: doc.sourceTaskIds,
       },
     })),
-    ...selectedProject.citizens.map((citizen) => ({
+    ...operator.citizens.map((citizen) => ({
       key: `citizen:${citizen.citizenId}`,
       label: citizen.displayName,
       kind: 'citizen' as const,
@@ -220,7 +221,10 @@ export function ProjectBrainPage() {
           <div>
             <p className="page-kicker">{copy.kicker}</p>
             <h2 className="page-title">{copy.title}</h2>
-            <p className="page-summary">{selectedProject.project.name}</p>
+            <p className="page-summary">{project.name}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Link className="button-secondary" to={`/projects/${project.id}`}>{copy.backToProjectDetailAction}</Link>
+            </div>
           </div>
         </div>
       </section>
@@ -296,17 +300,14 @@ export function ProjectBrainPage() {
                       <Link className="button-secondary" to={`/tasks/${selectedItem.detail.taskId}`}>
                         {copy.openSourceTaskAction(selectedItem.detail.taskId)}
                       </Link>
-                        <Link className="button-secondary" to={`/projects/${projectId}`}>
-                          {copy.backToProjectDetailAction}
+                      {selectedItemTaskHref ? (
+                        <Link className="button-secondary" to={selectedItemTaskHref}>
+                          {copy.createTaskInProjectAction}
                         </Link>
-                        {selectedItemTaskHref ? (
-                          <Link className="button-secondary" to={selectedItemTaskHref}>
-                            {copy.createTaskInProjectAction}
-                          </Link>
-                        ) : null}
-                      </div>
-                    </section>
-                  ) : null}
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
                 {'citizenId' in selectedItem.detail ? (
                   <>
                     <section className="sheet-section">
@@ -342,9 +343,6 @@ export function ProjectBrainPage() {
                     <section className="sheet-section">
                       <h4 className="section-title">{copy.actionBridgeTitle}</h4>
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Link className="button-secondary" to={`/projects/${projectId}`}>
-                          {copy.backToProjectDetailAction}
-                        </Link>
                         {selectedItemTaskHref ? (
                           <Link className="button-secondary" to={selectedItemTaskHref}>
                             {copy.createTaskInProjectAction}
@@ -362,9 +360,6 @@ export function ProjectBrainPage() {
                     <section className="sheet-section">
                       <h4 className="section-title">{copy.actionBridgeTitle}</h4>
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Link className="button-secondary" to={`/projects/${projectId}`}>
-                          {copy.backToProjectDetailAction}
-                        </Link>
                         {selectedItemTaskHref ? (
                           <Link className="button-secondary" to={selectedItemTaskHref}>
                             {copy.createTaskInProjectAction}

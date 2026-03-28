@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { todoItemSchema } from './dashboard.js';
+import { taskSchema } from './task-api.js';
 
 const projectStatusSchema = z.enum(['active', 'archived']);
 export type ProjectStatusDto = z.infer<typeof projectStatusSchema>;
@@ -84,30 +86,70 @@ export const projectKnowledgeDocumentSchema = z.object({
 });
 export type ProjectKnowledgeDocumentDto = z.infer<typeof projectKnowledgeDocumentSchema>;
 
-export const projectWorkbenchResponseSchema = z.object({
-  project: projectSchema,
+export const projectCitizenSchema = z.object({
+  citizen_id: z.string().min(1),
+  project_id: z.string().min(1),
+  role_id: z.string().min(1),
+  display_name: z.string().min(1),
+  persona: z.string().nullable(),
+  boundaries: z.array(z.string()),
+  skills_ref: z.array(z.string()),
+  channel_policies: z.record(z.string(), z.unknown()),
+  brain_scaffold_mode: z.enum(['role_default', 'custom']),
+  runtime_projection: z.object({
+    adapter: z.string().min(1),
+    auto_provision: z.boolean(),
+    metadata: z.record(z.string(), z.unknown()),
+  }),
+  status: z.enum(['active', 'archived']),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type ProjectCitizenDto = z.infer<typeof projectCitizenSchema>;
+
+export const projectWorkbenchOverviewSchema = z.object({
+  status: projectStatusSchema,
+  owner: z.string().nullable(),
+  updated_at: z.string(),
+  counts: z.object({
+    knowledge: z.number().int().nonnegative(),
+    citizens: z.number().int().nonnegative(),
+    recaps: z.number().int().nonnegative(),
+    tasks_total: z.number().int().nonnegative(),
+    active_tasks: z.number().int().nonnegative(),
+    review_tasks: z.number().int().nonnegative(),
+    todos_total: z.number().int().nonnegative(),
+    pending_todos: z.number().int().nonnegative(),
+  }),
+});
+export type ProjectWorkbenchOverviewDto = z.infer<typeof projectWorkbenchOverviewSchema>;
+
+export const projectWorkbenchSurfacesSchema = z.object({
   index: projectBrainIndexSchema.nullable(),
   timeline: projectBrainTimelineSchema.nullable(),
+});
+export type ProjectWorkbenchSurfacesDto = z.infer<typeof projectWorkbenchSurfacesSchema>;
+
+export const projectWorkbenchWorkSchema = z.object({
+  tasks: z.array(taskSchema),
+  todos: z.array(todoItemSchema),
   recaps: z.array(projectRecapSummarySchema),
   knowledge: z.array(projectKnowledgeDocumentSchema),
-  citizens: z.array(z.object({
-    citizen_id: z.string().min(1),
-    project_id: z.string().min(1),
-    role_id: z.string().min(1),
-    display_name: z.string().min(1),
-    persona: z.string().nullable(),
-    boundaries: z.array(z.string()),
-    skills_ref: z.array(z.string()),
-    channel_policies: z.record(z.string(), z.unknown()),
-    brain_scaffold_mode: z.enum(['role_default', 'custom']),
-    runtime_projection: z.object({
-      adapter: z.string().min(1),
-      auto_provision: z.boolean(),
-      metadata: z.record(z.string(), z.unknown()),
-    }),
-    status: z.enum(['active', 'archived']),
-    created_at: z.string(),
-    updated_at: z.string(),
-  })),
+});
+export type ProjectWorkbenchWorkDto = z.infer<typeof projectWorkbenchWorkSchema>;
+
+export const projectWorkbenchOperatorSchema = z.object({
+  nomos_id: z.string().nullable(),
+  repo_path: z.string().nullable(),
+  citizens: z.array(projectCitizenSchema),
+});
+export type ProjectWorkbenchOperatorDto = z.infer<typeof projectWorkbenchOperatorSchema>;
+
+export const projectWorkbenchResponseSchema = z.object({
+  project: projectSchema,
+  overview: projectWorkbenchOverviewSchema,
+  surfaces: projectWorkbenchSurfacesSchema,
+  work: projectWorkbenchWorkSchema,
+  operator: projectWorkbenchOperatorSchema,
 });
 export type ProjectWorkbenchResponseDto = z.infer<typeof projectWorkbenchResponseSchema>;

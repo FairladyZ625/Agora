@@ -3,8 +3,6 @@ import * as api from '@/lib/api';
 import {
   mapProjectDto,
   mapProjectNomosStateDto,
-  mapProjectTaskSummaryDto,
-  mapProjectTodoSummaryDto,
   mapProjectWorkbenchDto,
 } from '@/lib/projectMappers';
 import type { ProjectSummary, ProjectWorkbench } from '@/types/project';
@@ -73,19 +71,15 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
     }
     set({ selectedProjectId: projectId, detailLoading: true, error: null });
     try {
-      const [nomosDto, workbenchDto, tasksDto, todosDto] = await Promise.all([
+      const [nomosDto, workbenchDto] = await Promise.all([
         api.getProjectNomosState(projectId),
         api.getProjectWorkbench(projectId),
-        api.listTasks(undefined, projectId),
-        api.listTodos(undefined, projectId),
       ]);
       const detail = mapProjectWorkbenchDto(workbenchDto);
       set({
         selectedProject: {
           ...detail,
           nomos: mapProjectNomosStateDto(nomosDto),
-          tasks: tasksDto.map(mapProjectTaskSummaryDto),
-          todos: todosDto.map(mapProjectTodoSummaryDto),
         },
         detailLoading: false,
       });

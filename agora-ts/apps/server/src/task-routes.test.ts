@@ -1005,7 +1005,25 @@ describe('task routes', () => {
       name: 'Project Workbench',
       summary: 'dashboard surface',
       owner: 'archon',
+      metadata: {
+        repo_path: '/repo/proj-workbench',
+        agora: {
+          nomos: {
+            id: 'agora/default',
+          },
+        },
+      },
     });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: (() => {
+        let index = 0;
+        return () => `OC-WB-${++index}`;
+      })(),
+    });
+    const taskRepository = new TaskRepository(db);
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
     projectService.upsertKnowledgeEntry({
       project_id: 'proj-workbench',
       kind: 'decision',
@@ -1033,6 +1051,37 @@ describe('task routes', () => {
       '# Workbench recap\n\nTask recap line\n',
       'utf8',
     );
+    const activeTask = taskService.createTask({
+      title: 'Implement workbench bundle',
+      type: 'quick',
+      creator: 'archon',
+      description: 'Active work item',
+      priority: 'high',
+      project_id: 'proj-workbench',
+    });
+    const reviewTask = taskService.createTask({
+      title: 'Review workbench IA',
+      type: 'quick',
+      creator: 'archon',
+      description: 'Review gate item',
+      priority: 'normal',
+      project_id: 'proj-workbench',
+    });
+    taskRepository.updateTask(reviewTask.id, reviewTask.version, {
+      state: 'gate_waiting',
+    });
+    const pendingTodo = dashboardQueries.createTodo({
+      text: 'Review workbench mapping',
+      project_id: 'proj-workbench',
+      tags: ['dashboard'],
+    });
+    const doneTodo = dashboardQueries.createTodo({
+      text: 'Archive stale controls',
+      project_id: 'proj-workbench',
+    });
+    dashboardQueries.updateTodo(doneTodo.id, {
+      status: 'done',
+    });
     const rolePackService = new RolePackService({ db });
     rolePackService.saveRoleDefinition({
       id: 'architect',
@@ -1080,9 +1129,11 @@ describe('task routes', () => {
     });
     const app = buildApp({
       db,
+      taskService,
       projectService,
       projectBrainService,
       citizenService,
+      dashboardQueryService: dashboardQueries,
     });
 
     const response = await app.inject({
@@ -1096,30 +1147,72 @@ describe('task routes', () => {
         id: 'proj-workbench',
         name: 'Project Workbench',
       },
-      index: expect.objectContaining({
-        kind: 'index',
-      }),
-      timeline: expect.objectContaining({
-        kind: 'timeline',
-        slug: 'timeline',
-      }),
-      recaps: [
-        expect.objectContaining({
-          task_id: 'OC-WB-1',
-          content: expect.stringContaining('Task recap line'),
+      overview: {
+        status: 'active',
+        owner: 'archon',
+        counts: {
+          knowledge: 1,
+          citizens: 1,
+          recaps: 1,
+          tasks_total: 2,
+          active_tasks: 2,
+          review_tasks: 1,
+          todos_total: 2,
+          pending_todos: 1,
+        },
+      },
+      surfaces: {
+        index: expect.objectContaining({
+          kind: 'index',
         }),
-      ],
-      knowledge: [
-        expect.objectContaining({
-          kind: 'decision',
-          slug: 'runtime-boundary',
+        timeline: expect.objectContaining({
+          kind: 'timeline',
+          slug: 'timeline',
         }),
-      ],
-      citizens: [
-        expect.objectContaining({
-          citizen_id: 'citizen-alpha',
-        }),
-      ],
+      },
+      work: {
+        tasks: [
+          expect.objectContaining({
+            id: reviewTask.id,
+            state: 'gate_waiting',
+          }),
+          expect.objectContaining({
+            id: activeTask.id,
+            state: 'active',
+          }),
+        ],
+        todos: [
+          expect.objectContaining({
+            id: doneTodo.id,
+            status: 'done',
+          }),
+          expect.objectContaining({
+            id: pendingTodo.id,
+            status: 'pending',
+          }),
+        ],
+        recaps: [
+          expect.objectContaining({
+            task_id: 'OC-WB-1',
+            content: expect.stringContaining('Task recap line'),
+          }),
+        ],
+        knowledge: [
+          expect.objectContaining({
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          }),
+        ],
+      },
+      operator: {
+        nomos_id: 'agora/default',
+        repo_path: '/repo/proj-workbench',
+        citizens: [
+          expect.objectContaining({
+            citizen_id: 'citizen-alpha',
+          }),
+        ],
+      },
     });
   });
 

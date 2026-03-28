@@ -199,7 +199,25 @@ export function mapProjectNomosActivationDto(dto: {
   };
 }
 
-function mapProjectIndexDoc(dto: ApiProjectWorkbenchDto['index']): ProjectIndexDoc | null {
+function mapProjectWorkbenchOverview(dto: ApiProjectWorkbenchDto['overview']) {
+  return {
+    status: dto.status,
+    owner: dto.owner,
+    updatedAt: dto.updated_at,
+    stats: {
+      knowledgeCount: dto.counts.knowledge,
+      citizenCount: dto.counts.citizens,
+      recapCount: dto.counts.recaps,
+      taskCount: dto.counts.tasks_total,
+      activeTaskCount: dto.counts.active_tasks,
+      reviewTaskCount: dto.counts.review_tasks,
+      todoCount: dto.counts.todos_total,
+      pendingTodoCount: dto.counts.pending_todos,
+    },
+  };
+}
+
+function mapProjectIndexDoc(dto: ApiProjectWorkbenchDto['surfaces']['index']): ProjectIndexDoc | null {
   if (!dto) {
     return null;
   }
@@ -213,7 +231,7 @@ function mapProjectIndexDoc(dto: ApiProjectWorkbenchDto['index']): ProjectIndexD
   };
 }
 
-function mapProjectTimelineDoc(dto: ApiProjectWorkbenchDto['timeline']): ProjectTimelineDoc | null {
+function mapProjectTimelineDoc(dto: ApiProjectWorkbenchDto['surfaces']['timeline']): ProjectTimelineDoc | null {
   if (!dto) {
     return null;
   }
@@ -228,7 +246,7 @@ function mapProjectTimelineDoc(dto: ApiProjectWorkbenchDto['timeline']): Project
   };
 }
 
-function mapProjectRecap(dto: ApiProjectWorkbenchDto['recaps'][number]): ProjectRecap {
+function mapProjectRecap(dto: ApiProjectWorkbenchDto['work']['recaps'][number]): ProjectRecap {
   return {
     taskId: dto.task_id,
     title: dto.title,
@@ -238,7 +256,7 @@ function mapProjectRecap(dto: ApiProjectWorkbenchDto['recaps'][number]): Project
   };
 }
 
-function mapProjectKnowledge(dto: ApiProjectWorkbenchDto['knowledge'][number]): ProjectKnowledgeDoc {
+function mapProjectKnowledge(dto: ApiProjectWorkbenchDto['work']['knowledge'][number]): ProjectKnowledgeDoc {
   return {
     kind: dto.kind,
     slug: dto.slug,
@@ -250,7 +268,7 @@ function mapProjectKnowledge(dto: ApiProjectWorkbenchDto['knowledge'][number]): 
   };
 }
 
-function mapProjectCitizen(dto: ApiProjectWorkbenchDto['citizens'][number]): ProjectCitizen {
+function mapProjectCitizen(dto: ApiProjectWorkbenchDto['operator']['citizens'][number]): ProjectCitizen {
   return {
     citizenId: dto.citizen_id,
     roleId: dto.role_id,
@@ -285,15 +303,39 @@ export function mapProjectTodoSummaryDto(dto: ApiTodoDto): ProjectTodoSummary {
 }
 
 export function mapProjectWorkbenchDto(dto: ApiProjectWorkbenchDto): ProjectWorkbench {
+  const index = mapProjectIndexDoc(dto.surfaces.index);
+  const timeline = mapProjectTimelineDoc(dto.surfaces.timeline);
+  const recaps = dto.work.recaps.map(mapProjectRecap);
+  const knowledge = dto.work.knowledge.map(mapProjectKnowledge);
+  const citizens = dto.operator.citizens.map(mapProjectCitizen);
+  const tasks = dto.work.tasks.map(mapProjectTaskSummaryDto);
+  const todos = dto.work.todos.map(mapProjectTodoSummaryDto);
+
   return {
     project: mapProjectDto(dto.project),
     nomos: null,
-    index: mapProjectIndexDoc(dto.index),
-    timeline: mapProjectTimelineDoc(dto.timeline),
-    recaps: dto.recaps.map(mapProjectRecap),
-    knowledge: dto.knowledge.map(mapProjectKnowledge),
-    citizens: dto.citizens.map(mapProjectCitizen),
-    tasks: [],
-    todos: [],
+    overview: mapProjectWorkbenchOverview(dto.overview),
+    surfaces: {
+      index,
+      timeline,
+    },
+    work: {
+      tasks,
+      todos,
+      recaps,
+      knowledge,
+    },
+    operator: {
+      nomosId: dto.operator.nomos_id,
+      repoPath: dto.operator.repo_path,
+      citizens,
+    },
+    index,
+    timeline,
+    recaps,
+    knowledge,
+    citizens,
+    tasks,
+    todos,
   };
 }
