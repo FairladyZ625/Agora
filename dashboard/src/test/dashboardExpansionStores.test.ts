@@ -566,6 +566,76 @@ describe('dashboard expansion stores', () => {
     });
   });
 
+  it('maps the pending archive filter to all in-flight archive statuses', async () => {
+    vi.mocked(api.listArchiveJobs).mockResolvedValue([
+      {
+        id: 20,
+        task_id: 'OC-401',
+        task_title: '待审核',
+        task_type: 'document',
+        status: 'review_pending',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: null,
+        requested_at: '2026-03-07T08:00:00.000Z',
+        completed_at: null,
+        payload: { closeout_review: { state: 'review_pending' } },
+      },
+      {
+        id: 21,
+        task_id: 'OC-402',
+        task_title: '待通知',
+        task_type: 'document',
+        status: 'pending',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: null,
+        requested_at: '2026-03-07T08:01:00.000Z',
+        completed_at: null,
+        payload: {},
+      },
+      {
+        id: 22,
+        task_id: 'OC-403',
+        task_title: '已通知',
+        task_type: 'document',
+        status: 'notified',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: null,
+        requested_at: '2026-03-07T08:02:00.000Z',
+        completed_at: null,
+        payload: { notified_at: '2026-03-07T08:03:00.000Z' },
+      },
+      {
+        id: 23,
+        task_id: 'OC-404',
+        task_title: '已完成',
+        task_type: 'document',
+        status: 'synced',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: 'abc123',
+        requested_at: '2026-03-07T08:04:00.000Z',
+        completed_at: '2026-03-07T08:05:00.000Z',
+        payload: {},
+      },
+    ]);
+
+    useArchiveStore.getState().setFilters({ status: 'pending' });
+    await useArchiveStore.getState().fetchJobs();
+
+    expect(api.listArchiveJobs).toHaveBeenCalledWith({
+      status: undefined,
+      taskId: undefined,
+    });
+    expect(useArchiveStore.getState().jobs.map((job) => job.status)).toEqual([
+      'review_pending',
+      'pending',
+      'notified',
+    ]);
+  });
+
   it('surfaces archive confirm failures without dropping the current selection', async () => {
     useArchiveStore.setState({
       jobs: [{

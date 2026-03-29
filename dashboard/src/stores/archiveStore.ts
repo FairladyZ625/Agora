@@ -39,13 +39,20 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const { filters, selectedJobId } = get();
-      const status = filters.status === 'completed'
+      const requestedStatus = filters.status === 'completed'
         ? 'synced'
-        : (filters.status ?? undefined);
+        : (filters.status === 'pending' ? undefined : (filters.status ?? undefined));
       const jobs = (await api.listArchiveJobs({
-        status,
+        status: requestedStatus,
         taskId: filters.taskId.trim() || undefined,
-      })).map(mapArchiveJobDto);
+      }))
+        .map(mapArchiveJobDto)
+        .filter((job) => {
+          if (filters.status === 'pending') {
+            return ['review_pending', 'pending', 'notified'].includes(job.status);
+          }
+          return true;
+        });
       const selectedJob = selectedJobId ? jobs.find((job) => job.id === selectedJobId) ?? get().selectedJob : get().selectedJob;
       set({ jobs, selectedJob, loading: false });
       return 'live';
