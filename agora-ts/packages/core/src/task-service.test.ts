@@ -4806,6 +4806,90 @@ describe('task service', () => {
     ).toHaveLength(1);
   });
 
+  it('does not treat echoed system status messages as fresh business activity', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-probe-echo',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-ECHO-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Inactive self echo probe test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ECHO-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ECHO-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ECHO-1');
+
+    const first = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:00.000Z'),
+    });
+    expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
+    db.prepare(
+      "UPDATE flow_log SET created_at = '2026-03-12 01:00:00' WHERE task_id = ? AND event = 'controller_pinged'",
+    ).run('OC-PROBE-ECHO-1');
+    db.prepare(
+      "UPDATE task_conversation_entries SET occurred_at = '2026-03-12T01:00:00.000Z' WHERE task_id = ? AND author_kind = 'system' AND body LIKE 'Agora 状态更新%'",
+    ).run('OC-PROBE-ECHO-1');
+
+    const binding = bindingService.getLatestBinding('OC-PROBE-ECHO-1');
+    const echoedBody = conversationRepository
+      .listByTask('OC-PROBE-ECHO-1')
+      .findLast((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
+      ?.body;
+    expect(binding).not.toBeNull();
+    expect(echoedBody).toBeTruthy();
+
+    conversationRepository.insert({
+      id: 'echoed-controller-ping-1',
+      task_id: 'OC-PROBE-ECHO-1',
+      binding_id: binding!.id,
+      provider: 'discord',
+      provider_message_ref: 'discord-msg-echo-1',
+      direction: 'inbound',
+      author_kind: 'human',
+      author_ref: '1480745916225949757',
+      display_name: 'Agora',
+      body: echoedBody!,
+      occurred_at: '2026-03-12T01:00:01.000Z',
+      metadata: {
+        senderId: '1480745916225949757',
+        senderName: 'Agora',
+        threadId: 'discord-thread-probe-echo',
+      },
+    });
+
+    const second = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:30.000Z'),
+    });
+    expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 0, inbox_items: 0 });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
+    ).toHaveLength(1);
+  });
+
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

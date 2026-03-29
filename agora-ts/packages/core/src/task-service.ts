@@ -39,6 +39,7 @@ import {
   TodoRepository,
   type AgoraDatabase,
   type StoredTask,
+  type StoredTaskConversationEntry,
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
@@ -242,6 +243,8 @@ type CraftsmanProbeState = {
   lastProbeMs: number | null;
   attempts: number;
 };
+
+const SYSTEM_ECHO_ACTIVITY_WINDOW_MS = 5_000;
 
 function parseStoredTimestamp(value: string | null | undefined) {
   if (!value) {
@@ -4116,6 +4119,24 @@ export class TaskService {
 
   private resolveLatestBusinessActivityMs(task: StoredTask) {
     const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'inbox_escalated']);
+    const conversationEntries = this.taskConversationRepository.listByTask(task.id);
+    const systemEchoTimesByKey = new Map<string, number[]>();
+    for (const entry of conversationEntries) {
+      if (entry.author_kind !== 'system') {
+        continue;
+      }
+      const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
+      if (!Number.isFinite(occurredAtMs)) {
+        continue;
+      }
+      const key = buildConversationEchoKey(entry);
+      const existing = systemEchoTimesByKey.get(key);
+      if (existing) {
+        existing.push(occurredAtMs);
+      } else {
+        systemEchoTimesByKey.set(key, [occurredAtMs]);
+      }
+    }
     const flowMs = this.flowLogRepository.listByTask(task.id)
       .filter((entry) => !escalationEvents.has(entry.event))
       .map((entry) => parseStoredTimestamp(entry.created_at))
@@ -4123,8 +4144,9 @@ export class TaskService {
     const progressMs = this.progressLogRepository.listByTask(task.id)
       .map((entry) => parseStoredTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
-    const conversationMs = this.taskConversationRepository.listByTask(task.id)
+    const conversationMs = conversationEntries
       .filter((entry) => entry.author_kind !== 'system')
+      .filter((entry) => !isSystemEchoConversationEntry(entry, systemEchoTimesByKey))
       .map((entry) => parseStoredTimestamp(entry.occurred_at))
       .filter((value) => Number.isFinite(value));
     return Math.max(
@@ -4293,6 +4315,25 @@ export class TaskService {
       ],
     });
   }
+}
+
+function buildConversationEchoKey(entry: Pick<StoredTaskConversationEntry, 'provider' | 'body'>) {
+  return `${entry.provider}\u0000${entry.body}`;
+}
+
+function isSystemEchoConversationEntry(
+  entry: StoredTaskConversationEntry,
+  systemEchoTimesByKey: Map<string, number[]>,
+) {
+  const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
+  if (!Number.isFinite(occurredAtMs)) {
+    return false;
+  }
+  const candidates = systemEchoTimesByKey.get(buildConversationEchoKey(entry));
+  if (!candidates || candidates.length === 0) {
+    return false;
+  }
+  return candidates.some((systemOccurredAtMs) => Math.abs(systemOccurredAtMs - occurredAtMs) <= SYSTEM_ECHO_ACTIVITY_WINDOW_MS);
 }
 
 type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
