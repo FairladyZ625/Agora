@@ -11,6 +11,7 @@ export function ArchivePage() {
   const error = useArchiveStore((state) => state.error);
   const fetchJobs = useArchiveStore((state) => state.fetchJobs);
   const selectJob = useArchiveStore((state) => state.selectJob);
+  const approveJob = useArchiveStore((state) => state.approveJob);
   const confirmJob = useArchiveStore((state) => state.confirmJob);
   const retryJob = useArchiveStore((state) => state.retryJob);
   const setFilters = useArchiveStore((state) => state.setFilters);
@@ -46,8 +47,10 @@ export function ArchivePage() {
               <span className="inline-stat__value">{selectedJob?.status ?? 'n/a'}</span>
             </div>
             <div className="inline-stat">
-              <span className="inline-stat__label">{copy.retryAction}</span>
-              <span className="inline-stat__value">{selectedJob?.canRetry ? 1 : 0}</span>
+              <span className="inline-stat__label">{copy.nextActionLabel}</span>
+              <span className="inline-stat__value">
+                {selectedJob?.canApprove ? copy.approveAction : selectedJob?.canConfirm ? copy.confirmAction : selectedJob?.canRetry ? copy.retryAction : '—'}
+              </span>
             </div>
           </div>
         </div>
@@ -115,6 +118,11 @@ export function ArchivePage() {
           <div className="section-title-row">
             <h3 className="section-title">{copy.detailTitle}</h3>
             <div className="flex flex-wrap gap-3">
+              {selectedJob?.canApprove ? (
+                <button type="button" className="button-primary" onClick={() => void approveJob(selectedJob.id)}>
+                  {copy.approveAction}
+                </button>
+              ) : null}
               {selectedJob?.canConfirm ? (
                 <button type="button" className="button-primary" onClick={() => void confirmJob(selectedJob.id)}>
                   {copy.confirmAction}

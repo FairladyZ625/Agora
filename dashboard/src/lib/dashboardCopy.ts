@@ -999,6 +999,8 @@ export function useArchivePageCopy() {
     detailTitle: t('archive.detailTitle'),
     emptyTitle: t('archive.emptyTitle'),
     payloadTitle: t('archive.payloadTitle'),
+    nextActionLabel: t('archive.nextActionLabel'),
+    approveAction: t('archive.approveAction'),
     confirmAction: t('archive.confirmAction'),
     retryAction: t('archive.retryAction'),
     requestedAtLabel: t('archive.requestedAtLabel'),

@@ -11,6 +11,7 @@ vi.mock('@/lib/api', () => ({
   getCraftsmanRuntimeTail: vi.fn(),
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
+  approveArchiveJob: vi.fn(),
   notifyArchiveJob: vi.fn(),
   retryArchiveJob: vi.fn(),
   listTodos: vi.fn(),
@@ -357,6 +358,7 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
         canRetry: false,
       }],
@@ -374,6 +376,7 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
         canRetry: false,
       },
@@ -400,7 +403,77 @@ describe('dashboard expansion stores', () => {
     expect(useArchiveStore.getState().selectedJob).toMatchObject({
       id: 9,
       status: 'notified',
+      canApprove: false,
       canConfirm: false,
+      canRetry: false,
+    });
+  });
+
+  it('approves a review-pending archive job through the store layer', async () => {
+    useArchiveStore.setState({
+      jobs: [{
+        id: 11,
+        taskId: 'OC-304',
+        taskTitle: '待审核归档任务',
+        taskType: 'document',
+        status: 'review_pending',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { closeout_review: { state: 'review_pending' } },
+        payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
+        canApprove: true,
+        canConfirm: false,
+        canRetry: false,
+      }],
+      selectedJobId: 11,
+      selectedJob: {
+        id: 11,
+        taskId: 'OC-304',
+        taskTitle: '待审核归档任务',
+        taskType: 'document',
+        status: 'review_pending',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { closeout_review: { state: 'review_pending' } },
+        payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
+        canApprove: true,
+        canConfirm: false,
+        canRetry: false,
+      },
+    });
+    vi.mocked(api.approveArchiveJob).mockResolvedValue({
+      id: 11,
+      task_id: 'OC-304',
+      task_title: '待审核归档任务',
+      task_type: 'document',
+      status: 'pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      commit_hash: null,
+      requested_at: '2026-03-07T08:00:00.000Z',
+      completed_at: null,
+      payload: {
+        closeout_review: {
+          state: 'approved',
+          approver_id: 'dashboard',
+        },
+      },
+    });
+
+    await useArchiveStore.getState().approveJob(11);
+
+    expect(api.approveArchiveJob).toHaveBeenCalledWith(11, 'dashboard', '');
+    expect(useArchiveStore.getState().selectedJob).toMatchObject({
+      id: 11,
+      status: 'pending',
+      canApprove: false,
+      canConfirm: true,
       canRetry: false,
     });
   });
@@ -432,6 +505,7 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
         canRetry: false,
       }],
@@ -449,6 +523,7 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
         canRetry: false,
       },

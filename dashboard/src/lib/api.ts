@@ -924,6 +924,13 @@ export function getArchiveJob(jobId: number): Promise<ApiArchiveJobDto> {
   return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}`, archiveJobSchema);
 }
 
+export function approveArchiveJob(jobId: number, approverId = 'dashboard', comment = ''): Promise<ApiArchiveJobDto> {
+  return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/approve`, archiveJobSchema, {
+    method: 'POST',
+    body: JSON.stringify({ approver_id: approverId, comment }),
+  });
+}
+
 export function retryArchiveJob(jobId: number, reason = ''): Promise<ApiArchiveJobDto> {
   return request<ApiArchiveJobDto>(`/archive/jobs/${jobId}/retry`, archiveJobSchema, {
     method: 'POST',

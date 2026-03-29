@@ -242,6 +242,7 @@ describe('dashboard expansion mappers', () => {
     expect(job.id).toBe(7);
     expect(job.taskTitle).toBe('归档日报');
     expect(job.payloadSummary).toContain('timeout');
+    expect(job.canApprove).toBe(false);
     expect(job.canConfirm).toBe(false);
     expect(job.canRetry).toBe(true);
   });
@@ -263,7 +264,35 @@ describe('dashboard expansion mappers', () => {
 
     const job = mapArchiveJobDto(dto);
 
+    expect(job.canApprove).toBe(false);
     expect(job.canConfirm).toBe(true);
+    expect(job.canRetry).toBe(false);
+  });
+
+  it('maps review-pending archive jobs into approvable view models', () => {
+    const dto: ApiArchiveJobDto = {
+      id: 9,
+      task_id: 'OC-303',
+      task_title: '待审核归档任务',
+      task_type: 'document',
+      status: 'review_pending',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      commit_hash: null,
+      requested_at: '2026-03-07T08:00:00.000Z',
+      completed_at: null,
+      payload: {
+        closeout_review: {
+          required: true,
+          state: 'review_pending',
+        },
+      },
+    };
+
+    const job = mapArchiveJobDto(dto);
+
+    expect(job.canApprove).toBe(true);
+    expect(job.canConfirm).toBe(false);
     expect(job.canRetry).toBe(false);
   });
 

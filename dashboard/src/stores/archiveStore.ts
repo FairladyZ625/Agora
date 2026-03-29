@@ -18,6 +18,7 @@ interface ArchiveStore {
   filters: ArchiveFilters;
   fetchJobs: () => Promise<'live' | 'error'>;
   selectJob: (id: number | null) => Promise<void>;
+  approveJob: (id: number, comment?: string) => Promise<void>;
   confirmJob: (id: number) => Promise<void>;
   retryJob: (id: number, reason?: string) => Promise<void>;
   setFilters: (filters: Partial<ArchiveFilters>) => void;
@@ -73,6 +74,21 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
         detailLoading: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  },
+
+  approveJob: async (id, comment = '') => {
+    set({ error: null });
+    try {
+      const updated = mapArchiveJobDto(await api.approveArchiveJob(id, 'dashboard', comment));
+      const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
+      set({
+        jobs,
+        selectedJobId: id,
+        selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
     }
   },
 

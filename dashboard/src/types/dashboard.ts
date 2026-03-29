@@ -195,6 +195,7 @@ export interface ArchiveJob {
   completedAt: string | null;
   payload: Record<string, unknown> | null;
   payloadSummary: string;
+  canApprove: boolean;
   canConfirm: boolean;
   canRetry: boolean;
 }
