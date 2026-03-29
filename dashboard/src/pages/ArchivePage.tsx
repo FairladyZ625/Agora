@@ -13,6 +13,7 @@ export function ArchivePage() {
   const selectJob = useArchiveStore((state) => state.selectJob);
   const approveJob = useArchiveStore((state) => state.approveJob);
   const confirmJob = useArchiveStore((state) => state.confirmJob);
+  const completeJob = useArchiveStore((state) => state.completeJob);
   const retryJob = useArchiveStore((state) => state.retryJob);
   const setFilters = useArchiveStore((state) => state.setFilters);
 
@@ -49,7 +50,7 @@ export function ArchivePage() {
             <div className="inline-stat">
               <span className="inline-stat__label">{copy.nextActionLabel}</span>
               <span className="inline-stat__value">
-                {selectedJob?.canApprove ? copy.approveAction : selectedJob?.canConfirm ? copy.confirmAction : selectedJob?.canRetry ? copy.retryAction : '—'}
+                {selectedJob?.canComplete ? copy.completeAction : selectedJob?.canApprove ? copy.approveAction : selectedJob?.canConfirm ? copy.confirmAction : selectedJob?.canRetry ? copy.retryAction : '—'}
               </span>
             </div>
           </div>
@@ -118,6 +119,11 @@ export function ArchivePage() {
           <div className="section-title-row">
             <h3 className="section-title">{copy.detailTitle}</h3>
             <div className="flex flex-wrap gap-3">
+              {selectedJob?.canComplete ? (
+                <button type="button" className="button-primary" onClick={() => void completeJob(selectedJob.id)}>
+                  {copy.completeAction}
+                </button>
+              ) : null}
               {selectedJob?.canApprove ? (
                 <button type="button" className="button-primary" onClick={() => void approveJob(selectedJob.id)}>
                   {copy.approveAction}

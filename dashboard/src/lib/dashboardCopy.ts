@@ -1002,6 +1002,7 @@ export function useArchivePageCopy() {
     nextActionLabel: t('archive.nextActionLabel'),
     approveAction: t('archive.approveAction'),
     confirmAction: t('archive.confirmAction'),
+    completeAction: t('archive.completeAction'),
     retryAction: t('archive.retryAction'),
     requestedAtLabel: t('archive.requestedAtLabel'),
     completedAtLabel: t('archive.completedAtLabel'),

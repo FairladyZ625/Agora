@@ -13,6 +13,7 @@ vi.mock('@/lib/api', () => ({
   getArchiveJob: vi.fn(),
   approveArchiveJob: vi.fn(),
   notifyArchiveJob: vi.fn(),
+  updateArchiveJobStatus: vi.fn(),
   retryArchiveJob: vi.fn(),
   listTodos: vi.fn(),
   createTodo: vi.fn(),
@@ -360,6 +361,7 @@ describe('dashboard expansion stores', () => {
         payloadSummary: '{"state":"cancelled"}',
         canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       }],
       selectedJobId: 9,
@@ -378,6 +380,7 @@ describe('dashboard expansion stores', () => {
         payloadSummary: '{"state":"cancelled"}',
         canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       },
     });
@@ -405,6 +408,7 @@ describe('dashboard expansion stores', () => {
       status: 'notified',
       canApprove: false,
       canConfirm: false,
+      canComplete: true,
       canRetry: false,
     });
   });
@@ -426,6 +430,7 @@ describe('dashboard expansion stores', () => {
         payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
         canApprove: true,
         canConfirm: false,
+        canComplete: false,
         canRetry: false,
       }],
       selectedJobId: 11,
@@ -444,6 +449,7 @@ describe('dashboard expansion stores', () => {
         payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
         canApprove: true,
         canConfirm: false,
+        canComplete: false,
         canRetry: false,
       },
     });
@@ -474,6 +480,76 @@ describe('dashboard expansion stores', () => {
       status: 'pending',
       canApprove: false,
       canConfirm: true,
+      canComplete: false,
+      canRetry: false,
+    });
+  });
+
+  it('completes a notified archive job through the store layer', async () => {
+    useArchiveStore.setState({
+      jobs: [{
+        id: 12,
+        taskId: 'OC-305',
+        taskTitle: '已通知归档任务',
+        taskType: 'document',
+        status: 'notified',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { notified_at: '2026-03-07T08:01:00.000Z' },
+        payloadSummary: '{"notified_at":"2026-03-07T08:01:00.000Z"}',
+        canApprove: false,
+        canConfirm: false,
+        canComplete: true,
+        canRetry: false,
+      }],
+      selectedJobId: 12,
+      selectedJob: {
+        id: 12,
+        taskId: 'OC-305',
+        taskTitle: '已通知归档任务',
+        taskType: 'document',
+        status: 'notified',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { notified_at: '2026-03-07T08:01:00.000Z' },
+        payloadSummary: '{"notified_at":"2026-03-07T08:01:00.000Z"}',
+        canApprove: false,
+        canConfirm: false,
+        canComplete: true,
+        canRetry: false,
+      },
+    });
+    vi.mocked(api.updateArchiveJobStatus).mockResolvedValue({
+      id: 12,
+      task_id: 'OC-305',
+      task_title: '已通知归档任务',
+      task_type: 'document',
+      status: 'synced',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      commit_hash: null,
+      requested_at: '2026-03-07T08:00:00.000Z',
+      completed_at: '2026-03-07T08:02:00.000Z',
+      payload: {
+        notified_at: '2026-03-07T08:01:00.000Z',
+      },
+    });
+
+    await useArchiveStore.getState().completeJob(12);
+
+    expect(api.updateArchiveJobStatus).toHaveBeenCalledWith(12, 'synced', {});
+    expect(useArchiveStore.getState().selectedJob).toMatchObject({
+      id: 12,
+      status: 'synced',
+      canApprove: false,
+      canConfirm: false,
+      canComplete: false,
       canRetry: false,
     });
   });
@@ -507,6 +583,7 @@ describe('dashboard expansion stores', () => {
         payloadSummary: '{"state":"cancelled"}',
         canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       }],
       selectedJobId: 9,
@@ -525,6 +602,7 @@ describe('dashboard expansion stores', () => {
         payloadSummary: '{"state":"cancelled"}',
         canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       },
       error: null,

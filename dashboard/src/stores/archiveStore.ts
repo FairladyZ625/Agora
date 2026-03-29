@@ -20,6 +20,7 @@ interface ArchiveStore {
   selectJob: (id: number | null) => Promise<void>;
   approveJob: (id: number, comment?: string) => Promise<void>;
   confirmJob: (id: number) => Promise<void>;
+  completeJob: (id: number, commitHash?: string) => Promise<void>;
   retryJob: (id: number, reason?: string) => Promise<void>;
   setFilters: (filters: Partial<ArchiveFilters>) => void;
   clearError: () => void;
@@ -96,6 +97,23 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
     set({ error: null });
     try {
       const updated = mapArchiveJobDto(await api.notifyArchiveJob(id));
+      const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
+      set({
+        jobs,
+        selectedJobId: id,
+        selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+
+  completeJob: async (id, commitHash = '') => {
+    set({ error: null });
+    try {
+      const updated = mapArchiveJobDto(await api.updateArchiveJobStatus(id, 'synced', {
+        ...(commitHash ? { commitHash } : {}),
+      }));
       const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
       set({
         jobs,

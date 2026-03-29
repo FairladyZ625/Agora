@@ -4,6 +4,7 @@ import { ArchivePage } from '@/pages/ArchivePage';
 
 const approveJob = vi.fn(async () => undefined);
 const confirmJob = vi.fn(async () => undefined);
+const completeJob = vi.fn(async () => undefined);
 const retryJob = vi.fn(async () => undefined);
 const fetchJobs = vi.fn(async () => 'live');
 const selectJob = vi.fn(async () => undefined);
@@ -25,6 +26,7 @@ const archiveStoreState = {
     payloadSummary: '{"state":"cancelled"}',
     canApprove: false,
     canConfirm: true,
+    canComplete: false,
     canRetry: false,
   }],
   selectedJobId: 9,
@@ -43,6 +45,7 @@ const archiveStoreState = {
     payloadSummary: '{"state":"cancelled"}',
     canApprove: false,
     canConfirm: true,
+    canComplete: false,
     canRetry: false,
   },
   loading: false,
@@ -53,6 +56,7 @@ const archiveStoreState = {
   selectJob,
   approveJob,
   confirmJob,
+  completeJob,
   retryJob,
   setFilters,
   clearError: vi.fn(),
@@ -67,6 +71,7 @@ describe('archive page', () => {
   beforeEach(() => {
     approveJob.mockClear();
     confirmJob.mockClear();
+    completeJob.mockClear();
     retryJob.mockClear();
     archiveStoreState.jobs = [{
       id: 9,
@@ -83,6 +88,7 @@ describe('archive page', () => {
       payloadSummary: '{"state":"cancelled"}',
       canApprove: false,
       canConfirm: true,
+      canComplete: false,
       canRetry: false,
     }];
     archiveStoreState.selectedJob = archiveStoreState.jobs[0];
@@ -106,6 +112,7 @@ describe('archive page', () => {
       payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
       canApprove: true,
       canConfirm: false,
+      canComplete: false,
       canRetry: false,
     }];
     archiveStoreState.selectedJob = archiveStoreState.jobs[0];
@@ -115,6 +122,27 @@ describe('archive page', () => {
     fireEvent.click(screen.getByRole('button', { name: '放行归档' }));
 
     expect(approveJob).toHaveBeenCalledWith(9);
+    expect(confirmJob).not.toHaveBeenCalled();
+  });
+
+  it('renders a complete archive action for notified jobs', () => {
+    archiveStoreState.jobs = [{
+      ...archiveStoreState.jobs[0],
+      status: 'notified',
+      payload: { notified_at: '2026-03-07T08:01:00.000Z' },
+      payloadSummary: '{"notified_at":"2026-03-07T08:01:00.000Z"}',
+      canApprove: false,
+      canConfirm: false,
+      canComplete: true,
+      canRetry: false,
+    }];
+    archiveStoreState.selectedJob = archiveStoreState.jobs[0];
+
+    render(<ArchivePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '完成归档' }));
+
+    expect(completeJob).toHaveBeenCalledWith(9);
     expect(confirmJob).not.toHaveBeenCalled();
   });
 });

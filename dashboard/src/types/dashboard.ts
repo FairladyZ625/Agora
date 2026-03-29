@@ -197,6 +197,7 @@ export interface ArchiveJob {
   payloadSummary: string;
   canApprove: boolean;
   canConfirm: boolean;
+  canComplete: boolean;
   canRetry: boolean;
 }
 
