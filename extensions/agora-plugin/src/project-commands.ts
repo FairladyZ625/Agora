@@ -225,8 +225,8 @@ async function handleShow(bridge: AgoraBridge, args: string[]): Promise<CommandR
   return {
     text: [
       `${workbench.project.id} | ${workbench.project.status} | ${workbench.project.name}`,
-      `knowledge=${workbench.knowledge.length}, recaps=${workbench.recaps.length}, citizens=${workbench.citizens.length}`,
-      `index=${workbench.index ? "present" : "missing"}, timeline=${workbench.timeline ? "present" : "missing"}`,
+      `knowledge=${workbench.overview.counts.knowledge}, recaps=${workbench.overview.counts.recaps}, citizens=${workbench.overview.counts.citizens}`,
+      `index=${workbench.surfaces.index ? "present" : "missing"}, timeline=${workbench.surfaces.timeline ? "present" : "missing"}`,
     ].join("\n"),
   };
 }

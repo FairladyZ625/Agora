@@ -184,11 +184,36 @@ describe("registerProjectCommands", () => {
   it("shows project workbench summary", async () => {
     const getProject = vi.fn(async () => ({
       project: { id: "proj-show", status: "active", name: "Project Show" },
-      knowledge: [{ id: "k1" }],
-      recaps: [{ id: "r1" }, { id: "r2" }],
-      citizens: [],
-      index: { path: "index.md" },
-      timeline: null,
+      overview: {
+        status: "active",
+        owner: "u1",
+        updated_at: "2026-03-29T14:00:00.000Z",
+        counts: {
+          knowledge: 1,
+          citizens: 0,
+          recaps: 2,
+          tasks_total: 3,
+          active_tasks: 1,
+          review_tasks: 0,
+          todos_total: 2,
+          pending_todos: 1,
+        },
+      },
+      surfaces: {
+        index: { kind: "index", slug: "index", title: "Index", path: "index.md", updated_at: "2026-03-29T14:00:00.000Z" },
+        timeline: null,
+      },
+      work: {
+        tasks: [],
+        todos: [],
+        recaps: [{ id: "r1" }, { id: "r2" }],
+        knowledge: [{ id: "k1" }],
+      },
+      operator: {
+        nomos_id: null,
+        repo_path: null,
+        citizens: [],
+      },
     }));
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, { getProject } as any, createPluginTrace(api as any));
