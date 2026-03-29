@@ -5508,6 +5508,147 @@ describe('task service', () => {
     expect(service.getTaskStatus('OC-DISPATCH-GOV-3').flow_log.map((entry) => entry.event)).toContain('craftsman_auto_probe');
   });
 
+  it('applies staircase backoff to repeated craftsman auto-probes with no progress', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-OBSERVE-BACKOFF-1',
+      craftsmanExecutionProbePort: {
+        probe: () => null,
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const baseNow = new Date();
+    const staleAt = new Date(baseNow.getTime() - 5 * 60_000).toISOString();
+
+    service.createTask({
+      title: 'Observe stale backoff',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-observe-backoff-1',
+      task_id: 'OC-OBSERVE-BACKOFF-1',
+      stage_id: 'implement',
+      title: 'Observe stale backoff',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:backoff',
+      dispatch_status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-observe-backoff-1',
+      task_id: 'OC-OBSERVE-BACKOFF-1',
+      subtask_id: 'sub-observe-backoff-1',
+      adapter: 'codex',
+      mode: 'one_shot',
+      session_id: 'tmux:backoff',
+      status: 'running',
+      started_at: staleAt,
+      finished_at: null,
+    });
+    db.prepare(`
+      UPDATE craftsman_executions
+      SET updated_at = ?
+      WHERE execution_id = 'exec-observe-backoff-1'
+    `).run(staleAt);
+
+    const first = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: baseNow,
+    });
+    expect(first).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    const probeState = () => (service as unknown as {
+      craftsmanProbeStateByExecution: Map<string, { attempts: number; lastProbeMs: number | null }>;
+    }).craftsmanProbeStateByExecution.get('exec-observe-backoff-1');
+
+    expect(probeState()).toMatchObject({
+      attempts: 1,
+    });
+
+    const firstProbeAt = probeState()?.lastProbeMs;
+    expect(firstProbeAt).toBeTruthy();
+    const second = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(firstProbeAt! + 30_000),
+    });
+    expect(second).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 1,
+    });
+
+    const third = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(firstProbeAt! + 5 * 60_000),
+    });
+    expect(third).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 2,
+    });
+
+    const secondProbeAt = probeState()?.lastProbeMs;
+    expect(secondProbeAt).toBeTruthy();
+    const fourth = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(secondProbeAt! + 120_000),
+    });
+    expect(fourth).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 2,
+    });
+
+    const fifth = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(secondProbeAt! + 180_001),
+    });
+    expect(fifth).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 3,
+    });
+  });
+
   it('creates execute-mode subtasks through the formal service surface and auto-dispatches craftsmen specs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

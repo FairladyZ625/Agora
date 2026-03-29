@@ -237,6 +237,12 @@ export interface ObserveCraftsmanExecutionsResult {
   progressed: number;
 }
 
+type CraftsmanProbeState = {
+  activityMs: number;
+  lastProbeMs: number | null;
+  attempts: number;
+};
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../templates', import.meta.url));
 }
@@ -246,6 +252,7 @@ function defaultTaskIdGenerator() {
 }
 
 export class TaskService {
+  private static readonly CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS = [1, 3, 9] as const;
   private readonly taskRepository: TaskRepository;
   private readonly flowLogRepository: FlowLogRepository;
   private readonly progressLogRepository: ProgressLogRepository;
@@ -287,6 +294,7 @@ export class TaskService {
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
   private readonly escalationPolicy: EscalationPolicy;
   private readonly pendingBackgroundOperations = new Set<Promise<void>>();
+  private readonly craftsmanProbeStateByExecution = new Map<string, CraftsmanProbeState>();
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -1617,6 +1625,10 @@ export class TaskService {
       if (nowMs - lastActivityMs < thresholdMs) {
         continue;
       }
+      const probeState = this.getCraftsmanProbeState(execution.execution_id, lastActivityMs);
+      if (!this.shouldProbeCraftsmanExecution(nowMs, thresholdMs, probeState)) {
+        continue;
+      }
       this.flowLogRepository.insertFlowLog({
         task_id: execution.task_id,
         kind: 'system',
@@ -1628,6 +1640,7 @@ export class TaskService {
         },
         actor: 'system',
       });
+      this.noteCraftsmanAutoProbe(execution.execution_id, lastActivityMs, nowMs);
       const probeResult = this.probeCraftsmanExecution(execution.execution_id);
       if (probeResult.probed) {
         result.probed += 1;
@@ -4128,6 +4141,40 @@ export class TaskService {
       rosterAfterMs: options.rosterAfterMs ?? this.escalationPolicy.rosterAfterMs,
       inboxAfterMs: options.inboxAfterMs ?? this.escalationPolicy.inboxAfterMs,
     };
+  }
+
+  private getCraftsmanProbeState(executionId: string, latestActivityMs: number): CraftsmanProbeState {
+    const current = this.craftsmanProbeStateByExecution.get(executionId);
+    if (!current || current.activityMs !== latestActivityMs) {
+      const resetState: CraftsmanProbeState = {
+        activityMs: latestActivityMs,
+        lastProbeMs: null,
+        attempts: 0,
+      };
+      this.craftsmanProbeStateByExecution.set(executionId, resetState);
+      return resetState;
+    }
+    return current;
+  }
+
+  private noteCraftsmanAutoProbe(executionId: string, latestActivityMs: number, nowMs: number) {
+    this.craftsmanProbeStateByExecution.set(executionId, {
+      activityMs: latestActivityMs,
+      lastProbeMs: nowMs,
+      attempts: (this.craftsmanProbeStateByExecution.get(executionId)?.attempts ?? 0) + 1,
+    });
+  }
+
+  private shouldProbeCraftsmanExecution(nowMs: number, thresholdMs: number, probeState: CraftsmanProbeState) {
+    if (probeState.attempts === 0 || probeState.lastProbeMs === null) {
+      return true;
+    }
+    const multiplierIndex = Math.min(
+      probeState.attempts - 1,
+      TaskService.CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS.length - 1,
+    );
+    const cooldownMs = thresholdMs * TaskService.CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS[multiplierIndex]!;
+    return nowMs - probeState.lastProbeMs >= cooldownMs;
   }
 
   private buildEscalationSnapshot(
