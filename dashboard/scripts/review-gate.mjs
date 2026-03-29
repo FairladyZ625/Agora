@@ -12,7 +12,7 @@ import {
 } from './audit-helpers.mjs';
 
 const FIXTURE_TITLE = `B3 dashboard gate fixture ${Date.now()}`;
-const FIXTURE_CREATOR = 'glm5';
+const FIXTURE_CREATOR = 'haiku';
 const agoraTsRoot = path.resolve(import.meta.dirname, '..', '..', 'agora-ts');
 
 async function requestJson(url, options = {}) {
@@ -159,26 +159,34 @@ async function run() {
   });
 
   try {
+    console.log(`[review-gate] seed fixture task=${fixture.taskId} title="${fixture.title}" stage=${fixture.currentStage} state=${fixture.state}`);
     const loggedIn = await loginIfNeeded(page, config);
+    console.log(`[review-gate] login=${loggedIn ? 'ok' : 'skipped'}`);
     await page.goto(new URL('/dashboard/reviews', config.baseUrl).toString(), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200);
+    console.log('[review-gate] opened /dashboard/reviews');
 
     const refreshButton = page.getByRole('button', { name: '刷新工作区' });
     if (await refreshButton.count()) {
       await refreshButton.click();
       await page.waitForTimeout(1200);
+      console.log('[review-gate] refresh clicked');
     }
 
     const taskRow = page.getByRole('button', { name: new RegExp(fixture.taskId) });
     await taskRow.waitFor({ timeout: 10000 });
+    console.log('[review-gate] fixture row visible');
     await taskRow.click();
-    const detailPane = page.getByRole('complementary').last();
-    await detailPane.getByRole('heading', { name: fixture.title }).waitFor({ timeout: 10000 });
-    await detailPane.getByText(fixture.taskId, { exact: false }).waitFor({ timeout: 10000 });
-    await detailPane.locator('textarea').fill('dashboard session gate approve');
-    await detailPane.getByRole('button', { name: '批准执行' }).click();
+    await page.getByRole('heading', { name: fixture.title }).waitFor({ timeout: 10000 });
+    console.log('[review-gate] detail pane selected');
+    await page.getByRole('textbox', { name: '裁决说明' }).fill('dashboard session gate approve');
+    const approveButton = page.locator('button').filter({ hasText: '批准执行' }).last();
+    await approveButton.waitFor({ timeout: 10000 });
+    await approveButton.click();
+    console.log('[review-gate] approve clicked');
     await page.waitForTimeout(1500);
     await waitForTaskDone(fixture.taskId);
+    console.log('[review-gate] backend converged to done');
 
     const currentPath = new URL(page.url()).pathname;
     const screenshotPath = path.join(outputDir, `${sanitizePathForFile(currentPath)}.png`);
