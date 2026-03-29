@@ -4756,6 +4756,56 @@ describe('task service', () => {
     });
   });
 
+  it('suppresses repeated controller pings when sqlite timestamps omit timezone markers', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-probe-sqlite',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-SQLITE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Inactive sqlite timestamp probe test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-SQLITE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12 00:00:00', 'OC-PROBE-SQLITE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12 00:00:00', 'OC-PROBE-SQLITE-1');
+
+    const first = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:00.000Z'),
+    });
+    expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
+
+    const second = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:30.000Z'),
+    });
+    expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 0, inbox_items: 0 });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
+    ).toHaveLength(1);
+  });
+
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

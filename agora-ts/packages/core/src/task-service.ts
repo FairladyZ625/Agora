@@ -243,6 +243,16 @@ type CraftsmanProbeState = {
   attempts: number;
 };
 
+function parseStoredTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return Number.NaN;
+  }
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)) {
+    return Date.parse(value.replace(' ', 'T') + 'Z');
+  }
+  return Date.parse(value);
+}
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../templates', import.meta.url));
 }
@@ -4108,17 +4118,17 @@ export class TaskService {
     const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'inbox_escalated']);
     const flowMs = this.flowLogRepository.listByTask(task.id)
       .filter((entry) => !escalationEvents.has(entry.event))
-      .map((entry) => Date.parse(entry.created_at))
+      .map((entry) => parseStoredTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const progressMs = this.progressLogRepository.listByTask(task.id)
-      .map((entry) => Date.parse(entry.created_at))
+      .map((entry) => parseStoredTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const conversationMs = this.taskConversationRepository.listByTask(task.id)
       .filter((entry) => entry.author_kind !== 'system')
-      .map((entry) => Date.parse(entry.occurred_at))
+      .map((entry) => parseStoredTimestamp(entry.occurred_at))
       .filter((value) => Number.isFinite(value));
     return Math.max(
-      Date.parse(task.updated_at),
+      parseStoredTimestamp(task.updated_at),
       ...flowMs,
       ...progressMs,
       ...conversationMs,
@@ -4127,7 +4137,7 @@ export class TaskService {
 
   private getProbeState(taskId: string, latestActivityMs: number) {
     const flows = this.flowLogRepository.listByTask(taskId);
-    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && Date.parse(entry.created_at) > latestActivityMs);
+    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && parseStoredTimestamp(entry.created_at) > latestActivityMs);
     return {
       controllerNotified: notifiedAfterActivity('controller_pinged'),
       rosterNotified: notifiedAfterActivity('roster_pinged'),
