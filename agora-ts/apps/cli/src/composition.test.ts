@@ -195,6 +195,8 @@ describe('cli composition', () => {
 
     expect(Reflect.get(composition.dashboardQueryService as object, 'archiveJobNotifier')?.constructor?.name).toBe('FileArchiveJobNotifier');
     expect(Reflect.get(composition.dashboardQueryService as object, 'archiveJobReceiptIngestor')?.constructor?.name).toBe('FileArchiveJobReceiptIngestor');
+    expect(Reflect.get(composition.dashboardQueryService as object, 'taskBrainBindingService')).toBe(composition.taskBrainBindingService);
+    expect(Reflect.get(composition.dashboardQueryService as object, 'taskBrainWorkspacePort')).toBeDefined();
     expect(Reflect.get(composition.dashboardQueryService as object, 'taskContextBindingService')).toBe(composition.taskContextBindingService);
     expect(Reflect.get(composition.dashboardQueryService as object, 'imProvisioningPort')).toBe(stubProvisioning);
     composition.db.close();

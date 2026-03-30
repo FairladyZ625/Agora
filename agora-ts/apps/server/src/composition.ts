@@ -502,6 +502,8 @@ export function buildServerComposition(
     archiveJobNotifier,
     archiveJobReceiptIngestor,
     imProvisioningPort,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
     taskContextBindingService,
   });
   const templateAuthoringService = factories.createTemplateAuthoringService(context);

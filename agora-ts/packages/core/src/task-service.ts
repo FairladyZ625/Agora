@@ -1760,7 +1760,7 @@ export class TaskService {
       });
       this.refreshTaskBrainWorkspace(done);
       this.materializeTaskCloseRecap(done, 'archon', options.reason);
-      this.ensureArchiveJobForTask(taskId);
+      const archiveJob = this.ensureArchiveJobForTask(taskId);
       this.flowLogRepository.insertFlowLog({
         task_id: taskId,
         kind: 'flow',
@@ -1778,6 +1778,11 @@ export class TaskService {
           to_state: TaskState.DONE,
         },
       });
+      this.publishTaskStatusBroadcast(done, {
+        kind: 'task_completed',
+        bodyLines: ['Task reached done state and has been queued for archive handling.'],
+      });
+      this.publishControllerCloseoutReminder(done, archiveJob);
       return done;
     }
 

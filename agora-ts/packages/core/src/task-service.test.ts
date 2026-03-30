@@ -2950,6 +2950,69 @@ describe('task service', () => {
     expect(reminder?.body).toContain('project-harvest-draft.md');
   });
 
+  it('also emits the controller closeout reminder when force-advance reaches done', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-force-1',
+    });
+    const contextBindings = new TaskContextBindingService(db);
+    const brainBindings = new TaskBrainBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLOSEOUT-FORCE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: contextBindings,
+      taskBrainBindingService: brainBindings,
+    });
+    const contextBindingRepo = new TaskContextBindingRepository(db);
+    const workspacePath = join(makeTempDir('agora-ts-closeout-force-workspace-'), 'OC-CLOSEOUT-FORCE-1');
+    mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
+    writeFileSync(join(workspacePath, '07-outputs', 'project-harvest-draft.md'), '# draft\n', 'utf8');
+
+    service.createTask({
+      title: 'Closeout force reminder task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    contextBindingRepo.insert({
+      id: 'binding-closeout-force-1',
+      task_id: 'OC-CLOSEOUT-FORCE-1',
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-force-1',
+      status: 'active',
+    });
+    brainBindings.createBinding({
+      task_id: 'OC-CLOSEOUT-FORCE-1',
+      brain_pack_ref: 'agora-project-state',
+      brain_task_id: 'OC-CLOSEOUT-FORCE-1',
+      workspace_path: workspacePath,
+    });
+
+    let guard = 0;
+    while (guard < 8) {
+      const task = service.getTask('OC-CLOSEOUT-FORCE-1');
+      if (!task || task.state === 'done') break;
+      service.forceAdvanceTask('OC-CLOSEOUT-FORCE-1', { reason: 'force to done' });
+      guard += 1;
+    }
+    await service.drainBackgroundOperations();
+
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const reminder = broadcasts.find((message) => message.kind === 'controller_closeout_requested');
+    const controllerRef = service.getTask('OC-CLOSEOUT-FORCE-1')?.team.members.find((member) => member.member_kind === 'controller')?.agentId;
+
+    expect(reminder).toMatchObject({
+      participant_refs: [controllerRef],
+    });
+    expect(reminder?.body).toContain(workspacePath);
+  });
+
   it('auto-refines a project nomos draft when a fixed authoring task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

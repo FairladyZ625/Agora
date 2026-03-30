@@ -558,6 +558,8 @@ export function createCliComposition(
     archiveJobNotifier,
     archiveJobReceiptIngestor,
     imProvisioningPort,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
     taskContextBindingService,
   });
   return {

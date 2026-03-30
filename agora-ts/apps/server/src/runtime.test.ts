@@ -168,6 +168,8 @@ describe('server runtime', () => {
     expect(runtime.taskConversationService).toBeDefined();
     expect(Reflect.get(runtime.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(Reflect.get(runtime.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
+    expect(Reflect.get(runtime.dashboardQueryService as object, 'taskBrainBindingService')).toBeDefined();
+    expect(Reflect.get(runtime.dashboardQueryService as object, 'taskBrainWorkspacePort')).toBeDefined();
     expect(readFileSync(join(env.brainPackRoot, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     runtime.db.close();
   });
