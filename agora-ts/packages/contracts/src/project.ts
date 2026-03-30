@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { todoItemSchema } from './dashboard.js';
+import { createProjectAgentRosterEntrySchema } from './project-agent-roster.js';
+import { createProjectAdminSchema, createProjectMembershipSchema } from './project-membership.js';
 import { taskSchema } from './task-api.js';
 
 const projectStatusSchema = z.enum(['active', 'archived']);
@@ -22,6 +24,9 @@ export const createProjectRequestSchema = z.object({
   name: z.string().min(1),
   summary: z.string().default(''),
   owner: z.string().min(1).optional(),
+  admins: z.array(createProjectAdminSchema).optional(),
+  members: z.array(createProjectMembershipSchema).optional(),
+  default_agents: z.array(createProjectAgentRosterEntrySchema).optional(),
   repo_path: z.string().min(1).optional(),
   initialize_repo: z.boolean().optional(),
   nomos_id: z.string().min(1).optional(),

@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectAgentRosterRepository, ProjectMembershipRepository, ProjectRepository, runMigrations, SubtaskRepository, TaskAuthorityRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
@@ -1266,6 +1266,107 @@ describe('task service', () => {
 
     expect(promoted.todo.project_id).toBe('proj-promote');
     expect(promoted.task.project_id).toBe('proj-promote');
+  });
+
+  it('rejects project-bound task creation when the creator is not an active project member', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-member-check',
+      name: 'Member Check',
+      admins: [{ account_id: 1 }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-MEMBER-CHECK',
+      projectService,
+    });
+
+    expect(() => service.createTask({
+      title: 'Creator outside membership',
+      type: 'coding',
+      creator: 'alice',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-member-check',
+      authority: {
+        owner_account_id: 1,
+        controller_agent_ref: 'workspace-orchestrator',
+      },
+    })).toThrow(/creator must be an active project member/i);
+  });
+
+  it('creates task authority for project-bound tasks and rejects human authority targets outside membership', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-task-authority',
+      name: 'Task Authority',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+    const authorities = new TaskAuthorityRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TASK-AUTHORITY',
+      projectService,
+    });
+
+    expect(() => service.createTask({
+      title: 'Reject outside assignee',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-task-authority',
+      authority: {
+        owner_account_id: 1,
+        assignee_account_id: 3,
+        controller_agent_ref: 'workspace-orchestrator',
+      },
+    })).toThrow(/task authority account 3 is not an active project member/i);
+
+    const created = service.createTask({
+      title: 'Create authority',
+      type: 'coding',
+      creator: 'alice',
+      description: '',
+      priority: 'normal',
+      project_id: 'proj-task-authority',
+      authority: {
+        requester_account_id: 2,
+        owner_account_id: 1,
+        assignee_account_id: 2,
+        approver_account_id: 1,
+        controller_agent_ref: 'workspace-orchestrator',
+      },
+    });
+
+    expect(created.project_id).toBe('proj-task-authority');
+    expect(authorities.getTaskAuthority('OC-TASK-AUTHORITY')).toMatchObject({
+      requester_account_id: 2,
+      owner_account_id: 1,
+      assignee_account_id: 2,
+      approver_account_id: 1,
+      controller_agent_ref: 'workspace-orchestrator',
+    });
   });
 
   it('rolls back task creation when brain workspace materialization fails', () => {

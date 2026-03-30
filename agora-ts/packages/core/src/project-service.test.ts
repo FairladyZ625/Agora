@@ -2,7 +2,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import {
+  createAgoraDatabase,
+  ProjectAgentRosterRepository,
+  ProjectMembershipRepository,
+  runMigrations,
+} from '@agora-ts/db';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { ProjectService } from './project-service.js';
 import { TaskService } from './task-service.js';
@@ -65,6 +70,50 @@ describe('project service', () => {
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/active/]]');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/archive/]]');
     expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'timeline.md'), 'utf8')).toContain('doc_type: project_timeline');
+  });
+
+  it('creates project memberships and agent roster entries during project creation', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const service = new ProjectService(db);
+    const memberships = new ProjectMembershipRepository(db);
+    const rosters = new ProjectAgentRosterRepository(db);
+
+    service.createProject({
+      id: 'proj-membership',
+      name: 'Project Membership',
+      owner: 'archon',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+
+    expect(memberships.listByProject('proj-membership')).toEqual([
+      expect.objectContaining({ account_id: 1, role: 'admin', status: 'active' }),
+      expect.objectContaining({ account_id: 2, role: 'member', status: 'active' }),
+    ]);
+    expect(rosters.listByProject('proj-membership')).toEqual([
+      expect.objectContaining({ agent_ref: 'workspace-orchestrator', kind: 'orchestrator', status: 'active' }),
+    ]);
+  });
+
+  it('requires at least one project admin when creating a project membership set', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new ProjectService(db);
+
+    expect(() => service.createProject({
+      id: 'proj-no-admin',
+      name: 'Project Without Admin',
+      admins: [],
+      members: [{ account_id: 2, role: 'member' }],
+    })).toThrow(/at least one project admin/i);
   });
 
   it('auto-generates a persisted project id when the caller omits one', () => {

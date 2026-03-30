@@ -68,8 +68,11 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import { StageRosterService } from './stage-roster-service.js';
+import { TaskAuthorityService } from './task-authority-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAlignment, validateTemplateGraph } from './template-graph-service.js';
@@ -95,6 +98,13 @@ type TaskTemplate = {
 
 type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
   locale?: TaskLocaleDto;
+  authority?: {
+    requester_account_id?: number | null;
+    owner_account_id?: number | null;
+    assignee_account_id?: number | null;
+    approver_account_id?: number | null;
+    controller_agent_ref?: string | null;
+  };
 };
 
 type CraftsmanGovernanceLimits = {
@@ -284,6 +294,9 @@ export class TaskService {
   private readonly archiveJobRepository: ArchiveJobRepository;
   private readonly approvalRequestRepository: ApprovalRequestRepository;
   private readonly inboxRepository: InboxRepository;
+  private readonly taskAuthorities: TaskAuthorityService;
+  private readonly projectMemberships: ProjectMembershipService;
+  private readonly projectAgentRoster: ProjectAgentRosterService;
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
@@ -334,6 +347,9 @@ export class TaskService {
     this.archiveJobRepository = new ArchiveJobRepository(db);
     this.approvalRequestRepository = new ApprovalRequestRepository(db);
     this.inboxRepository = new InboxRepository(db);
+    this.taskAuthorities = new TaskAuthorityService(db);
+    this.projectMemberships = new ProjectMembershipService(db);
+    this.projectAgentRoster = new ProjectAgentRosterService(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
     this.templateRepository = new TemplateRepository(db);
     this.stateMachine = new StateMachine();
@@ -430,6 +446,18 @@ export class TaskService {
       }
       if (projectId) {
         this.projectService.requireProject(projectId);
+        if (this.projectMemberships.hasConfiguredMemberships(projectId)) {
+          this.projectMemberships.requireActiveCreatorMembership(projectId, input.creator);
+          this.projectMemberships.requireActiveMemberAccounts(projectId, [
+            input.authority?.requester_account_id,
+            input.authority?.owner_account_id,
+            input.authority?.assignee_account_id,
+            input.authority?.approver_account_id,
+          ]);
+        }
+        if (input.authority?.controller_agent_ref && this.projectAgentRoster.hasConfiguredRoster(projectId)) {
+          this.projectAgentRoster.requireActiveAgent(projectId, input.authority.controller_agent_ref);
+        }
       }
       const draft = this.taskRepository.insertTask({
         id: taskId,
@@ -510,6 +538,16 @@ export class TaskService {
           state: TaskState.ACTIVE,
           workspace_path: brainWorkspaceBinding?.workspace_path ?? null,
           bound_at: new Date().toISOString(),
+        });
+      }
+      if (input.authority) {
+        this.taskAuthorities.createOrUpdate({
+          task_id: taskId,
+          requester_account_id: input.authority.requester_account_id ?? null,
+          owner_account_id: input.authority.owner_account_id ?? null,
+          assignee_account_id: input.authority.assignee_account_id ?? null,
+          approver_account_id: input.authority.approver_account_id ?? null,
+          controller_agent_ref: input.authority.controller_agent_ref ?? null,
         });
       }
 

@@ -4,9 +4,12 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, listAppliedMigrations, runMigrations } from './database.js';
 import { ArchiveJobRepository } from './repositories/archive-job.repository.js';
+import { ProjectAgentRosterRepository } from './repositories/project-agent-roster.repository.js';
+import { ProjectMembershipRepository } from './repositories/project-membership.repository.js';
 import { RoleDefinitionRepository } from './repositories/role-definition.repository.js';
 import { ProjectRepository } from './repositories/project.repository.js';
 import { TaskRepository } from './repositories/task.repository.js';
+import { TaskAuthorityRepository } from './repositories/task-authority.repository.js';
 import { TemplateRepository } from './repositories/template.repository.js';
 import { TodoRepository } from './repositories/todo.repository.js';
 
@@ -76,6 +79,9 @@ describe('agora-ts sqlite bootstrap', () => {
       '020_task_skill_policy.sql',
       '021_project_brain_index_jobs.sql',
       '022_task_state_normalization.sql',
+      '023_project_memberships.sql',
+      '024_project_agent_rosters.sql',
+      '025_task_authorities.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -109,6 +115,18 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
       .get() as { name: string } | undefined;
     expect(projectsTable?.name).toBe('projects');
+    const membershipsTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_memberships'")
+      .get() as { name: string } | undefined;
+    expect(membershipsTable?.name).toBe('project_memberships');
+    const rosterTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_agent_rosters'")
+      .get() as { name: string } | undefined;
+    expect(rosterTable?.name).toBe('project_agent_rosters');
+    const taskAuthoritiesTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_authorities'")
+      .get() as { name: string } | undefined;
+    expect(taskAuthoritiesTable?.name).toBe('task_authorities');
     const taskColumns = db.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
     expect(taskColumns.map((column) => column.name)).toContain('skill_policy');
   });
@@ -216,6 +234,93 @@ describe('agora-ts sqlite bootstrap', () => {
     const created = todos.insertTodo({ text: 'empty update' });
 
     expect(() => todos.updateTodo(created.id, {})).toThrow();
+  });
+
+  it('persists project memberships, agent roster entries, and task authority records', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projects = new ProjectRepository(db);
+    const memberships = new ProjectMembershipRepository(db);
+    const rosters = new ProjectAgentRosterRepository(db);
+    const tasks = new TaskRepository(db);
+    const authorities = new TaskAuthorityRepository(db);
+
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+
+    projects.insertProject({
+      id: 'proj-alpha',
+      name: 'Alpha',
+      owner: 'archon',
+    });
+
+    const adminMembership = memberships.upsertMembership({
+      id: 'pm-admin',
+      project_id: 'proj-alpha',
+      account_id: 1,
+      role: 'admin',
+      status: 'active',
+      added_by_account_id: 1,
+    });
+    const memberMembership = memberships.upsertMembership({
+      id: 'pm-member',
+      project_id: 'proj-alpha',
+      account_id: 2,
+      role: 'member',
+      status: 'active',
+      added_by_account_id: 1,
+    });
+
+    const rosterEntry = rosters.upsertEntry({
+      id: 'par-orchestrator',
+      project_id: 'proj-alpha',
+      agent_ref: 'workspace-orchestrator',
+      kind: 'orchestrator',
+      default_inclusion: true,
+      status: 'active',
+    });
+
+    tasks.insertTask({
+      id: 'OC-TASK-1',
+      title: 'Task authority test',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [] },
+      project_id: 'proj-alpha',
+    });
+
+    const authority = authorities.upsertTaskAuthority({
+      task_id: 'OC-TASK-1',
+      requester_account_id: 1,
+      owner_account_id: 1,
+      assignee_account_id: 2,
+      approver_account_id: 3,
+      controller_agent_ref: 'workspace-orchestrator',
+    });
+
+    expect(adminMembership.role).toBe('admin');
+    expect(memberMembership.account_id).toBe(2);
+    expect(memberships.listByProject('proj-alpha')).toHaveLength(2);
+    expect(rosterEntry.kind).toBe('orchestrator');
+    expect(rosters.listByProject('proj-alpha')).toHaveLength(1);
+    expect(authority.assignee_account_id).toBe(2);
+    expect(authorities.getTaskAuthority('OC-TASK-1')).toMatchObject({
+      controller_agent_ref: 'workspace-orchestrator',
+    });
+
+    memberships.updateMembership('pm-member', { status: 'removed' });
+    rosters.updateEntry('par-orchestrator', { status: 'removed', default_inclusion: false });
+
+    expect(memberships.getMembership('pm-member')?.status).toBe('removed');
+    expect(rosters.getEntry('par-orchestrator')?.default_inclusion).toBe(false);
   });
 
   it('seeds templates from disk into the single sqlite database and persists later edits there', () => {
