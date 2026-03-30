@@ -1184,7 +1184,7 @@ export class TaskService {
         craftsman: {
           adapter: subtask.craftsman.adapter,
           mode: subtask.craftsman.mode,
-          workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveBaseWorkdir(task),
+          workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveDispatchWorkdir(task),
           prompt: subtask.craftsman.prompt ?? null,
           brief_path: subtask.craftsman.brief_path
             ?? this.materializeExecutionBrief(task, {
@@ -1194,7 +1194,7 @@ export class TaskService {
               adapter: subtask.craftsman.adapter,
               mode: subtask.craftsman.mode,
               prompt: subtask.craftsman.prompt ?? null,
-              workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveBaseWorkdir(task),
+              workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveDispatchWorkdir(task),
             }),
         },
       } : {}),
@@ -1281,7 +1281,7 @@ export class TaskService {
       `dispatch for subtask '${subtask.id}'`,
     );
     this.assertCraftsmanDispatchAllowed(subtask.assignee);
-    const resolvedWorkdir = input.workdir ?? subtask.craftsman_workdir ?? this.taskWorktreeService.resolveBaseWorkdir(task);
+    const resolvedWorkdir = input.workdir ?? subtask.craftsman_workdir ?? this.taskWorktreeService.resolveDispatchWorkdir(task);
     const dispatched = this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
       stage_id: subtask.stage_id,

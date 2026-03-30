@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -22,6 +23,27 @@ function makeTempDir(prefix: string) {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempPaths.push(dir);
   return dir;
+}
+
+function runGit(cwd: string, args: string[]) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function initCommittedRepo(dir: string, files: Record<string, string> = { 'README.md': 'hello\n' }) {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const absolutePath = join(dir, relativePath);
+    mkdirSync(join(absolutePath, '..'), { recursive: true });
+    writeFileSync(absolutePath, content, 'utf8');
+  }
+  runGit(dir, ['-c', 'init.defaultBranch=main', 'init', '--quiet']);
+  runGit(dir, ['config', 'user.name', 'Agora']);
+  runGit(dir, ['config', 'user.email', 'agora@example.com']);
+  runGit(dir, ['add', '.']);
+  runGit(dir, ['commit', '--quiet', '-m', 'init']);
 }
 
 function makeWorkflowFile(payload: Record<string, unknown>) {
@@ -3695,6 +3717,12 @@ describe('agora-ts cli', () => {
   it('defaults craftsmen dispatch workdir through the cli when the task is bound to a project repo', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
+    const repoDir = makeTempDir('agora-ts-cli-repo-');
+    const projectStateRoot = makeTempDir('agora-ts-cli-project-root-');
+    const isolatedRoot = join(tmpdir(), '.agora-task-worktrees', 'proj-cli-workdir');
+    tempPaths.push(isolatedRoot);
+    rmSync(isolatedRoot, { recursive: true, force: true });
+    initCommittedRepo(repoDir);
     const dispatcher = new CraftsmanDispatcher(db, {
       executionIdGenerator: () => 'exec-cli-default-workdir-1',
       adapters: {
@@ -3707,10 +3735,10 @@ describe('agora-ts cli', () => {
       name: 'CLI Workdir Project',
       owner: 'archon',
       metadata: {
-        repo_path: '/tmp/cli-project-repo',
+        repo_path: repoDir,
         agora: {
           nomos: {
-            project_state_root: '/tmp/cli-project-root',
+            project_state_root: projectStateRoot,
           },
         },
       },
@@ -3761,7 +3789,9 @@ describe('agora-ts cli', () => {
       '--adapter', 'codex',
     ], { from: 'user' });
 
-    expect(taskService.getCraftsmanExecution('exec-cli-default-workdir-1').workdir).toBe('/tmp/cli-project-repo');
+    const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-cli-workdir', 'OC-CLI-WORKDIR');
+    expect(taskService.getCraftsmanExecution('exec-cli-default-workdir-1').workdir).toBe(expected);
+    expect(readFileSync(join(expected, 'README.md'), 'utf8')).toContain('hello');
     expect(stderr.value).toBe('');
   });
 

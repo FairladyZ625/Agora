@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +25,14 @@ function makeTempDir(prefix: string) {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempPaths.push(dir);
   return dir;
+}
+
+function runGit(cwd: string, args: string[]) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
 }
 
 afterEach(() => {
@@ -73,6 +82,7 @@ describe('project service', () => {
     expect(existsSync(join(projectStateDir, 'proj-alpha', '.git'))).toBe(true);
     expect(existsSync(join(projectStateDir, 'proj-alpha', 'tasks', 'active'))).toBe(true);
     expect(existsSync(join(projectStateDir, 'proj-alpha', 'tasks', 'archive'))).toBe(true);
+    expect(runGit(join(projectStateDir, 'proj-alpha'), ['rev-parse', '--verify', 'HEAD'])).not.toBe('');
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/active/]]');
