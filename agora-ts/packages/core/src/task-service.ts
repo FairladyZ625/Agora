@@ -3874,7 +3874,7 @@ export class TaskService {
       : null;
     return this.archiveJobRepository.insertArchiveJob({
       task_id: task.id,
-      status: 'review_pending',
+      status: 'pending',
       target_path: this.buildArchiveTargetPath(task),
       payload: {
         task_id: task.id,
@@ -3884,7 +3884,7 @@ export class TaskService {
         ...(task.project_id ? { project_id: task.project_id } : {}),
         closeout_review: {
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
           task_state: task.state,
           candidate_updates: [
             ...(task.project_id ? [{

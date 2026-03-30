@@ -271,7 +271,7 @@ describe('dashboard expansion mappers', () => {
     expect(job.canRetry).toBe(false);
   });
 
-  it('maps review-pending archive jobs into approvable view models', () => {
+  it('maps review-pending archive jobs into passive view models', () => {
     const dto: ApiArchiveJobDto = {
       id: 9,
       task_id: 'OC-303',
@@ -293,7 +293,7 @@ describe('dashboard expansion mappers', () => {
 
     const job = mapArchiveJobDto(dto);
 
-    expect(job.canApprove).toBe(true);
+    expect(job.canApprove).toBe(false);
     expect(job.canConfirm).toBe(false);
     expect(job.canComplete).toBe(false);
     expect(job.canRetry).toBe(false);

@@ -20,6 +20,12 @@ function makeDbPath() {
   return join(dir, 'tasks.db');
 }
 
+function makeTempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -232,12 +238,13 @@ describe('dashboard query service', () => {
     });
   });
 
-  it('approves a review-pending archive job before writer notify', () => {
+  it('notifies a pending archive job without a closeout approval hop', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const notifier = new FileArchiveJobNotifier({ outboxDir: makeTempDir('archive-outbox-') });
+    const queries = new DashboardQueryService(db, { templatesDir, archiveJobNotifier: notifier });
 
     const task = tasks.insertTask({
       id: 'OC-403A',
@@ -252,30 +259,25 @@ describe('dashboard query service', () => {
     tasks.updateTask(task.id, task.version, { state: 'done' });
     const job = archives.insertArchiveJob({
       task_id: 'OC-403A',
-      status: 'review_pending',
+      status: 'pending',
       target_path: 'ZeYu-AI-Brain/docs/',
       payload: {
         closeout_review: {
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
         },
       },
       writer_agent: 'writer-agent',
     });
 
-    const approved = queries.approveArchiveJob(job.id, {
-      approver_id: 'lizeyu',
-      comment: 'closeout reviewed',
-    });
+    const notified = queries.notifyArchiveJob(job.id);
 
-    expect(approved).toMatchObject({
+    expect(notified).toMatchObject({
       id: job.id,
-      status: 'pending',
+      status: 'notified',
       payload: expect.objectContaining({
-        closeout_review: expect.objectContaining({
-          state: 'approved',
-          approver_id: 'lizeyu',
-          comment: 'closeout reviewed',
+        notification_receipt: expect.objectContaining({
+          notification_id: `archive-job-${job.id}`,
         }),
       }),
     });
@@ -363,11 +365,7 @@ describe('dashboard query service', () => {
     expect(bindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('archived');
 
     const job = queries.listArchiveJobs({ taskId: 'OC-ARCHIVE-CTX' })[0];
-    expect(job?.status).toBe('review_pending');
-    queries.approveArchiveJob(job!.id, {
-      approver_id: 'lizeyu',
-      comment: 'ready to archive',
-    });
+    expect(job?.status).toBe('pending');
 
     queries.updateArchiveJob(job!.id, { status: 'synced', commit_hash: 'commit-1' });
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -580,7 +578,7 @@ describe('dashboard query service', () => {
     expect(jobs[0]).toMatchObject({
       task_id: 'OC-402',
       task_title: '归档自动入队',
-      status: 'review_pending',
+      status: 'pending',
     });
   });
 

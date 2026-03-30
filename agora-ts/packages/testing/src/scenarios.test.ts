@@ -62,7 +62,7 @@ describe('agora-ts testing scenarios', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-900',
-          status: 'review_pending',
+          status: 'pending',
         }),
       ]),
     );
@@ -398,7 +398,7 @@ describe('agora-ts testing scenarios', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-CANCEL',
-          status: 'review_pending',
+          status: 'pending',
           payload: expect.objectContaining({
             state: 'cancelled',
           }),

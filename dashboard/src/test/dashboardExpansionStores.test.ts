@@ -11,7 +11,6 @@ vi.mock('@/lib/api', () => ({
   getCraftsmanRuntimeTail: vi.fn(),
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
-  approveArchiveJob: vi.fn(),
   notifyArchiveJob: vi.fn(),
   updateArchiveJobStatus: vi.fn(),
   retryArchiveJob: vi.fn(),
@@ -413,78 +412,6 @@ describe('dashboard expansion stores', () => {
     });
   });
 
-  it('approves a review-pending archive job through the store layer', async () => {
-    useArchiveStore.setState({
-      jobs: [{
-        id: 11,
-        taskId: 'OC-304',
-        taskTitle: '待审核归档任务',
-        taskType: 'document',
-        status: 'review_pending',
-        targetPath: 'ZeYu-AI-Brain/docs/',
-        writerAgent: 'writer-agent',
-        commitHash: null,
-        requestedAt: '2026-03-07T08:00:00.000Z',
-        completedAt: null,
-        payload: { closeout_review: { state: 'review_pending' } },
-        payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
-        canApprove: true,
-        canConfirm: false,
-        canComplete: false,
-        canRetry: false,
-      }],
-      selectedJobId: 11,
-      selectedJob: {
-        id: 11,
-        taskId: 'OC-304',
-        taskTitle: '待审核归档任务',
-        taskType: 'document',
-        status: 'review_pending',
-        targetPath: 'ZeYu-AI-Brain/docs/',
-        writerAgent: 'writer-agent',
-        commitHash: null,
-        requestedAt: '2026-03-07T08:00:00.000Z',
-        completedAt: null,
-        payload: { closeout_review: { state: 'review_pending' } },
-        payloadSummary: '{"closeout_review":{"state":"review_pending"}}',
-        canApprove: true,
-        canConfirm: false,
-        canComplete: false,
-        canRetry: false,
-      },
-    });
-    vi.mocked(api.approveArchiveJob).mockResolvedValue({
-      id: 11,
-      task_id: 'OC-304',
-      task_title: '待审核归档任务',
-      task_type: 'document',
-      status: 'pending',
-      target_path: 'ZeYu-AI-Brain/docs/',
-      writer_agent: 'writer-agent',
-      commit_hash: null,
-      requested_at: '2026-03-07T08:00:00.000Z',
-      completed_at: null,
-      payload: {
-        closeout_review: {
-          state: 'approved',
-          approver_id: 'dashboard',
-        },
-      },
-    });
-
-    await useArchiveStore.getState().approveJob(11);
-
-    expect(api.approveArchiveJob).toHaveBeenCalledWith(11, 'dashboard', '');
-    expect(useArchiveStore.getState().selectedJob).toMatchObject({
-      id: 11,
-      status: 'pending',
-      canApprove: false,
-      canConfirm: true,
-      canComplete: false,
-      canRetry: false,
-    });
-  });
-
   it('completes a notified archive job through the store layer', async () => {
     useArchiveStore.setState({
       jobs: [{
@@ -566,7 +493,7 @@ describe('dashboard expansion stores', () => {
     });
   });
 
-  it('maps the pending archive filter to all in-flight archive statuses', async () => {
+  it('maps the pending archive filter to delivery in-flight archive statuses only', async () => {
     vi.mocked(api.listArchiveJobs).mockResolvedValue([
       {
         id: 20,
@@ -630,7 +557,6 @@ describe('dashboard expansion stores', () => {
       taskId: undefined,
     });
     expect(useArchiveStore.getState().jobs.map((job) => job.status)).toEqual([
-      'review_pending',
       'pending',
       'notified',
     ]);

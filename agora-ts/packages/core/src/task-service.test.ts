@@ -2000,11 +2000,11 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-103',
-          status: 'review_pending',
+          status: 'pending',
           payload: expect.objectContaining({
             state: 'cancelled',
             closeout_review: expect.objectContaining({
-              state: 'review_pending',
+              state: 'advisory',
             }),
           }),
         }),
@@ -2653,7 +2653,7 @@ describe('task service', () => {
     );
   });
 
-  it('enqueues a review-pending archive job when a task reaches done', () => {
+  it('enqueues a pending archive job when a task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const projectService = new ProjectService(db);
@@ -2720,12 +2720,12 @@ describe('task service', () => {
     expect(archiveJobs).toHaveLength(1);
     expect(archiveJobs[0]).toMatchObject({
       task_id: 'OC-114',
-      status: 'review_pending',
+      status: 'pending',
       writer_agent: 'writer-agent',
       payload: expect.objectContaining({
         closeout_review: expect.objectContaining({
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
           nomos_runtime: expect.objectContaining({
             nomos_id: 'project/proj-closeout',
             activation_status: 'active_project',

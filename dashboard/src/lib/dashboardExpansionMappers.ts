@@ -265,7 +265,7 @@ export function mapArchiveJobDto(dto: ApiArchiveJobDto): ArchiveJob {
     completedAt: dto.completed_at,
     payload: dto.payload,
     payloadSummary: summarizePayload(dto.payload),
-    canApprove: dto.status === 'review_pending',
+    canApprove: false,
     canConfirm: dto.status === 'pending',
     canComplete: dto.status === 'notified',
     canRetry: dto.status === 'failed',

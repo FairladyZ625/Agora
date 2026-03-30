@@ -2611,12 +2611,12 @@ describe('agora-ts cli', () => {
     });
     const job = archives.insertArchiveJob({
       task_id: task.id,
-      status: 'review_pending',
+      status: 'pending',
       target_path: 'ZeYu-AI-Brain/tasks/',
       payload: {
         closeout_review: {
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
         },
       },
       writer_agent: 'writer-agent',
@@ -2625,16 +2625,17 @@ describe('agora-ts cli', () => {
 
     await program.parseAsync(['archive', 'jobs', 'list'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'show', String(job?.id), '--json'], { from: 'user' });
-    await program.parseAsync(['archive', 'jobs', 'approve', String(job?.id), '--approver-id', 'lizeyu', '--comment', 'looks good'], { from: 'user' });
+    await expect(
+      program.parseAsync(['archive', 'jobs', 'approve', String(job?.id), '--approver-id', 'lizeyu', '--comment', 'looks good'], { from: 'user' }),
+    ).rejects.toThrow(/process\.exit unexpectedly called with "1"/i);
     await program.parseAsync(['archive', 'jobs', 'complete', String(job?.id), '--commit-hash', 'deadbeef'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'retry', String(job?.id)], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'fail', String(job?.id), '--error-message', 'writer timeout'], { from: 'user' });
 
     const finalJob = dashboardQueryService.getArchiveJob(job!.id);
-    expect(stderr.value).toBe('');
-    expect(stdout.value).toContain(`\t${task.id}\treview_pending\t`);
+    expect(stderr.value).toContain("error: unknown command 'approve'");
+    expect(stdout.value).toContain(`\t${task.id}\tpending\t`);
     expect(stdout.value).toContain(`"task_id": "${task.id}"`);
-    expect(stdout.value).toContain(`archive job 已审批放行: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已完成: ${job?.id} -> synced`);
     expect(stdout.value).toContain(`archive job 已重置: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已失败: ${job?.id} -> failed`);
