@@ -21,6 +21,8 @@ import type {
   PresenceSource,
 } from './runtime-ports.js';
 import type { SkillCatalogPort } from './skill-catalog-port.js';
+import type { TaskBrainBindingService } from './task-brain-binding-service.js';
+import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TmuxRuntimeService } from './tmux-runtime-service.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
@@ -31,6 +33,8 @@ export interface DashboardQueryServiceOptions {
   archiveJobNotifier?: ArchiveJobNotifier;
   archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
   imProvisioningPort?: IMProvisioningPort;
+  taskBrainBindingService?: TaskBrainBindingService;
+  taskBrainWorkspacePort?: TaskBrainWorkspacePort;
   taskContextBindingService?: TaskContextBindingService;
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
@@ -52,6 +56,8 @@ export class DashboardQueryService {
   private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
   private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
+  private readonly taskBrainWorkspacePort: TaskBrainWorkspacePort | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
@@ -80,6 +86,8 @@ export class DashboardQueryService {
     this.archiveJobNotifier = options.archiveJobNotifier;
     this.archiveJobReceiptIngestor = options.archiveJobReceiptIngestor;
     this.imProvisioningPort = options.imProvisioningPort;
+    this.taskBrainBindingService = options.taskBrainBindingService;
+    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskContextBindingService = options.taskContextBindingService;
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
@@ -587,6 +595,21 @@ export class DashboardQueryService {
   }
 
   private finalizeImContextForArchivedTask(taskId: string) {
+    const brainBinding = this.taskBrainBindingService?.getActiveBinding(taskId);
+    if (brainBinding && this.taskBrainWorkspacePort) {
+      try {
+        this.taskBrainWorkspacePort.destroyWorkspace({
+          brain_pack_ref: brainBinding.brain_pack_ref,
+          brain_task_id: brainBinding.brain_task_id,
+          workspace_path: brainBinding.workspace_path,
+          metadata: brainBinding.metadata ?? null,
+        });
+        this.taskBrainBindingService?.updateStatus(brainBinding.id, 'destroyed');
+      } catch (err) {
+        console.error(`[DashboardQueryService] Task workspace destroy failed for task ${taskId}:`, err);
+        this.taskBrainBindingService?.updateStatus(brainBinding.id, 'failed');
+      }
+    }
     if (!this.imProvisioningPort || !this.taskContextBindingService) {
       return;
     }

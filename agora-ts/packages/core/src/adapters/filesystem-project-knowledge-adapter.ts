@@ -122,6 +122,17 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
     this.rewriteProjectIndexFromDisk(input.project_id);
   }
 
+  deleteProject(projectId: string): void {
+    const canonicalRoot = this.resolveProjectStateRoot(projectId);
+    const internalIndexRoot = resolve(this.options.brainPackRoot, 'project-index', projectId);
+    if (canonicalRoot && existsSync(canonicalRoot)) {
+      rmSync(canonicalRoot, { recursive: true, force: true });
+    }
+    if ((!canonicalRoot || canonicalRoot !== internalIndexRoot) && existsSync(internalIndexRoot)) {
+      rmSync(internalIndexRoot, { recursive: true, force: true });
+    }
+  }
+
   getProjectIndex(projectId: string): ProjectKnowledgeDocument | null {
     const path = this.indexPath(projectId);
     if (!existsSync(path)) {

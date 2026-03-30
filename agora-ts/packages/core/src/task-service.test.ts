@@ -33,6 +33,12 @@ function makeDbPath() {
   return join(dir, 'tasks.db');
 }
 
+function makeTempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempPaths.push(dir);
+  return dir;
+}
+
 function makeEmptyTemplatesDir() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-empty-templates-'));
   tempPaths.push(dir);
@@ -2862,6 +2868,86 @@ describe('task service', () => {
       }),
     });
     expect(archiveJobs[0]?.target_path).toContain('OC-114');
+  });
+
+  it('notifies the controller to complete closeout convergence when a task reaches done', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-1',
+    });
+    const contextBindings = new TaskContextBindingService(db);
+    const brainBindings = new TaskBrainBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLOSEOUT-REMINDER-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: contextBindings,
+      taskBrainBindingService: brainBindings,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const contextBindingRepo = new TaskContextBindingRepository(db);
+    const workspacePath = join(makeTempDir('agora-ts-closeout-workspace-'), 'OC-CLOSEOUT-REMINDER-1');
+    mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
+    writeFileSync(join(workspacePath, '07-outputs', 'project-harvest-draft.md'), '# draft\n', 'utf8');
+
+    service.createTask({
+      title: 'Closeout reminder task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    contextBindingRepo.insert({
+      id: 'binding-closeout-1',
+      task_id: 'OC-CLOSEOUT-REMINDER-1',
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-1',
+      status: 'active',
+    });
+    brainBindings.createBinding({
+      task_id: 'OC-CLOSEOUT-REMINDER-1',
+      brain_pack_ref: 'agora-project-state',
+      brain_task_id: 'OC-CLOSEOUT-REMINDER-1',
+      workspace_path: workspacePath,
+    });
+
+    service.archonApproveTask('OC-CLOSEOUT-REMINDER-1', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    subtasks.insertSubtask({
+      id: 'write-doc',
+      task_id: 'OC-CLOSEOUT-REMINDER-1',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+    service.completeSubtask('OC-CLOSEOUT-REMINDER-1', {
+      subtaskId: 'write-doc',
+      callerId: 'glm5',
+      output: '草稿完成',
+    });
+    service.advanceTask('OC-CLOSEOUT-REMINDER-1', { callerId: 'archon' });
+    service.approveTask('OC-CLOSEOUT-REMINDER-1', {
+      approverId: 'gpt52',
+      comment: 'ship it',
+    });
+    await service.drainBackgroundOperations();
+
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const reminder = broadcasts.find((message) => message.kind === 'controller_closeout_requested');
+    const controllerRef = service.getTask('OC-CLOSEOUT-REMINDER-1')?.team.members.find((member) => member.member_kind === 'controller')?.agentId;
+
+    expect(reminder).toMatchObject({
+      participant_refs: [controllerRef],
+    });
+    expect(reminder?.body).toContain('closeout');
+    expect(reminder?.body).toContain(workspacePath);
+    expect(reminder?.body).toContain('project-harvest-draft.md');
   });
 
   it('auto-refines a project nomos draft when a fixed authoring task reaches done', () => {

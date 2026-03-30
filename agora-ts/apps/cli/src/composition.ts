@@ -164,6 +164,8 @@ export interface CliCompositionFactories {
       archiveJobNotifier: FileArchiveJobNotifier;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;
       imProvisioningPort: IMProvisioningPort | undefined;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
     },
   ) => DashboardQueryService;
@@ -410,6 +412,8 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       templatesDir: context.templatesDir,
       archiveJobNotifier: deps.archiveJobNotifier,
       archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor,
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
       taskContextBindingService: deps.taskContextBindingService,
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
       skillCatalogPort: new FilesystemSkillCatalogAdapter(),

@@ -74,6 +74,7 @@ export interface ProjectKnowledgePort {
   ensureProject(input: ProjectKnowledgeProjectInput): void;
   recordTaskBinding(input: ProjectKnowledgeTaskBindingInput): void;
   recordTaskRecap(input: ProjectKnowledgeTaskRecapInput): void;
+  deleteProject(projectId: string): void;
   getProjectIndex(projectId: string): ProjectKnowledgeDocument | null;
   listProjectRecaps(projectId: string): ProjectKnowledgeRecapSummary[];
   upsertKnowledgeEntry(input: ProjectKnowledgeEntryInput): ProjectKnowledgeDocument;

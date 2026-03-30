@@ -280,6 +280,7 @@ export class ProjectService {
     if (remainingTasks.length > 0) {
       throw new Error(`Cannot delete project ${projectId} while tasks are still bound to it`);
     }
+    this.knowledgePort?.deleteProject(projectId);
     this.projects.deleteProject(projectId);
   }
 

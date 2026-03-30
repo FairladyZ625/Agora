@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -427,16 +427,27 @@ describe('project service', () => {
   it('deletes an archived project when no tasks remain bound to it', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new ProjectService(db);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const projectStateDir = makeTempDir('agora-ts-project-state-');
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
     service.createProject({
       id: 'proj-delete',
       name: 'Project Delete',
     });
+    mkdirSync(join(brainPackDir, 'project-index', 'proj-delete'), { recursive: true });
+    writeFileSync(join(brainPackDir, 'project-index', 'proj-delete', 'index.md'), '# internal index\n', 'utf8');
 
     service.archiveProject('proj-delete');
     service.deleteProject('proj-delete');
 
     expect(service.getProject('proj-delete')).toBeNull();
+    expect(existsSync(join(projectStateDir, 'proj-delete'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-delete'))).toBe(false);
   });
 
   it('rejects project delete before archive or while tasks still exist', () => {

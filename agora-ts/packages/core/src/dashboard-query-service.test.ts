@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +8,8 @@ import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
+import { TaskBrainBindingService } from './task-brain-binding-service.js';
+import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskService } from './task-service.js';
 
@@ -332,6 +334,19 @@ describe('dashboard query service', () => {
       thread_ref: 'discord-thread-destroy-1',
     });
     const bindings = new TaskContextBindingService(db);
+    const brainBindings = new TaskBrainBindingService(db);
+    const workspacePath = join(makeTempDir('agora-ts-archive-workspace-'), 'OC-ARCHIVE-CTX');
+    mkdirSync(workspacePath, { recursive: true });
+    const taskBrainWorkspacePort: TaskBrainWorkspacePort = {
+      createWorkspace: () => { throw new Error('unused'); },
+      updateWorkspace: () => {},
+      writeExecutionBrief: () => { throw new Error('unused'); },
+      writeTaskCloseRecap: () => {},
+      writeTaskHarvestDraft: () => {},
+      destroyWorkspace: vi.fn((binding) => {
+        rmSync(binding.workspace_path, { recursive: true, force: true });
+      }),
+    };
     const taskService = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-ARCHIVE-CTX',
@@ -340,6 +355,8 @@ describe('dashboard query service', () => {
     });
     const queries = new DashboardQueryService(db, {
       templatesDir,
+      taskBrainBindingService: brainBindings,
+      taskBrainWorkspacePort,
       taskContextBindingService: bindings,
       imProvisioningPort: provisioningPort,
     });
@@ -358,6 +375,12 @@ describe('dashboard query service', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     const binding = bindings.listBindings('OC-ARCHIVE-CTX')[0];
+    brainBindings.createBinding({
+      task_id: 'OC-ARCHIVE-CTX',
+      brain_pack_ref: 'agora-project-state',
+      brain_task_id: 'OC-ARCHIVE-CTX',
+      workspace_path: workspacePath,
+    });
     expect(binding?.status).toBe('active');
 
     taskService.cancelTask('OC-ARCHIVE-CTX', { reason: 'archive me' });
@@ -380,6 +403,13 @@ describe('dashboard query service', () => {
       ]),
     );
     expect(bindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('destroyed');
+    expect(taskBrainWorkspacePort.destroyWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspace_path: workspacePath,
+      }),
+    );
+    expect(existsSync(workspacePath)).toBe(false);
+    expect(brainBindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('destroyed');
   });
 
   it('fails stale notified archive jobs through the dashboard query service scan', () => {

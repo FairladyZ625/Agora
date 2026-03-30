@@ -148,6 +148,8 @@ export interface ServerCompositionFactories {
       archiveJobNotifier: FileArchiveJobNotifier | undefined;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor | undefined;
       imProvisioningPort: IMProvisioningPort | undefined;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
     },
   ) => DashboardQueryService;
@@ -332,6 +334,8 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       templatesDir: context.templatesDir,
       ...(deps.archiveJobNotifier ? { archiveJobNotifier: deps.archiveJobNotifier } : {}),
       ...(deps.archiveJobReceiptIngestor ? { archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor } : {}),
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
       taskContextBindingService: deps.taskContextBindingService,
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
       liveSessions: deps.liveSessionStore,

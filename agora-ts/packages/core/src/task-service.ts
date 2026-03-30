@@ -894,7 +894,7 @@ export class TaskService {
       });
       this.refreshTaskBrainWorkspace(done);
       this.materializeTaskCloseRecap(done, actor);
-      this.ensureArchiveJobForTask(task.id);
+      const archiveJob = this.ensureArchiveJobForTask(task.id);
       this.flowLogRepository.insertFlowLog({
         task_id: task.id,
         kind: 'flow',
@@ -917,6 +917,7 @@ export class TaskService {
         kind: 'task_completed',
         bodyLines: ['Task reached done state and has been queued for archive handling.'],
       });
+      this.publishControllerCloseoutReminder(done, archiveJob);
       return done;
     }
 
@@ -2908,6 +2909,34 @@ export class TaskService {
     this.publishTaskStatusBroadcast(task, {
       kind: `task_state_${toState}`,
       bodyLines,
+    });
+  }
+
+  private publishControllerCloseoutReminder(task: StoredTask, archiveJob: ReturnType<TaskService['ensureArchiveJobForTask']>) {
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (!controllerRef) {
+      return;
+    }
+    const closeout = (archiveJob.payload as Record<string, unknown> | null)?.closeout_review as Record<string, unknown> | undefined;
+    const workspacePath = typeof closeout?.workspace_path === 'string' ? closeout.workspace_path : null;
+    const harvestDraftPath = typeof closeout?.harvest_draft_path === 'string' ? closeout.harvest_draft_path : null;
+    const nomosRuntime = closeout?.nomos_runtime && typeof closeout.nomos_runtime === 'object'
+      ? closeout.nomos_runtime as Record<string, unknown>
+      : null;
+    const closeoutPromptPath = typeof nomosRuntime?.closeout_review_prompt_path === 'string'
+      ? nomosRuntime.closeout_review_prompt_path
+      : null;
+    this.publishTaskStatusBroadcast(task, {
+      kind: 'controller_closeout_requested',
+      participantRefs: [controllerRef],
+      ensureParticipantRefsJoined: [controllerRef],
+      bodyLines: [
+        taskText(task, `${task.id} 已进入 closeout 收口。`, `${task.id} has entered closeout convergence.`),
+        taskText(task, '请先完成主控上下文收敛，再继续 archive cleanup。', 'Complete controller-side context convergence before archive cleanup proceeds.'),
+        ...(workspacePath ? [`${taskText(task, '任务工作区', 'Task Workspace')}: ${workspacePath}`] : []),
+        ...(harvestDraftPath ? [`${taskText(task, 'Harvest Draft', 'Harvest Draft')}: ${harvestDraftPath}`] : []),
+        ...(closeoutPromptPath ? [`${taskText(task, 'Closeout Prompt', 'Closeout Prompt')}: ${closeoutPromptPath}`] : []),
+      ],
     });
   }
 
