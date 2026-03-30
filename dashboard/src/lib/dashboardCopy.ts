@@ -174,6 +174,7 @@ export function useDashboardHomeCopy() {
       veto: t('home.resolutionActions.veto'),
       synthesize: t('home.resolutionActions.synthesize'),
     },
+    resolutionReadOnlyNotice: t('home.resolutionReadOnlyNotice'),
     terminalStatusPrefix: t('home.terminalStatusPrefix'),
     terminalEmpty: t('home.terminalEmpty'),
     topologyHashLabel: t('home.topologyHashLabel'),
@@ -778,6 +779,7 @@ export function useReviewsPageCopy() {
     emptyTitle: t('reviews.emptyTitle'),
     emptySummary: t('reviews.emptySummary'),
     queueScopes: {
+      assigned: t('reviews.queueScopes.assigned'),
       high: t('reviews.queueScopes.high'),
     },
     tableHeaders: {
@@ -787,6 +789,7 @@ export function useReviewsPageCopy() {
       wait: t('reviews.tableHeaders.wait'),
     },
     liveApiNotice: t('reviews.liveApiNotice'),
+    readOnlyNotice: t('reviews.readOnlyNotice'),
   };
 }
 

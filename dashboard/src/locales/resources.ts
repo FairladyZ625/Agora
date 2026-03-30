@@ -234,8 +234,9 @@ export const resources = {
         resolutionActions: {
           authorize: '批准进入执行',
           veto: '驳回提案',
-          synthesize: '发起深度综合',
+          synthesize: '进入待我审批',
         },
+        resolutionReadOnlyNotice: '当前首页焦点未分配给你裁决。进入待我审批队列查看你可操作的审批项。',
         terminalStatusPrefix: '同步',
         terminalEmpty: '等待新的执行信号。',
         topologyHashLabel: '拓扑签名',
@@ -1128,6 +1129,7 @@ export const resources = {
         emptyTitle: '当前没有待裁决任务',
         emptySummary: '系统将在有新 gate waiting 任务时显示在这里。',
         queueScopes: {
+          assigned: '待我审批',
           high: '高优先级',
         },
         tableHeaders: {
@@ -1137,6 +1139,7 @@ export const resources = {
           wait: '等待',
         },
         liveApiNotice: '当前正在操作真实裁决接口。',
+        readOnlyNotice: '当前裁决已分配给其他审批人。',
       },
       settings: {
         kicker: '系统治理',
@@ -1515,8 +1518,9 @@ export const resources = {
         resolutionActions: {
           authorize: 'Approve execution',
           veto: 'Reject proposal',
-          synthesize: 'Request synthesis',
+          synthesize: 'Open assigned queue',
         },
+        resolutionReadOnlyNotice: 'The current homepage focus is assigned to another approver. Open the assigned queue to see the reviews you can act on.',
         terminalStatusPrefix: 'SYNC',
         terminalEmpty: 'Waiting for the next execution signal.',
         topologyHashLabel: 'Hash',
@@ -2409,6 +2413,7 @@ export const resources = {
         emptyTitle: 'No tasks are awaiting review right now',
         emptySummary: 'The system will show new gate-waiting tasks here as they arrive.',
         queueScopes: {
+          assigned: 'Assigned to me',
           high: 'High priority',
         },
         tableHeaders: {
@@ -2418,6 +2423,7 @@ export const resources = {
           wait: 'Waiting',
         },
         liveApiNotice: 'You are operating against the live review API.',
+        readOnlyNotice: 'This review is assigned to another approver.',
       },
       settings: {
         kicker: 'System governance',
