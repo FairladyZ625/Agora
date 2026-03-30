@@ -3692,6 +3692,79 @@ describe('agora-ts cli', () => {
     expect(stdout.value).not.toContain('craftsman execution 已派发');
   });
 
+  it('defaults craftsmen dispatch workdir through the cli when the task is bound to a project repo', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-cli-default-workdir-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T11:00:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-cli-workdir',
+      name: 'CLI Workdir Project',
+      owner: 'archon',
+      metadata: {
+        repo_path: '/tmp/cli-project-repo',
+        agora: {
+          nomos: {
+            project_state_root: '/tmp/cli-project-root',
+          },
+        },
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-WORKDIR',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    taskService.createTask({
+      title: 'cli default workdir',
+      type: 'coding',
+      creator: 'archon',
+      project_id: 'proj-cli-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'citizen_execute',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-cli-default-workdir',
+      task_id: 'OC-CLI-WORKDIR',
+      stage_id: 'develop',
+      title: 'run codex with inferred repo',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    await program.parseAsync([
+      'craftsman', 'dispatch',
+      'OC-CLI-WORKDIR',
+      'sub-cli-default-workdir',
+      '--caller-id', 'opus',
+      '--adapter', 'codex',
+    ], { from: 'user' });
+
+    expect(taskService.getCraftsmanExecution('exec-cli-default-workdir-1').workdir).toBe('/tmp/cli-project-repo');
+    expect(stderr.value).toBe('');
+  });
+
   it('rejects craftsmen dispatch through the cli when concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

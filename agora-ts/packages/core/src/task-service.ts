@@ -73,6 +73,7 @@ import { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import { StageRosterService } from './stage-roster-service.js';
 import { TaskAuthorityService } from './task-authority-service.js';
+import { TaskWorktreeService } from './task-worktree-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAlignment, validateTemplateGraph } from './template-graph-service.js';
@@ -303,6 +304,7 @@ export class TaskService {
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
   private readonly projectService: ProjectService;
+  private readonly taskWorktreeService: TaskWorktreeService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
@@ -360,6 +362,9 @@ export class TaskService {
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
     this.projectService = options.projectService ?? new ProjectService(db);
+    this.taskWorktreeService = new TaskWorktreeService({
+      projectService: this.projectService,
+    });
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.craftsmanInputPort = options.craftsmanInputPort;
@@ -1173,7 +1178,7 @@ export class TaskService {
         craftsman: {
           adapter: subtask.craftsman.adapter,
           mode: subtask.craftsman.mode,
-          workdir: subtask.craftsman.workdir ?? null,
+          workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveBaseWorkdir(task),
           prompt: subtask.craftsman.prompt ?? null,
           brief_path: subtask.craftsman.brief_path
             ?? this.materializeExecutionBrief(task, {
@@ -1183,7 +1188,7 @@ export class TaskService {
               adapter: subtask.craftsman.adapter,
               mode: subtask.craftsman.mode,
               prompt: subtask.craftsman.prompt ?? null,
-              workdir: subtask.craftsman.workdir ?? null,
+              workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveBaseWorkdir(task),
             }),
         },
       } : {}),
@@ -1270,13 +1275,14 @@ export class TaskService {
       `dispatch for subtask '${subtask.id}'`,
     );
     this.assertCraftsmanDispatchAllowed(subtask.assignee);
+    const resolvedWorkdir = input.workdir ?? subtask.craftsman_workdir ?? this.taskWorktreeService.resolveBaseWorkdir(task);
     const dispatched = this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
       stage_id: subtask.stage_id,
       subtask_id: input.subtask_id,
       adapter: normalizedAdapter,
       mode: input.mode,
-      workdir: input.workdir ?? subtask.craftsman_workdir,
+      workdir: resolvedWorkdir,
       prompt: subtask.craftsman_prompt,
       brief_path: input.brief_path
         ?? this.materializeExecutionBrief(task, {
@@ -1286,7 +1292,7 @@ export class TaskService {
           adapter: normalizedAdapter,
           mode: input.mode,
           prompt: subtask.craftsman_prompt,
-          workdir: input.workdir ?? subtask.craftsman_workdir,
+          workdir: resolvedWorkdir,
         }),
     });
     this.publishTaskStatusBroadcast(task, {

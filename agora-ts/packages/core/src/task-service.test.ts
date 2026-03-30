@@ -5002,6 +5002,153 @@ describe('task service', () => {
     });
   });
 
+  it('defaults craftsman dispatch workdir to the bound repo for coding tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-default-workdir-repo-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:00:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-repo-workdir',
+      name: 'Repo Workdir',
+      owner: 'archon',
+      metadata: {
+        repo_path: '/tmp/agora-product-repo',
+        agora: {
+          nomos: {
+            project_state_root: '/tmp/agora-project-root',
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-REPO',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Repo workdir dispatch',
+      type: 'coding',
+      creator: 'archon',
+      project_id: 'proj-repo-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-repo-workdir',
+      task_id: 'OC-DISPATCH-WORKDIR-REPO',
+      stage_id: 'implement',
+      title: 'Dispatch with inferred repo workdir',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-WORKDIR-REPO',
+      subtask_id: 'sub-repo-workdir',
+      caller_id: 'opus',
+      adapter: 'codex',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: null,
+    });
+
+    expect(result.execution.workdir).toBe('/tmp/agora-product-repo');
+  });
+
+  it('defaults craftsman dispatch workdir to the canonical project repo for non-code tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-default-workdir-project-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:10:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-project-workdir',
+      name: 'Project Workdir',
+      owner: 'archon',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: '/tmp/agora-canonical-project-root',
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-PROJECT',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Project workdir dispatch',
+      type: 'document',
+      creator: 'archon',
+      project_id: 'proj-project-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-project-workdir',
+      task_id: 'OC-DISPATCH-WORKDIR-PROJECT',
+      stage_id: 'implement',
+      title: 'Dispatch with inferred project workdir',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-WORKDIR-PROJECT',
+      subtask_id: 'sub-project-workdir',
+      caller_id: 'glm5',
+      adapter: 'codex',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: null,
+    });
+
+    expect(result.execution.workdir).toBe('/tmp/agora-canonical-project-root');
+  });
+
   it('normalizes craftsman adapter aliases for manual dispatch', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

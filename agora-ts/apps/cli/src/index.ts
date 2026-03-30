@@ -3453,6 +3453,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `adapter: ${result.execution.adapter}`);
       writeLine(stdout, `execution mode: ${result.execution.mode}`);
       writeLine(stdout, `status: ${result.execution.status}`);
+      writeLine(stdout, `workdir: ${result.execution.workdir ?? '-'}`);
     });
 
   craftsman
