@@ -86,7 +86,6 @@ import type {
   CreateCitizenRequestDto,
   CreateProjectRequestDto,
   CreateSubtasksRequestDto,
-  CreateTaskRequestDto,
   TaskPriority,
   TemplateDetailDto,
   TemplateGraphDto,
@@ -112,9 +111,7 @@ type Writable = {
   write: (chunk: string) => void;
 };
 
-type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
-  locale?: 'zh-CN' | 'en-US';
-};
+type CreateTaskInputLike = Parameters<TaskService['createTask']>[0];
 
 type CreateProjectInputLike = CreateProjectRequestDto;
 type CreateCitizenInputLike = CreateCitizenRequestDto;
@@ -180,6 +177,14 @@ function parseNumericOptionList(rawValues: string[] = [], optionName: string): n
     }
     return parsed;
   });
+}
+
+function parseRequiredNumericOption(rawValue: string, optionName: string): number {
+  const [parsed] = parseNumericOptionList([rawValue], optionName);
+  if (parsed === undefined) {
+    throw new Error(`missing ${optionName} value`);
+  }
+  return parsed;
 }
 
 function resolveAccountLabel(humanAccountService: HumanAccountService, accountId: number) {
@@ -1887,7 +1892,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--account-id <accountId>', 'human account id')
     .option('--role <role>', 'admin|member', 'member')
     .action((projectId: string, options: { accountId: string; role?: 'admin' | 'member' }) => {
-      const accountId = parseNumericOptionList([options.accountId], '--account-id')[0];
+      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
       const membership = projectService.addProjectMembership({
         projectId,
         account_id: accountId,
@@ -1902,7 +1907,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .argument('<projectId>', 'project id')
     .requiredOption('--account-id <accountId>', 'human account id')
     .action((projectId: string, options: { accountId: string }) => {
-      const accountId = parseNumericOptionList([options.accountId], '--account-id')[0];
+      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
       const membership = projectService.removeProjectMembership(projectId, accountId);
       writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
       writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
