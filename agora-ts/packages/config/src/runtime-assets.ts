@@ -98,6 +98,7 @@ export function ensureBundledAgoraAssetsInstalled(
     if (brainPackMode === 'force_sync' || !hasInstalledBrainPack(userBrainPackDir)) {
       syncBundledBrainPackContents(bundledBrainPackDir, userBrainPackDir);
     }
+    migrateLegacyProjectIndexTree(userBrainPackDir);
     mkdirSync(resolve(userBrainPackDir, 'tasks'), { recursive: true });
   }
 
@@ -119,6 +120,19 @@ export function syncBundledBrainPackContents(sourceRoot: string, targetRoot: str
     }
     syncRuntimeAssetEntry(resolve(sourceRoot, entry.name), resolve(targetRoot, entry.name));
   }
+}
+
+export function migrateLegacyProjectIndexTree(targetRoot: string) {
+  const legacyProjectsDir = resolve(targetRoot, 'projects');
+  const projectIndexDir = resolve(targetRoot, 'project-index');
+  if (!existsSync(legacyProjectsDir)) {
+    return;
+  }
+  mkdirSync(projectIndexDir, { recursive: true });
+  for (const entry of readdirSync(legacyProjectsDir, { withFileTypes: true })) {
+    syncRuntimeAssetEntry(resolve(legacyProjectsDir, entry.name), resolve(projectIndexDir, entry.name));
+  }
+  rmSync(legacyProjectsDir, { recursive: true, force: true });
 }
 
 function syncRuntimeAssetEntry(sourcePath: string, targetPath: string) {

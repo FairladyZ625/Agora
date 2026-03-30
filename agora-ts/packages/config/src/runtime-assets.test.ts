@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { ensureBundledAgoraAssetsInstalled, syncBundledBrainPackContents } from './runtime-assets.js';
+import { ensureBundledAgoraAssetsInstalled, migrateLegacyProjectIndexTree, syncBundledBrainPackContents } from './runtime-assets.js';
 
 const tempPaths: string[] = [];
 
@@ -25,34 +25,61 @@ describe('runtime assets', () => {
   it('syncs bundled brain pack contents idempotently while skipping tasks', () => {
     const sourceRoot = makeTempDir();
     const targetRoot = makeTempDir();
-    mkdirSync(join(sourceRoot, 'projects'), { recursive: true });
+    mkdirSync(join(sourceRoot, 'project-index'), { recursive: true });
     mkdirSync(join(sourceRoot, 'tasks', 'OC-SHOULD-SKIP'), { recursive: true });
-    writeFileSync(join(sourceRoot, 'projects', 'README.md'), 'projects readme');
+    writeFileSync(join(sourceRoot, 'project-index', 'README.md'), 'project-index readme');
     writeFileSync(join(sourceRoot, 'tasks', 'OC-SHOULD-SKIP', 'task.meta.yaml'), 'skip me');
 
     syncBundledBrainPackContents(sourceRoot, targetRoot);
     syncBundledBrainPackContents(sourceRoot, targetRoot);
 
-    expect(readFileSync(join(targetRoot, 'projects', 'README.md'), 'utf8')).toBe('projects readme');
+    expect(readFileSync(join(targetRoot, 'project-index', 'README.md'), 'utf8')).toBe('project-index readme');
     expect(() => readFileSync(join(targetRoot, 'tasks', 'OC-SHOULD-SKIP', 'task.meta.yaml'), 'utf8')).toThrow();
   });
 
   it('overwrites existing root files without throwing EEXIST', () => {
     const sourceRoot = makeTempDir();
     const targetRoot = makeTempDir();
-    mkdirSync(join(sourceRoot, 'projects'), { recursive: true });
+    mkdirSync(join(sourceRoot, 'project-index'), { recursive: true });
     writeFileSync(join(sourceRoot, 'README.md'), 'bundled readme');
-    writeFileSync(join(sourceRoot, 'projects', 'README.md'), 'projects readme');
+    writeFileSync(join(sourceRoot, 'project-index', 'README.md'), 'project-index readme');
 
     writeFileSync(join(targetRoot, 'README.md'), 'old readme');
-    mkdirSync(join(targetRoot, 'projects'), { recursive: true });
-    writeFileSync(join(targetRoot, 'projects', 'README.md'), 'old projects readme');
+    mkdirSync(join(targetRoot, 'project-index'), { recursive: true });
+    writeFileSync(join(targetRoot, 'project-index', 'README.md'), 'old project-index readme');
 
     expect(() => syncBundledBrainPackContents(sourceRoot, targetRoot)).not.toThrow();
     expect(() => syncBundledBrainPackContents(sourceRoot, targetRoot)).not.toThrow();
 
     expect(readFileSync(join(targetRoot, 'README.md'), 'utf8')).toBe('bundled readme');
-    expect(readFileSync(join(targetRoot, 'projects', 'README.md'), 'utf8')).toBe('projects readme');
+    expect(readFileSync(join(targetRoot, 'project-index', 'README.md'), 'utf8')).toBe('project-index readme');
+  });
+
+  it('migrates legacy projects tree into project-index', () => {
+    const targetRoot = makeTempDir();
+    mkdirSync(join(targetRoot, 'projects', 'proj-legacy', 'tasks'), { recursive: true });
+    writeFileSync(join(targetRoot, 'projects', 'README.md'), 'legacy projects readme');
+    writeFileSync(join(targetRoot, 'projects', 'proj-legacy', 'index.md'), '# Legacy Project\n');
+
+    migrateLegacyProjectIndexTree(targetRoot);
+
+    expect(existsSync(join(targetRoot, 'projects'))).toBe(false);
+    expect(readFileSync(join(targetRoot, 'project-index', 'README.md'), 'utf8')).toBe('legacy projects readme');
+    expect(readFileSync(join(targetRoot, 'project-index', 'proj-legacy', 'index.md'), 'utf8')).toContain('# Legacy Project');
+  });
+
+  it('merges legacy projects tree into an existing project-index tree before removing the old path', () => {
+    const targetRoot = makeTempDir();
+    mkdirSync(join(targetRoot, 'projects', 'proj-legacy'), { recursive: true });
+    mkdirSync(join(targetRoot, 'project-index'), { recursive: true });
+    writeFileSync(join(targetRoot, 'projects', 'proj-legacy', 'index.md'), '# Legacy Project\n');
+    writeFileSync(join(targetRoot, 'project-index', 'README.md'), 'new project index readme');
+
+    migrateLegacyProjectIndexTree(targetRoot);
+
+    expect(existsSync(join(targetRoot, 'projects'))).toBe(false);
+    expect(readFileSync(join(targetRoot, 'project-index', 'README.md'), 'utf8')).toBe('new project index readme');
+    expect(readFileSync(join(targetRoot, 'project-index', 'proj-legacy', 'index.md'), 'utf8')).toContain('# Legacy Project');
   });
 
   it('keeps the installed brain pack as the runtime source of truth by default', () => {
