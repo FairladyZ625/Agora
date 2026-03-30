@@ -26,6 +26,28 @@ const fetchTemplates = vi.fn(async () => 'live');
 const selectTemplate = vi.fn(async () => undefined);
 const fetchStatus = vi.fn(async () => 'live');
 const fetchProjects = vi.fn(async () => 'live');
+const fetchProjectMembers = vi.fn(async () => ([
+  {
+    id: 'pm-1',
+    projectId: 'proj-alpha',
+    accountId: 11,
+    role: 'admin' as const,
+    status: 'active' as const,
+    addedByAccountId: null,
+    createdAt: '2026-03-24T00:00:00.000Z',
+    updatedAt: '2026-03-24T00:00:00.000Z',
+  },
+  {
+    id: 'pm-2',
+    projectId: 'proj-alpha',
+    accountId: 12,
+    role: 'member' as const,
+    status: 'active' as const,
+    addedByAccountId: 11,
+    createdAt: '2026-03-24T00:00:00.000Z',
+    updatedAt: '2026-03-24T00:00:00.000Z',
+  },
+]));
 
 vi.mock('react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router')>();
@@ -48,12 +70,48 @@ vi.mock('@/stores/taskStore', () => ({
 vi.mock('@/stores/projectStore', () => ({
   useProjectStore: (selector: (state: {
     projects: Array<{ id: string; name: string; status: string; owner: string | null; summary: string | null }>;
+    projectMembershipsByProject: Record<string, Array<{
+      id: string;
+      projectId: string;
+      accountId: number;
+      role: 'admin' | 'member';
+      status: 'active' | 'removed';
+      addedByAccountId: number | null;
+      createdAt: string;
+      updatedAt: string;
+    }>>;
     fetchProjects: typeof fetchProjects;
+    fetchProjectMembers: typeof fetchProjectMembers;
   }) => unknown) => selector({
     projects: [
       { id: 'proj-alpha', name: 'Project Alpha', status: 'active', owner: 'archon', summary: 'primary project' },
     ],
+    projectMembershipsByProject: {
+      'proj-alpha': [
+        {
+          id: 'pm-1',
+          projectId: 'proj-alpha',
+          accountId: 11,
+          role: 'admin',
+          status: 'active',
+          addedByAccountId: null,
+          createdAt: '2026-03-24T00:00:00.000Z',
+          updatedAt: '2026-03-24T00:00:00.000Z',
+        },
+        {
+          id: 'pm-2',
+          projectId: 'proj-alpha',
+          accountId: 12,
+          role: 'member',
+          status: 'active',
+          addedByAccountId: 11,
+          createdAt: '2026-03-24T00:00:00.000Z',
+          updatedAt: '2026-03-24T00:00:00.000Z',
+        },
+      ],
+    },
     fetchProjects,
+    fetchProjectMembers,
   }),
 }));
 
@@ -309,6 +367,15 @@ describe('create task page', () => {
     fireEvent.change(screen.getByLabelText('所属 Project'), {
       target: { value: 'proj-alpha' },
     });
+    fireEvent.change(screen.getByLabelText('任务 Owner'), {
+      target: { value: '11' },
+    });
+    fireEvent.change(screen.getByLabelText('任务 Assignee'), {
+      target: { value: '12' },
+    });
+    fireEvent.change(screen.getByLabelText('任务 Approver'), {
+      target: { value: '11' },
+    });
     const developerCard = screen.getByText('developer').closest('.detail-card');
     expect(developerCard).not.toBeNull();
     fireEvent.click(within(developerCard as HTMLElement).getByRole('button', { name: 'opus' }));
@@ -349,6 +416,12 @@ describe('create task page', () => {
           provider: 'discord',
           visibility: 'private',
           participant_refs: ['opus'],
+        },
+        authority: {
+          owner_account_id: 11,
+          assignee_account_id: 12,
+          approver_account_id: 11,
+          controller_agent_ref: 'opus',
         },
       }));
     });

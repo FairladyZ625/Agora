@@ -339,6 +339,50 @@ describe('agora-ts cli', () => {
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
   });
 
+  it('creates projects with explicit admins/members and manages project memberships through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('workspace-admin', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = new ProjectService(db);
+    const humanAccountService = new HumanAccountService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      humanAccountService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-members-cli',
+      '--name', 'Project Members CLI',
+      '--admin-account-id', '1',
+      '--member-account-id', '2',
+    ], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'list', 'proj-members-cli'], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'add', 'proj-members-cli', '--account-id', '3', '--role', 'member'], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'remove', 'proj-members-cli', '--account-id', '3'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已创建: proj-members-cli');
+    expect(stdout.value).toContain('workspace-admin');
+    expect(stdout.value).toContain('alice');
+    expect(stdout.value).toContain('bob');
+  });
+
   it('installs the built-in Nomos skeleton and repo shim through the cli project-create path', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -2082,6 +2126,43 @@ describe('agora-ts cli', () => {
         },
       ],
     });
+  });
+
+  it('rejects cli task creation when authority targets are outside the active project membership', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-cli-membership',
+      name: 'CLI Membership',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-AUTH',
+      projectService,
+    });
+    const program = createCliProgram({ taskService, projectService, stdout, stderr }).exitOverride();
+
+    await expect(program.parseAsync([
+      'create',
+      'CLI authority reject',
+      '--type', 'coding',
+      '--creator', 'archon',
+      '--project-id', 'proj-cli-membership',
+      '--authority-json', '{"owner_account_id":1,"assignee_account_id":3,"controller_agent_ref":"workspace-orchestrator"}',
+    ], { from: 'user' })).rejects.toThrow(/task authority account 3 is not an active project member/i);
   });
 
   it('surfaces invalid json option errors with the flag name', async () => {

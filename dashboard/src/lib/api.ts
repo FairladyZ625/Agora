@@ -11,6 +11,7 @@ import type {
   ApiHealthDto,
   ApiObserveCraftsmanExecutionsResponseDto,
   ApiListProjectsResponseDto,
+  ApiProjectMembershipDto,
   ApiPromoteTodoResultDto,
   ApiProjectDto,
   ApiProjectWorkbenchDto,
@@ -48,6 +49,7 @@ import {
   observeCraftsmanExecutionsResponseSchema,
   projectSchema,
   projectWorkbenchResponseSchema,
+  projectMembershipSchema,
   promoteTodoResultSchema,
   runtimeDiagnosisResultSchema,
   runtimeRecoveryActionSchema,
@@ -85,6 +87,14 @@ const projectNomosStateSchema = z.object({
   active_root: z.string().min(1),
   active_profile_path: z.string().min(1),
   active_profile_installed: z.boolean(),
+});
+
+const projectMembershipListResponseSchema = z.object({
+  memberships: z.array(projectMembershipSchema),
+});
+
+const projectMembershipResponseSchema = z.object({
+  membership: projectMembershipSchema,
 });
 
 export type ApiProjectNomosStateDto = z.infer<typeof projectNomosStateSchema>;
@@ -989,11 +999,44 @@ export function createProject(input: {
   summary?: string | null;
   status?: string;
   metadata?: Record<string, unknown>;
+  admins?: Array<{ account_id: number }>;
+  members?: Array<{ account_id: number; role: 'admin' | 'member' }>;
 }): Promise<ApiProjectDto> {
   return request<ApiProjectDto>('/projects', projectSchema, {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export function listProjectMembers(projectId: string): Promise<ApiProjectMembershipDto[]> {
+  return request<{ memberships: ApiProjectMembershipDto[] }>(
+    `/projects/${encodeURIComponent(projectId)}/members`,
+    projectMembershipListResponseSchema,
+  ).then((response) => response.memberships);
+}
+
+export function addProjectMember(
+  projectId: string,
+  input: { account_id: number; role: 'admin' | 'member' },
+): Promise<ApiProjectMembershipDto> {
+  return request<{ membership: ApiProjectMembershipDto }>(
+    `/projects/${encodeURIComponent(projectId)}/members`,
+    projectMembershipResponseSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  ).then((response) => response.membership);
+}
+
+export function removeProjectMember(projectId: string, accountId: number): Promise<ApiProjectMembershipDto> {
+  return request<{ membership: ApiProjectMembershipDto }>(
+    `/projects/${encodeURIComponent(projectId)}/members/${accountId}`,
+    projectMembershipResponseSchema,
+    {
+      method: 'DELETE',
+    },
+  ).then((response) => response.membership);
 }
 
 export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {

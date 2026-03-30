@@ -25,6 +25,13 @@ interface BuildCreateTaskInputParams {
   type: string;
   visibility: 'public' | 'private';
   assignments: RoleAssignments;
+  authority?: {
+    requester_account_id?: number | null;
+    owner_account_id?: number | null;
+    assignee_account_id?: number | null;
+    approver_account_id?: number | null;
+    controller_agent_ref?: string | null;
+  };
 }
 
 function buildTeamMembers(template: TemplateDetail, assignments: RoleAssignments) {
@@ -79,6 +86,7 @@ export function buildCreateTaskInput({
   type,
   visibility,
   assignments,
+  authority,
 }: BuildCreateTaskInputParams): CreateTaskInput {
   const members = buildTeamMembers(template, assignments);
   const participantRefs = Array.from(new Set(
@@ -118,6 +126,11 @@ export function buildCreateTaskInput({
             visibility,
             participant_refs: participantRefs,
           },
+        }
+      : {}),
+    ...(authority
+      ? {
+          authority,
         }
       : {}),
   };

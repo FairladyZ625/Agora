@@ -10,6 +10,17 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
+export interface ProjectMembership {
+  id: string;
+  projectId: string;
+  accountId: number;
+  role: 'admin' | 'member';
+  status: 'active' | 'removed';
+  addedByAccountId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProjectNomosState {
   nomosId: string;
   activationStatus: 'active_builtin' | 'active_project';

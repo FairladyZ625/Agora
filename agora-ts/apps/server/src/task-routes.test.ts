@@ -167,6 +167,55 @@ describe('task routes', () => {
     });
   });
 
+  it('rejects create-task authority targets outside the active project membership', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-rest-membership',
+      name: 'REST Membership',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REST-AUTH',
+      projectService,
+    });
+    const app = buildApp({ taskService, projectService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'REST authority reject',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'normal',
+        project_id: 'proj-rest-membership',
+        authority: {
+          owner_account_id: 1,
+          assignee_account_id: 3,
+          controller_agent_ref: 'workspace-orchestrator',
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: expect.stringContaining('task authority account 3 is not an active project member'),
+    });
+  });
+
   it('rejects create-task overrides whose graph semantics are not runtime-supported', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

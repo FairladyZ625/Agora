@@ -410,6 +410,13 @@ export interface CreateTaskInput {
     visibility?: 'public' | 'private';
     participant_refs?: string[];
   };
+  authority?: {
+    requester_account_id?: number | null;
+    owner_account_id?: number | null;
+    assignee_account_id?: number | null;
+    approver_account_id?: number | null;
+    controller_agent_ref?: string | null;
+  };
 }
 
 export type TaskAction =

@@ -56,9 +56,11 @@ export function ProjectDetailPage() {
   const copy = useProjectDetailPageCopy();
   const { projectId } = useParams<{ projectId: string }>();
   const selectedProject = useProjectStore((state) => state.selectedProject);
+  const projectMembershipsByProject = useProjectStore((state) => state.projectMembershipsByProject);
   const detailLoading = useProjectStore((state) => state.detailLoading);
   const error = useProjectStore((state) => state.error);
   const selectProject = useProjectStore((state) => state.selectProject);
+  const fetchProjectMembers = useProjectStore((state) => state.fetchProjectMembers);
   const updateTodo = useTodoStore((state) => state.updateTodo);
   const deleteTodo = useTodoStore((state) => state.deleteTodo);
   const promoteTodo = useTodoStore((state) => state.promoteTodo);
@@ -96,6 +98,13 @@ export function ProjectDetailPage() {
     void selectProject(projectId ?? null);
   }, [projectId, selectProject]);
 
+  useEffect(() => {
+    if (!projectId || projectMembershipsByProject[projectId]) {
+      return;
+    }
+    void fetchProjectMembers(projectId).catch(() => undefined);
+  }, [fetchProjectMembers, projectId, projectMembershipsByProject]);
+
   if (detailLoading) {
     return (
       <div className="surface-panel surface-panel--workspace">
@@ -122,6 +131,7 @@ export function ProjectDetailPage() {
     ? work.todos.filter((todo) => todo.status === 'pending')
     : work.todos;
   const detailSelection = detailState.projectId === (projectId ?? null) ? detailState.selection : null;
+  const memberships = (projectMembershipsByProject[projectId] ?? []).filter((entry) => entry.status === 'active');
   const activeTasks = overview.stats.activeTaskCount;
   const waitingReviewTasks = overview.stats.reviewTaskCount;
   const pendingTodos = overview.stats.pendingTodoCount;
@@ -311,6 +321,20 @@ export function ProjectDetailPage() {
           <div className="space-y-2">
             <p className="field-label">{copy.repoBoundLabel}</p>
             <p className="type-body-sm">{operator.repoPath ? copy.yesLabel : copy.noLabel}</p>
+          </div>
+          <div className="space-y-2 lg:col-span-2" data-testid="project-members-panel">
+            <p className="field-label">{copy.membersTitle}</p>
+            {memberships.length === 0 ? (
+              <p className="type-body-sm">{copy.membersEmpty}</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {memberships.map((membership) => (
+                  <span key={membership.id} className="status-pill status-pill--neutral">
+                    {`#${membership.accountId} · ${membership.role}`}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>

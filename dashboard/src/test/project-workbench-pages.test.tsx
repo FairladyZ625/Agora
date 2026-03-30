@@ -7,6 +7,28 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 
 const fetchProjects = vi.fn(async () => 'live');
 const fetchProjectDetail = vi.fn(async () => 'live');
+const fetchProjectMembers = vi.fn(async () => ([
+  {
+    id: 'pm-1',
+    projectId: 'proj-alpha',
+    accountId: 11,
+    role: 'admin' as const,
+    status: 'active' as const,
+    addedByAccountId: null,
+    createdAt: '2026-03-24T00:00:00.000Z',
+    updatedAt: '2026-03-24T00:00:00.000Z',
+  },
+  {
+    id: 'pm-2',
+    projectId: 'proj-alpha',
+    accountId: 12,
+    role: 'member' as const,
+    status: 'active' as const,
+    addedByAccountId: 11,
+    createdAt: '2026-03-24T00:00:00.000Z',
+    updatedAt: '2026-03-24T00:00:00.000Z',
+  },
+]));
 const { installProjectNomos } = vi.hoisted(() => ({
   installProjectNomos: vi.fn(async () => ({
     project_id: 'proj-alpha',
@@ -638,6 +660,30 @@ const projectStoreState = {
     },
   ],
   selectedProjectId: 'proj-alpha',
+  projectMembershipsByProject: {
+    'proj-alpha': [
+      {
+        id: 'pm-1',
+        projectId: 'proj-alpha',
+        accountId: 11,
+        role: 'admin',
+        status: 'active',
+        addedByAccountId: null,
+        createdAt: '2026-03-24T00:00:00.000Z',
+        updatedAt: '2026-03-24T00:00:00.000Z',
+      },
+      {
+        id: 'pm-2',
+        projectId: 'proj-alpha',
+        accountId: 12,
+        role: 'member',
+        status: 'active',
+        addedByAccountId: 11,
+        createdAt: '2026-03-24T00:00:00.000Z',
+        updatedAt: '2026-03-24T00:00:00.000Z',
+      },
+    ],
+  },
   selectedProject: {
     project: {
       id: 'proj-alpha',
@@ -854,6 +900,7 @@ const projectStoreState = {
   detailLoading: false,
   error: null,
   fetchProjects,
+  fetchProjectMembers,
   createProject,
   selectProject: fetchProjectDetail,
   clearError: vi.fn(),
@@ -925,6 +972,8 @@ describe('project workbench pages', () => {
     expect(screen.queryByText('Project ID')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Project Beta' } });
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'New project' } });
+    fireEvent.change(screen.getByLabelText('Project Admin Account IDs'), { target: { value: '11,12' } });
+    fireEvent.change(screen.getByLabelText('Project Member Account IDs'), { target: { value: '12,13' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Project Creation' }));
 
     await waitFor(() => {
@@ -932,6 +981,8 @@ describe('project workbench pages', () => {
         name: 'Project Beta',
         owner: 'archon',
         summary: 'New project',
+        admins: [{ account_id: 11 }, { account_id: 12 }],
+        members: [{ account_id: 13, role: 'member' }],
       });
     });
   });
@@ -954,6 +1005,8 @@ describe('project workbench pages', () => {
     expect(screen.getByText('In progress')).toBeInTheDocument();
     expect(screen.getByText('Waiting review')).toBeInTheDocument();
     expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByText('#11 · admin')).toBeInTheDocument();
+    expect(screen.getByText('#12 · member')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Bootstrap flow' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
     expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
