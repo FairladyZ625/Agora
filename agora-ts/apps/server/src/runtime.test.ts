@@ -234,6 +234,7 @@ describe('server runtime', () => {
       scanned_tasks: 1,
       controller_pings: 0,
       roster_pings: 0,
+      human_pings: 0,
       inbox_items: 0,
     }));
 
@@ -370,6 +371,7 @@ describe('server runtime', () => {
       scanned_tasks: 2,
       controller_pings: 1,
       roster_pings: 0,
+      human_pings: 0,
       inbox_items: 0,
     }));
 
@@ -433,6 +435,7 @@ describe('server runtime', () => {
       scanned_tasks: 0,
       controller_pings: 0,
       roster_pings: 0,
+      human_pings: 0,
       inbox_items: 0,
     }));
     const drainPendingJobs = vi.fn().mockResolvedValue({

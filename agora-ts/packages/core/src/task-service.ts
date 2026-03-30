@@ -114,6 +114,12 @@ type EscalationPolicy = {
   inboxAfterMs: number;
 };
 
+export interface HumanReminderParticipantResolverInput {
+  task: StoredTask;
+  provider: string;
+  reason: 'approval_waiting';
+}
+
 export interface TaskServiceOptions {
   templatesDir?: string;
   taskIdGenerator?: () => string;
@@ -153,6 +159,7 @@ export interface TaskServiceOptions {
     rosterAfterMs?: number;
     inboxAfterMs?: number;
   };
+  resolveHumanReminderParticipantRefs?: (input: HumanReminderParticipantResolverInput) => string[];
 }
 
 export interface AdvanceTaskOptions {
@@ -223,6 +230,7 @@ export interface InactiveTaskProbeResult {
   scanned_tasks: number;
   controller_pings: number;
   roster_pings: number;
+  human_pings: number;
   inbox_items: number;
 }
 
@@ -294,6 +302,9 @@ export class TaskService {
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly resolveHumanReminderParticipantRefs:
+    | ((input: HumanReminderParticipantResolverInput) => string[])
+    | undefined;
   private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   private readonly stageRosterService: StageRosterService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
@@ -347,6 +358,7 @@ export class TaskService {
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
+    this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.stageRosterService = new StageRosterService();
     this.agentRuntimePort = options.agentRuntimePort;
@@ -2012,6 +2024,7 @@ export class TaskService {
       scanned_tasks: 0,
       controller_pings: 0,
       roster_pings: 0,
+      human_pings: 0,
       inbox_items: 0,
     };
 
@@ -2021,10 +2034,72 @@ export class TaskService {
       const idleMs = now.getTime() - latestActivityMs;
       const controllerRef = resolveControllerRef(task.team.members);
       const interactiveRefs = task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId);
+      const probeState = this.getProbeState(task.id, latestActivityMs);
+      const approvalWaitProbe = this.resolveApprovalWaitProbe(task);
+
+      if (approvalWaitProbe) {
+        if (idleMs >= thresholds.controllerAfterMs && !probeState.humanApprovalNotified && approvalWaitProbe.participantRefs.length > 0) {
+          this.publishTaskStatusBroadcast(task, {
+            kind: 'human_approval_pinged',
+            participantRefs: approvalWaitProbe.participantRefs,
+            ensureParticipantRefsJoined: approvalWaitProbe.participantRefs,
+            bodyLines: [
+              `Task is waiting for human approval and has remained idle for ${Math.round(idleMs / 1000)} seconds.`,
+              `Approval Request: ${approvalWaitProbe.request.id}`,
+              'Please review the pending approval and decide in Dashboard or the task thread.',
+            ],
+          });
+          this.flowLogRepository.insertFlowLog({
+            task_id: task.id,
+            kind: 'flow',
+            event: 'human_approval_pinged',
+            stage_id: task.current_stage,
+            detail: {
+              idle_ms: idleMs,
+              approval_request_id: approvalWaitProbe.request.id,
+              participant_refs: approvalWaitProbe.participantRefs,
+            },
+            actor: 'system',
+          });
+          result.human_pings += 1;
+          continue;
+        }
+
+        if (idleMs >= thresholds.inboxAfterMs && !probeState.inboxRaised) {
+          this.inboxRepository.insertInboxItem({
+            text: `Task ${task.id} is awaiting human approval`,
+            source: 'inbox_escalated',
+            notes: `Task ${task.id} has waited ${Math.round(idleMs / 1000)} seconds for human approval at stage ${task.current_stage ?? '-'}.`,
+            tags: ['task', 'approval_waiting'],
+            metadata: {
+              task_id: task.id,
+              kind: 'inbox_escalated',
+              current_stage: task.current_stage,
+              idle_ms: idleMs,
+              reason: 'approval_waiting',
+              approval_request_id: approvalWaitProbe.request.id,
+            },
+          });
+          this.flowLogRepository.insertFlowLog({
+            task_id: task.id,
+            kind: 'flow',
+            event: 'inbox_escalated',
+            stage_id: task.current_stage,
+            detail: {
+              idle_ms: idleMs,
+              reason: 'approval_waiting',
+              approval_request_id: approvalWaitProbe.request.id,
+            },
+            actor: 'system',
+          });
+          result.inbox_items += 1;
+        }
+        continue;
+      }
+
       if (idleMs < thresholds.controllerAfterMs) {
         continue;
       }
-      const probeState = this.getProbeState(task.id, latestActivityMs);
 
       if (!probeState.controllerNotified && controllerRef) {
         this.publishTaskStatusBroadcast(task, {
@@ -2822,6 +2897,7 @@ export class TaskService {
       bodyLines: string[];
       participantRefs?: string[];
       occurredAt?: string;
+      ensureParticipantRefsJoined?: string[];
     },
   ) {
     if (!this.imProvisioningPort || !this.taskContextBindingService) {
@@ -2830,6 +2906,17 @@ export class TaskService {
     const binding = this.taskContextBindingService.getLatestBinding(task.id);
     if (!binding) {
       return;
+    }
+    const refsToJoin = Array.from(new Set(input.ensureParticipantRefsJoined ?? []));
+    for (const participantRef of refsToJoin) {
+      this.trackBackgroundOperation(this.imProvisioningPort.joinParticipant({
+        binding_id: binding.id,
+        participant_ref: participantRef,
+        ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
+        ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
+      }).catch((error: unknown) => {
+        console.error(`[TaskService] Failed to ensure participant ${participantRef} is joined for task ${task.id}:`, error);
+      }));
     }
     const envelope = this.buildTaskStatusBroadcastEnvelope(task, input);
     this.trackBackgroundOperation(this.imProvisioningPort.publishMessages({
@@ -2959,6 +3046,7 @@ export class TaskService {
         ];
       case 'controller_pinged':
       case 'roster_pinged':
+      case 'human_approval_pinged':
       case 'inbox_escalated':
         return [
           '',
@@ -4118,7 +4206,7 @@ export class TaskService {
   }
 
   private resolveLatestBusinessActivityMs(task: StoredTask) {
-    const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'inbox_escalated']);
+    const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'human_approval_pinged', 'inbox_escalated']);
     const conversationEntries = this.taskConversationRepository.listByTask(task.id);
     const systemEchoTimesByKey = new Map<string, number[]>();
     for (const entry of conversationEntries) {
@@ -4163,7 +4251,35 @@ export class TaskService {
     return {
       controllerNotified: notifiedAfterActivity('controller_pinged'),
       rosterNotified: notifiedAfterActivity('roster_pinged'),
+      humanApprovalNotified: notifiedAfterActivity('human_approval_pinged'),
       inboxRaised: notifiedAfterActivity('inbox_escalated'),
+    };
+  }
+
+  private resolveApprovalWaitProbe(task: StoredTask) {
+    if (!task.current_stage) {
+      return null;
+    }
+    const request = this.approvalRequestRepository.getLatestPending(task.id, task.current_stage);
+    if (!request) {
+      return null;
+    }
+    if (request.gate_type !== 'approval' && request.gate_type !== 'archon_review') {
+      return null;
+    }
+    const provider = this.taskContextBindingService?.getLatestBinding(task.id)?.im_provider;
+    const participantRefs = provider && this.resolveHumanReminderParticipantRefs
+      ? Array.from(new Set(
+          this.resolveHumanReminderParticipantRefs({
+            task,
+            provider,
+            reason: 'approval_waiting',
+          }).filter((participantRef) => participantRef.trim().length > 0),
+        ))
+      : [];
+    return {
+      request,
+      participantRefs,
     };
   }
 

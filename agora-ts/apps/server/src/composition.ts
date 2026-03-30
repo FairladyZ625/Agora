@@ -126,6 +126,7 @@ export interface ServerCompositionFactories {
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      humanAccountService: HumanAccountService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: CraftsmanInputPort;
@@ -269,6 +270,13 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
+        resolveHumanReminderParticipantRefs: ({ task, provider, reason }) => {
+          if (reason !== 'approval_waiting') {
+            return [];
+          }
+          const identity = deps.humanAccountService.getIdentityByUsername(task.creator, provider);
+          return identity ? [identity.external_user_id] : [];
+        },
         projectService: deps.projectService,
         agentRuntimePort: deps.agentRuntimePort,
         runtimeRecoveryPort: deps.runtimeRecoveryPort,
@@ -473,6 +481,7 @@ export function buildServerComposition(
     taskBrainWorkspacePort,
     taskContextBindingService,
     taskParticipationService,
+    humanAccountService,
     projectService,
     agentRuntimePort,
     ...createCraftsmanTransportDeps(craftsmanMode, legacyRuntimeService, acpRuntime),

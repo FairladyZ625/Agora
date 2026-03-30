@@ -4854,7 +4854,9 @@ describe('task service', () => {
     const binding = bindingService.getLatestBinding('OC-PROBE-ECHO-1');
     const echoedBody = conversationRepository
       .listByTask('OC-PROBE-ECHO-1')
-      .findLast((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
+      .slice()
+      .reverse()
+      .find((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
       ?.body;
     expect(binding).not.toBeNull();
     expect(echoedBody).toBeTruthy();
@@ -4888,6 +4890,179 @@ describe('task service', () => {
     expect(
       provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
     ).toHaveLength(1);
+  });
+
+  it('reroutes approval-wait inactivity probes to a bound human participant instead of pinging the controller', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-approval-human-reminder',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-APPROVAL-PROBE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      resolveHumanReminderParticipantRefs: ({ provider, reason }) => {
+        if (provider !== 'discord' || reason !== 'approval_waiting') {
+          return [];
+        }
+        return ['discord-user-123'];
+      },
+    });
+
+    service.createTask({
+      title: 'Approval reminder reroute',
+      type: 'custom',
+      creator: 'alice',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'approval', approver: 'reviewer' },
+          },
+        ],
+      },
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    provisioningPort.joined.length = 0;
+
+    expect(() => service.advanceTask('OC-APPROVAL-PROBE-1', { callerId: 'archon' })).toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-1');
+
+    const result = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-29T01:00:00.000Z'),
+    });
+
+    expect(result).toMatchObject({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 1,
+      inbox_items: 0,
+    });
+    expect(provisioningPort.joined).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ participant_ref: 'discord-user-123' }),
+      ]),
+    );
+    expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
+      kind: 'human_approval_pinged',
+      participant_refs: ['discord-user-123'],
+    });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
+    ).toHaveLength(0);
+  });
+
+  it('keeps the thread quiet during approval wait when no human participant can be resolved', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-approval-no-human',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-APPROVAL-PROBE-2',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      resolveHumanReminderParticipantRefs: () => [],
+    });
+
+    service.createTask({
+      title: 'Approval reminder quiet fallback',
+      type: 'custom',
+      creator: 'alice',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'approval', approver: 'reviewer' },
+          },
+        ],
+      },
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+
+    expect(() => service.advanceTask('OC-APPROVAL-PROBE-2', { callerId: 'archon' })).toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-2');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-2');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-2');
+
+    const quietProbe = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-29T00:00:02.000Z'),
+    });
+    expect(quietProbe).toMatchObject({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 0,
+      inbox_items: 0,
+    });
+    expect(provisioningPort.published.flatMap((entry) => entry.messages)).toHaveLength(0);
+
+    const inboxProbe = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-29T00:00:10.000Z'),
+    });
+    expect(inboxProbe).toMatchObject({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 0,
+      inbox_items: 1,
+    });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged' || message.kind === 'roster_pinged'),
+    ).toHaveLength(0);
   });
 
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {

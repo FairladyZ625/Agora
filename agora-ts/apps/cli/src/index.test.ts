@@ -3487,6 +3487,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('scanned_tasks: 1');
     expect(stdout.value).toContain('controller_pings:');
     expect(stdout.value).toContain('roster_pings:');
+    expect(stdout.value).toContain('human_pings:');
   });
 
   it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {

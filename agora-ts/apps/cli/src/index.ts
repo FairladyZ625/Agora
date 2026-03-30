@@ -3235,6 +3235,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `scanned_tasks: ${result.scanned_tasks}`);
       writeLine(stdout, `controller_pings: ${result.controller_pings}`);
       writeLine(stdout, `roster_pings: ${result.roster_pings}`);
+      writeLine(stdout, `human_pings: ${result.human_pings}`);
       writeLine(stdout, `inbox_items: ${result.inbox_items}`);
     });
 

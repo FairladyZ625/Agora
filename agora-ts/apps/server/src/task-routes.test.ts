@@ -1935,6 +1935,9 @@ describe('task routes', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      creator: 'alice',
+    });
     expect(provisioningPort.provisioned[0]?.participant_refs).toEqual(
       expect.arrayContaining(['opus', 'discord-user-123']),
     );
@@ -2007,6 +2010,9 @@ describe('task routes', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      creator: 'alice',
+    });
     expect(provisioningPort.provisioned[0]?.participant_refs).toEqual(
       expect.arrayContaining(['opus', 'discord-user-123']),
     );

@@ -51,6 +51,11 @@ describe('human account service', () => {
       username: 'alice',
       role: 'member',
     });
+    expect(service.getIdentityByUsername('alice', 'discord')).toEqual({
+      provider: 'discord',
+      external_user_id: 'discord-user-123',
+    });
+    expect(service.getIdentityByUsername('unknown', 'discord')).toBeNull();
     expect(service.listUsers()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ username: 'lizeyu', role: 'admin', enabled: true }),

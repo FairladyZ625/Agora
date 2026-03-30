@@ -474,29 +474,35 @@ function appendDashboardHumanImParticipantRef(
   humanActor: HumanActor | null,
   humanAccountService?: HumanAccountService,
 ): CreateTaskRequestDto {
+  const enrichedCreator = humanActor
+    ? {
+        ...payload,
+        creator: humanActor.username,
+      }
+    : payload;
   if (!humanActor?.account_id || !humanAccountService) {
-    return payload;
+    return enrichedCreator;
   }
-  if (payload.im_target?.provider && payload.im_target.provider !== 'discord') {
-    return payload;
+  if (enrichedCreator.im_target?.provider && enrichedCreator.im_target.provider !== 'discord') {
+    return enrichedCreator;
   }
-  if (payload.im_target?.visibility !== 'private') {
-    return payload;
+  if (enrichedCreator.im_target?.visibility !== 'private') {
+    return enrichedCreator;
   }
   const discordIdentity = humanAccountService.getIdentity(humanActor.account_id, 'discord');
   if (!discordIdentity) {
-    return payload;
+    return enrichedCreator;
   }
   const participantRefs = Array.from(new Set([
-    ...(payload.im_target?.participant_refs ?? []),
+    ...(enrichedCreator.im_target?.participant_refs ?? []),
     discordIdentity.external_user_id,
   ]));
   return {
-    ...payload,
+    ...enrichedCreator,
     im_target: {
-      ...(payload.im_target ?? {}),
-      provider: payload.im_target?.provider ?? 'discord',
-      visibility: payload.im_target?.visibility ?? 'private',
+      ...(enrichedCreator.im_target ?? {}),
+      provider: enrichedCreator.im_target?.provider ?? 'discord',
+      visibility: enrichedCreator.im_target?.visibility ?? 'private',
       participant_refs: participantRefs,
     },
   };

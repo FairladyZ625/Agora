@@ -139,6 +139,7 @@ export interface CliCompositionFactories {
       messagingPort: IMMessagingPort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      humanAccountService: HumanAccountService;
       projectBrainAutomationService: ProjectBrainAutomationService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
@@ -319,6 +320,13 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       imMessagingPort: deps.messagingPort,
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
+      resolveHumanReminderParticipantRefs: ({ task, provider, reason }) => {
+        if (reason !== 'approval_waiting') {
+          return [];
+        }
+        const identity = deps.humanAccountService.getIdentityByUsername(task.creator, provider);
+        return identity ? [identity.external_user_id] : [];
+      },
       projectBrainAutomationService: deps.projectBrainAutomationService,
       projectService: deps.projectService,
       agentRuntimePort: deps.agentRuntimePort,
@@ -519,6 +527,7 @@ export function createCliComposition(
     taskBrainWorkspacePort,
     ...(projectBrainRetrievalService ? { retrievalService: projectBrainRetrievalService } : {}),
   });
+  const humanAccountService = factories.createHumanAccountService(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
     taskBrainBindingService,
@@ -527,6 +536,7 @@ export function createCliComposition(
     messagingPort,
     taskContextBindingService,
     taskParticipationService,
+    humanAccountService,
     projectBrainAutomationService,
     projectService,
     agentRuntimePort,
@@ -534,7 +544,6 @@ export function createCliComposition(
   });
   taskServiceRef = taskService;
   const dashboardSessionClient = factories.createDashboardSessionClient(context);
-  const humanAccountService = factories.createHumanAccountService(context);
   const taskConversationService = factories.createTaskConversationService(context);
   const templateAuthoringService = factories.createTemplateAuthoringService(context);
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
