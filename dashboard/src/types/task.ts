@@ -27,6 +27,13 @@ export interface Task {
   locale?: 'zh-CN' | 'en-US';
   state: TaskState;
   archiveStatus: string | null;
+  authority?: {
+    requesterAccountId?: number | null;
+    ownerAccountId?: number | null;
+    assigneeAccountId?: number | null;
+    approverAccountId?: number | null;
+    controllerAgentRef?: string | null;
+  } | null;
   controllerRef?: string | null;
   current_stage: string | null;
   teamLabel: string;

@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, ProjectWriteLockRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
@@ -14,6 +14,7 @@ import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-pr
 import { LiveSessionStore } from './live-session-store.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
+import { ProjectContextWriter } from './project-context-writer.js';
 import { ProjectService } from './project-service.js';
 import { RolePackService } from './role-pack-service.js';
 import { TaskService } from './task-service.js';
@@ -1162,6 +1163,109 @@ describe('task service', () => {
     }));
   });
 
+  it('builds a structured project context write proposal for task closeout', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-writer-proposal-'));
+    tempPaths.push(projectStateDir);
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-writer-proposal',
+      name: 'Writer Proposal',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: join(projectStateDir, 'proj-writer-proposal'),
+          },
+        },
+      },
+    });
+    const bindingService = new TaskBrainBindingService(db, {
+      idGenerator: () => 'brain-binding-writer-proposal',
+    });
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-WRITER-PROPOSAL',
+      projectService,
+      taskBrainBindingService: bindingService,
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+
+    service.createTask({
+      title: 'Writer proposal task',
+      type: 'project-thin-slice',
+      creator: 'archon',
+      description: 'proposal path',
+      priority: 'high',
+      project_id: 'proj-writer-proposal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'command-only',
+        stages: [{ id: 'ship', mode: 'execute', gate: { type: 'command' } }],
+      },
+    });
+
+    const task = service.getTask('OC-WRITER-PROPOSAL')!;
+    const binding = bindingService.getActiveBinding('OC-WRITER-PROPOSAL')!;
+    const writer = new ProjectContextWriter(db, {
+      projectService,
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+      execFile: vi.fn(() => ''),
+    });
+
+    const proposal = writer.buildTaskCloseoutProposal({
+      task,
+      binding,
+      actor: 'archon',
+      reason: 'ready to archive',
+    });
+
+    expect(proposal).toMatchObject({
+      kind: 'task_closeout',
+      project_id: 'proj-writer-proposal',
+      task_id: 'OC-WRITER-PROPOSAL',
+      canonical_root: join(projectStateDir, 'proj-writer-proposal'),
+      lock_holder_task_id: 'OC-WRITER-PROPOSAL',
+      close_recap: {
+        binding: expect.objectContaining({
+          workspace_path: join(projectStateDir, 'proj-writer-proposal', 'tasks', 'OC-WRITER-PROPOSAL'),
+        }),
+        input: expect.objectContaining({
+          project_id: 'proj-writer-proposal',
+          task_id: 'OC-WRITER-PROPOSAL',
+          completed_by: 'archon',
+          summary_lines: expect.arrayContaining([
+            '任务已到达 done，已进入 archive 流程。',
+            '完成人: archon',
+            '原因: ready to archive',
+          ]),
+        }),
+      },
+      project_recap: expect.objectContaining({
+        project_id: 'proj-writer-proposal',
+        task_id: 'OC-WRITER-PROPOSAL',
+        workspace_path: join(projectStateDir, 'proj-writer-proposal', 'tasks', 'OC-WRITER-PROPOSAL'),
+        completed_by: 'archon',
+      }),
+    });
+  });
+
   it('materializes project-bound task workspace and recap data into the canonical project root when configured', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1250,6 +1354,7 @@ describe('task service', () => {
     expect(readFileSync(join(projectStateDir, 'proj-recap', 'timeline.md'), 'utf8')).toContain(
       'doc=[[tasks/archive/OC-PROJECT-RECAP.md]]',
     );
+    expect(new ProjectWriteLockRepository(db).getLock('proj-recap')).toBeNull();
     expect(existsSync(join(brainPackDir, 'project-index', 'proj-recap', 'index.md'))).toBe(false);
   });
 
@@ -5000,6 +5105,153 @@ describe('task service', () => {
       subtask_id: 'sub-allowed-1',
       adapter: 'codex',
     });
+  });
+
+  it('defaults craftsman dispatch workdir to the bound repo for coding tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-default-workdir-repo-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:00:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-repo-workdir',
+      name: 'Repo Workdir',
+      owner: 'archon',
+      metadata: {
+        repo_path: '/tmp/agora-product-repo',
+        agora: {
+          nomos: {
+            project_state_root: '/tmp/agora-project-root',
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-REPO',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Repo workdir dispatch',
+      type: 'coding',
+      creator: 'archon',
+      project_id: 'proj-repo-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-repo-workdir',
+      task_id: 'OC-DISPATCH-WORKDIR-REPO',
+      stage_id: 'implement',
+      title: 'Dispatch with inferred repo workdir',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-WORKDIR-REPO',
+      subtask_id: 'sub-repo-workdir',
+      caller_id: 'opus',
+      adapter: 'codex',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: null,
+    });
+
+    expect(result.execution.workdir).toBe('/tmp/agora-product-repo');
+  });
+
+  it('defaults craftsman dispatch workdir to the canonical project repo for non-code tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-default-workdir-project-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:10:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-project-workdir',
+      name: 'Project Workdir',
+      owner: 'archon',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: '/tmp/agora-canonical-project-root',
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-PROJECT',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Project workdir dispatch',
+      type: 'document',
+      creator: 'archon',
+      project_id: 'proj-project-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-project-workdir',
+      task_id: 'OC-DISPATCH-WORKDIR-PROJECT',
+      stage_id: 'implement',
+      title: 'Dispatch with inferred project workdir',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-WORKDIR-PROJECT',
+      subtask_id: 'sub-project-workdir',
+      caller_id: 'glm5',
+      adapter: 'codex',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: null,
+    });
+
+    expect(result.execution.workdir).toBe('/tmp/agora-canonical-project-root');
   });
 
   it('normalizes craftsman adapter aliases for manual dispatch', () => {

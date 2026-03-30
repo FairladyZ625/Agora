@@ -229,6 +229,7 @@ export type DashboardSessionLoginResponseDto = z.infer<typeof dashboardSessionLo
 export const dashboardSessionStatusResponseSchema = z.object({
   authenticated: z.boolean(),
   method: z.enum(['basic', 'session', 'oauth2']).nullable(),
+  account_id: z.number().int().positive().nullable().optional(),
   username: z.string().optional(),
   role: z.enum(['admin', 'member']).optional(),
 });

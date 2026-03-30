@@ -13,6 +13,16 @@ const setApiConfig = vi.fn();
 const setRefreshInterval = vi.fn();
 const setPauseOnHidden = vi.fn();
 const resolveReview = vi.fn(async () => 'live');
+const sessionStoreState = {
+  authenticated: true,
+  status: 'ready',
+  username: 'approver',
+  accountId: 7,
+  role: 'member',
+  refresh: vi.fn(async () => 'live'),
+  logout: vi.fn(async () => undefined),
+  error: null as string | null,
+};
 
 const mockTasks = createMockTasks();
 
@@ -70,6 +80,11 @@ vi.mock('@/stores/settingsStore', () => ({
   }),
 }));
 
+vi.mock('@/stores/sessionStore', () => ({
+  useSessionStore: (selector?: (state: typeof sessionStoreState) => unknown) =>
+    selector ? selector(sessionStoreState) : sessionStoreState,
+}));
+
 vi.mock('@/lib/api', () => ({
   healthCheck: vi.fn(async () => ({ status: 'ok' })),
 }));
@@ -87,6 +102,17 @@ describe('dashboard visual rescue target structure', () => {
     setRefreshInterval.mockClear();
     setPauseOnHidden.mockClear();
     taskStoreState.tasks = createMockTasks();
+    taskStoreState.tasks = taskStoreState.tasks.map((task) =>
+      task.id === 'TSK-002'
+        ? {
+            ...task,
+            gateType: 'approval',
+            authority: {
+              approverAccountId: 7,
+            },
+          }
+        : task,
+    );
     taskStoreState.selectedTaskId = 'TSK-001';
     taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-001');
   });
@@ -176,7 +202,16 @@ describe('dashboard visual rescue target structure', () => {
 
   it('routes review approval through the live resolveReview action', async () => {
     taskStoreState.selectedTaskId = 'TSK-002';
-    taskStoreState.selectedTaskStatus = getMockTaskStatus('TSK-002');
+    taskStoreState.selectedTaskStatus = {
+      ...getMockTaskStatus('TSK-002')!,
+      task: {
+        ...getMockTaskStatus('TSK-002')!.task,
+        gateType: 'approval',
+        authority: {
+          approverAccountId: 7,
+        },
+      },
+    };
     renderWithRouter(<ReviewsPage />);
 
     await act(async () => {
@@ -184,6 +219,59 @@ describe('dashboard visual rescue target structure', () => {
       await Promise.resolve();
     });
     expect(resolveReview).toHaveBeenCalledWith('TSK-002', 'approve', '');
+  });
+
+  it('keeps non-assigned review items visible but read-only', () => {
+    taskStoreState.selectedTaskId = 'TSK-002';
+    taskStoreState.selectedTaskStatus = {
+      ...getMockTaskStatus('TSK-002')!,
+      task: {
+        ...getMockTaskStatus('TSK-002')!.task,
+        gateType: 'approval',
+        authority: {
+          approverAccountId: 99,
+        },
+      },
+    };
+    renderWithRouter(<ReviewsPage />);
+
+    expect(screen.getAllByText('TSK-002').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: '批准执行' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '驳回' })).not.toBeInTheDocument();
+    expect(screen.getByText('当前裁决已分配给其他审批人。')).toBeInTheDocument();
+  });
+
+  it('filters the queue down to reviews assigned to the current approver', () => {
+    taskStoreState.tasks = [
+      ...taskStoreState.tasks,
+      {
+        ...taskStoreState.tasks.find((task) => task.id === 'TSK-002')!,
+        id: 'TSK-099',
+        title: '外部审批项',
+        gateType: 'approval',
+        authority: {
+          approverAccountId: 99,
+        },
+      },
+    ];
+    taskStoreState.selectedTaskId = 'TSK-002';
+    taskStoreState.selectedTaskStatus = {
+      ...getMockTaskStatus('TSK-002')!,
+      task: {
+        ...getMockTaskStatus('TSK-002')!.task,
+        gateType: 'approval',
+        authority: {
+          approverAccountId: 7,
+        },
+      },
+    };
+
+    renderWithRouter(<ReviewsPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '待我审批' }));
+
+    expect(screen.getByRole('button', { name: /TSK-002/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /TSK-099/i })).not.toBeInTheDocument();
   });
 
   it('hides review decision controls when the selected task is no longer gate_waiting', () => {

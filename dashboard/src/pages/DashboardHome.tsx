@@ -7,6 +7,7 @@ import { useDashboardHomeCopy } from '@/lib/dashboardCopy';
 import { deriveDashboardHomeMetrics } from '@/lib/dashboardHomeMetrics';
 import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useMotionStore } from '@/stores/motionStore';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -176,11 +177,25 @@ function formatGovernanceMemoryValue(governanceSnapshot: CraftsmanGovernanceSnap
   return '—';
 }
 
+function isReviewActionable(task: Task | null, sessionAccountId: number | null) {
+  if (!task) {
+    return false;
+  }
+
+  if (task.gateType !== 'approval') {
+    return true;
+  }
+
+  const approverAccountId = task.authority?.approverAccountId ?? null;
+  return approverAccountId == null || approverAccountId === sessionAccountId;
+}
+
 export function DashboardHome() {
   const { t } = useTranslation();
   const homeCopy = useDashboardHomeCopy();
   const isMobile = useMediaQuery('(max-width: 767px)');
   const motionMode = useMotionStore((state) => state.mode);
+  const sessionAccountId = useSessionStore((state) => state.accountId);
   const tasks = useTaskStore((state) => state.tasks);
   const loading = useTaskStore((state) => state.loading);
   const error = useTaskStore((state) => state.error);
@@ -249,9 +264,14 @@ export function DashboardHome() {
   );
 
   const reviewItems = homeMetrics.reviewItems;
+  const actionableReviewItems = useMemo(
+    () => reviewItems.filter((task) => isReviewActionable(task, sessionAccountId)),
+    [reviewItems, sessionAccountId],
+  );
+  const reviewDeckItems = actionableReviewItems.length > 0 ? actionableReviewItems : reviewItems;
   const currentReviewIndex =
-    reviewItems.length === 0 ? 0 : Math.min(reviewIndex, reviewItems.length - 1);
-  const focusReview = reviewItems[currentReviewIndex] ?? null;
+    reviewDeckItems.length === 0 ? 0 : Math.min(reviewIndex, reviewDeckItems.length - 1);
+  const focusReview = reviewDeckItems[currentReviewIndex] ?? null;
   const railTasks = useMemo(() => {
     const activeTasks = homeMetrics.recentTasks.filter((task) =>
       ['in_progress', 'gate_waiting', 'paused', 'blocked'].includes(task.state),
@@ -265,7 +285,7 @@ export function DashboardHome() {
         92,
         Math.round(((homeMetrics.activeCount * 2 + homeMetrics.waitingCount) / Math.max(homeMetrics.recentTasks.length, 1)) * 34),
       );
-  const canResolveReview = Boolean(focusReview);
+  const canResolveReview = isReviewActionable(focusReview, sessionAccountId);
   const authorityStage = focusReview
     ? formatAuthorityStage(focusReview, homeCopy.resolutionFallbacks.stage)
     : homeCopy.resolutionEmptyValue;
@@ -353,23 +373,22 @@ export function DashboardHome() {
 
   const handleSynthesis = async () => {
     if (!focusReview) {
-      navigate('/reviews');
+      navigate('/reviews?scope=assigned');
       return;
     }
-    await selectTask(focusReview.id);
-    navigate(`/reviews/${focusReview.id}`);
+    navigate(`/reviews?scope=assigned&selected=${focusReview.id}`);
   };
 
   const shiftReview = (direction: 'previous' | 'next') => {
-    if (reviewItems.length === 0) {
+    if (reviewDeckItems.length === 0) {
       return;
     }
 
     setReviewIndex(() => {
       if (direction === 'previous') {
-        return currentReviewIndex === 0 ? reviewItems.length - 1 : currentReviewIndex - 1;
+        return currentReviewIndex === 0 ? reviewDeckItems.length - 1 : currentReviewIndex - 1;
       }
-      return currentReviewIndex === reviewItems.length - 1 ? 0 : currentReviewIndex + 1;
+      return currentReviewIndex === reviewDeckItems.length - 1 ? 0 : currentReviewIndex + 1;
     });
   };
 
@@ -478,19 +497,19 @@ export function DashboardHome() {
                   type="button"
                   className="home-os__deck-button"
                   onClick={() => shiftReview('previous')}
-                  disabled={reviewItems.length <= 1}
+                  disabled={reviewDeckItems.length <= 1}
                   aria-label={homeCopy.reviewDeck.previous}
                 >
                   <ChevronLeft size={14} />
                 </button>
                 <span className="home-os__deck-position">
-                  {homeCopy.reviewDeck.position} {reviewItems.length === 0 ? '0 / 0' : `${currentReviewIndex + 1} / ${reviewItems.length}`}
+                  {homeCopy.reviewDeck.position} {reviewDeckItems.length === 0 ? '0 / 0' : `${currentReviewIndex + 1} / ${reviewDeckItems.length}`}
                 </span>
                 <button
                   type="button"
                   className="home-os__deck-button"
                   onClick={() => shiftReview('next')}
-                  disabled={reviewItems.length <= 1}
+                  disabled={reviewDeckItems.length <= 1}
                   aria-label={homeCopy.reviewDeck.next}
                 >
                   <ChevronRight size={14} />
@@ -512,6 +531,9 @@ export function DashboardHome() {
                 </div>
               </div>
               <p className="type-body-sm">{authoritySummary}</p>
+              {focusReview && !canResolveReview ? (
+                <p className="type-text-xs">{homeCopy.resolutionReadOnlyNotice}</p>
+              ) : null}
               <div className="home-os__authority-actions">
                 <button type="button" className="button-primary" disabled={!canResolveReview} onClick={() => void handleReviewDecision('approve')}>
                   {homeCopy.resolutionActions.authorize}

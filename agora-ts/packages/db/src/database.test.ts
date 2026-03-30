@@ -6,6 +6,7 @@ import { createAgoraDatabase, listAppliedMigrations, runMigrations } from './dat
 import { ArchiveJobRepository } from './repositories/archive-job.repository.js';
 import { ProjectAgentRosterRepository } from './repositories/project-agent-roster.repository.js';
 import { ProjectMembershipRepository } from './repositories/project-membership.repository.js';
+import { ProjectWriteLockRepository } from './repositories/project-write-lock.repository.js';
 import { RoleDefinitionRepository } from './repositories/role-definition.repository.js';
 import { ProjectRepository } from './repositories/project.repository.js';
 import { TaskRepository } from './repositories/task.repository.js';
@@ -82,6 +83,7 @@ describe('agora-ts sqlite bootstrap', () => {
       '023_project_memberships.sql',
       '024_project_agent_rosters.sql',
       '025_task_authorities.sql',
+      '026_project_write_locks.sql',
     ]);
     const taskTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'")
@@ -127,6 +129,10 @@ describe('agora-ts sqlite bootstrap', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'task_authorities'")
       .get() as { name: string } | undefined;
     expect(taskAuthoritiesTable?.name).toBe('task_authorities');
+    const projectWriteLocksTable = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project_write_locks'")
+      .get() as { name: string } | undefined;
+    expect(projectWriteLocksTable?.name).toBe('project_write_locks');
     const taskColumns = db.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
     expect(taskColumns.map((column) => column.name)).toContain('skill_policy');
   });
@@ -197,6 +203,49 @@ describe('agora-ts sqlite bootstrap', () => {
     expect(roles.getRoleDefinition('controller')).toMatchObject({
       id: 'controller',
       member_kind: 'controller',
+    });
+  });
+
+  it('serializes project write locks per project', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    new ProjectRepository(db).insertProject({
+      id: 'proj-locks',
+      name: 'Project Locks',
+    });
+    const locks = new ProjectWriteLockRepository(db);
+
+    const first = locks.acquireLock({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-1',
+    });
+    const denied = locks.acquireLock({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-2',
+    });
+    const reentrant = locks.acquireLock({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-1',
+    });
+
+    expect(first).toMatchObject({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-1',
+    });
+    expect(denied).toBeNull();
+    expect(reentrant).toMatchObject({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-1',
+    });
+    expect(locks.releaseLock('proj-locks', 'OC-LOCK-2')).toBe(false);
+    expect(locks.releaseLock('proj-locks', 'OC-LOCK-1')).toBe(true);
+    expect(locks.getLock('proj-locks')).toBeNull();
+    expect(locks.acquireLock({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-2',
+    })).toMatchObject({
+      project_id: 'proj-locks',
+      holder_task_id: 'OC-LOCK-2',
     });
   });
 

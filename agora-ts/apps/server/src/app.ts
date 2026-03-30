@@ -100,6 +100,7 @@ import {
   updateTemplateWorkflowRequestSchema,
   validateTemplateGraphRequestSchema,
   validateWorkflowRequestSchema,
+  workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
 import {
   NotFoundError,
@@ -122,6 +123,8 @@ import {
   type TaskService,
   type TmuxRuntimeService,
   type TemplateAuthoringService,
+  type WorkspaceBootstrapService,
+  WorkspaceBootstrapService as WorkspaceBootstrapServiceImpl,
 } from '@agora-ts/core';
 import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
 
@@ -131,6 +134,7 @@ export interface BuildAppOptions {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
+  workspaceBootstrapService?: WorkspaceBootstrapService;
   citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
@@ -171,6 +175,11 @@ export interface BuildAppOptions {
     readyPath?: string;
     metricsEnabled?: boolean;
     structuredLogs?: boolean;
+  };
+  workspaceBootstrap?: {
+    runtimeReady?: boolean;
+    runtimeReadinessReason?: string | null;
+    creator?: string | null;
   };
   dashboardDir?: string;
 }
@@ -679,6 +688,18 @@ export function buildApp(options: BuildAppOptions = {}) {
     await taskService?.drainBackgroundOperations?.();
   });
   const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const workspaceBootstrapService = options.workspaceBootstrapService ?? (
+    options.db && taskService
+      ? new WorkspaceBootstrapServiceImpl({
+          db: options.db,
+          taskService,
+          runtimeReady: options.workspaceBootstrap?.runtimeReady ?? false,
+          runtimeReadinessReason: options.workspaceBootstrap?.runtimeReadinessReason ?? null,
+          creator: options.workspaceBootstrap?.creator ?? 'archon',
+        })
+      : undefined
+  );
+  workspaceBootstrapService?.initialize();
   const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
   const citizenService = options.citizenService;
@@ -947,6 +968,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     return reply.send(dashboardSessionStatusResponseSchema.parse({
       authenticated: true,
       method: 'session',
+      account_id: current.session.account_id,
       username: current.session.username,
       role: current.session.role,
     }));
@@ -1133,6 +1155,13 @@ export function buildApp(options: BuildAppOptions = {}) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
+  });
+
+  app.get('/api/workspace/bootstrap', async (_request, reply) => {
+    if (!workspaceBootstrapService) {
+      return reply.status(503).send({ message: 'workspace bootstrap service is not configured' });
+    }
+    return reply.send(workspaceBootstrapStatusSchema.parse(workspaceBootstrapService.getStatus()));
   });
 
   app.get('/api/nomos', async (_request, reply) => {
@@ -1841,6 +1870,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.approveTask(params.taskId, {
           approverId,
+          approverAccountId: humanActor?.account_id ?? null,
           comment: payload.comment,
         }),
       );
@@ -1865,6 +1895,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.rejectTask(params.taskId, {
           rejectorId,
+          rejectorAccountId: humanActor?.account_id ?? null,
           reason: payload.reason,
         }),
       );

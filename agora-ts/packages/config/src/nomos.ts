@@ -1146,6 +1146,7 @@ export function mergeProjectMetadataWithNomosProfile(
         install_mode: profile.pack.install_mode,
         root_template: profile.project_state.root_template,
         activation_status: 'active_builtin',
+        project_state_root: projectStateRoot,
         draft_root: defaultDraftRoot,
         draft_profile_path: defaultDraftProfilePath,
         active_root: projectStateRoot,

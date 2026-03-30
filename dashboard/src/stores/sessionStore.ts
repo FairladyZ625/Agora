@@ -7,6 +7,7 @@ type SessionStatus = 'idle' | 'loading' | 'ready' | 'error';
 interface SessionStore {
   status: SessionStatus;
   authenticated: boolean;
+  accountId: number | null;
   username: string | null;
   role: SessionRole | null;
   method: string | null;
@@ -19,6 +20,7 @@ interface SessionStore {
 
 const anonymousState = {
   authenticated: false,
+  accountId: null,
   username: null,
   role: null,
   method: null,
@@ -44,6 +46,7 @@ export const useSessionStore = create<SessionStore>()((set, get) => ({
       set({
         status: 'ready',
         authenticated: session.authenticated,
+        accountId: session.account_id ?? null,
         username: session.username ?? null,
         role: session.role ?? null,
         method: session.method ?? null,
@@ -66,6 +69,7 @@ export const useSessionStore = create<SessionStore>()((set, get) => ({
       set({
         status: 'ready',
         authenticated: session.authenticated,
+        accountId: session.account_id ?? null,
         username: session.username ?? null,
         role: session.role ?? null,
         method: session.method ?? null,

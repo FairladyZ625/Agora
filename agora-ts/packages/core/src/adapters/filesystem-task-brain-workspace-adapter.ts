@@ -62,12 +62,6 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     const taskRecapPath = join(binding.workspace_path, '07-outputs', 'task-close-recap.md');
     const recapBody = renderTaskCloseRecap(input);
     writeFileSync(taskRecapPath, recapBody, 'utf8');
-
-    if (input.project_id) {
-      const projectRecapDir = resolve(this.resolveProjectRoot(input.project_id), 'recaps');
-      mkdirSync(projectRecapDir, { recursive: true });
-      writeFileSync(join(projectRecapDir, `${input.task_id}.md`), recapBody, 'utf8');
-    }
   }
 
   writeTaskHarvestDraft(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainHarvestDraftRequest): void {

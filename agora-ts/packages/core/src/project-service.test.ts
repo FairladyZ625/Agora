@@ -70,6 +70,7 @@ describe('project service', () => {
       }),
     ]);
     expect(existsSync(join(projectStateDir, 'proj-alpha', 'index.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, 'proj-alpha', '.git'))).toBe(true);
     expect(existsSync(join(projectStateDir, 'proj-alpha', 'tasks', 'active'))).toBe(true);
     expect(existsSync(join(projectStateDir, 'proj-alpha', 'tasks', 'archive'))).toBe(true);
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
@@ -145,6 +146,7 @@ describe('project service', () => {
     expect(created.id).toMatch(/^proj-[a-z0-9-]+$/);
     expect(service.requireProject(created.id).name).toBe('中文 Project Alpha');
     expect(existsSync(join(projectStateDir, created.id, 'index.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, created.id, '.git'))).toBe(true);
     expect(existsSync(join(brainPackDir, 'project-index', created.id, 'index.md'))).toBe(false);
   });
 

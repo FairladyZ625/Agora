@@ -95,6 +95,9 @@ export const resources = {
         projects: {
           title: 'Project 工作台与知识面',
         },
+        workspaceBootstrap: {
+          title: '工作区 bootstrap 与 runtime readiness',
+        },
         tasks: {
           title: '执行全景与阶段细节',
         },
@@ -234,8 +237,9 @@ export const resources = {
         resolutionActions: {
           authorize: '批准进入执行',
           veto: '驳回提案',
-          synthesize: '发起深度综合',
+          synthesize: '进入待我审批',
         },
+        resolutionReadOnlyNotice: '当前首页焦点未分配给你裁决。进入待我审批队列查看你可操作的审批项。',
         terminalStatusPrefix: '同步',
         terminalEmpty: '等待新的执行信号。',
         topologyHashLabel: '拓扑签名',
@@ -565,10 +569,35 @@ export const resources = {
         adminAccountsPlaceholder: '例如：1,2',
         memberAccountsLabel: '项目成员账号 ID',
         memberAccountsPlaceholder: '例如：3,4,5',
+        workspaceBootstrapTitle: '工作区 bootstrap',
+        workspaceBootstrapSummary: '先完成 runtime readiness 和总控采访任务，再让 orchestrator 正式接手项目管理。',
+        workspaceBootstrapAction: '打开工作区 bootstrap',
         confirmAction: '确认创建项目',
         creatingAction: '创建中…',
         loadingTitle: '正在加载项目…',
         emptyTitle: '当前还没有项目。',
+      },
+      workspaceBootstrap: {
+        kicker: 'WORKSPACE BOOTSTRAP',
+        title: '工作区 bootstrap',
+        summary: '先确认 runtime readiness，再启动 orchestrator 的全局采访任务。',
+        runtimeReadyLabel: 'Runtime readiness',
+        bootstrapTaskLabel: 'Bootstrap task',
+        completedLabel: 'Bootstrap completion',
+        readyValue: '已就绪',
+        blockedValue: '未就绪',
+        completedValue: '已完成',
+        pendingValue: '待完成',
+        guideTitle: 'Runtime readiness guide',
+        guideSummary: '当前第一阶段默认接 Discord。先把 bot 配好，再开始 workspace interview。',
+        guideSteps: [
+          'Create a Discord bot in the Discord developer portal.',
+          'Bind the bot token and external account identity into Agora.',
+          'Verify readiness, then let the orchestrator start the workspace bootstrap interview.',
+        ],
+        runtimeReasonLabel: 'Readiness reason',
+        emptyTaskValue: '尚未创建',
+        openTaskAction: '打开 bootstrap task',
       },
       projectDetail: {
         kicker: 'PROJECT DETAIL',
@@ -1128,6 +1157,7 @@ export const resources = {
         emptyTitle: '当前没有待裁决任务',
         emptySummary: '系统将在有新 gate waiting 任务时显示在这里。',
         queueScopes: {
+          assigned: '待我审批',
           high: '高优先级',
         },
         tableHeaders: {
@@ -1137,6 +1167,7 @@ export const resources = {
           wait: '等待',
         },
         liveApiNotice: '当前正在操作真实裁决接口。',
+        readOnlyNotice: '当前裁决已分配给其他审批人。',
       },
       settings: {
         kicker: '系统治理',
@@ -1376,6 +1407,9 @@ export const resources = {
         projects: {
           title: 'Project workbench and knowledge surface',
         },
+        workspaceBootstrap: {
+          title: 'Workspace bootstrap and runtime readiness',
+        },
         tasks: {
           title: 'Execution overview and stage details',
         },
@@ -1515,8 +1549,9 @@ export const resources = {
         resolutionActions: {
           authorize: 'Approve execution',
           veto: 'Reject proposal',
-          synthesize: 'Request synthesis',
+          synthesize: 'Open assigned queue',
         },
+        resolutionReadOnlyNotice: 'The current homepage focus is assigned to another approver. Open the assigned queue to see the reviews you can act on.',
         terminalStatusPrefix: 'SYNC',
         terminalEmpty: 'Waiting for the next execution signal.',
         topologyHashLabel: 'Hash',
@@ -1846,10 +1881,35 @@ export const resources = {
         adminAccountsPlaceholder: 'For example: 1,2',
         memberAccountsLabel: 'Project Member Account IDs',
         memberAccountsPlaceholder: 'For example: 3,4,5',
+        workspaceBootstrapTitle: 'Workspace bootstrap',
+        workspaceBootstrapSummary: 'Finish runtime readiness and the orchestrator interview before handing global project management to the workspace controller.',
+        workspaceBootstrapAction: 'Open workspace bootstrap',
         confirmAction: 'Confirm Project Creation',
         creatingAction: 'Creating…',
         loadingTitle: 'Loading projects…',
         emptyTitle: 'No projects yet.',
+      },
+      workspaceBootstrap: {
+        kicker: 'WORKSPACE BOOTSTRAP',
+        title: 'Workspace bootstrap',
+        summary: 'Confirm runtime readiness first, then launch the orchestrator interview task.',
+        runtimeReadyLabel: 'Runtime readiness',
+        bootstrapTaskLabel: 'Bootstrap task',
+        completedLabel: 'Bootstrap completion',
+        readyValue: 'Ready',
+        blockedValue: 'Blocked',
+        completedValue: 'Completed',
+        pendingValue: 'Pending',
+        guideTitle: 'Runtime readiness guide',
+        guideSummary: 'Discord is the default first-phase IM. Finish the bot setup before the workspace interview starts.',
+        guideSteps: [
+          'Create a Discord bot in the Discord developer portal.',
+          'Bind the bot token and external account identity into Agora.',
+          'Verify readiness, then let the orchestrator start the workspace bootstrap interview.',
+        ],
+        runtimeReasonLabel: 'Readiness reason',
+        emptyTaskValue: 'Not created yet',
+        openTaskAction: 'Open bootstrap task',
       },
       projectDetail: {
         kicker: 'PROJECT DETAIL',
@@ -2409,6 +2469,7 @@ export const resources = {
         emptyTitle: 'No tasks are awaiting review right now',
         emptySummary: 'The system will show new gate-waiting tasks here as they arrive.',
         queueScopes: {
+          assigned: 'Assigned to me',
           high: 'High priority',
         },
         tableHeaders: {
@@ -2418,6 +2479,7 @@ export const resources = {
           wait: 'Waiting',
         },
         liveApiNotice: 'You are operating against the live review API.',
+        readOnlyNotice: 'This review is assigned to another approver.',
       },
       settings: {
         kicker: 'System governance',

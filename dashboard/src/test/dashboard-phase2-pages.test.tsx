@@ -133,6 +133,7 @@ vi.mock('@/stores/sessionStore', () => ({
     authenticated: boolean;
     status: string;
     username: string;
+    accountId: number | null;
     role: string;
     refresh: () => Promise<string>;
     logout: () => Promise<void>;
@@ -142,6 +143,7 @@ vi.mock('@/stores/sessionStore', () => ({
       authenticated: true,
       status: 'ready',
       username: 'admin',
+      accountId: 9,
       role: 'admin',
       refresh: vi.fn(async () => 'live'),
       logout: vi.fn(async () => undefined),
@@ -202,6 +204,9 @@ describe('dashboard phase 2 routes', () => {
         ...taskStoreState.tasks[0],
         gateType: 'approval',
         sourceState: 'active',
+        authority: {
+          approverAccountId: 7,
+        },
         teamMembers: [
           { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
           { role: 'reviewer', agentId: 'glm5', model_preference: 'chinese_strong' },
@@ -329,8 +334,8 @@ describe('dashboard phase 2 routes', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: 'Reviewer 通过' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reviewer 打回' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reviewer 通过' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reviewer 打回' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '标记 dev-api 完成' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '运行观察' })).toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
@@ -228,6 +228,37 @@ describe('agora-ts server bootstrap', () => {
 
     expect(ready.statusCode).toBe(200);
     expect(ready.json()).toEqual({ status: 'ready' });
+  });
+
+  it('initializes and serves workspace bootstrap status when a bootstrap service is configured', async () => {
+    const initialize = vi.fn(() => null);
+    const getStatus = vi.fn(() => ({
+      runtime_ready: true,
+      runtime_readiness_reason: null,
+      bootstrap_task_id: 'OC-WORKSPACE-BOOTSTRAP',
+      bootstrap_task_title: 'Workspace Bootstrap Interview',
+      bootstrap_task_state: 'active',
+      bootstrap_completed: false,
+    }));
+    const app = buildApp({
+      workspaceBootstrapService: {
+        initialize,
+        getStatus,
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/bootstrap',
+    });
+
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      runtime_ready: true,
+      bootstrap_task_id: 'OC-WORKSPACE-BOOTSTRAP',
+      bootstrap_completed: false,
+    });
   });
 
   it('does not expose a metrics endpoint unless enabled', async () => {
@@ -773,6 +804,43 @@ describe('agora-ts server bootstrap', () => {
       { route: 'diagnose', callerId: 'lizeyu' },
       { route: 'restart', callerId: 'lizeyu' },
     ]);
+  });
+
+  it('creates an unbound project with a git-managed canonical project state root', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-project-root-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, { templatesDir, projectService });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-canonical-root',
+        name: 'Canonical Root Project',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'proj-canonical-root',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: join(agoraHomeDir, 'projects', 'proj-canonical-root'),
+          },
+        },
+      },
+    });
+    expect(existsSync(join(agoraHomeDir, 'projects', 'proj-canonical-root', '.git'))).toBe(true);
   });
 
   it('returns 503 when task service routes are unconfigured', async () => {
