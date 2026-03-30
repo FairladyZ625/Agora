@@ -11,6 +11,7 @@ import type {
   ProjectKnowledgeTaskBindingInput,
   ProjectKnowledgeTaskRecapInput,
 } from '../project-knowledge-port.js';
+import { ensureCanonicalProjectRoot } from '../project-state-root.js';
 import { extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 export interface FilesystemProjectKnowledgeAdapterOptions {
@@ -23,6 +24,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
 
   ensureProject(input: ProjectKnowledgeProjectInput): void {
     const root = this.projectRoot(input.id);
+    ensureCanonicalProjectRoot(root);
     mkdirSync(root, { recursive: true });
     mkdirSync(join(root, 'recaps'), { recursive: true });
     mkdirSync(join(root, 'knowledge', 'decisions'), { recursive: true });

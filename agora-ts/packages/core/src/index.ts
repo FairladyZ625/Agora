@@ -42,6 +42,7 @@ export * from './project-bootstrap-service.js';
 export * from './project-membership-service.js';
 export * from './project-agent-roster-service.js';
 export * from './project-nomos-authoring-port.js';
+export * from './project-state-root.js';
 export * from './project-service.js';
 export * from './progress-service.js';
 export * from './role-pack-service.js';
