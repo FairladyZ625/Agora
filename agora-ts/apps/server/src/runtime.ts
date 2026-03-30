@@ -34,6 +34,7 @@ export interface ObservationSchedulerTickResult {
     scanned_tasks: number;
     controller_pings: number;
     roster_pings: number;
+    human_pings: number;
     inbox_items: number;
   };
 }
@@ -69,6 +70,7 @@ function createObservationScheduler(runtime: {
       scanned_tasks: number;
       controller_pings: number;
       roster_pings: number;
+      human_pings: number;
       inbox_items: number;
     };
   };

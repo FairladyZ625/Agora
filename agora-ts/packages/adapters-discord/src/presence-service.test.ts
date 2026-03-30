@@ -40,6 +40,22 @@ function createClientStub() {
   return { client, login, destroy, setPresence, errorListeners };
 }
 
+function createRejectingClientStub(error: Error) {
+  const client = {} as DiscordGatewayPresenceClient;
+  client.user = null;
+  client.login = vi.fn(async () => {
+    throw error;
+  });
+  client.destroy = vi.fn();
+  client.once = vi.fn(() => client);
+  client.on = vi.fn(() => client);
+  return {
+    client,
+    login: client.login,
+    destroy: client.destroy,
+  };
+}
+
 function createWebSocketStub() {
   const socket = new EventEmitter() as EventEmitter & {
     readyState: number;
@@ -161,6 +177,46 @@ describe('DiscordGatewayPresenceService', () => {
     expect(stub.destroy).toHaveBeenCalled();
   });
 
+  it('reconnects after an initial login failure and eventually restores presence', async () => {
+    vi.useFakeTimers();
+    const first = createRejectingClientStub(new Error('discord gateway requested reconnect before presence became ready'));
+    const second = createClientStub();
+    const clientFactory = vi
+      .fn<() => DiscordGatewayPresenceClient>()
+      .mockReturnValueOnce(first.client)
+      .mockReturnValueOnce(second.client);
+    const warn = vi.fn();
+    const service = new DiscordGatewayPresenceService({
+      botToken: 'discord-token',
+      clientFactory,
+      reconnectDelayMs: 5,
+      logger: { warn },
+    });
+
+    service.start();
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(5);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(clientFactory).toHaveBeenCalledTimes(2);
+    expect(first.client.destroy).toHaveBeenCalled();
+    expect(second.setPresence).toHaveBeenCalledWith({
+      since: null,
+      status: 'online',
+      activities: [{
+        name: 'Agora',
+        type: 3,
+      }],
+      afk: false,
+    });
+    expect(warn).toHaveBeenCalledWith('[agora] discord gateway presence reconnect scheduled in 5ms');
+
+    service.stop();
+    vi.useRealTimers();
+  });
+
   it('parses gateway payloads from all supported raw-data forms', () => {
     const payload = { op: 10, d: { heartbeat_interval: 1000 } };
     const text = JSON.stringify(payload);
@@ -232,5 +288,33 @@ describe('DiscordGatewayPresenceService', () => {
     socket.emit('message', JSON.stringify({ op: 7 }));
 
     await expect(ready).rejects.toThrow('requested reconnect');
+  });
+
+  it('emits an after-ready reconnect error when the gateway requests reconnect after readiness', async () => {
+    const socket = createWebSocketStub();
+    const client = new MinimalDiscordGatewayPresenceClient({
+      proxy: { enabled: false, httpsProxy: null, httpProxy: null },
+      logger: {},
+      initialPresence: {
+        since: null,
+        status: 'online',
+        activities: [],
+        afk: false,
+      },
+      webSocketFactory: () => socket as never,
+    });
+    const onError = vi.fn();
+    client.on('error', onError);
+
+    const ready = client.login('discord-token');
+    socket.emit('message', JSON.stringify({ op: 10, d: { heartbeat_interval: 25 } }));
+    socket.emit('message', JSON.stringify({ op: 0, t: 'READY', s: 7, d: {} }));
+    await expect(ready).resolves.toBe('discord-token');
+
+    socket.emit('message', JSON.stringify({ op: 7 }));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'discord gateway requested reconnect after presence became ready',
+    }));
   });
 });

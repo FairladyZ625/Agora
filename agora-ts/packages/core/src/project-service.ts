@@ -1,6 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { ProjectRepository, TaskRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
+import type {
+  CreateProjectAdminDto,
+  CreateProjectAgentRosterEntryDto,
+  CreateProjectMembershipDto,
+} from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
+import { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import { ProjectMembershipService } from './project-membership-service.js';
 import type {
   ProjectKnowledgeDocument,
   ProjectKnowledgeEntryInput,
@@ -17,6 +24,9 @@ export interface CreateProjectInput {
   summary?: string | null | undefined;
   owner?: string | null | undefined;
   metadata?: Record<string, unknown> | null | undefined;
+  admins?: CreateProjectAdminDto[] | undefined;
+  members?: CreateProjectMembershipDto[] | undefined;
+  default_agents?: CreateProjectAgentRosterEntryDto[] | undefined;
 }
 
 export interface ProjectServiceOptions {
@@ -27,25 +37,50 @@ export interface ProjectServiceOptions {
 export class ProjectService {
   private readonly projects: ProjectRepository;
   private readonly tasks: TaskRepository;
+  private readonly memberships: ProjectMembershipService;
+  private readonly agentRoster: ProjectAgentRosterService;
   private readonly knowledgePort: ProjectKnowledgePort | undefined;
   private readonly projectBrainIndexQueueService: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'> | undefined;
 
-  constructor(db: AgoraDatabase, options: ProjectServiceOptions = {}) {
+  constructor(private readonly db: AgoraDatabase, options: ProjectServiceOptions = {}) {
     this.projects = new ProjectRepository(db);
     this.tasks = new TaskRepository(db);
+    this.memberships = new ProjectMembershipService(db);
+    this.agentRoster = new ProjectAgentRosterService(db);
     this.knowledgePort = options.knowledgePort;
     this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }
 
   createProject(input: CreateProjectInput): StoredProject {
     const projectId = input.id?.trim() || this.generateProjectId(input.name);
-    const project = this.projects.insertProject({
-      id: projectId,
-      name: input.name,
-      ...(input.summary !== undefined ? { summary: input.summary } : {}),
-      ...(input.owner !== undefined ? { owner: input.owner } : {}),
-      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
-    });
+    if ((input.admins || input.members || input.default_agents) && (!input.admins || input.admins.length === 0)) {
+      throw new Error('createProject requires at least one project admin when seeding memberships or default agents');
+    }
+    let project: StoredProject;
+    this.db.exec('BEGIN');
+    try {
+      project = this.projects.insertProject({
+        id: projectId,
+        name: input.name,
+        ...(input.summary !== undefined ? { summary: input.summary } : {}),
+        ...(input.owner !== undefined ? { owner: input.owner } : {}),
+        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+      });
+      if (input.admins && input.admins.length > 0) {
+        this.memberships.seedProjectMemberships({
+          projectId,
+          admins: input.admins,
+          ...(input.members ? { members: input.members } : {}),
+        });
+      }
+      if (input.default_agents && input.default_agents.length > 0) {
+        this.agentRoster.seedProjectRoster(projectId, input.default_agents);
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
     this.knowledgePort?.ensureProject({
       id: project.id,
       name: project.name,
@@ -58,6 +93,48 @@ export class ProjectService {
 
   getProject(projectId: string): StoredProject | null {
     return this.projects.getProject(projectId);
+  }
+
+  getProjectRepoPath(projectId: string): string | null {
+    const project = this.requireProject(projectId);
+    const metadata = asRecord(project.metadata);
+    return typeof metadata?.repo_path === 'string' && metadata.repo_path.length > 0
+      ? metadata.repo_path
+      : null;
+  }
+
+  getProjectStateRoot(projectId: string): string | null {
+    const project = this.requireProject(projectId);
+    const metadata = asRecord(project.metadata);
+    const agora = asRecord(metadata?.agora);
+    const nomos = asRecord(agora?.nomos);
+    if (typeof nomos?.project_state_root === 'string' && nomos.project_state_root.length > 0) {
+      return nomos.project_state_root;
+    }
+    if (typeof nomos?.active_root === 'string' && nomos.active_root.length > 0) {
+      return nomos.active_root;
+    }
+    return null;
+  }
+
+  listProjectMemberships(projectId: string) {
+    this.requireProject(projectId);
+    return this.memberships.listProjectMemberships(projectId);
+  }
+
+  addProjectMembership(input: {
+    projectId: string;
+    account_id: number;
+    role: 'admin' | 'member';
+    added_by_account_id?: number | null;
+  }) {
+    this.requireProject(input.projectId);
+    return this.memberships.addProjectMembership(input);
+  }
+
+  removeProjectMembership(projectId: string, accountId: number) {
+    this.requireProject(projectId);
+    return this.memberships.removeProjectMembership(projectId, accountId);
   }
 
   updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): StoredProject {
@@ -237,4 +314,10 @@ function slugifyProjectName(input: string) {
 function trimProjectId(input: string) {
   const trimmed = input.replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
   return (trimmed.slice(0, 63).replace(/-+$/g, '') || 'proj-auto');
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }

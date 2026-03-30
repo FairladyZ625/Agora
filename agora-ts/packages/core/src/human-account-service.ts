@@ -140,6 +140,14 @@ export class HumanAccountService {
     };
   }
 
+  getIdentityByUsername(username: string, provider: string): HumanAccountIdentityBinding | null {
+    const account = this.accounts.getByUsername(username);
+    if (!account || !account.enabled) {
+      return null;
+    }
+    return this.getIdentity(account.id, provider);
+  }
+
   authenticate(username: string, password: string): HumanAccount | null {
     const account = this.accounts.getByUsername(username);
     if (!account || !account.enabled) {

@@ -652,4 +652,39 @@ describe("registerLiveStatusBridge", () => {
       }),
     );
   });
+
+  it("does not ingest bot self-echoes as inbound human conversation", async () => {
+    const bridge = {
+      upsertLiveSession: vi.fn().mockResolvedValue({ ok: true }),
+      ingestTaskConversationEntry: vi.fn().mockResolvedValue({ id: "entry-self-echo" }),
+    };
+    const { api, hooks } = createApi();
+
+    registerLiveStatusBridge(api as never, bridge as never);
+
+    const messageReceived = hooks.get("message_received");
+    await messageReceived?.(
+      {
+        content: "Agora 状态更新",
+        metadata: {
+          threadId: "thread-echo-1",
+          senderId: "agora-bot-account",
+          senderName: "Agora",
+        },
+      },
+      {
+        channelId: "discord",
+        conversationId: "alerts",
+        accountId: "agora-bot-account",
+      },
+    );
+
+    expect(bridge.upsertLiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        thread_id: "thread-echo-1",
+        last_event: "message_received",
+      }),
+    );
+    expect(bridge.ingestTaskConversationEntry).not.toHaveBeenCalled();
+  });
 });

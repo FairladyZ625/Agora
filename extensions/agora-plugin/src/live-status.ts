@@ -153,6 +153,8 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
     if (!sessionKey || !agentId) {
       return;
     }
+    const senderId = senderIdFromMetadata(event.metadata) ?? ctx.accountId ?? null;
+    const displayName = senderDisplayNameFromMetadata(event.metadata) ?? ctx.accountId ?? null;
     push({
       source: "openclaw",
       agent_id: agentId,
@@ -166,7 +168,7 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
       last_event_at: isoNow(event.timestamp),
       metadata: event.metadata ?? {},
     });
-    if (typeof bridge.ingestTaskConversationEntry === "function") {
+    if (typeof bridge.ingestTaskConversationEntry === "function" && !isSelfEchoedMessage(ctx.accountId, senderId)) {
       void bridge.ingestTaskConversationEntry({
         provider: ctx.channelId ?? inferChannel(sessionKey) ?? "unknown",
         conversation_ref: ctx.conversationId ?? inferConversationId(sessionKey),
@@ -174,8 +176,8 @@ export function registerLiveStatusBridge(api: OpenClawPluginApi, bridge: AgoraBr
         provider_message_ref: messageIdFromMetadata(event.metadata),
         direction: "inbound",
         author_kind: "human",
-        author_ref: senderIdFromMetadata(event.metadata) ?? ctx.accountId ?? null,
-        display_name: senderDisplayNameFromMetadata(event.metadata) ?? ctx.accountId ?? null,
+        author_ref: senderId,
+        display_name: displayName,
         body: event.content,
         occurred_at: isoNow(event.timestamp),
         metadata: event.metadata ?? {},
@@ -421,6 +423,10 @@ function senderDisplayNameFromMetadata(metadata?: Record<string, unknown>) {
     return value;
   }
   return null;
+}
+
+function isSelfEchoedMessage(accountId?: string, senderId?: string | null) {
+  return typeof accountId === "string" && accountId.length > 0 && senderId === accountId;
 }
 
 function isoNow(timestamp?: number) {

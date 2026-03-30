@@ -1,8 +1,9 @@
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, ProjectWriteLockRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
@@ -14,6 +15,7 @@ import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-pr
 import { LiveSessionStore } from './live-session-store.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
+import { ProjectContextWriter } from './project-context-writer.js';
 import { ProjectService } from './project-service.js';
 import { RolePackService } from './role-pack-service.js';
 import { TaskService } from './task-service.js';
@@ -47,6 +49,27 @@ function makeBrainPackDir() {
     recursive: true,
   });
   return dir;
+}
+
+function runGit(cwd: string, args: string[]) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function initCommittedRepo(dir: string, files: Record<string, string> = { 'README.md': 'hello\n' }) {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const absolutePath = join(dir, relativePath);
+    mkdirSync(join(absolutePath, '..'), { recursive: true });
+    writeFileSync(absolutePath, content, 'utf8');
+  }
+  runGit(dir, ['-c', 'init.defaultBranch=main', 'init', '--quiet']);
+  runGit(dir, ['config', 'user.name', 'Agora']);
+  runGit(dir, ['config', 'user.email', 'agora@example.com']);
+  runGit(dir, ['add', '.']);
+  runGit(dir, ['commit', '--quiet', '-m', 'init']);
 }
 
 afterEach(() => {
@@ -917,6 +940,8 @@ describe('task service', () => {
       summary: 'project brain scope',
     });
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(projectStateDir);
     const service = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRAIN-PROJECT',
@@ -926,6 +951,7 @@ describe('task service', () => {
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
 
@@ -939,7 +965,7 @@ describe('task service', () => {
     });
 
     const binding = new TaskBrainBindingRepository(db).getActiveByTask(task.id);
-    const workspacePath = join(brainPackDir, 'projects', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT');
+    const workspacePath = join(projectStateDir, 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT');
     expect(task.project_id).toBe('proj-alpha');
     expect(binding?.workspace_path).toBe(workspacePath);
     expect(binding?.metadata).toMatchObject({
@@ -951,15 +977,20 @@ describe('task service', () => {
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(
       join(brainPackDir, 'roles', 'architect.md'),
     );
+    expect(binding?.brain_pack_ref).toBe('agora-project-state');
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT'))).toBe(false);
   });
 
   it('materializes audience-specific project brain context files for project-bound tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(projectStateDir);
     const projectService = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     projectService.createProject({
@@ -1021,6 +1052,7 @@ describe('task service', () => {
       citizenService,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     const automationService = new ProjectBrainAutomationService({
@@ -1035,6 +1067,7 @@ describe('task service', () => {
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
       projectBrainAutomationService: automationService,
     });
@@ -1054,7 +1087,7 @@ describe('task service', () => {
       },
     });
 
-    const workspacePath = join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
+    const workspacePath = join(projectStateDir, 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
     const controllerContextPath = join(workspacePath, '04-context', 'project-brain-context-controller.md');
     const craftsmanContextPath = join(workspacePath, '04-context', 'project-brain-context-craftsman.md');
     const citizenContextPath = join(workspacePath, '04-context', 'project-brain-context-citizen.md');
@@ -1071,6 +1104,7 @@ describe('task service', () => {
     expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(citizenContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(controllerContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'citizen-alpha', '00-role-brief.md'), 'utf8')).toContain(citizenContextPath);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP'))).toBe(false);
   });
 
   it('passes task context into project brain bootstrap generation for project-bound tasks', () => {
@@ -1151,13 +1185,119 @@ describe('task service', () => {
     }));
   });
 
-  it('materializes task close recap and harvest draft into task and project scope for project-bound tasks', () => {
+  it('builds a structured project context write proposal for task closeout', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-writer-proposal-'));
+    tempPaths.push(projectStateDir);
     const projectService = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-writer-proposal',
+      name: 'Writer Proposal',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: join(projectStateDir, 'proj-writer-proposal'),
+          },
+        },
+      },
+    });
+    const bindingService = new TaskBrainBindingService(db, {
+      idGenerator: () => 'brain-binding-writer-proposal',
+    });
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-WRITER-PROPOSAL',
+      projectService,
+      taskBrainBindingService: bindingService,
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+
+    service.createTask({
+      title: 'Writer proposal task',
+      type: 'project-thin-slice',
+      creator: 'archon',
+      description: 'proposal path',
+      priority: 'high',
+      project_id: 'proj-writer-proposal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'command-only',
+        stages: [{ id: 'ship', mode: 'execute', gate: { type: 'command' } }],
+      },
+    });
+
+    const task = service.getTask('OC-WRITER-PROPOSAL')!;
+    const binding = bindingService.getActiveBinding('OC-WRITER-PROPOSAL')!;
+    const writer = new ProjectContextWriter(db, {
+      projectService,
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+      execFile: vi.fn(() => ''),
+    });
+
+    const proposal = writer.buildTaskCloseoutProposal({
+      task,
+      binding,
+      actor: 'archon',
+      reason: 'ready to archive',
+    });
+
+    expect(proposal).toMatchObject({
+      kind: 'task_closeout',
+      project_id: 'proj-writer-proposal',
+      task_id: 'OC-WRITER-PROPOSAL',
+      canonical_root: join(projectStateDir, 'proj-writer-proposal'),
+      lock_holder_task_id: 'OC-WRITER-PROPOSAL',
+      close_recap: {
+        binding: expect.objectContaining({
+          workspace_path: join(projectStateDir, 'proj-writer-proposal', 'tasks', 'OC-WRITER-PROPOSAL'),
+        }),
+        input: expect.objectContaining({
+          project_id: 'proj-writer-proposal',
+          task_id: 'OC-WRITER-PROPOSAL',
+          completed_by: 'archon',
+          summary_lines: expect.arrayContaining([
+            '任务已到达 done，已进入 archive 流程。',
+            '完成人: archon',
+            '原因: ready to archive',
+          ]),
+        }),
+      },
+      project_recap: expect.objectContaining({
+        project_id: 'proj-writer-proposal',
+        task_id: 'OC-WRITER-PROPOSAL',
+        workspace_path: join(projectStateDir, 'proj-writer-proposal', 'tasks', 'OC-WRITER-PROPOSAL'),
+        completed_by: 'archon',
+      }),
+    });
+  });
+
+  it('materializes project-bound task workspace and recap data into the canonical project root when configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(projectStateDir);
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     projectService.createProject({
@@ -1173,6 +1313,7 @@ describe('task service', () => {
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
 
@@ -1194,18 +1335,28 @@ describe('task service', () => {
       },
     });
 
+    const activeProjectionPath = join(projectStateDir, 'proj-recap', 'tasks', 'active', 'OC-PROJECT-RECAP.md');
+    expect(existsSync(activeProjectionPath)).toBe(true);
+    expect(readFileSync(activeProjectionPath, 'utf8')).toContain('Projection: active');
+    expect(readFileSync(join(projectStateDir, 'proj-recap', 'index.md'), 'utf8')).toContain(
+      '[[tasks/active/OC-PROJECT-RECAP.md]] | Project recap task | state=active',
+    );
+
     const done = service.advanceTask('OC-PROJECT-RECAP', { callerId: 'archon' });
-    const workspacePath = join(brainPackDir, 'projects', 'proj-recap', 'tasks', 'OC-PROJECT-RECAP');
+    const workspacePath = join(projectStateDir, 'proj-recap', 'tasks', 'OC-PROJECT-RECAP');
     const taskRecapPath = join(workspacePath, '07-outputs', 'task-close-recap.md');
     const taskHarvestDraftPath = join(workspacePath, '07-outputs', 'project-harvest-draft.md');
-    const projectRecapPath = join(brainPackDir, 'projects', 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
+    const projectRecapPath = join(projectStateDir, 'proj-recap', 'recaps', 'OC-PROJECT-RECAP.md');
+    const archiveProjectionPath = join(projectStateDir, 'proj-recap', 'tasks', 'archive', 'OC-PROJECT-RECAP.md');
 
     expect(done.state).toBe('done');
+    expect(existsSync(activeProjectionPath)).toBe(false);
+    expect(existsSync(archiveProjectionPath)).toBe(true);
     expect(existsSync(taskRecapPath)).toBe(true);
     expect(existsSync(taskHarvestDraftPath)).toBe(true);
     expect(existsSync(projectRecapPath)).toBe(true);
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'))).toBe(true);
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, 'proj-recap', 'index.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, 'proj-recap', 'timeline.md'))).toBe(true);
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('Project: proj-recap');
     expect(readFileSync(taskRecapPath, 'utf8')).toContain('任务已到达 done，已进入 archive 流程。');
@@ -1214,8 +1365,19 @@ describe('task service', () => {
     expect(readFileSync(taskHarvestDraftPath, 'utf8')).toContain('事实候选');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('doc_type: task_recap');
     expect(readFileSync(projectRecapPath, 'utf8')).toContain('完成人: archon');
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('Projection: archive');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../../recaps/OC-PROJECT-RECAP.md]]');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../OC-PROJECT-RECAP/07-outputs/project-harvest-draft.md]]');
+    expect(readFileSync(join(projectStateDir, 'proj-recap', 'index.md'), 'utf8')).toContain('[[recaps/OC-PROJECT-RECAP.md]]');
+    expect(readFileSync(join(projectStateDir, 'proj-recap', 'index.md'), 'utf8')).toContain(
+      '[[tasks/archive/OC-PROJECT-RECAP.md]] | Project recap task | state=done',
+    );
+    expect(readFileSync(join(projectStateDir, 'proj-recap', 'timeline.md'), 'utf8')).toContain('task_recap | OC-PROJECT-RECAP');
+    expect(readFileSync(join(projectStateDir, 'proj-recap', 'timeline.md'), 'utf8')).toContain(
+      'doc=[[tasks/archive/OC-PROJECT-RECAP.md]]',
+    );
+    expect(new ProjectWriteLockRepository(db).getLock('proj-recap')).toBeNull();
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-recap', 'index.md'))).toBe(false);
   });
 
   it('promotes project-bound todos into tasks that keep the same project_id', () => {
@@ -1965,11 +2127,11 @@ describe('task service', () => {
       expect.arrayContaining([
         expect.objectContaining({
           task_id: 'OC-103',
-          status: 'review_pending',
+          status: 'pending',
           payload: expect.objectContaining({
             state: 'cancelled',
             closeout_review: expect.objectContaining({
-              state: 'review_pending',
+              state: 'advisory',
             }),
           }),
         }),
@@ -2618,7 +2780,7 @@ describe('task service', () => {
     );
   });
 
-  it('enqueues a review-pending archive job when a task reaches done', () => {
+  it('enqueues a pending archive job when a task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const projectService = new ProjectService(db);
@@ -2685,12 +2847,12 @@ describe('task service', () => {
     expect(archiveJobs).toHaveLength(1);
     expect(archiveJobs[0]).toMatchObject({
       task_id: 'OC-114',
-      status: 'review_pending',
+      status: 'pending',
       writer_agent: 'writer-agent',
       payload: expect.objectContaining({
         closeout_review: expect.objectContaining({
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
           nomos_runtime: expect.objectContaining({
             nomos_id: 'project/proj-closeout',
             activation_status: 'active_project',
@@ -4725,6 +4887,142 @@ describe('task service', () => {
     });
   });
 
+  it('suppresses repeated controller pings when sqlite timestamps omit timezone markers', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-probe-sqlite',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-SQLITE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Inactive sqlite timestamp probe test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-SQLITE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12 00:00:00', 'OC-PROBE-SQLITE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12 00:00:00', 'OC-PROBE-SQLITE-1');
+
+    const first = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:00.000Z'),
+    });
+    expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
+
+    const second = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:30.000Z'),
+    });
+    expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 0, inbox_items: 0 });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
+    ).toHaveLength(1);
+  });
+
+  it('does not treat echoed system status messages as fresh business activity', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-probe-echo',
+    });
+    const bindingService = new TaskContextBindingService(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROBE-ECHO-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+
+    service.createTask({
+      title: 'Inactive self echo probe test',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ECHO-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ECHO-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-12T00:00:00.000Z', 'OC-PROBE-ECHO-1');
+
+    const first = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:00.000Z'),
+    });
+    expect(first).toMatchObject({ scanned_tasks: 1, controller_pings: 1, roster_pings: 0, inbox_items: 0 });
+    db.prepare(
+      "UPDATE flow_log SET created_at = '2026-03-12 01:00:00' WHERE task_id = ? AND event = 'controller_pinged'",
+    ).run('OC-PROBE-ECHO-1');
+    db.prepare(
+      "UPDATE task_conversation_entries SET occurred_at = '2026-03-12T01:00:00.000Z' WHERE task_id = ? AND author_kind = 'system' AND body LIKE 'Agora 状态更新%'",
+    ).run('OC-PROBE-ECHO-1');
+
+    const binding = bindingService.getLatestBinding('OC-PROBE-ECHO-1');
+    const echoedBody = conversationRepository
+      .listByTask('OC-PROBE-ECHO-1')
+      .slice()
+      .reverse()
+      .find((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
+      ?.body;
+    expect(binding).not.toBeNull();
+    expect(echoedBody).toBeTruthy();
+
+    conversationRepository.insert({
+      id: 'echoed-controller-ping-1',
+      task_id: 'OC-PROBE-ECHO-1',
+      binding_id: binding!.id,
+      provider: 'discord',
+      provider_message_ref: 'discord-msg-echo-1',
+      direction: 'inbound',
+      author_kind: 'human',
+      author_ref: '1480745916225949757',
+      display_name: 'Agora',
+      body: echoedBody!,
+      occurred_at: '2026-03-12T01:00:01.000Z',
+      metadata: {
+        senderId: '1480745916225949757',
+        senderName: 'Agora',
+        threadId: 'discord-thread-probe-echo',
+      },
+    });
+
+    const second = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 7_200_000,
+      inboxAfterMs: 14_400_000,
+      now: new Date('2026-03-12T01:00:30.000Z'),
+    });
+    expect(second).toMatchObject({ scanned_tasks: 1, controller_pings: 0, roster_pings: 0, inbox_items: 0 });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
+    ).toHaveLength(1);
+  });
+
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -4831,6 +5129,170 @@ describe('task service', () => {
       subtask_id: 'sub-allowed-1',
       adapter: 'codex',
     });
+  });
+
+  it('defaults craftsman dispatch workdir to the bound repo for coding tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repoDir = mkdtempSync(join(tmpdir(), 'agora-ts-dispatch-repo-'));
+    const projectStateRoot = mkdtempSync(join(tmpdir(), 'agora-ts-dispatch-project-root-'));
+    const isolatedRoot = join(tmpdir(), '.agora-task-worktrees', 'proj-repo-workdir');
+    tempPaths.push(repoDir, projectStateRoot, isolatedRoot);
+    rmSync(isolatedRoot, { recursive: true, force: true });
+    initCommittedRepo(repoDir);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-default-workdir-repo-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:00:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-repo-workdir',
+      name: 'Repo Workdir',
+      owner: 'archon',
+      metadata: {
+        repo_path: repoDir,
+        agora: {
+          nomos: {
+            project_state_root: projectStateRoot,
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-REPO',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Repo workdir dispatch',
+      type: 'coding',
+      creator: 'archon',
+      project_id: 'proj-repo-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-repo-workdir',
+      task_id: 'OC-DISPATCH-WORKDIR-REPO',
+      stage_id: 'implement',
+      title: 'Dispatch with inferred repo workdir',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-WORKDIR-REPO',
+      subtask_id: 'sub-repo-workdir',
+      caller_id: 'opus',
+      adapter: 'codex',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: null,
+    });
+
+    const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-repo-workdir', 'OC-DISPATCH-WORKDIR-REPO');
+    expect(result.execution.workdir).toBe(expected);
+    expect(readFileSync(join(expected, 'README.md'), 'utf8')).toContain('hello');
+    expect(realpathSync(runGit(expected, ['rev-parse', '--show-toplevel']))).toBe(realpathSync(expected));
+  });
+
+  it('defaults craftsman dispatch workdir to the canonical project repo for non-code tasks', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const projectStateRoot = mkdtempSync(join(tmpdir(), 'agora-ts-dispatch-canonical-root-'));
+    const isolatedRoot = join(tmpdir(), '.agora-task-worktrees', 'proj-project-workdir');
+    tempPaths.push(projectStateRoot, isolatedRoot);
+    rmSync(isolatedRoot, { recursive: true, force: true });
+    initCommittedRepo(projectStateRoot, { 'index.md': '# project\n' });
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-default-workdir-project-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:10:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-project-workdir',
+      name: 'Project Workdir',
+      owner: 'archon',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: projectStateRoot,
+          },
+        },
+      },
+    });
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-PROJECT',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+
+    service.createTask({
+      title: 'Project workdir dispatch',
+      type: 'document',
+      creator: 'archon',
+      project_id: 'proj-project-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-project-workdir',
+      task_id: 'OC-DISPATCH-WORKDIR-PROJECT',
+      stage_id: 'implement',
+      title: 'Dispatch with inferred project workdir',
+      assignee: 'codex',
+      status: 'pending',
+      craftsman_type: 'codex',
+    });
+
+    const result = service.dispatchCraftsman({
+      task_id: 'OC-DISPATCH-WORKDIR-PROJECT',
+      subtask_id: 'sub-project-workdir',
+      caller_id: 'glm5',
+      adapter: 'codex',
+      mode: 'one_shot',
+      interaction_expectation: 'one_shot',
+      workdir: null,
+    });
+
+    const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-project-workdir', 'OC-DISPATCH-WORKDIR-PROJECT');
+    expect(result.execution.workdir).toBe(expected);
+    expect(readFileSync(join(expected, 'index.md'), 'utf8')).toContain('# project');
+    expect(realpathSync(runGit(expected, ['rev-parse', '--show-toplevel']))).toBe(realpathSync(expected));
   });
 
   it('normalizes craftsman adapter aliases for manual dispatch', () => {
@@ -5475,6 +5937,147 @@ describe('task service', () => {
     });
     expect(service.getCraftsmanExecution('exec-observe-1').status).toBe('running');
     expect(service.getTaskStatus('OC-DISPATCH-GOV-3').flow_log.map((entry) => entry.event)).toContain('craftsman_auto_probe');
+  });
+
+  it('applies staircase backoff to repeated craftsman auto-probes with no progress', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-OBSERVE-BACKOFF-1',
+      craftsmanExecutionProbePort: {
+        probe: () => null,
+      },
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const baseNow = new Date();
+    const staleAt = new Date(baseNow.getTime() - 5 * 60_000).toISOString();
+
+    service.createTask({
+      title: 'Observe stale backoff',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'implement',
+            mode: 'execute',
+            execution_kind: 'craftsman_dispatch',
+            allowed_actions: ['dispatch_craftsman'],
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-observe-backoff-1',
+      task_id: 'OC-OBSERVE-BACKOFF-1',
+      stage_id: 'implement',
+      title: 'Observe stale backoff',
+      assignee: 'codex',
+      status: 'in_progress',
+      craftsman_type: 'codex',
+      craftsman_session: 'tmux:backoff',
+      dispatch_status: 'running',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-observe-backoff-1',
+      task_id: 'OC-OBSERVE-BACKOFF-1',
+      subtask_id: 'sub-observe-backoff-1',
+      adapter: 'codex',
+      mode: 'one_shot',
+      session_id: 'tmux:backoff',
+      status: 'running',
+      started_at: staleAt,
+      finished_at: null,
+    });
+    db.prepare(`
+      UPDATE craftsman_executions
+      SET updated_at = ?
+      WHERE execution_id = 'exec-observe-backoff-1'
+    `).run(staleAt);
+
+    const first = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: baseNow,
+    });
+    expect(first).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    const probeState = () => (service as unknown as {
+      craftsmanProbeStateByExecution: Map<string, { attempts: number; lastProbeMs: number | null }>;
+    }).craftsmanProbeStateByExecution.get('exec-observe-backoff-1');
+
+    expect(probeState()).toMatchObject({
+      attempts: 1,
+    });
+
+    const firstProbeAt = probeState()?.lastProbeMs;
+    expect(firstProbeAt).toBeTruthy();
+    const second = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(firstProbeAt! + 30_000),
+    });
+    expect(second).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 1,
+    });
+
+    const third = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(firstProbeAt! + 5 * 60_000),
+    });
+    expect(third).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 2,
+    });
+
+    const secondProbeAt = probeState()?.lastProbeMs;
+    expect(secondProbeAt).toBeTruthy();
+    const fourth = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(secondProbeAt! + 120_000),
+    });
+    expect(fourth).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 2,
+    });
+
+    const fifth = service.observeCraftsmanExecutions({
+      runningAfterMs: 60_000,
+      waitingAfterMs: 60_000,
+      now: new Date(secondProbeAt! + 180_001),
+    });
+    expect(fifth).toMatchObject({
+      scanned: 1,
+      probed: 0,
+      progressed: 0,
+    });
+    expect(probeState()).toMatchObject({
+      attempts: 3,
+    });
   });
 
   it('creates execute-mode subtasks through the formal service surface and auto-dispatches craftsmen specs', () => {

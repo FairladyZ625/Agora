@@ -60,7 +60,7 @@ import {
 } from '@agora-ts/core';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
-import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveAgoraProjectStateLayout, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import type { AgoraDatabase } from '@agora-ts/db';
 
 type RuntimeEnvironment = {
@@ -126,6 +126,7 @@ export interface ServerCompositionFactories {
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
+      humanAccountService: HumanAccountService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: CraftsmanInputPort;
@@ -269,6 +270,13 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
+        resolveHumanReminderParticipantRefs: ({ task, provider, reason }) => {
+          if (reason !== 'approval_waiting') {
+            return [];
+          }
+          const identity = deps.humanAccountService.getIdentityByUsername(task.creator, provider);
+          return identity ? [identity.external_user_id] : [];
+        },
         projectService: deps.projectService,
         agentRuntimePort: deps.agentRuntimePort,
         runtimeRecoveryPort: deps.runtimeRecoveryPort,
@@ -366,9 +374,11 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
       brainPackRoot: context.brainPackDir,
+      projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
     createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
       brainPackRoot: context.brainPackDir,
+      projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
     createProjectService: (context, deps) => new ProjectService(context.db, {
       knowledgePort: deps.projectKnowledgePort,
@@ -388,6 +398,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       citizenService: deps.citizenService,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: context.brainPackDir,
+        projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
       }),
       projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
@@ -472,6 +483,7 @@ export function buildServerComposition(
     taskBrainWorkspacePort,
     taskContextBindingService,
     taskParticipationService,
+    humanAccountService,
     projectService,
     agentRuntimePort,
     ...createCraftsmanTransportDeps(craftsmanMode, legacyRuntimeService, acpRuntime),

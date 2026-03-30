@@ -55,6 +55,7 @@ export interface TestRuntime {
   archiveOutboxDir: string;
   archiveReceiptDir: string;
   brainPackDir: string;
+  projectStateDir: string;
   taskService: TaskService;
   projectService: ProjectService;
   rolePackService: RolePackService;
@@ -84,17 +85,22 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const archiveReceiptDir = join(dir, 'archive-receipts');
   const sourceBrainPackDir = resolve(process.cwd(), '../agora-ai-brain');
   const brainPackDir = join(dir, 'agora-ai-brain');
+  const projectStateDir = join(dir, 'projects');
   const tmuxRegistryDir = join(dir, 'tmux-registry');
   mkdirSync(templatesDir, { recursive: true });
   mkdirSync(archiveOutboxDir, { recursive: true });
   mkdirSync(archiveReceiptDir, { recursive: true });
   mkdirSync(brainPackDir, { recursive: true });
+  mkdirSync(projectStateDir, { recursive: true });
   mkdirSync(tmuxRegistryDir, { recursive: true });
   cpSync(sourceTemplatesDir, templatesDir, { recursive: true });
   cpSync(sourceBrainPackDir, brainPackDir, { recursive: true });
   const rolePackService = new RolePackService({ db, rolePacksDir });
   const projectService = new ProjectService(db, {
-    knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot: brainPackDir }),
+    knowledgePort: new FilesystemProjectKnowledgeAdapter({
+      brainPackRoot: brainPackDir,
+      projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+    }),
   });
   const citizenService = new CitizenService(db, {
     projectService,
@@ -104,7 +110,10 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const projectBrainService = new ProjectBrainService({
     projectService,
     citizenService,
-    projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot: brainPackDir }),
+    projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+      brainPackRoot: brainPackDir,
+      projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+    }),
   });
   const projectBrainAutomationService = new ProjectBrainAutomationService({
     projectBrainService,
@@ -148,7 +157,10 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     ...taskServiceOptions,
     craftsmanDispatcher,
     taskBrainBindingService,
-    taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({ brainPackRoot: brainPackDir }),
+    taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+      brainPackRoot: brainPackDir,
+      projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+    }),
     taskContextBindingService,
     taskParticipationService,
     projectService,
@@ -187,6 +199,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     archiveOutboxDir,
     archiveReceiptDir,
     brainPackDir,
+    projectStateDir,
     taskService,
     projectService,
     rolePackService,

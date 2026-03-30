@@ -10,30 +10,38 @@ import {
   DEFAULT_CUSTOM_NOMOS_PACK_LIFECYCLE_MODULES,
   buildBuiltInAgoraNomosSeededAssets,
   buildBuiltInAgoraNomosProjectProfile,
+  assessPublishedNomosCatalogEntryTrust,
+  assessRegisteredNomosSourceTrust,
   diagnoseProjectNomosDrift,
   diffProjectNomos,
   exportNomosShareBundle,
   exportProjectNomosPack,
   activateProjectNomosDraft,
+  inspectRegisteredNomosSource,
   importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
+  installNomosFromRegisteredSource,
   installNomosFromSource,
   listPublishedNomosCatalog,
+  listRegisteredNomosSources,
   publishProjectNomosPack,
+  registerNomosSource,
   refineProjectNomosDraftFromSpec,
   NOMOS_LIFECYCLE_MODULES,
   prepareProjectNomosInstall,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
+  resolveProjectNomosProvenance,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   resolveInstalledCreateNomosPackTemplateDir,
   resolveAgoraRuntimeEnvironmentFromConfigPackage,
   reviewProjectNomosDraft,
   scaffoldNomosPack,
+  syncRegisteredNomosSource,
   validateProjectNomos,
 } from '@agora-ts/config';
 import type { StartCommandRunner } from './start-command.js';
@@ -78,7 +86,6 @@ import type {
   CreateCitizenRequestDto,
   CreateProjectRequestDto,
   CreateSubtasksRequestDto,
-  CreateTaskRequestDto,
   TaskPriority,
   TemplateDetailDto,
   TemplateGraphDto,
@@ -104,9 +111,7 @@ type Writable = {
   write: (chunk: string) => void;
 };
 
-type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
-  locale?: 'zh-CN' | 'en-US';
-};
+type CreateTaskInputLike = Parameters<TaskService['createTask']>[0];
 
 type CreateProjectInputLike = CreateProjectRequestDto;
 type CreateCitizenInputLike = CreateCitizenRequestDto;
@@ -162,6 +167,29 @@ function collectOption(value: string, previous: string[] = []) {
 
 function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
+}
+
+function parseNumericOptionList(rawValues: string[] = [], optionName: string): number[] {
+  return rawValues.map((value) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`invalid ${optionName} value: ${value}. Expected positive integer.`);
+    }
+    return parsed;
+  });
+}
+
+function parseRequiredNumericOption(rawValue: string, optionName: string): number {
+  const [parsed] = parseNumericOptionList([rawValue], optionName);
+  if (parsed === undefined) {
+    throw new Error(`missing ${optionName} value`);
+  }
+  return parsed;
+}
+
+function resolveAccountLabel(humanAccountService: HumanAccountService, accountId: number) {
+  const user = humanAccountService.listUsers().find((item) => item.id === accountId);
+  return user?.username ?? String(accountId);
 }
 
 function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
@@ -597,6 +625,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
     .option('--project-id <projectId>', 'bind task to an existing project')
+    .option('--authority-json <json>', 'task authority JSON')
     .option('--smoke-test', 'mark this task as smoke/test mode', false)
     .option('--skill <ref>', 'global skill ref', collectOption, [])
     .option('--role-skill <binding>', 'role-scoped skill ref (role=skill)', collectOption, [])
@@ -611,6 +640,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       workflowJson?: string;
       imTargetJson?: string;
       projectId?: string;
+      authorityJson?: string;
       smokeTest?: boolean;
       skill?: string[];
       roleSkill?: string[];
@@ -626,6 +656,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         priority: options.priority,
         locale: options.locale,
         ...(options.projectId ? { project_id: options.projectId } : {}),
+        ...(options.authorityJson ? { authority: parseJsonOption(options.authorityJson, '--authority-json') } : {}),
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
@@ -1126,8 +1157,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
         writeLine(stdout, 'entries: 0');
         return;
       }
-      for (const entry of listed.summaries) {
-        writeLine(stdout, `${entry.pack_id} — ${entry.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target})`);
+      for (const entry of listed.entries) {
+        const trust = assessPublishedNomosCatalogEntryTrust(entry);
+        writeLine(stdout, `${entry.pack_id} — ${entry.pack.version} [${entry.source_kind}] (${entry.source_project_id}/${entry.source_target}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
       }
     });
 
@@ -1152,6 +1184,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `source_repo_path: ${entry.source_repo_path ?? '-'}`);
       writeLine(stdout, `published_note: ${entry.published_note ?? '-'}`);
       writeLine(stdout, `published_root: ${entry.published_root}`);
+      const trust = assessPublishedNomosCatalogEntryTrust(entry);
+      writeLine(stdout, `trust_state: ${trust.trust_state}`);
+      writeLine(stdout, `freshness_state: ${trust.freshness_state}`);
+      writeLine(stdout, `activation_eligibility: ${trust.activation_eligibility}`);
+      writeLine(stdout, `trust_reasons: ${trust.reasons.join(' | ')}`);
     });
 
   nomos
@@ -1244,6 +1281,92 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Nomos source 已同步: ${imported.entry.pack_id}`);
       writeLine(stdout, `source_kind: ${imported.source_kind}`);
       writeLine(stdout, `catalog_root: ${imported.entry.published_root}`);
+    });
+
+  nomos
+    .command('register-source')
+    .description('把 external source 注册为可长期同步的 source descriptor')
+    .requiredOption('--source-id <sourceId>', 'source descriptor id')
+    .requiredOption('--source-dir <path>', 'source directory')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceId: string; sourceDir: string; json?: boolean }) => {
+      const entry = registerNomosSource({
+        sourceId: options.sourceId,
+        sourceDir: options.sourceDir,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(entry, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已注册: ${entry.source_id}`);
+      writeLine(stdout, `source_kind: ${entry.source_kind}`);
+      writeLine(stdout, `source_dir: ${entry.source_dir}`);
+    });
+
+  nomos
+    .command('list-sources')
+    .description('列出已注册的 Nomos sources')
+    .option('--json', '输出 JSON', false)
+    .action((options: { json?: boolean }) => {
+      const listed = listRegisteredNomosSources();
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(listed, null, 2));
+        return;
+      }
+      writeLine(stdout, `registry_root: ${listed.registry_root}`);
+      writeLine(stdout, `total: ${listed.total}`);
+      if (listed.entries.length === 0) {
+        writeLine(stdout, 'entries: 0');
+        return;
+      }
+      for (const entry of listed.entries) {
+        const trust = assessRegisteredNomosSourceTrust(entry);
+        writeLine(stdout, `${entry.source_id} — ${entry.source_kind}/${entry.authority_kind} (${entry.last_sync_status}) trust=${trust.trust_state} freshness=${trust.freshness_state} activate=${trust.activation_eligibility}`);
+      }
+    });
+
+  nomos
+    .command('show-source')
+    .description('查看已注册的 Nomos source descriptor')
+    .argument('<sourceId>', 'registered source id')
+    .option('--json', '输出 JSON', false)
+    .action((sourceId: string, options: { json?: boolean }) => {
+      const entry = inspectRegisteredNomosSource(sourceId);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(entry, null, 2));
+        return;
+      }
+      writeLine(stdout, `${entry.source_id} — ${entry.source_kind}`);
+      writeLine(stdout, `source_dir: ${entry.source_dir}`);
+      writeLine(stdout, `authority_kind: ${entry.authority_kind}`);
+      writeLine(stdout, `authority_id: ${entry.authority_id ?? '-'}`);
+      writeLine(stdout, `authority_label: ${entry.authority_label ?? '-'}`);
+      writeLine(stdout, `last_sync_status: ${entry.last_sync_status}`);
+      writeLine(stdout, `last_catalog_pack_id: ${entry.last_catalog_pack_id ?? '-'}`);
+      const trust = assessRegisteredNomosSourceTrust(entry);
+      writeLine(stdout, `trust_state: ${trust.trust_state}`);
+      writeLine(stdout, `freshness_state: ${trust.freshness_state}`);
+      writeLine(stdout, `activation_eligibility: ${trust.activation_eligibility}`);
+      writeLine(stdout, `trust_reasons: ${trust.reasons.join(' | ')}`);
+    });
+
+  nomos
+    .command('sync-registered-source')
+    .description('同步已注册的 Nomos source 到当前机器的 local catalog')
+    .requiredOption('--source-id <sourceId>', 'registered source id')
+    .option('--json', '输出 JSON', false)
+    .action((options: { sourceId: string; json?: boolean }) => {
+      const synced = syncRegisteredNomosSource({
+        sourceId: options.sourceId,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(synced, null, 2));
+        return;
+      }
+      writeLine(stdout, `Nomos source 已同步: ${synced.source.source_id}`);
+      writeLine(stdout, `source_kind: ${synced.source.source_kind}`);
+      writeLine(stdout, `imported_source_kind: ${synced.imported.source_kind}`);
+      writeLine(stdout, `pack_id: ${synced.imported.entry.pack_id}`);
     });
 
   nomos
@@ -1376,6 +1499,32 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   nomos
+    .command('install-from-registered-source')
+    .description('从已注册 source 同步并安装到某个 project 的 draft 槽位')
+    .requiredOption('--project-id <projectId>', 'project id')
+    .requiredOption('--source-id <sourceId>', 'registered source id')
+    .option('--json', '输出 JSON', false)
+    .action((options: {
+      projectId: string;
+      sourceId: string;
+      json?: boolean;
+    }) => {
+      const project = projectService.requireProject(options.projectId);
+      const installed = installNomosFromRegisteredSource(project.id, project.metadata ?? null, {
+        sourceId: options.sourceId,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(installed, null, 2));
+        return;
+      }
+      writeLine(stdout, `Registered Nomos source 已同步并安装: ${project.id}`);
+      writeLine(stdout, `source_id: ${installed.source.source_id}`);
+      writeLine(stdout, `pack_id: ${installed.pack.pack_id}`);
+      writeLine(stdout, `installed_root: ${installed.installed_root}`);
+    });
+
+  nomos
     .command('validate-project')
     .description('校验某个 project 的 Nomos pack 是否满足激活/运行时要求')
     .argument('<projectId>', 'project id')
@@ -1395,6 +1544,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `valid: ${validation.valid}`);
       writeLine(stdout, `pack_id: ${validation.pack?.pack_id ?? '-'}`);
       writeLine(stdout, `profile_path: ${validation.pack?.profile_path ?? '-'}`);
+      writeLine(stdout, `provenance_kind: ${validation.provenance?.kind ?? '-'}`);
+      writeLine(stdout, `trust_state: ${validation.provenance?.trust_state ?? '-'}`);
+      writeLine(stdout, `freshness_state: ${validation.provenance?.freshness_state ?? '-'}`);
+      writeLine(stdout, `activation_eligibility: ${validation.provenance?.activation_eligibility ?? '-'}`);
       if (validation.issues.length > 0) {
         for (const issue of validation.issues) {
           writeLine(stdout, `${issue.severity}: ${issue.code}: ${issue.message}`);
@@ -1450,6 +1603,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `activation_status: ${review.activation_status}`);
       writeLine(stdout, `can_activate: ${review.can_activate}`);
       writeLine(stdout, `draft_pack: ${review.draft?.pack_id ?? '-'}`);
+      writeLine(stdout, `active_provenance_kind: ${review.active_provenance.kind}`);
+      writeLine(stdout, `active_trust_state: ${review.active_provenance.trust_state}`);
+      writeLine(stdout, `draft_provenance_kind: ${review.draft_provenance?.kind ?? '-'}`);
+      writeLine(stdout, `draft_trust_state: ${review.draft_provenance?.trust_state ?? '-'}`);
       if (review.issues.length > 0) {
         writeLine(stdout, `issues: ${review.issues.join(' | ')}`);
       }
@@ -1631,6 +1788,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--name <name>', 'project name')
     .option('--summary <summary>', 'project summary')
     .option('--owner <owner>', 'project owner')
+    .option('--admin-account-id <accountId>', 'project admin account id', collectStringOption, [])
+    .option('--member-account-id <accountId>', 'project member account id', collectStringOption, [])
     .option('--repo-path <path>', 'bind to an existing or new repo path')
     .option('--new-repo', 'create the repo path if it does not exist and initialize git', false)
     .option('--nomos-id <nomosId>', 'Nomos pack id (currently only agora/default)', DEFAULT_AGORA_NOMOS_ID)
@@ -1640,17 +1799,25 @@ export function createCliProgram(deps: CliDependencies = {}) {
       name: string;
       summary?: string;
       owner?: string;
+      adminAccountId?: string[];
+      memberAccountId?: string[];
       repoPath?: string;
       newRepo?: boolean;
       nomosId?: string;
       metadataJson?: string;
     }) => {
       const nomosId = requireSupportedNomosId(options.nomosId);
+      const adminAccountIds = parseNumericOptionList(options.adminAccountId, '--admin-account-id');
+      const memberAccountIds = parseNumericOptionList(options.memberAccountId, '--member-account-id');
+      const derivedOwner = options.owner
+        ?? (adminAccountIds[0] ? resolveAccountLabel(humanAccountService, adminAccountIds[0]) : undefined);
       const input = createProjectRequestSchema.parse({
         id: options.id,
         name: options.name,
         ...(options.summary !== undefined ? { summary: options.summary } : {}),
-        ...(options.owner !== undefined ? { owner: options.owner } : {}),
+        ...(derivedOwner !== undefined ? { owner: derivedOwner } : {}),
+        ...(adminAccountIds.length > 0 ? { admins: adminAccountIds.map((account_id) => ({ account_id })) } : {}),
+        ...(memberAccountIds.length > 0 ? { members: memberAccountIds.map((account_id) => ({ account_id, role: 'member' as const })) } : {}),
         ...(options.repoPath ? { repo_path: options.repoPath } : {}),
         ...(options.newRepo ? { initialize_repo: true } : {}),
         nomos_id: nomosId,
@@ -1696,6 +1863,54 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (bootstrapTask) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
       }
+    });
+
+  const projectMembers = projects
+    .command('members')
+    .description('project membership commands');
+
+  projectMembers
+    .command('list')
+    .argument('<projectId>', 'project id')
+    .action((projectId: string) => {
+      const memberships = projectService.listProjectMemberships(projectId);
+      if (memberships.length === 0) {
+        writeLine(stdout, '没有找到 project members');
+        return;
+      }
+      for (const membership of memberships) {
+        writeLine(
+          stdout,
+          `${membership.account_id}\t${resolveAccountLabel(humanAccountService, membership.account_id)}\t${membership.role}\t${membership.status}`,
+        );
+      }
+    });
+
+  projectMembers
+    .command('add')
+    .argument('<projectId>', 'project id')
+    .requiredOption('--account-id <accountId>', 'human account id')
+    .option('--role <role>', 'admin|member', 'member')
+    .action((projectId: string, options: { accountId: string; role?: 'admin' | 'member' }) => {
+      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
+      const membership = projectService.addProjectMembership({
+        projectId,
+        account_id: accountId,
+        role: options.role === 'admin' ? 'admin' : 'member',
+      });
+      writeLine(stdout, `Project member 已添加: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
+      writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
+    });
+
+  projectMembers
+    .command('remove')
+    .argument('<projectId>', 'project id')
+    .requiredOption('--account-id <accountId>', 'human account id')
+    .action((projectId: string, options: { accountId: string }) => {
+      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
+      const membership = projectService.removeProjectMembership(projectId, accountId);
+      writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
+      writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
     });
 
   projects
@@ -2238,6 +2453,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
                 draft: validateProjectNomos(options.project, project.metadata ?? null, { target: 'draft' }),
                 active: validateProjectNomos(options.project, project.metadata ?? null, { target: 'active' }),
               },
+              provenance: {
+                draft: resolveProjectNomosProvenance(options.project, project.metadata ?? null, { target: 'draft' }),
+                active: resolveProjectNomosProvenance(options.project, project.metadata ?? null, { target: 'active' }),
+              },
               diff: diffProjectNomos(options.project, project.metadata ?? null, {
                 base: state.activation_status === 'active_project' ? 'active' : 'builtin',
                 candidate: 'draft',
@@ -2251,6 +2470,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
             ...result,
             nomos_runtime: nomosDiagnosis.runtime,
             nomos_validation: nomosDiagnosis.validation,
+            nomos_provenance: nomosDiagnosis.provenance,
             nomos_diff: nomosDiagnosis.diff,
             nomos_drift: nomosDiagnosis.drift,
           }
@@ -2268,6 +2488,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
           writeLine(stdout, `nomos_runtime id=${nomosDiagnosis.runtime.nomos_id} activation=${nomosDiagnosis.runtime.activation_status}`);
           writeLine(stdout, `nomos_doctor_prompt=${nomosDiagnosis.runtime.doctor_project_prompt_path}`);
           writeLine(stdout, `nomos_validation draft_valid=${nomosDiagnosis.validation.draft.valid} active_valid=${nomosDiagnosis.validation.active.valid}`);
+          writeLine(
+            stdout,
+            `nomos_provenance draft=${nomosDiagnosis.provenance.draft?.kind ?? '-'}:${nomosDiagnosis.provenance.draft?.trust_state ?? '-'}:${nomosDiagnosis.provenance.draft?.activation_eligibility ?? '-'} active=${nomosDiagnosis.provenance.active?.kind ?? '-'}:${nomosDiagnosis.provenance.active?.trust_state ?? '-'}:${nomosDiagnosis.provenance.active?.activation_eligibility ?? '-'}`,
+          );
           writeLine(stdout, `nomos_diff changed=${nomosDiagnosis.diff.changed} fields=${nomosDiagnosis.diff.differences.map((entry) => entry.field).join(',') || '-'}`);
           writeLine(stdout, `nomos_drift risk=${nomosDiagnosis.drift.risk_level} blockers=${nomosDiagnosis.drift.activation_blockers} warnings=${nomosDiagnosis.drift.structural_warnings}`);
         }
@@ -2657,7 +2881,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   archiveJobs
     .command('list')
     .description('列出 archive jobs')
-    .option('--status <status>', 'review_pending|pending|notified|synced|failed')
+    .option('--status <status>', 'pending|notified|synced|failed')
     .option('--task-id <taskId>', 'task id filter')
     .option('--json', '输出 JSON', false)
     .action((options: { status?: string; taskId?: string; json?: boolean }) => {
@@ -2698,20 +2922,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
     });
 
   archiveJobs
-    .command('approve')
-    .description('审批放行 review_pending archive job')
-    .argument('<jobId>', 'archive job id')
-    .requiredOption('--approver-id <approverId>', 'approver id')
-    .option('--comment <comment>', 'approval comment')
-    .action((jobId: string, options: { approverId: string; comment?: string }) => {
-      const job = dashboardQueryService.approveArchiveJob(Number(jobId), {
-        approver_id: options.approverId,
-        ...(options.comment !== undefined ? { comment: options.comment } : {}),
-      });
-      writeLine(stdout, `archive job 已审批放行: ${job.id} -> ${job.status}`);
-    });
-
-  archiveJobs
     .command('retry')
     .description('重置 archive job 为 pending')
     .argument('<jobId>', 'archive job id')
@@ -2734,11 +2944,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .description('标记 archive job synced')
     .argument('<jobId>', 'archive job id')
     .requiredOption('--commit-hash <commitHash>', 'writer commit hash')
-    .action((jobId: string, options: { commitHash: string }) => {
+    .action(async (jobId: string, options: { commitHash: string }) => {
       const job = dashboardQueryService.updateArchiveJob(Number(jobId), {
         status: 'synced',
         commit_hash: options.commitHash,
       });
+      await dashboardQueryService.drainBackgroundOperations();
       writeLine(stdout, `archive job 已完成: ${job.id} -> ${job.status}`);
     });
 
@@ -2775,8 +2986,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .command('scan-receipts')
     .description('摄取 archive writer receipts')
     .option('--json', '输出 JSON', false)
-    .action((options: { json?: boolean }) => {
+    .action(async (options: { json?: boolean }) => {
       const result = dashboardQueryService.ingestArchiveJobReceipts();
+      await dashboardQueryService.drainBackgroundOperations();
       if (options.json) {
         writeLine(stdout, JSON.stringify(result, null, 2));
         return;
@@ -3090,6 +3302,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `scanned_tasks: ${result.scanned_tasks}`);
       writeLine(stdout, `controller_pings: ${result.controller_pings}`);
       writeLine(stdout, `roster_pings: ${result.roster_pings}`);
+      writeLine(stdout, `human_pings: ${result.human_pings}`);
       writeLine(stdout, `inbox_items: ${result.inbox_items}`);
     });
 
@@ -3245,6 +3458,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `adapter: ${result.execution.adapter}`);
       writeLine(stdout, `execution mode: ${result.execution.mode}`);
       writeLine(stdout, `status: ${result.execution.status}`);
+      writeLine(stdout, `workdir: ${result.execution.workdir ?? '-'}`);
     });
 
   craftsman

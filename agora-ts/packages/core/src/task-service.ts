@@ -8,6 +8,7 @@ import type {
   CraftsmanDispatchRequestDto,
   CraftsmanInputKeyDto,
   CraftsmanStopExecutionRequestDto,
+  CreateTaskAuthorityDto,
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
@@ -39,6 +40,7 @@ import {
   TodoRepository,
   type AgoraDatabase,
   type StoredTask,
+  type StoredTaskConversationEntry,
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
@@ -67,8 +69,13 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import { ProjectContextWriter } from './project-context-writer.js';
+import { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import { StageRosterService } from './stage-roster-service.js';
+import { TaskAuthorityService } from './task-authority-service.js';
+import { TaskWorktreeService } from './task-worktree-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAlignment, validateTemplateGraph } from './template-graph-service.js';
@@ -94,6 +101,7 @@ type TaskTemplate = {
 
 type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
   locale?: TaskLocaleDto;
+  authority?: CreateTaskAuthorityDto | undefined;
 };
 
 type CraftsmanGovernanceLimits = {
@@ -112,6 +120,12 @@ type EscalationPolicy = {
   rosterAfterMs: number;
   inboxAfterMs: number;
 };
+
+export interface HumanReminderParticipantResolverInput {
+  task: StoredTask;
+  provider: string;
+  reason: 'approval_waiting';
+}
 
 export interface TaskServiceOptions {
   templatesDir?: string;
@@ -152,6 +166,7 @@ export interface TaskServiceOptions {
     rosterAfterMs?: number;
     inboxAfterMs?: number;
   };
+  resolveHumanReminderParticipantRefs?: (input: HumanReminderParticipantResolverInput) => string[];
 }
 
 export interface AdvanceTaskOptions {
@@ -161,11 +176,13 @@ export interface AdvanceTaskOptions {
 
 export interface ApproveTaskOptions {
   approverId: string;
+  approverAccountId?: number | null;
   comment: string;
 }
 
 export interface RejectTaskOptions {
   rejectorId: string;
+  rejectorAccountId?: number | null;
   reason: string;
 }
 
@@ -222,6 +239,7 @@ export interface InactiveTaskProbeResult {
   scanned_tasks: number;
   controller_pings: number;
   roster_pings: number;
+  human_pings: number;
   inbox_items: number;
 }
 
@@ -237,6 +255,24 @@ export interface ObserveCraftsmanExecutionsResult {
   progressed: number;
 }
 
+type CraftsmanProbeState = {
+  activityMs: number;
+  lastProbeMs: number | null;
+  attempts: number;
+};
+
+const SYSTEM_ECHO_ACTIVITY_WINDOW_MS = 5_000;
+
+function parseStoredTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return Number.NaN;
+  }
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)) {
+    return Date.parse(value.replace(' ', 'T') + 'Z');
+  }
+  return Date.parse(value);
+}
+
 function defaultTemplatesDir() {
   return fileURLToPath(new URL('../../../templates', import.meta.url));
 }
@@ -246,6 +282,7 @@ function defaultTaskIdGenerator() {
 }
 
 export class TaskService {
+  private static readonly CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS = [1, 3, 9] as const;
   private readonly taskRepository: TaskRepository;
   private readonly flowLogRepository: FlowLogRepository;
   private readonly progressLogRepository: ProgressLogRepository;
@@ -256,10 +293,15 @@ export class TaskService {
   private readonly archiveJobRepository: ArchiveJobRepository;
   private readonly approvalRequestRepository: ApprovalRequestRepository;
   private readonly inboxRepository: InboxRepository;
+  private readonly taskAuthorities: TaskAuthorityService;
+  private readonly projectMemberships: ProjectMembershipService;
+  private readonly projectAgentRoster: ProjectAgentRosterService;
   private readonly stateMachine: StateMachine;
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
   private readonly projectService: ProjectService;
+  private readonly projectContextWriter: ProjectContextWriter;
+  private readonly taskWorktreeService: TaskWorktreeService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
@@ -274,6 +316,9 @@ export class TaskService {
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly resolveHumanReminderParticipantRefs:
+    | ((input: HumanReminderParticipantResolverInput) => string[])
+    | undefined;
   private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   private readonly stageRosterService: StageRosterService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
@@ -287,6 +332,7 @@ export class TaskService {
   private readonly craftsmanGovernance: CraftsmanGovernanceLimits;
   private readonly escalationPolicy: EscalationPolicy;
   private readonly pendingBackgroundOperations = new Set<Promise<void>>();
+  private readonly craftsmanProbeStateByExecution = new Map<string, CraftsmanProbeState>();
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -302,6 +348,9 @@ export class TaskService {
     this.archiveJobRepository = new ArchiveJobRepository(db);
     this.approvalRequestRepository = new ApprovalRequestRepository(db);
     this.inboxRepository = new InboxRepository(db);
+    this.taskAuthorities = new TaskAuthorityService(db);
+    this.projectMemberships = new ProjectMembershipService(db);
+    this.projectAgentRoster = new ProjectAgentRosterService(db);
     this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
     this.templateRepository = new TemplateRepository(db);
     this.stateMachine = new StateMachine();
@@ -310,6 +359,19 @@ export class TaskService {
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
     this.projectService = options.projectService ?? new ProjectService(db);
+    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
+    this.taskBrainBindingService = options.taskBrainBindingService;
+    this.taskContextBindingService = options.taskContextBindingService;
+    this.taskParticipationService = options.taskParticipationService;
+    this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
+    this.projectBrainAutomationService = options.projectBrainAutomationService;
+    this.projectContextWriter = new ProjectContextWriter(db, {
+      projectService: this.projectService,
+      ...(this.taskBrainWorkspacePort ? { taskBrainWorkspacePort: this.taskBrainWorkspacePort } : {}),
+    });
+    this.taskWorktreeService = new TaskWorktreeService({
+      projectService: this.projectService,
+    });
     this.craftsmanCallbacks = new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.craftsmanInputPort = options.craftsmanInputPort;
@@ -322,11 +384,6 @@ export class TaskService {
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
     this.imMessagingPort = options.imMessagingPort;
-    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
-    this.taskBrainBindingService = options.taskBrainBindingService;
-    this.taskContextBindingService = options.taskContextBindingService;
-    this.taskParticipationService = options.taskParticipationService;
-    this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.stageRosterService = new StageRosterService();
     this.agentRuntimePort = options.agentRuntimePort;
     this.runtimeRecoveryPort = options.runtimeRecoveryPort;
@@ -397,6 +454,18 @@ export class TaskService {
       }
       if (projectId) {
         this.projectService.requireProject(projectId);
+        if (this.projectMemberships.hasConfiguredMemberships(projectId)) {
+          this.projectMemberships.requireActiveCreatorMembership(projectId, input.creator);
+          this.projectMemberships.requireActiveMemberAccounts(projectId, [
+            input.authority?.requester_account_id,
+            input.authority?.owner_account_id,
+            input.authority?.assignee_account_id,
+            input.authority?.approver_account_id,
+          ]);
+        }
+        if (input.authority?.controller_agent_ref && this.projectAgentRoster.hasConfiguredRoster(projectId)) {
+          this.projectAgentRoster.requireActiveAgent(projectId, input.authority.controller_agent_ref);
+        }
       }
       const draft = this.taskRepository.insertTask({
         id: taskId,
@@ -477,6 +546,16 @@ export class TaskService {
           state: TaskState.ACTIVE,
           workspace_path: brainWorkspaceBinding?.workspace_path ?? null,
           bound_at: new Date().toISOString(),
+        });
+      }
+      if (input.authority) {
+        this.taskAuthorities.createOrUpdate({
+          task_id: taskId,
+          requester_account_id: input.authority.requester_account_id ?? null,
+          owner_account_id: input.authority.owner_account_id ?? null,
+          assignee_account_id: input.authority.assignee_account_id ?? null,
+          approver_account_id: input.authority.approver_account_id ?? null,
+          controller_agent_ref: input.authority.controller_agent_ref ?? null,
         });
       }
 
@@ -629,6 +708,7 @@ export class TaskService {
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.approverId, 'approve');
+    this.assertApprovalAuthority(task, options.approverAccountId ?? null);
     this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
     const approverRole = this.getApproverRole(stage);
     this.gateService.recordApproval(taskId, stage.id, approverRole, options.approverId, options.comment);
@@ -664,6 +744,7 @@ export class TaskService {
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.rejectorId, 'reject');
+    this.assertApprovalAuthority(task, options.rejectorAccountId ?? null);
     this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
@@ -1098,7 +1179,7 @@ export class TaskService {
         craftsman: {
           adapter: subtask.craftsman.adapter,
           mode: subtask.craftsman.mode,
-          workdir: subtask.craftsman.workdir ?? null,
+          workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveDispatchWorkdir(task),
           prompt: subtask.craftsman.prompt ?? null,
           brief_path: subtask.craftsman.brief_path
             ?? this.materializeExecutionBrief(task, {
@@ -1108,7 +1189,7 @@ export class TaskService {
               adapter: subtask.craftsman.adapter,
               mode: subtask.craftsman.mode,
               prompt: subtask.craftsman.prompt ?? null,
-              workdir: subtask.craftsman.workdir ?? null,
+              workdir: subtask.craftsman.workdir ?? this.taskWorktreeService.resolveDispatchWorkdir(task),
             }),
         },
       } : {}),
@@ -1195,13 +1276,14 @@ export class TaskService {
       `dispatch for subtask '${subtask.id}'`,
     );
     this.assertCraftsmanDispatchAllowed(subtask.assignee);
+    const resolvedWorkdir = input.workdir ?? subtask.craftsman_workdir ?? this.taskWorktreeService.resolveDispatchWorkdir(task);
     const dispatched = this.craftsmanDispatcher.dispatchSubtask({
       task_id: input.task_id,
       stage_id: subtask.stage_id,
       subtask_id: input.subtask_id,
       adapter: normalizedAdapter,
       mode: input.mode,
-      workdir: input.workdir ?? subtask.craftsman_workdir,
+      workdir: resolvedWorkdir,
       prompt: subtask.craftsman_prompt,
       brief_path: input.brief_path
         ?? this.materializeExecutionBrief(task, {
@@ -1211,7 +1293,7 @@ export class TaskService {
           adapter: normalizedAdapter,
           mode: input.mode,
           prompt: subtask.craftsman_prompt,
-          workdir: input.workdir ?? subtask.craftsman_workdir,
+          workdir: resolvedWorkdir,
         }),
     });
     this.publishTaskStatusBroadcast(task, {
@@ -1617,6 +1699,10 @@ export class TaskService {
       if (nowMs - lastActivityMs < thresholdMs) {
         continue;
       }
+      const probeState = this.getCraftsmanProbeState(execution.execution_id, lastActivityMs);
+      if (!this.shouldProbeCraftsmanExecution(nowMs, thresholdMs, probeState)) {
+        continue;
+      }
       this.flowLogRepository.insertFlowLog({
         task_id: execution.task_id,
         kind: 'system',
@@ -1628,6 +1714,7 @@ export class TaskService {
         },
         actor: 'system',
       });
+      this.noteCraftsmanAutoProbe(execution.execution_id, lastActivityMs, nowMs);
       const probeResult = this.probeCraftsmanExecution(execution.execution_id);
       if (probeResult.probed) {
         result.probed += 1;
@@ -1986,6 +2073,7 @@ export class TaskService {
       scanned_tasks: 0,
       controller_pings: 0,
       roster_pings: 0,
+      human_pings: 0,
       inbox_items: 0,
     };
 
@@ -1995,10 +2083,72 @@ export class TaskService {
       const idleMs = now.getTime() - latestActivityMs;
       const controllerRef = resolveControllerRef(task.team.members);
       const interactiveRefs = task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId);
+      const probeState = this.getProbeState(task.id, latestActivityMs);
+      const approvalWaitProbe = this.resolveApprovalWaitProbe(task);
+
+      if (approvalWaitProbe) {
+        if (idleMs >= thresholds.controllerAfterMs && !probeState.humanApprovalNotified && approvalWaitProbe.participantRefs.length > 0) {
+          this.publishTaskStatusBroadcast(task, {
+            kind: 'human_approval_pinged',
+            participantRefs: approvalWaitProbe.participantRefs,
+            ensureParticipantRefsJoined: approvalWaitProbe.participantRefs,
+            bodyLines: [
+              `Task is waiting for human approval and has remained idle for ${Math.round(idleMs / 1000)} seconds.`,
+              `Approval Request: ${approvalWaitProbe.request.id}`,
+              'Please review the pending approval and decide in Dashboard or the task thread.',
+            ],
+          });
+          this.flowLogRepository.insertFlowLog({
+            task_id: task.id,
+            kind: 'flow',
+            event: 'human_approval_pinged',
+            stage_id: task.current_stage,
+            detail: {
+              idle_ms: idleMs,
+              approval_request_id: approvalWaitProbe.request.id,
+              participant_refs: approvalWaitProbe.participantRefs,
+            },
+            actor: 'system',
+          });
+          result.human_pings += 1;
+          continue;
+        }
+
+        if (idleMs >= thresholds.inboxAfterMs && !probeState.inboxRaised) {
+          this.inboxRepository.insertInboxItem({
+            text: `Task ${task.id} is awaiting human approval`,
+            source: 'inbox_escalated',
+            notes: `Task ${task.id} has waited ${Math.round(idleMs / 1000)} seconds for human approval at stage ${task.current_stage ?? '-'}.`,
+            tags: ['task', 'approval_waiting'],
+            metadata: {
+              task_id: task.id,
+              kind: 'inbox_escalated',
+              current_stage: task.current_stage,
+              idle_ms: idleMs,
+              reason: 'approval_waiting',
+              approval_request_id: approvalWaitProbe.request.id,
+            },
+          });
+          this.flowLogRepository.insertFlowLog({
+            task_id: task.id,
+            kind: 'flow',
+            event: 'inbox_escalated',
+            stage_id: task.current_stage,
+            detail: {
+              idle_ms: idleMs,
+              reason: 'approval_waiting',
+              approval_request_id: approvalWaitProbe.request.id,
+            },
+            actor: 'system',
+          });
+          result.inbox_items += 1;
+        }
+        continue;
+      }
+
       if (idleMs < thresholds.controllerAfterMs) {
         continue;
       }
-      const probeState = this.getProbeState(task.id, latestActivityMs);
 
       if (!probeState.controllerNotified && controllerRef) {
         this.publishTaskStatusBroadcast(task, {
@@ -2357,11 +2507,26 @@ export class TaskService {
     return task;
   }
 
-  private withControllerRef(task: StoredTask): StoredTask & { controller_ref: string | null } {
+  private withControllerRef(task: StoredTask): StoredTask & {
+    controller_ref: string | null;
+    authority: ReturnType<TaskAuthorityService['getTaskAuthority']>;
+  } {
     return {
       ...task,
+      authority: this.taskAuthorities.getTaskAuthority(task.id),
       controller_ref: resolveControllerRef(task.team.members),
     };
+  }
+
+  private assertApprovalAuthority(task: StoredTask, actorAccountId: number | null) {
+    const authority = this.taskAuthorities.getTaskAuthority(task.id);
+    const requiredApproverAccountId = authority?.approver_account_id ?? null;
+    if (requiredApproverAccountId == null) {
+      return;
+    }
+    if (actorAccountId == null || actorAccountId !== requiredApproverAccountId) {
+      throw new PermissionDeniedError(`task ${task.id} requires approver account ${requiredApproverAccountId}`);
+    }
   }
 
   private getCurrentStageOrThrow(task: StoredTask) {
@@ -2640,43 +2805,6 @@ export class TaskService {
   }
 
   private materializeTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
-    if (this.projectBrainAutomationService) {
-      this.projectBrainAutomationService.recordTaskCloseRecap(task, actor, reason);
-    } else if (task.project_id && this.taskBrainWorkspacePort && this.taskBrainBindingService) {
-      const binding = this.taskBrainBindingService.getActiveBinding(task.id);
-      if (binding) {
-        const summaryLines = [
-          taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
-          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
-          `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
-          ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
-        ];
-        this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
-          task_id: task.id,
-          project_id: task.project_id,
-          locale: task.locale,
-          title: task.title,
-          state: task.state,
-          current_stage: task.current_stage,
-          controller_ref: resolveControllerRef(task.team.members),
-          completed_by: actor,
-          completed_at: new Date().toISOString(),
-          summary_lines: summaryLines,
-        });
-        this.taskBrainWorkspacePort.writeTaskHarvestDraft(binding, {
-          task_id: task.id,
-          project_id: task.project_id,
-          locale: task.locale,
-          title: task.title,
-          state: task.state,
-          current_stage: task.current_stage,
-          controller_ref: resolveControllerRef(task.team.members),
-          completed_by: actor,
-          completed_at: new Date().toISOString(),
-          summary_lines: summaryLines,
-        });
-      }
-    }
     if (!task.project_id || !this.taskBrainBindingService) {
       return;
     }
@@ -2684,24 +2812,13 @@ export class TaskService {
     if (!binding) {
       return;
     }
-    const summaryLines = [
-      taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
-      `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
-      `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
-      ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
-    ];
-    this.projectService.recordTaskRecap({
-      project_id: task.project_id,
-      task_id: task.id,
-      title: task.title,
-      state: task.state,
-      current_stage: task.current_stage,
-      controller_ref: resolveControllerRef(task.team.members),
-      workspace_path: binding.workspace_path,
-      completed_by: actor,
-      completed_at: new Date().toISOString(),
-      summary_lines: summaryLines,
+    const proposal = this.projectContextWriter.buildTaskCloseoutProposal({
+      task,
+      binding,
+      actor,
+      ...(reason ? { reason } : {}),
     });
+    this.projectContextWriter.applyTaskCloseoutProposal(proposal);
   }
 
   private ensureApprovalRequestForGate(
@@ -2796,6 +2913,7 @@ export class TaskService {
       bodyLines: string[];
       participantRefs?: string[];
       occurredAt?: string;
+      ensureParticipantRefsJoined?: string[];
     },
   ) {
     if (!this.imProvisioningPort || !this.taskContextBindingService) {
@@ -2804,6 +2922,17 @@ export class TaskService {
     const binding = this.taskContextBindingService.getLatestBinding(task.id);
     if (!binding) {
       return;
+    }
+    const refsToJoin = Array.from(new Set(input.ensureParticipantRefsJoined ?? []));
+    for (const participantRef of refsToJoin) {
+      this.trackBackgroundOperation(this.imProvisioningPort.joinParticipant({
+        binding_id: binding.id,
+        participant_ref: participantRef,
+        ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
+        ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
+      }).catch((error: unknown) => {
+        console.error(`[TaskService] Failed to ensure participant ${participantRef} is joined for task ${task.id}:`, error);
+      }));
     }
     const envelope = this.buildTaskStatusBroadcastEnvelope(task, input);
     this.trackBackgroundOperation(this.imProvisioningPort.publishMessages({
@@ -2933,6 +3062,7 @@ export class TaskService {
         ];
       case 'controller_pinged':
       case 'roster_pinged':
+      case 'human_approval_pinged':
       case 'inbox_escalated':
         return [
           '',
@@ -3760,7 +3890,7 @@ export class TaskService {
       : null;
     return this.archiveJobRepository.insertArchiveJob({
       task_id: task.id,
-      status: 'review_pending',
+      status: 'pending',
       target_path: this.buildArchiveTargetPath(task),
       payload: {
         task_id: task.id,
@@ -3770,7 +3900,7 @@ export class TaskService {
         ...(task.project_id ? { project_id: task.project_id } : {}),
         closeout_review: {
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
           task_state: task.state,
           candidate_updates: [
             ...(task.project_id ? [{
@@ -4092,20 +4222,39 @@ export class TaskService {
   }
 
   private resolveLatestBusinessActivityMs(task: StoredTask) {
-    const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'inbox_escalated']);
+    const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'human_approval_pinged', 'inbox_escalated']);
+    const conversationEntries = this.taskConversationRepository.listByTask(task.id);
+    const systemEchoTimesByKey = new Map<string, number[]>();
+    for (const entry of conversationEntries) {
+      if (entry.author_kind !== 'system') {
+        continue;
+      }
+      const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
+      if (!Number.isFinite(occurredAtMs)) {
+        continue;
+      }
+      const key = buildConversationEchoKey(entry);
+      const existing = systemEchoTimesByKey.get(key);
+      if (existing) {
+        existing.push(occurredAtMs);
+      } else {
+        systemEchoTimesByKey.set(key, [occurredAtMs]);
+      }
+    }
     const flowMs = this.flowLogRepository.listByTask(task.id)
       .filter((entry) => !escalationEvents.has(entry.event))
-      .map((entry) => Date.parse(entry.created_at))
+      .map((entry) => parseStoredTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const progressMs = this.progressLogRepository.listByTask(task.id)
-      .map((entry) => Date.parse(entry.created_at))
+      .map((entry) => parseStoredTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
-    const conversationMs = this.taskConversationRepository.listByTask(task.id)
+    const conversationMs = conversationEntries
       .filter((entry) => entry.author_kind !== 'system')
-      .map((entry) => Date.parse(entry.occurred_at))
+      .filter((entry) => !isSystemEchoConversationEntry(entry, systemEchoTimesByKey))
+      .map((entry) => parseStoredTimestamp(entry.occurred_at))
       .filter((value) => Number.isFinite(value));
     return Math.max(
-      Date.parse(task.updated_at),
+      parseStoredTimestamp(task.updated_at),
       ...flowMs,
       ...progressMs,
       ...conversationMs,
@@ -4114,11 +4263,39 @@ export class TaskService {
 
   private getProbeState(taskId: string, latestActivityMs: number) {
     const flows = this.flowLogRepository.listByTask(taskId);
-    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && Date.parse(entry.created_at) > latestActivityMs);
+    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && parseStoredTimestamp(entry.created_at) > latestActivityMs);
     return {
       controllerNotified: notifiedAfterActivity('controller_pinged'),
       rosterNotified: notifiedAfterActivity('roster_pinged'),
+      humanApprovalNotified: notifiedAfterActivity('human_approval_pinged'),
       inboxRaised: notifiedAfterActivity('inbox_escalated'),
+    };
+  }
+
+  private resolveApprovalWaitProbe(task: StoredTask) {
+    if (!task.current_stage) {
+      return null;
+    }
+    const request = this.approvalRequestRepository.getLatestPending(task.id, task.current_stage);
+    if (!request) {
+      return null;
+    }
+    if (request.gate_type !== 'approval' && request.gate_type !== 'archon_review') {
+      return null;
+    }
+    const provider = this.taskContextBindingService?.getLatestBinding(task.id)?.im_provider;
+    const participantRefs = provider && this.resolveHumanReminderParticipantRefs
+      ? Array.from(new Set(
+          this.resolveHumanReminderParticipantRefs({
+            task,
+            provider,
+            reason: 'approval_waiting',
+          }).filter((participantRef) => participantRef.trim().length > 0),
+        ))
+      : [];
+    return {
+      request,
+      participantRefs,
     };
   }
 
@@ -4128,6 +4305,40 @@ export class TaskService {
       rosterAfterMs: options.rosterAfterMs ?? this.escalationPolicy.rosterAfterMs,
       inboxAfterMs: options.inboxAfterMs ?? this.escalationPolicy.inboxAfterMs,
     };
+  }
+
+  private getCraftsmanProbeState(executionId: string, latestActivityMs: number): CraftsmanProbeState {
+    const current = this.craftsmanProbeStateByExecution.get(executionId);
+    if (!current || current.activityMs !== latestActivityMs) {
+      const resetState: CraftsmanProbeState = {
+        activityMs: latestActivityMs,
+        lastProbeMs: null,
+        attempts: 0,
+      };
+      this.craftsmanProbeStateByExecution.set(executionId, resetState);
+      return resetState;
+    }
+    return current;
+  }
+
+  private noteCraftsmanAutoProbe(executionId: string, latestActivityMs: number, nowMs: number) {
+    this.craftsmanProbeStateByExecution.set(executionId, {
+      activityMs: latestActivityMs,
+      lastProbeMs: nowMs,
+      attempts: (this.craftsmanProbeStateByExecution.get(executionId)?.attempts ?? 0) + 1,
+    });
+  }
+
+  private shouldProbeCraftsmanExecution(nowMs: number, thresholdMs: number, probeState: CraftsmanProbeState) {
+    if (probeState.attempts === 0 || probeState.lastProbeMs === null) {
+      return true;
+    }
+    const multiplierIndex = Math.min(
+      probeState.attempts - 1,
+      TaskService.CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS.length - 1,
+    );
+    const cooldownMs = thresholdMs * TaskService.CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS[multiplierIndex]!;
+    return nowMs - probeState.lastProbeMs >= cooldownMs;
   }
 
   private buildEscalationSnapshot(
@@ -4236,6 +4447,25 @@ export class TaskService {
       ],
     });
   }
+}
+
+function buildConversationEchoKey(entry: Pick<StoredTaskConversationEntry, 'provider' | 'body'>) {
+  return `${entry.provider}\u0000${entry.body}`;
+}
+
+function isSystemEchoConversationEntry(
+  entry: StoredTaskConversationEntry,
+  systemEchoTimesByKey: Map<string, number[]>,
+) {
+  const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
+  if (!Number.isFinite(occurredAtMs)) {
+    return false;
+  }
+  const candidates = systemEchoTimesByKey.get(buildConversationEchoKey(entry));
+  if (!candidates || candidates.length === 0) {
+    return false;
+  }
+  return candidates.some((systemOccurredAtMs) => Math.abs(systemOccurredAtMs - occurredAtMs) <= SYSTEM_ECHO_ACTIVITY_WINDOW_MS);
 }
 
 type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];

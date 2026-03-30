@@ -25,8 +25,17 @@ import {
   nomosProjectProfileSchema,
   parseProjectNomosAuthoringSpec,
   publishProjectNomosPack,
+  registerNomosSource,
   requireSupportedNomosId,
   refineProjectNomosDraftFromSpec,
+  activateProjectNomosDraft,
+  assessPublishedNomosCatalogEntryTrust,
+  assessRegisteredNomosSourceTrust,
+  inspectRegisteredNomosSource,
+  listRegisteredNomosSources,
+  installNomosFromRegisteredSource,
+  syncRegisteredNomosSource,
+  reviewProjectNomosDraft,
   validateProjectNomos,
   diffProjectNomos,
   diagnoseProjectNomosDrift,
@@ -334,6 +343,116 @@ describe('nomos pack model freeze', () => {
         }),
       ]),
     );
+    expect(draftValidation.provenance).toMatchObject({
+      kind: 'local_authoring',
+      trust_state: 'trusted',
+      freshness_state: 'current',
+      activation_eligibility: 'allowed',
+    });
+    expect(activeValidation.provenance).toMatchObject({
+      kind: 'builtin',
+      trust_state: 'trusted',
+      freshness_state: 'current',
+      activation_eligibility: 'allowed',
+    });
+  });
+
+  it('surfaces review and validation provenance for registered-source installs', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-prov-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-prov-source', 'Provenance Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-prov-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'provenance-pack-root'),
+    });
+
+    registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/provenance-source',
+      sourceDir: exported.output_dir,
+    });
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-prov-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromRegisteredSource('proj-prov-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/provenance-source',
+    });
+
+    const review = reviewProjectNomosDraft('proj-prov-target', installed.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+    });
+    const draftValidation = validateProjectNomos('proj-prov-target', installed.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      target: 'draft',
+    });
+
+    expect(review.active_provenance).toMatchObject({
+      kind: 'builtin',
+      trust_state: 'trusted',
+      freshness_state: 'current',
+      activation_eligibility: 'allowed',
+    });
+    expect(review.draft_provenance).toMatchObject({
+      kind: 'registered_source',
+      source_id: 'team/provenance-source',
+      source_kind: 'pack_root',
+      trust_state: 'untrusted',
+      freshness_state: 'current',
+      activation_eligibility: 'blocked',
+    });
+    expect(draftValidation.provenance).toMatchObject({
+      kind: 'registered_source',
+      source_id: 'team/provenance-source',
+      source_kind: 'pack_root',
+      trust_state: 'untrusted',
+      freshness_state: 'current',
+      activation_eligibility: 'blocked',
+    });
+
+  });
+
+  it('blocks activation when draft provenance is not activation-eligible', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-block-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-block-source', 'Blocked Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-block-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'blocked-pack-root'),
+    });
+
+    registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/blocked-source',
+      sourceDir: exported.output_dir,
+    });
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-block-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromRegisteredSource('proj-block-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/blocked-source',
+    });
+
+    expect(() => activateProjectNomosDraft('proj-block-target', {
+      userAgoraDir: targetAgoraHomeDir,
+      metadata: installed.metadata,
+      actor: 'archon',
+    })).toThrowError(/provenance is blocked/i);
   });
 
   it('summarizes nomos drift taxonomy from validation and semantic diff', () => {
@@ -635,6 +754,324 @@ describe('nomos pack model freeze', () => {
       sourceDir,
     })).toThrowError(/Nomos pack id is invalid/);
     expect(readFileSync(join(unsafeDir, 'sentinel.txt'), 'utf8')).toBe('do not remove');
+  });
+
+  it('registers a pack-root source descriptor and syncs it into the local catalog', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-registered-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-registered-source', 'Registered Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-registered-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'registered-pack-root'),
+    });
+
+    const registered = registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-source',
+      sourceDir: exported.output_dir,
+    });
+    expect(registered.source_kind).toBe('pack_root');
+    expect(inspectRegisteredNomosSource('team/registered-source', { userAgoraDir: targetAgoraHomeDir }).source_dir).toBe(exported.output_dir);
+
+    const synced = syncRegisteredNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-source',
+    });
+    expect(synced.source.last_sync_status).toBe('ok');
+    expect(synced.source.last_catalog_pack_id).toBe('project/proj-registered-source');
+
+    const listed = listRegisteredNomosSources({ userAgoraDir: targetAgoraHomeDir });
+    expect(listed.total).toBe(1);
+    expect(listed.entries[0]?.source_id).toBe('team/registered-source');
+  });
+
+  it('reads authority metadata from a source descriptor and upgrades trusted share-bundle sources', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+    const sharedBundleDir = join(sourceAgoraHomeDir, 'authority-share-bundle');
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-authority-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-authority-source', 'Authority Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    publishProjectNomosPack('proj-authority-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      publishedBy: 'archon',
+      publishedNote: 'authority source',
+    });
+    exportNomosShareBundle({
+      userAgoraDir: sourceAgoraHomeDir,
+      packId: 'project/proj-authority-source',
+      outputDir: sharedBundleDir,
+    });
+    writeFileSync(join(sharedBundleDir, 'nomos-source.json'), JSON.stringify({
+      schema_version: 1,
+      authority_kind: 'first_party',
+      authority_id: 'agora-core',
+      authority_label: 'Agora Core Registry',
+    }, null, 2), 'utf8');
+
+    const registered = registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/authority-source',
+      sourceDir: sharedBundleDir,
+    });
+    expect(registered.authority_kind).toBe('first_party');
+    expect(registered.authority_id).toBe('agora-core');
+    expect(registered.authority_label).toBe('Agora Core Registry');
+    expect(registered.authority_descriptor_path).toBe(join(sharedBundleDir, 'nomos-source.json'));
+
+    const synced = syncRegisteredNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/authority-source',
+    });
+    const trust = assessRegisteredNomosSourceTrust(synced.source);
+    expect(trust.authority_kind).toBe('first_party');
+    expect(trust.trust_state).toBe('trusted');
+    expect(trust.freshness_state).toBe('current');
+    expect(trust.activation_eligibility).toBe('allowed');
+  });
+
+  it('installs a registered source into a target project draft slot', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-registered-install-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-registered-install-source', 'Registered Install Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    const exported = exportProjectNomosPack('proj-registered-install-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      outputDir: join(sourceAgoraHomeDir, 'registered-install-pack-root'),
+    });
+
+    registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-install-source',
+      sourceDir: exported.output_dir,
+    });
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-registered-install-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromRegisteredSource('proj-registered-install-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-install-source',
+    });
+
+    expect(installed.source.source_id).toBe('team/registered-install-source');
+    expect(installed.pack.pack_id).toBe('project/proj-registered-install-source');
+    const validation = validateProjectNomos('proj-registered-install-target', installed.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      target: 'draft',
+    });
+    expect(validation.valid).toBe(true);
+    expect(validation.pack?.pack_id).toBe('project/proj-registered-install-source');
+  });
+
+  it('allows activating an imported registered-source pack as the active nomos', () => {
+    const sourceAgoraHomeDir = makeAgoraHomeDir();
+    const targetAgoraHomeDir = makeAgoraHomeDir();
+    const sharedBundleDir = join(sourceAgoraHomeDir, 'registered-activate-share-bundle');
+
+    const sourceInstalled = installBuiltInAgoraNomosForProject('proj-registered-activate-source', { userAgoraDir: sourceAgoraHomeDir });
+    ensureProjectNomosAuthoringDraft('proj-registered-activate-source', 'Registered Activate Source', {
+      userAgoraDir: sourceAgoraHomeDir,
+      nomosId: sourceInstalled.profile.pack.id,
+    });
+    const sourceMetadata = mergeProjectMetadataWithNomosProfile({}, sourceInstalled.profile);
+    publishProjectNomosPack('proj-registered-activate-source', sourceMetadata, {
+      userAgoraDir: sourceAgoraHomeDir,
+      target: 'draft',
+      publishedBy: 'archon',
+      publishedNote: 'registered activation source',
+    });
+    const exported = exportNomosShareBundle({
+      userAgoraDir: sourceAgoraHomeDir,
+      packId: 'project/proj-registered-activate-source',
+      outputDir: sharedBundleDir,
+    });
+
+    registerNomosSource({
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-activate-source',
+      sourceDir: exported.output_dir,
+    });
+
+    const targetInstalled = installBuiltInAgoraNomosForProject('proj-registered-activate-target', { userAgoraDir: targetAgoraHomeDir });
+    const targetMetadata = mergeProjectMetadataWithNomosProfile({}, targetInstalled.profile);
+    const installed = installNomosFromRegisteredSource('proj-registered-activate-target', targetMetadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      sourceId: 'team/registered-activate-source',
+    });
+
+    expect(() => activateProjectNomosDraft('proj-registered-activate-target', {
+      userAgoraDir: targetAgoraHomeDir,
+      metadata: installed.metadata,
+      actor: 'archon',
+    })).toThrowError(/human review is required/i);
+
+    const activated = activateProjectNomosDraft('proj-registered-activate-target', {
+      userAgoraDir: targetAgoraHomeDir,
+      metadata: installed.metadata,
+      actor: 'archon',
+      allowReviewRequired: true,
+    });
+
+    expect(activated.nomos_id).toBe('project/proj-registered-activate-source');
+    expect(activated.activation_status).toBe('active_project');
+
+    const activeValidation = validateProjectNomos('proj-registered-activate-target', activated.metadata, {
+      userAgoraDir: targetAgoraHomeDir,
+      target: 'active',
+    });
+    expect(activeValidation.valid).toBe(true);
+    expect(activeValidation.pack?.pack_id).toBe('project/proj-registered-activate-source');
+    expect(activeValidation.provenance).toMatchObject({
+      kind: 'registered_source',
+      source_id: 'team/registered-activate-source',
+      source_kind: 'share_bundle',
+      trust_state: 'caution',
+      activation_eligibility: 'review_required',
+    });
+  });
+
+  it('assesses trust and activation posture for published catalog entries', () => {
+    const trusted = assessPublishedNomosCatalogEntryTrust({
+      schema_version: 1,
+      pack_id: 'project/proj-trusted',
+      published_at: '2026-03-26T00:00:00.000Z',
+      source_kind: 'project_publish',
+      published_by: 'archon',
+      published_note: 'baseline',
+      source_project_id: 'proj-trusted',
+      source_target: 'draft',
+      source_activation_status: 'active_project',
+      source_repo_path: '/repo/proj-trusted',
+      published_root: '/catalog/project/proj-trusted',
+      manifest_path: '/catalog/project/proj-trusted/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-trusted',
+        name: 'Trusted',
+        version: '0.1.0',
+        description: 'trusted',
+        lifecycle_modules: ['project-bootstrap'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/catalog/project/proj-trusted',
+        profile_path: '/catalog/project/proj-trusted/profile.toml',
+      },
+    });
+    const untrusted = assessPublishedNomosCatalogEntryTrust({
+      schema_version: 1,
+      pack_id: 'project/proj-untrusted',
+      published_at: '2026-03-26T00:00:00.000Z',
+      source_kind: 'pack_root',
+      published_by: null,
+      published_note: null,
+      source_project_id: 'external',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: null,
+      published_root: '/catalog/project/proj-untrusted',
+      manifest_path: '/catalog/project/proj-untrusted/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-untrusted',
+        name: 'Untrusted',
+        version: '0.1.0',
+        description: 'untrusted',
+        lifecycle_modules: ['project-bootstrap'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/catalog/project/proj-untrusted',
+        profile_path: '/catalog/project/proj-untrusted/profile.toml',
+      },
+    });
+
+    expect(trusted.trust_state).toBe('trusted');
+    expect(trusted.activation_eligibility).toBe('allowed');
+    expect(untrusted.trust_state).toBe('untrusted');
+    expect(untrusted.activation_eligibility).toBe('blocked');
+  });
+
+  it('assesses trust and freshness for registered sources', () => {
+    const caution = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: 'team/git-source',
+      source_kind: 'git_working_copy',
+      source_dir: '/repo/git-source',
+      authority_kind: 'manual_local',
+      authority_id: null,
+      authority_label: null,
+      authority_descriptor_path: null,
+      registered_at: '2026-03-26T00:00:00.000Z',
+      last_synced_at: null,
+      last_sync_status: 'never',
+      last_sync_error: null,
+      last_catalog_pack_id: null,
+      last_imported_source_kind: null,
+      last_manifest_path: null,
+      entry_path: '/registry/team/git-source/source-entry.json',
+    });
+    const stale = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: 'team/pack-root',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/pack-root',
+      authority_kind: 'manual_local',
+      authority_id: null,
+      authority_label: null,
+      authority_descriptor_path: null,
+      registered_at: '2026-03-26T00:00:00.000Z',
+      last_synced_at: '2026-03-26T01:00:00.000Z',
+      last_sync_status: 'error',
+      last_sync_error: 'network failed',
+      last_catalog_pack_id: 'project/proj-pack-root',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/catalog/project/proj-pack-root/catalog-entry.json',
+      entry_path: '/registry/team/pack-root/source-entry.json',
+    });
+
+    expect(caution.trust_state).toBe('caution');
+    expect(caution.freshness_state).toBe('unknown');
+    expect(caution.activation_eligibility).toBe('review_required');
+    expect(stale.freshness_state).toBe('stale');
+    expect(stale.activation_eligibility).toBe('blocked');
+
+    const aged = assessRegisteredNomosSourceTrust({
+      schema_version: 1,
+      source_id: 'team/share-aged',
+      source_kind: 'share_bundle',
+      source_dir: '/tmp/share-aged',
+      authority_kind: 'manual_local',
+      authority_id: null,
+      authority_label: null,
+      authority_descriptor_path: null,
+      registered_at: '2026-03-26T00:00:00.000Z',
+      last_synced_at: '2026-03-01T00:00:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-share-aged',
+      last_imported_source_kind: 'share_bundle',
+      last_manifest_path: '/catalog/project/proj-share-aged/catalog-entry.json',
+      entry_path: '/registry/team/share-aged/source-entry.json',
+    });
+    expect(aged.trust_state).toBe('caution');
+    expect(aged.freshness_state).toBe('stale');
+    expect(aged.activation_eligibility).toBe('blocked');
+    expect(aged.reasons).toContain('last successful sync is older than the freshness threshold');
   });
 
   it('scaffolds a custom Nomos pack from template assets with customized metadata', () => {

@@ -184,11 +184,36 @@ describe("registerProjectCommands", () => {
   it("shows project workbench summary", async () => {
     const getProject = vi.fn(async () => ({
       project: { id: "proj-show", status: "active", name: "Project Show" },
-      knowledge: [{ id: "k1" }],
-      recaps: [{ id: "r1" }, { id: "r2" }],
-      citizens: [],
-      index: { path: "index.md" },
-      timeline: null,
+      overview: {
+        status: "active",
+        owner: "u1",
+        updated_at: "2026-03-29T14:00:00.000Z",
+        counts: {
+          knowledge: 1,
+          citizens: 0,
+          recaps: 2,
+          tasks_total: 3,
+          active_tasks: 1,
+          review_tasks: 0,
+          todos_total: 2,
+          pending_todos: 1,
+        },
+      },
+      surfaces: {
+        index: { kind: "index", slug: "index", title: "Index", path: "index.md", updated_at: "2026-03-29T14:00:00.000Z" },
+        timeline: null,
+      },
+      work: {
+        tasks: [],
+        todos: [],
+        recaps: [{ id: "r1" }, { id: "r2" }],
+        knowledge: [{ id: "k1" }],
+      },
+      operator: {
+        nomos_id: null,
+        repo_path: null,
+        citizens: [],
+      },
     }));
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, { getProject } as any, createPluginTrace(api as any));
@@ -305,6 +330,62 @@ describe("registerProjectCommands", () => {
         entry: { pack_id: "project/proj-nomos" },
       },
     }));
+    const registerNomosSource = vi.fn(async () => ({
+      source_id: "shared/proj-nomos",
+      source_kind: "pack_root",
+      source_dir: "/tmp/nomos-source",
+      last_sync_status: "never",
+      last_catalog_pack_id: null,
+    }));
+    const listRegisteredNomosSources = vi.fn(async () => ({
+      registry_root: "/tmp/source-registry",
+      total: 1,
+      entries: [
+        {
+          source_id: "shared/proj-nomos",
+          source_kind: "pack_root",
+          source_dir: "/tmp/nomos-source",
+          last_sync_status: "ok",
+          last_catalog_pack_id: "project/proj-nomos",
+        },
+      ],
+    }));
+    const showRegisteredNomosSource = vi.fn(async () => ({
+      source_id: "shared/proj-nomos",
+      source_kind: "pack_root",
+      source_dir: "/tmp/nomos-source",
+      last_sync_status: "ok",
+      last_catalog_pack_id: "project/proj-nomos",
+    }));
+    const syncRegisteredNomosSource = vi.fn(async () => ({
+      source: {
+        source_id: "shared/proj-nomos",
+        source_kind: "pack_root",
+        source_dir: "/tmp/nomos-source",
+        last_sync_status: "ok",
+        last_catalog_pack_id: "project/proj-nomos",
+      },
+      imported: {
+        source_kind: "pack_root",
+        entry: { pack_id: "project/proj-nomos" },
+      },
+    }));
+    const installNomosFromRegisteredSource = vi.fn(async () => ({
+      project_id: "proj-target",
+      pack: { pack_id: "project/proj-nomos" },
+      installed_root: "/tmp/state/nomos/project-nomos",
+      source: {
+        source_id: "shared/proj-nomos",
+        source_kind: "pack_root",
+        source_dir: "/tmp/nomos-source",
+        last_sync_status: "ok",
+        last_catalog_pack_id: "project/proj-nomos",
+      },
+      imported: {
+        source_kind: "pack_root",
+        entry: { pack_id: "project/proj-nomos" },
+      },
+    }));
     const { api, getCommand } = buildApi();
     registerProjectCommands(api as any, {
       validateProjectNomos,
@@ -317,6 +398,11 @@ describe("registerProjectCommands", () => {
       installCatalogNomosPack,
       importNomosSource,
       installNomosFromSource,
+      registerNomosSource,
+      listRegisteredNomosSources,
+      showRegisteredNomosSource,
+      syncRegisteredNomosSource,
+      installNomosFromRegisteredSource,
     } as any, createPluginTrace(api as any));
 
     const validate = await getCommand("project").handler({ args: "nomos validate proj-nomos --target draft", senderId: "u1" });
@@ -352,6 +438,26 @@ describe("registerProjectCommands", () => {
       args: "nomos import-source --source-dir /tmp/nomos-source",
       senderId: "u1",
     });
+    const registeredSource = await getCommand("project").handler({
+      args: "nomos register-source --source-id shared/proj-nomos --source-dir /tmp/nomos-source",
+      senderId: "u1",
+    });
+    const sourcesList = await getCommand("project").handler({
+      args: "nomos sources-list",
+      senderId: "u1",
+    });
+    const sourceShow = await getCommand("project").handler({
+      args: "nomos source-show shared/proj-nomos",
+      senderId: "u1",
+    });
+    const syncedSource = await getCommand("project").handler({
+      args: "nomos sync-registered-source --source-id shared/proj-nomos",
+      senderId: "u1",
+    });
+    const installedRegisteredSource = await getCommand("project").handler({
+      args: "nomos install-from-registered-source proj-target --source-id shared/proj-nomos",
+      senderId: "u1",
+    });
     const installedSource = await getCommand("project").handler({
       args: "nomos install-from-source proj-target --source-dir /tmp/nomos-source",
       senderId: "u1",
@@ -376,6 +482,16 @@ describe("registerProjectCommands", () => {
     expect(installed.text).toContain("draft_root=/tmp/state/nomos/project-nomos");
     expect(importNomosSource).toHaveBeenCalledWith("/tmp/nomos-source");
     expect(importedSource.text).toContain("source_kind=pack_root");
+    expect(registerNomosSource).toHaveBeenCalledWith("shared/proj-nomos", "/tmp/nomos-source");
+    expect(registeredSource.text).toContain("Registered Nomos source shared/proj-nomos");
+    expect(listRegisteredNomosSources).toHaveBeenCalledWith();
+    expect(sourcesList.text).toContain("Nomos sources (1)");
+    expect(showRegisteredNomosSource).toHaveBeenCalledWith("shared/proj-nomos");
+    expect(sourceShow.text).toContain("last_catalog_pack_id=project/proj-nomos");
+    expect(syncRegisteredNomosSource).toHaveBeenCalledWith("shared/proj-nomos");
+    expect(syncedSource.text).toContain("pack=project/proj-nomos");
+    expect(installNomosFromRegisteredSource).toHaveBeenCalledWith("proj-target", "shared/proj-nomos");
+    expect(installedRegisteredSource.text).toContain("Installed registered source into proj-target");
     expect(installNomosFromSource).toHaveBeenCalledWith("proj-target", "/tmp/nomos-source");
     expect(installedSource.text).toContain("Installed source Nomos into proj-target");
   });

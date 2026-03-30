@@ -27,6 +27,13 @@ export interface Task {
   locale?: 'zh-CN' | 'en-US';
   state: TaskState;
   archiveStatus: string | null;
+  authority?: {
+    requesterAccountId?: number | null;
+    ownerAccountId?: number | null;
+    assigneeAccountId?: number | null;
+    approverAccountId?: number | null;
+    controllerAgentRef?: string | null;
+  } | null;
   controllerRef?: string | null;
   current_stage: string | null;
   teamLabel: string;
@@ -409,6 +416,13 @@ export interface CreateTaskInput {
     thread_name?: string;
     visibility?: 'public' | 'private';
     participant_refs?: string[];
+  };
+  authority?: {
+    requester_account_id?: number | null;
+    owner_account_id?: number | null;
+    assignee_account_id?: number | null;
+    approver_account_id?: number | null;
+    controller_agent_ref?: string | null;
   };
 }
 

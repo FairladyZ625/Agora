@@ -214,12 +214,33 @@ export const createTaskImTargetSchema = z.object({
 }).strict();
 export type CreateTaskImTargetDto = z.infer<typeof createTaskImTargetSchema>;
 
+export const createTaskAuthoritySchema = z.object({
+  requester_account_id: z.number().int().positive().nullable().optional(),
+  owner_account_id: z.number().int().positive().nullable().optional(),
+  assignee_account_id: z.number().int().positive().nullable().optional(),
+  approver_account_id: z.number().int().positive().nullable().optional(),
+  controller_agent_ref: z.string().min(1).nullable().optional(),
+}).strict();
+export type CreateTaskAuthorityDto = z.infer<typeof createTaskAuthoritySchema>;
+
+export const taskAuthoritySchema = z.object({
+  requester_account_id: z.number().int().positive().nullable(),
+  owner_account_id: z.number().int().positive().nullable(),
+  assignee_account_id: z.number().int().positive().nullable(),
+  approver_account_id: z.number().int().positive().nullable(),
+  controller_agent_ref: z.string().min(1).nullable(),
+}).strict();
+export type TaskAuthorityDto = z.infer<typeof taskAuthoritySchema>;
+
 export const taskControlSchema = z.object({
   mode: taskControlModeSchema.default('normal'),
   nomos_authoring: z.object({
     kind: z.literal('project_nomos'),
     project_id: z.string().min(1),
     auto_refine_on_done: z.boolean().default(true),
+  }).strict().optional(),
+  workspace_bootstrap: z.object({
+    kind: z.literal('orchestrator_onboarding'),
   }).strict().optional(),
 }).strict();
 export type TaskControlDto = z.infer<typeof taskControlSchema>;
@@ -243,6 +264,7 @@ export const taskSchema = z.object({
   project_id: z.string().nullable().optional(),
   state: taskStateSchema,
   archive_status: z.string().nullable(),
+  authority: taskAuthoritySchema.nullable().optional(),
   controller_ref: z.string().nullable().optional(),
   current_stage: z.string().nullable(),
   skill_policy: taskSkillPolicySchema.nullable().optional(),
@@ -437,6 +459,7 @@ export const createTaskRequestSchema = z.object({
   team_override: teamSchema.optional(),
   workflow_override: workflowSchema.optional(),
   skill_policy: taskSkillPolicySchema.optional(),
+  authority: createTaskAuthoritySchema.optional(),
   im_target: createTaskImTargetSchema.optional(),
   control: taskControlSchema.optional(),
 });

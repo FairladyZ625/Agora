@@ -1,4 +1,4 @@
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardHome } from '@/pages/DashboardHome';
@@ -7,6 +7,17 @@ import type { Task } from '@/types/task';
 const fetchTasks = vi.fn(async () => undefined);
 const resolveReview = vi.fn(async () => 'live');
 const showMessage = vi.fn();
+
+const sessionStoreState = {
+  authenticated: true,
+  status: 'ready',
+  username: 'approver',
+  accountId: 7,
+  role: 'member',
+  refresh: vi.fn(async () => 'live'),
+  logout: vi.fn(async () => undefined),
+  error: null as string | null,
+};
 
 const liveTasks: Task[] = [
   {
@@ -57,6 +68,9 @@ const liveTasks: Task[] = [
     sourceState: 'active',
     stageName: 'Review',
     gateType: 'approval',
+    authority: {
+      approverAccountId: 7,
+    },
     teamMembers: [
       { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning' },
       { role: 'reviewer', agentId: 'glm5', model_preference: 'chinese_strong' },
@@ -184,6 +198,11 @@ vi.mock('@/stores/feedbackStore', () => ({
   }),
 }));
 
+vi.mock('@/stores/sessionStore', () => ({
+  useSessionStore: (selector?: (state: typeof sessionStoreState) => unknown) =>
+    selector ? selector(sessionStoreState) : sessionStoreState,
+}));
+
 vi.mock('@/stores/settingsStore', () => ({
   useSettingsStore: () => ({
     apiBase: '/api',
@@ -218,6 +237,11 @@ describe('dashboard home live metrics', () => {
     }
     vi.useRealTimers();
   });
+
+  function LocationProbe() {
+    const location = useLocation();
+    return <div data-testid="location-probe">{`${location.pathname}${location.search}`}</div>;
+  }
 
   it('derives homepage authority stats from live task data', () => {
     render(
@@ -309,6 +333,23 @@ describe('dashboard home live metrics', () => {
 
     await Promise.resolve();
     expect(resolveReview).toHaveBeenCalledWith('OC-102', 'approve', '');
+  });
+
+  it('routes synthesis into the approver-scoped review queue', async () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<><DashboardHome /><LocationProbe /></>} />
+          <Route path="/reviews" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '进入待我审批' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/reviews?scope=assigned&selected=OC-102');
   });
 
   it('shows an empty authority target when no review item is pending', () => {

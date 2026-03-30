@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import type {
   ProjectKnowledgeDocument,
@@ -11,10 +11,12 @@ import type {
   ProjectKnowledgeTaskBindingInput,
   ProjectKnowledgeTaskRecapInput,
 } from '../project-knowledge-port.js';
+import { ensureCanonicalProjectRoot, ensureCanonicalProjectRootBootstrapCommit } from '../project-state-root.js';
 import { extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 export interface FilesystemProjectKnowledgeAdapterOptions {
   brainPackRoot: string;
+  projectStateRootResolver?: ((projectId: string) => string | null) | undefined;
 }
 
 export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
@@ -22,6 +24,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
 
   ensureProject(input: ProjectKnowledgeProjectInput): void {
     const root = this.projectRoot(input.id);
+    ensureCanonicalProjectRoot(root);
     mkdirSync(root, { recursive: true });
     mkdirSync(join(root, 'recaps'), { recursive: true });
     mkdirSync(join(root, 'knowledge', 'decisions'), { recursive: true });
@@ -29,6 +32,9 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
     mkdirSync(join(root, 'knowledge', 'open-questions'), { recursive: true });
     mkdirSync(join(root, 'knowledge', 'references'), { recursive: true });
     mkdirSync(join(root, 'tasks'), { recursive: true });
+    mkdirSync(this.activeTasksDir(input.id), { recursive: true });
+    mkdirSync(this.archivedTasksDir(input.id), { recursive: true });
+    this.ensureProjectStateMirror(input.id);
     if (!existsSync(this.timelinePath(input.id))) {
       writeFileSync(this.timelinePath(input.id), renderTimelineHeader(input.id, input.name), 'utf8');
     }
@@ -36,18 +42,82 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
     this.appendTimeline(input.id, [
       `- ${new Date().toISOString()} | project_created | ${input.name} | status=${input.status}`,
     ]);
+    ensureCanonicalProjectRootBootstrapCommit(root);
   }
 
   recordTaskBinding(input: ProjectKnowledgeTaskBindingInput): void {
+    writeFileSync(
+      this.activeTaskProjectionPath(input.project_id, input.task_id),
+      renderTaskProjection({
+        project_id: input.project_id,
+        task_id: input.task_id,
+        title: input.title,
+        state: input.state,
+        projection: 'active',
+        workspace_path: input.workspace_path,
+        recorded_at: input.bound_at,
+      }),
+      'utf8',
+    );
+    if (existsSync(this.archivedTaskProjectionPath(input.project_id, input.task_id))) {
+      rmSync(this.archivedTaskProjectionPath(input.project_id, input.task_id), { force: true });
+    }
+    this.writeProjectStateTaskMirror({
+      project_id: input.project_id,
+      task_id: input.task_id,
+      title: input.title,
+      state: input.state,
+      projection: 'active',
+      workspace_path: input.workspace_path,
+      recorded_at: input.bound_at,
+    });
     this.appendTimeline(input.project_id, [
-      `- ${input.bound_at} | task_bound | ${input.task_id} | state=${input.state} | title=${input.title}`,
+      `- ${input.bound_at} | task_bound | ${input.task_id} | state=${input.state} | title=${input.title} | doc=[[tasks/active/${input.task_id}.md]]`,
     ]);
     this.rewriteProjectIndexFromDisk(input.project_id);
   }
 
   recordTaskRecap(input: ProjectKnowledgeTaskRecapInput): void {
+    if (existsSync(this.activeTaskProjectionPath(input.project_id, input.task_id))) {
+      rmSync(this.activeTaskProjectionPath(input.project_id, input.task_id), { force: true });
+    }
+    writeFileSync(
+      join(this.recapsDir(input.project_id), `${input.task_id}.md`),
+      renderProjectTaskRecap(input),
+      'utf8',
+    );
+    writeFileSync(
+      this.archivedTaskProjectionPath(input.project_id, input.task_id),
+      renderTaskProjection({
+        project_id: input.project_id,
+        task_id: input.task_id,
+        title: input.title,
+        state: input.state,
+        projection: 'archive',
+        workspace_path: input.workspace_path,
+        recorded_at: input.completed_at,
+        current_stage: input.current_stage,
+        controller_ref: input.controller_ref,
+        completed_by: input.completed_by,
+        summary_lines: input.summary_lines,
+      }),
+      'utf8',
+    );
+    this.writeProjectStateTaskMirror({
+      project_id: input.project_id,
+      task_id: input.task_id,
+      title: input.title,
+      state: input.state,
+      projection: 'archive',
+      workspace_path: input.workspace_path,
+      recorded_at: input.completed_at,
+      current_stage: input.current_stage,
+      controller_ref: input.controller_ref,
+      completed_by: input.completed_by,
+      summary_lines: input.summary_lines,
+    });
     this.appendTimeline(input.project_id, [
-      `- ${input.completed_at} | task_recap | ${input.task_id} | state=${input.state} | completed_by=${input.completed_by}`,
+      `- ${input.completed_at} | task_recap | ${input.task_id} | state=${input.state} | completed_by=${input.completed_by} | doc=[[tasks/archive/${input.task_id}.md]]`,
     ]);
     this.rewriteProjectIndexFromDisk(input.project_id);
   }
@@ -191,7 +261,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   }
 
   private projectRoot(projectId: string) {
-    return resolve(this.options.brainPackRoot, 'projects', projectId);
+    return this.resolveProjectStateRoot(projectId) ?? resolve(this.options.brainPackRoot, 'project-index', projectId);
   }
 
   private indexPath(projectId: string) {
@@ -204,6 +274,61 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
 
   private recapsDir(projectId: string) {
     return join(this.projectRoot(projectId), 'recaps');
+  }
+
+  private activeTasksDir(projectId: string) {
+    return join(this.projectRoot(projectId), 'tasks', 'active');
+  }
+
+  private archivedTasksDir(projectId: string) {
+    return join(this.projectRoot(projectId), 'tasks', 'archive');
+  }
+
+  private activeTaskProjectionPath(projectId: string, taskId: string) {
+    return join(this.activeTasksDir(projectId), `${taskId}.md`);
+  }
+
+  private archivedTaskProjectionPath(projectId: string, taskId: string) {
+    return join(this.archivedTasksDir(projectId), `${taskId}.md`);
+  }
+
+  private resolveProjectStateRoot(projectId: string) {
+    return this.options.projectStateRootResolver?.(projectId) ?? null;
+  }
+
+  private projectStateTasksDir(projectId: string) {
+    const root = this.resolveProjectStateRoot(projectId);
+    return root ? join(root, 'tasks') : null;
+  }
+
+  private projectStateActiveTasksDir(projectId: string) {
+    const tasksDir = this.projectStateTasksDir(projectId);
+    return tasksDir ? join(tasksDir, 'active') : null;
+  }
+
+  private projectStateArchiveDir(projectId: string) {
+    const root = this.resolveProjectStateRoot(projectId);
+    return root ? join(root, 'archive') : null;
+  }
+
+  private projectStateTasksIndexPath(projectId: string) {
+    const tasksDir = this.projectStateTasksDir(projectId);
+    return tasksDir ? join(tasksDir, 'index.md') : null;
+  }
+
+  private projectStateArchiveIndexPath(projectId: string) {
+    const archiveDir = this.projectStateArchiveDir(projectId);
+    return archiveDir ? join(archiveDir, 'index.md') : null;
+  }
+
+  private projectStateActiveTaskPath(projectId: string, taskId: string) {
+    const dir = this.projectStateActiveTasksDir(projectId);
+    return dir ? join(dir, `${taskId}.md`) : null;
+  }
+
+  private projectStateArchiveTaskPath(projectId: string, taskId: string) {
+    const dir = this.projectStateArchiveDir(projectId);
+    return dir ? join(dir, `${taskId}.md`) : null;
   }
 
   private knowledgeDir(projectId: string, kind: ProjectKnowledgeKind) {
@@ -250,7 +375,9 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   private rewriteProjectIndex(input: ProjectKnowledgeProjectInput) {
     const recaps = this.listProjectRecaps(input.id);
     const knowledge = this.listKnowledgeEntries(input.id);
-    writeFileSync(this.indexPath(input.id), renderProjectIndex(input, recaps, knowledge), 'utf8');
+    const activeTasks = this.listTaskProjections(input.id, 'active');
+    const archivedTasks = this.listTaskProjections(input.id, 'archive');
+    writeFileSync(this.indexPath(input.id), renderProjectIndex(input, recaps, knowledge, activeTasks, archivedTasks), 'utf8');
   }
 
   private appendTimeline(projectId: string, lines: string[]) {
@@ -280,12 +407,139 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
       source_task_ids: parsed.source_task_ids,
     };
   }
+
+  private ensureProjectStateMirror(projectId: string) {
+    if (this.projectRoot(projectId) === this.resolveProjectStateRoot(projectId)) {
+      return;
+    }
+    const tasksDir = this.projectStateTasksDir(projectId);
+    const activeTasksDir = this.projectStateActiveTasksDir(projectId);
+    const archiveDir = this.projectStateArchiveDir(projectId);
+    if (!tasksDir || !activeTasksDir || !archiveDir) {
+      return;
+    }
+    mkdirSync(tasksDir, { recursive: true });
+    mkdirSync(activeTasksDir, { recursive: true });
+    mkdirSync(archiveDir, { recursive: true });
+    this.rewriteProjectStateMirrorIndexes(projectId);
+  }
+
+  private writeProjectStateTaskMirror(input: {
+    project_id: string;
+    task_id: string;
+    title: string;
+    state: string;
+    projection: 'active' | 'archive';
+    workspace_path: string | null;
+    recorded_at: string;
+    current_stage?: string | null;
+    controller_ref?: string | null;
+    completed_by?: string | null;
+    summary_lines?: string[];
+  }) {
+    if (this.projectRoot(input.project_id) === this.resolveProjectStateRoot(input.project_id)) {
+      return;
+    }
+    this.ensureProjectStateMirror(input.project_id);
+    const activePath = this.projectStateActiveTaskPath(input.project_id, input.task_id);
+    const archivePath = this.projectStateArchiveTaskPath(input.project_id, input.task_id);
+    if (!activePath || !archivePath) {
+      return;
+    }
+    const brainPackProjectionPath = input.projection === 'active'
+      ? this.activeTaskProjectionPath(input.project_id, input.task_id)
+      : this.archivedTaskProjectionPath(input.project_id, input.task_id);
+    if (input.projection === 'active') {
+      writeFileSync(activePath, renderProjectStateTaskMirror({
+        ...input,
+        brain_pack_projection_path: brainPackProjectionPath,
+      }), 'utf8');
+      if (existsSync(archivePath)) {
+        rmSync(archivePath, { force: true });
+      }
+    } else {
+      if (existsSync(activePath)) {
+        rmSync(activePath, { force: true });
+      }
+      writeFileSync(archivePath, renderProjectStateTaskMirror({
+        ...input,
+        brain_pack_projection_path: brainPackProjectionPath,
+      }), 'utf8');
+    }
+    this.rewriteProjectStateMirrorIndexes(input.project_id);
+  }
+
+  private rewriteProjectStateMirrorIndexes(projectId: string) {
+    if (this.projectRoot(projectId) === this.resolveProjectStateRoot(projectId)) {
+      return;
+    }
+    const tasksIndexPath = this.projectStateTasksIndexPath(projectId);
+    const archiveIndexPath = this.projectStateArchiveIndexPath(projectId);
+    if (!tasksIndexPath || !archiveIndexPath) {
+      return;
+    }
+    const activeMirrors = this.listProjectStateTaskMirrors(projectId, 'active');
+    const archiveMirrors = this.listProjectStateTaskMirrors(projectId, 'archive');
+    writeFileSync(tasksIndexPath, renderProjectStateTasksIndex(projectId, activeMirrors), 'utf8');
+    writeFileSync(archiveIndexPath, renderProjectStateArchiveIndex(projectId, archiveMirrors), 'utf8');
+  }
+
+  private listTaskProjections(projectId: string, projection: 'active' | 'archive') {
+    const dir = projection === 'active' ? this.activeTasksDir(projectId) : this.archivedTasksDir(projectId);
+    if (!existsSync(dir)) {
+      return [];
+    }
+    return readdirSync(dir)
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => {
+        const path = join(dir, name);
+        const content = readFileSync(path, 'utf8');
+        const parsed = parseMarkdownFrontmatter(content);
+        const updatedAt = statSync(path).mtime.toISOString();
+        return {
+          task_id: parsed.attributes.task_id ?? basename(name, '.md'),
+          title: parsed.attributes.title ?? extractMarkdownHeading(content) ?? basename(name, '.md'),
+          state: parsed.attributes.state ?? null,
+          path,
+          updated_at: updatedAt,
+        };
+      })
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  }
+
+  private listProjectStateTaskMirrors(projectId: string, projection: 'active' | 'archive') {
+    if (this.projectRoot(projectId) === this.resolveProjectStateRoot(projectId)) {
+      return [];
+    }
+    const dir = projection === 'active' ? this.projectStateActiveTasksDir(projectId) : this.projectStateArchiveDir(projectId);
+    if (!dir || !existsSync(dir)) {
+      return [];
+    }
+    return readdirSync(dir)
+      .filter((name) => name.endsWith('.md') && name !== 'index.md')
+      .map((name) => {
+        const path = join(dir, name);
+        const content = readFileSync(path, 'utf8');
+        const parsed = parseMarkdownFrontmatter(content);
+        const updatedAt = statSync(path).mtime.toISOString();
+        return {
+          task_id: parsed.attributes.task_id ?? basename(name, '.md'),
+          title: parsed.attributes.title ?? extractMarkdownHeading(content) ?? basename(name, '.md'),
+          state: parsed.attributes.state ?? null,
+          path,
+          updated_at: updatedAt,
+        };
+      })
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  }
 }
 
 function renderProjectIndex(
   input: ProjectKnowledgeProjectInput,
   recaps: ProjectKnowledgeRecapSummary[],
   knowledge: ProjectKnowledgeDocument[],
+  activeTasks: Array<{ task_id: string; title: string | null; state: string | null; path: string; updated_at: string }>,
+  archivedTasks: Array<{ task_id: string; title: string | null; state: string | null; path: string; updated_at: string }>,
 ) {
   const decisions = knowledge.filter((doc) => doc.kind === 'decision');
   const facts = knowledge.filter((doc) => doc.kind === 'fact');
@@ -312,10 +566,29 @@ function renderProjectIndex(
     '',
     '- [[timeline.md]]',
     '- [[recaps/]]',
+    '- [[tasks/active/]]',
+    '- [[tasks/archive/]]',
     '- [[knowledge/decisions/]]',
     '- [[knowledge/facts/]]',
     '- [[knowledge/open-questions/]]',
     '- [[knowledge/references/]]',
+    '',
+    '## Tasks',
+    '',
+    `- Active Tasks: ${activeTasks.length}`,
+    `- Archived Tasks: ${archivedTasks.length}`,
+    '',
+    '### Active Tasks',
+    '',
+    ...(activeTasks.length > 0
+      ? activeTasks.slice(0, 10).map((task) => `- [[tasks/active/${task.task_id}.md]]${task.title ? ` | ${task.title}` : ''}${task.state ? ` | state=${task.state}` : ''}`)
+      : ['- None yet']),
+    '',
+    '### Archived Tasks',
+    '',
+    ...(archivedTasks.length > 0
+      ? archivedTasks.slice(0, 10).map((task) => `- [[tasks/archive/${task.task_id}.md]]${task.title ? ` | ${task.title}` : ''}${task.state ? ` | state=${task.state}` : ''}`)
+      : ['- None yet']),
     '',
     '## Recent Recaps',
     '',
@@ -338,6 +611,213 @@ function renderProjectIndex(
           '',
         ]
       : []),
+    '',
+  ].join('\n');
+}
+
+function renderTaskProjection(input: {
+  project_id: string;
+  task_id: string;
+  title: string;
+  state: string;
+  projection: 'active' | 'archive';
+  workspace_path: string | null;
+  recorded_at: string;
+  current_stage?: string | null;
+  controller_ref?: string | null;
+  completed_by?: string | null;
+  summary_lines?: string[];
+}) {
+  const taskRootLink = `[[../${input.task_id}/]]`;
+  const currentLink = `[[../${input.task_id}/00-current.md]]`;
+  const closeRecapLink = `[[../${input.task_id}/07-outputs/task-close-recap.md]]`;
+  const harvestDraftLink = `[[../${input.task_id}/07-outputs/project-harvest-draft.md]]`;
+  const projectRecapLink = `[[../../recaps/${input.task_id}.md]]`;
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'project_task_projection',
+      project_id: input.project_id,
+      task_id: input.task_id,
+      projection: input.projection,
+      title: input.title,
+      state: input.state,
+      workspace_path: input.workspace_path ?? '',
+      recorded_at: input.recorded_at,
+      current_stage: input.current_stage ?? '',
+      controller_ref: input.controller_ref ?? '',
+      completed_by: input.completed_by ?? '',
+    }),
+    `# ${input.title}`,
+    '',
+    `- Task ID: ${input.task_id}`,
+    `- Projection: ${input.projection}`,
+    `- State: ${input.state}`,
+    `- Project: ${input.project_id}`,
+    ...(input.current_stage ? [`- Current Stage: ${input.current_stage}`] : []),
+    ...(input.controller_ref ? [`- Controller: ${input.controller_ref}`] : []),
+    ...(input.completed_by ? [`- Completed By: ${input.completed_by}`] : []),
+    `- Recorded At: ${input.recorded_at}`,
+    ...(input.workspace_path ? [`- Workspace Path: ${input.workspace_path}`] : []),
+    '',
+    '## Navigation',
+    '',
+    `- Task Workspace: ${taskRootLink}`,
+    `- Current State: ${currentLink}`,
+    ...(input.projection === 'archive' ? [`- Project Recap: ${projectRecapLink}`] : []),
+    ...(input.projection === 'archive' && input.workspace_path ? [`- Task Close Recap: ${closeRecapLink}`] : []),
+    ...(input.projection === 'archive' && input.workspace_path ? [`- Harvest Draft: ${harvestDraftLink}`] : []),
+    '',
+    ...(input.projection === 'archive' && input.summary_lines && input.summary_lines.length > 0
+      ? [
+          '## Summary',
+          '',
+          ...input.summary_lines.map((line) => `- ${line}`),
+          '',
+        ]
+      : []),
+  ].join('\n');
+}
+
+function renderProjectTaskRecap(input: ProjectKnowledgeTaskRecapInput) {
+  const locale = inferProjectRecapLocale(input.summary_lines);
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'task_recap',
+      task_id: input.task_id,
+      project_id: input.project_id,
+      kind: 'recap',
+      slug: input.task_id,
+      title: input.title,
+      created_at: input.completed_at,
+      updated_at: input.completed_at,
+      source_task_ids: [input.task_id],
+    }),
+    `# ${locale === 'zh-CN' ? '任务收口回写' : 'Task Close Recap'}`,
+    '',
+    `- ${locale === 'zh-CN' ? '任务' : 'Task'}: ${input.task_id}`,
+    `- Project: ${input.project_id}`,
+    `- ${locale === 'zh-CN' ? '标题' : 'Title'}: ${input.title}`,
+    `- ${locale === 'zh-CN' ? '任务状态' : 'Task State'}: ${input.state}`,
+    `- ${locale === 'zh-CN' ? '当前阶段' : 'Current Stage'}: ${input.current_stage ?? '-'}`,
+    `- ${locale === 'zh-CN' ? '主控' : 'Controller'}: ${input.controller_ref ?? '-'}`,
+    `- ${locale === 'zh-CN' ? '完成人' : 'Completed By'}: ${input.completed_by}`,
+    `- ${locale === 'zh-CN' ? '完成时间' : 'Completed At'}: ${input.completed_at}`,
+    '',
+    `## ${locale === 'zh-CN' ? '摘要' : 'Summary'}`,
+    '',
+    ...input.summary_lines.map((line) => `- ${line}`),
+    '',
+  ].join('\n');
+}
+
+function inferProjectRecapLocale(summaryLines: string[]) {
+  return summaryLines.some((line) => /[\u4e00-\u9fff]/.test(line)) ? 'zh-CN' : 'en-US';
+}
+
+function renderProjectStateTaskMirror(input: {
+  project_id: string;
+  task_id: string;
+  title: string;
+  state: string;
+  projection: 'active' | 'archive';
+  workspace_path: string | null;
+  recorded_at: string;
+  brain_pack_projection_path: string;
+  current_stage?: string | null;
+  controller_ref?: string | null;
+  completed_by?: string | null;
+  summary_lines?: string[];
+}) {
+  const localIndexLink = input.projection === 'active' ? '[[../index.md]]' : '[[index.md]]';
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'project_state_task_projection',
+      project_id: input.project_id,
+      task_id: input.task_id,
+      projection: input.projection,
+      title: input.title,
+      state: input.state,
+      workspace_path: input.workspace_path ?? '',
+      brain_pack_projection_path: input.brain_pack_projection_path,
+      recorded_at: input.recorded_at,
+      current_stage: input.current_stage ?? '',
+      controller_ref: input.controller_ref ?? '',
+      completed_by: input.completed_by ?? '',
+    }),
+    `# ${input.title}`,
+    '',
+    `- Task ID: ${input.task_id}`,
+    `- Projection: ${input.projection}`,
+    `- State: ${input.state}`,
+    `- Project: ${input.project_id}`,
+    ...(input.current_stage ? [`- Current Stage: ${input.current_stage}`] : []),
+    ...(input.controller_ref ? [`- Controller: ${input.controller_ref}`] : []),
+    ...(input.completed_by ? [`- Completed By: ${input.completed_by}`] : []),
+    `- Recorded At: ${input.recorded_at}`,
+    '',
+    '## Navigation',
+    '',
+    `- Local Index: ${localIndexLink}`,
+    `- Brain Pack Projection Path: \`${input.brain_pack_projection_path}\``,
+    ...(input.workspace_path ? [`- Runtime Workspace Path: \`${input.workspace_path}\``] : []),
+    '',
+    ...(input.projection === 'archive' && input.summary_lines && input.summary_lines.length > 0
+      ? [
+          '## Summary',
+          '',
+          ...input.summary_lines.map((line) => `- ${line}`),
+          '',
+        ]
+      : []),
+  ].join('\n');
+}
+
+function renderProjectStateTasksIndex(
+  projectId: string,
+  activeMirrors: Array<{ task_id: string; title: string | null; state: string | null; path: string; updated_at: string }>,
+) {
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'project_state_active_tasks_index',
+      project_id: projectId,
+      slug: 'tasks-index',
+      title: `Active Task Mirrors: ${projectId}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
+    `# Active Task Mirrors: ${projectId}`,
+    '',
+    `- Project ID: ${projectId}`,
+    `- Active Task Mirrors: ${activeMirrors.length}`,
+    '',
+    ...(activeMirrors.length > 0
+      ? activeMirrors.map((task) => `- [[active/${task.task_id}.md]]${task.title ? ` | ${task.title}` : ''}${task.state ? ` | state=${task.state}` : ''}`)
+      : ['- None yet']),
+    '',
+  ].join('\n');
+}
+
+function renderProjectStateArchiveIndex(
+  projectId: string,
+  archiveMirrors: Array<{ task_id: string; title: string | null; state: string | null; path: string; updated_at: string }>,
+) {
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'project_state_archive_tasks_index',
+      project_id: projectId,
+      slug: 'archive-index',
+      title: `Archived Task Mirrors: ${projectId}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }),
+    `# Archived Task Mirrors: ${projectId}`,
+    '',
+    `- Project ID: ${projectId}`,
+    `- Archived Task Mirrors: ${archiveMirrors.length}`,
+    '',
+    ...(archiveMirrors.length > 0
+      ? archiveMirrors.map((task) => `- [[${task.task_id}.md]]${task.title ? ` | ${task.title}` : ''}${task.state ? ` | state=${task.state}` : ''}`)
+      : ['- None yet']),
     '',
   ].join('\n');
 }

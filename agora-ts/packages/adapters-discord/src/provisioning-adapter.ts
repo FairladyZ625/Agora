@@ -19,6 +19,8 @@ export interface DiscordIMProvisioningAdapterOptions {
 }
 
 export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
+  private static readonly REMOVE_VERIFICATION_ATTEMPTS = 3;
+  private static readonly REMOVE_VERIFICATION_DELAY_MS = 1200;
   private readonly client: DiscordHttpClient;
   private readonly defaultChannelId: string;
   private readonly participantTokens: Record<string, string>;
@@ -106,23 +108,14 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
     const token = this.participantTokens[input.participant_ref];
     const userId = await this.resolveParticipantUserId(input.participant_ref, token);
     await this.client.removeThreadMember(threadRef, userId);
-    let members;
     try {
-      members = await this.client.listThreadMembers(threadRef);
+      return await this.verifyParticipantRemoval(threadRef, userId, input.participant_ref);
     } catch (error) {
       return {
         status: 'removed',
         detail: `participant ${input.participant_ref} removed, but thread member verification was unavailable: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    const removed = members.every((member) => this.readThreadMemberUserId(member) !== userId);
-    if (!removed) {
-      return {
-        status: 'failed',
-        detail: `participant ${input.participant_ref} was still visible in thread member list after remove`,
-      };
-    }
-    return { status: 'removed', detail: null };
   }
 
   async publishMessages(input: IMPublishMessagesRequest): Promise<void> {
@@ -203,6 +196,39 @@ export class DiscordIMProvisioningAdapter implements IMProvisioningPort {
       return mentionMap.get(ref) ?? `@${ref}`;
     });
   }
+
+  private async verifyParticipantRemoval(
+    threadRef: string,
+    userId: string,
+    participantRef: string,
+  ): Promise<IMRemoveParticipantResult> {
+    for (let attempt = 0; attempt < DiscordIMProvisioningAdapter.REMOVE_VERIFICATION_ATTEMPTS; attempt += 1) {
+      const members = await this.client.listThreadMembers(threadRef);
+      if (this.isUserAbsent(members, userId)) {
+        await sleep(DiscordIMProvisioningAdapter.REMOVE_VERIFICATION_DELAY_MS);
+        const confirmedMembers = await this.client.listThreadMembers(threadRef);
+        if (this.isUserAbsent(confirmedMembers, userId)) {
+          return { status: 'removed', detail: null };
+        }
+      }
+      if (attempt >= DiscordIMProvisioningAdapter.REMOVE_VERIFICATION_ATTEMPTS - 1) {
+        break;
+      }
+      await sleep(DiscordIMProvisioningAdapter.REMOVE_VERIFICATION_DELAY_MS);
+      await this.client.removeThreadMember(threadRef, userId);
+    }
+    return {
+      status: 'failed',
+      detail: `participant ${participantRef} was still visible in thread member list after stabilized remove verification`,
+    };
+  }
+
+  private isUserAbsent(
+    members: Array<{ user_id?: string; id?: string; user?: { id?: string } }>,
+    userId: string,
+  ) {
+    return members.every((member) => this.readThreadMemberUserId(member) !== userId);
+  }
 }
 
 function looksLikeDiscordUserId(value: string) {
@@ -226,4 +252,10 @@ function decodeDiscordTokenUserId(token: string): string | null {
 
 function isMissingDiscordParticipantTokenError(error: unknown) {
   return error instanceof Error && error.message.startsWith('no discord token configured for participant ');
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
 }

@@ -1,8 +1,9 @@
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from '@/App';
 import { setLocale } from '@/lib/i18n';
+import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 
 const taskStoreState = {
   tasks: [
@@ -57,6 +58,131 @@ const taskStoreState = {
 vi.mock('@/stores/taskStore', () => ({
   useTaskStore: (selector?: (state: typeof taskStoreState) => unknown) =>
     selector ? selector(taskStoreState) : taskStoreState,
+}));
+
+const projectStoreState = {
+  projects: [],
+  selectedProject: {
+    project: {
+      id: 'proj-alpha',
+      name: 'Project Alpha',
+      summary: 'Stabilize the dashboard workbench.',
+      owner: 'archon',
+      status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      createdAt: '2026-03-16T00:00:00.000Z',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+    },
+    nomos: {
+      nomosId: 'agora/default',
+      activationStatus: 'active_builtin',
+      projectStateRoot: '/Users/example/.agora/projects/proj-alpha',
+      profilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
+      profileInstalled: true,
+      repoPath: '/repo/proj-alpha',
+      repoShimInstalled: true,
+      bootstrapPromptsDir: '/Users/example/.agora/projects/proj-alpha/bootstrap',
+      lifecycleModules: ['project-bootstrap'],
+      draftRoot: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      draftProfilePath: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      draftProfileInstalled: true,
+      activeRoot: '/Users/example/.agora/projects/proj-alpha',
+      activeProfilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
+      activeProfileInstalled: true,
+    },
+    overview: {
+      status: 'active',
+      owner: 'archon',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+      stats: {
+        knowledgeCount: 1,
+        citizenCount: 1,
+        recapCount: 1,
+        taskCount: 1,
+        activeTaskCount: 1,
+        reviewTaskCount: 0,
+        todoCount: 1,
+        pendingTodoCount: 1,
+      },
+    },
+    surfaces: {
+      index: {
+        kind: 'index',
+        slug: 'index',
+        title: 'Project Alpha',
+        path: '/brain/projects/proj-alpha/index.md',
+        content: '# Project Alpha\n\nWorkbench cleanup.',
+        updatedAt: '2026-03-16T01:00:00.000Z',
+      },
+      timeline: {
+        kind: 'timeline',
+        slug: 'timeline',
+        title: 'Project Alpha Timeline',
+        path: '/brain/projects/proj-alpha/timeline.md',
+        content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
+        sourceTaskIds: ['OC-100'],
+        updatedAt: '2026-03-16T01:30:00.000Z',
+      },
+    },
+    work: {
+      tasks: [{ id: 'OC-100', title: 'Workbench cleanup', state: 'in_progress', projectId: 'proj-alpha' }],
+      todos: [{ id: 3, text: '收口 Project 页面', status: 'pending', projectId: 'proj-alpha' }],
+      recaps: [{ taskId: 'OC-100', title: 'Cleanup recap', summaryPath: '/brain/projects/proj-alpha/recaps/OC-100.md', content: '# recap', updatedAt: '2026-03-16T01:00:00.000Z' }],
+      knowledge: [{ kind: 'decision', slug: 'ia', title: 'Workbench IA', path: '/brain/projects/proj-alpha/knowledge/decisions/ia.md', content: 'Use four sections.', sourceTaskIds: ['OC-100'], updatedAt: '2026-03-16T01:00:00.000Z' }],
+    },
+    operator: {
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      citizens: [{
+        citizenId: 'citizen-alpha',
+        roleId: 'architect',
+        displayName: 'Alpha Architect',
+        status: 'active',
+        persona: 'Think in systems.',
+        boundaries: ['Keep adapters outside core.'],
+        skillsRef: [],
+        channelPolicies: {},
+        brainScaffoldMode: 'role_default',
+        runtimeAdapter: 'openclaw',
+        runtimeMetadata: {},
+      }],
+    },
+    index: null,
+    timeline: null,
+    recaps: [],
+    knowledge: [],
+    citizens: [],
+    tasks: [],
+    todos: [],
+  },
+  loading: false,
+  detailLoading: false,
+  error: null,
+  fetchProjects: vi.fn(async () => 'live'),
+  createProject: vi.fn(async () => ({ id: 'proj-alpha' })),
+  selectProject: vi.fn(async () => undefined),
+  clearError: vi.fn(),
+};
+
+vi.mock('@/stores/projectStore', () => ({
+  useProjectStore: (selector?: (state: typeof projectStoreState) => unknown) =>
+    selector ? selector(projectStoreState) : projectStoreState,
+}));
+
+vi.mock('@/stores/todoStore', () => ({
+  useTodoStore: (selector?: (state: {
+    updateTodo: () => Promise<void>;
+    deleteTodo: () => Promise<void>;
+    promoteTodo: () => Promise<void>;
+  }) => unknown) => {
+    const state = {
+      updateTodo: vi.fn(async () => undefined),
+      deleteTodo: vi.fn(async () => undefined),
+      promoteTodo: vi.fn(async () => undefined),
+    };
+    return selector ? selector(state) : state;
+  },
 }));
 
 vi.mock('@/stores/themeStore', () => ({
@@ -149,5 +275,24 @@ describe('dashboard English UI', () => {
     expect(screen.getByRole('heading', { name: 'Connections, cadence, and appearance' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Language preference' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'English' })).toBeInTheDocument();
+  });
+
+  it('renders English project detail IA while keeping operator tools collapsed by default', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha']}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Project overview' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Project surfaces' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Current work' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Operator tools' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show operator tools' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
+    expect(screen.getByText('In progress')).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 });

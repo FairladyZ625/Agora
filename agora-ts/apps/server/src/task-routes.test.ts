@@ -32,6 +32,12 @@ function makeBrainPackDir() {
   return dir;
 }
 
+function makeProjectStateDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-project-state-'));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   while (tempPaths.length > 0) {
@@ -158,6 +164,55 @@ describe('task routes', () => {
           { id: 'build' },
         ],
       },
+    });
+  });
+
+  it('rejects create-task authority targets outside the active project membership', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-rest-membership',
+      name: 'REST Membership',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REST-AUTH',
+      projectService,
+    });
+    const app = buildApp({ taskService, projectService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      payload: {
+        title: 'REST authority reject',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'normal',
+        project_id: 'proj-rest-membership',
+        authority: {
+          owner_account_id: 1,
+          assignee_account_id: 3,
+          controller_agent_ref: 'workspace-orchestrator',
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: expect.stringContaining('task authority account 3 is not an active project member'),
     });
   });
 
@@ -529,6 +584,14 @@ describe('task routes', () => {
     expect(reviewResponse.json()).toMatchObject({
       project_id: 'proj-nomos-activate',
       can_activate: true,
+      active_provenance: expect.objectContaining({
+        kind: 'builtin',
+        trust_state: 'trusted',
+      }),
+      draft_provenance: expect.objectContaining({
+        kind: 'local_authoring',
+        trust_state: 'trusted',
+      }),
       draft: expect.objectContaining({
         pack_id: 'project/proj-nomos-activate',
       }),
@@ -546,8 +609,150 @@ describe('task routes', () => {
       project_id: 'proj-nomos-activate',
       nomos_id: 'project/proj-nomos-activate',
       activation_status: 'active_project',
-      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos'),
+      active_root: join(agoraHomeDir, 'projects', 'proj-nomos-activate', 'nomos', 'project-nomos-active'),
     });
+  });
+
+  it('requires a dashboard session to activate a review-required project nomos draft through the api', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const sourceAgoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-source-home-'));
+    const targetAgoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-target-home-'));
+    tempPaths.push(sourceAgoraHomeDir);
+    tempPaths.push(targetAgoraHomeDir);
+    const previousAgoraHomeDir = process.env.AGORA_HOME_DIR;
+
+    process.env.AGORA_HOME_DIR = sourceAgoraHomeDir;
+    const sourceRepoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-source-repo-'));
+    tempPaths.push(sourceRepoParent);
+    const sourceRepoRoot = join(sourceRepoParent, 'repo-source');
+    const sourceProjectService = new ProjectService(db);
+    const sourceTaskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-REVIEWREQ-SOURCE',
+      projectService: sourceProjectService,
+    });
+    const sourceApp = buildApp({
+      db,
+      projectService: sourceProjectService,
+      taskService: sourceTaskService,
+    });
+    await sourceApp.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-reviewreq-source',
+        name: 'Project Review Required Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    await sourceApp.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-source/nomos/publish',
+      payload: {
+        target: 'draft',
+        actor: 'archon',
+        note: 'review required source',
+      },
+    });
+    const bundleRoot = join(sourceAgoraHomeDir, 'review-required-share-bundle');
+    await sourceApp.inject({
+      method: 'POST',
+      url: '/api/nomos/bundles/export',
+      payload: {
+        pack_id: 'project/proj-nomos-reviewreq-source',
+        output_dir: bundleRoot,
+      },
+    });
+    writeFileSync(join(bundleRoot, 'nomos-source.json'), JSON.stringify({
+      schema_version: 1,
+      authority_kind: 'curated_team',
+      authority_id: 'team-curation',
+      authority_label: 'Team Curated Source',
+    }, null, 2), 'utf8');
+
+    process.env.AGORA_HOME_DIR = targetAgoraHomeDir;
+    const targetRepoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-target-repo-'));
+    tempPaths.push(targetRepoParent);
+    const targetRepoRoot = join(targetRepoParent, 'repo-target');
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-SERVER-NOMOS-REVIEWREQ-TARGET',
+      projectService,
+    });
+    const humanAccountService = new HumanAccountService(db);
+    humanAccountService.bootstrapAdmin({ username: 'lizeyu', password: 'secret-pass' });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+      humanAccountService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-nomos-reviewreq-target',
+        name: 'Project Review Required Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-target/nomos/install-from-source',
+      payload: {
+        source_dir: bundleRoot,
+      },
+    });
+
+    const denied = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-target/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: { username: 'lizeyu', password: 'secret-pass' },
+    });
+    const cookie = login.headers['set-cookie'];
+    const sessionCookie = Array.isArray(cookie) ? cookie[0] : String(cookie);
+    const allowed = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-nomos-reviewreq-target/nomos/activate',
+      headers: { cookie: sessionCookie },
+      payload: {
+        actor: 'spoofed-actor',
+      },
+    });
+
+    expect(denied.statusCode).toBe(400);
+    expect(denied.body).toContain('human review is required');
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toMatchObject({
+      project_id: 'proj-nomos-reviewreq-target',
+      activation_status: 'active_project',
+      activated_by: 'lizeyu',
+    });
+
+    if (previousAgoraHomeDir === undefined) {
+      delete process.env.AGORA_HOME_DIR;
+    } else {
+      process.env.AGORA_HOME_DIR = previousAgoraHomeDir;
+    }
   });
 
   it('reuses persisted repo_path and active Nomos bootstrap prompt when rerunning Nomos bootstrap through the api', async () => {
@@ -601,7 +806,7 @@ describe('task routes', () => {
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain('Bootstrap mode: `existing_repo`');
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(repoRoot);
     expect(taskService.getTask('OC-SERVER-NOMOS-RERUN-2')?.description).toContain(
-      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(agoraHomeDir, 'projects', 'proj-nomos-rerun', 'nomos', 'project-nomos-active', 'prompts', 'bootstrap', 'interview.md'),
     );
   });
 
@@ -676,6 +881,10 @@ describe('task routes', () => {
         nomos_id: 'project/proj-nomos-rest',
         activation_status: 'active_project',
       }),
+      nomos_provenance: {
+        draft: null,
+        active: null,
+      },
       nomos_validation: expect.objectContaining({
         draft: expect.objectContaining({
           target: 'draft',
@@ -745,6 +954,11 @@ describe('task routes', () => {
       project_id: 'proj-nomos-validate',
       target: 'draft',
       valid: true,
+      provenance: expect.objectContaining({
+        kind: 'local_authoring',
+        trust_state: 'trusted',
+        activation_eligibility: 'allowed',
+      }),
       pack: expect.objectContaining({
         pack_id: 'project/proj-nomos-validate',
       }),
@@ -765,8 +979,12 @@ describe('task routes', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const app = buildApp({
       db,
@@ -838,15 +1056,37 @@ describe('task routes', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-workbench',
       name: 'Project Workbench',
       summary: 'dashboard surface',
       owner: 'archon',
+      metadata: {
+        repo_path: '/repo/proj-workbench',
+        agora: {
+          nomos: {
+            id: 'agora/default',
+          },
+        },
+      },
     });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+      taskIdGenerator: (() => {
+        let index = 0;
+        return () => `OC-WB-${++index}`;
+      })(),
+    });
+    const taskRepository = new TaskRepository(db);
+    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
     projectService.upsertKnowledgeEntry({
       project_id: 'proj-workbench',
       kind: 'decision',
@@ -863,17 +1103,48 @@ describe('task routes', () => {
       state: 'done',
       current_stage: 'ship',
       controller_ref: 'opus',
-      workspace_path: join(brainPackRoot, 'projects', 'proj-workbench', 'tasks', 'OC-WB-1'),
+      workspace_path: join(projectStateDir, 'proj-workbench', 'tasks', 'OC-WB-1'),
       completed_by: 'archon',
       completed_at: '2026-03-16T12:00:00.000Z',
       summary_lines: ['Task recap line'],
     });
-    mkdirSync(join(brainPackRoot, 'projects', 'proj-workbench', 'recaps'), { recursive: true });
+    mkdirSync(join(projectStateDir, 'proj-workbench', 'recaps'), { recursive: true });
     writeFileSync(
-      join(brainPackRoot, 'projects', 'proj-workbench', 'recaps', 'OC-WB-1.md'),
+      join(projectStateDir, 'proj-workbench', 'recaps', 'OC-WB-1.md'),
       '# Workbench recap\n\nTask recap line\n',
       'utf8',
     );
+    const activeTask = taskService.createTask({
+      title: 'Implement workbench bundle',
+      type: 'quick',
+      creator: 'archon',
+      description: 'Active work item',
+      priority: 'high',
+      project_id: 'proj-workbench',
+    });
+    const reviewTask = taskService.createTask({
+      title: 'Review workbench IA',
+      type: 'quick',
+      creator: 'archon',
+      description: 'Review gate item',
+      priority: 'normal',
+      project_id: 'proj-workbench',
+    });
+    taskRepository.updateTask(reviewTask.id, reviewTask.version, {
+      state: 'gate_waiting',
+    });
+    const pendingTodo = dashboardQueries.createTodo({
+      text: 'Review workbench mapping',
+      project_id: 'proj-workbench',
+      tags: ['dashboard'],
+    });
+    const doneTodo = dashboardQueries.createTodo({
+      text: 'Archive stale controls',
+      project_id: 'proj-workbench',
+    });
+    dashboardQueries.updateTodo(doneTodo.id, {
+      status: 'done',
+    });
     const rolePackService = new RolePackService({ db });
     rolePackService.saveRoleDefinition({
       id: 'architect',
@@ -917,13 +1188,18 @@ describe('task routes', () => {
     const projectBrainService = new ProjectBrainService({
       projectService,
       citizenService,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const app = buildApp({
       db,
+      taskService,
       projectService,
       projectBrainService,
       citizenService,
+      dashboardQueryService: dashboardQueries,
     });
 
     const response = await app.inject({
@@ -937,30 +1213,72 @@ describe('task routes', () => {
         id: 'proj-workbench',
         name: 'Project Workbench',
       },
-      index: expect.objectContaining({
-        kind: 'index',
-      }),
-      timeline: expect.objectContaining({
-        kind: 'timeline',
-        slug: 'timeline',
-      }),
-      recaps: [
-        expect.objectContaining({
-          task_id: 'OC-WB-1',
-          content: expect.stringContaining('Task recap line'),
+      overview: {
+        status: 'active',
+        owner: 'archon',
+        counts: {
+          knowledge: 1,
+          citizens: 1,
+          recaps: 1,
+          tasks_total: 2,
+          active_tasks: 2,
+          review_tasks: 1,
+          todos_total: 2,
+          pending_todos: 1,
+        },
+      },
+      surfaces: {
+        index: expect.objectContaining({
+          kind: 'index',
         }),
-      ],
-      knowledge: [
-        expect.objectContaining({
-          kind: 'decision',
-          slug: 'runtime-boundary',
+        timeline: expect.objectContaining({
+          kind: 'timeline',
+          slug: 'timeline',
         }),
-      ],
-      citizens: [
-        expect.objectContaining({
-          citizen_id: 'citizen-alpha',
-        }),
-      ],
+      },
+      work: {
+        tasks: [
+          expect.objectContaining({
+            id: reviewTask.id,
+            state: 'gate_waiting',
+          }),
+          expect.objectContaining({
+            id: activeTask.id,
+            state: 'active',
+          }),
+        ],
+        todos: [
+          expect.objectContaining({
+            id: doneTodo.id,
+            status: 'done',
+          }),
+          expect.objectContaining({
+            id: pendingTodo.id,
+            status: 'pending',
+          }),
+        ],
+        recaps: [
+          expect.objectContaining({
+            task_id: 'OC-WB-1',
+            content: expect.stringContaining('Task recap line'),
+          }),
+        ],
+        knowledge: [
+          expect.objectContaining({
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          }),
+        ],
+      },
+      operator: {
+        nomos_id: 'agora/default',
+        repo_path: '/repo/proj-workbench',
+        citizens: [
+          expect.objectContaining({
+            citizen_id: 'citizen-alpha',
+          }),
+        ],
+      },
     });
   });
 
@@ -1293,6 +1611,142 @@ describe('task routes', () => {
     expect(existsSync(join(directPackDir, 'profile.toml'))).toBe(true);
   });
 
+  it('registers a source descriptor, syncs it, and installs it by source id through the api', async () => {
+    process.env.AGORA_HOME_DIR = mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-source-home-'));
+    tempPaths.push(process.env.AGORA_HOME_DIR);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackRoot = makeBrainPackDir();
+    const sourceRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-source-')), 'repo');
+    const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-target-')), 'repo');
+    const directPackDir = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-registered-export-')), 'direct-pack');
+    tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
+    tempPaths.push(directPackDir.replace(/\/direct-pack$/, ''));
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const app = buildApp({
+      taskService,
+      projectService,
+    });
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-registered-source',
+        name: 'Registered Source',
+        repo_path: sourceRepoRoot,
+        initialize_repo: true,
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-registered-target',
+        name: 'Registered Target',
+        repo_path: targetRepoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    const exportResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-registered-source/nomos/export',
+      payload: {
+        output_dir: directPackDir,
+      },
+    });
+    const registerResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/sources/register',
+      payload: {
+        source_id: 'team/server-registered-source',
+        source_dir: directPackDir,
+      },
+    });
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/sources',
+    });
+    const showResponse = await app.inject({
+      method: 'GET',
+      url: '/api/nomos/sources/team/server-registered-source',
+    });
+    const syncResponse = await app.inject({
+      method: 'POST',
+      url: '/api/nomos/sources/sync',
+      payload: {
+        source_id: 'team/server-registered-source',
+      },
+    });
+    const installResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-registered-target/nomos/install-registered-source',
+      payload: {
+        source_id: 'team/server-registered-source',
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(registerResponse.statusCode).toBe(200);
+    expect(registerResponse.json()).toMatchObject({
+      source_id: 'team/server-registered-source',
+      source_kind: 'pack_root',
+      source_dir: directPackDir,
+      last_sync_status: 'never',
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      total: 1,
+      entries: [
+        expect.objectContaining({
+          source_id: 'team/server-registered-source',
+        }),
+      ],
+    });
+    expect(showResponse.statusCode).toBe(200);
+    expect(showResponse.json()).toMatchObject({
+      source_id: 'team/server-registered-source',
+      source_dir: directPackDir,
+    });
+    expect(syncResponse.statusCode).toBe(200);
+    expect(syncResponse.json()).toMatchObject({
+      source: expect.objectContaining({
+        source_id: 'team/server-registered-source',
+        last_sync_status: 'ok',
+        last_catalog_pack_id: 'project/proj-registered-source',
+      }),
+      imported: expect.objectContaining({
+        source_kind: 'pack_root',
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-registered-source',
+        }),
+      }),
+    });
+    expect(installResponse.statusCode).toBe(200);
+    expect(installResponse.json()).toMatchObject({
+      project_id: 'proj-registered-target',
+      source: expect.objectContaining({
+        source_id: 'team/server-registered-source',
+      }),
+      pack: expect.objectContaining({
+        pack_id: 'project/proj-registered-source',
+      }),
+      imported: expect.objectContaining({
+        entry: expect.objectContaining({
+          pack_id: 'project/proj-registered-source',
+        }),
+      }),
+    });
+  });
+
   it('creates a task bound to a project through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1547,6 +2001,9 @@ describe('task routes', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      creator: 'alice',
+    });
     expect(provisioningPort.provisioned[0]?.participant_refs).toEqual(
       expect.arrayContaining(['opus', 'discord-user-123']),
     );
@@ -1619,6 +2076,9 @@ describe('task routes', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      creator: 'alice',
+    });
     expect(provisioningPort.provisioned[0]?.participant_refs).toEqual(
       expect.arrayContaining(['opus', 'discord-user-123']),
     );
@@ -2364,15 +2824,7 @@ describe('task routes', () => {
     });
     const jobId = archiveJob.json()[0].id;
     expect(archiveJob.json()[0]).toMatchObject({
-      status: 'review_pending',
-    });
-    const approved = await app.inject({
-      method: 'POST',
-      url: `/api/archive/jobs/${jobId}/approve`,
-      payload: {
-        approver_id: 'lizeyu',
-        comment: 'closeout reviewed',
-      },
+      status: 'pending',
     });
     const synced = await app.inject({
       method: 'POST',
@@ -2380,18 +2832,6 @@ describe('task routes', () => {
       payload: { status: 'synced', commit_hash: 'route-sync' },
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(approved.statusCode).toBe(200);
-    expect(approved.json()).toMatchObject({
-      id: jobId,
-      status: 'pending',
-      payload: expect.objectContaining({
-        closeout_review: expect.objectContaining({
-          state: 'approved',
-          approver_id: 'lizeyu',
-        }),
-      }),
-    });
     expect(synced.statusCode).toBe(200);
     expect(provisioningPort.archived).toEqual(
       expect.arrayContaining([

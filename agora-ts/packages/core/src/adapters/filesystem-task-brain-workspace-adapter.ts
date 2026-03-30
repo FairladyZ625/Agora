@@ -15,17 +15,16 @@ import { renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 export interface FilesystemTaskBrainWorkspaceAdapterOptions {
   brainPackRoot: string;
+  projectStateRootResolver?: ((projectId: string) => string | null) | undefined;
 }
 
 export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePort {
   constructor(private readonly options: FilesystemTaskBrainWorkspaceAdapterOptions) {}
 
   createWorkspace(input: TaskBrainWorkspaceRequest): TaskBrainWorkspaceResult {
-    const workspacePath = resolve(
-      this.options.brainPackRoot,
-      ...(input.project_id ? ['projects', input.project_id, 'tasks'] : ['tasks']),
-      input.task_id,
-    );
+    const workspacePath = input.project_id
+      ? resolve(this.resolveProjectTaskRoot(input.project_id), input.task_id)
+      : resolve(this.options.brainPackRoot, 'tasks', input.task_id);
     mkdirSync(workspacePath, { recursive: true });
     mkdirSync(join(workspacePath, '04-context'), { recursive: true });
     mkdirSync(join(workspacePath, '05-agents'), { recursive: true });
@@ -33,7 +32,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
 
     const binding = {
-      brain_pack_ref: 'agora-ai-brain',
+      brain_pack_ref: input.project_id ? 'agora-project-state' : 'agora-ai-brain',
       brain_task_id: input.task_id,
       workspace_path: workspacePath,
       metadata: {
@@ -63,12 +62,6 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     const taskRecapPath = join(binding.workspace_path, '07-outputs', 'task-close-recap.md');
     const recapBody = renderTaskCloseRecap(input);
     writeFileSync(taskRecapPath, recapBody, 'utf8');
-
-    if (input.project_id) {
-      const projectRecapDir = resolve(this.options.brainPackRoot, 'projects', input.project_id, 'recaps');
-      mkdirSync(projectRecapDir, { recursive: true });
-      writeFileSync(join(projectRecapDir, `${input.task_id}.md`), recapBody, 'utf8');
-    }
   }
 
   writeTaskHarvestDraft(binding: TaskBrainWorkspaceBindingRef, input: TaskBrainHarvestDraftRequest): void {
@@ -129,6 +122,15 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
         writeFileSync(join(agentDir, '02-outputs.md'), '', 'utf8');
       }
     }
+  }
+
+  private resolveProjectRoot(projectId: string) {
+    return this.options.projectStateRootResolver?.(projectId)
+      ?? resolve(this.options.brainPackRoot, 'project-index', projectId);
+  }
+
+  private resolveProjectTaskRoot(projectId: string) {
+    return join(this.resolveProjectRoot(projectId), 'tasks');
   }
 }
 

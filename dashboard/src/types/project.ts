@@ -10,6 +10,26 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
+export interface ProjectMembership {
+  id: string;
+  projectId: string;
+  accountId: number;
+  role: 'admin' | 'member';
+  status: 'active' | 'removed';
+  addedByAccountId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceBootstrapStatus {
+  runtimeReady: boolean;
+  runtimeReadinessReason: string | null;
+  bootstrapTaskId: string | null;
+  bootstrapTaskTitle: string | null;
+  bootstrapTaskState: string | null;
+  bootstrapCompleted: boolean;
+}
+
 export interface ProjectNomosState {
   nomosId: string;
   activationStatus: 'active_builtin' | 'active_project';
@@ -156,9 +176,49 @@ export interface ProjectTodoSummary {
   projectId: string | null;
 }
 
+export interface ProjectWorkbenchStats {
+  knowledgeCount: number;
+  citizenCount: number;
+  recapCount: number;
+  taskCount: number;
+  activeTaskCount: number;
+  reviewTaskCount: number;
+  todoCount: number;
+  pendingTodoCount: number;
+}
+
+export interface ProjectWorkbenchOverview {
+  status: string;
+  owner: string | null;
+  updatedAt: string;
+  stats: ProjectWorkbenchStats;
+}
+
+export interface ProjectWorkbenchSurfaces {
+  index: ProjectIndexDoc | null;
+  timeline: ProjectTimelineDoc | null;
+}
+
+export interface ProjectWorkbenchWork {
+  tasks: ProjectTaskSummary[];
+  todos: ProjectTodoSummary[];
+  recaps: ProjectRecap[];
+  knowledge: ProjectKnowledgeDoc[];
+}
+
+export interface ProjectWorkbenchOperator {
+  nomosId: string | null;
+  repoPath: string | null;
+  citizens: ProjectCitizen[];
+}
+
 export interface ProjectWorkbench {
   project: ProjectSummary;
   nomos: ProjectNomosState | null;
+  overview: ProjectWorkbenchOverview;
+  surfaces: ProjectWorkbenchSurfaces;
+  work: ProjectWorkbenchWork;
+  operator: ProjectWorkbenchOperator;
   index: ProjectIndexDoc | null;
   timeline: ProjectTimelineDoc | null;
   recaps: ProjectRecap[];

@@ -19,6 +19,7 @@ interface ArchiveStore {
   fetchJobs: () => Promise<'live' | 'error'>;
   selectJob: (id: number | null) => Promise<void>;
   confirmJob: (id: number) => Promise<void>;
+  completeJob: (id: number, commitHash?: string) => Promise<void>;
   retryJob: (id: number, reason?: string) => Promise<void>;
   setFilters: (filters: Partial<ArchiveFilters>) => void;
   clearError: () => void;
@@ -37,13 +38,20 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
     set({ loading: true, error: null });
     try {
       const { filters, selectedJobId } = get();
-      const status = filters.status === 'completed'
+      const requestedStatus = filters.status === 'completed'
         ? 'synced'
-        : (filters.status ?? undefined);
+        : (filters.status === 'pending' ? undefined : (filters.status ?? undefined));
       const jobs = (await api.listArchiveJobs({
-        status,
+        status: requestedStatus,
         taskId: filters.taskId.trim() || undefined,
-      })).map(mapArchiveJobDto);
+      }))
+        .map(mapArchiveJobDto)
+        .filter((job) => {
+          if (filters.status === 'pending') {
+            return ['pending', 'notified'].includes(job.status);
+          }
+          return true;
+        });
       const selectedJob = selectedJobId ? jobs.find((job) => job.id === selectedJobId) ?? get().selectedJob : get().selectedJob;
       set({ jobs, selectedJob, loading: false });
       return 'live';
@@ -80,6 +88,23 @@ export const useArchiveStore = create<ArchiveStore>()((set, get) => ({
     set({ error: null });
     try {
       const updated = mapArchiveJobDto(await api.notifyArchiveJob(id));
+      const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
+      set({
+        jobs,
+        selectedJobId: id,
+        selectedJob: get().selectedJobId === id ? updated : get().selectedJob,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : String(error) });
+    }
+  },
+
+  completeJob: async (id, commitHash = '') => {
+    set({ error: null });
+    try {
+      const updated = mapArchiveJobDto(await api.updateArchiveJobStatus(id, 'synced', {
+        ...(commitHash ? { commitHash } : {}),
+      }));
       const jobs = get().jobs.map((job) => (job.id === id ? updated : job));
       set({
         jobs,

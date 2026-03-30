@@ -95,6 +95,15 @@ export function mapTaskDto(task: ApiTaskDto): Task {
     locale: task.locale,
     state: mapTaskState(task),
     archiveStatus: task.archive_status,
+    authority: task.authority
+      ? {
+          requesterAccountId: task.authority.requester_account_id ?? null,
+          ownerAccountId: task.authority.owner_account_id ?? null,
+          assigneeAccountId: task.authority.assignee_account_id ?? null,
+          approverAccountId: task.authority.approver_account_id ?? null,
+          controllerAgentRef: task.authority.controller_agent_ref ?? null,
+        }
+      : null,
     controllerRef: task.controller_ref ?? null,
     current_stage: task.current_stage,
     teamLabel: formatTeamLabel(task),

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { DashboardQueryService, ProjectService, TaskService } from '@agora-ts/core';
+import { DashboardQueryService, HumanAccountService, ProjectService, TaskService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -228,6 +228,37 @@ describe('agora-ts server bootstrap', () => {
 
     expect(ready.statusCode).toBe(200);
     expect(ready.json()).toEqual({ status: 'ready' });
+  });
+
+  it('initializes and serves workspace bootstrap status when a bootstrap service is configured', async () => {
+    const initialize = vi.fn(() => null);
+    const getStatus = vi.fn(() => ({
+      runtime_ready: true,
+      runtime_readiness_reason: null,
+      bootstrap_task_id: 'OC-WORKSPACE-BOOTSTRAP',
+      bootstrap_task_title: 'Workspace Bootstrap Interview',
+      bootstrap_task_state: 'active',
+      bootstrap_completed: false,
+    }));
+    const app = buildApp({
+      workspaceBootstrapService: {
+        initialize,
+        getStatus,
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/bootstrap',
+    });
+
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      runtime_ready: true,
+      bootstrap_task_id: 'OC-WORKSPACE-BOOTSTRAP',
+      bootstrap_completed: false,
+    });
   });
 
   it('does not expose a metrics endpoint unless enabled', async () => {
@@ -465,6 +496,109 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('accepts project admins and members on POST /api/projects and exposes project membership routes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccounts = new HumanAccountService(db);
+    humanAccounts.bootstrapAdmin({
+      username: 'workspace-admin',
+      password: 'secret-pass',
+    });
+    humanAccounts.createUser({
+      username: 'alice',
+      password: 'secret-pass',
+      role: 'member',
+    });
+    humanAccounts.createUser({
+      username: 'bob',
+      password: 'secret-pass',
+      role: 'member',
+    });
+    const projectService = new ProjectService(db);
+    const app = buildApp({
+      db,
+      projectService,
+      humanAccountService: humanAccounts,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'workspace-admin',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const sessionCookie = Array.isArray(cookie) ? cookie[0] : String(cookie);
+
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      headers: {
+        cookie: sessionCookie,
+      },
+      payload: {
+        id: 'proj-members-rest',
+        name: 'Project Members REST',
+        admins: [{ account_id: 1 }],
+        members: [{ account_id: 2, role: 'member' }],
+        default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+      },
+    });
+
+    const listMembers = await app.inject({
+      method: 'GET',
+      url: '/api/projects/proj-members-rest/members',
+      headers: {
+        cookie: sessionCookie,
+      },
+    });
+
+    const addMember = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-members-rest/members',
+      headers: {
+        cookie: sessionCookie,
+      },
+      payload: {
+        account_id: 3,
+        role: 'member',
+      },
+    });
+
+    const removeMember = await app.inject({
+      method: 'DELETE',
+      url: '/api/projects/proj-members-rest/members/3',
+      headers: {
+        cookie: sessionCookie,
+      },
+    });
+
+    expect(create.statusCode).toBe(200);
+    expect(listMembers.statusCode).toBe(200);
+    expect(listMembers.json()).toMatchObject({
+      memberships: [
+        expect.objectContaining({ account_id: 1, role: 'admin', status: 'active' }),
+        expect.objectContaining({ account_id: 2, role: 'member', status: 'active' }),
+      ],
+    });
+    expect(addMember.statusCode).toBe(200);
+    expect(addMember.json()).toMatchObject({
+      membership: expect.objectContaining({ account_id: 3, role: 'member', status: 'active' }),
+    });
+    expect(removeMember.statusCode).toBe(200);
+    expect(removeMember.json()).toMatchObject({
+      membership: expect.objectContaining({ account_id: 3, status: 'removed' }),
+    });
+  });
+
   it('allows POST operations from a dashboard session when bearer auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -671,6 +805,43 @@ describe('agora-ts server bootstrap', () => {
       { route: 'diagnose', callerId: 'lizeyu' },
       { route: 'restart', callerId: 'lizeyu' },
     ]);
+  });
+
+  it('creates an unbound project with a git-managed canonical project state root', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-project-root-'));
+    tempPaths.push(agoraHomeDir);
+    process.env.AGORA_HOME_DIR = agoraHomeDir;
+    const projectService = new ProjectService(db);
+    const taskService = new TaskService(db, { templatesDir, projectService });
+    const app = buildApp({
+      db,
+      projectService,
+      taskService,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-canonical-root',
+        name: 'Canonical Root Project',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'proj-canonical-root',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: join(agoraHomeDir, 'projects', 'proj-canonical-root'),
+          },
+        },
+      },
+    });
+    expect(existsSync(join(agoraHomeDir, 'projects', 'proj-canonical-root', '.git'))).toBe(true);
   });
 
   it('returns 503 when task service routes are unconfigured', async () => {

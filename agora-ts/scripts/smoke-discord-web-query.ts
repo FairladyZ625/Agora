@@ -4,13 +4,13 @@ import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 export const DEFAULT_COMMANDS = [
-  "/project list active",
-  "/project show {{firstActiveProjectId}}",
-  "/task list active",
-  "/task status {{firstActiveTaskId}}",
-  "/task",
-  "/project",
- ] as const;
+  { command: "/project list active" },
+  { command: "/project show {{firstActiveProjectId}}" },
+  { command: "/task list active" },
+  { command: "/task status {{firstActiveTaskId}}" },
+  { command: "/task" },
+  { command: "/project", responder: "Codex Main" },
+] as const;
 
 export const DEFAULT_SETTLE_TIMEOUT_MS = 10_000;
 export const DEFAULT_MIN_QUIET_MS = 1_500;
@@ -30,7 +30,9 @@ export function buildDiscordWebQueryArgs(passThroughArgs: string[]) {
     String(DEFAULT_SETTLE_TIMEOUT_MS),
     "--min-quiet-ms",
     String(DEFAULT_MIN_QUIET_MS),
-    ...DEFAULT_COMMANDS.flatMap((command) => ["--command", command]),
+    ...DEFAULT_COMMANDS.flatMap((command) => command.responder
+      ? ["--command-responder", command.responder, "--command", command.command]
+      : ["--command", command.command]),
     ...passThroughArgs,
   ];
 }

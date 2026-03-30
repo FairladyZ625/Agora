@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { useReviewsPageCopy } from '@/lib/dashboardCopy';
 import { useFeedbackStore } from '@/stores/feedbackStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { WorkbenchFilterPopover } from '@/components/ui/WorkbenchFilterPopover';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
@@ -13,11 +14,24 @@ import { toggleValue } from '@/lib/utils';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
-type QueueScope = 'all' | 'high';
+type QueueScope = 'all' | 'high' | 'assigned';
+
+function isReviewActionable(
+  gateType: string | null | undefined,
+  approverAccountId: number | null | undefined,
+  sessionAccountId: number | null,
+) {
+  if (gateType !== 'approval') {
+    return true;
+  }
+
+  return approverAccountId == null || approverAccountId === sessionAccountId;
+}
 
 export function ReviewsPage() {
   const { t } = useTranslation();
   const reviewsPageCopy = useReviewsPageCopy();
+  const sessionAccountId = useSessionStore((state) => state.accountId);
   const tasks = useTaskStore((state) => state.tasks);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
   const resolveReview = useTaskStore((state) => state.resolveReview);
@@ -30,13 +44,17 @@ export function ReviewsPage() {
   const [searchParams] = useSearchParams();
   const isMobile = useMediaQuery('(max-width: 767px)');
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get('selected'));
-  const [scope, setScope] = useState<QueueScope>('all');
+  const [scope, setScope] = useState<QueueScope>(() => {
+    const requestedScope = searchParams.get('scope');
+    return requestedScope === 'assigned' || requestedScope === 'high' ? requestedScope : 'all';
+  });
   const [note, setNote] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
   const [gateFilter, setGateFilter] = useState<string[]>([]);
   const [creatorFilter, setCreatorFilter] = useState<string[]>([]);
   const queueScopes: { value: QueueScope; label: string }[] = [
+    { value: 'assigned', label: reviewsPageCopy.queueScopes.assigned },
     { value: 'high', label: reviewsPageCopy.queueScopes.high },
   ];
 
@@ -59,10 +77,13 @@ export function ReviewsPage() {
           .filter(Boolean)
           .join(' '),
         state: task.state,
+        gateType: task.gateType ?? null,
+        approverAccountId: task.authority?.approverAccountId ?? null,
+        actionable: isReviewActionable(task.gateType, task.authority?.approverAccountId, sessionAccountId),
       }));
 
     return liveQueue;
-  }, [reviewsPageCopy, t, tasks]);
+  }, [reviewsPageCopy, sessionAccountId, t, tasks]);
 
   const availableGates = useMemo(() => [...new Set(queue.map((item) => item.gate))], [queue]);
   const availableCreators = useMemo(() => [...new Set(queue.map((item) => item.creator))], [queue]);
@@ -71,7 +92,8 @@ export function ReviewsPage() {
     return queue.filter((item) => {
       const matchesScope =
         scope === 'all' ||
-        (scope === 'high' && item.priority === 'high');
+        (scope === 'high' && item.priority === 'high') ||
+        (scope === 'assigned' && item.actionable);
       const matchesPriority = priorityFilter.length === 0 || priorityFilter.includes(item.priority);
       const matchesGate = gateFilter.length === 0 || gateFilter.includes(item.gate);
       const matchesCreator = creatorFilter.length === 0 || creatorFilter.includes(item.creator);
@@ -100,6 +122,13 @@ export function ReviewsPage() {
             .filter(Boolean)
             .join(' '),
           state: selectedTaskStatus.task.state,
+          gateType: selectedTaskStatus.task.gateType ?? null,
+          approverAccountId: selectedTaskStatus.task.authority?.approverAccountId ?? null,
+          actionable: isReviewActionable(
+            selectedTaskStatus.task.gateType,
+            selectedTaskStatus.task.authority?.approverAccountId,
+            sessionAccountId,
+          ),
         }
       : null) ??
     filteredQueue.find((item) => item.id === currentSelectedId) ??
@@ -110,7 +139,7 @@ export function ReviewsPage() {
       ? selectedTaskStatus
       : null;
   const activeFilterCount = priorityFilter.length + gateFilter.length + creatorFilter.length;
-  const canResolveSelected = selected?.state === 'gate_waiting';
+  const canResolveSelected = selected?.state === 'gate_waiting' && selected.actionable;
 
   const handleDecision = async (decision: 'approve' | 'reject') => {
     if (!selected) return;
@@ -360,6 +389,10 @@ export function ReviewsPage() {
                     placeholder={reviewsPageCopy.notePlaceholder}
                   />
                 </div>
+
+                {selected.state === 'gate_waiting' && !selected.actionable ? (
+                  <div className="inline-alert inline-alert--warning">{reviewsPageCopy.readOnlyNotice}</div>
+                ) : null}
 
                 {canResolveSelected ? (
                   <div className="review-inspector__section">

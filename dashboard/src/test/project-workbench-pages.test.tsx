@@ -4,9 +4,32 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@/lib/i18n';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
+import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 
 const fetchProjects = vi.fn(async () => 'live');
 const fetchProjectDetail = vi.fn(async () => 'live');
+const fetchProjectMembers = vi.fn(async () => ([
+  {
+    id: 'pm-1',
+    projectId: 'proj-alpha',
+    accountId: 11,
+    role: 'admin' as const,
+    status: 'active' as const,
+    addedByAccountId: null,
+    createdAt: '2026-03-24T00:00:00.000Z',
+    updatedAt: '2026-03-24T00:00:00.000Z',
+  },
+  {
+    id: 'pm-2',
+    projectId: 'proj-alpha',
+    accountId: 12,
+    role: 'member' as const,
+    status: 'active' as const,
+    addedByAccountId: 11,
+    createdAt: '2026-03-24T00:00:00.000Z',
+    updatedAt: '2026-03-24T00:00:00.000Z',
+  },
+]));
 const { installProjectNomos } = vi.hoisted(() => ({
   installProjectNomos: vi.fn(async () => ({
     project_id: 'proj-alpha',
@@ -278,6 +301,192 @@ const { importNomosSource, installProjectNomosFromSource } = vi.hoisted(() => ({
     },
   })),
 }));
+const {
+  registerNomosSource,
+  listRegisteredNomosSources,
+  showRegisteredNomosSource,
+  syncRegisteredNomosSource,
+  installProjectNomosFromRegisteredSource,
+} = vi.hoisted(() => ({
+  registerNomosSource: vi.fn(async () => ({
+    schema_version: 1,
+    source_id: 'shared/proj-alpha',
+    source_kind: 'pack_root',
+    source_dir: '/tmp/nomos-source',
+    registered_at: '2026-03-25T12:10:00.000Z',
+    last_synced_at: null,
+    last_sync_status: 'never',
+    last_sync_error: null,
+    last_catalog_pack_id: null,
+    last_imported_source_kind: null,
+    last_manifest_path: null,
+    entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+  })),
+  listRegisteredNomosSources: vi.fn(async () => ({
+    registry_root: '/Users/example/.agora/nomos/sources',
+    total: 1,
+    entries: [{
+      schema_version: 1,
+      source_id: 'shared/proj-alpha',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/nomos-source',
+      registered_at: '2026-03-25T12:10:00.000Z',
+      last_synced_at: '2026-03-25T12:15:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-alpha',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+    }],
+  })),
+  showRegisteredNomosSource: vi.fn(async () => ({
+    schema_version: 1,
+    source_id: 'shared/proj-alpha',
+    source_kind: 'pack_root',
+    source_dir: '/tmp/nomos-source',
+    registered_at: '2026-03-25T12:10:00.000Z',
+    last_synced_at: '2026-03-25T12:15:00.000Z',
+    last_sync_status: 'ok',
+    last_sync_error: null,
+    last_catalog_pack_id: 'project/proj-alpha',
+    last_imported_source_kind: 'pack_root',
+    last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+    entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+  })),
+  syncRegisteredNomosSource: vi.fn(async () => ({
+    source: {
+      schema_version: 1,
+      source_id: 'shared/proj-alpha',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/nomos-source',
+      registered_at: '2026-03-25T12:10:00.000Z',
+      last_synced_at: '2026-03-25T12:20:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-alpha',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+    },
+    imported: {
+      source_dir: '/tmp/nomos-source',
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: {
+        schema_version: 1,
+        pack_id: 'project/proj-alpha',
+        published_at: '2026-03-25T12:20:00.000Z',
+        source_kind: 'pack_root',
+        published_by: null,
+        published_note: null,
+        source_project_id: 'external',
+        source_target: 'draft',
+        source_activation_status: 'active_builtin',
+        source_repo_path: '/tmp/nomos-source',
+        published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+        manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+        pack: {
+          pack_id: 'project/proj-alpha',
+          name: 'Project Alpha Nomos',
+          version: '0.1.0',
+          description: 'Project draft',
+          lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+          doctor_checks: ['constitution-present'],
+          source: 'project_state_draft',
+          root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+          profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+        },
+      },
+    },
+  })),
+  installProjectNomosFromRegisteredSource: vi.fn(async () => ({
+    project_id: 'proj-alpha',
+    pack: {
+      pack_id: 'project/proj-alpha',
+      name: 'Project Alpha Nomos',
+      version: '0.1.0',
+      description: 'Project draft',
+      lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+      doctor_checks: ['constitution-present'],
+      source: 'project_state_draft',
+      root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    },
+    installed_root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+    installed_profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+    metadata: {},
+    catalog_entry: {
+      schema_version: 1,
+      pack_id: 'project/proj-alpha',
+      published_at: '2026-03-25T12:20:00.000Z',
+      source_kind: 'pack_root',
+      published_by: null,
+      published_note: null,
+      source_project_id: 'external',
+      source_target: 'draft',
+      source_activation_status: 'active_builtin',
+      source_repo_path: '/tmp/nomos-source',
+      published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+      manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      pack: {
+        pack_id: 'project/proj-alpha',
+        name: 'Project Alpha Nomos',
+        version: '0.1.0',
+        description: 'Project draft',
+        lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+        doctor_checks: ['constitution-present'],
+        source: 'project_state_draft',
+        root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+        profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      },
+    },
+    source: {
+      schema_version: 1,
+      source_id: 'shared/proj-alpha',
+      source_kind: 'pack_root',
+      source_dir: '/tmp/nomos-source',
+      registered_at: '2026-03-25T12:10:00.000Z',
+      last_synced_at: '2026-03-25T12:20:00.000Z',
+      last_sync_status: 'ok',
+      last_sync_error: null,
+      last_catalog_pack_id: 'project/proj-alpha',
+      last_imported_source_kind: 'pack_root',
+      last_manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+      entry_path: '/Users/example/.agora/nomos/sources/entries/shared/proj-alpha/source-entry.json',
+    },
+    imported: {
+      source_dir: '/tmp/nomos-source',
+      source_kind: 'pack_root',
+      manifest_path: null,
+      entry: {
+        schema_version: 1,
+        pack_id: 'project/proj-alpha',
+        published_at: '2026-03-25T12:20:00.000Z',
+        source_kind: 'pack_root',
+        published_by: null,
+        published_note: null,
+        source_project_id: 'external',
+        source_target: 'draft',
+        source_activation_status: 'active_builtin',
+        source_repo_path: '/tmp/nomos-source',
+        published_root: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha',
+        manifest_path: '/Users/example/.agora/nomos/catalog/packs/project/proj-alpha/catalog-entry.json',
+        pack: {
+          pack_id: 'project/proj-alpha',
+          name: 'Project Alpha Nomos',
+          version: '0.1.0',
+          description: 'Project draft',
+          lifecycle_modules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+          doctor_checks: ['constitution-present'],
+          source: 'project_state_draft',
+          root: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+          profile_path: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+        },
+      },
+    },
+  })),
+}));
 const { publishProjectNomosToCatalog, listPublishedNomosCatalog, showPublishedNomosCatalog, installCatalogNomosPack } = vi.hoisted(() => ({
   publishProjectNomosToCatalog: vi.fn(async () => ({
     project_id: 'proj-alpha',
@@ -407,11 +616,22 @@ const createProject = vi.fn(async () => ({
   createdAt: '2026-03-16T02:00:00.000Z',
   updatedAt: '2026-03-16T02:00:00.000Z',
 }));
+const { getWorkspaceBootstrapStatus } = vi.hoisted(() => ({
+  getWorkspaceBootstrapStatus: vi.fn(async () => ({
+    runtime_ready: false,
+    runtime_readiness_reason: 'discord_bot_binding_required',
+    bootstrap_task_id: null,
+    bootstrap_task_title: null,
+    bootstrap_task_state: null,
+    bootstrap_completed: false,
+  })),
+}));
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
   return {
     ...actual,
+    getWorkspaceBootstrapStatus,
     installProjectNomos,
     runProjectNomosDoctor,
     reviewProjectNomos,
@@ -420,8 +640,13 @@ vi.mock('@/lib/api', async () => {
     diffProjectNomos,
     exportProjectNomos,
     importNomosSource,
+    registerNomosSource,
+    listRegisteredNomosSources,
+    showRegisteredNomosSource,
+    syncRegisteredNomosSource,
     installProjectNomosPack,
     installProjectNomosFromSource,
+    installProjectNomosFromRegisteredSource,
     publishProjectNomosToCatalog,
     listPublishedNomosCatalog,
     showPublishedNomosCatalog,
@@ -447,6 +672,30 @@ const projectStoreState = {
     },
   ],
   selectedProjectId: 'proj-alpha',
+  projectMembershipsByProject: {
+    'proj-alpha': [
+      {
+        id: 'pm-1',
+        projectId: 'proj-alpha',
+        accountId: 11,
+        role: 'admin',
+        status: 'active',
+        addedByAccountId: null,
+        createdAt: '2026-03-24T00:00:00.000Z',
+        updatedAt: '2026-03-24T00:00:00.000Z',
+      },
+      {
+        id: 'pm-2',
+        projectId: 'proj-alpha',
+        accountId: 12,
+        role: 'member',
+        status: 'active',
+        addedByAccountId: 11,
+        createdAt: '2026-03-24T00:00:00.000Z',
+        updatedAt: '2026-03-24T00:00:00.000Z',
+      },
+    ],
+  },
   selectedProject: {
     project: {
       id: 'proj-alpha',
@@ -475,6 +724,40 @@ const projectStoreState = {
       activeRoot: '/Users/example/.agora/projects/proj-alpha',
       activeProfilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
       activeProfileInstalled: true,
+    },
+    overview: {
+      status: 'active',
+      owner: 'archon',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+      stats: {
+        knowledgeCount: 1,
+        citizenCount: 1,
+        recapCount: 1,
+        taskCount: 2,
+        activeTaskCount: 2,
+        reviewTaskCount: 1,
+        todoCount: 2,
+        pendingTodoCount: 1,
+      },
+    },
+    surfaces: {
+      index: {
+        kind: 'index',
+        slug: 'index',
+        title: 'Project Alpha',
+        path: '/brain/projects/proj-alpha/index.md',
+        content: '# Project Alpha',
+        updatedAt: '2026-03-16T01:00:00.000Z',
+      },
+      timeline: {
+        kind: 'timeline',
+        slug: 'timeline',
+        title: 'Project Alpha Timeline',
+        path: '/brain/projects/proj-alpha/timeline.md',
+        content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
+        sourceTaskIds: ['OC-100'],
+        updatedAt: '2026-03-16T01:30:00.000Z',
+      },
     },
     index: {
       kind: 'index',
@@ -527,6 +810,75 @@ const projectStoreState = {
         runtimeMetadata: { mode: 'preview', version: 1 },
       },
     ],
+    work: {
+      tasks: [
+        {
+          id: 'OC-100',
+          title: 'Bootstrap flow',
+          state: 'in_progress',
+          projectId: 'proj-alpha',
+        },
+        {
+          id: 'OC-101',
+          title: 'Review handoff',
+          state: 'gate_waiting',
+          projectId: 'proj-alpha',
+        },
+      ],
+      todos: [
+        {
+          id: 3,
+          text: '补 Project 入口',
+          status: 'pending',
+          projectId: 'proj-alpha',
+        },
+        {
+          id: 4,
+          text: '清理旧按钮',
+          status: 'done',
+          projectId: 'proj-alpha',
+        },
+      ],
+      recaps: [
+        {
+          taskId: 'OC-100',
+          title: 'Bootstrap recap',
+          summaryPath: '/brain/projects/proj-alpha/recaps/OC-100.md',
+          content: '# Bootstrap recap\n\nTask recap line.\n\nNext step: wire dashboard reader.',
+          updatedAt: '2026-03-16T01:00:00.000Z',
+        },
+      ],
+      knowledge: [
+        {
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/projects/proj-alpha/knowledge/decisions/runtime-boundary.md',
+          content: 'Keep runtime adapters outside core.',
+          sourceTaskIds: ['OC-100'],
+          updatedAt: '2026-03-16T01:00:00.000Z',
+        },
+      ],
+    },
+    operator: {
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      citizens: [
+        {
+          citizenId: 'citizen-alpha',
+          roleId: 'architect',
+          displayName: 'Alpha Architect',
+          status: 'active',
+          persona: 'Think in systems.',
+          boundaries: ['Keep adapters outside core.'],
+          skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
+          channelPolicies: { discord: { posting: 'human_gate' } },
+          brainScaffoldMode: 'role_default',
+          runtimeAdapter: 'openclaw',
+          runtimeMetadata: { mode: 'preview', version: 1 },
+        },
+      ],
+    },
     tasks: [
       {
         id: 'OC-100',
@@ -560,6 +912,7 @@ const projectStoreState = {
   detailLoading: false,
   error: null,
   fetchProjects,
+  fetchProjectMembers,
   createProject,
   selectProject: fetchProjectDetail,
   clearError: vi.fn(),
@@ -606,7 +959,7 @@ describe('project workbench pages', () => {
     await setLocale('en-US');
   });
 
-  it('renders the projects list page', () => {
+  it('renders the projects list page with a workspace bootstrap entry point', async () => {
     render(
       <MemoryRouter>
         <ProjectsPage />
@@ -618,6 +971,23 @@ describe('project workbench pages', () => {
     expect(screen.getByText('Nomos: agora/default')).toBeInTheDocument();
     expect(screen.getByText('Repo Bound')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Project' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Open workspace bootstrap' })).toBeInTheDocument();
+  });
+
+  it('renders the workspace bootstrap page with runtime readiness guidance', async () => {
+    render(
+      <MemoryRouter initialEntries={['/workspace/bootstrap']}>
+        <Routes>
+          <Route path="/workspace/bootstrap" element={<WorkspaceBootstrapPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Workspace bootstrap' })).toBeInTheDocument();
+    expect(screen.getByText('Runtime readiness')).toBeInTheDocument();
+    expect(screen.getByText('Discord is the default first-phase IM. Finish the bot setup before the workspace interview starts.')).toBeInTheDocument();
+    expect(screen.getByText('Create a Discord bot in the Discord developer portal.')).toBeInTheDocument();
+    expect(screen.getByText(/discord_bot_binding_required/)).toBeInTheDocument();
   });
 
   it('creates a project without exposing a manual project id input', async () => {
@@ -631,6 +1001,8 @@ describe('project workbench pages', () => {
     expect(screen.queryByText('Project ID')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Project Beta' } });
     fireEvent.change(screen.getByLabelText('Summary'), { target: { value: 'New project' } });
+    fireEvent.change(screen.getByLabelText('Project Admin Account IDs'), { target: { value: '11,12' } });
+    fireEvent.change(screen.getByLabelText('Project Member Account IDs'), { target: { value: '12,13' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Project Creation' }));
 
     await waitFor(() => {
@@ -638,6 +1010,8 @@ describe('project workbench pages', () => {
         name: 'Project Beta',
         owner: 'archon',
         summary: 'New project',
+        admins: [{ account_id: 11 }, { account_id: 12 }],
+        members: [{ account_id: 13, role: 'member' }],
       });
     });
   });
@@ -646,43 +1020,39 @@ describe('project workbench pages', () => {
     await renderProjectDetailPage();
 
     expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Nomos State' })).toBeInTheDocument();
-    expect(screen.getAllByText('/Users/example/.agora/projects/proj-alpha').length).toBeGreaterThan(0);
-    expect(screen.getByText('/repo/proj-alpha')).toBeInTheDocument();
-    expect(screen.getAllByText('Yes').length).toBeGreaterThan(0);
-    expect(screen.getByText('project-bootstrap, task-context-delivery, task-closeout')).toBeInTheDocument();
-    expect(screen.getByText('active_builtin')).toBeInTheDocument();
-    expect(screen.getByText('/Users/example/.agora/projects/proj-alpha/nomos/project-nomos')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Activate Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Validate Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Diff Draft' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Export Pack' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish To Catalog' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Import Source' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Install From Source' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Install Pack' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Project overview' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Project surfaces' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Current work' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Operator tools' })).toBeInTheDocument();
     expect(fetchProjectDetail).toHaveBeenCalledWith('proj-alpha');
+    expect(screen.getByText('Project Alpha Timeline')).toBeInTheDocument();
     expect(screen.getByText('Bootstrap recap')).toBeInTheDocument();
     expect(screen.getByText('Runtime Boundary')).toBeInTheDocument();
-    expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
     expect(screen.getAllByText('Active Tasks').length).toBeGreaterThan(0);
     expect(screen.getByText('Waiting Review')).toBeInTheDocument();
     expect(screen.getAllByText('Pending Todos').length).toBeGreaterThan(0);
+    expect(screen.getByText('In progress')).toBeInTheDocument();
+    expect(screen.getByText('Waiting review')).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
+    expect(screen.getByText('#11 · admin')).toBeInTheDocument();
+    expect(screen.getByText('#12 · member')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Bootstrap flow' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Review handoff' })).toBeInTheDocument();
     expect(screen.getByText('补 Project 入口')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Task In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create Todo In Project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open Project Brain' })).toBeInTheDocument();
-    expect(screen.getByText('Citizen Preview')).toBeInTheDocument();
-    expect(screen.getByText('Think in systems.')).toBeInTheDocument();
-    expect(screen.getByText('openclaw')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show operator tools' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Review Draft' })).not.toBeInTheDocument();
+    expect(screen.queryByText('/repo/proj-alpha')).not.toBeInTheDocument();
   });
 
   it('runs project nomos management actions', async () => {
     await renderProjectDetailPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
+    expect(screen.getByText('Alpha Architect')).toBeInTheDocument();
+    expect(screen.getByText('Think in systems.')).toBeInTheDocument();
+    expect(screen.getByText('openclaw')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Reinstall Nomos' }));
     await waitFor(() => {
@@ -728,6 +1098,7 @@ describe('project workbench pages', () => {
 
   it('runs nomos catalog and source import actions', async () => {
     await renderProjectDetailPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
 
     fireEvent.change(screen.getByLabelText('Export Dir'), { target: { value: '/tmp/exported-pack' } });
     fireEvent.click(screen.getByRole('button', { name: 'Export Pack' }));
@@ -770,6 +1141,28 @@ describe('project workbench pages', () => {
     const sourcePanel = screen.getByTestId('project-nomos-source-panel');
     expect(sourcePanel).toBeInTheDocument();
     expect(within(sourcePanel).getAllByText(/Source Kind:\s*pack_root/).length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText('Source Id'), { target: { value: 'shared/proj-alpha' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Register Source' }));
+    await waitFor(() => {
+      expect(registerNomosSource).toHaveBeenCalledWith('shared/proj-alpha', '/tmp/nomos-source');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh Sources' }));
+    await waitFor(() => {
+      expect(listRegisteredNomosSources).toHaveBeenCalledWith();
+    });
+    expect(screen.getByTestId('project-nomos-registered-sources-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show Source Entry' }));
+    await waitFor(() => {
+      expect(showRegisteredNomosSource).toHaveBeenCalledWith('shared/proj-alpha');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sync Registered Source' }));
+    await waitFor(() => {
+      expect(syncRegisteredNomosSource).toHaveBeenCalledWith('shared/proj-alpha');
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Install From Registered Source' }));
+    await waitFor(() => {
+      expect(installProjectNomosFromRegisteredSource).toHaveBeenCalledWith('proj-alpha', 'shared/proj-alpha');
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Install From Source' }));
     await waitFor(() => {
       expect(installProjectNomosFromSource).toHaveBeenCalledWith('proj-alpha', '/tmp/nomos-source');
@@ -788,6 +1181,7 @@ describe('project workbench pages', () => {
     expect(knowledgeDialog).toBeInTheDocument();
     expect(within(knowledgeDialog).getByText('OC-100')).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: /关闭|Close/ })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
     fireEvent.click(screen.getByRole('button', { name: 'Open citizen Alpha Architect' }));
     const citizenDialog = screen.getByRole('dialog', { name: 'CITIZEN PREVIEW' });
     expect(citizenDialog).toBeInTheDocument();
@@ -805,5 +1199,18 @@ describe('project workbench pages', () => {
     expect(updateTodo).toHaveBeenCalledWith(3, { status: 'done' });
     expect(promoteTodo).toHaveBeenCalledWith(3, { type: 'quick', creator: 'archon', priority: 'normal' });
     expect(deleteTodo).toHaveBeenCalledWith(3);
+  });
+
+  it('keeps operator controls collapsed until explicitly expanded', async () => {
+    await renderProjectDetailPage();
+
+    expect(screen.queryAllByText('/Users/example/.agora/projects/proj-alpha')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Refresh Catalog' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show operator tools' }));
+
+    expect(screen.getAllByText('/Users/example/.agora/projects/proj-alpha').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Hide operator tools' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh Catalog' })).toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ vi.mock('@/lib/api', () => ({
   listArchiveJobs: vi.fn(),
   getArchiveJob: vi.fn(),
   notifyArchiveJob: vi.fn(),
+  updateArchiveJobStatus: vi.fn(),
   retryArchiveJob: vi.fn(),
   listTodos: vi.fn(),
   createTodo: vi.fn(),
@@ -357,7 +358,9 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       }],
       selectedJobId: 9,
@@ -374,7 +377,9 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       },
     });
@@ -400,7 +405,78 @@ describe('dashboard expansion stores', () => {
     expect(useArchiveStore.getState().selectedJob).toMatchObject({
       id: 9,
       status: 'notified',
+      canApprove: false,
       canConfirm: false,
+      canComplete: true,
+      canRetry: false,
+    });
+  });
+
+  it('completes a notified archive job through the store layer', async () => {
+    useArchiveStore.setState({
+      jobs: [{
+        id: 12,
+        taskId: 'OC-305',
+        taskTitle: '已通知归档任务',
+        taskType: 'document',
+        status: 'notified',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { notified_at: '2026-03-07T08:01:00.000Z' },
+        payloadSummary: '{"notified_at":"2026-03-07T08:01:00.000Z"}',
+        canApprove: false,
+        canConfirm: false,
+        canComplete: true,
+        canRetry: false,
+      }],
+      selectedJobId: 12,
+      selectedJob: {
+        id: 12,
+        taskId: 'OC-305',
+        taskTitle: '已通知归档任务',
+        taskType: 'document',
+        status: 'notified',
+        targetPath: 'ZeYu-AI-Brain/docs/',
+        writerAgent: 'writer-agent',
+        commitHash: null,
+        requestedAt: '2026-03-07T08:00:00.000Z',
+        completedAt: null,
+        payload: { notified_at: '2026-03-07T08:01:00.000Z' },
+        payloadSummary: '{"notified_at":"2026-03-07T08:01:00.000Z"}',
+        canApprove: false,
+        canConfirm: false,
+        canComplete: true,
+        canRetry: false,
+      },
+    });
+    vi.mocked(api.updateArchiveJobStatus).mockResolvedValue({
+      id: 12,
+      task_id: 'OC-305',
+      task_title: '已通知归档任务',
+      task_type: 'document',
+      status: 'synced',
+      target_path: 'ZeYu-AI-Brain/docs/',
+      writer_agent: 'writer-agent',
+      commit_hash: null,
+      requested_at: '2026-03-07T08:00:00.000Z',
+      completed_at: '2026-03-07T08:02:00.000Z',
+      payload: {
+        notified_at: '2026-03-07T08:01:00.000Z',
+      },
+    });
+
+    await useArchiveStore.getState().completeJob(12);
+
+    expect(api.updateArchiveJobStatus).toHaveBeenCalledWith(12, 'synced', {});
+    expect(useArchiveStore.getState().selectedJob).toMatchObject({
+      id: 12,
+      status: 'synced',
+      canApprove: false,
+      canConfirm: false,
+      canComplete: false,
       canRetry: false,
     });
   });
@@ -415,6 +491,75 @@ describe('dashboard expansion stores', () => {
       status: 'synced',
       taskId: undefined,
     });
+  });
+
+  it('maps the pending archive filter to delivery in-flight archive statuses only', async () => {
+    vi.mocked(api.listArchiveJobs).mockResolvedValue([
+      {
+        id: 20,
+        task_id: 'OC-401',
+        task_title: '待审核',
+        task_type: 'document',
+        status: 'review_pending',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: null,
+        requested_at: '2026-03-07T08:00:00.000Z',
+        completed_at: null,
+        payload: { closeout_review: { state: 'review_pending' } },
+      },
+      {
+        id: 21,
+        task_id: 'OC-402',
+        task_title: '待通知',
+        task_type: 'document',
+        status: 'pending',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: null,
+        requested_at: '2026-03-07T08:01:00.000Z',
+        completed_at: null,
+        payload: {},
+      },
+      {
+        id: 22,
+        task_id: 'OC-403',
+        task_title: '已通知',
+        task_type: 'document',
+        status: 'notified',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: null,
+        requested_at: '2026-03-07T08:02:00.000Z',
+        completed_at: null,
+        payload: { notified_at: '2026-03-07T08:03:00.000Z' },
+      },
+      {
+        id: 23,
+        task_id: 'OC-404',
+        task_title: '已完成',
+        task_type: 'document',
+        status: 'synced',
+        target_path: 'ZeYu-AI-Brain/docs/',
+        writer_agent: 'writer-agent',
+        commit_hash: 'abc123',
+        requested_at: '2026-03-07T08:04:00.000Z',
+        completed_at: '2026-03-07T08:05:00.000Z',
+        payload: {},
+      },
+    ]);
+
+    useArchiveStore.getState().setFilters({ status: 'pending' });
+    await useArchiveStore.getState().fetchJobs();
+
+    expect(api.listArchiveJobs).toHaveBeenCalledWith({
+      status: undefined,
+      taskId: undefined,
+    });
+    expect(useArchiveStore.getState().jobs.map((job) => job.status)).toEqual([
+      'pending',
+      'notified',
+    ]);
   });
 
   it('surfaces archive confirm failures without dropping the current selection', async () => {
@@ -432,7 +577,9 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       }],
       selectedJobId: 9,
@@ -449,7 +596,9 @@ describe('dashboard expansion stores', () => {
         completedAt: null,
         payload: { state: 'cancelled' },
         payloadSummary: '{"state":"cancelled"}',
+        canApprove: false,
         canConfirm: true,
+        canComplete: false,
         canRetry: false,
       },
       error: null,

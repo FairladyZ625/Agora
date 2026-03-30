@@ -1,16 +1,17 @@
 #!/usr/bin/env tsx
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import {
+  type DiscordSmokeCommandSpec,
   extractDiscordResponseDelta,
   expectedMarkersForSlashCommand,
   isDiscordLoginUrl,
   isDiscordPendingResponse,
-  normalizeDiscordSmokeCommands,
+  normalizeDiscordSmokeCommandSpecs,
   parseRunningChromeRemoteDebuggingPort,
   resolveSmokeCommandTemplate,
   slashCommandAssertionPassed,
@@ -23,7 +24,7 @@ type Options = {
   profileDir: string;
   dbPath: string;
   outDir: string;
-  commands: string[];
+  commands: DiscordSmokeCommandSpec[];
   probeOnly: boolean;
   headless: boolean;
   settleTimeoutMs: number;
@@ -42,7 +43,7 @@ async function main() {
   const commands = options.probeOnly
     ? []
     : await resolveSmokeCommands(options.commands, options.dbPath);
-  const dashboardRoot = join(process.cwd(), "..", "dashboard");
+  const dashboardRoot = resolveDashboardRoot(process.cwd());
   const playwrightBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH
     || join(homedir(), "Library", "Caches", "ms-playwright");
   const beforeScreenshot = join(options.outDir, "discord-before.png");
@@ -53,6 +54,8 @@ async function main() {
     commands,
     probeOnly: options.probeOnly,
     headless: options.headless,
+    settleTimeoutMs: options.settleTimeoutMs,
+    minQuietMs: options.minQuietMs,
     remoteDebuggingPort,
     beforeScreenshot,
     afterScreenshot,
@@ -113,7 +116,8 @@ function parseArgs(args: string[]): Options {
     profileDir: process.env.DISCORD_WEB_PROFILE_DIR || join(homedir(), "Library", "Caches", "ms-playwright", "mcp-chrome"),
     dbPath: process.env.AGORA_DB_PATH || join(homedir(), ".agora", "agora.db"),
     outDir: mkdtempSync(join(tmpdir(), "agora-discord-web-slash-")),
-    commands: [] as string[],
+    commands: [] as DiscordSmokeCommandSpec[],
+    pendingResponder: undefined as string | undefined,
     probeOnly: false,
     headless: false,
     settleTimeoutMs: 20_000,
@@ -140,7 +144,15 @@ function parseArgs(args: string[]): Options {
         index += 1;
         break;
       case "--command":
-        defaults.commands.push(args[index + 1] || "");
+        defaults.commands.push({
+          command: args[index + 1] || "",
+          responder: defaults.pendingResponder,
+        });
+        defaults.pendingResponder = undefined;
+        index += 1;
+        break;
+      case "--command-responder":
+        defaults.pendingResponder = args[index + 1] || undefined;
         index += 1;
         break;
       case "--probe-only":
@@ -166,10 +178,10 @@ function parseArgs(args: string[]): Options {
   }
   const commands = defaults.probeOnly
     ? []
-    : normalizeDiscordSmokeCommands(
+    : normalizeDiscordSmokeCommandSpecs(
         defaults.commands.length
           ? defaults.commands
-          : ["/task create", "/task guided-task-debug", "/task coding", "/project list active"],
+          : [{ command: "/task create" }, { command: "/task guided-task-debug" }, { command: "/task coding" }, { command: "/project list active" }],
       );
   return {
     channelUrl,
@@ -184,22 +196,44 @@ function parseArgs(args: string[]): Options {
   };
 }
 
-async function resolveSmokeCommands(commands: string[], dbPath: string) {
-  const needsProjectId = commands.some((command) => command.includes("{{firstActiveProjectId}}"));
-  const needsTaskId = commands.some((command) => command.includes("{{firstActiveTaskId}}"));
+async function resolveSmokeCommands(commands: DiscordSmokeCommandSpec[], dbPath: string) {
+  const needsProjectId = commands.some((command) => command.command.includes("{{firstActiveProjectId}}"));
+  const needsTaskId = commands.some((command) => command.command.includes("{{firstActiveTaskId}}"));
   const replacements = {
     firstActiveProjectId: needsProjectId ? await lookupSingleValue(dbPath, "select id from projects where status = 'active' order by rowid desc limit 1;") : undefined,
     firstActiveTaskId: needsTaskId ? await lookupSingleValue(dbPath, "select id from tasks where state = 'active' order by rowid desc limit 1;") : undefined,
   };
-  return commands.map((command) => resolveSmokeCommandTemplate(command, replacements));
+  return commands.map((command) => ({
+    command: resolveSmokeCommandTemplate(command.command, replacements),
+    responder: command.responder,
+  }));
+}
+
+function resolveDashboardRoot(cwd: string) {
+  const localDashboardRoot = join(cwd, "..", "dashboard");
+  if (existsSync(join(localDashboardRoot, "node_modules", "playwright"))) {
+    return localDashboardRoot;
+  }
+  const worktreeMarker = `${sep}.worktrees${sep}`;
+  const markerIndex = cwd.indexOf(worktreeMarker);
+  if (markerIndex !== -1) {
+    const repoRoot = cwd.slice(0, markerIndex);
+    const canonicalDashboardRoot = resolve(repoRoot, "dashboard");
+    if (existsSync(join(canonicalDashboardRoot, "node_modules", "playwright"))) {
+      return canonicalDashboardRoot;
+    }
+  }
+  return localDashboardRoot;
 }
 
 function buildBrowserScript(input: {
   channelUrl: string;
   profileDir: string;
-  commands: string[];
+  commands: DiscordSmokeCommandSpec[];
   probeOnly: boolean;
   headless: boolean;
+  settleTimeoutMs: number;
+  minQuietMs: number;
   remoteDebuggingPort: number | null;
   beforeScreenshot: string;
   afterScreenshot: string;
@@ -234,18 +268,20 @@ function buildBrowserScript(input: {
         }
         const quietMs = Date.now() - lastChangedAt;
         const assertionPassed = slashCommandAssertionPassed(command, currentText);
+        const expectedMarkers = expectedMarkersForSlashCommand(command);
         if (shouldSettleDiscordResponse({
           beforeText,
           currentText,
           quietMs,
           minQuietMs,
           assertionPassed,
+          hasExpectedMarkers: expectedMarkers.length > 0,
         })) {
           return {
             settled: true,
             waitedMs: Date.now() - startedAt,
             observedPending,
-            expectedMarkers: expectedMarkersForSlashCommand(command),
+            expectedMarkers,
             assertionPassed,
             bodyTail: currentText.slice(-1200),
           };
@@ -260,6 +296,22 @@ function buildBrowserScript(input: {
         assertionPassed: slashCommandAssertionPassed(command, currentText),
         bodyTail: currentText.slice(-1200),
       };
+    };
+    const selectResponderOption = async (commandName, responder) => {
+      const key = commandName + '::' + responder;
+      const arrowDownStepsByCommand = {
+        '/project::Codex Main': 1,
+      };
+      const steps = arrowDownStepsByCommand[key];
+      if (!Number.isFinite(steps)) {
+        throw new Error('no responder selection strategy registered for ' + key);
+      }
+      for (let index = 0; index < steps; index += 1) {
+        await page.keyboard.press('ArrowDown');
+        await page.waitForTimeout(250);
+      }
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(400);
     };
     try {
       if (${input.remoteDebuggingPort !== null}) {
@@ -284,7 +336,8 @@ function buildBrowserScript(input: {
       if (!page.url().includes('/login') && !${input.probeOnly}) {
         const textbox = page.locator('div[role="textbox"]').last();
         await textbox.waitFor({ timeout: 10000 });
-        for (const command of ${JSON.stringify(input.commands)}) {
+        for (const commandSpec of ${JSON.stringify(input.commands)}) {
+          const command = commandSpec.command;
           const commandBeforeText = await readBodyText();
           const { commandName, argsText } = ${splitSlashCommand.toString()}(command);
           await textbox.click();
@@ -293,16 +346,21 @@ function buildBrowserScript(input: {
           await page.waitForTimeout(150);
           await page.keyboard.type(commandName);
           await page.waitForTimeout(800);
-          await page.keyboard.press('Tab');
-          await page.waitForTimeout(500);
+          if (commandSpec.responder) {
+            await selectResponderOption(commandName, commandSpec.responder);
+          } else {
+            await page.keyboard.press('Tab');
+            await page.waitForTimeout(500);
+          }
           if (argsText) {
             await page.keyboard.type(argsText);
             await page.waitForTimeout(300);
           }
           await page.keyboard.press('Enter');
-          commandsSent.push(command);
+          commandsSent.push(commandSpec);
           commandResults.push({
             command,
+            responder: commandSpec.responder || null,
             ...(await waitForSettledResponse(commandBeforeText, command, ${input.settleTimeoutMs}, ${input.minQuietMs})),
           });
         }

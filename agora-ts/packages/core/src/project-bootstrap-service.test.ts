@@ -28,6 +28,12 @@ function makeBrainPackDir() {
   return dir;
 }
 
+function makeProjectStateDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-project-bootstrap-state-'));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -42,8 +48,12 @@ describe('project bootstrap service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot: brainPackDir }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-bootstrap',
@@ -54,6 +64,7 @@ describe('project bootstrap service', () => {
       projectService,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     const taskService = new TaskService(db, {
@@ -65,6 +76,7 @@ describe('project bootstrap service', () => {
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
       projectBrainAutomationService: new ProjectBrainAutomationService({
         projectBrainService,
@@ -105,15 +117,19 @@ describe('project bootstrap service', () => {
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md');
     expect(task.description).toContain('Bootstrap mode: `existing_repo`');
     expect(task.description).toContain('agora nomos refine-project --project-id proj-bootstrap');
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'knowledge', 'facts', 'bootstrap-current-surface.md'), 'utf8')).toContain(
+    expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'facts', 'bootstrap-current-surface.md'), 'utf8')).toContain(
       'Bootstrap Current Surface',
     );
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'knowledge', 'decisions', 'bootstrap-known-constraints.md'), 'utf8')).toContain(
+    expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'decisions', 'bootstrap-known-constraints.md'), 'utf8')).toContain(
       'Bootstrap Known Constraints',
     );
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'knowledge', 'open-questions', 'bootstrap-open-questions.md'), 'utf8')).toContain(
+    expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'open-questions', 'bootstrap-open-questions.md'), 'utf8')).toContain(
       'Bootstrap Open Questions',
     );
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-HARNESS-BOOTSTRAP', '00-bootstrap.md'))).toBe(true);
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'fact', 'bootstrap-current-surface')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'decision', 'bootstrap-known-constraints')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'open_question', 'bootstrap-open-questions')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(existsSync(join(projectStateDir, 'proj-bootstrap', 'tasks', 'OC-HARNESS-BOOTSTRAP', '00-bootstrap.md'))).toBe(true);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-bootstrap', 'index.md'))).toBe(false);
   });
 });

@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import * as api from '@/lib/api';
 import { useProjectsPageCopy } from '@/lib/dashboardCopy';
+import { mapWorkspaceBootstrapStatusDto } from '@/lib/projectMappers';
 import { useProjectStore } from '@/stores/projectStore';
+import type { WorkspaceBootstrapStatus } from '@/types/project';
+
+function parseAccountIds(value: string) {
+  return value
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item) && item > 0);
+}
 
 export function ProjectsPage() {
   const copy = useProjectsPageCopy();
@@ -14,10 +24,33 @@ export function ProjectsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [summary, setSummary] = useState('');
+  const [adminAccountIds, setAdminAccountIds] = useState('');
+  const [memberAccountIds, setMemberAccountIds] = useState('');
+  const [workspaceBootstrap, setWorkspaceBootstrap] = useState<WorkspaceBootstrapStatus | null>(null);
 
   useEffect(() => {
     void fetchProjects();
   }, [fetchProjects]);
+
+  useEffect(() => {
+    let active = true;
+    void api.getWorkspaceBootstrapStatus()
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        setWorkspaceBootstrap(mapWorkspaceBootstrapStatusDto(response));
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setWorkspaceBootstrap(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const submitProject = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -25,13 +58,21 @@ export function ProjectsPage() {
       return;
     }
     try {
+      const adminIds = parseAccountIds(adminAccountIds);
+      const memberIds = parseAccountIds(memberAccountIds);
       await createProject({
         name: name.trim(),
         owner: 'archon',
         summary: summary.trim() || null,
+        admins: adminIds.map((account_id) => ({ account_id })),
+        members: memberIds
+          .filter((account_id) => !adminIds.includes(account_id))
+          .map((account_id) => ({ account_id, role: 'member' as const })),
       });
       setName('');
       setSummary('');
+      setAdminAccountIds('');
+      setMemberAccountIds('');
       setShowCreate(false);
     } catch {
       // visible error is handled by the store state
@@ -60,6 +101,18 @@ export function ProjectsPage() {
         {error ? <div className="inline-alert inline-alert--danger mt-5">{error}</div> : null}
       </section>
 
+      {workspaceBootstrap && !workspaceBootstrap.bootstrapCompleted ? (
+        <section className="surface-panel surface-panel--workspace">
+          <div className="space-y-3">
+            <h3 className="section-title">{copy.workspaceBootstrapTitle}</h3>
+            <p className="page-summary">{copy.workspaceBootstrapSummary}</p>
+            <Link to="/workspace/bootstrap" className="button-secondary">
+              {copy.workspaceBootstrapAction}
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       {showCreate ? (
         <section className="surface-panel surface-panel--workspace" data-testid="projects-create-panel">
           <form className="grid gap-4 lg:grid-cols-2" onSubmit={submitProject}>
@@ -79,6 +132,24 @@ export function ProjectsPage() {
                 onChange={(event) => setSummary(event.target.value)}
                 className="input-shell min-h-24"
                 placeholder={copy.summaryPlaceholder}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="field-label">{copy.adminAccountsLabel}</span>
+              <input
+                value={adminAccountIds}
+                onChange={(event) => setAdminAccountIds(event.target.value)}
+                className="input-shell"
+                placeholder={copy.adminAccountsPlaceholder}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="field-label">{copy.memberAccountsLabel}</span>
+              <input
+                value={memberAccountIds}
+                onChange={(event) => setMemberAccountIds(event.target.value)}
+                className="input-shell"
+                placeholder={copy.memberAccountsPlaceholder}
               />
             </label>
             <div className="lg:col-span-2">

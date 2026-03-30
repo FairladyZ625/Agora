@@ -12,21 +12,27 @@ import {
   exportNomosShareBundle,
   exportProjectNomosPack,
   activateProjectNomosDraft,
+  inspectRegisteredNomosSource,
   importNomosSource,
   importNomosShareBundle,
   inspectPublishedNomosCatalogPack,
   installLocalNomosPackToProject,
   installCatalogNomosPackToProject,
+  installNomosFromRegisteredSource,
   installNomosFromSource,
   listPublishedNomosCatalog,
+  listRegisteredNomosSources,
   NOMOS_LIFECYCLE_MODULES,
   prepareProjectNomosInstall,
   publishProjectNomosPack,
+  registerNomosSource,
   REPO_AGENTS_SHIM_SECTION_ORDER,
   requireSupportedNomosId,
+  resolveProjectNomosProvenance,
   resolveProjectNomosState,
   resolveProjectNomosRuntimePaths,
   reviewProjectNomosDraft,
+  syncRegisteredNomosSource,
   validateProjectNomos,
 } from '@agora-ts/config';
 import {
@@ -57,6 +63,7 @@ import {
   dashboardUserCreateRequestSchema,
   dashboardUserListResponseSchema,
   dashboardUserUpdatePasswordRequestSchema,
+  createProjectMembershipSchema,
   createInboxRequestSchema,
   createProjectRequestSchema,
   createTaskRequestSchema,
@@ -72,7 +79,6 @@ import {
   liveSessionSchema,
   liveSessionCleanupResponseSchema,
   listProjectsResponseSchema,
-  projectWorkbenchResponseSchema,
   promoteTodoRequestSchema,
   probeInactiveTasksRequestSchema,
   promoteInboxRequestSchema,
@@ -94,6 +100,7 @@ import {
   updateTemplateWorkflowRequestSchema,
   validateTemplateGraphRequestSchema,
   validateWorkflowRequestSchema,
+  workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
 import {
   NotFoundError,
@@ -116,6 +123,8 @@ import {
   type TaskService,
   type TmuxRuntimeService,
   type TemplateAuthoringService,
+  type WorkspaceBootstrapService,
+  WorkspaceBootstrapService as WorkspaceBootstrapServiceImpl,
 } from '@agora-ts/core';
 import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
 
@@ -125,6 +134,7 @@ export interface BuildAppOptions {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
+  workspaceBootstrapService?: WorkspaceBootstrapService;
   citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
   inboxService?: InboxService;
@@ -165,6 +175,11 @@ export interface BuildAppOptions {
     readyPath?: string;
     metricsEnabled?: boolean;
     structuredLogs?: boolean;
+  };
+  workspaceBootstrap?: {
+    runtimeReady?: boolean;
+    runtimeReadinessReason?: string | null;
+    creator?: string | null;
   };
   dashboardDir?: string;
 }
@@ -468,30 +483,36 @@ function appendDashboardHumanImParticipantRef(
   payload: CreateTaskRequestDto,
   humanActor: HumanActor | null,
   humanAccountService?: HumanAccountService,
-): CreateTaskRequestDto {
+): Parameters<TaskService['createTask']>[0] {
+  const enrichedCreator = humanActor
+    ? {
+        ...payload,
+        creator: humanActor.username,
+      }
+    : payload;
   if (!humanActor?.account_id || !humanAccountService) {
-    return payload;
+    return enrichedCreator;
   }
-  if (payload.im_target?.provider && payload.im_target.provider !== 'discord') {
-    return payload;
+  if (enrichedCreator.im_target?.provider && enrichedCreator.im_target.provider !== 'discord') {
+    return enrichedCreator;
   }
-  if (payload.im_target?.visibility !== 'private') {
-    return payload;
+  if (enrichedCreator.im_target?.visibility !== 'private') {
+    return enrichedCreator;
   }
   const discordIdentity = humanAccountService.getIdentity(humanActor.account_id, 'discord');
   if (!discordIdentity) {
-    return payload;
+    return enrichedCreator;
   }
   const participantRefs = Array.from(new Set([
-    ...(payload.im_target?.participant_refs ?? []),
+    ...(enrichedCreator.im_target?.participant_refs ?? []),
     discordIdentity.external_user_id,
   ]));
   return {
-    ...payload,
+    ...enrichedCreator,
     im_target: {
-      ...(payload.im_target ?? {}),
-      provider: payload.im_target?.provider ?? 'discord',
-      visibility: payload.im_target?.visibility ?? 'private',
+      ...(enrichedCreator.im_target ?? {}),
+      provider: enrichedCreator.im_target?.provider ?? 'discord',
+      visibility: enrichedCreator.im_target?.visibility ?? 'private',
       participant_refs: participantRefs,
     },
   };
@@ -667,6 +688,18 @@ export function buildApp(options: BuildAppOptions = {}) {
     await taskService?.drainBackgroundOperations?.();
   });
   const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const workspaceBootstrapService = options.workspaceBootstrapService ?? (
+    options.db && taskService
+      ? new WorkspaceBootstrapServiceImpl({
+          db: options.db,
+          taskService,
+          runtimeReady: options.workspaceBootstrap?.runtimeReady ?? false,
+          runtimeReadinessReason: options.workspaceBootstrap?.runtimeReadinessReason ?? null,
+          creator: options.workspaceBootstrap?.creator ?? 'archon',
+        })
+      : undefined
+  );
+  workspaceBootstrapService?.initialize();
   const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
   const citizenService = options.citizenService;
@@ -935,6 +968,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     return reply.send(dashboardSessionStatusResponseSchema.parse({
       authenticated: true,
       method: 'session',
+      account_id: current.session.account_id,
       username: current.session.username,
       role: current.session.role,
     }));
@@ -1083,6 +1117,9 @@ export function buildApp(options: BuildAppOptions = {}) {
         name: payload.name,
         summary: payload.summary,
         ...(payload.owner ? { owner: payload.owner } : {}),
+        ...(payload.admins ? { admins: payload.admins } : {}),
+        ...(payload.members ? { members: payload.members } : {}),
+        ...(payload.default_agents ? { default_agents: payload.default_agents } : {}),
         ...(payload.metadata ? { metadata: payload.metadata } : {}),
       });
       const preparedNomos = prepareProjectNomosInstall({
@@ -1118,6 +1155,13 @@ export function buildApp(options: BuildAppOptions = {}) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
     }
+  });
+
+  app.get('/api/workspace/bootstrap', async (_request, reply) => {
+    if (!workspaceBootstrapService) {
+      return reply.status(503).send({ message: 'workspace bootstrap service is not configured' });
+    }
+    return reply.send(workspaceBootstrapStatusSchema.parse(workspaceBootstrapService.getStatus()));
   });
 
   app.get('/api/nomos', async (_request, reply) => {
@@ -1174,14 +1218,96 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!project) {
         return reply.status(404).send({ message: `Project ${params.projectId} not found` });
       }
-      return reply.send(projectWorkbenchResponseSchema.parse({
+      const tasks = options.taskService?.listTasks(undefined, params.projectId) ?? [];
+      const todos = options.dashboardQueryService?.listTodos({ project_id: params.projectId }) ?? [];
+      const recapEntries = projectService.listProjectRecaps(params.projectId);
+      const knowledgeEntries = projectService.listKnowledgeEntries(params.projectId);
+      const citizens = citizenService.listCitizens(params.projectId);
+      const nomosState = resolveProjectNomosState(project.id, project.metadata ?? null);
+      const activeTaskStates = new Set(['active', 'in_progress', 'gate_waiting', 'paused', 'blocked']);
+      return reply.send({
         project,
-        index: projectBrainService.getDocument(params.projectId, 'index'),
-        timeline: projectBrainService.getDocument(params.projectId, 'timeline'),
-        recaps: projectService.listProjectRecaps(params.projectId),
-        knowledge: projectService.listKnowledgeEntries(params.projectId),
-        citizens: citizenService.listCitizens(params.projectId),
-      }));
+        overview: {
+          status: project.status,
+          owner: project.owner,
+          updated_at: project.updated_at,
+          counts: {
+            knowledge: knowledgeEntries.length,
+            citizens: citizens.length,
+            recaps: recapEntries.length,
+            tasks_total: tasks.length,
+            active_tasks: tasks.filter((task) => activeTaskStates.has(task.state)).length,
+            review_tasks: tasks.filter((task) => task.state === 'gate_waiting').length,
+            todos_total: todos.length,
+            pending_todos: todos.filter((todo) => todo.status === 'pending').length,
+          },
+        },
+        surfaces: {
+          index: projectBrainService.getDocument(params.projectId, 'index'),
+          timeline: projectBrainService.getDocument(params.projectId, 'timeline'),
+        },
+        work: {
+          tasks,
+          todos,
+          recaps: recapEntries,
+          knowledge: knowledgeEntries,
+        },
+        operator: {
+          nomos_id: nomosState.nomos_id,
+          repo_path: nomosState.repo_path,
+          citizens,
+        },
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/members', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      return reply.send({
+        memberships: projectService.listProjectMemberships(params.projectId),
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/members', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      const payload = createProjectMembershipSchema.parse(request.body);
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      const membership = projectService.addProjectMembership({
+        projectId: params.projectId,
+        account_id: payload.account_id,
+        role: payload.role,
+        added_by_account_id: humanActor?.account_id ?? null,
+      });
+      return reply.send({ membership });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/projects/:projectId/members/:accountId', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string; accountId: string };
+      const membership = projectService.removeProjectMembership(params.projectId, Number(params.accountId));
+      return reply.send({ membership });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1229,10 +1355,12 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!payload.actor?.trim()) {
         throw new Error('actor is required');
       }
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       const project = projectService.requireProject(projectId);
       const activation = activateProjectNomosDraft(project.id, {
         metadata: project.metadata ?? null,
-        actor: payload.actor,
+        actor: humanActor?.username ?? payload.actor,
+        allowReviewRequired: humanActor?.source === 'dashboard',
       });
       projectService.updateProjectMetadata(project.id, activation.metadata);
       return reply.send({
@@ -1382,6 +1510,55 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/nomos/sources/register', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_id: string;
+        source_dir: string;
+      } | undefined) ?? { source_id: '', source_dir: '' };
+      return reply.send(registerNomosSource({
+        sourceId: payload.source_id,
+        sourceDir: payload.source_dir,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/sources', async (_request, reply) => {
+    try {
+      return reply.send(listRegisteredNomosSources());
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/nomos/sources/*', async (request, reply) => {
+    try {
+      const { '*': sourceId = '' } = request.params as { '*': string };
+      return reply.send(inspectRegisteredNomosSource(sourceId));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/nomos/sources/sync', async (request, reply) => {
+    try {
+      const payload = (request.body as {
+        source_id: string;
+      } | undefined) ?? { source_id: '' };
+      return reply.send(syncRegisteredNomosSource({
+        sourceId: payload.source_id,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/projects/:projectId/nomos/publish', async (request, reply) => {
     if (!projectService) {
       return reply.status(503).send({ message: 'Project service is not configured' });
@@ -1459,6 +1636,27 @@ export function buildApp(options: BuildAppOptions = {}) {
       const project = projectService.requireProject(projectId);
       const installed = installNomosFromSource(project.id, project.metadata ?? null, {
         sourceDir: payload.source_dir,
+      });
+      projectService.updateProjectMetadata(project.id, installed.metadata);
+      return reply.send(installed);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/nomos/install-registered-source', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const { projectId } = request.params as { projectId: string };
+      const payload = (request.body as {
+        source_id: string;
+      } | undefined) ?? { source_id: '' };
+      const project = projectService.requireProject(projectId);
+      const installed = installNomosFromRegisteredSource(project.id, project.metadata ?? null, {
+        sourceId: payload.source_id,
       });
       projectService.updateProjectMetadata(project.id, installed.metadata);
       return reply.send(installed);
@@ -1546,6 +1744,10 @@ export function buildApp(options: BuildAppOptions = {}) {
           bootstrap_interview_prompt_path: runtimePaths.bootstrap_interview_prompt_path,
           closeout_review_prompt_path: runtimePaths.closeout_review_prompt_path,
           doctor_project_prompt_path: runtimePaths.doctor_project_prompt_path,
+        },
+        nomos_provenance: {
+          draft: resolveProjectNomosProvenance(projectId, project.metadata ?? null, { target: 'draft' }),
+          active: resolveProjectNomosProvenance(projectId, project.metadata ?? null, { target: 'active' }),
         },
         nomos_validation: {
           draft: validateProjectNomos(projectId, project.metadata ?? null, { target: 'draft' }),
@@ -1668,6 +1870,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.approveTask(params.taskId, {
           approverId,
+          approverAccountId: humanActor?.account_id ?? null,
           comment: payload.comment,
         }),
       );
@@ -1692,6 +1895,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.rejectTask(params.taskId, {
           rejectorId,
+          rejectorAccountId: humanActor?.account_id ?? null,
           reason: payload.reason,
         }),
       );
@@ -2611,29 +2815,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { jobId: string };
       const payload = archiveJobStatusUpdateRequestSchema.parse(request.body);
-      return reply.send(dashboardQueryService.updateArchiveJob(parseNumericId(params.jobId, 'jobId'), payload));
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
-  app.post('/api/archive/jobs/:jobId/approve', async (request, reply) => {
-    if (!dashboardQueryService) {
-      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
-    }
-    try {
-      const params = request.params as { jobId: string };
-      const payload = approveTaskRequestSchema.parse(request.body);
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
-      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
-        return reply.status(403).send({ message: 'missing authenticated human actor' });
-      }
-      const approverId = humanActor?.username ?? payload.approver_id;
-      return reply.send(dashboardQueryService.approveArchiveJob(parseNumericId(params.jobId, 'jobId'), {
-        approver_id: approverId,
-        comment: payload.comment,
-      }));
+      const job = dashboardQueryService.updateArchiveJob(parseNumericId(params.jobId, 'jobId'), payload);
+      await dashboardQueryService.drainBackgroundOperations();
+      return reply.send(job);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -2658,7 +2842,9 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });
     }
     try {
-      return reply.send(dashboardQueryService.ingestArchiveJobReceipts());
+      const result = dashboardQueryService.ingestArchiveJobReceipts();
+      await dashboardQueryService.drainBackgroundOperations();
+      return reply.send(result);
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

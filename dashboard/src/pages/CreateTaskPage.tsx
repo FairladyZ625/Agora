@@ -16,6 +16,7 @@ import { useTaskStore } from '@/stores/taskStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
 import { useTemplateStore } from '@/stores/templateStore';
 import type { AgentStatusItem } from '@/types/dashboard';
+import type { ProjectMembership } from '@/types/project';
 
 const SKILL_USAGE_STORAGE_KEY = 'agora-create-task-skill-usage';
 const MAX_SKILL_USAGE_ENTRIES = 50;
@@ -220,7 +221,9 @@ export function CreateTaskPage() {
   const fetchStatus = useAgentStore((state) => state.fetchStatus);
   const craftsmanRuntime = useAgentStore((state) => state.craftsmanRuntime);
   const projects = useProjectStore((state) => state.projects);
+  const projectMembershipsByProject = useProjectStore((state) => state.projectMembershipsByProject);
   const fetchProjects = useProjectStore((state) => state.fetchProjects);
+  const fetchProjectMembers = useProjectStore((state) => state.fetchProjectMembers);
   const { showMessage } = useFeedbackStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -240,6 +243,9 @@ export function CreateTaskPage() {
   const [roleSkillSearch, setRoleSkillSearch] = useState<Record<string, string>>({});
   const [skillUsageHistory, setSkillUsageHistory] = useState<SkillUsageEntry[]>(() => readSkillUsageHistory());
   const [submitting, setSubmitting] = useState(false);
+  const [ownerAccountId, setOwnerAccountId] = useState('');
+  const [assigneeAccountId, setAssigneeAccountId] = useState('');
+  const [approverAccountId, setApproverAccountId] = useState('');
   const priorities = ['low', 'normal', 'high'] as const;
   const visibility = 'private' as const;
   const sourceContext = useMemo(() => parseProjectBrainSourceContext(location.search), [location.search]);
@@ -292,6 +298,13 @@ export function CreateTaskPage() {
     setProjectId(nextProjectId);
     setDescription(sourceContextPreamble);
   }, [location.search, sourceContextPreamble]);
+
+  useEffect(() => {
+    if (!projectId || projectMembershipsByProject[projectId]) {
+      return;
+    }
+    void fetchProjectMembers(projectId).catch(() => undefined);
+  }, [fetchProjectMembers, projectId, projectMembershipsByProject]);
 
   useEffect(() => {
     if (!templates.length) {
@@ -389,6 +402,13 @@ export function CreateTaskPage() {
   const availableCraftsmen = buildCraftsmanInventory(craftsmanRuntime);
   const controllerRole = selectedTemplate?.defaultTeam.find((member) => member.memberKind === 'controller') ?? null;
   const controllerRef = controllerRole ? assignments[controllerRole.role] ?? null : null;
+  const activeProjectMembers = (projectId ? projectMembershipsByProject[projectId] ?? [] : []).filter((entry) => entry.status === 'active');
+  const sortedProjectMembers = [...activeProjectMembers].sort((left, right) => {
+    if (left.role !== right.role) {
+      return left.role === 'admin' ? -1 : 1;
+    }
+    return left.accountId - right.accountId;
+  });
   const templateChoices = templates.length > 0
     ? templates.map((template) => ({
         value: template.id,
@@ -421,6 +441,24 @@ export function CreateTaskPage() {
       return next;
     });
   };
+
+  const taskAuthority = (() => {
+    const owner = ownerAccountId ? Number(ownerAccountId) : null;
+    const assignee = assigneeAccountId ? Number(assigneeAccountId) : null;
+    const approver = approverAccountId ? Number(approverAccountId) : null;
+    if (!owner && !assignee && !approver) {
+      return undefined;
+    }
+    return {
+      ...(owner ? { owner_account_id: owner } : {}),
+      ...(assignee ? { assignee_account_id: assignee } : {}),
+      ...(approver ? { approver_account_id: approver } : {}),
+      ...(controllerRef ? { controller_agent_ref: controllerRef } : {}),
+    };
+  })();
+
+  const renderProjectMemberOptionLabel = (membership: ProjectMembership) =>
+    `#${membership.accountId} · ${membership.role}`;
 
   const toggleGlobalSkill = (skillRef: string) => {
     const adding = !globalSkillRefs.includes(skillRef);
@@ -491,6 +529,7 @@ export function CreateTaskPage() {
             projectId: projectId || null,
             globalSkillRefs,
             roleSkillRefs,
+            authority: taskAuthority,
             template: selectedTemplate,
             type,
             visibility,
@@ -502,6 +541,7 @@ export function CreateTaskPage() {
             creator: 'archon',
             description: description.trim(),
             priority,
+            ...(taskAuthority ? { authority: taskAuthority } : {}),
             ...(globalSkillRefs.length > 0 || Object.keys(roleSkillRefs).length > 0
               ? {
                   skill_policy: {
@@ -584,6 +624,60 @@ export function CreateTaskPage() {
                 ))}
               </select>
             </label>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <label className="space-y-2">
+                <span className="field-label">{createTaskCopy.ownerAccountLabel}</span>
+                <select
+                  aria-label={createTaskCopy.ownerAccountLabel}
+                  value={ownerAccountId}
+                  onChange={(event) => setOwnerAccountId(event.target.value)}
+                  className="input-shell"
+                  disabled={!projectId}
+                >
+                  <option value="">{createTaskCopy.noHumanAuthorityOption}</option>
+                  {sortedProjectMembers.map((membership) => (
+                    <option key={`owner-${membership.id}`} value={membership.accountId}>
+                      {renderProjectMemberOptionLabel(membership)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="field-label">{createTaskCopy.assigneeAccountLabel}</span>
+                <select
+                  aria-label={createTaskCopy.assigneeAccountLabel}
+                  value={assigneeAccountId}
+                  onChange={(event) => setAssigneeAccountId(event.target.value)}
+                  className="input-shell"
+                  disabled={!projectId}
+                >
+                  <option value="">{createTaskCopy.noHumanAuthorityOption}</option>
+                  {sortedProjectMembers.map((membership) => (
+                    <option key={`assignee-${membership.id}`} value={membership.accountId}>
+                      {renderProjectMemberOptionLabel(membership)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-2">
+                <span className="field-label">{createTaskCopy.approverAccountLabel}</span>
+                <select
+                  aria-label={createTaskCopy.approverAccountLabel}
+                  value={approverAccountId}
+                  onChange={(event) => setApproverAccountId(event.target.value)}
+                  className="input-shell"
+                  disabled={!projectId}
+                >
+                  <option value="">{createTaskCopy.noHumanAuthorityOption}</option>
+                  {sortedProjectMembers.map((membership) => (
+                    <option key={`approver-${membership.id}`} value={membership.accountId}>
+                      {renderProjectMemberOptionLabel(membership)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             <label className="space-y-2">
               <span className="field-label">{createTaskCopy.descriptionLabel}</span>

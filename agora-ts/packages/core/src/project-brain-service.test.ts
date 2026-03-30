@@ -25,6 +25,12 @@ function makeBrainPackDir() {
   return dir;
 }
 
+function makeProjectStateDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -39,8 +45,12 @@ describe('project brain service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-brain',
@@ -98,7 +108,10 @@ describe('project brain service', () => {
     const service = new ProjectBrainService({
       projectService,
       citizenService,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
 
     expect(service.listDocuments('proj-brain')).toEqual(
@@ -140,8 +153,12 @@ describe('project brain service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-brain',
@@ -150,7 +167,10 @@ describe('project brain service', () => {
     const enqueueDocumentSync = vi.fn();
     const service = new ProjectBrainService({
       projectService,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
       projectBrainIndexQueueService: {
         enqueueDocumentSync,
       },

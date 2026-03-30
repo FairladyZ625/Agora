@@ -1,5 +1,11 @@
 import type { TaskConversationInboundActionDto } from '@agora-ts/contracts';
-import type { IMProvisioningPort, TaskContextBindingService, TaskConversationService, TaskService } from '@agora-ts/core';
+import {
+  type IMProvisioningPort,
+  TaskInboundService,
+  type TaskContextBindingService,
+  type TaskConversationService,
+  type TaskService,
+} from '@agora-ts/core';
 
 export interface LiveRegressionActorOptions {
   taskService: TaskService;
@@ -35,9 +41,15 @@ export interface LiveRegressionRunResult {
 
 export class LiveRegressionActor {
   private readonly now: () => Date;
+  private readonly taskInboundService: TaskInboundService;
 
   constructor(private readonly options: LiveRegressionActorOptions) {
     this.now = options.now ?? (() => new Date());
+    this.taskInboundService = new TaskInboundService(
+      options.taskConversationService,
+      options.taskContextBindingService,
+      options.taskService,
+    );
   }
 
   async run(request: LiveRegressionRunRequest): Promise<LiveRegressionRunResult> {
@@ -60,7 +72,7 @@ export class LiveRegressionActor {
       }],
     });
 
-    const entry = this.options.taskConversationService.ingest({
+    const inboundResult = this.taskInboundService.ingest({
       provider: binding.im_provider,
       conversation_ref: binding.conversation_ref,
       thread_ref: binding.thread_ref,
@@ -80,11 +92,8 @@ export class LiveRegressionActor {
           ...(taskActionSource ? { task_action_source: taskActionSource } : {}),
         } : {}),
       },
+      ...(selectedTaskAction ? { task_action: selectedTaskAction } : {}),
     });
-
-    if (selectedTaskAction) {
-      this.applyTaskAction(taskId, selectedTaskAction);
-    }
 
     const status = this.options.taskService.getTaskStatus(taskId);
     return {
@@ -92,7 +101,7 @@ export class LiveRegressionActor {
       bindingId: binding.id,
       conversationRef: binding.conversation_ref ?? null,
       threadRef: binding.thread_ref ?? null,
-      conversationEntryId: entry?.id ?? null,
+      conversationEntryId: inboundResult.entry?.id ?? null,
       state: status.task.state,
       currentStage: status.task.current_stage,
     };
@@ -105,36 +114,6 @@ export class LiveRegressionActor {
     const task = this.options.taskService.createTask(target.createTask);
     await this.options.taskService.drainBackgroundOperations();
     return task.id;
-  }
-
-  private applyTaskAction(taskId: string, action: TaskConversationInboundActionDto) {
-    switch (action.kind) {
-      case 'advance_current':
-        this.options.taskService.advanceTask(taskId, {
-          callerId: action.actor_ref,
-          ...(action.next_stage_id ? { nextStageId: action.next_stage_id } : {}),
-        });
-        return;
-      case 'approve_current':
-        this.options.taskService.approveTask(taskId, {
-          approverId: action.actor_ref,
-          comment: action.comment ?? '',
-        });
-        return;
-      case 'reject_current':
-        this.options.taskService.rejectTask(taskId, {
-          rejectorId: action.actor_ref,
-          reason: action.reason ?? '',
-        });
-        return;
-      case 'confirm_current':
-        this.options.taskService.confirmTask(taskId, {
-          voterId: action.actor_ref,
-          vote: action.vote ?? 'approve',
-          comment: action.comment ?? '',
-        });
-        return;
-    }
   }
 
   private selectAutomaticTaskAction(taskId: string): TaskConversationInboundActionDto | null {

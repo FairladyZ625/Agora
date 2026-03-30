@@ -222,31 +222,69 @@ describe('dashboard expansion api client', () => {
               created_at: '2026-03-16T00:00:00.000Z',
               updated_at: '2026-03-16T01:00:00.000Z',
             },
-            index: {
-              project_id: 'proj-alpha',
-              kind: 'index',
-              slug: 'index',
-              title: 'Project Alpha',
-              path: '/brain/projects/proj-alpha/index.md',
-              content: '# Project Alpha',
-              created_at: '2026-03-16T00:00:00.000Z',
+            overview: {
+              status: 'active',
+              owner: 'archon',
               updated_at: '2026-03-16T01:00:00.000Z',
-              source_task_ids: [],
+              counts: {
+                knowledge: 0,
+                citizens: 0,
+                recaps: 0,
+                tasks_total: 1,
+                active_tasks: 1,
+                review_tasks: 0,
+                todos_total: 1,
+                pending_todos: 1,
+              },
             },
-            timeline: {
-              project_id: 'proj-alpha',
-              kind: 'timeline',
-              slug: 'timeline',
-              title: 'Project Alpha Timeline',
-              path: '/brain/projects/proj-alpha/timeline.md',
-              content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
-              created_at: '2026-03-16T00:00:00.000Z',
-              updated_at: '2026-03-16T01:30:00.000Z',
-              source_task_ids: ['OC-100'],
+            surfaces: {
+              index: {
+                project_id: 'proj-alpha',
+                kind: 'index',
+                slug: 'index',
+                title: 'Project Alpha',
+                path: '/brain/projects/proj-alpha/index.md',
+                content: '# Project Alpha',
+                created_at: '2026-03-16T00:00:00.000Z',
+                updated_at: '2026-03-16T01:00:00.000Z',
+                source_task_ids: [],
+              },
+              timeline: {
+                project_id: 'proj-alpha',
+                kind: 'timeline',
+                slug: 'timeline',
+                title: 'Project Alpha Timeline',
+                path: '/brain/projects/proj-alpha/timeline.md',
+                content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
+                created_at: '2026-03-16T00:00:00.000Z',
+                updated_at: '2026-03-16T01:30:00.000Z',
+                source_task_ids: ['OC-100'],
+              },
             },
-            recaps: [],
-            knowledge: [],
-            citizens: [],
+            work: {
+              tasks: [{
+                ...buildTaskResponse(),
+                project_id: 'proj-alpha',
+              }],
+              todos: [{
+                id: 3,
+                text: '补前端页面',
+                status: 'pending',
+                project_id: 'proj-alpha',
+                due: null,
+                created_at: '2026-03-16T00:00:00.000Z',
+                completed_at: null,
+                tags: ['dashboard'],
+                promoted_to: null,
+              }],
+              recaps: [],
+              knowledge: [],
+            },
+            operator: {
+              nomos_id: null,
+              repo_path: null,
+              citizens: [],
+            },
           };
         }
         if (url.includes('/craftsmen/runtime/tail/')) {
@@ -633,9 +671,17 @@ describe('dashboard expansion api client', () => {
     await api.createProject({ name: 'Project Beta', owner: 'archon', summary: 'New project' });
     await api.listTasks(undefined, 'proj-alpha');
 
-    expect(workbench.timeline).toMatchObject({
+    expect(workbench.surfaces.timeline).toMatchObject({
       kind: 'timeline',
       slug: 'timeline',
+    });
+    expect(workbench.work.tasks[0]).toMatchObject({
+      id: 'OC-001',
+      project_id: 'proj-alpha',
+    });
+    expect(workbench.overview.counts).toMatchObject({
+      tasks_total: 1,
+      pending_todos: 1,
     });
 
     expectFetchCall('/api/projects', { method: 'GET' });

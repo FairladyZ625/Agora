@@ -226,8 +226,7 @@ function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult 
   });
 
   const bootstrapContextPath = join(
-    runtime.brainPackDir,
-    'projects',
+    runtime.projectStateDir,
     'proj-bootstrap',
     'tasks',
     task.id,
@@ -470,10 +469,6 @@ function runArchiveNotifyScenario(runtime: TestRuntime): ScenarioResult {
   if (!job) {
     throw new Error(`Archive job for ${task.id} was not enqueued`);
   }
-  runtime.dashboardQueryService.approveArchiveJob(job.id, {
-    approver_id: 'archon',
-    comment: 'closeout review approved',
-  });
   runtime.dashboardQueryService.notifyArchiveJob(job.id);
 
   return buildScenarioResult(runtime, 'archive-notify', task.id);

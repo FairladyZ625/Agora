@@ -55,6 +55,8 @@ describe("buildDiscordWebQueryArgs", () => {
       "/task status {{firstActiveTaskId}}",
       "--command",
       "/task",
+      "--command-responder",
+      "Codex Main",
       "--command",
       "/project",
     ]);

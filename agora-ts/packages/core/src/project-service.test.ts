@@ -1,8 +1,14 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import {
+  createAgoraDatabase,
+  ProjectAgentRosterRepository,
+  ProjectMembershipRepository,
+  runMigrations,
+} from '@agora-ts/db';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { ProjectService } from './project-service.js';
 import { TaskService } from './task-service.js';
@@ -13,6 +19,20 @@ function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-project-service-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeTempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempPaths.push(dir);
+  return dir;
+}
+
+function runGit(cwd: string, args: string[]) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
 }
 
 afterEach(() => {
@@ -28,11 +48,12 @@ describe('project service', () => {
   it('creates, lists, and resolves projects', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
-    tempPaths.push(brainPackDir);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const projectStateDir = makeTempDir('agora-ts-project-state-');
     const service = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
 
@@ -57,20 +78,72 @@ describe('project service', () => {
         id: 'proj-alpha',
       }),
     ]);
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'))).toBe(true);
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-alpha', 'timeline.md'), 'utf8')).toContain('doc_type: project_timeline');
+    expect(existsSync(join(projectStateDir, 'proj-alpha', 'index.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, 'proj-alpha', '.git'))).toBe(true);
+    expect(existsSync(join(projectStateDir, 'proj-alpha', 'tasks', 'active'))).toBe(true);
+    expect(existsSync(join(projectStateDir, 'proj-alpha', 'tasks', 'archive'))).toBe(true);
+    expect(runGit(join(projectStateDir, 'proj-alpha'), ['rev-parse', '--verify', 'HEAD'])).not.toBe('');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/active/]]');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/archive/]]');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'timeline.md'), 'utf8')).toContain('doc_type: project_timeline');
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-alpha', 'index.md'))).toBe(false);
+  });
+
+  it('creates project memberships and agent roster entries during project creation', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const service = new ProjectService(db);
+    const memberships = new ProjectMembershipRepository(db);
+    const rosters = new ProjectAgentRosterRepository(db);
+
+    service.createProject({
+      id: 'proj-membership',
+      name: 'Project Membership',
+      owner: 'archon',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+
+    expect(memberships.listByProject('proj-membership')).toEqual([
+      expect.objectContaining({ account_id: 1, role: 'admin', status: 'active' }),
+      expect.objectContaining({ account_id: 2, role: 'member', status: 'active' }),
+    ]);
+    expect(rosters.listByProject('proj-membership')).toEqual([
+      expect.objectContaining({ agent_ref: 'workspace-orchestrator', kind: 'orchestrator', status: 'active' }),
+    ]);
+  });
+
+  it('requires at least one project admin when creating a project membership set', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = new ProjectService(db);
+
+    expect(() => service.createProject({
+      id: 'proj-no-admin',
+      name: 'Project Without Admin',
+      admins: [],
+      members: [{ account_id: 2, role: 'member' }],
+    })).toThrow(/at least one project admin/i);
   });
 
   it('auto-generates a persisted project id when the caller omits one', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
-    tempPaths.push(brainPackDir);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const projectStateDir = makeTempDir('agora-ts-project-state-');
     const service = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
 
@@ -82,7 +155,9 @@ describe('project service', () => {
 
     expect(created.id).toMatch(/^proj-[a-z0-9-]+$/);
     expect(service.requireProject(created.id).name).toBe('中文 Project Alpha');
-    expect(existsSync(join(brainPackDir, 'projects', created.id, 'index.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, created.id, 'index.md'))).toBe(true);
+    expect(existsSync(join(projectStateDir, created.id, '.git'))).toBe(true);
+    expect(existsSync(join(brainPackDir, 'project-index', created.id, 'index.md'))).toBe(false);
   });
 
   it('throws when requiring a missing project', () => {
@@ -96,11 +171,12 @@ describe('project service', () => {
   it('writes, lists, reads, and searches project knowledge docs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
-    tempPaths.push(brainPackDir);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const projectStateDir = makeTempDir('agora-ts-project-state-');
     const service = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
 
@@ -135,20 +211,22 @@ describe('project service', () => {
         slug: 'runtime-boundary',
       }),
     ]);
-    expect(readFileSync(join(brainPackDir, 'projects', 'proj-knowledge', 'index.md'), 'utf8')).toContain(
+    expect(readFileSync(join(projectStateDir, 'proj-knowledge', 'index.md'), 'utf8')).toContain(
       '[[knowledge/decisions/runtime-boundary.md]]',
     );
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-knowledge', 'index.md'))).toBe(false);
   });
 
   it('enqueues affected project brain docs when knowledge, timeline, and recap write paths change', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
-    tempPaths.push(brainPackDir);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const projectStateDir = makeTempDir('agora-ts-project-state-');
     const enqueueDocumentSync = vi.fn();
     const service = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
       projectBrainIndexQueueService: {
         enqueueDocumentSync,
@@ -206,6 +284,89 @@ describe('project service', () => {
       document_slug: 'OC-1',
       reason: 'task_recap',
     });
+  });
+
+  it('falls back to the internal project-index tree when no canonical project root resolver is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+
+    service.createProject({
+      id: 'proj-legacy',
+      name: 'Legacy Projection',
+      owner: 'archon',
+    });
+
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-legacy', 'index.md'))).toBe(true);
+    expect(readFileSync(join(brainPackDir, 'project-index', 'proj-legacy', 'index.md'), 'utf8')).toContain('# Legacy Projection');
+  });
+
+  it('writes project task projections into the canonical project root when a project state root is configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(brainPackDir);
+    tempPaths.push(projectStateDir);
+    const service = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+
+    service.createProject({
+      id: 'proj-projection',
+      name: 'Project Projection',
+      owner: 'archon',
+    });
+
+    service.recordTaskBinding({
+      project_id: 'proj-projection',
+      task_id: 'OC-PROJECTION-1',
+      title: 'Projection Task',
+      state: 'active',
+      workspace_path: join(projectStateDir, 'proj-projection', 'tasks', 'OC-PROJECTION-1'),
+      bound_at: '2026-03-27T10:00:00.000Z',
+    });
+
+    const activeProjectionPath = join(projectStateDir, 'proj-projection', 'tasks', 'active', 'OC-PROJECTION-1.md');
+    const archiveProjectionPath = join(projectStateDir, 'proj-projection', 'tasks', 'archive', 'OC-PROJECTION-1.md');
+    const indexPath = join(projectStateDir, 'proj-projection', 'index.md');
+    const timelinePath = join(projectStateDir, 'proj-projection', 'timeline.md');
+
+    expect(existsSync(activeProjectionPath)).toBe(true);
+    expect(readFileSync(activeProjectionPath, 'utf8')).toContain('Projection: active');
+    expect(readFileSync(activeProjectionPath, 'utf8')).toContain('[[../OC-PROJECTION-1/00-current.md]]');
+    expect(readFileSync(indexPath, 'utf8')).toContain('[[tasks/active/OC-PROJECTION-1.md]] | Projection Task | state=active');
+    expect(readFileSync(timelinePath, 'utf8')).toContain('doc=[[tasks/active/OC-PROJECTION-1.md]]');
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-projection', 'index.md'))).toBe(false);
+
+    service.recordTaskRecap({
+      project_id: 'proj-projection',
+      task_id: 'OC-PROJECTION-1',
+      title: 'Projection Task',
+      state: 'done',
+      current_stage: 'review',
+      controller_ref: 'archon',
+      workspace_path: join(projectStateDir, 'proj-projection', 'tasks', 'OC-PROJECTION-1'),
+      completed_by: 'archon',
+      completed_at: '2026-03-27T11:00:00.000Z',
+      summary_lines: ['Projection completed'],
+    });
+
+    expect(existsSync(activeProjectionPath)).toBe(false);
+    expect(existsSync(archiveProjectionPath)).toBe(true);
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('Projection: archive');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../../recaps/OC-PROJECTION-1.md]]');
+    expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../OC-PROJECTION-1/07-outputs/project-harvest-draft.md]]');
+    expect(readFileSync(indexPath, 'utf8')).toContain('[[tasks/archive/OC-PROJECTION-1.md]] | Projection Task | state=done');
+    expect(readFileSync(timelinePath, 'utf8')).toContain('doc=[[tasks/archive/OC-PROJECTION-1.md]]');
   });
 
   it('archives a project only when no active tasks remain', () => {

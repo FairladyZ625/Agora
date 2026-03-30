@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -22,6 +23,27 @@ function makeTempDir(prefix: string) {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempPaths.push(dir);
   return dir;
+}
+
+function runGit(cwd: string, args: string[]) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function initCommittedRepo(dir: string, files: Record<string, string> = { 'README.md': 'hello\n' }) {
+  for (const [relativePath, content] of Object.entries(files)) {
+    const absolutePath = join(dir, relativePath);
+    mkdirSync(join(absolutePath, '..'), { recursive: true });
+    writeFileSync(absolutePath, content, 'utf8');
+  }
+  runGit(dir, ['-c', 'init.defaultBranch=main', 'init', '--quiet']);
+  runGit(dir, ['config', 'user.name', 'Agora']);
+  runGit(dir, ['config', 'user.email', 'agora@example.com']);
+  runGit(dir, ['add', '.']);
+  runGit(dir, ['commit', '--quiet', '-m', 'init']);
 }
 
 function makeWorkflowFile(payload: Record<string, unknown>) {
@@ -310,8 +332,12 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const projectStateDir = makeTempDir('agora-ts-cli-project-state-');
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const taskService = new TaskService(db, {
       templatesDir,
@@ -331,7 +357,52 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project 已创建: proj-alpha');
     expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
-    expect(readFileSync(join(brainPackRoot, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
+  });
+
+  it('creates projects with explicit admins/members and manages project memberships through the cli', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('workspace-admin', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = new ProjectService(db);
+    const humanAccountService = new HumanAccountService(db);
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      humanAccountService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-members-cli',
+      '--name', 'Project Members CLI',
+      '--admin-account-id', '1',
+      '--member-account-id', '2',
+    ], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'list', 'proj-members-cli'], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'add', 'proj-members-cli', '--account-id', '3', '--role', 'member'], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'remove', 'proj-members-cli', '--account-id', '3'], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Project 已创建: proj-members-cli');
+    expect(stdout.value).toContain('workspace-admin');
+    expect(stdout.value).toContain('alice');
+    expect(stdout.value).toContain('bob');
   });
 
   it('installs the built-in Nomos skeleton and repo shim through the cli project-create path', async () => {
@@ -522,6 +593,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos draft review: proj-activate');
     expect(stdout.value).toContain('can_activate: true');
+    expect(stdout.value).toContain('active_provenance_kind: builtin');
+    expect(stdout.value).toContain('draft_provenance_kind: local_authoring');
     expect(stdout.value).toContain('Project Nomos 已激活: project/proj-activate');
     expect(stdout.value).toContain('nomos: project/proj-activate');
     expect(stdout.value).toContain('activation_status: active_project');
@@ -569,6 +642,9 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project Nomos validation: proj-validate (draft)');
     expect(stdout.value).toContain('valid: true');
+    expect(stdout.value).toContain('provenance_kind: local_authoring');
+    expect(stdout.value).toContain('trust_state: trusted');
+    expect(stdout.value).toContain('activation_eligibility: allowed');
     expect(stdout.value).toContain('Project Nomos diff: proj-validate');
     expect(stdout.value).toContain('changed: true');
     expect(stdout.value).toContain('pack_id');
@@ -673,7 +749,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(taskService.getTask('OC-NOMOS-RERUN-2')?.description).toContain(
-      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos', 'prompts', 'bootstrap', 'interview.md'),
+      join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-rerun', 'nomos', 'project-nomos-active', 'prompts', 'bootstrap', 'interview.md'),
     );
   });
 
@@ -729,6 +805,9 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Project Nomos pack 已发布到 catalog: proj-cli-publish-source');
     expect(stdout.value).toContain('published_by: archon');
     expect(stdout.value).toContain('project/proj-cli-publish-source — CLI Publish Source Nomos');
+    expect(stdout.value).toContain('trust_state: caution');
+    expect(stdout.value).toContain('freshness_state: current');
+    expect(stdout.value).toContain('activation_eligibility: review_required');
     expect(stdout.value).toContain('published_note: shareable baseline');
     expect(stdout.value).toContain('Catalog Nomos pack 已安装到 draft: proj-cli-publish-target');
   });
@@ -863,6 +942,77 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('source_kind: pack_root');
     expect(stdout.value).toContain('Nomos source 已同步: project/proj-cli-pack-root-source');
     expect(stdout.value).toContain('Nomos source 已导入并安装: proj-cli-pack-root-target');
+  });
+
+  it('registers a Nomos source and installs it by source id into another project', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const brainPackRoot = makeTempDir('agora-ts-cli-nomos-registered-source-');
+    const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-registered-source-repo-'), 'repo-source');
+    const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-registered-target-repo-'), 'repo-target');
+    const directPackDir = join(makeTempDir('agora-ts-cli-nomos-registered-export-'), 'direct-pack');
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      projectService,
+    });
+    const program = createCliProgram({
+      projectService,
+      taskService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-registered-source',
+      '--name', 'CLI Registered Source',
+      '--repo-path', sourceRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'projects', 'create',
+      '--id', 'proj-cli-registered-target',
+      '--name', 'CLI Registered Target',
+      '--repo-path', targetRepoRoot,
+      '--new-repo',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'export-project',
+      'proj-cli-registered-source',
+      '--output-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'register-source',
+      '--source-id', 'team/cli-registered-source',
+      '--source-dir', directPackDir,
+    ], { from: 'user' });
+    await program.parseAsync(['nomos', 'list-sources'], { from: 'user' });
+    await program.parseAsync(['nomos', 'show-source', 'team/cli-registered-source'], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'sync-registered-source',
+      '--source-id', 'team/cli-registered-source',
+    ], { from: 'user' });
+    await program.parseAsync([
+      'nomos', 'install-from-registered-source',
+      '--project-id', 'proj-cli-registered-target',
+      '--source-id', 'team/cli-registered-source',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('Nomos source 已注册: team/cli-registered-source');
+    expect(stdout.value).toContain('registry_root:');
+    expect(stdout.value).toContain('team/cli-registered-source — pack_root/manual_local (never) trust=untrusted freshness=unknown activate=blocked');
+    expect(stdout.value).toContain('authority_kind: manual_local');
+    expect(stdout.value).toContain('trust_state: untrusted');
+    expect(stdout.value).toContain('freshness_state: unknown');
+    expect(stdout.value).toContain('activation_eligibility: blocked');
+    expect(stdout.value).toContain('Nomos source 已同步: team/cli-registered-source');
+    expect(stdout.value).toContain('Registered Nomos source 已同步并安装: proj-cli-registered-target');
   });
 
   it('scaffolds a custom Nomos pack through the explicit cli surface', async () => {
@@ -1671,6 +1821,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"pending": 2');
     expect(stdout.value).toContain('"provider": "qdrant"');
     expect(stdout.value).toContain('"nomos_runtime"');
+    expect(stdout.value).toContain('"nomos_provenance"');
     expect(stdout.value).toContain('"nomos_validation"');
     expect(stdout.value).toContain('"draft"');
     expect(stdout.value).toContain('"nomos_diff"');
@@ -1997,6 +2148,43 @@ describe('agora-ts cli', () => {
         },
       ],
     });
+  });
+
+  it('rejects cli task creation when authority targets are outside the active project membership', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    db.prepare(`
+      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
+      VALUES
+        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
+        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
+    `).run();
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-cli-membership',
+      name: 'CLI Membership',
+      admins: [{ account_id: 1 }],
+      members: [{ account_id: 2, role: 'member' }],
+      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-AUTH',
+      projectService,
+    });
+    const program = createCliProgram({ taskService, projectService, stdout, stderr }).exitOverride();
+
+    await expect(program.parseAsync([
+      'create',
+      'CLI authority reject',
+      '--type', 'coding',
+      '--creator', 'archon',
+      '--project-id', 'proj-cli-membership',
+      '--authority-json', '{"owner_account_id":1,"assignee_account_id":3,"controller_agent_ref":"workspace-orchestrator"}',
+    ], { from: 'user' })).rejects.toThrow(/task authority account 3 is not an active project member/i);
   });
 
   it('surfaces invalid json option errors with the flag name', async () => {
@@ -2526,12 +2714,12 @@ describe('agora-ts cli', () => {
     });
     const job = archives.insertArchiveJob({
       task_id: task.id,
-      status: 'review_pending',
+      status: 'pending',
       target_path: 'ZeYu-AI-Brain/tasks/',
       payload: {
         closeout_review: {
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
         },
       },
       writer_agent: 'writer-agent',
@@ -2540,16 +2728,17 @@ describe('agora-ts cli', () => {
 
     await program.parseAsync(['archive', 'jobs', 'list'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'show', String(job?.id), '--json'], { from: 'user' });
-    await program.parseAsync(['archive', 'jobs', 'approve', String(job?.id), '--approver-id', 'lizeyu', '--comment', 'looks good'], { from: 'user' });
+    await expect(
+      program.parseAsync(['archive', 'jobs', 'approve', String(job?.id), '--approver-id', 'lizeyu', '--comment', 'looks good'], { from: 'user' }),
+    ).rejects.toThrow(/process\.exit unexpectedly called with "1"/i);
     await program.parseAsync(['archive', 'jobs', 'complete', String(job?.id), '--commit-hash', 'deadbeef'], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'retry', String(job?.id)], { from: 'user' });
     await program.parseAsync(['archive', 'jobs', 'fail', String(job?.id), '--error-message', 'writer timeout'], { from: 'user' });
 
     const finalJob = dashboardQueryService.getArchiveJob(job!.id);
-    expect(stderr.value).toBe('');
-    expect(stdout.value).toContain(`\t${task.id}\treview_pending\t`);
+    expect(stderr.value).toContain("error: unknown command 'approve'");
+    expect(stdout.value).toContain(`\t${task.id}\tpending\t`);
     expect(stdout.value).toContain(`"task_id": "${task.id}"`);
-    expect(stdout.value).toContain(`archive job 已审批放行: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已完成: ${job?.id} -> synced`);
     expect(stdout.value).toContain(`archive job 已重置: ${job?.id} -> pending`);
     expect(stdout.value).toContain(`archive job 已失败: ${job?.id} -> failed`);
@@ -3407,6 +3596,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('scanned_tasks: 1');
     expect(stdout.value).toContain('controller_pings:');
     expect(stdout.value).toContain('roster_pings:');
+    expect(stdout.value).toContain('human_pings:');
   });
 
   it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {
@@ -3522,6 +3712,87 @@ describe('agora-ts cli', () => {
     ], { from: 'user' })).rejects.toThrow("Task OC-305 is in state 'paused', expected 'active'");
     expect(stderr.value).toBe('');
     expect(stdout.value).not.toContain('craftsman execution 已派发');
+  });
+
+  it('defaults craftsmen dispatch workdir through the cli when the task is bound to a project repo', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repoDir = makeTempDir('agora-ts-cli-repo-');
+    const projectStateRoot = makeTempDir('agora-ts-cli-project-root-');
+    const isolatedRoot = join(tmpdir(), '.agora-task-worktrees', 'proj-cli-workdir');
+    tempPaths.push(isolatedRoot);
+    rmSync(isolatedRoot, { recursive: true, force: true });
+    initCommittedRepo(repoDir);
+    const dispatcher = new CraftsmanDispatcher(db, {
+      executionIdGenerator: () => 'exec-cli-default-workdir-1',
+      adapters: {
+        codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T11:00:00.000Z'),
+      },
+    });
+    const projectService = new ProjectService(db);
+    projectService.createProject({
+      id: 'proj-cli-workdir',
+      name: 'CLI Workdir Project',
+      owner: 'archon',
+      metadata: {
+        repo_path: repoDir,
+        agora: {
+          nomos: {
+            project_state_root: projectStateRoot,
+          },
+        },
+      },
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-WORKDIR',
+      craftsmanDispatcher: dispatcher,
+      projectService,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    taskService.createTask({
+      title: 'cli default workdir',
+      type: 'coding',
+      creator: 'archon',
+      project_id: 'proj-cli-workdir',
+      description: '',
+      priority: 'normal',
+      workflow_override: {
+        type: 'craftsman-ready',
+        stages: [{
+          id: 'develop',
+          mode: 'execute',
+          execution_kind: 'citizen_execute',
+          allowed_actions: ['execute', 'dispatch_craftsman'],
+          gate: { type: 'all_subtasks_done' },
+        }],
+      },
+    });
+    subtasks.insertSubtask({
+      id: 'sub-cli-default-workdir',
+      task_id: 'OC-CLI-WORKDIR',
+      stage_id: 'develop',
+      title: 'run codex with inferred repo',
+      assignee: 'sonnet',
+      craftsman_type: 'codex',
+    });
+
+    await program.parseAsync([
+      'craftsman', 'dispatch',
+      'OC-CLI-WORKDIR',
+      'sub-cli-default-workdir',
+      '--caller-id', 'opus',
+      '--adapter', 'codex',
+    ], { from: 'user' });
+
+    const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-cli-workdir', 'OC-CLI-WORKDIR');
+    expect(taskService.getCraftsmanExecution('exec-cli-default-workdir-1').workdir).toBe(expected);
+    expect(readFileSync(join(expected, 'README.md'), 'utf8')).toContain('hello');
+    expect(stderr.value).toBe('');
   });
 
   it('rejects craftsmen dispatch through the cli when concurrency limit is reached', async () => {
