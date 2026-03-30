@@ -1,4 +1,4 @@
-import type { AgoraDatabase } from '@agora-ts/db';
+import type { GateQueryPort } from '@agora-ts/contracts';
 import { GateType, TaskState } from './enums.js';
 import { orderedRuntimeGraphStageIds } from './template-graph-service.js';
 
@@ -122,7 +122,7 @@ export class StateMachine {
     };
   }
 
-  checkGate(db: AgoraDatabase, task: TaskShape, stage: WorkflowStage, callerId?: string, now = new Date().toISOString()): boolean {
+  checkGate(gateQuery: GateQueryPort, task: TaskShape, stage: WorkflowStage, callerId?: string, now = new Date().toISOString()): boolean {
     const gateType = stage.gate?.type ?? GateType.COMMAND;
 
     if (gateType === GateType.COMMAND) {
@@ -130,22 +130,12 @@ export class StateMachine {
     }
 
     if (gateType === GateType.ARCHON_REVIEW) {
-      const row = db.prepare(`
-        SELECT decision
-        FROM archon_reviews
-        WHERE task_id = ? AND stage_id = ?
-        ORDER BY reviewed_at DESC
-        LIMIT 1
-      `).get(task.id, stage.id) as { decision: string } | undefined;
+      const row = gateQuery.getLatestArchonReview(task.id, stage.id);
       return row?.decision === 'approved';
     }
 
     if (gateType === GateType.ALL_SUBTASKS_DONE) {
-      const rows = db.prepare(`
-        SELECT status
-        FROM subtasks
-        WHERE task_id = ? AND stage_id = ?
-      `).all(task.id, stage.id) as Array<{ status: string }>;
+      const rows = gateQuery.getSubtaskStatuses(task.id, stage.id);
       if (rows.length === 0) {
         return true;
       }
@@ -153,13 +143,7 @@ export class StateMachine {
     }
 
     if (gateType === GateType.APPROVAL) {
-      const row = db.prepare(`
-        SELECT 1
-        FROM approvals
-        WHERE task_id = ? AND stage_id = ?
-        LIMIT 1
-      `).get(task.id, stage.id);
-      return Boolean(row);
+      return gateQuery.hasApproval(task.id, stage.id);
     }
 
     if (gateType === GateType.QUORUM) {
@@ -167,26 +151,15 @@ export class StateMachine {
       if (!Number.isFinite(required) || required <= 0) {
         return false;
       }
-      const row = db.prepare(`
-        SELECT COUNT(*) AS count
-        FROM quorum_votes
-        WHERE task_id = ? AND stage_id = ? AND vote = 'approve'
-      `).get(task.id, stage.id) as { count: number };
-      return row.count >= required;
+      return gateQuery.getQuorumApproveCount(task.id, stage.id) >= required;
     }
 
     if (gateType === GateType.AUTO_TIMEOUT) {
-      const row = db.prepare(`
-        SELECT entered_at
-        FROM stage_history
-        WHERE task_id = ? AND stage_id = ?
-        ORDER BY id DESC
-        LIMIT 1
-      `).get(task.id, stage.id) as { entered_at: string } | undefined;
-      if (!row?.entered_at) {
+      const enteredAt = gateQuery.getStageEntryTime(task.id, stage.id);
+      if (!enteredAt) {
         return false;
       }
-      const elapsedMs = Date.parse(now) - Date.parse(row.entered_at);
+      const elapsedMs = Date.parse(now) - Date.parse(enteredAt);
       const timeoutSeconds = Number(stage.gate?.timeout_sec ?? 0);
       if (Number.isFinite(timeoutSeconds) && timeoutSeconds > 0) {
         return elapsedMs >= timeoutSeconds * 1000;

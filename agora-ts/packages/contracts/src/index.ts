@@ -20,3 +20,4 @@ export * from './project-membership.js';
 export * from './project-agent-roster.js';
 export * from './workspace-bootstrap.js';
 export * from './citizen.js';
+export * from './repository-interfaces.js';

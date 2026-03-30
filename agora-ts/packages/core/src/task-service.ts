@@ -12,6 +12,8 @@ import type {
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
+  GateQueryPort,
+  GateCommandPort,
   HostResourceSnapshotDto,
   PromoteTodoRequestDto,
   RuntimeDiagnosisResultDto,
@@ -32,6 +34,8 @@ import {
   FlowLogRepository,
   InboxRepository,
   ProgressLogRepository,
+  SqliteGateCommandPort,
+  SqliteGateQueryPort,
   SubtaskRepository,
   TaskContextBindingRepository,
   TaskConversationRepository,
@@ -167,6 +171,8 @@ export interface TaskServiceOptions {
     inboxAfterMs?: number;
   };
   resolveHumanReminderParticipantRefs?: (input: HumanReminderParticipantResolverInput) => string[];
+  gateQueryPort?: GateQueryPort;
+  gateCommandPort?: GateCommandPort;
 }
 
 export interface AdvanceTaskOptions {
@@ -333,6 +339,7 @@ export class TaskService {
   private readonly escalationPolicy: EscalationPolicy;
   private readonly pendingBackgroundOperations = new Set<Promise<void>>();
   private readonly craftsmanProbeStateByExecution = new Map<string, CraftsmanProbeState>();
+  private readonly gateQueryPort: GateQueryPort;
 
   constructor(
     private readonly db: AgoraDatabase,
@@ -357,7 +364,8 @@ export class TaskService {
     this.permissions = options.archonUsers
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
-    this.gateService = new GateService(db, this.permissions);
+    this.gateService = new GateService(options.gateCommandPort ?? new SqliteGateCommandPort(db), this.permissions);
+    this.gateQueryPort = options.gateQueryPort ?? new SqliteGateQueryPort(db);
     this.projectService = options.projectService ?? new ProjectService(db);
     this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskBrainBindingService = options.taskBrainBindingService;
@@ -675,7 +683,7 @@ export class TaskService {
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
     this.assertStageRosterAction(task, currentStage, options.callerId, 'advance');
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
-    if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
+    if (!this.stateMachine.checkGate(this.gateQueryPort, task, currentStage, options.callerId)) {
       const refreshed = this.getTaskOrThrow(taskId);
       if (
         refreshed.current_stage !== task.current_stage
