@@ -253,7 +253,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   }
 
   private projectRoot(projectId: string) {
-    return this.resolveProjectStateRoot(projectId) ?? resolve(this.options.brainPackRoot, 'projects', projectId);
+    return this.resolveProjectStateRoot(projectId) ?? resolve(this.options.brainPackRoot, 'project-index', projectId);
   }
 
   private indexPath(projectId: string) {

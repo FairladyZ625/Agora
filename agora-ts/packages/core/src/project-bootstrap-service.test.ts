@@ -130,6 +130,6 @@ describe('project bootstrap service', () => {
     expect(projectService.getKnowledgeEntry('proj-bootstrap', 'decision', 'bootstrap-known-constraints')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
     expect(projectService.getKnowledgeEntry('proj-bootstrap', 'open_question', 'bootstrap-open-questions')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
     expect(existsSync(join(projectStateDir, 'proj-bootstrap', 'tasks', 'OC-HARNESS-BOOTSTRAP', '00-bootstrap.md'))).toBe(true);
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'index.md'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-bootstrap', 'index.md'))).toBe(false);
   });
 });

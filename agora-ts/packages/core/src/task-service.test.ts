@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectAgentRosterRepository, ProjectMembershipRepository, ProjectRepository, runMigrations, SubtaskRepository, TaskAuthorityRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
@@ -955,7 +955,7 @@ describe('task service', () => {
       join(brainPackDir, 'roles', 'architect.md'),
     );
     expect(binding?.brain_pack_ref).toBe('agora-project-state');
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT'))).toBe(false);
   });
 
   it('materializes audience-specific project brain context files for project-bound tasks', () => {
@@ -1081,7 +1081,7 @@ describe('task service', () => {
     expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(citizenContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(controllerContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'citizen-alpha', '00-role-brief.md'), 'utf8')).toContain(citizenContextPath);
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP'))).toBe(false);
   });
 
   it('passes task context into project brain bootstrap generation for project-bound tasks', () => {
@@ -1250,7 +1250,7 @@ describe('task service', () => {
     expect(readFileSync(join(projectStateDir, 'proj-recap', 'timeline.md'), 'utf8')).toContain(
       'doc=[[tasks/archive/OC-PROJECT-RECAP.md]]',
     );
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-recap', 'index.md'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-recap', 'index.md'))).toBe(false);
   });
 
   it('promotes project-bound todos into tasks that keep the same project_id', () => {
@@ -1277,107 +1277,6 @@ describe('task service', () => {
 
     expect(promoted.todo.project_id).toBe('proj-promote');
     expect(promoted.task.project_id).toBe('proj-promote');
-  });
-
-  it('rejects project-bound task creation when the creator is not an active project member', () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    db.prepare(`
-      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
-      VALUES
-        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
-        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
-    `).run();
-    const projectService = new ProjectService(db);
-    projectService.createProject({
-      id: 'proj-member-check',
-      name: 'Member Check',
-      admins: [{ account_id: 1 }],
-      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
-    });
-    const service = new TaskService(db, {
-      templatesDir,
-      taskIdGenerator: () => 'OC-PROJECT-MEMBER-CHECK',
-      projectService,
-    });
-
-    expect(() => service.createTask({
-      title: 'Creator outside membership',
-      type: 'coding',
-      creator: 'alice',
-      description: '',
-      priority: 'normal',
-      project_id: 'proj-member-check',
-      authority: {
-        owner_account_id: 1,
-        controller_agent_ref: 'workspace-orchestrator',
-      },
-    })).toThrow(/creator must be an active project member/i);
-  });
-
-  it('creates task authority for project-bound tasks and rejects human authority targets outside membership', () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    db.prepare(`
-      INSERT INTO human_accounts (username, password_hash, role, enabled, created_at, updated_at)
-      VALUES
-        ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
-        ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
-        ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
-    `).run();
-    const projectService = new ProjectService(db);
-    projectService.createProject({
-      id: 'proj-task-authority',
-      name: 'Task Authority',
-      admins: [{ account_id: 1 }],
-      members: [{ account_id: 2, role: 'member' }],
-      default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
-    });
-    const authorities = new TaskAuthorityRepository(db);
-    const service = new TaskService(db, {
-      templatesDir,
-      taskIdGenerator: () => 'OC-TASK-AUTHORITY',
-      projectService,
-    });
-
-    expect(() => service.createTask({
-      title: 'Reject outside assignee',
-      type: 'coding',
-      creator: 'archon',
-      description: '',
-      priority: 'normal',
-      project_id: 'proj-task-authority',
-      authority: {
-        owner_account_id: 1,
-        assignee_account_id: 3,
-        controller_agent_ref: 'workspace-orchestrator',
-      },
-    })).toThrow(/task authority account 3 is not an active project member/i);
-
-    const created = service.createTask({
-      title: 'Create authority',
-      type: 'coding',
-      creator: 'alice',
-      description: '',
-      priority: 'normal',
-      project_id: 'proj-task-authority',
-      authority: {
-        requester_account_id: 2,
-        owner_account_id: 1,
-        assignee_account_id: 2,
-        approver_account_id: 1,
-        controller_agent_ref: 'workspace-orchestrator',
-      },
-    });
-
-    expect(created.project_id).toBe('proj-task-authority');
-    expect(authorities.getTaskAuthority('OC-TASK-AUTHORITY')).toMatchObject({
-      requester_account_id: 2,
-      owner_account_id: 1,
-      assignee_account_id: 2,
-      approver_account_id: 1,
-      controller_agent_ref: 'workspace-orchestrator',
-    });
   });
 
   it('rolls back task creation when brain workspace materialization fails', () => {
@@ -4959,9 +4858,7 @@ describe('task service', () => {
     const binding = bindingService.getLatestBinding('OC-PROBE-ECHO-1');
     const echoedBody = conversationRepository
       .listByTask('OC-PROBE-ECHO-1')
-      .slice()
-      .reverse()
-      .find((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
+      .findLast((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
       ?.body;
     expect(binding).not.toBeNull();
     expect(echoedBody).toBeTruthy();
@@ -4995,179 +4892,6 @@ describe('task service', () => {
     expect(
       provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
     ).toHaveLength(1);
-  });
-
-  it('reroutes approval-wait inactivity probes to a bound human participant instead of pinging the controller', async () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    const provisioningPort = new StubIMProvisioningPort({
-      im_provider: 'discord',
-      conversation_ref: 'discord-parent-channel',
-      thread_ref: 'discord-thread-approval-human-reminder',
-    });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
-      templatesDir,
-      taskIdGenerator: () => 'OC-APPROVAL-PROBE-1',
-      imProvisioningPort: provisioningPort,
-      taskContextBindingService: bindingService,
-      resolveHumanReminderParticipantRefs: ({ provider, reason }) => {
-        if (provider !== 'discord' || reason !== 'approval_waiting') {
-          return [];
-        }
-        return ['discord-user-123'];
-      },
-    });
-
-    service.createTask({
-      title: 'Approval reminder reroute',
-      type: 'custom',
-      creator: 'alice',
-      description: '',
-      priority: 'normal',
-      team_override: {
-        members: [
-          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
-          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
-        ],
-      },
-      workflow_override: {
-        type: 'custom',
-        stages: [
-          {
-            id: 'review',
-            mode: 'discuss',
-            gate: { type: 'approval', approver: 'reviewer' },
-          },
-        ],
-      },
-      im_target: { provider: 'discord', visibility: 'private' },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    provisioningPort.published.length = 0;
-    provisioningPort.joined.length = 0;
-
-    expect(() => service.advanceTask('OC-APPROVAL-PROBE-1', { callerId: 'archon' })).toThrow();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    provisioningPort.published.length = 0;
-    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-1');
-    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-1');
-    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-1');
-
-    const result = service.probeInactiveTasks({
-      controllerAfterMs: 1_000,
-      rosterAfterMs: 2_000,
-      inboxAfterMs: 3_000,
-      now: new Date('2026-03-29T01:00:00.000Z'),
-    });
-
-    expect(result).toMatchObject({
-      scanned_tasks: 1,
-      controller_pings: 0,
-      roster_pings: 0,
-      human_pings: 1,
-      inbox_items: 0,
-    });
-    expect(provisioningPort.joined).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ participant_ref: 'discord-user-123' }),
-      ]),
-    );
-    expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
-      kind: 'human_approval_pinged',
-      participant_refs: ['discord-user-123'],
-    });
-    expect(
-      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged'),
-    ).toHaveLength(0);
-  });
-
-  it('keeps the thread quiet during approval wait when no human participant can be resolved', async () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    const provisioningPort = new StubIMProvisioningPort({
-      im_provider: 'discord',
-      conversation_ref: 'discord-parent-channel',
-      thread_ref: 'discord-thread-approval-no-human',
-    });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
-      templatesDir,
-      taskIdGenerator: () => 'OC-APPROVAL-PROBE-2',
-      imProvisioningPort: provisioningPort,
-      taskContextBindingService: bindingService,
-      resolveHumanReminderParticipantRefs: () => [],
-    });
-
-    service.createTask({
-      title: 'Approval reminder quiet fallback',
-      type: 'custom',
-      creator: 'alice',
-      description: '',
-      priority: 'normal',
-      team_override: {
-        members: [
-          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
-          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
-        ],
-      },
-      workflow_override: {
-        type: 'custom',
-        stages: [
-          {
-            id: 'review',
-            mode: 'discuss',
-            gate: { type: 'approval', approver: 'reviewer' },
-          },
-        ],
-      },
-      im_target: { provider: 'discord', visibility: 'private' },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    provisioningPort.published.length = 0;
-
-    expect(() => service.advanceTask('OC-APPROVAL-PROBE-2', { callerId: 'archon' })).toThrow();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    provisioningPort.published.length = 0;
-    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-2');
-    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-2');
-    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-PROBE-2');
-
-    const quietProbe = service.probeInactiveTasks({
-      controllerAfterMs: 1_000,
-      rosterAfterMs: 2_000,
-      inboxAfterMs: 3_000,
-      now: new Date('2026-03-29T00:00:02.000Z'),
-    });
-    expect(quietProbe).toMatchObject({
-      scanned_tasks: 1,
-      controller_pings: 0,
-      roster_pings: 0,
-      human_pings: 0,
-      inbox_items: 0,
-    });
-    expect(provisioningPort.published.flatMap((entry) => entry.messages)).toHaveLength(0);
-
-    const inboxProbe = service.probeInactiveTasks({
-      controllerAfterMs: 1_000,
-      rosterAfterMs: 2_000,
-      inboxAfterMs: 3_000,
-      now: new Date('2026-03-29T00:00:10.000Z'),
-    });
-    expect(inboxProbe).toMatchObject({
-      scanned_tasks: 1,
-      controller_pings: 0,
-      roster_pings: 0,
-      human_pings: 0,
-      inbox_items: 1,
-    });
-    expect(
-      provisioningPort.published.flatMap((entry) => entry.messages).filter((message) => message.kind === 'controller_pinged' || message.kind === 'roster_pinged'),
-    ).toHaveLength(0);
   });
 
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {

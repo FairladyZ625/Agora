@@ -132,7 +132,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
 
   private resolveProjectRoot(projectId: string) {
     return this.options.projectStateRootResolver?.(projectId)
-      ?? resolve(this.options.brainPackRoot, 'projects', projectId);
+      ?? resolve(this.options.brainPackRoot, 'project-index', projectId);
   }
 
   private resolveProjectTaskRoot(projectId: string) {
