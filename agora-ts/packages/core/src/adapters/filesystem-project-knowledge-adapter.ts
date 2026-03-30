@@ -11,7 +11,7 @@ import type {
   ProjectKnowledgeTaskBindingInput,
   ProjectKnowledgeTaskRecapInput,
 } from '../project-knowledge-port.js';
-import { ensureCanonicalProjectRoot } from '../project-state-root.js';
+import { ensureCanonicalProjectRoot, ensureCanonicalProjectRootBootstrapCommit } from '../project-state-root.js';
 import { extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from './markdown-frontmatter.js';
 
 export interface FilesystemProjectKnowledgeAdapterOptions {
@@ -42,6 +42,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
     this.appendTimeline(input.id, [
       `- ${new Date().toISOString()} | project_created | ${input.name} | status=${input.status}`,
     ]);
+    ensureCanonicalProjectRootBootstrapCommit(root);
   }
 
   recordTaskBinding(input: ProjectKnowledgeTaskBindingInput): void {
