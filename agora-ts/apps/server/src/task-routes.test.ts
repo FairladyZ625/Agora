@@ -32,6 +32,12 @@ function makeBrainPackDir() {
   return dir;
 }
 
+function makeProjectStateDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-project-state-'));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   delete process.env.AGORA_HOME_DIR;
   while (tempPaths.length > 0) {
@@ -924,8 +930,12 @@ describe('task routes', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const app = buildApp({
       db,
@@ -997,8 +1007,12 @@ describe('task routes', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-workbench',
@@ -1040,14 +1054,14 @@ describe('task routes', () => {
       state: 'done',
       current_stage: 'ship',
       controller_ref: 'opus',
-      workspace_path: join(brainPackRoot, 'projects', 'proj-workbench', 'tasks', 'OC-WB-1'),
+      workspace_path: join(projectStateDir, 'proj-workbench', 'tasks', 'OC-WB-1'),
       completed_by: 'archon',
       completed_at: '2026-03-16T12:00:00.000Z',
       summary_lines: ['Task recap line'],
     });
-    mkdirSync(join(brainPackRoot, 'projects', 'proj-workbench', 'recaps'), { recursive: true });
+    mkdirSync(join(projectStateDir, 'proj-workbench', 'recaps'), { recursive: true });
     writeFileSync(
-      join(brainPackRoot, 'projects', 'proj-workbench', 'recaps', 'OC-WB-1.md'),
+      join(projectStateDir, 'proj-workbench', 'recaps', 'OC-WB-1.md'),
       '# Workbench recap\n\nTask recap line\n',
       'utf8',
     );
@@ -1125,7 +1139,10 @@ describe('task routes', () => {
     const projectBrainService = new ProjectBrainService({
       projectService,
       citizenService,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const app = buildApp({
       db,

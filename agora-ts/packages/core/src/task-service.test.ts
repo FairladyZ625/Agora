@@ -917,6 +917,8 @@ describe('task service', () => {
       summary: 'project brain scope',
     });
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(projectStateDir);
     const service = new TaskService(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRAIN-PROJECT',
@@ -926,6 +928,7 @@ describe('task service', () => {
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
 
@@ -939,7 +942,7 @@ describe('task service', () => {
     });
 
     const binding = new TaskBrainBindingRepository(db).getActiveByTask(task.id);
-    const workspacePath = join(brainPackDir, 'projects', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT');
+    const workspacePath = join(projectStateDir, 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT');
     expect(task.project_id).toBe('proj-alpha');
     expect(binding?.workspace_path).toBe(workspacePath);
     expect(binding?.metadata).toMatchObject({
@@ -951,15 +954,20 @@ describe('task service', () => {
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(
       join(brainPackDir, 'roles', 'architect.md'),
     );
+    expect(binding?.brain_pack_ref).toBe('agora-project-state');
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-alpha', 'tasks', 'OC-BRAIN-PROJECT'))).toBe(false);
   });
 
   it('materializes audience-specific project brain context files for project-bound tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
+    tempPaths.push(projectStateDir);
     const projectService = new ProjectService(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     projectService.createProject({
@@ -1021,6 +1029,7 @@ describe('task service', () => {
       citizenService,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     const automationService = new ProjectBrainAutomationService({
@@ -1035,6 +1044,7 @@ describe('task service', () => {
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
       projectBrainAutomationService: automationService,
     });
@@ -1054,7 +1064,7 @@ describe('task service', () => {
       },
     });
 
-    const workspacePath = join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
+    const workspacePath = join(projectStateDir, 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
     const controllerContextPath = join(workspacePath, '04-context', 'project-brain-context-controller.md');
     const craftsmanContextPath = join(workspacePath, '04-context', 'project-brain-context-craftsman.md');
     const citizenContextPath = join(workspacePath, '04-context', 'project-brain-context-citizen.md');
@@ -1071,6 +1081,7 @@ describe('task service', () => {
     expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(citizenContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(controllerContextPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'citizen-alpha', '00-role-brief.md'), 'utf8')).toContain(citizenContextPath);
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP'))).toBe(false);
   });
 
   it('passes task context into project brain bootstrap generation for project-bound tasks', () => {

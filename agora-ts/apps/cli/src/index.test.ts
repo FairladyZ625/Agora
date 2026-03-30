@@ -310,8 +310,12 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
+    const projectStateDir = makeTempDir('agora-ts-cli-project-state-');
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const taskService = new TaskService(db, {
       templatesDir,
@@ -331,7 +335,8 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project 已创建: proj-alpha');
     expect(stdout.value).toContain('proj-alpha\tactive\tProject Alpha\tarchon');
-    expect(readFileSync(join(brainPackRoot, 'projects', 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('# Project Alpha');
+    expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('doc_type: project_index');
   });
 
   it('installs the built-in Nomos skeleton and repo shim through the cli project-create path', async () => {

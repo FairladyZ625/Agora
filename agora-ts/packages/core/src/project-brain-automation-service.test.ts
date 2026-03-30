@@ -27,6 +27,12 @@ function makeBrainPackDir() {
   return dir;
 }
 
+function makeProjectStateDir() {
+  const dir = mkdtempSync(join(tmpdir(), 'agora-ts-project-brain-automation-state-'));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -41,8 +47,12 @@ describe('project brain automation service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-automation',
@@ -54,7 +64,7 @@ describe('project brain automation service', () => {
       task_id: 'OC-100',
       title: 'Initial task',
       state: 'active',
-      workspace_path: join(brainPackRoot, 'projects', 'proj-automation', 'tasks', 'OC-100'),
+      workspace_path: join(projectStateDir, 'proj-automation', 'tasks', 'OC-100'),
       bound_at: '2026-03-16T08:00:00.000Z',
     });
     projectService.recordTaskRecap({
@@ -64,7 +74,7 @@ describe('project brain automation service', () => {
       state: 'done',
       current_stage: 'ship',
       controller_ref: 'opus',
-      workspace_path: join(brainPackRoot, 'projects', 'proj-automation', 'tasks', 'OC-100'),
+      workspace_path: join(projectStateDir, 'proj-automation', 'tasks', 'OC-100'),
       completed_by: 'archon',
       completed_at: '2026-03-16T09:00:00.000Z',
       summary_lines: ['Task recap line'],
@@ -121,7 +131,10 @@ describe('project brain automation service', () => {
     const projectBrainService = new ProjectBrainService({
       projectService,
       citizenService,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const service = new ProjectBrainAutomationService({
       projectBrainService,
@@ -165,8 +178,12 @@ describe('project brain automation service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-automation',
@@ -184,7 +201,10 @@ describe('project brain automation service', () => {
     });
     const projectBrainService = new ProjectBrainService({
       projectService,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const policy = {
       selectBootstrapDocuments: vi.fn((documents: unknown[]) => documents),
@@ -219,8 +239,12 @@ describe('project brain automation service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
+    const projectStateDir = makeProjectStateDir();
     const projectService = new ProjectService(db, {
-      knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     projectService.createProject({
       id: 'proj-automation',
@@ -232,7 +256,7 @@ describe('project brain automation service', () => {
       task_id: 'OC-100',
       title: 'Hybrid retrieval task',
       state: 'active',
-      workspace_path: join(brainPackRoot, 'projects', 'proj-automation', 'tasks', 'OC-100'),
+      workspace_path: join(projectStateDir, 'proj-automation', 'tasks', 'OC-100'),
       bound_at: '2026-03-16T08:00:00.000Z',
     });
     projectService.upsertKnowledgeEntry({
@@ -273,7 +297,10 @@ describe('project brain automation service', () => {
           ],
         }),
       } as never,
-      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
+      projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
+        brainPackRoot,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
     });
     const retrievalService = {
       searchTaskContext: vi.fn().mockResolvedValue([
