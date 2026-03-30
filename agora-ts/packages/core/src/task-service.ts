@@ -69,6 +69,7 @@ import type { TaskContextBindingService } from './task-context-binding-service.j
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import { ProjectContextWriter } from './project-context-writer.js';
 import { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import { StageRosterService } from './stage-roster-service.js';
@@ -304,6 +305,7 @@ export class TaskService {
   private readonly permissions: PermissionService;
   private readonly gateService: GateService;
   private readonly projectService: ProjectService;
+  private readonly projectContextWriter: ProjectContextWriter;
   private readonly taskWorktreeService: TaskWorktreeService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
   private readonly craftsmanExecutions: CraftsmanExecutionRepository;
@@ -362,6 +364,16 @@ export class TaskService {
       : new PermissionService({ allowAgents: options.allowAgents });
     this.gateService = new GateService(db, this.permissions);
     this.projectService = options.projectService ?? new ProjectService(db);
+    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
+    this.taskBrainBindingService = options.taskBrainBindingService;
+    this.taskContextBindingService = options.taskContextBindingService;
+    this.taskParticipationService = options.taskParticipationService;
+    this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
+    this.projectBrainAutomationService = options.projectBrainAutomationService;
+    this.projectContextWriter = new ProjectContextWriter(db, {
+      projectService: this.projectService,
+      ...(this.taskBrainWorkspacePort ? { taskBrainWorkspacePort: this.taskBrainWorkspacePort } : {}),
+    });
     this.taskWorktreeService = new TaskWorktreeService({
       projectService: this.projectService,
     });
@@ -377,12 +389,6 @@ export class TaskService {
     this.taskIdGenerator = options.taskIdGenerator ?? defaultTaskIdGenerator;
     this.imProvisioningPort = options.imProvisioningPort;
     this.imMessagingPort = options.imMessagingPort;
-    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
-    this.taskBrainBindingService = options.taskBrainBindingService;
-    this.taskContextBindingService = options.taskContextBindingService;
-    this.taskParticipationService = options.taskParticipationService;
-    this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
-    this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.stageRosterService = new StageRosterService();
     this.agentRuntimePort = options.agentRuntimePort;
     this.runtimeRecoveryPort = options.runtimeRecoveryPort;
@@ -2804,43 +2810,6 @@ export class TaskService {
   }
 
   private materializeTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
-    if (this.projectBrainAutomationService) {
-      this.projectBrainAutomationService.recordTaskCloseRecap(task, actor, reason);
-    } else if (task.project_id && this.taskBrainWorkspacePort && this.taskBrainBindingService) {
-      const binding = this.taskBrainBindingService.getActiveBinding(task.id);
-      if (binding) {
-        const summaryLines = [
-          taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
-          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
-          `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
-          ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
-        ];
-        this.taskBrainWorkspacePort.writeTaskCloseRecap(binding, {
-          task_id: task.id,
-          project_id: task.project_id,
-          locale: task.locale,
-          title: task.title,
-          state: task.state,
-          current_stage: task.current_stage,
-          controller_ref: resolveControllerRef(task.team.members),
-          completed_by: actor,
-          completed_at: new Date().toISOString(),
-          summary_lines: summaryLines,
-        });
-        this.taskBrainWorkspacePort.writeTaskHarvestDraft(binding, {
-          task_id: task.id,
-          project_id: task.project_id,
-          locale: task.locale,
-          title: task.title,
-          state: task.state,
-          current_stage: task.current_stage,
-          controller_ref: resolveControllerRef(task.team.members),
-          completed_by: actor,
-          completed_at: new Date().toISOString(),
-          summary_lines: summaryLines,
-        });
-      }
-    }
     if (!task.project_id || !this.taskBrainBindingService) {
       return;
     }
@@ -2848,24 +2817,13 @@ export class TaskService {
     if (!binding) {
       return;
     }
-    const summaryLines = [
-      taskText(task, '任务已到达 done，已进入 archive 流程。', 'Task reached done and has entered archive handling.'),
-      `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage ?? '-'}`,
-      `${taskText(task, '主控', 'Controller')}: ${resolveControllerRef(task.team.members) ?? '-'}`,
-      ...(reason ? [`${taskText(task, '原因', 'Reason')}: ${reason}`] : []),
-    ];
-    this.projectService.recordTaskRecap({
-      project_id: task.project_id,
-      task_id: task.id,
-      title: task.title,
-      state: task.state,
-      current_stage: task.current_stage,
-      controller_ref: resolveControllerRef(task.team.members),
-      workspace_path: binding.workspace_path,
-      completed_by: actor,
-      completed_at: new Date().toISOString(),
-      summary_lines: summaryLines,
+    const proposal = this.projectContextWriter.buildTaskCloseoutProposal({
+      task,
+      binding,
+      actor,
+      ...(reason ? { reason } : {}),
     });
+    this.projectContextWriter.applyTaskCloseoutProposal(proposal);
   }
 
   private ensureApprovalRequestForGate(

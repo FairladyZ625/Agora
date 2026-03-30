@@ -95,6 +95,28 @@ export class ProjectService {
     return this.projects.getProject(projectId);
   }
 
+  getProjectRepoPath(projectId: string): string | null {
+    const project = this.requireProject(projectId);
+    const metadata = asRecord(project.metadata);
+    return typeof metadata?.repo_path === 'string' && metadata.repo_path.length > 0
+      ? metadata.repo_path
+      : null;
+  }
+
+  getProjectStateRoot(projectId: string): string | null {
+    const project = this.requireProject(projectId);
+    const metadata = asRecord(project.metadata);
+    const agora = asRecord(metadata?.agora);
+    const nomos = asRecord(agora?.nomos);
+    if (typeof nomos?.project_state_root === 'string' && nomos.project_state_root.length > 0) {
+      return nomos.project_state_root;
+    }
+    if (typeof nomos?.active_root === 'string' && nomos.active_root.length > 0) {
+      return nomos.active_root;
+    }
+    return null;
+  }
+
   listProjectMemberships(projectId: string) {
     this.requireProject(projectId);
     return this.memberships.listProjectMemberships(projectId);
@@ -292,4 +314,10 @@ function slugifyProjectName(input: string) {
 function trimProjectId(input: string) {
   const trimmed = input.replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
   return (trimmed.slice(0, 63).replace(/-+$/g, '') || 'proj-auto');
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }

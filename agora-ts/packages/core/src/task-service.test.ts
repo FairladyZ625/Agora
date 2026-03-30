@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
+import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, ProjectWriteLockRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
 import { CitizenService } from './citizen-service.js';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
@@ -14,6 +14,7 @@ import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-pr
 import { LiveSessionStore } from './live-session-store.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
+import { ProjectContextWriter } from './project-context-writer.js';
 import { ProjectService } from './project-service.js';
 import { RolePackService } from './role-pack-service.js';
 import { TaskService } from './task-service.js';
@@ -1162,6 +1163,109 @@ describe('task service', () => {
     }));
   });
 
+  it('builds a structured project context write proposal for task closeout', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-writer-proposal-'));
+    tempPaths.push(projectStateDir);
+    const projectService = new ProjectService(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-writer-proposal',
+      name: 'Writer Proposal',
+      metadata: {
+        agora: {
+          nomos: {
+            project_state_root: join(projectStateDir, 'proj-writer-proposal'),
+          },
+        },
+      },
+    });
+    const bindingService = new TaskBrainBindingService(db, {
+      idGenerator: () => 'brain-binding-writer-proposal',
+    });
+    const service = new TaskService(db, {
+      templatesDir: makeEmptyTemplatesDir(),
+      taskIdGenerator: () => 'OC-WRITER-PROPOSAL',
+      projectService,
+      taskBrainBindingService: bindingService,
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
+
+    service.createTask({
+      title: 'Writer proposal task',
+      type: 'project-thin-slice',
+      creator: 'archon',
+      description: 'proposal path',
+      priority: 'high',
+      project_id: 'proj-writer-proposal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'command-only',
+        stages: [{ id: 'ship', mode: 'execute', gate: { type: 'command' } }],
+      },
+    });
+
+    const task = service.getTask('OC-WRITER-PROPOSAL')!;
+    const binding = bindingService.getActiveBinding('OC-WRITER-PROPOSAL')!;
+    const writer = new ProjectContextWriter(db, {
+      projectService,
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+      execFile: vi.fn(() => ''),
+    });
+
+    const proposal = writer.buildTaskCloseoutProposal({
+      task,
+      binding,
+      actor: 'archon',
+      reason: 'ready to archive',
+    });
+
+    expect(proposal).toMatchObject({
+      kind: 'task_closeout',
+      project_id: 'proj-writer-proposal',
+      task_id: 'OC-WRITER-PROPOSAL',
+      canonical_root: join(projectStateDir, 'proj-writer-proposal'),
+      lock_holder_task_id: 'OC-WRITER-PROPOSAL',
+      close_recap: {
+        binding: expect.objectContaining({
+          workspace_path: join(projectStateDir, 'proj-writer-proposal', 'tasks', 'OC-WRITER-PROPOSAL'),
+        }),
+        input: expect.objectContaining({
+          project_id: 'proj-writer-proposal',
+          task_id: 'OC-WRITER-PROPOSAL',
+          completed_by: 'archon',
+          summary_lines: expect.arrayContaining([
+            '任务已到达 done，已进入 archive 流程。',
+            '完成人: archon',
+            '原因: ready to archive',
+          ]),
+        }),
+      },
+      project_recap: expect.objectContaining({
+        project_id: 'proj-writer-proposal',
+        task_id: 'OC-WRITER-PROPOSAL',
+        workspace_path: join(projectStateDir, 'proj-writer-proposal', 'tasks', 'OC-WRITER-PROPOSAL'),
+        completed_by: 'archon',
+      }),
+    });
+  });
+
   it('materializes project-bound task workspace and recap data into the canonical project root when configured', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -1250,6 +1354,7 @@ describe('task service', () => {
     expect(readFileSync(join(projectStateDir, 'proj-recap', 'timeline.md'), 'utf8')).toContain(
       'doc=[[tasks/archive/OC-PROJECT-RECAP.md]]',
     );
+    expect(new ProjectWriteLockRepository(db).getLock('proj-recap')).toBeNull();
     expect(existsSync(join(brainPackDir, 'project-index', 'proj-recap', 'index.md'))).toBe(false);
   });
 

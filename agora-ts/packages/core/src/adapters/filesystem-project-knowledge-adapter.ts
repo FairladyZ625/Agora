@@ -81,6 +81,11 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
       rmSync(this.activeTaskProjectionPath(input.project_id, input.task_id), { force: true });
     }
     writeFileSync(
+      join(this.recapsDir(input.project_id), `${input.task_id}.md`),
+      renderProjectTaskRecap(input),
+      'utf8',
+    );
+    writeFileSync(
       this.archivedTaskProjectionPath(input.project_id, input.task_id),
       renderTaskProjection({
         project_id: input.project_id,
@@ -670,6 +675,42 @@ function renderTaskProjection(input: {
         ]
       : []),
   ].join('\n');
+}
+
+function renderProjectTaskRecap(input: ProjectKnowledgeTaskRecapInput) {
+  const locale = inferProjectRecapLocale(input.summary_lines);
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'task_recap',
+      task_id: input.task_id,
+      project_id: input.project_id,
+      kind: 'recap',
+      slug: input.task_id,
+      title: input.title,
+      created_at: input.completed_at,
+      updated_at: input.completed_at,
+      source_task_ids: [input.task_id],
+    }),
+    `# ${locale === 'zh-CN' ? '任务收口回写' : 'Task Close Recap'}`,
+    '',
+    `- ${locale === 'zh-CN' ? '任务' : 'Task'}: ${input.task_id}`,
+    `- Project: ${input.project_id}`,
+    `- ${locale === 'zh-CN' ? '标题' : 'Title'}: ${input.title}`,
+    `- ${locale === 'zh-CN' ? '任务状态' : 'Task State'}: ${input.state}`,
+    `- ${locale === 'zh-CN' ? '当前阶段' : 'Current Stage'}: ${input.current_stage ?? '-'}`,
+    `- ${locale === 'zh-CN' ? '主控' : 'Controller'}: ${input.controller_ref ?? '-'}`,
+    `- ${locale === 'zh-CN' ? '完成人' : 'Completed By'}: ${input.completed_by}`,
+    `- ${locale === 'zh-CN' ? '完成时间' : 'Completed At'}: ${input.completed_at}`,
+    '',
+    `## ${locale === 'zh-CN' ? '摘要' : 'Summary'}`,
+    '',
+    ...input.summary_lines.map((line) => `- ${line}`),
+    '',
+  ].join('\n');
+}
+
+function inferProjectRecapLocale(summaryLines: string[]) {
+  return summaryLines.some((line) => /[\u4e00-\u9fff]/.test(line)) ? 'zh-CN' : 'en-US';
 }
 
 function renderProjectStateTaskMirror(input: {

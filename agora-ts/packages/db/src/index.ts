@@ -26,3 +26,4 @@ export * from './repositories/project-brain-index-job.repository.js';
 export * from './repositories/project-membership.repository.js';
 export * from './repositories/project-agent-roster.repository.js';
 export * from './repositories/task-authority.repository.js';
+export * from './repositories/project-write-lock.repository.js';

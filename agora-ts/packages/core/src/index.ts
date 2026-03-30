@@ -39,6 +39,7 @@ export * from './project-brain-retrieval-service.js';
 export * from './project-brain-service.js';
 export * from './project-brain-vector-index-port.js';
 export * from './project-bootstrap-service.js';
+export * from './project-context-writer.js';
 export * from './project-membership-service.js';
 export * from './project-agent-roster-service.js';
 export * from './project-nomos-authoring-port.js';
