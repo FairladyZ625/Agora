@@ -70,7 +70,7 @@ export class ProjectService {
         this.memberships.seedProjectMemberships({
           projectId,
           admins: input.admins,
-          members: input.members,
+          ...(input.members ? { members: input.members } : {}),
         });
       }
       if (input.default_agents && input.default_agents.length > 0) {

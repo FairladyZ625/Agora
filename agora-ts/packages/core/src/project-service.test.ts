@@ -77,7 +77,7 @@ describe('project service', () => {
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/active/]]');
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'index.md'), 'utf8')).toContain('[[tasks/archive/]]');
     expect(readFileSync(join(projectStateDir, 'proj-alpha', 'timeline.md'), 'utf8')).toContain('doc_type: project_timeline');
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-alpha', 'index.md'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-alpha', 'index.md'))).toBe(false);
   });
 
   it('creates project memberships and agent roster entries during project creation', () => {
@@ -145,7 +145,7 @@ describe('project service', () => {
     expect(created.id).toMatch(/^proj-[a-z0-9-]+$/);
     expect(service.requireProject(created.id).name).toBe('中文 Project Alpha');
     expect(existsSync(join(projectStateDir, created.id, 'index.md'))).toBe(true);
-    expect(existsSync(join(brainPackDir, 'projects', created.id, 'index.md'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', created.id, 'index.md'))).toBe(false);
   });
 
   it('throws when requiring a missing project', () => {
@@ -202,7 +202,7 @@ describe('project service', () => {
     expect(readFileSync(join(projectStateDir, 'proj-knowledge', 'index.md'), 'utf8')).toContain(
       '[[knowledge/decisions/runtime-boundary.md]]',
     );
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-knowledge', 'index.md'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-knowledge', 'index.md'))).toBe(false);
   });
 
   it('enqueues affected project brain docs when knowledge, timeline, and recap write paths change', () => {
@@ -333,7 +333,7 @@ describe('project service', () => {
     expect(readFileSync(activeProjectionPath, 'utf8')).toContain('[[../OC-PROJECTION-1/00-current.md]]');
     expect(readFileSync(indexPath, 'utf8')).toContain('[[tasks/active/OC-PROJECTION-1.md]] | Projection Task | state=active');
     expect(readFileSync(timelinePath, 'utf8')).toContain('doc=[[tasks/active/OC-PROJECTION-1.md]]');
-    expect(existsSync(join(brainPackDir, 'projects', 'proj-projection', 'index.md'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-projection', 'index.md'))).toBe(false);
 
     service.recordTaskRecap({
       project_id: 'proj-projection',
