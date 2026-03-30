@@ -294,6 +294,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       citizenService: deps.citizenService,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: context.brainPackDir,
+        projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
       }),
       projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),
@@ -416,6 +417,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
       brainPackRoot: context.brainPackDir,
+      projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
     createProjectBrainEmbeddingPort: () => process.env.OPENAI_API_KEY
       ? new OpenAiCompatibleProjectBrainEmbeddingAdapter()

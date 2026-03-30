@@ -212,7 +212,7 @@ describe('project service', () => {
     });
   });
 
-  it('maintains active and archive task projections under the project surface', () => {
+  it('writes project task projections into the canonical project root when a project state root is configured', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
@@ -237,28 +237,21 @@ describe('project service', () => {
       task_id: 'OC-PROJECTION-1',
       title: 'Projection Task',
       state: 'active',
-      workspace_path: join(brainPackDir, 'projects', 'proj-projection', 'tasks', 'OC-PROJECTION-1'),
+      workspace_path: join(projectStateDir, 'proj-projection', 'tasks', 'OC-PROJECTION-1'),
       bound_at: '2026-03-27T10:00:00.000Z',
     });
 
-    const activeProjectionPath = join(brainPackDir, 'projects', 'proj-projection', 'tasks', 'active', 'OC-PROJECTION-1.md');
-    const archiveProjectionPath = join(brainPackDir, 'projects', 'proj-projection', 'tasks', 'archive', 'OC-PROJECTION-1.md');
-    const indexPath = join(brainPackDir, 'projects', 'proj-projection', 'index.md');
-    const timelinePath = join(brainPackDir, 'projects', 'proj-projection', 'timeline.md');
-    const projectStateActiveProjectionPath = join(projectStateDir, 'proj-projection', 'tasks', 'active', 'OC-PROJECTION-1.md');
-    const projectStateArchiveProjectionPath = join(projectStateDir, 'proj-projection', 'archive', 'OC-PROJECTION-1.md');
-    const projectStateTasksIndexPath = join(projectStateDir, 'proj-projection', 'tasks', 'index.md');
-    const projectStateArchiveIndexPath = join(projectStateDir, 'proj-projection', 'archive', 'index.md');
+    const activeProjectionPath = join(projectStateDir, 'proj-projection', 'tasks', 'active', 'OC-PROJECTION-1.md');
+    const archiveProjectionPath = join(projectStateDir, 'proj-projection', 'tasks', 'archive', 'OC-PROJECTION-1.md');
+    const indexPath = join(projectStateDir, 'proj-projection', 'index.md');
+    const timelinePath = join(projectStateDir, 'proj-projection', 'timeline.md');
 
     expect(existsSync(activeProjectionPath)).toBe(true);
     expect(readFileSync(activeProjectionPath, 'utf8')).toContain('Projection: active');
     expect(readFileSync(activeProjectionPath, 'utf8')).toContain('[[../OC-PROJECTION-1/00-current.md]]');
     expect(readFileSync(indexPath, 'utf8')).toContain('[[tasks/active/OC-PROJECTION-1.md]] | Projection Task | state=active');
     expect(readFileSync(timelinePath, 'utf8')).toContain('doc=[[tasks/active/OC-PROJECTION-1.md]]');
-    expect(existsSync(projectStateActiveProjectionPath)).toBe(true);
-    expect(readFileSync(projectStateActiveProjectionPath, 'utf8')).toContain('doc_type: project_state_task_projection');
-    expect(readFileSync(projectStateActiveProjectionPath, 'utf8')).toContain('Local Index: [[../index.md]]');
-    expect(readFileSync(projectStateTasksIndexPath, 'utf8')).toContain('[[active/OC-PROJECTION-1.md]] | Projection Task | state=active');
+    expect(existsSync(join(brainPackDir, 'projects', 'proj-projection', 'index.md'))).toBe(false);
 
     service.recordTaskRecap({
       project_id: 'proj-projection',
@@ -267,7 +260,7 @@ describe('project service', () => {
       state: 'done',
       current_stage: 'review',
       controller_ref: 'archon',
-      workspace_path: join(brainPackDir, 'projects', 'proj-projection', 'tasks', 'OC-PROJECTION-1'),
+      workspace_path: join(projectStateDir, 'proj-projection', 'tasks', 'OC-PROJECTION-1'),
       completed_by: 'archon',
       completed_at: '2026-03-27T11:00:00.000Z',
       summary_lines: ['Projection completed'],
@@ -280,12 +273,6 @@ describe('project service', () => {
     expect(readFileSync(archiveProjectionPath, 'utf8')).toContain('[[../OC-PROJECTION-1/07-outputs/project-harvest-draft.md]]');
     expect(readFileSync(indexPath, 'utf8')).toContain('[[tasks/archive/OC-PROJECTION-1.md]] | Projection Task | state=done');
     expect(readFileSync(timelinePath, 'utf8')).toContain('doc=[[tasks/archive/OC-PROJECTION-1.md]]');
-    expect(existsSync(projectStateActiveProjectionPath)).toBe(false);
-    expect(existsSync(projectStateArchiveProjectionPath)).toBe(true);
-    expect(readFileSync(projectStateArchiveProjectionPath, 'utf8')).toContain('doc_type: project_state_task_projection');
-    expect(readFileSync(projectStateArchiveProjectionPath, 'utf8')).toContain('Brain Pack Projection Path:');
-    expect(readFileSync(projectStateArchiveProjectionPath, 'utf8')).toContain('Runtime Workspace Path:');
-    expect(readFileSync(projectStateArchiveIndexPath, 'utf8')).toContain('[[OC-PROJECTION-1.md]] | Projection Task | state=done');
   });
 
   it('archives a project only when no active tasks remain', () => {

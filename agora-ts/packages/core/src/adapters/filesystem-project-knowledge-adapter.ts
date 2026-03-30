@@ -253,7 +253,7 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   }
 
   private projectRoot(projectId: string) {
-    return resolve(this.options.brainPackRoot, 'projects', projectId);
+    return this.resolveProjectStateRoot(projectId) ?? resolve(this.options.brainPackRoot, 'projects', projectId);
   }
 
   private indexPath(projectId: string) {
@@ -401,6 +401,9 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   }
 
   private ensureProjectStateMirror(projectId: string) {
+    if (this.projectRoot(projectId) === this.resolveProjectStateRoot(projectId)) {
+      return;
+    }
     const tasksDir = this.projectStateTasksDir(projectId);
     const activeTasksDir = this.projectStateActiveTasksDir(projectId);
     const archiveDir = this.projectStateArchiveDir(projectId);
@@ -426,6 +429,9 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
     completed_by?: string | null;
     summary_lines?: string[];
   }) {
+    if (this.projectRoot(input.project_id) === this.resolveProjectStateRoot(input.project_id)) {
+      return;
+    }
     this.ensureProjectStateMirror(input.project_id);
     const activePath = this.projectStateActiveTaskPath(input.project_id, input.task_id);
     const archivePath = this.projectStateArchiveTaskPath(input.project_id, input.task_id);
@@ -456,6 +462,9 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   }
 
   private rewriteProjectStateMirrorIndexes(projectId: string) {
+    if (this.projectRoot(projectId) === this.resolveProjectStateRoot(projectId)) {
+      return;
+    }
     const tasksIndexPath = this.projectStateTasksIndexPath(projectId);
     const archiveIndexPath = this.projectStateArchiveIndexPath(projectId);
     if (!tasksIndexPath || !archiveIndexPath) {
@@ -491,6 +500,9 @@ export class FilesystemProjectKnowledgeAdapter implements ProjectKnowledgePort {
   }
 
   private listProjectStateTaskMirrors(projectId: string, projection: 'active' | 'archive') {
+    if (this.projectRoot(projectId) === this.resolveProjectStateRoot(projectId)) {
+      return [];
+    }
     const dir = projection === 'active' ? this.projectStateActiveTasksDir(projectId) : this.projectStateArchiveDir(projectId);
     if (!dir || !existsSync(dir)) {
       return [];

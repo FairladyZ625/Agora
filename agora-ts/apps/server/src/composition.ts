@@ -374,6 +374,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
       brainPackRoot: context.brainPackDir,
+      projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
     createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
       brainPackRoot: context.brainPackDir,
@@ -397,6 +398,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       citizenService: deps.citizenService,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: context.brainPackDir,
+        projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
       }),
       projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
     }),

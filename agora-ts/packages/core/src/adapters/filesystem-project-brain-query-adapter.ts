@@ -174,11 +174,15 @@ export class FilesystemProjectBrainQueryAdapter implements ProjectBrainQueryPort
   }
 
   private recapsDir(projectId: string) {
-    return resolve(this.options.brainPackRoot, 'projects', projectId, 'recaps');
+    return this.options.projectStateRootResolver?.(projectId)
+      ? join(this.options.projectStateRootResolver(projectId)!, 'recaps')
+      : resolve(this.options.brainPackRoot, 'projects', projectId, 'recaps');
   }
 
   private timelinePath(projectId: string) {
-    return resolve(this.options.brainPackRoot, 'projects', projectId, 'timeline.md');
+    return this.options.projectStateRootResolver?.(projectId)
+      ? join(this.options.projectStateRootResolver(projectId)!, 'timeline.md')
+      : resolve(this.options.brainPackRoot, 'projects', projectId, 'timeline.md');
   }
 }
 
