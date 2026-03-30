@@ -63,6 +63,7 @@ import {
   dashboardUserCreateRequestSchema,
   dashboardUserListResponseSchema,
   dashboardUserUpdatePasswordRequestSchema,
+  createProjectMembershipSchema,
   createInboxRequestSchema,
   createProjectRequestSchema,
   createTaskRequestSchema,
@@ -1094,6 +1095,9 @@ export function buildApp(options: BuildAppOptions = {}) {
         name: payload.name,
         summary: payload.summary,
         ...(payload.owner ? { owner: payload.owner } : {}),
+        ...(payload.admins ? { admins: payload.admins } : {}),
+        ...(payload.members ? { members: payload.members } : {}),
+        ...(payload.default_agents ? { default_agents: payload.default_agents } : {}),
         ...(payload.metadata ? { metadata: payload.metadata } : {}),
       });
       const preparedNomos = prepareProjectNomosInstall({
@@ -1225,6 +1229,56 @@ export function buildApp(options: BuildAppOptions = {}) {
           citizens,
         },
       });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/projects/:projectId/members', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      return reply.send({
+        memberships: projectService.listProjectMemberships(params.projectId),
+      });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/members', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      const payload = createProjectMembershipSchema.parse(request.body);
+      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      const membership = projectService.addProjectMembership({
+        projectId: params.projectId,
+        account_id: payload.account_id,
+        role: payload.role,
+        added_by_account_id: humanActor?.account_id ?? null,
+      });
+      return reply.send({ membership });
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/projects/:projectId/members/:accountId', async (request, reply) => {
+    if (!projectService) {
+      return reply.status(503).send({ message: 'Project service is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string; accountId: string };
+      const membership = projectService.removeProjectMembership(params.projectId, Number(params.accountId));
+      return reply.send({ membership });
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

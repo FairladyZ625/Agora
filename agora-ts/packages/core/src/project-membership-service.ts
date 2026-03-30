@@ -54,6 +54,34 @@ export class ProjectMembershipService {
     return this.memberships.listByProject(projectId).length > 0;
   }
 
+  listProjectMemberships(projectId: string): StoredProjectMembership[] {
+    return this.memberships.listByProject(projectId);
+  }
+
+  addProjectMembership(input: {
+    projectId: string;
+    account_id: number;
+    role: 'admin' | 'member';
+    added_by_account_id?: number | null;
+  }): StoredProjectMembership {
+    return this.memberships.upsertMembership({
+      id: `pm-${input.projectId}-${input.account_id}`,
+      project_id: input.projectId,
+      account_id: input.account_id,
+      role: input.role,
+      status: 'active',
+      added_by_account_id: input.added_by_account_id ?? null,
+    });
+  }
+
+  removeProjectMembership(projectId: string, accountId: number): StoredProjectMembership {
+    const membership = this.memberships.getByProjectAccount(projectId, accountId);
+    if (!membership) {
+      throw new Error(`project membership not found: ${projectId}/${accountId}`);
+    }
+    return this.memberships.updateMembership(membership.id, { status: 'removed' });
+  }
+
   requireActiveCreatorMembership(projectId: string, username: string): StoredProjectMembership {
     const account = this.accounts.getByUsername(username);
     if (!account) {

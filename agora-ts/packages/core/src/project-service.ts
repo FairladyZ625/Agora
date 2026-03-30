@@ -95,6 +95,26 @@ export class ProjectService {
     return this.projects.getProject(projectId);
   }
 
+  listProjectMemberships(projectId: string) {
+    this.requireProject(projectId);
+    return this.memberships.listProjectMemberships(projectId);
+  }
+
+  addProjectMembership(input: {
+    projectId: string;
+    account_id: number;
+    role: 'admin' | 'member';
+    added_by_account_id?: number | null;
+  }) {
+    this.requireProject(input.projectId);
+    return this.memberships.addProjectMembership(input);
+  }
+
+  removeProjectMembership(projectId: string, accountId: number) {
+    this.requireProject(projectId);
+    return this.memberships.removeProjectMembership(projectId, accountId);
+  }
+
   updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): StoredProject {
     this.requireProject(projectId);
     return this.projects.updateProject(projectId, { metadata });

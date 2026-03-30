@@ -172,6 +172,21 @@ function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
 }
 
+function parseNumericOptionList(rawValues: string[] = [], optionName: string): number[] {
+  return rawValues.map((value) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`invalid ${optionName} value: ${value}. Expected positive integer.`);
+    }
+    return parsed;
+  });
+}
+
+function resolveAccountLabel(humanAccountService: HumanAccountService, accountId: number) {
+  const user = humanAccountService.listUsers().find((item) => item.id === accountId);
+  return user?.username ?? String(accountId);
+}
+
 function parseRoleBindings(rawBindings: string[] = []): Map<string, string> {
   const bindings = new Map<string, string>();
   for (const raw of rawBindings) {
@@ -605,6 +620,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--workflow-json <json>', 'workflow override JSON')
     .option('--im-target-json <json>', 'IM target override JSON')
     .option('--project-id <projectId>', 'bind task to an existing project')
+    .option('--authority-json <json>', 'task authority JSON')
     .option('--smoke-test', 'mark this task as smoke/test mode', false)
     .option('--skill <ref>', 'global skill ref', collectOption, [])
     .option('--role-skill <binding>', 'role-scoped skill ref (role=skill)', collectOption, [])
@@ -619,6 +635,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       workflowJson?: string;
       imTargetJson?: string;
       projectId?: string;
+      authorityJson?: string;
       smokeTest?: boolean;
       skill?: string[];
       roleSkill?: string[];
@@ -634,6 +651,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         priority: options.priority,
         locale: options.locale,
         ...(options.projectId ? { project_id: options.projectId } : {}),
+        ...(options.authorityJson ? { authority: parseJsonOption(options.authorityJson, '--authority-json') } : {}),
         ...(options.teamJson ? { team_override: parseJsonOption(options.teamJson, '--team-json') } : {}),
         ...(options.workflowJson ? { workflow_override: parseJsonOption(options.workflowJson, '--workflow-json') } : {}),
         ...(options.imTargetJson ? { im_target: parseJsonOption(options.imTargetJson, '--im-target-json') } : {}),
@@ -1765,6 +1783,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--name <name>', 'project name')
     .option('--summary <summary>', 'project summary')
     .option('--owner <owner>', 'project owner')
+    .option('--admin-account-id <accountId>', 'project admin account id', collectStringOption, [])
+    .option('--member-account-id <accountId>', 'project member account id', collectStringOption, [])
     .option('--repo-path <path>', 'bind to an existing or new repo path')
     .option('--new-repo', 'create the repo path if it does not exist and initialize git', false)
     .option('--nomos-id <nomosId>', 'Nomos pack id (currently only agora/default)', DEFAULT_AGORA_NOMOS_ID)
@@ -1774,17 +1794,25 @@ export function createCliProgram(deps: CliDependencies = {}) {
       name: string;
       summary?: string;
       owner?: string;
+      adminAccountId?: string[];
+      memberAccountId?: string[];
       repoPath?: string;
       newRepo?: boolean;
       nomosId?: string;
       metadataJson?: string;
     }) => {
       const nomosId = requireSupportedNomosId(options.nomosId);
+      const adminAccountIds = parseNumericOptionList(options.adminAccountId, '--admin-account-id');
+      const memberAccountIds = parseNumericOptionList(options.memberAccountId, '--member-account-id');
+      const derivedOwner = options.owner
+        ?? (adminAccountIds[0] ? resolveAccountLabel(humanAccountService, adminAccountIds[0]) : undefined);
       const input = createProjectRequestSchema.parse({
         id: options.id,
         name: options.name,
         ...(options.summary !== undefined ? { summary: options.summary } : {}),
-        ...(options.owner !== undefined ? { owner: options.owner } : {}),
+        ...(derivedOwner !== undefined ? { owner: derivedOwner } : {}),
+        ...(adminAccountIds.length > 0 ? { admins: adminAccountIds.map((account_id) => ({ account_id })) } : {}),
+        ...(memberAccountIds.length > 0 ? { members: memberAccountIds.map((account_id) => ({ account_id, role: 'member' as const })) } : {}),
         ...(options.repoPath ? { repo_path: options.repoPath } : {}),
         ...(options.newRepo ? { initialize_repo: true } : {}),
         nomos_id: nomosId,
@@ -1830,6 +1858,54 @@ export function createCliProgram(deps: CliDependencies = {}) {
       if (bootstrapTask) {
         writeLine(stdout, `Bootstrap Task: ${bootstrapTask.id}`);
       }
+    });
+
+  const projectMembers = projects
+    .command('members')
+    .description('project membership commands');
+
+  projectMembers
+    .command('list')
+    .argument('<projectId>', 'project id')
+    .action((projectId: string) => {
+      const memberships = projectService.listProjectMemberships(projectId);
+      if (memberships.length === 0) {
+        writeLine(stdout, '没有找到 project members');
+        return;
+      }
+      for (const membership of memberships) {
+        writeLine(
+          stdout,
+          `${membership.account_id}\t${resolveAccountLabel(humanAccountService, membership.account_id)}\t${membership.role}\t${membership.status}`,
+        );
+      }
+    });
+
+  projectMembers
+    .command('add')
+    .argument('<projectId>', 'project id')
+    .requiredOption('--account-id <accountId>', 'human account id')
+    .option('--role <role>', 'admin|member', 'member')
+    .action((projectId: string, options: { accountId: string; role?: 'admin' | 'member' }) => {
+      const accountId = parseNumericOptionList([options.accountId], '--account-id')[0];
+      const membership = projectService.addProjectMembership({
+        projectId,
+        account_id: accountId,
+        role: options.role === 'admin' ? 'admin' : 'member',
+      });
+      writeLine(stdout, `Project member 已添加: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
+      writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
+    });
+
+  projectMembers
+    .command('remove')
+    .argument('<projectId>', 'project id')
+    .requiredOption('--account-id <accountId>', 'human account id')
+    .action((projectId: string, options: { accountId: string }) => {
+      const accountId = parseNumericOptionList([options.accountId], '--account-id')[0];
+      const membership = projectService.removeProjectMembership(projectId, accountId);
+      writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
+      writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
     });
 
   projects

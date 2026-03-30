@@ -1,5 +1,6 @@
-import type { ApiProjectDto, ApiProjectWorkbenchDto, ApiTaskDto, ApiTodoDto } from '@/types/api';
+import type { ApiProjectDto, ApiProjectMembershipDto, ApiProjectWorkbenchDto, ApiTaskDto, ApiTodoDto } from '@/types/api';
 import type {
+  ProjectMembership,
   ProjectNomosActivation,
   ProjectNomosDiff,
   ProjectNomosPackSummary,
@@ -39,6 +40,19 @@ export function mapProjectDto(dto: ApiProjectDto): ProjectSummary {
     status: dto.status,
     nomosId: readProjectNomosId(dto.metadata),
     repoPath: typeof dto.metadata?.repo_path === 'string' ? dto.metadata.repo_path : null,
+    createdAt: dto.created_at,
+    updatedAt: dto.updated_at,
+  };
+}
+
+export function mapProjectMembershipDto(dto: ApiProjectMembershipDto): ProjectMembership {
+  return {
+    id: dto.id,
+    projectId: dto.project_id,
+    accountId: dto.account_id,
+    role: dto.role,
+    status: dto.status,
+    addedByAccountId: dto.added_by_account_id,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
   };

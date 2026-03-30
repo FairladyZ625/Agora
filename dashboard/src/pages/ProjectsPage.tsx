@@ -3,6 +3,13 @@ import { Link } from 'react-router';
 import { useProjectsPageCopy } from '@/lib/dashboardCopy';
 import { useProjectStore } from '@/stores/projectStore';
 
+function parseAccountIds(value: string) {
+  return value
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item) && item > 0);
+}
+
 export function ProjectsPage() {
   const copy = useProjectsPageCopy();
   const projects = useProjectStore((state) => state.projects);
@@ -14,6 +21,8 @@ export function ProjectsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [summary, setSummary] = useState('');
+  const [adminAccountIds, setAdminAccountIds] = useState('');
+  const [memberAccountIds, setMemberAccountIds] = useState('');
 
   useEffect(() => {
     void fetchProjects();
@@ -25,13 +34,21 @@ export function ProjectsPage() {
       return;
     }
     try {
+      const adminIds = parseAccountIds(adminAccountIds);
+      const memberIds = parseAccountIds(memberAccountIds);
       await createProject({
         name: name.trim(),
         owner: 'archon',
         summary: summary.trim() || null,
+        admins: adminIds.map((account_id) => ({ account_id })),
+        members: memberIds
+          .filter((account_id) => !adminIds.includes(account_id))
+          .map((account_id) => ({ account_id, role: 'member' as const })),
       });
       setName('');
       setSummary('');
+      setAdminAccountIds('');
+      setMemberAccountIds('');
       setShowCreate(false);
     } catch {
       // visible error is handled by the store state
@@ -79,6 +96,24 @@ export function ProjectsPage() {
                 onChange={(event) => setSummary(event.target.value)}
                 className="input-shell min-h-24"
                 placeholder={copy.summaryPlaceholder}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="field-label">{copy.adminAccountsLabel}</span>
+              <input
+                value={adminAccountIds}
+                onChange={(event) => setAdminAccountIds(event.target.value)}
+                className="input-shell"
+                placeholder={copy.adminAccountsPlaceholder}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="field-label">{copy.memberAccountsLabel}</span>
+              <input
+                value={memberAccountIds}
+                onChange={(event) => setMemberAccountIds(event.target.value)}
+                className="input-shell"
+                placeholder={copy.memberAccountsPlaceholder}
               />
             </label>
             <div className="lg:col-span-2">

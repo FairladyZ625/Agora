@@ -30,6 +30,7 @@ import type {
   TemplateSummaryDto,
   TodoItemDto,
   ObserveCraftsmanExecutionsResponseDto,
+  ProjectMembershipDto,
   RuntimeDiagnosisResultDto,
   RuntimeRecoveryActionDto,
   WorkflowDto,
@@ -76,6 +77,7 @@ export type ApiTodoDto = TodoItemDto;
 export type ApiProjectDto = ProjectDto;
 export type ApiListProjectsResponseDto = ListProjectsResponseDto;
 export type ApiProjectWorkbenchDto = ProjectWorkbenchResponseDto;
+export type ApiProjectMembershipDto = ProjectMembershipDto;
 export type ApiSkillCatalogEntryDto = SkillCatalogEntryDto;
 export type ApiSkillCatalogListResponseDto = SkillCatalogListResponseDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;
