@@ -47,6 +47,7 @@ export function usePageMetaCopy() {
     '/': { title: t('pageMeta.home.title') },
     '/board': { title: t('pageMeta.board.title') },
     '/projects': { title: t('pageMeta.projects.title') },
+    '/workspace/bootstrap': { title: t('pageMeta.workspaceBootstrap.title') },
     '/tasks': { title: t('pageMeta.tasks.title') },
     '/agents': { title: t('pageMeta.agents.title') },
     '/todos': { title: t('pageMeta.todos.title') },
@@ -348,10 +349,36 @@ export function useProjectsPageCopy() {
     adminAccountsPlaceholder: t('projectsPage.adminAccountsPlaceholder'),
     memberAccountsLabel: t('projectsPage.memberAccountsLabel'),
     memberAccountsPlaceholder: t('projectsPage.memberAccountsPlaceholder'),
+    workspaceBootstrapTitle: t('projectsPage.workspaceBootstrapTitle'),
+    workspaceBootstrapSummary: t('projectsPage.workspaceBootstrapSummary'),
+    workspaceBootstrapAction: t('projectsPage.workspaceBootstrapAction'),
     confirmAction: t('projectsPage.confirmAction'),
     creatingAction: t('projectsPage.creatingAction'),
     loadingTitle: t('projectsPage.loadingTitle'),
     emptyTitle: t('projectsPage.emptyTitle'),
+  };
+}
+
+export function useWorkspaceBootstrapPageCopy() {
+  const { t } = useTranslation();
+
+  return {
+    kicker: t('workspaceBootstrap.kicker'),
+    title: t('workspaceBootstrap.title'),
+    summary: t('workspaceBootstrap.summary'),
+    runtimeReadyLabel: t('workspaceBootstrap.runtimeReadyLabel'),
+    bootstrapTaskLabel: t('workspaceBootstrap.bootstrapTaskLabel'),
+    completedLabel: t('workspaceBootstrap.completedLabel'),
+    readyValue: t('workspaceBootstrap.readyValue'),
+    blockedValue: t('workspaceBootstrap.blockedValue'),
+    completedValue: t('workspaceBootstrap.completedValue'),
+    pendingValue: t('workspaceBootstrap.pendingValue'),
+    guideTitle: t('workspaceBootstrap.guideTitle'),
+    guideSummary: t('workspaceBootstrap.guideSummary'),
+    guideSteps: t('workspaceBootstrap.guideSteps', { returnObjects: true }) as string[],
+    runtimeReasonLabel: t('workspaceBootstrap.runtimeReasonLabel'),
+    emptyTaskValue: t('workspaceBootstrap.emptyTaskValue'),
+    openTaskAction: t('workspaceBootstrap.openTaskAction'),
   };
 }
 

@@ -8,6 +8,7 @@ import { BoardPage } from '@/pages/BoardPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectBrainPage } from '@/pages/ProjectBrainPage';
+import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 import { TasksPage } from '@/pages/TasksPage';
 import { CreateTaskPage } from '@/pages/CreateTaskPage';
 import { AgentsPage } from '@/pages/AgentsPage';
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/" element={<DashboardHome />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/workspace/bootstrap" element={<WorkspaceBootstrapPage />} />
         <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="/projects/:projectId/brain" element={<ProjectBrainPage />} />
         <Route path="/agents" element={<AgentsPage />} />

@@ -60,4 +60,5 @@ export * from './task-service.js';
 export * from './template-authoring-service.js';
 export * from './template-graph-service.js';
 export * from './tmux-runtime-service.js';
+export * from './workspace-bootstrap-service.js';
 export * from './workdir-isolator.js';

@@ -1,4 +1,4 @@
-import type { ApiProjectDto, ApiProjectMembershipDto, ApiProjectWorkbenchDto, ApiTaskDto, ApiTodoDto } from '@/types/api';
+import type { ApiProjectDto, ApiProjectMembershipDto, ApiProjectWorkbenchDto, ApiTaskDto, ApiTodoDto, ApiWorkspaceBootstrapStatusDto } from '@/types/api';
 import type {
   ProjectMembership,
   ProjectNomosActivation,
@@ -17,6 +17,7 @@ import type {
   ProjectTimelineDoc,
   ProjectTodoSummary,
   ProjectWorkbench,
+  WorkspaceBootstrapStatus,
 } from '@/types/project';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -55,6 +56,17 @@ export function mapProjectMembershipDto(dto: ApiProjectMembershipDto): ProjectMe
     addedByAccountId: dto.added_by_account_id,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
+  };
+}
+
+export function mapWorkspaceBootstrapStatusDto(dto: ApiWorkspaceBootstrapStatusDto): WorkspaceBootstrapStatus {
+  return {
+    runtimeReady: dto.runtime_ready,
+    runtimeReadinessReason: dto.runtime_readiness_reason,
+    bootstrapTaskId: dto.bootstrap_task_id,
+    bootstrapTaskTitle: dto.bootstrap_task_title,
+    bootstrapTaskState: dto.bootstrap_task_state,
+    bootstrapCompleted: dto.bootstrap_completed,
   };
 }
 

@@ -33,6 +33,7 @@ import type {
   ProjectMembershipDto,
   RuntimeDiagnosisResultDto,
   RuntimeRecoveryActionDto,
+  WorkspaceBootstrapStatusDto,
   WorkflowDto,
   WorkflowGateDto,
   WorkflowStageDto,
@@ -78,6 +79,7 @@ export type ApiProjectDto = ProjectDto;
 export type ApiListProjectsResponseDto = ListProjectsResponseDto;
 export type ApiProjectWorkbenchDto = ProjectWorkbenchResponseDto;
 export type ApiProjectMembershipDto = ProjectMembershipDto;
+export type ApiWorkspaceBootstrapStatusDto = WorkspaceBootstrapStatusDto;
 export type ApiSkillCatalogEntryDto = SkillCatalogEntryDto;
 export type ApiSkillCatalogListResponseDto = SkillCatalogListResponseDto;
 export type ApiTemplateSummaryDto = TemplateSummaryDto;

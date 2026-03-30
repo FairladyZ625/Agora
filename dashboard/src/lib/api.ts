@@ -26,6 +26,7 @@ import type {
   ApiTemplateSummaryDto,
   ApiTodoDto,
   ApiUnifiedHealthSnapshotDto,
+  ApiWorkspaceBootstrapStatusDto,
 } from '@/types/api';
 import type { CreateTaskInput } from '@/types/task';
 import type { TodoFilter } from '@/types/dashboard';
@@ -65,6 +66,7 @@ import {
   templateValidationResponseSchema,
   todoItemSchema,
   validateWorkflowRequestSchema,
+  workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
 import { z, type ZodType } from 'zod';
 import { parseJsonWithContext } from '@/utils/json';
@@ -1030,6 +1032,13 @@ export function removeProjectMember(projectId: string, accountId: number): Promi
       method: 'DELETE',
     },
   ).then((response) => response.membership);
+}
+
+export function getWorkspaceBootstrapStatus(): Promise<ApiWorkspaceBootstrapStatusDto> {
+  return request<ApiWorkspaceBootstrapStatusDto>(
+    '/workspace/bootstrap',
+    workspaceBootstrapStatusSchema,
+  );
 }
 
 export function getProjectWorkbench(projectId: string): Promise<ApiProjectWorkbenchDto> {

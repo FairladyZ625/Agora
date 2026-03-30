@@ -230,6 +230,37 @@ describe('agora-ts server bootstrap', () => {
     expect(ready.json()).toEqual({ status: 'ready' });
   });
 
+  it('initializes and serves workspace bootstrap status when a bootstrap service is configured', async () => {
+    const initialize = vi.fn(() => null);
+    const getStatus = vi.fn(() => ({
+      runtime_ready: true,
+      runtime_readiness_reason: null,
+      bootstrap_task_id: 'OC-WORKSPACE-BOOTSTRAP',
+      bootstrap_task_title: 'Workspace Bootstrap Interview',
+      bootstrap_task_state: 'active',
+      bootstrap_completed: false,
+    }));
+    const app = buildApp({
+      workspaceBootstrapService: {
+        initialize,
+        getStatus,
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/workspace/bootstrap',
+    });
+
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      runtime_ready: true,
+      bootstrap_task_id: 'OC-WORKSPACE-BOOTSTRAP',
+      bootstrap_completed: false,
+    });
+  });
+
   it('does not expose a metrics endpoint unless enabled', async () => {
     const app = buildApp();
 

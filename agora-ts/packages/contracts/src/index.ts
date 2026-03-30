@@ -18,4 +18,5 @@ export * from './runtime-recovery.js';
 export * from './project.js';
 export * from './project-membership.js';
 export * from './project-agent-roster.js';
+export * from './workspace-bootstrap.js';
 export * from './citizen.js';

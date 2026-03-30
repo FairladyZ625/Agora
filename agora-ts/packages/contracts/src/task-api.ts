@@ -239,6 +239,9 @@ export const taskControlSchema = z.object({
     project_id: z.string().min(1),
     auto_refine_on_done: z.boolean().default(true),
   }).strict().optional(),
+  workspace_bootstrap: z.object({
+    kind: z.literal('orchestrator_onboarding'),
+  }).strict().optional(),
 }).strict();
 export type TaskControlDto = z.infer<typeof taskControlSchema>;
 

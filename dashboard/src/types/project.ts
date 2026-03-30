@@ -21,6 +21,15 @@ export interface ProjectMembership {
   updatedAt: string;
 }
 
+export interface WorkspaceBootstrapStatus {
+  runtimeReady: boolean;
+  runtimeReadinessReason: string | null;
+  bootstrapTaskId: string | null;
+  bootstrapTaskTitle: string | null;
+  bootstrapTaskState: string | null;
+  bootstrapCompleted: boolean;
+}
+
 export interface ProjectNomosState {
   nomosId: string;
   activationStatus: 'active_builtin' | 'active_project';

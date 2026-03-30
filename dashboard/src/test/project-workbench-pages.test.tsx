@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@/lib/i18n';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
+import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 
 const fetchProjects = vi.fn(async () => 'live');
 const fetchProjectDetail = vi.fn(async () => 'live');
@@ -615,11 +616,22 @@ const createProject = vi.fn(async () => ({
   createdAt: '2026-03-16T02:00:00.000Z',
   updatedAt: '2026-03-16T02:00:00.000Z',
 }));
+const { getWorkspaceBootstrapStatus } = vi.hoisted(() => ({
+  getWorkspaceBootstrapStatus: vi.fn(async () => ({
+    runtime_ready: false,
+    runtime_readiness_reason: 'discord_bot_binding_required',
+    bootstrap_task_id: null,
+    bootstrap_task_title: null,
+    bootstrap_task_state: null,
+    bootstrap_completed: false,
+  })),
+}));
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
   return {
     ...actual,
+    getWorkspaceBootstrapStatus,
     installProjectNomos,
     runProjectNomosDoctor,
     reviewProjectNomos,
@@ -947,7 +959,7 @@ describe('project workbench pages', () => {
     await setLocale('en-US');
   });
 
-  it('renders the projects list page', () => {
+  it('renders the projects list page with a workspace bootstrap entry point', async () => {
     render(
       <MemoryRouter>
         <ProjectsPage />
@@ -959,6 +971,23 @@ describe('project workbench pages', () => {
     expect(screen.getByText('Nomos: agora/default')).toBeInTheDocument();
     expect(screen.getByText('Repo Bound')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Project' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Open workspace bootstrap' })).toBeInTheDocument();
+  });
+
+  it('renders the workspace bootstrap page with runtime readiness guidance', async () => {
+    render(
+      <MemoryRouter initialEntries={['/workspace/bootstrap']}>
+        <Routes>
+          <Route path="/workspace/bootstrap" element={<WorkspaceBootstrapPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Workspace bootstrap' })).toBeInTheDocument();
+    expect(screen.getByText('Runtime readiness')).toBeInTheDocument();
+    expect(screen.getByText('Discord is the default first-phase IM. Finish the bot setup before the workspace interview starts.')).toBeInTheDocument();
+    expect(screen.getByText('Create a Discord bot in the Discord developer portal.')).toBeInTheDocument();
+    expect(screen.getByText(/discord_bot_binding_required/)).toBeInTheDocument();
   });
 
   it('creates a project without exposing a manual project id input', async () => {
