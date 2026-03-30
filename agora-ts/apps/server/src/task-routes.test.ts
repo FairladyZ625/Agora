@@ -2775,15 +2775,7 @@ describe('task routes', () => {
     });
     const jobId = archiveJob.json()[0].id;
     expect(archiveJob.json()[0]).toMatchObject({
-      status: 'review_pending',
-    });
-    const approved = await app.inject({
-      method: 'POST',
-      url: `/api/archive/jobs/${jobId}/approve`,
-      payload: {
-        approver_id: 'lizeyu',
-        comment: 'closeout reviewed',
-      },
+      status: 'pending',
     });
     const synced = await app.inject({
       method: 'POST',
@@ -2791,18 +2783,6 @@ describe('task routes', () => {
       payload: { status: 'synced', commit_hash: 'route-sync' },
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(approved.statusCode).toBe(200);
-    expect(approved.json()).toMatchObject({
-      id: jobId,
-      status: 'pending',
-      payload: expect.objectContaining({
-        closeout_review: expect.objectContaining({
-          state: 'approved',
-          approver_id: 'lizeyu',
-        }),
-      }),
-    });
     expect(synced.statusCode).toBe(200);
     expect(provisioningPort.archived).toEqual(
       expect.arrayContaining([

@@ -83,42 +83,6 @@ export class ArchiveJobRepository {
     return this.requireArchiveJob(jobId, 'retry');
   }
 
-  approveArchiveJob(jobId: number, input: {
-    approver_id: string;
-    comment?: string;
-  }): StoredArchiveJob {
-    const existing = this.getArchiveJob(jobId);
-    if (!existing) {
-      throw new Error(`Archive job ${jobId} not found`);
-    }
-    if (existing.status !== 'review_pending') {
-      throw new Error(`Archive job ${jobId} is not review_pending`);
-    }
-    const currentReview = asRecord(existing.payload.closeout_review);
-    const nextPayload = {
-      ...existing.payload,
-      closeout_review: {
-        ...currentReview,
-        required: true,
-        state: 'approved',
-        approver_id: input.approver_id,
-        ...(input.comment !== undefined ? { comment: input.comment } : {}),
-        approved_at: new Date().toISOString(),
-      },
-    };
-
-    this.db.prepare(`
-      UPDATE archive_jobs
-      SET status = 'pending', payload = ?, completed_at = NULL
-      WHERE id = ?
-    `).run(
-      stringifyJsonValue(nextPayload),
-      jobId,
-    );
-
-    return this.requireArchiveJob(jobId, 'update');
-  }
-
   updateArchiveJob(jobId: number, updates: {
     status: 'notified' | 'synced' | 'failed';
     commit_hash?: string;
@@ -203,10 +167,4 @@ export class ArchiveJobRepository {
       payload: parseJsonValue(row.payload, {}),
     };
   }
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? { ...(value as Record<string, unknown>) }
-    : {};
 }

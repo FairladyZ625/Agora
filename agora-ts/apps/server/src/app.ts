@@ -2739,28 +2739,6 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
-  app.post('/api/archive/jobs/:jobId/approve', async (request, reply) => {
-    if (!dashboardQueryService) {
-      return reply.status(503).send({ message: 'Dashboard query service is not configured' });
-    }
-    try {
-      const params = request.params as { jobId: string };
-      const payload = approveTaskRequestSchema.parse(request.body);
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
-      if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
-        return reply.status(403).send({ message: 'missing authenticated human actor' });
-      }
-      const approverId = humanActor?.username ?? payload.approver_id;
-      return reply.send(dashboardQueryService.approveArchiveJob(parseNumericId(params.jobId, 'jobId'), {
-        approver_id: approverId,
-        comment: payload.comment,
-      }));
-    } catch (error) {
-      const translated = translateError(error);
-      return reply.status(translated.statusCode).send(translated.body);
-    }
-  });
-
   app.post('/api/archive/jobs/scan-stale', async (request, reply) => {
     if (!dashboardQueryService) {
       return reply.status(503).send({ message: 'Dashboard query service is not configured' });

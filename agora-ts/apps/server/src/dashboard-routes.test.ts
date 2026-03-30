@@ -514,7 +514,7 @@ describe('dashboard routes', () => {
     expect(readdirSync(receiptDir)).toEqual(['archive-job-1.processed.json']);
   });
 
-  it('waits for archive synced cleanup before returning the status update route', async () => {
+  it('syncs a pending archive job and rejects the legacy approve route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const bindings = new TaskContextBindingService(db);
@@ -549,21 +549,22 @@ describe('dashboard routes', () => {
     await taskService.drainBackgroundOperations();
     taskService.cancelTask('OC-ROUTE-ARCHIVE-CLEANUP', { reason: 'archive synced cleanup regression' });
 
-    const reviewPendingJob = dashboardQueries.listArchiveJobs({ taskId: 'OC-ROUTE-ARCHIVE-CLEANUP' })[0];
-    expect(reviewPendingJob?.status).toBe('review_pending');
-    const archiveJob = dashboardQueries.approveArchiveJob(reviewPendingJob!.id, {
-      approver_id: 'lizeyu',
-      comment: 'route cleanup test approval',
-    });
-    expect(archiveJob.status).toBe('pending');
+    const archiveJob = dashboardQueries.listArchiveJobs({ taskId: 'OC-ROUTE-ARCHIVE-CLEANUP' })[0];
+    expect(archiveJob?.status).toBe('pending');
 
     const app = buildApp({ taskService, dashboardQueryService: dashboardQueries, taskContextBindingService: bindings });
+    const approve = await app.inject({
+      method: 'POST',
+      url: `/api/archive/jobs/${archiveJob?.id}/approve`,
+      payload: { approver_id: 'lizeyu', comment: 'legacy route should be gone' },
+    });
     const markArchiveSynced = await app.inject({
       method: 'POST',
       url: `/api/archive/jobs/${archiveJob?.id}/status`,
       payload: { status: 'synced', commit_hash: 'route-cleanup-commit' },
     });
 
+    expect(approve.statusCode).toBe(404);
     expect(markArchiveSynced.statusCode).toBe(200);
     expect(markArchiveSynced.json()).toMatchObject({ status: 'synced', commit_hash: 'route-cleanup-commit' });
     expect(provisioning.archived).toEqual(expect.arrayContaining([

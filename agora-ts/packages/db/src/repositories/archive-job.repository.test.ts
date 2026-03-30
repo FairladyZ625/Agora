@@ -99,37 +99,30 @@ describe('archive job repository', () => {
     })).toThrow(/failed to retrieve archive job \d+ after update/i);
   });
 
-  it('approves a review-pending archive job into pending with closeout metadata', () => {
+  it('persists pending archive jobs with advisory closeout metadata', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     seedTask(new TaskRepository(db));
     const repository = new ArchiveJobRepository(db);
     const created = repository.insertArchiveJob({
       task_id: 'OC-ARCHIVE-1',
-      status: 'review_pending',
+      status: 'pending',
       target_path: '/tmp/archive',
       payload: {
         closeout_review: {
           required: true,
-          state: 'review_pending',
+          state: 'advisory',
         },
       },
       writer_agent: 'writer-agent',
     });
 
-    const approved = repository.approveArchiveJob(created.id, {
-      approver_id: 'lizeyu',
-      comment: 'closeout reviewed',
-    });
-
-    expect(approved).toMatchObject({
+    expect(created).toMatchObject({
       id: created.id,
       status: 'pending',
       payload: expect.objectContaining({
         closeout_review: expect.objectContaining({
-          state: 'approved',
-          approver_id: 'lizeyu',
-          comment: 'closeout reviewed',
+          state: 'advisory',
         }),
       }),
     });

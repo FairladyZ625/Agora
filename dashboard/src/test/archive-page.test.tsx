@@ -104,7 +104,7 @@ describe('archive page', () => {
     expect(retryJob).not.toHaveBeenCalled();
   });
 
-  it('renders an approve archive action for review-pending jobs', () => {
+  it('does not render an approve archive action for review-pending jobs', () => {
     archiveStoreState.jobs = [{
       ...archiveStoreState.jobs[0],
       status: 'review_pending',
@@ -119,9 +119,7 @@ describe('archive page', () => {
 
     render(<ArchivePage />);
 
-    fireEvent.click(screen.getByRole('button', { name: '放行归档' }));
-
-    expect(approveJob).toHaveBeenCalledWith(9);
+    expect(screen.queryByRole('button', { name: '放行归档' })).not.toBeInTheDocument();
     expect(confirmJob).not.toHaveBeenCalled();
   });
 
