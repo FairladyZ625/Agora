@@ -522,6 +522,7 @@ describe('agora-ts server bootstrap', () => {
       dashboardAuth: {
         enabled: true,
         method: 'session',
+        allowedUsers: [],
         sessionTtlHours: 24,
       },
     });

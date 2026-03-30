@@ -8,6 +8,7 @@ import type {
   CraftsmanDispatchRequestDto,
   CraftsmanInputKeyDto,
   CraftsmanStopExecutionRequestDto,
+  CreateTaskAuthorityDto,
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
@@ -100,13 +101,7 @@ type TaskTemplate = {
 
 type CreateTaskInputLike = Omit<CreateTaskRequestDto, 'locale'> & {
   locale?: TaskLocaleDto;
-  authority?: {
-    requester_account_id?: number | null;
-    owner_account_id?: number | null;
-    assignee_account_id?: number | null;
-    approver_account_id?: number | null;
-    controller_agent_ref?: string | null;
-  };
+  authority?: CreateTaskAuthorityDto | undefined;
 };
 
 type CraftsmanGovernanceLimits = {

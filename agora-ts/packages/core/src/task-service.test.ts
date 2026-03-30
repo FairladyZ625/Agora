@@ -4985,7 +4985,9 @@ describe('task service', () => {
     const binding = bindingService.getLatestBinding('OC-PROBE-ECHO-1');
     const echoedBody = conversationRepository
       .listByTask('OC-PROBE-ECHO-1')
-      .findLast((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
+      .slice()
+      .reverse()
+      .find((entry) => entry.author_kind === 'system' && entry.body.includes('事件类型: controller_pinged'))
       ?.body;
     expect(binding).not.toBeNull();
     expect(echoedBody).toBeTruthy();

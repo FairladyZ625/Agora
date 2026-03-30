@@ -1,4 +1,4 @@
-import type { WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
+import { taskStateSchema, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
 import { TaskRepository, type AgoraDatabase, type StoredTask } from '@agora-ts/db';
 import type { TaskService } from './task-service.js';
 
@@ -64,7 +64,7 @@ export class WorkspaceBootstrapService {
       runtime_readiness_reason: this.runtimeReadinessReason,
       bootstrap_task_id: bootstrapTask?.id ?? null,
       bootstrap_task_title: bootstrapTask?.title ?? null,
-      bootstrap_task_state: bootstrapTask?.state ?? null,
+      bootstrap_task_state: normalizeTaskState(bootstrapTask?.state),
       bootstrap_completed: bootstrapTask?.state === 'done',
     };
   }
@@ -73,4 +73,11 @@ export class WorkspaceBootstrapService {
     const tasks = this.tasks.listTasks();
     return tasks.find((task) => task.control?.workspace_bootstrap?.kind === 'orchestrator_onboarding') ?? null;
   }
+}
+
+function normalizeTaskState(value: string | null | undefined): TaskState | null {
+  if (!value) {
+    return null;
+  }
+  return taskStateSchema.safeParse(value).success ? (value as TaskState) : null;
 }

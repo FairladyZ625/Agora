@@ -483,7 +483,7 @@ function appendDashboardHumanImParticipantRef(
   payload: CreateTaskRequestDto,
   humanActor: HumanActor | null,
   humanAccountService?: HumanAccountService,
-): CreateTaskRequestDto {
+): Parameters<TaskService['createTask']>[0] {
   const enrichedCreator = humanActor
     ? {
         ...payload,

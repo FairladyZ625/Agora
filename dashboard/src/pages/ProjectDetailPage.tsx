@@ -56,11 +56,11 @@ export function ProjectDetailPage() {
   const copy = useProjectDetailPageCopy();
   const { projectId } = useParams<{ projectId: string }>();
   const selectedProject = useProjectStore((state) => state.selectedProject);
-  const projectMembershipsByProject = useProjectStore((state) => state.projectMembershipsByProject);
+  const projectMembershipsByProject = useProjectStore((state) => state.projectMembershipsByProject ?? {});
   const detailLoading = useProjectStore((state) => state.detailLoading);
   const error = useProjectStore((state) => state.error);
   const selectProject = useProjectStore((state) => state.selectProject);
-  const fetchProjectMembers = useProjectStore((state) => state.fetchProjectMembers);
+  const fetchProjectMembers = useProjectStore((state) => state.fetchProjectMembers ?? (async () => undefined));
   const updateTodo = useTodoStore((state) => state.updateTodo);
   const deleteTodo = useTodoStore((state) => state.deleteTodo);
   const promoteTodo = useTodoStore((state) => state.promoteTodo);

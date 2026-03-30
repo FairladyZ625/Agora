@@ -9,7 +9,7 @@ import type {
   TaskBrainWorkspaceBindingRef,
   TaskBrainWorkspacePort,
 } from './task-brain-port.js';
-import { ProjectService } from './project-service.js';
+import type { ProjectService } from './project-service.js';
 import { resolveControllerRef } from './team-member-kind.js';
 
 type ExecFileLike = (command: string, args: string[], options?: { cwd?: string }) => string;
@@ -59,7 +59,11 @@ export class ProjectContextWriter {
     actor: string;
     reason?: string;
   }): TaskCloseoutWriteProposal {
+    if (!input.task.project_id) {
+      throw new Error(`Task ${input.task.id} has no project binding for closeout writeback`);
+    }
     const completedAt = new Date().toISOString();
+    const controllerRef = resolveControllerRef(input.task.team.members);
     const summaryLines = buildTaskCloseSummary(input.task, input.actor, input.reason);
     const recapInput = {
       task_id: input.task.id,
@@ -68,7 +72,7 @@ export class ProjectContextWriter {
       title: input.task.title,
       state: input.task.state,
       current_stage: input.task.current_stage,
-      controller_ref: resolveControllerRef(input.task.team.members),
+      controller_ref: controllerRef,
       completed_by: input.actor,
       completed_at: completedAt,
       summary_lines: summaryLines,
@@ -76,9 +80,9 @@ export class ProjectContextWriter {
 
     return {
       kind: 'task_closeout',
-      project_id: input.task.project_id!,
+      project_id: input.task.project_id,
       task_id: input.task.id,
-      canonical_root: this.options.projectService.getProjectStateRoot(input.task.project_id!),
+      canonical_root: this.options.projectService.getProjectStateRoot(input.task.project_id),
       lock_holder_task_id: input.task.id,
       close_recap: {
         binding: input.binding,
@@ -91,12 +95,12 @@ export class ProjectContextWriter {
         },
       },
       project_recap: {
-        project_id: input.task.project_id!,
+        project_id: input.task.project_id,
         task_id: input.task.id,
         title: input.task.title,
         state: input.task.state,
         current_stage: input.task.current_stage,
-        controller_ref: resolveControllerRef(input.task.team.members),
+        controller_ref: controllerRef,
         workspace_path: input.binding.workspace_path,
         completed_by: input.actor,
         completed_at: completedAt,
