@@ -25,6 +25,96 @@ afterEach(() => {
 });
 
 describe('human review auth', () => {
+  it('rejects approval-gate decisions from a human actor who is not the designated task approver', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccounts = new HumanAccountService(db);
+    const approver = humanAccounts.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const outsider = humanAccounts.createUser({
+      username: 'other-admin',
+      password: 'member-pass',
+      role: 'admin',
+    });
+    const taskService = new TaskService(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HUMAN-APPROVER-GATE',
+      archonUsers: ['lizeyu'],
+    });
+    taskService.createTask({
+      title: 'approval gate needs designated approver',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          {
+            role: 'architect',
+            agentId: 'opus',
+            member_kind: 'controller',
+            model_preference: 'strong_reasoning',
+          },
+          {
+            role: 'reviewer',
+            agentId: outsider.username,
+            member_kind: 'citizen',
+            model_preference: 'human_review',
+          },
+        ],
+      },
+      authority: {
+        approver_account_id: approver.id,
+      },
+    });
+    taskService.archonApproveTask('OC-HUMAN-APPROVER-GATE', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-APPROVER-GATE');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-APPROVER-GATE', 'review');
+
+    const app = buildApp({
+      taskService,
+      humanAccountService: humanAccounts,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: outsider.username,
+        password: 'member-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-APPROVER-GATE/approve',
+      headers: {
+        cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+      },
+      payload: {
+        approver_id: outsider.username,
+        comment: 'should fail',
+      },
+    });
+
+    expect(login.statusCode).toBe(200);
+    expect(approve.statusCode).toBe(403);
+    expect(approve.json()).toMatchObject({
+      message: expect.stringContaining(`task OC-HUMAN-APPROVER-GATE requires approver account ${approver.id}`),
+    });
+  });
+
   it('allows approve and reject from a dashboard session without trusting payload actor fields', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

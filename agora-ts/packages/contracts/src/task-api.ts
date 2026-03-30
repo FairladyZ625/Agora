@@ -223,6 +223,15 @@ export const createTaskAuthoritySchema = z.object({
 }).strict();
 export type CreateTaskAuthorityDto = z.infer<typeof createTaskAuthoritySchema>;
 
+export const taskAuthoritySchema = z.object({
+  requester_account_id: z.number().int().positive().nullable(),
+  owner_account_id: z.number().int().positive().nullable(),
+  assignee_account_id: z.number().int().positive().nullable(),
+  approver_account_id: z.number().int().positive().nullable(),
+  controller_agent_ref: z.string().min(1).nullable(),
+}).strict();
+export type TaskAuthorityDto = z.infer<typeof taskAuthoritySchema>;
+
 export const taskControlSchema = z.object({
   mode: taskControlModeSchema.default('normal'),
   nomos_authoring: z.object({
@@ -252,6 +261,7 @@ export const taskSchema = z.object({
   project_id: z.string().nullable().optional(),
   state: taskStateSchema,
   archive_status: z.string().nullable(),
+  authority: taskAuthoritySchema.nullable().optional(),
   controller_ref: z.string().nullable().optional(),
   current_stage: z.string().nullable(),
   skill_policy: taskSkillPolicySchema.nullable().optional(),

@@ -179,11 +179,13 @@ export interface AdvanceTaskOptions {
 
 export interface ApproveTaskOptions {
   approverId: string;
+  approverAccountId?: number | null;
   comment: string;
 }
 
 export interface RejectTaskOptions {
   rejectorId: string;
+  rejectorAccountId?: number | null;
   reason: string;
 }
 
@@ -700,6 +702,7 @@ export class TaskService {
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.approverId, 'approve');
+    this.assertApprovalAuthority(task, options.approverAccountId ?? null);
     this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
     const approverRole = this.getApproverRole(stage);
     this.gateService.recordApproval(taskId, stage.id, approverRole, options.approverId, options.comment);
@@ -735,6 +738,7 @@ export class TaskService {
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
     this.assertStageRosterAction(task, stage, options.rejectorId, 'reject');
+    this.assertApprovalAuthority(task, options.rejectorAccountId ?? null);
     this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
     this.flowLogRepository.insertFlowLog({
       task_id: taskId,
@@ -2496,11 +2500,26 @@ export class TaskService {
     return task;
   }
 
-  private withControllerRef(task: StoredTask): StoredTask & { controller_ref: string | null } {
+  private withControllerRef(task: StoredTask): StoredTask & {
+    controller_ref: string | null;
+    authority: ReturnType<TaskAuthorityService['getTaskAuthority']>;
+  } {
     return {
       ...task,
+      authority: this.taskAuthorities.getTaskAuthority(task.id),
       controller_ref: resolveControllerRef(task.team.members),
     };
+  }
+
+  private assertApprovalAuthority(task: StoredTask, actorAccountId: number | null) {
+    const authority = this.taskAuthorities.getTaskAuthority(task.id);
+    const requiredApproverAccountId = authority?.approver_account_id ?? null;
+    if (requiredApproverAccountId == null) {
+      return;
+    }
+    if (actorAccountId == null || actorAccountId !== requiredApproverAccountId) {
+      throw new PermissionDeniedError(`task ${task.id} requires approver account ${requiredApproverAccountId}`);
+    }
   }
 
   private getCurrentStageOrThrow(task: StoredTask) {

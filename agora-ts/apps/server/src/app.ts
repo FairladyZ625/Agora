@@ -947,6 +947,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     return reply.send(dashboardSessionStatusResponseSchema.parse({
       authenticated: true,
       method: 'session',
+      account_id: current.session.account_id,
       username: current.session.username,
       role: current.session.role,
     }));
@@ -1841,6 +1842,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.approveTask(params.taskId, {
           approverId,
+          approverAccountId: humanActor?.account_id ?? null,
           comment: payload.comment,
         }),
       );
@@ -1865,6 +1867,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(
         taskService.rejectTask(params.taskId, {
           rejectorId,
+          rejectorAccountId: humanActor?.account_id ?? null,
           reason: payload.reason,
         }),
       );

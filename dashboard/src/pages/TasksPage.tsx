@@ -6,6 +6,7 @@ import { useTasksPageCopy } from '@/lib/dashboardCopy';
 import { useTaskStore } from '@/stores/taskStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useFeedbackStore } from '@/stores/feedbackStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import { PriorityBadge, StateBadge } from '@/components/ui/StateBadge';
 import { WorkflowGraphView } from '@/components/features/WorkflowGraphView';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
@@ -172,6 +173,7 @@ export function TasksPage() {
   const tasks = useTaskStore((state) => state.tasks);
   const selectedTaskId = useTaskStore((state) => state.selectedTaskId);
   const selectedTaskStatus = useTaskStore((state) => state.selectedTaskStatus);
+  const sessionAccountId = useSessionStore((state) => state.accountId);
   const detailLoading = useTaskStore((state) => state.detailLoading);
   const error = useTaskStore((state) => state.error);
   const fetchTasks = useTaskStore((state) => state.fetchTasks);
@@ -314,6 +316,12 @@ export function TasksPage() {
   const activeMembers = activeStatus?.task.teamMembers ?? activeTask?.teamMembers ?? [];
   const activeGateType = activeStatus?.task.gateType ?? activeTask?.gateType ?? null;
   const canRunGateActions = activeTask?.sourceState === 'active';
+  const canRunApprovalActions = canRunGateActions
+    && activeGateType === 'approval'
+    && (
+      activeTask?.authority?.approverAccountId == null
+      || (sessionAccountId != null && activeTask.authority.approverAccountId === sessionAccountId)
+    );
   const activeBlueprint = activeStatus?.taskBlueprint;
   const activeTimeline = useMemo(() => buildTaskTimeline(activeStatus), [activeStatus]);
   const activeSubtasks = activeStatus?.subtasks ?? [];
@@ -1224,7 +1232,7 @@ export function TasksPage() {
                         </>
                       ) : null}
 
-                      {canRunGateActions && activeGateType === 'approval' ? (
+                      {canRunApprovalActions ? (
                         <>
                           <button type="button" className="button-primary" onClick={() => void runAction('approve')}>
                             {tasksPageCopy.approveAction}
