@@ -8,6 +8,9 @@ import {
 import type { IMMessagingPort } from './im-ports.js';
 
 export interface NotificationDispatcherOptions {
+  outboxRepository?: NotificationOutboxRepository;
+  conversationRepository?: TaskConversationRepository;
+  bindingRepository?: TaskContextBindingRepository;
   messagingPort: IMMessagingPort;
   batchSize?: number;
 }
@@ -20,9 +23,9 @@ export class NotificationDispatcher {
   private readonly batchSize: number;
 
   constructor(db: AgoraDatabase, options: NotificationDispatcherOptions) {
-    this.outbox = new NotificationOutboxRepository(db);
-    this.conversations = new TaskConversationRepository(db);
-    this.bindings = new TaskContextBindingRepository(db);
+    this.outbox = options.outboxRepository ?? new NotificationOutboxRepository(db);
+    this.conversations = options.conversationRepository ?? new TaskConversationRepository(db);
+    this.bindings = options.bindingRepository ?? new TaskContextBindingRepository(db);
     this.messagingPort = options.messagingPort;
     this.batchSize = options.batchSize ?? 50;
   }

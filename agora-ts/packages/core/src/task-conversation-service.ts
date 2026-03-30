@@ -14,6 +14,9 @@ import {
 } from '@agora-ts/db';
 
 export interface TaskConversationServiceOptions {
+  bindingRepository?: TaskContextBindingRepository;
+  conversationRepository?: TaskConversationRepository;
+  readCursorRepository?: TaskConversationReadCursorRepository;
   idGenerator?: () => string;
   now?: () => Date;
 }
@@ -26,9 +29,9 @@ export class TaskConversationService {
   private readonly now: () => Date;
 
   constructor(db: AgoraDatabase, options: TaskConversationServiceOptions = {}) {
-    this.bindings = new TaskContextBindingRepository(db);
-    this.entries = new TaskConversationRepository(db);
-    this.readCursors = new TaskConversationReadCursorRepository(db);
+    this.bindings = options.bindingRepository ?? new TaskContextBindingRepository(db);
+    this.entries = options.conversationRepository ?? new TaskConversationRepository(db);
+    this.readCursors = options.readCursorRepository ?? new TaskConversationReadCursorRepository(db);
     this.idGenerator = options.idGenerator ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
   }

@@ -30,6 +30,12 @@ import { parseAcpSessionId } from './adapters/acp-session-ref.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
+  taskRepository?: TaskRepository;
+  subtaskRepository?: SubtaskRepository;
+  archiveJobRepository?: ArchiveJobRepository;
+  todoRepository?: TodoRepositoryType;
+  executionRepository?: CraftsmanExecutionRepository;
+  templateRepository?: TemplateRepository;
   archiveJobNotifier?: ArchiveJobNotifier;
   archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
   imProvisioningPort?: IMProvisioningPort;
@@ -73,12 +79,12 @@ export class DashboardQueryService {
     private readonly db: AgoraDatabase,
     options: DashboardQueryServiceOptions,
   ) {
-    this.tasks = new TaskRepository(db);
-    this.subtasks = new SubtaskRepository(db);
-    this.archives = new ArchiveJobRepository(db);
-    this.todos = new TodoRepository(db);
-    this.executions = new CraftsmanExecutionRepository(db);
-    this.templateRepository = new TemplateRepository(db);
+    this.tasks = options.taskRepository ?? new TaskRepository(db);
+    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
+    this.archives = options.archiveJobRepository ?? new ArchiveJobRepository(db);
+    this.todos = options.todoRepository ?? new TodoRepository(db);
+    this.executions = options.executionRepository ?? new CraftsmanExecutionRepository(db);
+    this.templateRepository = options.templateRepository ?? new TemplateRepository(db);
     this.templateRepository.seedFromDir(options.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository.repairStageSemanticsFromDir(options.templatesDir);

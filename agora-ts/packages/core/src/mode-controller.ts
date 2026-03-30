@@ -29,6 +29,8 @@ export interface ExecuteModeResult {
 }
 
 export interface ModeControllerOptions {
+  subtaskRepository?: SubtaskRepository;
+  progressService?: ProgressService;
   dispatcher?: CraftsmanDispatcher;
 }
 
@@ -38,8 +40,8 @@ export class ModeController {
   private readonly dispatcher: CraftsmanDispatcher | undefined;
 
   constructor(db: AgoraDatabase, options: ModeControllerOptions = {}) {
-    this.subtasks = new SubtaskRepository(db);
-    this.progress = new ProgressService(db);
+    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
+    this.progress = options.progressService ?? new ProgressService(db);
     this.dispatcher = options.dispatcher;
   }
 

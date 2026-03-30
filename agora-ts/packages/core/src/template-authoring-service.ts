@@ -21,13 +21,14 @@ import { deriveGraphFromStages, deriveStagesFromGraph, normalizeTemplateGraph, v
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
   db?: AgoraDatabase;
+  templateRepository?: TemplateRepository;
 }
 
 export class TemplateAuthoringService {
   private readonly templateRepository: TemplateRepository | null;
 
-  constructor(private readonly options: TemplateAuthoringServiceOptions) {
-    this.templateRepository = options.db ? new TemplateRepository(options.db) : null;
+  constructor(options: TemplateAuthoringServiceOptions) {
+    this.templateRepository = options.templateRepository ?? (options.db ? new TemplateRepository(options.db) : null);
     this.templateRepository?.seedFromDir(options.templatesDir);
     this.templateRepository?.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository?.repairStageSemanticsFromDir(options.templatesDir);

@@ -9,11 +9,15 @@ export interface CreateTaskAuthorityInput {
   controller_agent_ref?: string | null;
 }
 
+export interface TaskAuthorityServiceOptions {
+  repository?: TaskAuthorityRepository;
+}
+
 export class TaskAuthorityService {
   private readonly authorities: TaskAuthorityRepository;
 
-  constructor(db: AgoraDatabase) {
-    this.authorities = new TaskAuthorityRepository(db);
+  constructor(db: AgoraDatabase, options: TaskAuthorityServiceOptions = {}) {
+    this.authorities = options.repository ?? new TaskAuthorityRepository(db);
   }
 
   createOrUpdate(input: CreateTaskAuthorityInput): StoredTaskAuthority {

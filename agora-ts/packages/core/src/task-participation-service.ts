@@ -12,6 +12,9 @@ import type { AgentRuntimePort } from './runtime-ports.js';
 import { isInteractiveParticipant } from './team-member-kind.js';
 
 export interface TaskParticipationServiceOptions {
+  participantRepository?: ParticipantBindingRepository;
+  runtimeSessionRepository?: RuntimeSessionBindingRepository;
+  taskBindingRepository?: TaskContextBindingRepository;
   participantIdGenerator?: () => string;
   runtimeSessionIdGenerator?: () => string;
   agentRuntimePort?: AgentRuntimePort;
@@ -43,9 +46,9 @@ export class TaskParticipationService {
     db: AgoraDatabase,
     options: TaskParticipationServiceOptions = {},
   ) {
-    this.participants = new ParticipantBindingRepository(db);
-    this.runtimeSessions = new RuntimeSessionBindingRepository(db);
-    this.taskBindings = new TaskContextBindingRepository(db);
+    this.participants = options.participantRepository ?? new ParticipantBindingRepository(db);
+    this.runtimeSessions = options.runtimeSessionRepository ?? new RuntimeSessionBindingRepository(db);
+    this.taskBindings = options.taskBindingRepository ?? new TaskContextBindingRepository(db);
     this.participantIdGenerator = options.participantIdGenerator ?? (() => defaultId('participant'));
     this.runtimeSessionIdGenerator = options.runtimeSessionIdGenerator ?? (() => defaultId('runtime-session'));
     this.agentRuntimePort = options.agentRuntimePort;

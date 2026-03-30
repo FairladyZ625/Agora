@@ -14,11 +14,15 @@ export interface EnqueueProjectBrainIndexJobInput {
   reason: ProjectBrainIndexQueueReason;
 }
 
+export interface ProjectBrainIndexQueueServiceOptions {
+  repository?: ProjectBrainIndexJobRepository;
+}
+
 export class ProjectBrainIndexQueueService {
   private readonly jobs: ProjectBrainIndexJobRepository;
 
-  constructor(db: AgoraDatabase) {
-    this.jobs = new ProjectBrainIndexJobRepository(db);
+  constructor(db: AgoraDatabase, options: ProjectBrainIndexQueueServiceOptions = {}) {
+    this.jobs = options.repository ?? new ProjectBrainIndexJobRepository(db);
   }
 
   enqueueDocumentSync(input: EnqueueProjectBrainIndexJobInput): StoredProjectBrainIndexJob {
