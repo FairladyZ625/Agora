@@ -268,7 +268,7 @@ type CraftsmanProbeState = {
 
 const SYSTEM_ECHO_ACTIVITY_WINDOW_MS = 5_000;
 
-function parseStoredTimestamp(value: string | null | undefined) {
+function parseTimestamp(value: string | null | undefined) {
   if (!value) {
     return Number.NaN;
   }
@@ -4272,7 +4272,7 @@ export class TaskService {
       if (entry.author_kind !== 'system') {
         continue;
       }
-      const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
+      const occurredAtMs = parseTimestamp(entry.occurred_at);
       if (!Number.isFinite(occurredAtMs)) {
         continue;
       }
@@ -4286,18 +4286,18 @@ export class TaskService {
     }
     const flowMs = this.flowLogRepository.listByTask(task.id)
       .filter((entry) => !escalationEvents.has(entry.event))
-      .map((entry) => parseStoredTimestamp(entry.created_at))
+      .map((entry) => parseTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const progressMs = this.progressLogRepository.listByTask(task.id)
-      .map((entry) => parseStoredTimestamp(entry.created_at))
+      .map((entry) => parseTimestamp(entry.created_at))
       .filter((value) => Number.isFinite(value));
     const conversationMs = conversationEntries
       .filter((entry) => entry.author_kind !== 'system')
       .filter((entry) => !isSystemEchoConversationEntry(entry, systemEchoTimesByKey))
-      .map((entry) => parseStoredTimestamp(entry.occurred_at))
+      .map((entry) => parseTimestamp(entry.occurred_at))
       .filter((value) => Number.isFinite(value));
     return Math.max(
-      parseStoredTimestamp(task.updated_at),
+      parseTimestamp(task.updated_at),
       ...flowMs,
       ...progressMs,
       ...conversationMs,
@@ -4306,7 +4306,7 @@ export class TaskService {
 
   private getProbeState(taskId: string, latestActivityMs: number) {
     const flows = this.flowLogRepository.listByTask(taskId);
-    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && parseStoredTimestamp(entry.created_at) > latestActivityMs);
+    const notifiedAfterActivity = (event: string) => flows.some((entry) => entry.event === event && parseTimestamp(entry.created_at) > latestActivityMs);
     return {
       controllerNotified: notifiedAfterActivity('controller_pinged'),
       rosterNotified: notifiedAfterActivity('roster_pinged'),
@@ -4500,7 +4500,7 @@ function isSystemEchoConversationEntry(
   entry: TaskConversationEntryRecord,
   systemEchoTimesByKey: Map<string, number[]>,
 ) {
-  const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
+  const occurredAtMs = parseTimestamp(entry.occurred_at);
   if (!Number.isFinite(occurredAtMs)) {
     return false;
   }

@@ -2,7 +2,7 @@ import type { RoleBindingDto, IRoleBindingRepository } from '@agora-ts/contracts
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
-export class RoleBindingRepository {
+export class RoleBindingRepository implements IRoleBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   saveBinding(input: {

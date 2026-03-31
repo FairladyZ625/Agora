@@ -1,4 +1,4 @@
-import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
+import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, CraftsmanExecutionRecord, SubtaskRecord, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
 import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TemplateRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
 import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
@@ -194,8 +194,8 @@ export class DashboardQueryService {
     const agents = new Map<string, AgentsStatusDto['agents'][number]>();
     const craftsmen = new Map<string, AgentsStatusDto['craftsmen'][number]>();
     const activityMap = new Map<string, string | null>();
-    const subtasksByTask = new Map<string, ReturnType<SubtaskRepository['listByTask']>>();
-    const executionsByTaskSubtask = new Map<string, ReturnType<CraftsmanExecutionRepository['listBySubtask']>>();
+    const subtasksByTask = new Map<string, SubtaskRecord[]>();
+    const executionsByTaskSubtask = new Map<string, CraftsmanExecutionRecord[]>();
 
     if (activeTasks.length > 0) {
       const placeholders = activeTasks.map(() => '?').join(', ');

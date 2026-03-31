@@ -45,7 +45,7 @@ export interface UpdateCraftsmanExecutionInput {
   finished_at?: string | null;
 }
 
-export class CraftsmanExecutionRepository {
+export class CraftsmanExecutionRepository implements ICraftsmanExecutionRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertExecution(input: InsertCraftsmanExecutionInput): StoredCraftsmanExecution {

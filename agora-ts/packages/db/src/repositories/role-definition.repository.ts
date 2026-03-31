@@ -20,7 +20,7 @@ export interface StoredRoleDefinition {
   updated_at: string;
 }
 
-export class RoleDefinitionRepository {
+export class RoleDefinitionRepository implements IRoleDefinitionRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   listRoleDefinitions(): StoredRoleDefinition[] {

@@ -23,7 +23,7 @@ export interface StoredTaskConversationEntry {
   metadata: Record<string, unknown> | null;
 }
 
-export class TaskConversationRepository {
+export class TaskConversationRepository implements ITaskConversationRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

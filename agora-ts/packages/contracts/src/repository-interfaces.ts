@@ -22,6 +22,13 @@ import type {
   HumanAccountRecord,
   HumanIdentityBindingRecord,
   InboxItemRecord,
+  InsertCraftsmanExecutionInput,
+  InsertCitizenInput,
+  InsertHumanAccountInput,
+  InsertNotificationOutboxInput,
+  InsertParticipantBindingInput,
+  InsertProjectInput,
+  InsertTaskConversationEntryInput,
   NotificationOutboxRecord,
   ParticipantBindingRecord,
   ProgressLogRecord,
@@ -31,6 +38,7 @@ import type {
   ProjectMembershipRecord,
   ProjectRecord,
   ProjectWriteLockRecord,
+  ReconcileRuntimeSessionBindingInput,
   RoleDefinitionRecord,
   RuntimeSessionBindingRecord,
   SubtaskRecord,
@@ -42,7 +50,24 @@ import type {
   TaskRecord,
   TemplateRecord,
   TodoRecord,
+  UpdateCraftsmanExecutionInput,
+  UpdateHumanAccountInput,
+  UpdateInboxItemInput,
+  UpdateProjectInput,
+  UpdateProjectMembershipInput,
+  UpdateTaskInput,
+  UpdateTodoInput,
+  UpsertProjectAgentRosterEntryInput,
+  UpsertProjectMembershipInput,
+  UpsertRuntimeSessionBindingInput,
+  UpsertTaskAuthorityInput,
 } from './domain-types.js';
+
+import type {
+  TaskLocaleDto,
+  TeamDto,
+  WorkflowDto,
+} from './task-api.js';
 
 // ---------------------------------------------------------------------------
 // Gate query / command — used by StateMachine and GateService
@@ -125,15 +150,15 @@ export interface ITaskRepository {
     type: string;
     priority: string;
     creator: string;
-    locale: unknown;
+    locale: TaskLocaleDto;
     project_id?: string | null;
-    team: unknown;
-    workflow: unknown;
+    team: TeamDto;
+    workflow: WorkflowDto;
   }): TaskRecord;
   updateTask(
     taskId: string,
     version: number,
-    updates: Record<string, unknown>,
+    updates: UpdateTaskInput,
   ): TaskRecord;
   listTasks(state?: string, projectId?: string): TaskRecord[];
 }
@@ -210,7 +235,7 @@ export interface ITodoRepository {
   }): TodoRecord;
   getTodo(todoId: number): TodoRecord | null;
   listTodos(status?: string): TodoRecord[];
-  updateTodo(todoId: number, updates: Record<string, unknown>): TodoRecord;
+  updateTodo(todoId: number, updates: UpdateTodoInput): TodoRecord;
   deleteTodo(todoId: number): boolean;
 }
 
@@ -228,7 +253,7 @@ export interface IInboxRepository {
   listInboxItems(status?: string): InboxItemRecord[];
   updateInboxItem(
     inboxId: number,
-    updates: Record<string, unknown>,
+    updates: UpdateInboxItemInput,
   ): InboxItemRecord;
   deleteInboxItem(inboxId: number): boolean;
 }
@@ -297,11 +322,11 @@ export interface IApprovalRequestRepository {
 export interface ICraftsmanExecutionRepository {
   countActiveExecutions(): number;
   insertExecution(
-    input: Record<string, unknown>,
+    input: InsertCraftsmanExecutionInput,
   ): CraftsmanExecutionRecord;
   updateExecution(
     executionId: string,
-    updates: Record<string, unknown>,
+    updates: UpdateCraftsmanExecutionInput,
   ): CraftsmanExecutionRecord;
   getExecution(executionId: string): CraftsmanExecutionRecord | null;
   listBySubtask(
@@ -336,7 +361,7 @@ export interface ITaskContextBindingRepository {
 // ─── 11. TaskConversation ─────────────────────────────────────────────────
 
 export interface ITaskConversationRepository {
-  insert(input: Record<string, unknown>): TaskConversationEntryRecord;
+  insert(input: InsertTaskConversationEntryInput): TaskConversationEntryRecord;
   listByTask(
     taskId: string,
     limit?: number,
@@ -386,7 +411,7 @@ export interface ITaskBrainBindingRepository {
 
 export interface ITaskAuthorityRepository {
   upsertTaskAuthority(
-    input: Record<string, unknown>,
+    input: UpsertTaskAuthorityInput,
   ): TaskAuthorityRecord;
   getTaskAuthority(taskId: string): TaskAuthorityRecord | null;
 }
@@ -394,7 +419,7 @@ export interface ITaskAuthorityRepository {
 // ─── 15. NotificationOutbox ───────────────────────────────────────────────
 
 export interface INotificationOutboxRepository {
-  insert(input: Record<string, unknown>): NotificationOutboxRecord;
+  insert(input: InsertNotificationOutboxInput): NotificationOutboxRecord;
   listPending(limit?: number): NotificationOutboxRecord[];
   markDelivered(id: string): void;
   markFailed(id: string, error: string): void;
@@ -403,12 +428,12 @@ export interface INotificationOutboxRepository {
 // ─── 16. Project ──────────────────────────────────────────────────────────
 
 export interface IProjectRepository {
-  insertProject(input: Record<string, unknown>): ProjectRecord;
+  insertProject(input: InsertProjectInput): ProjectRecord;
   getProject(projectId: string): ProjectRecord | null;
   listProjects(status?: string): ProjectRecord[];
   updateProject(
     projectId: string,
-    updates: Record<string, unknown>,
+    updates: UpdateProjectInput,
   ): ProjectRecord;
   deleteProject(projectId: string): void;
 }
@@ -417,7 +442,7 @@ export interface IProjectRepository {
 
 export interface IProjectMembershipRepository {
   upsertMembership(
-    input: Record<string, unknown>,
+    input: UpsertProjectMembershipInput,
   ): ProjectMembershipRecord;
   listByProject(
     projectId: string,
@@ -429,7 +454,7 @@ export interface IProjectMembershipRepository {
   ): ProjectMembershipRecord | null;
   updateMembership(
     id: string,
-    updates: Record<string, unknown>,
+    updates: UpdateProjectMembershipInput,
   ): ProjectMembershipRecord;
 }
 
@@ -437,7 +462,7 @@ export interface IProjectMembershipRepository {
 
 export interface IProjectAgentRosterRepository {
   upsertEntry(
-    input: Record<string, unknown>,
+    input: UpsertProjectAgentRosterEntryInput,
   ): ProjectAgentRosterEntryRecord;
   listByProject(
     projectId: string,
@@ -453,7 +478,7 @@ export interface IProjectAgentRosterRepository {
 
 export interface IProjectWriteLockRepository {
   acquireLock(
-    input: Record<string, unknown>,
+    input: { project_id: string; holder_task_id: string },
   ): ProjectWriteLockRecord | null;
   releaseLock(projectId: string, holderTaskId: string): boolean;
   getLock(projectId: string): ProjectWriteLockRecord | null;
@@ -496,7 +521,7 @@ export interface ITemplateRepository {
 // ─── 22. Citizen ──────────────────────────────────────────────────────────
 
 export interface ICitizenRepository {
-  insertCitizen(input: Record<string, unknown>): CitizenRecord;
+  insertCitizen(input: InsertCitizenInput): CitizenRecord;
   getCitizen(citizenId: string): CitizenRecord | null;
   listCitizens(projectId?: string, status?: string): CitizenRecord[];
 }
@@ -535,14 +560,14 @@ export interface IRoleBindingRepository {
 // ─── 25. HumanAccount ─────────────────────────────────────────────────────
 
 export interface IHumanAccountRepository {
-  insertAccount(input: Record<string, unknown>): HumanAccountRecord;
+  insertAccount(input: InsertHumanAccountInput): HumanAccountRecord;
   getById(id: number): HumanAccountRecord | null;
   getByUsername(username: string): HumanAccountRecord | null;
   listAccounts(): HumanAccountRecord[];
   countAccounts(): number;
   updateAccount(
     username: string,
-    updates: Record<string, unknown>,
+    updates: UpdateHumanAccountInput,
   ): HumanAccountRecord;
 }
 
@@ -564,7 +589,7 @@ export interface IHumanIdentityBindingRepository {
 // ─── 27. ParticipantBinding ───────────────────────────────────────────────
 
 export interface IParticipantBindingRepository {
-  insert(input: Record<string, unknown>): ParticipantBindingRecord;
+  insert(input: InsertParticipantBindingInput): ParticipantBindingRecord;
   listByTask(taskId: string): ParticipantBindingRecord[];
   getByTaskAndAgent(
     taskId: string,
@@ -593,7 +618,7 @@ export interface IParticipantBindingRepository {
 
 export interface IRuntimeSessionBindingRepository {
   upsertByParticipant(
-    input: Record<string, unknown>,
+    input: UpsertRuntimeSessionBindingInput,
   ): RuntimeSessionBindingRecord;
   getByParticipantBinding(
     participantBindingId: string,
@@ -601,6 +626,6 @@ export interface IRuntimeSessionBindingRepository {
   listByTask(taskId: string): RuntimeSessionBindingRecord[];
   reconcileByParticipant(
     participantBindingId: string,
-    input: Record<string, unknown>,
+    input: ReconcileRuntimeSessionBindingInput,
   ): void;
 }

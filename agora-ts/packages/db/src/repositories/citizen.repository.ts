@@ -17,7 +17,7 @@ export interface InsertCitizenInput {
   runtime_projection?: CitizenDefinitionDto['runtime_projection'];
 }
 
-export class CitizenRepository {
+export class CitizenRepository implements ICitizenRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertCitizen(input: InsertCitizenInput): StoredCitizenDefinition {
