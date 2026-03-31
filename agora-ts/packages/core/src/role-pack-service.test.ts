@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, RoleDefinitionRepository } from '@agora-ts/db';
 import { RolePackService } from './role-pack-service.js';
 
 const tempPaths: string[] = [];
@@ -197,5 +197,15 @@ describe('role pack service', () => {
         briefing_mode: 'overlay_delta',
       }),
     ]);
+  });
+
+  it('rejects partial injection — roleDefinitions without roleBindings and no db', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repo = new RoleDefinitionRepository(db);
+
+    expect(() => new RolePackService({ roleDefinitions: repo })).toThrow(
+      /requires either db or both roleDefinitions and roleBindings/,
+    );
   });
 });

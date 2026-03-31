@@ -13,8 +13,9 @@ export class RolePackService {
   private readonly roleBindings: RoleBindingRepository;
 
   constructor(options: RolePackServiceOptions) {
-    if (!options.roleDefinitions && !options.db) {
-      throw new Error('RolePackService requires either db or roleDefinitions');
+    const hasAllRepos = options.roleDefinitions && options.roleBindings;
+    if (!hasAllRepos && !options.db) {
+      throw new Error('RolePackService requires either db or both roleDefinitions and roleBindings');
     }
     this.roleDefinitions = options.roleDefinitions ?? new RoleDefinitionRepository(options.db!);
     this.roleBindings = options.roleBindings ?? new RoleBindingRepository(options.db!);
