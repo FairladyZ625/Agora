@@ -15,6 +15,7 @@ import { resolveControllerRef } from './team-member-kind.js';
 type ExecFileLike = (command: string, args: string[], options?: { cwd?: string }) => string;
 
 export interface ProjectContextWriterOptions {
+  writeLockRepository?: ProjectWriteLockRepository;
   projectService: Pick<ProjectService, 'getProjectStateRoot' | 'recordTaskRecap'>;
   taskBrainWorkspacePort?: TaskBrainWorkspacePort;
   execFile?: ExecFileLike;
@@ -45,7 +46,7 @@ export class ProjectContextWriter {
     db: AgoraDatabase,
     private readonly options: ProjectContextWriterOptions,
   ) {
-    this.locks = new ProjectWriteLockRepository(db);
+    this.locks = options.writeLockRepository ?? new ProjectWriteLockRepository(db);
     this.execFile = options.execFile ?? ((command, args, execOptions) => execFileSync(command, args, {
       cwd: execOptions?.cwd,
       encoding: 'utf8',

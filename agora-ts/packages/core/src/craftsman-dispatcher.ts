@@ -16,6 +16,8 @@ export interface DispatchSubtaskInput {
 }
 
 export interface CraftsmanDispatcherOptions {
+  executionRepository?: CraftsmanExecutionRepository;
+  subtaskRepository?: SubtaskRepository;
   adapters: Record<string, CraftsmanAdapter>;
   executionIdGenerator?: () => string;
   maxConcurrentRunning?: number;
@@ -34,8 +36,8 @@ export class CraftsmanDispatcher {
     db: AgoraDatabase,
     options: CraftsmanDispatcherOptions,
   ) {
-    this.executions = new CraftsmanExecutionRepository(db);
-    this.subtasks = new SubtaskRepository(db);
+    this.executions = options.executionRepository ?? new CraftsmanExecutionRepository(db);
+    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
     this.adapters = options.adapters;
     this.executionIdGenerator = options.executionIdGenerator ?? (() => randomUUID());
     this.maxConcurrentRunning = options.maxConcurrentRunning ?? null;

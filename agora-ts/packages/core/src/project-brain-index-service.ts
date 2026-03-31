@@ -30,8 +30,13 @@ export class ProjectBrainIndexService {
   async rebuildProjectIndex(projectId: string) {
     const documents = this.options.projectBrainService.listDocuments(projectId);
     const chunks = documents.flatMap((document) => this.options.chunkingPolicy.chunkDocument(document));
-    const embeddings = await this.options.embeddingPort.embedBatch(chunks.map((chunk) => chunk.search_text));
-    await this.options.vectorIndexPort.upsertChunks(chunks, embeddings);
+    try {
+      const embeddings = await this.options.embeddingPort.embedBatch(chunks.map((chunk) => chunk.search_text));
+      await this.options.vectorIndexPort.upsertChunks(chunks, embeddings);
+    } catch (error) {
+      console.error(`[brain-index] rebuild failed for project ${projectId}:`, error);
+      throw error;
+    }
     return {
       project_id: projectId,
       indexed_documents: documents.length,
@@ -45,9 +50,14 @@ export class ProjectBrainIndexService {
 
     for (const document of documents) {
       const chunks = this.options.chunkingPolicy.chunkDocument(document);
-      const embeddings = await this.options.embeddingPort.embedBatch(chunks.map((chunk) => chunk.search_text));
-      await this.options.vectorIndexPort.deleteChunksByDocument(document.project_id, document.kind, document.slug);
-      await this.options.vectorIndexPort.upsertChunks(chunks, embeddings);
+      try {
+        const embeddings = await this.options.embeddingPort.embedBatch(chunks.map((chunk) => chunk.search_text));
+        await this.options.vectorIndexPort.deleteChunksByDocument(document.project_id, document.kind, document.slug);
+        await this.options.vectorIndexPort.upsertChunks(chunks, embeddings);
+      } catch (error) {
+        console.error(`[brain-index] sync failed for ${input.project_id}/${document.kind}/${document.slug}:`, error);
+        throw error;
+      }
       indexedChunks += chunks.length;
     }
 

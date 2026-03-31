@@ -2,7 +2,9 @@ import type { RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto, TemplateDe
 import { RoleBindingRepository, RoleDefinitionRepository, type AgoraDatabase } from '@agora-ts/db';
 
 export interface RolePackServiceOptions {
-  db: AgoraDatabase;
+  db?: AgoraDatabase;
+  roleDefinitions?: RoleDefinitionRepository;
+  roleBindings?: RoleBindingRepository;
   rolePacksDir?: string | null;
 }
 
@@ -10,9 +12,13 @@ export class RolePackService {
   private readonly roleDefinitions: RoleDefinitionRepository;
   private readonly roleBindings: RoleBindingRepository;
 
-  constructor(private readonly options: RolePackServiceOptions) {
-    this.roleDefinitions = new RoleDefinitionRepository(options.db);
-    this.roleBindings = new RoleBindingRepository(options.db);
+  constructor(options: RolePackServiceOptions) {
+    const hasAllRepos = options.roleDefinitions && options.roleBindings;
+    if (!hasAllRepos && !options.db) {
+      throw new Error('RolePackService requires either db or both roleDefinitions and roleBindings');
+    }
+    this.roleDefinitions = options.roleDefinitions ?? new RoleDefinitionRepository(options.db!);
+    this.roleBindings = options.roleBindings ?? new RoleBindingRepository(options.db!);
     if (options.rolePacksDir) {
       this.roleDefinitions.seedFromPackDir(options.rolePacksDir);
     }

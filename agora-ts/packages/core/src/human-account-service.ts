@@ -51,13 +51,18 @@ function verifyPassword(password: string, encoded: string): boolean {
   return timingSafeEqual(actual, expected);
 }
 
+export interface HumanAccountServiceOptions {
+  accountRepository?: HumanAccountRepository;
+  identityBindingRepository?: HumanIdentityBindingRepository;
+}
+
 export class HumanAccountService {
   private readonly accounts: HumanAccountRepository;
   private readonly identities: HumanIdentityBindingRepository;
 
-  constructor(private readonly db: AgoraDatabase) {
-    this.accounts = new HumanAccountRepository(db);
-    this.identities = new HumanIdentityBindingRepository(db);
+  constructor(db: AgoraDatabase, options: HumanAccountServiceOptions = {}) {
+    this.accounts = options.accountRepository ?? new HumanAccountRepository(db);
+    this.identities = options.identityBindingRepository ?? new HumanIdentityBindingRepository(db);
   }
 
   hasAccounts(): boolean {

@@ -3,7 +3,8 @@ import { TaskRepository, type AgoraDatabase, type StoredTask } from '@agora-ts/d
 import type { TaskService } from './task-service.js';
 
 export interface WorkspaceBootstrapServiceOptions {
-  db: AgoraDatabase;
+  db?: AgoraDatabase;
+  taskRepository?: TaskRepository;
   taskService: Pick<TaskService, 'createTask'>;
   runtimeReady: boolean;
   runtimeReadinessReason?: string | null;
@@ -18,7 +19,10 @@ export class WorkspaceBootstrapService {
   private readonly creator: string;
 
   constructor(options: WorkspaceBootstrapServiceOptions) {
-    this.tasks = new TaskRepository(options.db);
+    if (!options.taskRepository && !options.db) {
+      throw new Error('WorkspaceBootstrapService requires either db or taskRepository');
+    }
+    this.tasks = options.taskRepository ?? new TaskRepository(options.db!);
     this.taskService = options.taskService;
     this.runtimeReady = options.runtimeReady;
     this.runtimeReadinessReason = options.runtimeReadinessReason ?? null;

@@ -12,6 +12,8 @@ import type {
   CreateSubtasksRequestDto,
   CreateSubtasksResponseDto,
   CreateTaskRequestDto,
+  GateQueryPort,
+  GateCommandPort,
   HostResourceSnapshotDto,
   PromoteTodoRequestDto,
   RuntimeDiagnosisResultDto,
@@ -32,6 +34,8 @@ import {
   FlowLogRepository,
   InboxRepository,
   ProgressLogRepository,
+  SqliteGateCommandPort,
+  SqliteGateQueryPort,
   SubtaskRepository,
   TaskContextBindingRepository,
   TaskConversationRepository,
@@ -167,6 +171,31 @@ export interface TaskServiceOptions {
     inboxAfterMs?: number;
   };
   resolveHumanReminderParticipantRefs?: (input: HumanReminderParticipantResolverInput) => string[];
+  gateQueryPort?: GateQueryPort;
+  gateCommandPort?: GateCommandPort;
+  /** Pre-built repositories (skip internal new XxxRepository(db)) */
+  repositories?: {
+    task?: TaskRepository;
+    flowLog?: FlowLogRepository;
+    progressLog?: ProgressLogRepository;
+    subtask?: SubtaskRepository;
+    taskContextBinding?: TaskContextBindingRepository;
+    taskConversation?: TaskConversationRepository;
+    todo?: TodoRepository;
+    archiveJob?: ArchiveJobRepository;
+    approvalRequest?: ApprovalRequestRepository;
+    inbox?: InboxRepository;
+    craftsmanExecution?: CraftsmanExecutionRepository;
+    template?: TemplateRepository;
+  };
+  /** Pre-built sub-services (skip internal new XxxService(db)) */
+  subServices?: {
+    taskAuthority?: TaskAuthorityService;
+    projectMembership?: ProjectMembershipService;
+    projectAgentRoster?: ProjectAgentRosterService;
+    craftsmanCallback?: CraftsmanCallbackService;
+    projectContextWriter?: ProjectContextWriter;
+  };
 }
 
 export interface AdvanceTaskOptions {
@@ -333,31 +362,35 @@ export class TaskService {
   private readonly escalationPolicy: EscalationPolicy;
   private readonly pendingBackgroundOperations = new Set<Promise<void>>();
   private readonly craftsmanProbeStateByExecution = new Map<string, CraftsmanProbeState>();
+  private readonly gateQueryPort: GateQueryPort;
 
   constructor(
     private readonly db: AgoraDatabase,
     options: TaskServiceOptions = {},
   ) {
-    this.taskRepository = new TaskRepository(db);
-    this.flowLogRepository = new FlowLogRepository(db);
-    this.progressLogRepository = new ProgressLogRepository(db);
-    this.subtaskRepository = new SubtaskRepository(db);
-    this.taskContextBindingRepository = new TaskContextBindingRepository(db);
-    this.taskConversationRepository = new TaskConversationRepository(db);
-    this.todoRepository = new TodoRepository(db);
-    this.archiveJobRepository = new ArchiveJobRepository(db);
-    this.approvalRequestRepository = new ApprovalRequestRepository(db);
-    this.inboxRepository = new InboxRepository(db);
-    this.taskAuthorities = new TaskAuthorityService(db);
-    this.projectMemberships = new ProjectMembershipService(db);
-    this.projectAgentRoster = new ProjectAgentRosterService(db);
-    this.craftsmanExecutions = new CraftsmanExecutionRepository(db);
-    this.templateRepository = new TemplateRepository(db);
+    const repos = options.repositories ?? {};
+    const subs = options.subServices ?? {};
+    this.taskRepository = repos.task ?? new TaskRepository(db);
+    this.flowLogRepository = repos.flowLog ?? new FlowLogRepository(db);
+    this.progressLogRepository = repos.progressLog ?? new ProgressLogRepository(db);
+    this.subtaskRepository = repos.subtask ?? new SubtaskRepository(db);
+    this.taskContextBindingRepository = repos.taskContextBinding ?? new TaskContextBindingRepository(db);
+    this.taskConversationRepository = repos.taskConversation ?? new TaskConversationRepository(db);
+    this.todoRepository = repos.todo ?? new TodoRepository(db);
+    this.archiveJobRepository = repos.archiveJob ?? new ArchiveJobRepository(db);
+    this.approvalRequestRepository = repos.approvalRequest ?? new ApprovalRequestRepository(db);
+    this.inboxRepository = repos.inbox ?? new InboxRepository(db);
+    this.taskAuthorities = subs.taskAuthority ?? new TaskAuthorityService(db);
+    this.projectMemberships = subs.projectMembership ?? new ProjectMembershipService(db);
+    this.projectAgentRoster = subs.projectAgentRoster ?? new ProjectAgentRosterService(db);
+    this.craftsmanExecutions = repos.craftsmanExecution ?? new CraftsmanExecutionRepository(db);
+    this.templateRepository = repos.template ?? new TemplateRepository(db);
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
-    this.gateService = new GateService(db, this.permissions);
+    this.gateService = new GateService(options.gateCommandPort ?? new SqliteGateCommandPort(db), this.permissions);
+    this.gateQueryPort = options.gateQueryPort ?? new SqliteGateQueryPort(db);
     this.projectService = options.projectService ?? new ProjectService(db);
     this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskBrainBindingService = options.taskBrainBindingService;
@@ -365,14 +398,14 @@ export class TaskService {
     this.taskParticipationService = options.taskParticipationService;
     this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
-    this.projectContextWriter = new ProjectContextWriter(db, {
+    this.projectContextWriter = subs.projectContextWriter ?? new ProjectContextWriter(db, {
       projectService: this.projectService,
       ...(this.taskBrainWorkspacePort ? { taskBrainWorkspacePort: this.taskBrainWorkspacePort } : {}),
     });
     this.taskWorktreeService = new TaskWorktreeService({
       projectService: this.projectService,
     });
-    this.craftsmanCallbacks = new CraftsmanCallbackService(db);
+    this.craftsmanCallbacks = subs.craftsmanCallback ?? new CraftsmanCallbackService(db);
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.craftsmanInputPort = options.craftsmanInputPort;
     this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
@@ -675,7 +708,7 @@ export class TaskService {
     const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
     this.assertStageRosterAction(task, currentStage, options.callerId, 'advance');
     this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
-    if (!this.stateMachine.checkGate(this.db, task, currentStage, options.callerId)) {
+    if (!this.stateMachine.checkGate(this.gateQueryPort, task, currentStage, options.callerId)) {
       const refreshed = this.getTaskOrThrow(taskId);
       if (
         refreshed.current_stage !== task.current_stage

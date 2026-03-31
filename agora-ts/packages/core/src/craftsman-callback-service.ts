@@ -20,6 +20,17 @@ import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-out
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 const INPUT_WAITING_STATUSES = new Set(['needs_input', 'awaiting_choice']);
 
+export interface CraftsmanCallbackServiceOptions {
+  executionRepository?: CraftsmanExecutionRepository;
+  subtaskRepository?: SubtaskRepository;
+  taskRepository?: TaskRepository;
+  flowLogRepository?: FlowLogRepository;
+  progressLogRepository?: ProgressLogRepository;
+  outboxRepository?: NotificationOutboxRepository;
+  bindingRepository?: TaskContextBindingRepository;
+  conversationRepository?: TaskConversationRepository;
+}
+
 export class CraftsmanCallbackService {
   private readonly executions: CraftsmanExecutionRepository;
   private readonly subtasks: SubtaskRepository;
@@ -30,15 +41,15 @@ export class CraftsmanCallbackService {
   private readonly bindings: TaskContextBindingRepository;
   private readonly conversations: TaskConversationRepository;
 
-  constructor(private readonly db: AgoraDatabase) {
-    this.executions = new CraftsmanExecutionRepository(db);
-    this.subtasks = new SubtaskRepository(db);
-    this.tasks = new TaskRepository(db);
-    this.flowLogs = new FlowLogRepository(db);
-    this.progressLogs = new ProgressLogRepository(db);
-    this.outbox = new NotificationOutboxRepository(db);
-    this.bindings = new TaskContextBindingRepository(db);
-    this.conversations = new TaskConversationRepository(db);
+  constructor(db: AgoraDatabase, options: CraftsmanCallbackServiceOptions = {}) {
+    this.executions = options.executionRepository ?? new CraftsmanExecutionRepository(db);
+    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
+    this.tasks = options.taskRepository ?? new TaskRepository(db);
+    this.flowLogs = options.flowLogRepository ?? new FlowLogRepository(db);
+    this.progressLogs = options.progressLogRepository ?? new ProgressLogRepository(db);
+    this.outbox = options.outboxRepository ?? new NotificationOutboxRepository(db);
+    this.bindings = options.bindingRepository ?? new TaskContextBindingRepository(db);
+    this.conversations = options.conversationRepository ?? new TaskConversationRepository(db);
   }
 
   handleCallback(input: CraftsmanCallbackRequestDto) {

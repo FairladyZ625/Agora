@@ -3,6 +3,11 @@ import { InboxRepository, TodoRepository, type AgoraDatabase } from '@agora-ts/d
 import { NotFoundError } from './errors.js';
 import type { TaskService } from './task-service.js';
 
+export interface InboxServiceOptions {
+  inboxRepository?: InboxRepository;
+  todoRepository?: TodoRepository;
+}
+
 export class InboxService {
   private readonly inboxRepository: InboxRepository;
   private readonly todoRepository: TodoRepository;
@@ -10,9 +15,10 @@ export class InboxService {
   constructor(
     db: AgoraDatabase,
     private readonly taskService: TaskService,
+    options: InboxServiceOptions = {},
   ) {
-    this.inboxRepository = new InboxRepository(db);
-    this.todoRepository = new TodoRepository(db);
+    this.inboxRepository = options.inboxRepository ?? new InboxRepository(db);
+    this.todoRepository = options.todoRepository ?? new TodoRepository(db);
   }
 
   listInboxItems(status?: string) {

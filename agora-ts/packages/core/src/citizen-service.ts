@@ -6,6 +6,7 @@ import { ProjectService } from './project-service.js';
 import type { RolePackService } from './role-pack-service.js';
 
 export interface CitizenServiceOptions {
+  repository?: CitizenRepository;
   projectService?: ProjectService;
   rolePackService: RolePackService;
   projectionPorts?: CitizenProjectionPort[];
@@ -18,7 +19,7 @@ export class CitizenService {
   private readonly projectionPorts: Map<string, CitizenProjectionPort>;
 
   constructor(db: AgoraDatabase, options: CitizenServiceOptions) {
-    this.citizens = new CitizenRepository(db);
+    this.citizens = options.repository ?? new CitizenRepository(db);
     this.projectService = options.projectService ?? new ProjectService(db);
     this.rolePackService = options.rolePackService;
     this.projectionPorts = new Map((options.projectionPorts ?? []).map((port) => [port.adapter, port]));

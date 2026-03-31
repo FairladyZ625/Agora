@@ -6,13 +6,18 @@ import {
 } from '@agora-ts/db';
 import type { CreateProjectAdminDto, CreateProjectMembershipDto } from '@agora-ts/contracts';
 
+export interface ProjectMembershipServiceOptions {
+  membershipRepository?: ProjectMembershipRepository;
+  accountRepository?: HumanAccountRepository;
+}
+
 export class ProjectMembershipService {
   private readonly memberships: ProjectMembershipRepository;
   private readonly accounts: HumanAccountRepository;
 
-  constructor(db: AgoraDatabase) {
-    this.memberships = new ProjectMembershipRepository(db);
-    this.accounts = new HumanAccountRepository(db);
+  constructor(db: AgoraDatabase, options: ProjectMembershipServiceOptions = {}) {
+    this.memberships = options.membershipRepository ?? new ProjectMembershipRepository(db);
+    this.accounts = options.accountRepository ?? new HumanAccountRepository(db);
   }
 
   seedProjectMemberships(input: {

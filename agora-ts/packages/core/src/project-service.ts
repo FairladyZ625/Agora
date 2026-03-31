@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { TransactionManager } from '@agora-ts/contracts';
 import { ProjectRepository, TaskRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
 import type {
   CreateProjectAdminDto,
@@ -30,6 +31,11 @@ export interface CreateProjectInput {
 }
 
 export interface ProjectServiceOptions {
+  projectRepository?: ProjectRepository;
+  taskRepository?: TaskRepository;
+  membershipService?: ProjectMembershipService;
+  agentRosterService?: ProjectAgentRosterService;
+  transactionManager?: TransactionManager;
   knowledgePort?: ProjectKnowledgePort;
   projectBrainIndexQueueService?: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'>;
 }
@@ -41,12 +47,18 @@ export class ProjectService {
   private readonly agentRoster: ProjectAgentRosterService;
   private readonly knowledgePort: ProjectKnowledgePort | undefined;
   private readonly projectBrainIndexQueueService: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'> | undefined;
+  private readonly tx: TransactionManager;
 
-  constructor(private readonly db: AgoraDatabase, options: ProjectServiceOptions = {}) {
-    this.projects = new ProjectRepository(db);
-    this.tasks = new TaskRepository(db);
-    this.memberships = new ProjectMembershipService(db);
-    this.agentRoster = new ProjectAgentRosterService(db);
+  constructor(db: AgoraDatabase, options: ProjectServiceOptions = {}) {
+    this.projects = options.projectRepository ?? new ProjectRepository(db);
+    this.tasks = options.taskRepository ?? new TaskRepository(db);
+    this.memberships = options.membershipService ?? new ProjectMembershipService(db);
+    this.agentRoster = options.agentRosterService ?? new ProjectAgentRosterService(db);
+    this.tx = options.transactionManager ?? {
+      begin: () => { db.exec('BEGIN'); },
+      commit: () => { db.exec('COMMIT'); },
+      rollback: () => { db.exec('ROLLBACK'); },
+    };
     this.knowledgePort = options.knowledgePort;
     this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }
@@ -57,7 +69,7 @@ export class ProjectService {
       throw new Error('createProject requires at least one project admin when seeding memberships or default agents');
     }
     let project: StoredProject;
-    this.db.exec('BEGIN');
+    this.tx.begin();
     try {
       project = this.projects.insertProject({
         id: projectId,
@@ -76,9 +88,9 @@ export class ProjectService {
       if (input.default_agents && input.default_agents.length > 0) {
         this.agentRoster.seedProjectRoster(projectId, input.default_agents);
       }
-      this.db.exec('COMMIT');
+      this.tx.commit();
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      this.tx.rollback();
       throw error;
     }
     this.knowledgePort?.ensureProject({

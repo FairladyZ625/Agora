@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, SqliteGateQueryPort } from '@agora-ts/db';
 import { TaskRepository } from '@agora-ts/db';
 import { GateType, TaskState } from './enums.js';
 import { StateMachine } from './state-machine.js';
@@ -231,7 +231,7 @@ describe('agora-ts state machine', () => {
     });
 
     expect(
-      sm.checkGate(db, task, { id: 'discuss', gate: { type: GateType.ARCHON_REVIEW } }, 'opus'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'discuss', gate: { type: GateType.ARCHON_REVIEW } }, 'opus'),
     ).toBe(false);
 
     db.prepare(
@@ -239,7 +239,7 @@ describe('agora-ts state machine', () => {
     ).run('OC-001', 'discuss', 'approved', 'lizeyu');
 
     expect(
-      sm.checkGate(db, task, { id: 'discuss', gate: { type: GateType.ARCHON_REVIEW } }, 'opus'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'discuss', gate: { type: GateType.ARCHON_REVIEW } }, 'opus'),
     ).toBe(true);
 
     db.prepare(
@@ -247,19 +247,19 @@ describe('agora-ts state machine', () => {
     ).run('dev-api', 'OC-001', 'develop', 'API', 'sonnet', 'pending');
 
     expect(
-      sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
     ).toBe(false);
 
     db.prepare('UPDATE subtasks SET status = ? WHERE task_id = ? AND id = ?').run('cancelled', 'OC-001', 'dev-api');
 
     expect(
-      sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
     ).toBe(true);
 
     db.prepare('UPDATE subtasks SET status = ? WHERE task_id = ? AND id = ?').run('archived', 'OC-001', 'dev-api');
 
     expect(
-      sm.checkGate(db, task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'develop', gate: { type: GateType.ALL_SUBTASKS_DONE } }, 'opus'),
     ).toBe(true);
   });
 
@@ -293,7 +293,7 @@ describe('agora-ts state machine', () => {
     `).run();
 
     expect(
-      sm.checkGate(db, task, { id: 'vote', gate: { type: GateType.QUORUM, required: 2 } }, 'archon'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'vote', gate: { type: GateType.QUORUM, required: 2 } }, 'archon'),
     ).toBe(false);
 
     db.prepare(`
@@ -302,7 +302,7 @@ describe('agora-ts state machine', () => {
     `).run();
 
     expect(
-      sm.checkGate(db, task, { id: 'vote', gate: { type: GateType.QUORUM, required: 2 } }, 'archon'),
+      sm.checkGate(new SqliteGateQueryPort(db), task, { id: 'vote', gate: { type: GateType.QUORUM, required: 2 } }, 'archon'),
     ).toBe(true);
   });
 
@@ -334,7 +334,7 @@ describe('agora-ts state machine', () => {
 
     expect(
       sm.checkGate(
-        db,
+        new SqliteGateQueryPort(db),
         task,
         { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_sec: 1800 } },
         'system',
@@ -344,7 +344,7 @@ describe('agora-ts state machine', () => {
 
     expect(
       sm.checkGate(
-        db,
+        new SqliteGateQueryPort(db),
         task,
         { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_sec: 1800 } },
         'system',

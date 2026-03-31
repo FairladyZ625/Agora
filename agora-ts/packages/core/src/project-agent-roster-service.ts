@@ -5,11 +5,15 @@ import {
 } from '@agora-ts/db';
 import type { CreateProjectAgentRosterEntryDto } from '@agora-ts/contracts';
 
+export interface ProjectAgentRosterServiceOptions {
+  repository?: ProjectAgentRosterRepository;
+}
+
 export class ProjectAgentRosterService {
   private readonly roster: ProjectAgentRosterRepository;
 
-  constructor(db: AgoraDatabase) {
-    this.roster = new ProjectAgentRosterRepository(db);
+  constructor(db: AgoraDatabase, options: ProjectAgentRosterServiceOptions = {}) {
+    this.roster = options.repository ?? new ProjectAgentRosterRepository(db);
   }
 
   seedProjectRoster(projectId: string, entries: CreateProjectAgentRosterEntryDto[] = []): StoredProjectAgentRosterEntry[] {

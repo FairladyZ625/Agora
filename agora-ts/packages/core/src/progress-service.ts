@@ -7,13 +7,18 @@ type ActivityStreamItem = {
   kind: string;
 };
 
+export interface ProgressServiceOptions {
+  flowLogRepository?: FlowLogRepository;
+  progressLogRepository?: ProgressLogRepository;
+}
+
 export class ProgressService {
   private readonly flowLogRepository: FlowLogRepository;
   private readonly progressLogRepository: ProgressLogRepository;
 
-  constructor(db: AgoraDatabase) {
-    this.flowLogRepository = new FlowLogRepository(db);
-    this.progressLogRepository = new ProgressLogRepository(db);
+  constructor(db: AgoraDatabase, options: ProgressServiceOptions = {}) {
+    this.flowLogRepository = options.flowLogRepository ?? new FlowLogRepository(db);
+    this.progressLogRepository = options.progressLogRepository ?? new ProgressLogRepository(db);
   }
 
   recordStateChange(taskId: string, fromState: string, toState: string, actor = 'system', detail?: unknown) {
