@@ -1,4 +1,4 @@
-import type { CraftsmanCallbackRequestDto, CraftsmanExecutionPayloadDto } from '@agora-ts/contracts';
+import type { CraftsmanCallbackRequestDto, CraftsmanExecutionPayloadDto, CraftsmanExecutionRecord, SubtaskRecord, TaskRecord } from '@agora-ts/contracts';
 import {
   CraftsmanExecutionRepository,
   FlowLogRepository,
@@ -8,9 +8,6 @@ import {
   TaskConversationRepository,
   TaskContextBindingRepository,
   TaskRepository,
-  type StoredCraftsmanExecution,
-  type StoredSubtask,
-  type StoredTask,
   type AgoraDatabase,
 } from '@agora-ts/db';
 import { randomUUID } from 'node:crypto';
@@ -132,13 +129,13 @@ export class CraftsmanCallbackService {
   }
 
   private settleExecutionResult(
-    task: StoredTask,
-    subtask: StoredSubtask,
-    execution: StoredCraftsmanExecution,
+    task: TaskRecord,
+    subtask: SubtaskRecord,
+    execution: CraftsmanExecutionRecord,
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const normalizedOutput = normalizeCraftsmanOutput(payload);
-    let nextSubtask: StoredSubtask;
+    let nextSubtask: SubtaskRecord;
     let eventType: string;
 
     if (execution.status === 'succeeded') {
@@ -211,9 +208,9 @@ export class CraftsmanCallbackService {
   }
 
   private recordInputRequired(
-    task: StoredTask,
-    subtask: StoredSubtask,
-    execution: StoredCraftsmanExecution,
+    task: TaskRecord,
+    subtask: SubtaskRecord,
+    execution: CraftsmanExecutionRecord,
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const inputRequest = payload?.input_request ?? null;
@@ -255,9 +252,9 @@ export class CraftsmanCallbackService {
   }
 
   private recordRunningProgress(
-    task: StoredTask,
-    subtask: StoredSubtask,
-    execution: StoredCraftsmanExecution,
+    task: TaskRecord,
+    subtask: SubtaskRecord,
+    execution: CraftsmanExecutionRecord,
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const output = formatCraftsmanOutput(payload) ?? `${execution.adapter} resumed and is running`;
@@ -294,9 +291,9 @@ export class CraftsmanCallbackService {
   }
 
   private enqueueNotification(
-    task: StoredTask,
-    execution: StoredCraftsmanExecution,
-    subtask: StoredSubtask,
+    task: TaskRecord,
+    execution: CraftsmanExecutionRecord,
+    subtask: SubtaskRecord,
     eventType: string,
   ) {
     const binding = this.bindings.getActiveByTask(task.id);

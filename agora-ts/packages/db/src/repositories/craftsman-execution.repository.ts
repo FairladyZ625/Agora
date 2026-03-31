@@ -1,4 +1,4 @@
-import type { CraftsmanExecutionPayloadDto } from '@agora-ts/contracts';
+import type { CraftsmanExecutionPayloadDto, ICraftsmanExecutionRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -45,7 +45,7 @@ export interface UpdateCraftsmanExecutionInput {
   finished_at?: string | null;
 }
 
-export class CraftsmanExecutionRepository {
+export class CraftsmanExecutionRepository implements ICraftsmanExecutionRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertExecution(input: InsertCraftsmanExecutionInput): StoredCraftsmanExecution {

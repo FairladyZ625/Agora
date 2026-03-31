@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { RoleDefinitionDto, RolePackManifestDto } from '@agora-ts/contracts';
+import type { RoleDefinitionDto, RolePackManifestDto, IRoleDefinitionRepository } from '@agora-ts/contracts';
 import { roleDefinitionSchema, rolePackManifestSchema } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
@@ -20,7 +20,7 @@ export interface StoredRoleDefinition {
   updated_at: string;
 }
 
-export class RoleDefinitionRepository {
+export class RoleDefinitionRepository implements IRoleDefinitionRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   listRoleDefinitions(): StoredRoleDefinition[] {

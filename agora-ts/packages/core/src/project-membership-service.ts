@@ -1,10 +1,9 @@
+import type { CreateProjectAdminDto, CreateProjectMembershipDto, ProjectMembershipRecord } from '@agora-ts/contracts';
 import {
   HumanAccountRepository,
   ProjectMembershipRepository,
   type AgoraDatabase,
-  type StoredProjectMembership,
 } from '@agora-ts/db';
-import type { CreateProjectAdminDto, CreateProjectMembershipDto } from '@agora-ts/contracts';
 
 export interface ProjectMembershipServiceOptions {
   membershipRepository?: ProjectMembershipRepository;
@@ -24,8 +23,8 @@ export class ProjectMembershipService {
     projectId: string;
     admins: CreateProjectAdminDto[];
     members?: CreateProjectMembershipDto[];
-  }): StoredProjectMembership[] {
-    const records = new Map<number, StoredProjectMembership>();
+  }): ProjectMembershipRecord[] {
+    const records = new Map<number, ProjectMembershipRecord>();
 
     for (const admin of input.admins) {
       records.set(admin.account_id, this.memberships.upsertMembership({
@@ -59,7 +58,7 @@ export class ProjectMembershipService {
     return this.memberships.listByProject(projectId).length > 0;
   }
 
-  listProjectMemberships(projectId: string): StoredProjectMembership[] {
+  listProjectMemberships(projectId: string): ProjectMembershipRecord[] {
     return this.memberships.listByProject(projectId);
   }
 
@@ -68,7 +67,7 @@ export class ProjectMembershipService {
     account_id: number;
     role: 'admin' | 'member';
     added_by_account_id?: number | null;
-  }): StoredProjectMembership {
+  }): ProjectMembershipRecord {
     return this.memberships.upsertMembership({
       id: `pm-${input.projectId}-${input.account_id}`,
       project_id: input.projectId,
@@ -79,7 +78,7 @@ export class ProjectMembershipService {
     });
   }
 
-  removeProjectMembership(projectId: string, accountId: number): StoredProjectMembership {
+  removeProjectMembership(projectId: string, accountId: number): ProjectMembershipRecord {
     const membership = this.memberships.getByProjectAccount(projectId, accountId);
     if (!membership) {
       throw new Error(`project membership not found: ${projectId}/${accountId}`);
@@ -87,7 +86,7 @@ export class ProjectMembershipService {
     return this.memberships.updateMembership(membership.id, { status: 'removed' });
   }
 
-  requireActiveCreatorMembership(projectId: string, username: string): StoredProjectMembership {
+  requireActiveCreatorMembership(projectId: string, username: string): ProjectMembershipRecord {
     const account = this.accounts.getByUsername(username);
     if (!account) {
       throw new Error(`creator must be an active project member: missing human account for ${username}`);

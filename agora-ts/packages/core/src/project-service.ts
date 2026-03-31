@@ -1,11 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import type { TransactionManager } from '@agora-ts/contracts';
-import { ProjectRepository, TaskRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
-import type {
-  CreateProjectAdminDto,
-  CreateProjectAgentRosterEntryDto,
-  CreateProjectMembershipDto,
-} from '@agora-ts/contracts';
+import type { CreateProjectAdminDto, CreateProjectAgentRosterEntryDto, CreateProjectMembershipDto, ProjectRecord, TransactionManager } from '@agora-ts/contracts';
+import { ProjectRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
 import { NotFoundError } from './errors.js';
 import { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import { ProjectMembershipService } from './project-membership-service.js';
@@ -63,12 +58,12 @@ export class ProjectService {
     this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }
 
-  createProject(input: CreateProjectInput): StoredProject {
+  createProject(input: CreateProjectInput): ProjectRecord {
     const projectId = input.id?.trim() || this.generateProjectId(input.name);
     if ((input.admins || input.members || input.default_agents) && (!input.admins || input.admins.length === 0)) {
       throw new Error('createProject requires at least one project admin when seeding memberships or default agents');
     }
-    let project: StoredProject;
+    let project: ProjectRecord;
     this.tx.begin();
     try {
       project = this.projects.insertProject({
@@ -103,7 +98,7 @@ export class ProjectService {
     return project;
   }
 
-  getProject(projectId: string): StoredProject | null {
+  getProject(projectId: string): ProjectRecord | null {
     return this.projects.getProject(projectId);
   }
 
@@ -149,16 +144,16 @@ export class ProjectService {
     return this.memberships.removeProjectMembership(projectId, accountId);
   }
 
-  updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): StoredProject {
+  updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): ProjectRecord {
     this.requireProject(projectId);
     return this.projects.updateProject(projectId, { metadata });
   }
 
-  listProjects(status?: string): StoredProject[] {
+  listProjects(status?: string): ProjectRecord[] {
     return this.projects.listProjects(status);
   }
 
-  requireProject(projectId: string): StoredProject {
+  requireProject(projectId: string): ProjectRecord {
     const project = this.projects.getProject(projectId);
     if (!project) {
       throw new NotFoundError(`Project not found: ${projectId}`);
@@ -270,7 +265,7 @@ export class ProjectService {
     return this.knowledgePort?.searchProjectKnowledge(projectId, query, kind) ?? [];
   }
 
-  archiveProject(projectId: string): StoredProject {
+  archiveProject(projectId: string): ProjectRecord {
     const project = this.requireProject(projectId);
     const blockingTasks = this.tasks.listTasks(undefined, projectId)
       .filter((task) => task.state !== 'done' && task.state !== 'cancelled');

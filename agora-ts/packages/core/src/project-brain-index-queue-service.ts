@@ -1,4 +1,5 @@
-import { ProjectBrainIndexJobRepository, type AgoraDatabase, type ProjectBrainIndexJobStatus, type StoredProjectBrainIndexJob } from '@agora-ts/db';
+import type { ProjectBrainIndexJobRecord, ProjectBrainIndexJobStatus } from '@agora-ts/contracts';
+import { ProjectBrainIndexJobRepository, type AgoraDatabase } from '@agora-ts/db';
 import type { ProjectBrainDocumentKind } from './project-brain-query-port.js';
 
 export type ProjectBrainIndexQueueReason =
@@ -25,7 +26,7 @@ export class ProjectBrainIndexQueueService {
     this.jobs = options.repository ?? new ProjectBrainIndexJobRepository(db);
   }
 
-  enqueueDocumentSync(input: EnqueueProjectBrainIndexJobInput): StoredProjectBrainIndexJob {
+  enqueueDocumentSync(input: EnqueueProjectBrainIndexJobInput): ProjectBrainIndexJobRecord {
     return this.jobs.enqueue(input);
   }
 

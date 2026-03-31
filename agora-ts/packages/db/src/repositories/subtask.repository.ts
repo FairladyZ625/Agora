@@ -1,4 +1,4 @@
-import type { SubtaskStatusDto } from '@agora-ts/contracts';
+import type { SubtaskStatusDto, ISubtaskRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredSubtask {
@@ -44,7 +44,7 @@ export interface InsertSubtaskInput {
   done_at?: string | null;
 }
 
-export class SubtaskRepository {
+export class SubtaskRepository implements ISubtaskRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertSubtask(input: InsertSubtaskInput): StoredSubtask {

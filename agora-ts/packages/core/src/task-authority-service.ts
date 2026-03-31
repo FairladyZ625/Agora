@@ -1,4 +1,5 @@
-import { TaskAuthorityRepository, type AgoraDatabase, type StoredTaskAuthority } from '@agora-ts/db';
+import type { TaskAuthorityRecord } from '@agora-ts/contracts';
+import { TaskAuthorityRepository, type AgoraDatabase } from '@agora-ts/db';
 
 export interface CreateTaskAuthorityInput {
   task_id: string;
@@ -20,11 +21,11 @@ export class TaskAuthorityService {
     this.authorities = options.repository ?? new TaskAuthorityRepository(db);
   }
 
-  createOrUpdate(input: CreateTaskAuthorityInput): StoredTaskAuthority {
+  createOrUpdate(input: CreateTaskAuthorityInput): TaskAuthorityRecord {
     return this.authorities.upsertTaskAuthority(input);
   }
 
-  getTaskAuthority(taskId: string): StoredTaskAuthority | null {
+  getTaskAuthority(taskId: string): TaskAuthorityRecord | null {
     return this.authorities.getTaskAuthority(taskId);
   }
 }

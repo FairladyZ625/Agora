@@ -1,4 +1,4 @@
-import type { StoredTask } from '@agora-ts/db';
+import type { TaskRecord } from '@agora-ts/contracts';
 import type { ProjectService } from './project-service.js';
 import type { TaskService } from './task-service.js';
 
@@ -29,7 +29,7 @@ export class ProjectBootstrapService {
     this.taskService = options.taskService;
   }
 
-  createHarnessBootstrapTask(input: CreateProjectHarnessBootstrapTaskInput): StoredTask {
+  createHarnessBootstrapTask(input: CreateProjectHarnessBootstrapTaskInput): TaskRecord {
     this.projectService.requireProject(input.project_id);
     const task = this.taskService.createTask({
       title: `Create Project Nomos: ${input.project_name}`,

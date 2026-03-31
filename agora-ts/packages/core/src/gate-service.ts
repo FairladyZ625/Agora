@@ -1,9 +1,8 @@
-import type { GateCommandPort, TeamDto } from '@agora-ts/contracts';
-import type { StoredTask } from '@agora-ts/db';
+import type { GateCommandPort, TeamDto, TaskRecord } from '@agora-ts/contracts';
 import { PermissionDeniedError } from './errors.js';
 import type { PermissionService } from './permission-service.js';
 
-type WorkflowStage = NonNullable<StoredTask['workflow']['stages']>[number];
+type WorkflowStage = NonNullable<TaskRecord['workflow']['stages']>[number];
 
 export class GateService {
   constructor(
@@ -11,7 +10,7 @@ export class GateService {
     private readonly permissions: PermissionService,
   ) {}
 
-  routeGateCommand(task: StoredTask, stage: WorkflowStage, command: string, callerId: string) {
+  routeGateCommand(task: TaskRecord, stage: WorkflowStage, command: string, callerId: string) {
     const gateType = stage.gate?.type ?? 'command';
 
     if (command === 'approve' || command === 'reject') {

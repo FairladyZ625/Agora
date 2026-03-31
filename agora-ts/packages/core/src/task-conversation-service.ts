@@ -1,16 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type {
-  IngestTaskConversationEntryRequestDto,
-  TaskConversationEntryDto,
-  TaskConversationMarkReadRequestDto,
-  TaskConversationSummaryDto,
-} from '@agora-ts/contracts';
+import type { IngestTaskConversationEntryRequestDto, TaskContextBindingRecord, TaskConversationEntryDto, TaskConversationMarkReadRequestDto, TaskConversationSummaryDto } from '@agora-ts/contracts';
 import {
   TaskContextBindingRepository,
   TaskConversationRepository,
   TaskConversationReadCursorRepository,
   type AgoraDatabase,
-  type StoredTaskContextBinding,
 } from '@agora-ts/db';
 
 export interface TaskConversationServiceOptions {
@@ -103,7 +97,7 @@ export class TaskConversationService {
     return this.getSummaryByTask(taskId, accountId);
   }
 
-  private findBinding(input: IngestTaskConversationEntryRequestDto): StoredTaskContextBinding | null {
+  private findBinding(input: IngestTaskConversationEntryRequestDto): TaskContextBindingRecord | null {
     const candidates = this.bindings.listByTaskBindingsForRefs({
       thread_ref: input.thread_ref ?? null,
       conversation_ref: input.conversation_ref ?? null,

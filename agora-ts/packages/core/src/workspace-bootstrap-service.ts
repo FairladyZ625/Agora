@@ -1,5 +1,5 @@
-import { taskStateSchema, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
-import { TaskRepository, type AgoraDatabase, type StoredTask } from '@agora-ts/db';
+import { taskStateSchema, type TaskRecord, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
+import { TaskRepository, type AgoraDatabase } from '@agora-ts/db';
 import type { TaskService } from './task-service.js';
 
 export interface WorkspaceBootstrapServiceOptions {
@@ -29,7 +29,7 @@ export class WorkspaceBootstrapService {
     this.creator = options.creator?.trim() || 'archon';
   }
 
-  initialize(): StoredTask | null {
+  initialize(): TaskRecord | null {
     if (!this.runtimeReady) {
       return null;
     }
@@ -73,7 +73,7 @@ export class WorkspaceBootstrapService {
     };
   }
 
-  private findBootstrapTask(): StoredTask | null {
+  private findBootstrapTask(): TaskRecord | null {
     const tasks = this.tasks.listTasks();
     return tasks.find((task) => task.control?.workspace_bootstrap?.kind === 'orchestrator_onboarding') ?? null;
   }
