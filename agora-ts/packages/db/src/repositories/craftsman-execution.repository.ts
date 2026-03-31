@@ -1,4 +1,4 @@
-import type { CraftsmanExecutionPayloadDto } from '@agora-ts/contracts';
+import type { CraftsmanExecutionPayloadDto, ICraftsmanExecutionRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 

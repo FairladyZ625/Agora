@@ -1,12 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { LiveSessionDto, TeamDto } from '@agora-ts/contracts';
+import type { LiveSessionDto, ParticipantBindingRecord, RuntimeSessionBindingRecord, TeamDto } from '@agora-ts/contracts';
 import {
   ParticipantBindingRepository,
   RuntimeSessionBindingRepository,
   TaskContextBindingRepository,
   type AgoraDatabase,
-  type StoredParticipantBinding,
-  type StoredRuntimeSessionBinding,
 } from '@agora-ts/db';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import { isInteractiveParticipant } from './team-member-kind.js';
@@ -54,7 +52,7 @@ export class TaskParticipationService {
     this.agentRuntimePort = options.agentRuntimePort;
   }
 
-  seedParticipants(taskId: string, team: TeamDto | null | undefined, bindingId?: string | null): StoredParticipantBinding[] {
+  seedParticipants(taskId: string, team: TeamDto | null | undefined, bindingId?: string | null): ParticipantBindingRecord[] {
     const members = (team?.members ?? []).filter(isInteractiveParticipant);
     return members.map((member) => {
       const resolved = this.agentRuntimePort?.resolveAgent(member.agentId);
@@ -75,11 +73,11 @@ export class TaskParticipationService {
     this.participants.attachContextBinding(taskId, bindingId);
   }
 
-  listParticipants(taskId: string): StoredParticipantBinding[] {
+  listParticipants(taskId: string): ParticipantBindingRecord[] {
     return this.participants.listByTask(taskId);
   }
 
-  listRuntimeSessions(taskId: string): StoredRuntimeSessionBinding[] {
+  listRuntimeSessions(taskId: string): RuntimeSessionBindingRecord[] {
     return this.runtimeSessions.listByTask(taskId);
   }
 

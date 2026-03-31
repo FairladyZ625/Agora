@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { StoredTask } from '@agora-ts/db';
+import type { TaskRecord } from '@agora-ts/contracts';
 import type { ProjectService } from './project-service.js';
 import { ensureCanonicalProjectRootBootstrapCommit } from './project-state-root.js';
 
@@ -25,7 +25,7 @@ export class TaskWorktreeService {
     }).trim());
   }
 
-  resolveBaseWorkdir(task: Pick<StoredTask, 'project_id' | 'type'>): string | null {
+  resolveBaseWorkdir(task: Pick<TaskRecord, 'project_id' | 'type'>): string | null {
     if (!task.project_id) {
       return null;
     }
@@ -39,7 +39,7 @@ export class TaskWorktreeService {
     return projectStateRoot ?? repoPath;
   }
 
-  resolveDispatchWorkdir(task: Pick<StoredTask, 'id' | 'project_id' | 'type'>): string | null {
+  resolveDispatchWorkdir(task: Pick<TaskRecord, 'id' | 'project_id' | 'type'>): string | null {
     const baseWorkdir = this.resolveBaseWorkdir(task);
     if (!baseWorkdir || !task.project_id) {
       return baseWorkdir;

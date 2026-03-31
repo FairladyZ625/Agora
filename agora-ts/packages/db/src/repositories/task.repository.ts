@@ -1,5 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
-import type { TaskControlDto, TaskLocaleDto, TaskSkillPolicyDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
+import type { TaskControlDto, TaskLocaleDto, TaskSkillPolicyDto, TeamDto, WorkflowDto, ITaskRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 

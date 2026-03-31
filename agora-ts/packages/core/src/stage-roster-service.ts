@@ -1,5 +1,4 @@
-import type { TeamDto, WorkflowRosterRoleDto, WorkflowStageDto } from '@agora-ts/contracts';
-import type { StoredParticipantBinding } from '@agora-ts/db';
+import type { TeamDto, WorkflowRosterRoleDto, WorkflowStageDto, ParticipantBindingRecord } from '@agora-ts/contracts';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 
 export interface StageRosterPlan {
@@ -18,7 +17,7 @@ export class StageRosterService {
   buildPlan(
     team: TeamDto | null | undefined,
     stage: WorkflowStageDto | null | undefined,
-    participants: StoredParticipantBinding[],
+    participants: ParticipantBindingRecord[],
   ): StageRosterPlan {
     const desiredRefs = this.resolveDesiredRefs(team, stage);
     const joinedRefs = new Set(

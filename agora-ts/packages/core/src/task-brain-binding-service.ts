@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { TaskBrainBindingRepository, type AgoraDatabase, type StoredTaskBrainBinding } from '@agora-ts/db';
+import type { TaskBrainBindingRecord } from '@agora-ts/contracts';
+import { TaskBrainBindingRepository, type AgoraDatabase } from '@agora-ts/db';
 
 export interface TaskBrainBindingServiceOptions {
   repository?: TaskBrainBindingRepository;
@@ -21,7 +22,7 @@ export class TaskBrainBindingService {
     brain_task_id: string;
     workspace_path: string;
     metadata?: Record<string, unknown> | null;
-  }): StoredTaskBrainBinding {
+  }): TaskBrainBindingRecord {
     return this.bindings.insert({
       id: this.idGenerator(),
       task_id: input.task_id,
@@ -33,11 +34,11 @@ export class TaskBrainBindingService {
     });
   }
 
-  getActiveBinding(taskId: string): StoredTaskBrainBinding | null {
+  getActiveBinding(taskId: string): TaskBrainBindingRecord | null {
     return this.bindings.getActiveByTask(taskId);
   }
 
-  listBindings(taskId: string): StoredTaskBrainBinding[] {
+  listBindings(taskId: string): TaskBrainBindingRecord[] {
     return this.bindings.listByTask(taskId);
   }
 

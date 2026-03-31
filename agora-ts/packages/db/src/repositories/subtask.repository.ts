@@ -1,4 +1,4 @@
-import type { SubtaskStatusDto } from '@agora-ts/contracts';
+import type { SubtaskStatusDto, ISubtaskRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredSubtask {

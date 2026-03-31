@@ -1,9 +1,9 @@
+import type { NotificationOutboxRecord } from '@agora-ts/contracts';
 import {
   NotificationOutboxRepository,
   TaskConversationRepository,
   TaskContextBindingRepository,
   type AgoraDatabase,
-  type StoredNotificationOutbox,
 } from '@agora-ts/db';
 import type { IMMessagingPort } from './im-ports.js';
 
@@ -60,7 +60,7 @@ export class NotificationDispatcher {
     return { delivered, failed };
   }
 
-  private resolveTarget(notification: StoredNotificationOutbox): string | null {
+  private resolveTarget(notification: NotificationOutboxRecord): string | null {
     if (!notification.target_binding_id) {
       return null;
     }
@@ -71,7 +71,7 @@ export class NotificationDispatcher {
     return binding.thread_ref ?? binding.conversation_ref ?? null;
   }
 
-  private mirrorDeliveredNotification(notification: StoredNotificationOutbox) {
+  private mirrorDeliveredNotification(notification: NotificationOutboxRecord) {
     if (!notification.target_binding_id) {
       return;
     }
@@ -100,7 +100,7 @@ export class NotificationDispatcher {
   }
 }
 
-function formatDeliveredNotificationBody(notification: StoredNotificationOutbox) {
+function formatDeliveredNotificationBody(notification: NotificationOutboxRecord) {
   if (notification.event_type === 'craftsman_completed') {
     const output = notification.payload.output;
     const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'completed';

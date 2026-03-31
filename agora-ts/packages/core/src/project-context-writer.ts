@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ProjectWriteLockRepository, type AgoraDatabase, type StoredTask } from '@agora-ts/db';
+import type { TaskRecord } from '@agora-ts/contracts';
+import { ProjectWriteLockRepository, type AgoraDatabase } from '@agora-ts/db';
 import type { ProjectKnowledgeTaskRecapInput } from './project-knowledge-port.js';
 import type {
   TaskBrainCloseRecapRequest,
@@ -55,7 +56,7 @@ export class ProjectContextWriter {
   }
 
   buildTaskCloseoutProposal(input: {
-    task: StoredTask;
+    task: TaskRecord;
     binding: TaskBrainWorkspaceBindingRef;
     actor: string;
     reason?: string;
@@ -163,7 +164,7 @@ export class ProjectContextWriter {
   }
 }
 
-function buildTaskCloseSummary(task: Pick<StoredTask, 'locale' | 'current_stage' | 'team'>, actor: string, reason?: string) {
+function buildTaskCloseSummary(task: Pick<TaskRecord, 'locale' | 'current_stage' | 'team'>, actor: string, reason?: string) {
   return [
     task.locale === 'zh-CN'
       ? '任务已到达 done，已进入 archive 流程。'

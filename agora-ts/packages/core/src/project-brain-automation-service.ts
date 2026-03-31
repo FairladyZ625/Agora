@@ -1,4 +1,4 @@
-import type { StoredTask } from '@agora-ts/db';
+import type { TaskRecord } from '@agora-ts/contracts';
 import { renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './adapters/markdown-frontmatter.js';
 import type { ProjectKnowledgeKind } from './project-knowledge-port.js';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
@@ -139,7 +139,7 @@ export class ProjectBrainAutomationService {
     });
   }
 
-  recordTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
+  recordTaskCloseRecap(task: TaskRecord, actor: string, reason?: string) {
     if (!task.project_id || !this.options.taskBrainBindingService || !this.options.taskBrainWorkspacePort) {
       return;
     }
@@ -231,7 +231,7 @@ function excerptDocument(document: ProjectBrainDocument) {
   return lines.slice(0, 12).join('\n');
 }
 
-function buildTaskCloseSummary(task: StoredTask, actor: string, reason?: string) {
+function buildTaskCloseSummary(task: TaskRecord, actor: string, reason?: string) {
   return [
     task.locale === 'zh-CN'
       ? '任务已到达 done，已进入 archive 流程。'

@@ -3,29 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type {
-  CraftsmanCallbackRequestDto,
-  CraftsmanDispatchRequestDto,
-  CraftsmanInputKeyDto,
-  CraftsmanStopExecutionRequestDto,
-  CreateTaskAuthorityDto,
-  CreateSubtasksRequestDto,
-  CreateSubtasksResponseDto,
-  CreateTaskRequestDto,
-  GateQueryPort,
-  GateCommandPort,
-  HostResourceSnapshotDto,
-  PromoteTodoRequestDto,
-  RuntimeDiagnosisResultDto,
-  RuntimeRecoveryActionDto,
-  CraftsmanExecutionTailResponseDto,
-  TaskBlueprintDto,
-  UnifiedHealthSnapshotDto,
-  TaskLocaleDto,
-  TaskStatusDto,
-  RuntimeRecoveryRequestDto,
-  WorkflowDto,
-} from '@agora-ts/contracts';
+import type { CraftsmanCallbackRequestDto, CraftsmanDispatchRequestDto, CraftsmanExecutionTailResponseDto, CraftsmanInputKeyDto, CraftsmanStopExecutionRequestDto, CreateSubtasksRequestDto, CreateSubtasksResponseDto, CreateTaskAuthorityDto, CreateTaskRequestDto, GateCommandPort, GateQueryPort, HostResourceSnapshotDto, PromoteTodoRequestDto, RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto, RuntimeRecoveryRequestDto, TaskBlueprintDto, TaskConversationEntryRecord, TaskLocaleDto, TaskRecord, TaskStatusDto, UnifiedHealthSnapshotDto, WorkflowDto } from '@agora-ts/contracts';
 import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
 import {
   ApprovalRequestRepository,
@@ -43,8 +21,6 @@ import {
   TemplateRepository,
   TodoRepository,
   type AgoraDatabase,
-  type StoredTask,
-  type StoredTaskConversationEntry,
 } from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
@@ -126,7 +102,7 @@ type EscalationPolicy = {
 };
 
 export interface HumanReminderParticipantResolverInput {
-  task: StoredTask;
+  task: TaskRecord;
   provider: string;
   reason: 'approval_waiting';
 }
@@ -449,7 +425,7 @@ export class TaskService {
     }
   }
 
-  createTask(input: CreateTaskInputLike): StoredTask {
+  createTask(input: CreateTaskInputLike): TaskRecord {
     const template = this.tryLoadTemplate(input.type);
     const workflow = input.workflow_override ?? (template ? this.buildWorkflow(template) : null);
     const requestedTeam = input.team_override ?? (template ? this.buildTeam(template) : null);
@@ -472,7 +448,7 @@ export class TaskService {
     const nomosAuthoring = input.control?.nomos_authoring;
     const firstStageId = workflow.graph?.entry_nodes[0] ?? workflow.stages?.[0]?.id ?? null;
     const templateLabel = template?.name ?? input.type;
-    let active: StoredTask;
+    let active: TaskRecord;
     let brainWorkspaceBinding: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null = null;
 
     this.db.exec('BEGIN');
@@ -675,12 +651,12 @@ export class TaskService {
     return createdTask;
   }
 
-  getTask(taskId: string): StoredTask | null {
+  getTask(taskId: string): TaskRecord | null {
     const task = this.taskRepository.getTask(taskId);
     return task ? this.withControllerRef(task) : null;
   }
 
-  listTasks(state?: string, projectId?: string): StoredTask[] {
+  listTasks(state?: string, projectId?: string): TaskRecord[] {
     return this.taskRepository.listTasks(state, projectId).map((task) => this.withControllerRef(task));
   }
 
@@ -696,7 +672,7 @@ export class TaskService {
     };
   }
 
-  advanceTask(taskId: string, options: AdvanceTaskOptions): StoredTask {
+  advanceTask(taskId: string, options: AdvanceTaskOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
@@ -736,7 +712,7 @@ export class TaskService {
     return this.advanceSatisfiedStage(task, options.callerId, options.nextStageId);
   }
 
-  approveTask(taskId: string, options: ApproveTaskOptions): StoredTask {
+  approveTask(taskId: string, options: ApproveTaskOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
@@ -772,7 +748,7 @@ export class TaskService {
     return advanced;
   }
 
-  rejectTask(taskId: string, options: RejectTaskOptions): StoredTask {
+  rejectTask(taskId: string, options: RejectTaskOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
@@ -817,7 +793,7 @@ export class TaskService {
     return rewound;
   }
 
-  archonApproveTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
+  archonApproveTask(taskId: string, options: ArchonDecisionOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
@@ -858,7 +834,7 @@ export class TaskService {
     return advanced;
   }
 
-  archonRejectTask(taskId: string, options: ArchonDecisionOptions): StoredTask {
+  archonRejectTask(taskId: string, options: ArchonDecisionOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
@@ -903,7 +879,7 @@ export class TaskService {
     return rewound;
   }
 
-  private advanceSatisfiedStage(task: StoredTask, actor: string, nextStageId?: string): StoredTask {
+  private advanceSatisfiedStage(task: TaskRecord, actor: string, nextStageId?: string): TaskRecord {
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
     }
@@ -999,7 +975,7 @@ export class TaskService {
     return updated;
   }
 
-  private runTaskDoneAutomation(task: StoredTask) {
+  private runTaskDoneAutomation(task: TaskRecord) {
     const authoring = task.control?.nomos_authoring;
     if (!authoring || authoring.kind !== 'project_nomos' || authoring.auto_refine_on_done === false) {
       return;
@@ -1013,7 +989,7 @@ export class TaskService {
     this.projectNomosAuthoringPort.refineProjectNomosDraft(task.project_id);
   }
 
-  completeSubtask(taskId: string, options: CompleteSubtaskOptions): StoredTask {
+  completeSubtask(taskId: string, options: CompleteSubtaskOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
     this.assertSubtaskControl(task, subtask, options.callerId);
@@ -1041,7 +1017,7 @@ export class TaskService {
     return task;
   }
 
-  archiveSubtask(taskId: string, options: SubtaskLifecycleOptions): StoredTask {
+  archiveSubtask(taskId: string, options: SubtaskLifecycleOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
     this.assertSubtaskControl(task, subtask, options.callerId);
@@ -1081,7 +1057,7 @@ export class TaskService {
     return task;
   }
 
-  cancelSubtask(taskId: string, options: SubtaskLifecycleOptions): StoredTask {
+  cancelSubtask(taskId: string, options: SubtaskLifecycleOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
     this.assertSubtaskControl(task, subtask, options.callerId);
@@ -1760,7 +1736,7 @@ export class TaskService {
     return result;
   }
 
-  forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): StoredTask {
+  forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
@@ -1841,7 +1817,7 @@ export class TaskService {
     return updated;
   }
 
-  confirmTask(taskId: string, options: ConfirmTaskOptions): StoredTask & { quorum: { approved: number; total: number } } {
+  confirmTask(taskId: string, options: ConfirmTaskOptions): TaskRecord & { quorum: { approved: number; total: number } } {
     const task = this.getTaskOrThrow(taskId);
     this.assertTaskActive(task);
     const stage = this.getCurrentStageOrThrow(task);
@@ -1876,23 +1852,23 @@ export class TaskService {
     };
   }
 
-  pauseTask(taskId: string, options: UpdateTaskStateOptions): StoredTask {
+  pauseTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
     return this.updateTaskState(taskId, TaskState.PAUSED, options);
   }
 
-  resumeTask(taskId: string): StoredTask {
+  resumeTask(taskId: string): TaskRecord {
     return this.updateTaskState(taskId, TaskState.ACTIVE, { reason: 'resumed' });
   }
 
-  cancelTask(taskId: string, options: UpdateTaskStateOptions): StoredTask {
+  cancelTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
     return this.updateTaskState(taskId, TaskState.CANCELLED, options);
   }
 
-  unblockTask(taskId: string, options: UpdateTaskStateOptions): StoredTask {
+  unblockTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
     return this.updateTaskState(taskId, TaskState.ACTIVE, options);
   }
 
-  updateTaskState(taskId: string, newState: string, options: UpdateTaskStateOptions): StoredTask {
+  updateTaskState(taskId: string, newState: string, options: UpdateTaskStateOptions): TaskRecord {
     const task = this.getTaskOrThrow(taskId);
     if (!this.stateMachine.validateTransition(task.state as TaskState, newState as TaskState)) {
       throw new Error(`Invalid transition: ${task.state} -> ${newState}`);
@@ -2267,7 +2243,7 @@ export class TaskService {
     };
   }
 
-  private buildTaskBlueprint(task: StoredTask): TaskBlueprintDto {
+  private buildTaskBlueprint(task: TaskRecord): TaskBlueprintDto {
     if (task.workflow.graph) {
       const graph = task.workflow.graph;
       return {
@@ -2346,7 +2322,7 @@ export class TaskService {
     };
   }
 
-  private buildTeam(template: TaskTemplate): StoredTask['team'] {
+  private buildTeam(template: TaskTemplate): TaskRecord['team'] {
     const members = Object.entries(template.defaultTeam ?? {}).map(([role, config]) => ({
       role,
       agentId: config.suggested?.[0] ?? role,
@@ -2356,7 +2332,7 @@ export class TaskService {
     return { members };
   }
 
-  private buildTaskBrainWorkspaceRequest(task: StoredTask, templateId: string) {
+  private buildTaskBrainWorkspaceRequest(task: TaskRecord, templateId: string) {
     const projectBrainContexts = this.buildProjectBrainContexts(task);
     return {
       task_id: task.id,
@@ -2401,7 +2377,7 @@ export class TaskService {
     } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
   }
 
-  private buildProjectBrainContexts(task: StoredTask): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
+  private buildProjectBrainContexts(task: TaskRecord): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
     if (!task.project_id || !this.projectBrainAutomationService) {
       return null;
     }
@@ -2427,7 +2403,7 @@ export class TaskService {
     return contexts;
   }
 
-  private refreshTaskBrainWorkspace(task: StoredTask) {
+  private refreshTaskBrainWorkspace(task: TaskRecord) {
     if (!this.taskBrainWorkspacePort || !this.taskBrainBindingService) {
       return;
     }
@@ -2444,7 +2420,7 @@ export class TaskService {
   }
 
   private materializeExecutionBrief(
-    task: StoredTask,
+    task: TaskRecord,
     input: {
       subtask_id: string;
       subtask_title: string;
@@ -2506,7 +2482,7 @@ export class TaskService {
     }).brief_path;
   }
 
-  private enrichTeam(team: StoredTask['team']): StoredTask['team'] {
+  private enrichTeam(team: TaskRecord['team']): TaskRecord['team'] {
     return {
       members: team.members.map((member) => {
         const resolved = this.agentRuntimePort?.resolveAgent(member.agentId);
@@ -2538,7 +2514,7 @@ export class TaskService {
     return stored ? stored.template as TaskTemplate : null;
   }
 
-  private getTaskOrThrow(taskId: string): StoredTask {
+  private getTaskOrThrow(taskId: string): TaskRecord {
     const task = this.taskRepository.getTask(taskId);
     if (!task) {
       throw new NotFoundError(`Task ${taskId} not found`);
@@ -2546,7 +2522,7 @@ export class TaskService {
     return task;
   }
 
-  private withControllerRef(task: StoredTask): StoredTask & {
+  private withControllerRef(task: TaskRecord): TaskRecord & {
     controller_ref: string | null;
     authority: ReturnType<TaskAuthorityService['getTaskAuthority']>;
   } {
@@ -2557,7 +2533,7 @@ export class TaskService {
     };
   }
 
-  private assertApprovalAuthority(task: StoredTask, actorAccountId: number | null) {
+  private assertApprovalAuthority(task: TaskRecord, actorAccountId: number | null) {
     const authority = this.taskAuthorities.getTaskAuthority(task.id);
     const requiredApproverAccountId = authority?.approver_account_id ?? null;
     if (requiredApproverAccountId == null) {
@@ -2568,21 +2544,21 @@ export class TaskService {
     }
   }
 
-  private getCurrentStageOrThrow(task: StoredTask) {
+  private getCurrentStageOrThrow(task: TaskRecord) {
     if (!task.current_stage) {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
     return this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
   }
 
-  private assertTaskActive(task: StoredTask) {
+  private assertTaskActive(task: TaskRecord) {
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
     }
   }
 
   private assertStageRosterAction(
-    task: StoredTask,
+    task: TaskRecord,
     stage: WorkflowStageLike,
     callerId: string,
     action: 'advance' | 'approve' | 'reject' | 'confirm' | 'archon-approve' | 'archon-reject',
@@ -2598,7 +2574,7 @@ export class TaskService {
     throw new PermissionDeniedError(`caller ${callerId} is outside current stage roster for ${action}`);
   }
 
-  private getStageByIdOrThrow(task: StoredTask, stageId: string) {
+  private getStageByIdOrThrow(task: TaskRecord, stageId: string) {
     const stage = (task.workflow.stages ?? []).find((item) => item.id === stageId);
     if (!stage) {
       throw new Error(`Task ${task.id} is missing workflow stage '${stageId}'`);
@@ -2607,7 +2583,7 @@ export class TaskService {
   }
 
   private buildBootstrapMessages(
-    task: StoredTask,
+    task: TaskRecord,
     brainWorkspace: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null,
     imParticipantRefs: string[],
   ): IMPublishMessageInput[] {
@@ -2795,7 +2771,7 @@ export class TaskService {
   }
 
   private publishGateDecisionBroadcast(
-    task: StoredTask,
+    task: TaskRecord,
     input: {
       decision: 'approved' | 'rejected';
       reviewer: string;
@@ -2843,7 +2819,7 @@ export class TaskService {
     });
   }
 
-  private materializeTaskCloseRecap(task: StoredTask, actor: string, reason?: string) {
+  private materializeTaskCloseRecap(task: TaskRecord, actor: string, reason?: string) {
     if (!task.project_id || !this.taskBrainBindingService) {
       return;
     }
@@ -2861,8 +2837,8 @@ export class TaskService {
   }
 
   private ensureApprovalRequestForGate(
-    task: StoredTask,
-    stage: NonNullable<StoredTask['workflow']['stages']>[number],
+    task: TaskRecord,
+    stage: NonNullable<TaskRecord['workflow']['stages']>[number],
     requester: string,
   ) {
     const gateType = stage.gate?.type;
@@ -2917,7 +2893,7 @@ export class TaskService {
   }
 
   private publishTaskStateBroadcast(
-    task: StoredTask,
+    task: TaskRecord,
     fromState: TaskState,
     toState: TaskState,
     reason?: string,
@@ -2945,7 +2921,7 @@ export class TaskService {
     });
   }
 
-  private publishControllerCloseoutReminder(task: StoredTask, archiveJob: ReturnType<TaskService['ensureArchiveJobForTask']>) {
+  private publishControllerCloseoutReminder(task: TaskRecord, archiveJob: ReturnType<TaskService['ensureArchiveJobForTask']>) {
     const controllerRef = resolveControllerRef(task.team.members);
     if (!controllerRef) {
       return;
@@ -2974,7 +2950,7 @@ export class TaskService {
   }
 
   private publishTaskStatusBroadcast(
-    task: StoredTask,
+    task: TaskRecord,
     input: {
       kind: string;
       bodyLines: string[];
@@ -3031,7 +3007,7 @@ export class TaskService {
   }
 
   private buildTaskStatusBroadcastEnvelope(
-    task: StoredTask,
+    task: TaskRecord,
     input: {
       kind: string;
       bodyLines: string[];
@@ -3070,7 +3046,7 @@ export class TaskService {
     };
   }
 
-  private buildSmokeStatusGuidance(task: StoredTask, kind: string): string[] {
+  private buildSmokeStatusGuidance(task: TaskRecord, kind: string): string[] {
     if (task.control?.mode !== 'smoke_test') {
       return [];
     }
@@ -3142,7 +3118,7 @@ export class TaskService {
     }
   }
 
-  private buildSmokeStageEntryCommands(task: StoredTask, stage: WorkflowStageLike): string[] {
+  private buildSmokeStageEntryCommands(task: TaskRecord, stage: WorkflowStageLike): string[] {
     if (task.control?.mode !== 'smoke_test') {
       return [];
     }
@@ -3161,7 +3137,7 @@ export class TaskService {
   }
 
   private buildSmokeSubtaskCommands(
-    task: StoredTask,
+    task: TaskRecord,
     callerId: string,
     createdSubtasks: Array<{ id: string }>,
     dispatchedExecutions: Array<{ execution_id: string }>,
@@ -3185,7 +3161,7 @@ export class TaskService {
     return lines;
   }
 
-  private buildSmokeExecutionCommands(task: StoredTask, executionId: string, status: string): string[] {
+  private buildSmokeExecutionCommands(task: TaskRecord, executionId: string, status: string): string[] {
     if (task.control?.mode !== 'smoke_test') {
       return [];
     }
@@ -3209,7 +3185,7 @@ export class TaskService {
     return lines;
   }
 
-  private buildSmokePostInputCommands(task: StoredTask, executionId: string): string[] {
+  private buildSmokePostInputCommands(task: TaskRecord, executionId: string): string[] {
     if (task.control?.mode !== 'smoke_test') {
       return [];
     }
@@ -3261,12 +3237,12 @@ export class TaskService {
   }
 
   private rewindRejectedStage(
-    task: StoredTask,
+    task: TaskRecord,
     currentStageId: string,
     decisionEvent: 'rejected' | 'archon_rejected',
     actor: string,
     reason: string,
-  ): StoredTask {
+  ): TaskRecord {
     const rejectStage = this.stateMachine.getRejectStage(task.workflow, currentStageId);
     if (!rejectStage) {
       return task;
@@ -3309,7 +3285,7 @@ export class TaskService {
   }
 
   private collectImParticipantRefs(
-    task: Pick<StoredTask, 'team'>,
+    task: Pick<TaskRecord, 'team'>,
     stage: WorkflowStageLike | null,
     explicitRefs?: string[] | null,
   ): string[] {
@@ -3320,7 +3296,7 @@ export class TaskService {
     ]));
   }
 
-  private buildCurrentStageRoster(task: StoredTask): TaskStatusDto['current_stage_roster'] {
+  private buildCurrentStageRoster(task: TaskRecord): TaskStatusDto['current_stage_roster'] {
     if (!task.current_stage) {
       return undefined;
     }
@@ -3363,12 +3339,12 @@ export class TaskService {
     };
   }
 
-  private getApproverRole(stage: NonNullable<StoredTask['workflow']['stages']>[number]) {
+  private getApproverRole(stage: NonNullable<TaskRecord['workflow']['stages']>[number]) {
     const raw = stage.gate?.approver_role ?? stage.gate?.approver;
     return typeof raw === 'string' && raw.length > 0 ? raw : 'reviewer';
   }
 
-  private buildSchedulerSnapshot(task: StoredTask, reason: string) {
+  private buildSchedulerSnapshot(task: TaskRecord, reason: string) {
     const pendingSubtasks = this.subtaskRepository
       .listByTask(task.id)
       .filter((subtask) => !TERMINAL_SUBTASK_STATES.has(subtask.status))
@@ -3400,7 +3376,7 @@ export class TaskService {
     };
   }
 
-  private applyStateTransitionSideEffects(task: StoredTask, newState: TaskState, options: UpdateTaskStateOptions) {
+  private applyStateTransitionSideEffects(task: TaskRecord, newState: TaskState, options: UpdateTaskStateOptions) {
     if (task.state === TaskState.PAUSED && newState === TaskState.ACTIVE) {
       return {
         action: 'resume',
@@ -3660,7 +3636,7 @@ export class TaskService {
     return subtask;
   }
 
-  private assertSubtaskControl(task: StoredTask, subtask: { id: string; assignee: string }, callerId: string) {
+  private assertSubtaskControl(task: TaskRecord, subtask: { id: string; assignee: string }, callerId: string) {
     const controllerRef = resolveControllerRef(task.team.members);
     const allowed = this.permissions.isArchon(callerId)
       || callerId === subtask.assignee
@@ -3672,7 +3648,7 @@ export class TaskService {
     }
   }
 
-  private assertTaskRuntimeControl(task: StoredTask, callerId: string, action: string) {
+  private assertTaskRuntimeControl(task: TaskRecord, callerId: string, action: string) {
     const controllerRef = resolveControllerRef(task.team.members);
     const allowed = this.permissions.isArchon(callerId)
       || (controllerRef !== null && callerId === controllerRef);
@@ -3683,7 +3659,7 @@ export class TaskService {
     }
   }
 
-  private resolveTaskRuntimeParticipant(task: StoredTask, agentRef: string) {
+  private resolveTaskRuntimeParticipant(task: TaskRecord, agentRef: string) {
     const member = task.team.members.find((item) => item.agentId === agentRef);
     if (!member) {
       throw new NotFoundError(`Agent ${agentRef} is not part of task ${task.id}`);
@@ -3817,7 +3793,7 @@ export class TaskService {
     return archived;
   }
 
-  private resumeArchivedSubtasks(task: StoredTask) {
+  private resumeArchivedSubtasks(task: TaskRecord) {
     const resumed: string[] = [];
     if (!task.current_stage) {
       return resumed;
@@ -3867,7 +3843,7 @@ export class TaskService {
     return 'pending';
   }
 
-  private retryFailedSubtasks(task: StoredTask) {
+  private retryFailedSubtasks(task: TaskRecord) {
     if (!task.current_stage) {
       return [] as string[];
     }
@@ -3890,7 +3866,7 @@ export class TaskService {
     return retried;
   }
 
-  private skipFailedSubtasks(task: StoredTask, reason: string) {
+  private skipFailedSubtasks(task: TaskRecord, reason: string) {
     if (!task.current_stage) {
       return [] as string[];
     }
@@ -3915,7 +3891,7 @@ export class TaskService {
     return skipped;
   }
 
-  private reassignFailedSubtasks(task: StoredTask, assignee: string, craftsmanType?: string) {
+  private reassignFailedSubtasks(task: TaskRecord, assignee: string, craftsmanType?: string) {
     if (!task.current_stage) {
       return [] as string[];
     }
@@ -3985,7 +3961,7 @@ export class TaskService {
     });
   }
 
-  private buildArchiveTargetPath(task: StoredTask) {
+  private buildArchiveTargetPath(task: TaskRecord) {
     return `ZeYu-AI-Brain/agora/${task.id}-${slugify(task.title)}.md`;
   }
 
@@ -4191,7 +4167,7 @@ export class TaskService {
     });
   }
 
-  private reconcileStageParticipants(task: StoredTask, stage: WorkflowStageLike | null) {
+  private reconcileStageParticipants(task: TaskRecord, stage: WorkflowStageLike | null) {
     if (!stage || !this.imProvisioningPort || !this.taskParticipationService) {
       return;
     }
@@ -4288,7 +4264,7 @@ export class TaskService {
     `).run(reason, taskId, stageId);
   }
 
-  private resolveLatestBusinessActivityMs(task: StoredTask) {
+  private resolveLatestBusinessActivityMs(task: TaskRecord) {
     const escalationEvents = new Set(['controller_pinged', 'roster_pinged', 'human_approval_pinged', 'inbox_escalated']);
     const conversationEntries = this.taskConversationRepository.listByTask(task.id);
     const systemEchoTimesByKey = new Map<string, number[]>();
@@ -4339,7 +4315,7 @@ export class TaskService {
     };
   }
 
-  private resolveApprovalWaitProbe(task: StoredTask) {
+  private resolveApprovalWaitProbe(task: TaskRecord) {
     if (!task.current_stage) {
       return null;
     }
@@ -4409,7 +4385,7 @@ export class TaskService {
   }
 
   private buildEscalationSnapshot(
-    tasks: StoredTask[],
+    tasks: TaskRecord[],
     runtimeAgents: Array<{ agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>,
   ): UnifiedHealthSnapshotDto['escalation'] {
     const activeTasks = tasks.filter((task) => task.state === TaskState.ACTIVE);
@@ -4516,12 +4492,12 @@ export class TaskService {
   }
 }
 
-function buildConversationEchoKey(entry: Pick<StoredTaskConversationEntry, 'provider' | 'body'>) {
+function buildConversationEchoKey(entry: Pick<TaskConversationEntryRecord, 'provider' | 'body'>) {
   return `${entry.provider}\u0000${entry.body}`;
 }
 
 function isSystemEchoConversationEntry(
-  entry: StoredTaskConversationEntry,
+  entry: TaskConversationEntryRecord,
   systemEchoTimesByKey: Map<string, number[]>,
 ) {
   const occurredAtMs = parseStoredTimestamp(entry.occurred_at);
@@ -4557,7 +4533,7 @@ function resolveTaskLocale(locale: string | null | undefined): TaskLocaleDto {
   return locale === 'en-US' ? 'en-US' : 'zh-CN';
 }
 
-function taskText(task: Pick<StoredTask, 'locale'> | TaskLocaleDto, zh: string, en: string) {
+function taskText(task: Pick<TaskRecord, 'locale'> | TaskLocaleDto, zh: string, en: string) {
   const locale = typeof task === 'string' ? task : task.locale;
   return locale === 'en-US' ? en : zh;
 }
@@ -4617,7 +4593,7 @@ function stageAllowsCraftsmanDispatch(stage: WorkflowStageLike | null | undefine
     || resolveAllowedActions(stage).includes('dispatch_craftsman');
 }
 
-function resolveTaskBrainContextAudienceForAssignee(task: StoredTask, assignee: string): TaskBrainContextAudience {
+function resolveTaskBrainContextAudienceForAssignee(task: TaskRecord, assignee: string): TaskBrainContextAudience {
   const member = task.team.members.find((candidate) => candidate.agentId === assignee);
   switch (member?.member_kind) {
     case 'craftsman':

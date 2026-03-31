@@ -1,4 +1,4 @@
-import type { RoleBindingDto } from '@agora-ts/contracts';
+import type { RoleBindingDto, IRoleBindingRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 

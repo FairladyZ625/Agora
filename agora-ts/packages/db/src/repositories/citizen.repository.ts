@@ -1,4 +1,4 @@
-import type { CitizenDefinitionDto } from '@agora-ts/contracts';
+import type { CitizenDefinitionDto, ICitizenRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 

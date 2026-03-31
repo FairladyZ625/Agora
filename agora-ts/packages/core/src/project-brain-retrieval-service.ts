@@ -1,4 +1,4 @@
-import type { StoredTask } from '@agora-ts/db';
+import type { TaskRecord } from '@agora-ts/contracts';
 import type { ProjectBrainChunk } from './project-brain-chunk.js';
 import type { ProjectBrainEmbeddingPort } from './project-brain-embedding-port.js';
 import type { ProjectBrainSearchResult } from './project-brain-query-port.js';
@@ -24,7 +24,7 @@ export interface ProjectBrainRetrievalResult extends ProjectBrainSearchResult {
 
 export interface ProjectBrainRetrievalServiceOptions {
   taskLookup: {
-    getTask(taskId: string): StoredTask | null;
+    getTask(taskId: string): TaskRecord | null;
   };
   projectBrainService: ProjectBrainService;
   embeddingPort: ProjectBrainEmbeddingPort;
@@ -132,21 +132,21 @@ function dedupeHybridResults(results: ProjectBrainRetrievalResult[]) {
   });
 }
 
-function isChunkAllowedForAudience(chunk: ProjectBrainChunk, task: StoredTask, audience: ProjectBrainRetrievalAudience) {
+function isChunkAllowedForAudience(chunk: ProjectBrainChunk, task: TaskRecord, audience: ProjectBrainRetrievalAudience) {
   if (chunk.document_kind !== 'citizen_scaffold') {
     return true;
   }
   return isScaffoldAllowedForAudience(chunk.document_slug, task, audience);
 }
 
-function isSearchResultAllowedForAudience(result: ProjectBrainSearchResult, task: StoredTask, audience: ProjectBrainRetrievalAudience) {
+function isSearchResultAllowedForAudience(result: ProjectBrainSearchResult, task: TaskRecord, audience: ProjectBrainRetrievalAudience) {
   if (result.kind !== 'citizen_scaffold') {
     return true;
   }
   return isScaffoldAllowedForAudience(result.slug, task, audience);
 }
 
-function isScaffoldAllowedForAudience(slug: string, task: StoredTask, audience: ProjectBrainRetrievalAudience) {
+function isScaffoldAllowedForAudience(slug: string, task: TaskRecord, audience: ProjectBrainRetrievalAudience) {
   if (audience !== 'craftsman') {
     return true;
   }
