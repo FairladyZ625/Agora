@@ -1,3 +1,4 @@
+import type { ITodoRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -15,7 +16,7 @@ export interface StoredTodo {
 
 type SqlValue = string | number | bigint | Uint8Array | null;
 
-export class TodoRepository {
+export class TodoRepository implements ITodoRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertTodo(input: {

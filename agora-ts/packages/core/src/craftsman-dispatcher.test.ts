@@ -9,7 +9,7 @@ import {
   SubtaskRepository,
   TaskRepository,
 } from '@agora-ts/db';
-import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
+import { createCraftsmanDispatcherFromDb } from '@agora-ts/testing';
 
 const tempPaths: string[] = [];
 
@@ -35,7 +35,7 @@ describe('craftsman dispatcher', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       adapters: {
         codex: {
           name: 'codex',
@@ -107,7 +107,7 @@ describe('craftsman dispatcher', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       adapters: {
         codex: {
           name: 'codex',
@@ -166,7 +166,7 @@ describe('craftsman dispatcher', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       adapters: {
         codex: {
           name: 'codex',
@@ -234,7 +234,7 @@ describe('craftsman dispatcher', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       maxConcurrentRunning: 1,
       adapters: {
         codex: {
@@ -310,7 +310,7 @@ describe('craftsman dispatcher', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-isolated-1',
       workdirIsolator: {
         isolate: () => '/tmp/isolated/codex/OC-964/sub-codex-exec-isolated-1',

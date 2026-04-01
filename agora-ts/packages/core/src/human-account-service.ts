@@ -1,9 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import {
-  HumanAccountRepository,
-  HumanIdentityBindingRepository,
-  type AgoraDatabase,
-} from '@agora-ts/db';
+import type { IHumanAccountRepository, IHumanIdentityBindingRepository } from '@agora-ts/contracts';
 
 export type HumanAccountRole = 'admin' | 'member';
 
@@ -52,17 +48,17 @@ function verifyPassword(password: string, encoded: string): boolean {
 }
 
 export interface HumanAccountServiceOptions {
-  accountRepository?: HumanAccountRepository;
-  identityBindingRepository?: HumanIdentityBindingRepository;
+  accountRepository: IHumanAccountRepository;
+  identityBindingRepository: IHumanIdentityBindingRepository;
 }
 
 export class HumanAccountService {
-  private readonly accounts: HumanAccountRepository;
-  private readonly identities: HumanIdentityBindingRepository;
+  private readonly accounts: IHumanAccountRepository;
+  private readonly identities: IHumanIdentityBindingRepository;
 
-  constructor(db: AgoraDatabase, options: HumanAccountServiceOptions = {}) {
-    this.accounts = options.accountRepository ?? new HumanAccountRepository(db);
-    this.identities = options.identityBindingRepository ?? new HumanIdentityBindingRepository(db);
+  constructor(options: HumanAccountServiceOptions) {
+    this.accounts = options.accountRepository;
+    this.identities = options.identityBindingRepository;
   }
 
   hasAccounts(): boolean {

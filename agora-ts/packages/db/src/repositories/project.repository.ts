@@ -1,3 +1,4 @@
+import type { IProjectRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -28,7 +29,7 @@ export interface UpdateProjectInput {
   metadata?: Record<string, unknown> | null;
 }
 
-export class ProjectRepository {
+export class ProjectRepository implements IProjectRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertProject(input: InsertProjectInput): StoredProject {

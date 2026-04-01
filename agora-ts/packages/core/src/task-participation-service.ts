@@ -1,18 +1,20 @@
 import { randomUUID } from 'node:crypto';
-import type { LiveSessionDto, ParticipantBindingRecord, RuntimeSessionBindingRecord, TeamDto } from '@agora-ts/contracts';
-import {
-  ParticipantBindingRepository,
-  RuntimeSessionBindingRepository,
-  TaskContextBindingRepository,
-  type AgoraDatabase,
-} from '@agora-ts/db';
+import type {
+  IParticipantBindingRepository,
+  IRuntimeSessionBindingRepository,
+  ITaskContextBindingRepository,
+  LiveSessionDto,
+  ParticipantBindingRecord,
+  RuntimeSessionBindingRecord,
+  TeamDto,
+} from '@agora-ts/contracts';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import { isInteractiveParticipant } from './team-member-kind.js';
 
 export interface TaskParticipationServiceOptions {
-  participantRepository?: ParticipantBindingRepository;
-  runtimeSessionRepository?: RuntimeSessionBindingRepository;
-  taskBindingRepository?: TaskContextBindingRepository;
+  participantRepository: IParticipantBindingRepository;
+  runtimeSessionRepository: IRuntimeSessionBindingRepository;
+  taskBindingRepository: ITaskContextBindingRepository;
   participantIdGenerator?: () => string;
   runtimeSessionIdGenerator?: () => string;
   agentRuntimePort?: AgentRuntimePort;
@@ -33,20 +35,19 @@ function defaultId(prefix: string) {
 }
 
 export class TaskParticipationService {
-  private readonly participants: ParticipantBindingRepository;
-  private readonly runtimeSessions: RuntimeSessionBindingRepository;
-  private readonly taskBindings: TaskContextBindingRepository;
+  private readonly participants: IParticipantBindingRepository;
+  private readonly runtimeSessions: IRuntimeSessionBindingRepository;
+  private readonly taskBindings: ITaskContextBindingRepository;
   private readonly participantIdGenerator: () => string;
   private readonly runtimeSessionIdGenerator: () => string;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
 
   constructor(
-    db: AgoraDatabase,
-    options: TaskParticipationServiceOptions = {},
+    options: TaskParticipationServiceOptions,
   ) {
-    this.participants = options.participantRepository ?? new ParticipantBindingRepository(db);
-    this.runtimeSessions = options.runtimeSessionRepository ?? new RuntimeSessionBindingRepository(db);
-    this.taskBindings = options.taskBindingRepository ?? new TaskContextBindingRepository(db);
+    this.participants = options.participantRepository;
+    this.runtimeSessions = options.runtimeSessionRepository;
+    this.taskBindings = options.taskBindingRepository;
     this.participantIdGenerator = options.participantIdGenerator ?? (() => defaultId('participant'));
     this.runtimeSessionIdGenerator = options.runtimeSessionIdGenerator ?? (() => defaultId('runtime-session'));
     this.agentRuntimePort = options.agentRuntimePort;
@@ -183,7 +184,7 @@ export class TaskParticipationService {
   }
 
   private findMatchingTaskBindings(session: LiveSessionDto) {
-    const candidates = new Map<string, ReturnType<TaskContextBindingRepository['getById']>>();
+    const candidates = new Map<string, NonNullable<ReturnType<ITaskContextBindingRepository['getById']>>>();
     for (const taskBinding of this.taskBindings.listByTaskBindingsForRefs({
       thread_ref: session.thread_id ?? null,
       conversation_ref: session.conversation_id ?? null,

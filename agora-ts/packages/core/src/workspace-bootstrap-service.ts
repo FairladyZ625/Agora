@@ -1,10 +1,8 @@
-import { taskStateSchema, type TaskRecord, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
-import { TaskRepository, type AgoraDatabase } from '@agora-ts/db';
+import { taskStateSchema, type ITaskRepository, type TaskRecord, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
 import type { TaskService } from './task-service.js';
 
 export interface WorkspaceBootstrapServiceOptions {
-  db?: AgoraDatabase;
-  taskRepository?: TaskRepository;
+  taskRepository: ITaskRepository;
   taskService: Pick<TaskService, 'createTask'>;
   runtimeReady: boolean;
   runtimeReadinessReason?: string | null;
@@ -12,17 +10,14 @@ export interface WorkspaceBootstrapServiceOptions {
 }
 
 export class WorkspaceBootstrapService {
-  private readonly tasks: TaskRepository;
+  private readonly tasks: ITaskRepository;
   private readonly taskService: Pick<TaskService, 'createTask'>;
   private readonly runtimeReady: boolean;
   private readonly runtimeReadinessReason: string | null;
   private readonly creator: string;
 
   constructor(options: WorkspaceBootstrapServiceOptions) {
-    if (!options.taskRepository && !options.db) {
-      throw new Error('WorkspaceBootstrapService requires either db or taskRepository');
-    }
-    this.tasks = options.taskRepository ?? new TaskRepository(options.db!);
+    this.tasks = options.taskRepository;
     this.taskService = options.taskService;
     this.runtimeReady = options.runtimeReady;
     this.runtimeReadinessReason = options.runtimeReadinessReason ?? null;

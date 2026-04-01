@@ -5,10 +5,19 @@ import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { DashboardQueryService, HumanAccountService, ProjectService, TaskService } from '@agora-ts/core';
+import { HumanAccountRepository, HumanIdentityBindingRepository } from '@agora-ts/db';
+import { createDashboardQueryServiceFromDb, createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+
+function createHumanAccountServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-app-test-'));
@@ -390,7 +399,7 @@ describe('agora-ts server bootstrap', () => {
   it('requires a dashboard session for dashboard read APIs when session auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SESSION-API',
     });
@@ -444,7 +453,7 @@ describe('agora-ts server bootstrap', () => {
   it('allows project read APIs from a dashboard session even when bearer auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-session-api',
       name: 'Session API Project',
@@ -499,7 +508,7 @@ describe('agora-ts server bootstrap', () => {
   it('accepts project admins and members on POST /api/projects and exposes project membership routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     humanAccounts.bootstrapAdmin({
       username: 'workspace-admin',
       password: 'secret-pass',
@@ -514,7 +523,7 @@ describe('agora-ts server bootstrap', () => {
       password: 'secret-pass',
       role: 'member',
     });
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     const app = buildApp({
       db,
       projectService,
@@ -602,8 +611,8 @@ describe('agora-ts server bootstrap', () => {
   it('allows POST operations from a dashboard session when bearer auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, { templatesDir });
-    const dashboardQueryService = new DashboardQueryService(db, { templatesDir });
+    const taskService = createTaskServiceFromDb(db, { templatesDir });
+    const dashboardQueryService = createDashboardQueryServiceFromDb(db, { templatesDir });
     const app = buildApp({
       db,
       taskService,
@@ -813,8 +822,8 @@ describe('agora-ts server bootstrap', () => {
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-project-root-'));
     tempPaths.push(agoraHomeDir);
     process.env.AGORA_HOME_DIR = agoraHomeDir;
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, { templatesDir, projectService });
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, { templatesDir, projectService });
     const app = buildApp({
       db,
       projectService,
@@ -866,7 +875,7 @@ describe('agora-ts server bootstrap', () => {
   it('returns 404 for missing tasks and 400 for malformed task payloads', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-999',
     });
@@ -932,7 +941,7 @@ describe('agora-ts server bootstrap', () => {
   it('serves prometheus-style metrics when observability metrics are enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-777',
     });
@@ -1050,7 +1059,7 @@ describe('agora-ts server bootstrap', () => {
     const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-LOG',
     });

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { RoleDefinitionDto, RolePackManifestDto, IRoleDefinitionRepository } from '@agora-ts/contracts';
+import type { IRoleDefinitionRepository, RoleDefinitionDto, RoleDefinitionSeedResult, RolePackManifestDto } from '@agora-ts/contracts';
 import { roleDefinitionSchema, rolePackManifestSchema } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
@@ -76,7 +76,7 @@ export class RoleDefinitionRepository implements IRoleDefinitionRepository {
     return this.getRoleDefinition(definition.id)!;
   }
 
-  seedFromPackDir(packDir: string): { inserted: number; updated: number; manifest: RolePackManifestDto | null } {
+  seedFromPackDir(packDir: string): RoleDefinitionSeedResult {
     const manifestPath = resolve(packDir, 'manifest.json');
     if (!existsSync(manifestPath)) {
       return { inserted: 0, updated: 0, manifest: null };

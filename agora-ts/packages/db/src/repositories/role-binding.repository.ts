@@ -1,21 +1,11 @@
-import type { RoleBindingDto, IRoleBindingRepository } from '@agora-ts/contracts';
+import type { IRoleBindingRepository, RoleBindingDto, RoleBindingSaveInput } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
 export class RoleBindingRepository implements IRoleBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
-  saveBinding(input: {
-    id: string;
-    role_id: string;
-    scope: RoleBindingDto['scope'];
-    scope_ref: string;
-    target_kind: RoleBindingDto['target_kind'];
-    target_adapter: string;
-    target_ref: string;
-    binding_mode: RoleBindingDto['binding_mode'];
-    metadata?: Record<string, unknown> | null;
-  }): RoleBindingDto {
+  saveBinding(input: RoleBindingSaveInput): RoleBindingDto {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO role_bindings (

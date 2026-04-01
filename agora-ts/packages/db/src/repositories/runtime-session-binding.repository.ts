@@ -1,3 +1,4 @@
+import type { IRuntimeSessionBindingRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredRuntimeSessionBinding {
@@ -18,7 +19,7 @@ export interface StoredRuntimeSessionBinding {
   closed_at: string | null;
 }
 
-export class RuntimeSessionBindingRepository {
+export class RuntimeSessionBindingRepository implements IRuntimeSessionBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   upsertByParticipant(input: {

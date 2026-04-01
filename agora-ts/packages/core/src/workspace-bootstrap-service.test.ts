@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgoraDatabase, runMigrations, TaskRepository } from '@agora-ts/db';
-import { TaskService } from './task-service.js';
 import { WorkspaceBootstrapService } from './workspace-bootstrap-service.js';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 
 const tempDirs: string[] = [];
 
@@ -27,9 +27,9 @@ describe('workspace bootstrap service', () => {
   it('creates a workspace bootstrap task when runtime readiness is available', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db);
+    const taskService = createTaskServiceFromDb(db);
     const service = new WorkspaceBootstrapService({
-      db,
+      taskRepository: new TaskRepository(db),
       taskService,
       runtimeReady: true,
       runtimeReadinessReason: null,
@@ -57,10 +57,10 @@ describe('workspace bootstrap service', () => {
   it('marks bootstrap as completed once the dedicated task is done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db);
+    const taskService = createTaskServiceFromDb(db);
     const tasks = new TaskRepository(db);
     const service = new WorkspaceBootstrapService({
-      db,
+      taskRepository: new TaskRepository(db),
       taskService,
       runtimeReady: true,
       runtimeReadinessReason: null,

@@ -2,8 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgoraDatabase, runMigrations, SubtaskRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
 import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -28,13 +29,15 @@ describe('craftsman routes', () => {
   it('dispatches craftsmen subtasks, loads execution status, and accepts callbacks', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = new CraftsmanDispatcher({
+      executionRepository: new CraftsmanExecutionRepository(db),
+      subtaskRepository: new SubtaskRepository(db),
       executionIdGenerator: () => 'exec-route-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-08T14:00:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-980',
       craftsmanDispatcher: dispatcher,
@@ -226,13 +229,15 @@ describe('craftsman routes', () => {
   it('rejects craftsmen dispatch for paused tasks', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = new CraftsmanDispatcher({
+      executionRepository: new CraftsmanExecutionRepository(db),
+      subtaskRepository: new SubtaskRepository(db),
       executionIdGenerator: () => 'exec-route-paused-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T11:00:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-981',
       craftsmanDispatcher: dispatcher,
@@ -279,13 +284,15 @@ describe('craftsman routes', () => {
   it('rejects craftsmen dispatch through the route when caller is not the controller', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = new CraftsmanDispatcher({
+      executionRepository: new CraftsmanExecutionRepository(db),
+      subtaskRepository: new SubtaskRepository(db),
       executionIdGenerator: () => 'exec-route-owner-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T16:10:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-OWNER-ROUTE-1',
       craftsmanDispatcher: dispatcher,
@@ -526,14 +533,16 @@ describe('craftsman routes', () => {
   it('rejects craftsmen dispatch when dispatcher concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = new CraftsmanDispatcher({
+      executionRepository: new CraftsmanExecutionRepository(db),
+      subtaskRepository: new SubtaskRepository(db),
       maxConcurrentRunning: 1,
       executionIdGenerator: () => 'exec-route-limit-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T16:30:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-982',
       craftsmanDispatcher: dispatcher,

@@ -1,5 +1,4 @@
-import type { TaskAuthorityRecord } from '@agora-ts/contracts';
-import { TaskAuthorityRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { ITaskAuthorityRepository, TaskAuthorityRecord } from '@agora-ts/contracts';
 
 export interface CreateTaskAuthorityInput {
   task_id: string;
@@ -11,14 +10,14 @@ export interface CreateTaskAuthorityInput {
 }
 
 export interface TaskAuthorityServiceOptions {
-  repository?: TaskAuthorityRepository;
+  repository: ITaskAuthorityRepository;
 }
 
 export class TaskAuthorityService {
-  private readonly authorities: TaskAuthorityRepository;
+  private readonly authorities: ITaskAuthorityRepository;
 
-  constructor(db: AgoraDatabase, options: TaskAuthorityServiceOptions = {}) {
-    this.authorities = options.repository ?? new TaskAuthorityRepository(db);
+  constructor(options: TaskAuthorityServiceOptions) {
+    this.authorities = options.repository;
   }
 
   createOrUpdate(input: CreateTaskAuthorityInput): TaskAuthorityRecord {

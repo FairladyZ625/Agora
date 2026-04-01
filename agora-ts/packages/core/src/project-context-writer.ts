@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TaskRecord } from '@agora-ts/contracts';
-import { ProjectWriteLockRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { IProjectWriteLockRepository, TaskRecord } from '@agora-ts/contracts';
 import type { ProjectKnowledgeTaskRecapInput } from './project-knowledge-port.js';
 import type {
   TaskBrainCloseRecapRequest,
@@ -16,7 +15,7 @@ import { resolveControllerRef } from './team-member-kind.js';
 type ExecFileLike = (command: string, args: string[], options?: { cwd?: string }) => string;
 
 export interface ProjectContextWriterOptions {
-  writeLockRepository?: ProjectWriteLockRepository;
+  writeLockRepository: IProjectWriteLockRepository;
   projectService: Pick<ProjectService, 'getProjectStateRoot' | 'recordTaskRecap'>;
   taskBrainWorkspacePort?: TaskBrainWorkspacePort;
   execFile?: ExecFileLike;
@@ -40,14 +39,13 @@ export interface TaskCloseoutWriteProposal {
 }
 
 export class ProjectContextWriter {
-  private readonly locks: ProjectWriteLockRepository;
+  private readonly locks: IProjectWriteLockRepository;
   private readonly execFile: ExecFileLike;
 
   constructor(
-    db: AgoraDatabase,
     private readonly options: ProjectContextWriterOptions,
   ) {
-    this.locks = options.writeLockRepository ?? new ProjectWriteLockRepository(db);
+    this.locks = options.writeLockRepository;
     this.execFile = options.execFile ?? ((command, args, execOptions) => execFileSync(command, args, {
       cwd: execOptions?.cwd,
       encoding: 'utf8',

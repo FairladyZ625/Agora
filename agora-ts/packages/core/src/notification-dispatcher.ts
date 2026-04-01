@@ -1,31 +1,30 @@
-import type { NotificationOutboxRecord } from '@agora-ts/contracts';
-import {
-  NotificationOutboxRepository,
-  TaskConversationRepository,
-  TaskContextBindingRepository,
-  type AgoraDatabase,
-} from '@agora-ts/db';
+import type {
+  INotificationOutboxRepository,
+  ITaskConversationRepository,
+  ITaskContextBindingRepository,
+  NotificationOutboxRecord,
+} from '@agora-ts/contracts';
 import type { IMMessagingPort } from './im-ports.js';
 
 export interface NotificationDispatcherOptions {
-  outboxRepository?: NotificationOutboxRepository;
-  conversationRepository?: TaskConversationRepository;
-  bindingRepository?: TaskContextBindingRepository;
+  outboxRepository: INotificationOutboxRepository;
+  conversationRepository: ITaskConversationRepository;
+  bindingRepository: ITaskContextBindingRepository;
   messagingPort: IMMessagingPort;
   batchSize?: number;
 }
 
 export class NotificationDispatcher {
-  private readonly outbox: NotificationOutboxRepository;
-  private readonly conversations: TaskConversationRepository;
-  private readonly bindings: TaskContextBindingRepository;
+  private readonly outbox: INotificationOutboxRepository;
+  private readonly conversations: ITaskConversationRepository;
+  private readonly bindings: ITaskContextBindingRepository;
   private readonly messagingPort: IMMessagingPort;
   private readonly batchSize: number;
 
-  constructor(db: AgoraDatabase, options: NotificationDispatcherOptions) {
-    this.outbox = options.outboxRepository ?? new NotificationOutboxRepository(db);
-    this.conversations = options.conversationRepository ?? new TaskConversationRepository(db);
-    this.bindings = options.bindingRepository ?? new TaskContextBindingRepository(db);
+  constructor(options: NotificationDispatcherOptions) {
+    this.outbox = options.outboxRepository;
+    this.conversations = options.conversationRepository;
+    this.bindings = options.bindingRepository;
     this.messagingPort = options.messagingPort;
     this.batchSize = options.batchSize ?? 50;
   }

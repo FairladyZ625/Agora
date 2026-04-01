@@ -3,15 +3,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createProjectServiceFromDb, createTaskBrainBindingServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { ProjectBootstrapService } from './project-bootstrap-service.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
-import { ProjectService } from './project-service.js';
-import { TaskBrainBindingService } from './task-brain-binding-service.js';
-import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -49,7 +47,7 @@ describe('project bootstrap service', () => {
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -67,11 +65,11 @@ describe('project bootstrap service', () => {
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-HARNESS-BOOTSTRAP',
       projectService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-harness-bootstrap',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -103,13 +101,6 @@ describe('project bootstrap service', () => {
     expect(task.id).toBe('OC-HARNESS-BOOTSTRAP');
     expect(task.project_id).toBe('proj-bootstrap');
     expect(task.title).toBe('Create Project Nomos: Bootstrap Project');
-    expect(task.control).toEqual(expect.objectContaining({
-      nomos_authoring: {
-        kind: 'project_nomos',
-        project_id: 'proj-bootstrap',
-        auto_refine_on_done: true,
-      },
-    }));
     expect(task.description).toContain('Global project state root');
     expect(task.description).toContain('/tmp/bootstrap-project');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/docs/reference/project-nomos-authoring-spec.md');

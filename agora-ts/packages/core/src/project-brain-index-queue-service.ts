@@ -1,5 +1,4 @@
-import type { ProjectBrainIndexJobRecord, ProjectBrainIndexJobStatus } from '@agora-ts/contracts';
-import { ProjectBrainIndexJobRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { IProjectBrainIndexJobRepository, ProjectBrainIndexJobRecord, ProjectBrainIndexJobStatus } from '@agora-ts/contracts';
 import type { ProjectBrainDocumentKind } from './project-brain-query-port.js';
 
 export type ProjectBrainIndexQueueReason =
@@ -16,14 +15,14 @@ export interface EnqueueProjectBrainIndexJobInput {
 }
 
 export interface ProjectBrainIndexQueueServiceOptions {
-  repository?: ProjectBrainIndexJobRepository;
+  repository: IProjectBrainIndexJobRepository;
 }
 
 export class ProjectBrainIndexQueueService {
-  private readonly jobs: ProjectBrainIndexJobRepository;
+  private readonly jobs: IProjectBrainIndexJobRepository;
 
-  constructor(db: AgoraDatabase, options: ProjectBrainIndexQueueServiceOptions = {}) {
-    this.jobs = options.repository ?? new ProjectBrainIndexJobRepository(db);
+  constructor(options: ProjectBrainIndexQueueServiceOptions) {
+    this.jobs = options.repository;
   }
 
   enqueueDocumentSync(input: EnqueueProjectBrainIndexJobInput): ProjectBrainIndexJobRecord {

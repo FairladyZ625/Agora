@@ -2,12 +2,78 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository } from '@agora-ts/db';
-import { CitizenService, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, ProjectService, RolePackService, StubIMProvisioningPort, TaskContextBindingService, TaskService } from '@agora-ts/core';
+import {
+  CitizenRepository,
+  createAgoraDatabase,
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  ParticipantBindingRepository,
+  RoleBindingRepository,
+  RoleDefinitionRepository,
+  runMigrations,
+  RuntimeSessionBindingRepository,
+  SubtaskRepository,
+  TaskContextBindingRepository,
+  TaskRepository,
+} from '@agora-ts/db';
+import { CitizenService, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, ProjectService, RolePackService, StubIMProvisioningPort, TaskContextBindingService, TaskParticipationService, TaskService } from '@agora-ts/core';
+import { createDashboardQueryServiceFromDb, createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+
+function createHumanAccountServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
+
+function createTaskContextBindingServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  options: Partial<ConstructorParameters<typeof TaskContextBindingService>[0]> = {},
+) {
+  return new TaskContextBindingService({
+    repository: options.repository ?? new TaskContextBindingRepository(db),
+    ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
+  });
+}
+
+function createTaskParticipationServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  options: Partial<ConstructorParameters<typeof TaskParticipationService>[0]> = {},
+) {
+  return new TaskParticipationService({
+    participantRepository: options.participantRepository ?? new ParticipantBindingRepository(db),
+    runtimeSessionRepository: options.runtimeSessionRepository ?? new RuntimeSessionBindingRepository(db),
+    taskBindingRepository: options.taskBindingRepository ?? new TaskContextBindingRepository(db),
+    ...(options.participantIdGenerator ? { participantIdGenerator: options.participantIdGenerator } : {}),
+    ...(options.runtimeSessionIdGenerator ? { runtimeSessionIdGenerator: options.runtimeSessionIdGenerator } : {}),
+    ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
+  });
+}
+
+function createRolePackServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new RolePackService({
+    roleDefinitions: new RoleDefinitionRepository(db),
+    roleBindings: new RoleBindingRepository(db),
+  });
+}
+
+function createCitizenServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  projectService: ProjectService,
+  rolePackService: RolePackService,
+  options: Partial<ConstructorParameters<typeof CitizenService>[0]> = {},
+) {
+  return new CitizenService({
+    repository: new CitizenRepository(db),
+    projectService,
+    rolePackService,
+    ...(options.projectionPorts ? { projectionPorts: options.projectionPorts } : {}),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-server-'));
@@ -52,7 +118,7 @@ describe('task routes', () => {
   it('creates, lists, and fetches task status from the fastify app', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200',
     });
@@ -110,7 +176,7 @@ describe('task routes', () => {
   it('accepts create-task overrides through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200B',
     });
@@ -177,7 +243,7 @@ describe('task routes', () => {
         ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
         ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
     `).run();
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-rest-membership',
       name: 'REST Membership',
@@ -185,7 +251,7 @@ describe('task routes', () => {
       members: [{ account_id: 2, role: 'member' }],
       default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REST-AUTH',
       projectService,
@@ -219,7 +285,7 @@ describe('task routes', () => {
   it('rejects create-task overrides whose graph semantics are not runtime-supported', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200C',
     });
@@ -273,7 +339,7 @@ describe('task routes', () => {
   it('rejects create-task overrides whose graph nodes and workflow stages are out of sync', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200D',
     });
@@ -325,7 +391,7 @@ describe('task routes', () => {
     runMigrations(db);
     const app = buildApp({
       db,
-      projectService: new ProjectService(db),
+      projectService: createProjectServiceFromDb(db),
     });
 
     const createResponse = await app.inject({
@@ -373,8 +439,8 @@ describe('task routes', () => {
     const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-repo-parent-'));
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-beta');
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, {
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SERVER-NOMOS-BOOTSTRAP',
       projectService,
@@ -436,8 +502,8 @@ describe('task routes', () => {
     const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-repo-'));
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-gamma');
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, {
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SERVER-NOMOS-INSTALL',
       projectService,
@@ -541,8 +607,8 @@ describe('task routes', () => {
     const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-activate-repo-'));
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-activate');
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, {
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SERVER-NOMOS-ACTIVATE',
       projectService,
@@ -626,8 +692,8 @@ describe('task routes', () => {
     const sourceRepoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-source-repo-'));
     tempPaths.push(sourceRepoParent);
     const sourceRepoRoot = join(sourceRepoParent, 'repo-source');
-    const sourceProjectService = new ProjectService(db);
-    const sourceTaskService = new TaskService(db, {
+    const sourceProjectService = createProjectServiceFromDb(db);
+    const sourceTaskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SERVER-NOMOS-REVIEWREQ-SOURCE',
       projectService: sourceProjectService,
@@ -676,13 +742,13 @@ describe('task routes', () => {
     const targetRepoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-reviewreq-target-repo-'));
     tempPaths.push(targetRepoParent);
     const targetRepoRoot = join(targetRepoParent, 'repo-target');
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, {
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SERVER-NOMOS-REVIEWREQ-TARGET',
       projectService,
     });
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.bootstrapAdmin({ username: 'lizeyu', password: 'secret-pass' });
     const app = buildApp({
       db,
@@ -765,9 +831,9 @@ describe('task routes', () => {
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-rerun');
     mkdirSync(repoRoot, { recursive: true });
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     let taskCounter = 0;
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => `OC-SERVER-NOMOS-RERUN-${++taskCounter}`,
       projectService,
@@ -813,7 +879,7 @@ describe('task routes', () => {
   it('serves project-level Nomos doctor output through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-nomos-rest',
       name: 'Project REST Nomos',
@@ -917,8 +983,8 @@ describe('task routes', () => {
     const repoParent = mkdtempSync(join(tmpdir(), 'agora-ts-server-nomos-validate-repo-'));
     tempPaths.push(repoParent);
     const repoRoot = join(repoParent, 'repo-validate');
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, {
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SERVER-NOMOS-VALIDATE',
       projectService,
@@ -980,7 +1046,7 @@ describe('task routes', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -1057,7 +1123,7 @@ describe('task routes', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -1077,7 +1143,7 @@ describe('task routes', () => {
         },
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
       taskIdGenerator: (() => {
@@ -1086,7 +1152,7 @@ describe('task routes', () => {
       })(),
     });
     const taskRepository = new TaskRepository(db);
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir });
     projectService.upsertKnowledgeEntry({
       project_id: 'proj-workbench',
       kind: 'decision',
@@ -1145,7 +1211,7 @@ describe('task routes', () => {
     dashboardQueries.updateTodo(doneTodo.id, {
       status: 'done',
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -1164,7 +1230,7 @@ describe('task routes', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, projectService, rolePackService, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -1292,10 +1358,10 @@ describe('task routes', () => {
     const targetRepoRoot = join(mkdtempSync(join(tmpdir(), 'agora-ts-server-catalog-target-')), 'repo');
     tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -1408,10 +1474,10 @@ describe('task routes', () => {
     tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(bundleDir.replace(/\/bundle$/, ''));
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -1525,10 +1591,10 @@ describe('task routes', () => {
     tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(directPackDir.replace(/\/direct-pack$/, ''));
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -1623,10 +1689,10 @@ describe('task routes', () => {
     tempPaths.push(sourceRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(targetRepoRoot.replace(/\/repo$/, ''));
     tempPaths.push(directPackDir.replace(/\/direct-pack$/, ''));
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -1750,18 +1816,18 @@ describe('task routes', () => {
   it('creates a task bound to a project through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    new ProjectService(db).createProject({
+    createProjectServiceFromDb(db).createProject({
       id: 'proj-api-task',
       name: 'Project API Task',
       owner: 'archon',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200P',
     });
     const app = buildApp({
       taskService,
-      projectService: new ProjectService(db),
+      projectService: createProjectServiceFromDb(db),
     });
 
     const response = await app.inject({
@@ -1788,7 +1854,7 @@ describe('task routes', () => {
   it('archives and deletes projects through the api with lifecycle guards', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     const app = buildApp({
       db,
       projectService,
@@ -1828,7 +1894,7 @@ describe('task routes', () => {
   it('filters task list by project through the api', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-api-a',
       name: 'Project A',
@@ -1839,7 +1905,7 @@ describe('task routes', () => {
       name: 'Project B',
       owner: 'archon',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: (() => {
         let index = 0;
@@ -1880,7 +1946,7 @@ describe('task routes', () => {
   it('creates ad-hoc tasks through the api when complete overrides are provided for an unknown type', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir: makeEmptyTemplatesDir(),
       taskIdGenerator: () => 'OC-200C',
     });
@@ -1940,14 +2006,14 @@ describe('task routes', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'stub-thread-OC-200C',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200C',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
     });
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.createUser({
       username: 'alice',
       password: 'secret-pass',
@@ -2023,14 +2089,14 @@ describe('task routes', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'stub-thread-OC-200D',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-200D',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
     });
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.createUser({
       username: 'alice',
       password: 'secret-pass',
@@ -2093,7 +2159,7 @@ describe('task routes', () => {
   it('returns 403 on advance when gate is not satisfied', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-201',
     });
@@ -2123,7 +2189,7 @@ describe('task routes', () => {
   it('accepts next_stage_id on advance when the current stage branches', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-201B',
       archonUsers: ['archon'],
@@ -2182,7 +2248,7 @@ describe('task routes', () => {
   it('marks graph-backed tasks done when advance follows a complete edge into a terminal node', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-201C',
       archonUsers: ['archon'],
@@ -2242,8 +2308,8 @@ describe('task routes', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'thread-current-approve-1',
     });
-    const taskContextBindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const taskContextBindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: (() => {
         const ids = ['OC-CURRENT-1', 'OC-CURRENT-2'];
@@ -2256,7 +2322,7 @@ describe('task routes', () => {
       imProvisioningPort: provisioningPort,
       taskContextBindingService,
     });
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.createUser({
       username: 'alice',
       password: 'secret-pass',
@@ -2308,7 +2374,7 @@ describe('task routes', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'thread-current-reject-2',
     });
-    const secondTaskService = new TaskService(db, {
+    const secondTaskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CURRENT-2',
       archonUsers: ['alice'],
@@ -2401,7 +2467,7 @@ describe('task routes', () => {
   it('serves task action routes for archon approve, subtask done, force advance, and approve', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-202',
     });
@@ -2509,7 +2575,7 @@ describe('task routes', () => {
   it('serves confirm and state transition routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-203',
     });
@@ -2596,8 +2662,8 @@ describe('task routes', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'stub-thread-OC-CTX-ROUTE',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CTX-ROUTE',
       imProvisioningPort: provisioningPort,
@@ -2659,7 +2725,7 @@ describe('task routes', () => {
   it('creates and lists subtasks through the task routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-202-SUBTASK',
     });
@@ -2733,7 +2799,7 @@ describe('task routes', () => {
   it('creates tasks with skill policy through the task routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-ROUTE-SKILL',
     });
@@ -2779,14 +2845,14 @@ describe('task routes', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'stub-thread-OC-CTX-DELETE',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CTX-DELETE',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
     });
-    const dashboardQueries = new DashboardQueryService(db, {
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       taskContextBindingService: bindingService,
       imProvisioningPort: provisioningPort,
@@ -2844,7 +2910,7 @@ describe('task routes', () => {
   it('serves cleanup route for orphaned tasks', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-204',
     });
@@ -2881,8 +2947,8 @@ describe('task routes', () => {
       im_provider: 'discord',
       thread_ref: 'thread-probe-route-1',
     });
-    const taskContextBindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const taskContextBindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROBE-ROUTE-1',
       imProvisioningPort: provisioningPort,
@@ -2926,7 +2992,7 @@ describe('task routes', () => {
   it('serves reject, archon-reject, and unblock routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-205',
     });
@@ -3037,7 +3103,7 @@ describe('task routes', () => {
   it('supports unblock retry through the task route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-208',
     });
@@ -3101,7 +3167,7 @@ describe('task routes', () => {
   it('supports unblock skip through the task route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-209',
     });
@@ -3162,7 +3228,7 @@ describe('task routes', () => {
   it('supports unblock reassign through the task route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-210',
     });

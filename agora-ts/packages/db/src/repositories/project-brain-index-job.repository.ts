@@ -1,3 +1,4 @@
+import type { IProjectBrainIndexJobRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export type ProjectBrainIndexJobStatus = 'pending' | 'running' | 'failed' | 'succeeded';
@@ -17,7 +18,7 @@ export interface StoredProjectBrainIndexJob {
   completed_at: string | null;
 }
 
-export class ProjectBrainIndexJobRepository {
+export class ProjectBrainIndexJobRepository implements IProjectBrainIndexJobRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   enqueue(input: {

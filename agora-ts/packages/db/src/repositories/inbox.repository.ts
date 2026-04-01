@@ -1,3 +1,4 @@
+import type { IInboxRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -16,7 +17,7 @@ export interface StoredInboxItem {
 
 type SqlValue = string | number | bigint | Uint8Array | null;
 
-export class InboxRepository {
+export class InboxRepository implements IInboxRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertInboxItem(input: {

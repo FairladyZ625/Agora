@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CraftsmanExecutionRepository, SubtaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import type { CraftsmanModeDto } from '@agora-ts/contracts';
+import type { CraftsmanModeDto, ICraftsmanExecutionRepository, ISubtaskRepository } from '@agora-ts/contracts';
 import type { CraftsmanAdapter } from './craftsman-adapter.js';
 import type { WorkdirIsolator } from './workdir-isolator.js';
 
@@ -16,8 +15,8 @@ export interface DispatchSubtaskInput {
 }
 
 export interface CraftsmanDispatcherOptions {
-  executionRepository?: CraftsmanExecutionRepository;
-  subtaskRepository?: SubtaskRepository;
+  executionRepository: ICraftsmanExecutionRepository;
+  subtaskRepository: ISubtaskRepository;
   adapters: Record<string, CraftsmanAdapter>;
   executionIdGenerator?: () => string;
   maxConcurrentRunning?: number;
@@ -25,19 +24,16 @@ export interface CraftsmanDispatcherOptions {
 }
 
 export class CraftsmanDispatcher {
-  private readonly executions: CraftsmanExecutionRepository;
-  private readonly subtasks: SubtaskRepository;
+  private readonly executions: ICraftsmanExecutionRepository;
+  private readonly subtasks: ISubtaskRepository;
   private readonly adapters: Record<string, CraftsmanAdapter>;
   private readonly executionIdGenerator: () => string;
   private readonly maxConcurrentRunning: number | null;
   private readonly workdirIsolator: WorkdirIsolator | undefined;
 
-  constructor(
-    db: AgoraDatabase,
-    options: CraftsmanDispatcherOptions,
-  ) {
-    this.executions = options.executionRepository ?? new CraftsmanExecutionRepository(db);
-    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
+  constructor(options: CraftsmanDispatcherOptions) {
+    this.executions = options.executionRepository;
+    this.subtasks = options.subtaskRepository;
     this.adapters = options.adapters;
     this.executionIdGenerator = options.executionIdGenerator ?? (() => randomUUID());
     this.maxConcurrentRunning = options.maxConcurrentRunning ?? null;

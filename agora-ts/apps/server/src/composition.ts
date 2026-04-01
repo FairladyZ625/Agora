@@ -9,6 +9,7 @@ import {
   ClaudeCraftsmanAdapter,
   CodexCraftsmanAdapter,
   createDefaultCraftsmanAdapters,
+  CraftsmanCallbackService,
   CraftsmanDispatcher,
   DirectAcpxRuntimePort,
   DashboardQueryService,
@@ -23,15 +24,21 @@ import {
   InboxService,
   InventoryBackedAgentRuntimePort,
   LiveSessionStore,
+  ModeController,
   NotificationDispatcher,
   OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
   HumanAccountService,
+  ProgressService,
+  ProjectAgentRosterService,
   ProjectBrainIndexQueueService,
   type ProjectBrainIndexWorkerService,
   ProjectBrainService,
+  ProjectContextWriter,
+  ProjectMembershipService,
   ProjectService,
   RolePackService,
+  TaskAuthorityService,
   TmuxCraftsmanInputPort,
   TmuxCraftsmanProbePort,
   TmuxCraftsmanTailPort,
@@ -61,7 +68,39 @@ import {
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveAgoraProjectStateLayout, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
-import type { AgoraDatabase } from '@agora-ts/db';
+import {
+  type AgoraDatabase,
+  ApprovalRequestRepository,
+  ArchiveJobRepository,
+  CitizenRepository,
+  CraftsmanExecutionRepository,
+  FlowLogRepository,
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  InboxRepository,
+  NotificationOutboxRepository,
+  ParticipantBindingRepository,
+  ProgressLogRepository,
+  ProjectAgentRosterRepository,
+  ProjectBrainIndexJobRepository,
+  ProjectMembershipRepository,
+  ProjectRepository,
+  ProjectWriteLockRepository,
+  RoleBindingRepository,
+  RoleDefinitionRepository,
+  RuntimeSessionBindingRepository,
+  SubtaskRepository,
+  TaskAuthorityRepository,
+  TaskBrainBindingRepository,
+  TaskContextBindingRepository,
+  TaskConversationReadCursorRepository,
+  TaskConversationRepository,
+  TaskRepository,
+  TemplateRepository,
+  TodoRepository,
+  SqliteGateCommandPort,
+  SqliteGateQueryPort,
+} from '@agora-ts/db';
 
 type RuntimeEnvironment = {
   apiBaseUrl: string;
@@ -229,21 +268,25 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createCraftsmanDispatcher: (context, deps) => {
       const adapterMode = resolveCraftsmanRuntimeMode('server');
       const acpRuntime = adapterMode === 'acp' ? (deps?.acpRuntime ?? new DirectAcpxRuntimePort()) : undefined;
-      const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
+      const adapters = createDefaultCraftsmanAdapters({
+        mode: adapterMode,
+        callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
+        apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
+        ...(acpRuntime ? { acpRuntime } : {}),
+      });
+      return new CraftsmanDispatcher({
+        executionRepository: new CraftsmanExecutionRepository(context.db),
+        subtaskRepository: new SubtaskRepository(context.db),
         maxConcurrentRunning: context.config.craftsmen.max_concurrent_running,
-        adapters: createDefaultCraftsmanAdapters({
-          mode: adapterMode,
-          callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
-          apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
-          ...(acpRuntime ? { acpRuntime } : {}),
-        }),
-      };
-      if (context.config.craftsmen.isolate_git_worktrees) {
-        dispatcherOptions.workdirIsolator = new GitWorktreeWorkdirIsolator({
-          rootDir: resolvePath(context.config.craftsmen.isolated_root),
-        });
-      }
-      return new CraftsmanDispatcher(context.db, dispatcherOptions);
+        adapters,
+        ...(context.config.craftsmen.isolate_git_worktrees
+          ? {
+              workdirIsolator: new GitWorktreeWorkdirIsolator({
+                rootDir: resolvePath(context.config.craftsmen.isolated_root),
+              }),
+            }
+          : {}),
+      });
     },
     createLegacyRuntimeService: () => new TmuxRuntimeService({
       adapters: {
@@ -261,7 +304,70 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     }),
     createTaskService: (context, deps) => {
       const imProvisioningPort = deps.imProvisioningPort;
-      return new TaskService(context.db, {
+      const db = context.db;
+      const taskRepository = new TaskRepository(db);
+      const flowLogRepository = new FlowLogRepository(db);
+      const progressLogRepository = new ProgressLogRepository(db);
+      const subtaskRepository = new SubtaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const taskConversationRepository = new TaskConversationRepository(db);
+      const todoRepository = new TodoRepository(db);
+      const archiveJobRepository = new ArchiveJobRepository(db);
+      const approvalRequestRepository = new ApprovalRequestRepository(db);
+      const inboxRepository = new InboxRepository(db);
+      const craftsmanExecutionRepository = new CraftsmanExecutionRepository(db);
+      const templateRepository = new TemplateRepository(db);
+      const progressService = new ProgressService({
+        flowLogRepository,
+        progressLogRepository,
+      });
+      const projectMembershipService = new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(db),
+        accountRepository: new HumanAccountRepository(db),
+      });
+      const projectAgentRosterService = new ProjectAgentRosterService({
+        repository: new ProjectAgentRosterRepository(db),
+      });
+      return new TaskService({
+        databasePort: db,
+        gateCommandPort: new SqliteGateCommandPort(db),
+        gateQueryPort: new SqliteGateQueryPort(db),
+        repositories: {
+          task: taskRepository,
+          flowLog: flowLogRepository,
+          progressLog: progressLogRepository,
+          subtask: subtaskRepository,
+          taskContextBinding: taskContextBindingRepository,
+          taskConversation: taskConversationRepository,
+          todo: todoRepository,
+          archiveJob: archiveJobRepository,
+          approvalRequest: approvalRequestRepository,
+          inbox: inboxRepository,
+          craftsmanExecution: craftsmanExecutionRepository,
+          template: templateRepository,
+        },
+        subServices: {
+          taskAuthority: new TaskAuthorityService({
+            repository: new TaskAuthorityRepository(db),
+          }),
+          projectMembership: projectMembershipService,
+          projectAgentRoster: projectAgentRosterService,
+          craftsmanCallback: new CraftsmanCallbackService({
+            executionRepository: craftsmanExecutionRepository,
+            subtaskRepository,
+            taskRepository,
+            flowLogRepository,
+            progressLogRepository,
+            outboxRepository: new NotificationOutboxRepository(db),
+            bindingRepository: taskContextBindingRepository,
+            conversationRepository: taskConversationRepository,
+          }),
+          projectContextWriter: new ProjectContextWriter({
+            writeLockRepository: new ProjectWriteLockRepository(db),
+            projectService: deps.projectService,
+            taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
+          }),
+        },
         templatesDir: context.templatesDir,
         archonUsers: context.config.permissions.archonUsers,
         allowAgents: context.config.permissions.allowAgents,
@@ -330,8 +436,15 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         ?? join(dirname(resolvePath(context.config.db_path)), 'archive-receipts');
       return new FileArchiveJobReceiptIngestor({ receiptDir });
     },
-    createDashboardQueryService: (context, deps) => new DashboardQueryService(context.db, {
+    createDashboardQueryService: (context, deps) => new DashboardQueryService({
       templatesDir: context.templatesDir,
+      taskRepository: new TaskRepository(context.db),
+      subtaskRepository: new SubtaskRepository(context.db),
+      archiveJobRepository: new ArchiveJobRepository(context.db),
+      todoRepository: new TodoRepository(context.db),
+      executionRepository: new CraftsmanExecutionRepository(context.db),
+      templateRepository: new TemplateRepository(context.db),
+      databasePort: context.db,
       ...(deps.archiveJobNotifier ? { archiveJobNotifier: deps.archiveJobNotifier } : {}),
       ...(deps.archiveJobReceiptIngestor ? { archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor } : {}),
       taskBrainBindingService: deps.taskBrainBindingService,
@@ -345,10 +458,13 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       skillCatalogPort: new FilesystemSkillCatalogAdapter(),
     }),
     createTemplateAuthoringService: (context) => new TemplateAuthoringService({
-      db: context.db,
       templatesDir: context.templatesDir,
+      templateRepository: new TemplateRepository(context.db),
     }),
-    createInboxService: (context, deps) => new InboxService(context.db, deps.taskService),
+    createInboxService: (context, deps) => new InboxService(deps.taskService, {
+      inboxRepository: new InboxRepository(context.db),
+      todoRepository: new TodoRepository(context.db),
+    }),
     createIMMessagingPort: (context) => {
       const { im } = context.config;
       if (im.provider === 'discord' && im.discord?.bot_token) {
@@ -374,8 +490,12 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       }
       return undefined;
     },
-    createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
-    createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
+    createTaskContextBindingService: (context) => new TaskContextBindingService({
+      repository: new TaskContextBindingRepository(context.db),
+    }),
+    createTaskBrainBindingService: (context) => new TaskBrainBindingService({
+      repository: new TaskBrainBindingRepository(context.db),
+    }),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
       brainPackRoot: context.brainPackDir,
       projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
@@ -384,15 +504,29 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       brainPackRoot: context.brainPackDir,
       projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
-    createProjectService: (context, deps) => new ProjectService(context.db, {
+    createProjectService: (context, deps) => new ProjectService({
+      projectRepository: new ProjectRepository(context.db),
+      taskRepository: new TaskRepository(context.db),
+      membershipService: new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(context.db),
+        accountRepository: new HumanAccountRepository(context.db),
+      }),
+      agentRosterService: new ProjectAgentRosterService({
+        repository: new ProjectAgentRosterRepository(context.db),
+      }),
+      transactionManager: createTransactionManager(context.db),
       knowledgePort: deps.projectKnowledgePort,
-      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService({
+        repository: new ProjectBrainIndexJobRepository(context.db),
+      }),
     }),
     createRolePackService: (context) => new RolePackService({
-      db: context.db,
+      roleDefinitions: new RoleDefinitionRepository(context.db),
+      roleBindings: new RoleBindingRepository(context.db),
       rolePacksDir: context.rolePackDir,
     }),
-    createCitizenService: (context, deps) => new CitizenService(context.db, {
+    createCitizenService: (context, deps) => new CitizenService({
+      repository: new CitizenRepository(context.db),
       projectService: deps.projectService,
       rolePackService: deps.rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -404,14 +538,31 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         brainPackRoot: context.brainPackDir,
         projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
       }),
-      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService({
+        repository: new ProjectBrainIndexJobRepository(context.db),
+      }),
     }),
-    createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
+    createTaskParticipationService: (context, deps) => new TaskParticipationService({
+      participantRepository: new ParticipantBindingRepository(context.db),
+      runtimeSessionRepository: new RuntimeSessionBindingRepository(context.db),
+      taskBindingRepository: new TaskContextBindingRepository(context.db),
       agentRuntimePort: deps.agentRuntimePort,
     }),
-    createHumanAccountService: (context) => new HumanAccountService(context.db),
-    createNotificationDispatcher: (context, deps) => new NotificationDispatcher(context.db, { messagingPort: deps.messagingPort }),
-    createTaskConversationService: (context) => new TaskConversationService(context.db),
+    createHumanAccountService: (context) => new HumanAccountService({
+      accountRepository: new HumanAccountRepository(context.db),
+      identityBindingRepository: new HumanIdentityBindingRepository(context.db),
+    }),
+    createNotificationDispatcher: (context, deps) => new NotificationDispatcher({
+      outboxRepository: new NotificationOutboxRepository(context.db),
+      conversationRepository: new TaskConversationRepository(context.db),
+      bindingRepository: new TaskContextBindingRepository(context.db),
+      messagingPort: deps.messagingPort,
+    }),
+    createTaskConversationService: (context) => new TaskConversationService({
+      bindingRepository: new TaskContextBindingRepository(context.db),
+      conversationRepository: new TaskConversationRepository(context.db),
+      readCursorRepository: new TaskConversationReadCursorRepository(context.db),
+    }),
     createTaskInboundService: (_context, deps) => new TaskInboundService(
       deps.taskConversationService,
       deps.taskContextBindingService,
@@ -575,5 +726,13 @@ function createCraftsmanTransportDeps(
     craftsmanExecutionProbePort: new TmuxCraftsmanProbePort(legacyRuntimeService),
     craftsmanExecutionTailPort: new TmuxCraftsmanTailPort(legacyRuntimeService),
     runtimeRecoveryPort: new TmuxRuntimeRecoveryPort(legacyRuntimeService),
+  };
+}
+
+function createTransactionManager(db: AgoraDatabase): { begin(): void; commit(): void; rollback(): void } {
+  return {
+    begin: () => db.exec('BEGIN'),
+    commit: () => db.exec('COMMIT'),
+    rollback: () => db.exec('ROLLBACK'),
   };
 }

@@ -1,18 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import type { TaskBrainBindingRecord } from '@agora-ts/contracts';
-import { TaskBrainBindingRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { ITaskBrainBindingRepository, TaskBrainBindingRecord } from '@agora-ts/contracts';
 
 export interface TaskBrainBindingServiceOptions {
-  repository?: TaskBrainBindingRepository;
+  repository: ITaskBrainBindingRepository;
   idGenerator?: () => string;
 }
 
 export class TaskBrainBindingService {
-  private readonly bindings: TaskBrainBindingRepository;
+  private readonly bindings: ITaskBrainBindingRepository;
   private readonly idGenerator: () => string;
 
-  constructor(db: AgoraDatabase, options: TaskBrainBindingServiceOptions = {}) {
-    this.bindings = options.repository ?? new TaskBrainBindingRepository(db);
+  constructor(options: TaskBrainBindingServiceOptions) {
+    this.bindings = options.repository;
     this.idGenerator = options.idGenerator ?? (() => randomUUID());
   }
 

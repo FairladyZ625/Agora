@@ -1,16 +1,19 @@
-import type { CraftsmanCallbackRequestDto, CraftsmanExecutionPayloadDto, CraftsmanExecutionRecord, SubtaskRecord, TaskRecord } from '@agora-ts/contracts';
-import {
-  CraftsmanExecutionRepository,
-  FlowLogRepository,
-  NotificationOutboxRepository,
-  ProgressLogRepository,
-  SubtaskRepository,
-  TaskConversationRepository,
-  TaskContextBindingRepository,
-  TaskRepository,
-  type AgoraDatabase,
-} from '@agora-ts/db';
 import { randomUUID } from 'node:crypto';
+import type {
+  CraftsmanCallbackRequestDto,
+  CraftsmanExecutionPayloadDto,
+  CraftsmanExecutionRecord,
+  ICraftsmanExecutionRepository,
+  IFlowLogRepository,
+  INotificationOutboxRepository,
+  IProgressLogRepository,
+  ISubtaskRepository,
+  ITaskContextBindingRepository,
+  ITaskConversationRepository,
+  ITaskRepository,
+  SubtaskRecord,
+  TaskRecord,
+} from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
 import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
 
@@ -18,35 +21,35 @@ const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 const INPUT_WAITING_STATUSES = new Set(['needs_input', 'awaiting_choice']);
 
 export interface CraftsmanCallbackServiceOptions {
-  executionRepository?: CraftsmanExecutionRepository;
-  subtaskRepository?: SubtaskRepository;
-  taskRepository?: TaskRepository;
-  flowLogRepository?: FlowLogRepository;
-  progressLogRepository?: ProgressLogRepository;
-  outboxRepository?: NotificationOutboxRepository;
-  bindingRepository?: TaskContextBindingRepository;
-  conversationRepository?: TaskConversationRepository;
+  executionRepository: ICraftsmanExecutionRepository;
+  subtaskRepository: ISubtaskRepository;
+  taskRepository: ITaskRepository;
+  flowLogRepository: IFlowLogRepository;
+  progressLogRepository: IProgressLogRepository;
+  outboxRepository: INotificationOutboxRepository;
+  bindingRepository: ITaskContextBindingRepository;
+  conversationRepository: ITaskConversationRepository;
 }
 
 export class CraftsmanCallbackService {
-  private readonly executions: CraftsmanExecutionRepository;
-  private readonly subtasks: SubtaskRepository;
-  private readonly tasks: TaskRepository;
-  private readonly flowLogs: FlowLogRepository;
-  private readonly progressLogs: ProgressLogRepository;
-  private readonly outbox: NotificationOutboxRepository;
-  private readonly bindings: TaskContextBindingRepository;
-  private readonly conversations: TaskConversationRepository;
+  private readonly executions: ICraftsmanExecutionRepository;
+  private readonly subtasks: ISubtaskRepository;
+  private readonly tasks: ITaskRepository;
+  private readonly flowLogs: IFlowLogRepository;
+  private readonly progressLogs: IProgressLogRepository;
+  private readonly outbox: INotificationOutboxRepository;
+  private readonly bindings: ITaskContextBindingRepository;
+  private readonly conversations: ITaskConversationRepository;
 
-  constructor(db: AgoraDatabase, options: CraftsmanCallbackServiceOptions = {}) {
-    this.executions = options.executionRepository ?? new CraftsmanExecutionRepository(db);
-    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
-    this.tasks = options.taskRepository ?? new TaskRepository(db);
-    this.flowLogs = options.flowLogRepository ?? new FlowLogRepository(db);
-    this.progressLogs = options.progressLogRepository ?? new ProgressLogRepository(db);
-    this.outbox = options.outboxRepository ?? new NotificationOutboxRepository(db);
-    this.bindings = options.bindingRepository ?? new TaskContextBindingRepository(db);
-    this.conversations = options.conversationRepository ?? new TaskConversationRepository(db);
+  constructor(options: CraftsmanCallbackServiceOptions) {
+    this.executions = options.executionRepository;
+    this.subtasks = options.subtaskRepository;
+    this.tasks = options.taskRepository;
+    this.flowLogs = options.flowLogRepository;
+    this.progressLogs = options.progressLogRepository;
+    this.outbox = options.outboxRepository;
+    this.bindings = options.bindingRepository;
+    this.conversations = options.conversationRepository;
   }
 
   handleCallback(input: CraftsmanCallbackRequestDto) {

@@ -2,8 +2,9 @@ import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, TemplateRepository } from '@agora-ts/db';
 import { DashboardQueryService, InboxService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { createDashboardQueryServiceFromDb, createInboxServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
@@ -37,13 +38,16 @@ describe('authoring routes', () => {
     const templatesDir = makeTemplatesDir();
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-800',
     });
-    const inboxService = new InboxService(db, taskService);
-    const dashboardQueryService = new DashboardQueryService(db, { templatesDir });
-    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const inboxService = createInboxServiceFromDb(db, taskService);
+    const dashboardQueryService = createDashboardQueryServiceFromDb(db, { templatesDir });
+    const templateAuthoringService = new TemplateAuthoringService({
+      templatesDir,
+      templateRepository: new TemplateRepository(db),
+    });
     const app = buildApp({
       taskService,
       dashboardQueryService,
@@ -213,11 +217,11 @@ describe('authoring routes', () => {
     const templatesDir = makeTemplatesDir();
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-801',
     });
-    const inboxService = new InboxService(db, taskService);
+    const inboxService = createInboxServiceFromDb(db, taskService);
     const app = buildApp({ taskService, inboxService });
 
     const patchInbox = await app.inject({
@@ -244,7 +248,7 @@ describe('authoring routes', () => {
     const templatesDir = makeTemplatesDir();
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-802',
     });

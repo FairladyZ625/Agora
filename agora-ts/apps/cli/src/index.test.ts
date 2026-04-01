@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ArchiveJobRepository, createAgoraDatabase, runMigrations, SubtaskRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
+import { ArchiveJobRepository, createAgoraDatabase, HumanAccountRepository, HumanIdentityBindingRepository, runMigrations, SubtaskRepository, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository, TaskRepository, TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
 import { CitizenService, CraftsmanDispatcher, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainAutomationService, ProjectBrainService, ProjectService, RolePackService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { createCitizenServiceFromDb, createCraftsmanDispatcherFromDb, createDashboardQueryServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 
@@ -150,7 +151,38 @@ function createDashboardQueryServiceStub(): DashboardQueryService {
 }
 
 function createDashboardQueryServiceForDb(db: AgoraDatabase) {
-  return new DashboardQueryService(db, { templatesDir });
+  return createDashboardQueryServiceFromDb(db, { templatesDir });
+}
+
+function createHumanAccountServiceFromDb(db: AgoraDatabase) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
+
+function createTaskContextBindingServiceFromDb(db: AgoraDatabase, options: Partial<{ idGenerator: () => string }> = {}) {
+  return new TaskContextBindingService({
+    repository: new TaskContextBindingRepository(db),
+    ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
+  });
+}
+
+function createTaskConversationServiceFromDb(db: AgoraDatabase, options: Partial<{ idGenerator: () => string; now: () => Date }> = {}) {
+  return new TaskConversationService({
+    bindingRepository: new TaskContextBindingRepository(db),
+    conversationRepository: new TaskConversationRepository(db),
+    readCursorRepository: new TaskConversationReadCursorRepository(db),
+    ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
+    ...(options.now ? { now: options.now } : {}),
+  });
+}
+
+function createTemplateAuthoringServiceFromDb(db: AgoraDatabase) {
+  return new TemplateAuthoringService({
+    templatesDir,
+    templateRepository: new TemplateRepository(db),
+  });
 }
 
 describe('agora-ts cli', () => {
@@ -333,13 +365,13 @@ describe('agora-ts cli', () => {
     const stderr = createBuffer();
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
     const projectStateDir = makeTempDir('agora-ts-cli-project-state-');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROJECT-INDEX-BOOTSTRAP',
       projectService,
@@ -373,9 +405,9 @@ describe('agora-ts cli', () => {
     `).run();
     const stdout = createBuffer();
     const stderr = createBuffer();
-    const projectService = new ProjectService(db);
-    const humanAccountService = new HumanAccountService(db);
-    const taskService = new TaskService(db, {
+    const projectService = createProjectServiceFromDb(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -419,10 +451,10 @@ describe('agora-ts cli', () => {
     writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
     writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
     writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-BOOTSTRAP',
       projectService,
@@ -498,7 +530,7 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-install-');
     const repoParent = makeTempDir('agora-ts-cli-project-nomos-install-repo-');
     const repoRoot = join(repoParent, 'repo-beta');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     projectService.createProject({
@@ -506,7 +538,7 @@ describe('agora-ts cli', () => {
       name: 'Existing Nomos Project',
       owner: 'archon',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-INSTALL',
       projectService,
@@ -559,10 +591,10 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-activate-');
     const repoParent = makeTempDir('agora-ts-cli-project-nomos-activate-repo-');
     const repoRoot = join(repoParent, 'repo-activate');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-ACTIVATE',
       projectService,
@@ -609,10 +641,10 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-validate-');
     const repoParent = makeTempDir('agora-ts-cli-project-nomos-validate-repo-');
     const repoRoot = join(repoParent, 'repo-validate');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-VALIDATE',
       projectService,
@@ -660,11 +692,11 @@ describe('agora-ts cli', () => {
     const sourceRepoRoot = join(repoParent, 'repo-source');
     const targetRepoRoot = join(repoParent, 'repo-target');
     const exportDir = join(repoParent, 'exported-pack');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     const generatedTaskIds = ['OC-NOMOS-REUSE-1', 'OC-NOMOS-REUSE-2'];
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => generatedTaskIds.shift() ?? 'OC-NOMOS-REUSE-X',
       projectService,
@@ -716,11 +748,11 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-project-nomos-rerun-');
     const repoParent = makeTempDir('agora-ts-cli-project-nomos-rerun-repo-');
     const repoRoot = join(repoParent, 'repo-rerun');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     let taskCounter = 0;
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => `OC-NOMOS-RERUN-${++taskCounter}`,
       projectService,
@@ -761,10 +793,10 @@ describe('agora-ts cli', () => {
     const brainPackRoot = makeTempDir('agora-ts-cli-nomos-catalog-');
     const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-source-repo-'), 'repo-source');
     const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-target-repo-'), 'repo-target');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -821,10 +853,10 @@ describe('agora-ts cli', () => {
     const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-share-source-repo-'), 'repo-source');
     const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-share-target-repo-'), 'repo-target');
     const bundleDir = join(makeTempDir('agora-ts-cli-nomos-share-bundle-'), 'bundle');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -889,10 +921,10 @@ describe('agora-ts cli', () => {
     const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-pack-root-source-'), 'repo-source');
     const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-pack-root-target-'), 'repo-target');
     const directPackDir = join(makeTempDir('agora-ts-cli-nomos-pack-root-export-'), 'direct-pack');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -953,10 +985,10 @@ describe('agora-ts cli', () => {
     const sourceRepoRoot = join(makeTempDir('agora-ts-cli-nomos-registered-source-repo-'), 'repo-source');
     const targetRepoRoot = join(makeTempDir('agora-ts-cli-nomos-registered-target-repo-'), 'repo-target');
     const directPackDir = join(makeTempDir('agora-ts-cli-nomos-registered-export-'), 'direct-pack');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       projectService,
     });
@@ -1064,10 +1096,10 @@ describe('agora-ts cli', () => {
     writeFileSync(join(installedTemplateRoot, 'README.md'), '# template\n', 'utf8');
     writeFileSync(join(installedTemplateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
     writeFileSync(join(installedTemplateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-REFINE',
       projectService,
@@ -1123,7 +1155,7 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeTempDir('agora-ts-cli-project-task-');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     projectService.createProject({
@@ -1133,7 +1165,7 @@ describe('agora-ts cli', () => {
     });
     const stdout = createBuffer();
     const stderr = createBuffer();
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROJECT-CLI',
       projectService,
@@ -1141,8 +1173,8 @@ describe('agora-ts cli', () => {
     const program = createCliProgram({
       taskService,
       projectService,
-      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      templateAuthoringService: createTemplateAuthoringServiceFromDb(db),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
       stdout,
       stderr,
     }).exitOverride();
@@ -1158,7 +1190,7 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeTempDir('agora-ts-cli-project-show-');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     projectService.createProject({
@@ -1186,7 +1218,7 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeTempDir('agora-ts-cli-project-knowledge-');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     projectService.createProject({
@@ -1241,13 +1273,13 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeTempDir('agora-ts-cli-citizen-brain-');
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-citizen',
       name: 'Citizen Project',
       owner: 'archon',
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -1266,7 +1298,7 @@ describe('agora-ts cli', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -1313,7 +1345,7 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     projectService.createProject({
@@ -1330,7 +1362,7 @@ describe('agora-ts cli', () => {
       body: 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
       source_task_ids: ['OC-100'],
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -1349,7 +1381,7 @@ describe('agora-ts cli', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -1410,7 +1442,7 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-bootstrap-');
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
     projectService.createProject({
@@ -1428,7 +1460,7 @@ describe('agora-ts cli', () => {
       body: 'Core keeps orchestration semantics.',
       source_task_ids: ['OC-BOOT-1'],
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -1447,7 +1479,7 @@ describe('agora-ts cli', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -1759,7 +1791,7 @@ describe('agora-ts cli', () => {
     const stderr = createBuffer();
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-brain',
       name: 'Brain Project',
@@ -2083,7 +2115,7 @@ describe('agora-ts cli', () => {
   it('creates tasks and shows them in status/list commands', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300',
     });
@@ -2107,7 +2139,7 @@ describe('agora-ts cli', () => {
   it('creates tasks with team/workflow/im-target overrides through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300B',
     });
@@ -2162,7 +2194,7 @@ describe('agora-ts cli', () => {
     `).run();
     const stdout = createBuffer();
     const stderr = createBuffer();
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-cli-membership',
       name: 'CLI Membership',
@@ -2170,7 +2202,7 @@ describe('agora-ts cli', () => {
       members: [{ account_id: 2, role: 'member' }],
       default_agents: [{ agent_ref: 'workspace-orchestrator', kind: 'orchestrator' }],
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CLI-AUTH',
       projectService,
@@ -2190,7 +2222,7 @@ describe('agora-ts cli', () => {
   it('surfaces invalid json option errors with the flag name', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300B-ERR',
     });
@@ -2211,12 +2243,12 @@ describe('agora-ts cli', () => {
   it('creates tasks with controller and role binding convenience options', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300C',
     });
-    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
-    const rolePackService = new RolePackService({ db, rolePacksDir: rolePackDir });
+    const templateAuthoringService = createTemplateAuthoringServiceFromDb(db);
+    const rolePackService = createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir });
     const stdout = createBuffer();
     const stderr = createBuffer();
     const program = createCliProgram({
@@ -2226,8 +2258,8 @@ describe('agora-ts cli', () => {
       dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2255,7 +2287,7 @@ describe('agora-ts cli', () => {
   it('creates smoke-test tasks through the cli flag', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300SMOKE',
     });
@@ -2278,14 +2310,14 @@ describe('agora-ts cli', () => {
   it('rejects live regression commands when developer regression mode is disabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db);
+    const bindings = createTaskContextBindingServiceFromDb(db);
+    const conversations = createTaskConversationServiceFromDb(db);
     const provisioning = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-cli-regression-off',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CLI-REG-OFF',
       imProvisioningPort: provisioning,
@@ -2315,14 +2347,14 @@ describe('agora-ts cli', () => {
     process.env.AGORA_DEV_REGRESSION_MODE = 'true';
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db);
+    const bindings = createTaskContextBindingServiceFromDb(db);
+    const conversations = createTaskConversationServiceFromDb(db);
     const provisioning = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-cli-regression-on',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CLI-REG-ON',
       imProvisioningPort: provisioning,
@@ -2408,14 +2440,14 @@ describe('agora-ts cli', () => {
     process.env.AGORA_DEV_REGRESSION_MODE = 'true';
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db);
+    const bindings = createTaskContextBindingServiceFromDb(db);
+    const conversations = createTaskConversationServiceFromDb(db);
     const provisioning = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-cli-regression-create',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CLI-REG-CREATE',
       imProvisioningPort: provisioning,
@@ -2428,8 +2460,8 @@ describe('agora-ts cli', () => {
       taskConversationService: conversations,
       taskContextBindingService: bindings,
       imProvisioningPort: provisioning,
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
-      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
+      templateAuthoringService: createTemplateAuthoringServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2469,7 +2501,7 @@ describe('agora-ts cli', () => {
   it('creates tasks with global and role-scoped skill policy through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300SKILL',
     });
@@ -2505,14 +2537,14 @@ describe('agora-ts cli', () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const program = createCliProgram({
-      taskService: new TaskService(db, { templatesDir }),
-      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      taskService: createTaskServiceFromDb(db, { templatesDir }),
+      templateAuthoringService: createTemplateAuthoringServiceFromDb(db),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
       dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2539,11 +2571,11 @@ describe('agora-ts cli', () => {
   it('uses workspace role bindings as create-time defaults before template suggested values', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-300D',
     });
-    const rolePackService = new RolePackService({ db, rolePacksDir: rolePackDir });
+    const rolePackService = createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir });
     rolePackService.saveBinding({
       id: 'binding-create-1',
       role_id: 'developer',
@@ -2558,13 +2590,13 @@ describe('agora-ts cli', () => {
     const stderr = createBuffer();
     const program = createCliProgram({
       taskService,
-      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
+      templateAuthoringService: createTemplateAuthoringServiceFromDb(db),
       rolePackService,
       dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2583,18 +2615,18 @@ describe('agora-ts cli', () => {
   it('supports template role and stage CRUD through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const templateAuthoringService = createTemplateAuthoringServiceFromDb(db);
     const stdout = createBuffer();
     const stderr = createBuffer();
     const program = createCliProgram({
-      taskService: new TaskService(db, { templatesDir }),
+      taskService: createTaskServiceFromDb(db, { templatesDir }),
       templateAuthoringService,
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
       dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2619,7 +2651,7 @@ describe('agora-ts cli', () => {
   it('validates, renders, and applies workflow graphs through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const templateAuthoringService = createTemplateAuthoringServiceFromDb(db);
     const stdout = createBuffer();
     const stderr = createBuffer();
     const workflowFile = makeWorkflowFile({
@@ -2631,14 +2663,14 @@ describe('agora-ts cli', () => {
       ],
     });
     const program = createCliProgram({
-      taskService: new TaskService(db, { templatesDir }),
+      taskService: createTaskServiceFromDb(db, { templatesDir }),
       templateAuthoringService,
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
       dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2662,19 +2694,19 @@ describe('agora-ts cli', () => {
   it('surfaces invalid workflow file json with a clear graph command error', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const templateAuthoringService = createTemplateAuthoringServiceFromDb(db);
     const stdout = createBuffer();
     const stderr = createBuffer();
     const workflowFile = makeRawWorkflowFile('{broken-json');
     const program = createCliProgram({
-      taskService: new TaskService(db, { templatesDir }),
+      taskService: createTaskServiceFromDb(db, { templatesDir }),
       templateAuthoringService,
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
       dashboardQueryService: createDashboardQueryServiceForDb(db),
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -2687,7 +2719,7 @@ describe('agora-ts cli', () => {
   it('manages archive jobs through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, { templatesDir });
+    const taskService = createTaskServiceFromDb(db, { templatesDir });
     const dashboardQueryService = createDashboardQueryServiceForDb(db);
     const archives = new ArchiveJobRepository(db);
     const stdout = createBuffer();
@@ -2697,10 +2729,10 @@ describe('agora-ts cli', () => {
       dashboardQueryService,
       tmuxRuntimeService: createTmuxRuntimeServiceStub() as never,
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
-      taskConversationService: new TaskConversationService(db),
-      templateAuthoringService: new TemplateAuthoringService({ db, templatesDir }),
-      rolePackService: new RolePackService({ db, rolePacksDir: rolePackDir }),
+      humanAccountService: createHumanAccountServiceFromDb(db),
+      taskConversationService: createTaskConversationServiceFromDb(db),
+      templateAuthoringService: createTemplateAuthoringServiceFromDb(db),
+      rolePackService: createRolePackServiceFromDb(db, { rolePacksDir: rolePackDir }),
       stdout,
       stderr,
     }).exitOverride();
@@ -2751,7 +2783,7 @@ describe('agora-ts cli', () => {
     runMigrations(db);
     const stdout = createBuffer();
     const stderr = createBuffer();
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-ops',
       name: 'Project Ops',
@@ -2775,7 +2807,7 @@ describe('agora-ts cli', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     let taskCounter = 301;
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => `OC-${taskCounter++}`,
     });
@@ -2833,7 +2865,7 @@ describe('agora-ts cli', () => {
   it('runs quorum confirm and unblock commands', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-302',
     });
@@ -3089,14 +3121,14 @@ describe('agora-ts cli', () => {
   it('reads task conversation entries through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-960',
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-1',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-1',
       now: () => new Date('2026-03-10T12:00:01.000Z'),
     });
@@ -3147,7 +3179,7 @@ describe('agora-ts cli', () => {
         recordIdentity: () => { throw new Error('unused'); },
       },
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -3162,14 +3194,14 @@ describe('agora-ts cli', () => {
   it('reads task conversation summary through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-961',
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-2',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-2',
       now: () => new Date('2026-03-10T12:00:01.000Z'),
     });
@@ -3219,7 +3251,7 @@ describe('agora-ts cli', () => {
         recordIdentity: () => { throw new Error('unused'); },
       },
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -3234,18 +3266,18 @@ describe('agora-ts cli', () => {
   it('marks task conversation as read through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-962',
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-3',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-3',
       now: () => new Date('2026-03-10T12:00:01.000Z'),
     });
-    const humans = new HumanAccountService(db);
+    const humans = createHumanAccountServiceFromDb(db);
     const account = humans.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
@@ -3296,7 +3328,7 @@ describe('agora-ts cli', () => {
         recordIdentity: () => { throw new Error('unused'); },
       },
       dashboardSessionClient: createDashboardSessionClientStub(),
-      humanAccountService: new HumanAccountService(db),
+      humanAccountService: createHumanAccountServiceFromDb(db),
       stdout,
       stderr,
     }).exitOverride();
@@ -3320,7 +3352,7 @@ describe('agora-ts cli', () => {
   it('manages lightweight dashboard users through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
@@ -3385,7 +3417,7 @@ describe('agora-ts cli', () => {
   it('supports unblock retry through the cli command', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-306',
     });
@@ -3432,7 +3464,7 @@ describe('agora-ts cli', () => {
   it('supports unblock skip through the cli command', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-307',
     });
@@ -3478,7 +3510,7 @@ describe('agora-ts cli', () => {
   it('supports unblock reassign through the cli command', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-308',
     });
@@ -3533,7 +3565,7 @@ describe('agora-ts cli', () => {
   it('cleans up orphaned tasks through the cli command', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-303',
     });
@@ -3568,8 +3600,8 @@ describe('agora-ts cli', () => {
       im_provider: 'discord',
       thread_ref: 'thread-cli-probe-1',
     });
-    const taskContextBindingService = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const taskContextBindingService = createTaskContextBindingServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-303B',
       imProvisioningPort: provisioningPort,
@@ -3602,13 +3634,13 @@ describe('agora-ts cli', () => {
   it('dispatches craftsmen subtasks and handles callback/status commands through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-cli-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-08T14:10:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-304',
       craftsmanDispatcher: dispatcher,
@@ -3675,13 +3707,13 @@ describe('agora-ts cli', () => {
   it('rejects craftsmen dispatch through the cli when the task is paused', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-cli-paused-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T11:00:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-305',
       craftsmanDispatcher: dispatcher,
@@ -3723,13 +3755,13 @@ describe('agora-ts cli', () => {
     tempPaths.push(isolatedRoot);
     rmSync(isolatedRoot, { recursive: true, force: true });
     initCommittedRepo(repoDir);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-cli-default-workdir-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T11:00:00.000Z'),
       },
     });
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-cli-workdir',
       name: 'CLI Workdir Project',
@@ -3743,7 +3775,7 @@ describe('agora-ts cli', () => {
         },
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CLI-WORKDIR',
       craftsmanDispatcher: dispatcher,
@@ -3798,14 +3830,14 @@ describe('agora-ts cli', () => {
   it('rejects craftsmen dispatch through the cli when concurrency limit is reached', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       maxConcurrentRunning: 1,
       executionIdGenerator: () => 'exec-cli-limit-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T16:40:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-306',
       craftsmanDispatcher: dispatcher,
@@ -3874,13 +3906,13 @@ describe('agora-ts cli', () => {
   it('creates and lists subtasks through the cli formal surface', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-cli-subtask-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T11:00:00.000Z'),
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-307',
       craftsmanDispatcher: dispatcher,

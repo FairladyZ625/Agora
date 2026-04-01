@@ -2,12 +2,51 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import {
+  createAgoraDatabase,
+  runMigrations,
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  TaskContextBindingRepository,
+  TaskConversationReadCursorRepository,
+  TaskConversationRepository,
+} from '@agora-ts/db';
 import { HumanAccountService, TaskContextBindingService, TaskConversationService, TaskInboundService, TaskService } from '@agora-ts/core';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+
+function createHumanAccountServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
+
+function createTaskContextBindingServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  options: Partial<ConstructorParameters<typeof TaskContextBindingService>[0]> = {},
+) {
+  return new TaskContextBindingService({
+    repository: options.repository ?? new TaskContextBindingRepository(db),
+    ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
+  });
+}
+
+function createTaskConversationServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  options: Partial<ConstructorParameters<typeof TaskConversationService>[0]> = {},
+) {
+  return new TaskConversationService({
+    bindingRepository: options.bindingRepository ?? new TaskContextBindingRepository(db),
+    conversationRepository: options.conversationRepository ?? new TaskConversationRepository(db),
+    readCursorRepository: options.readCursorRepository ?? new TaskConversationReadCursorRepository(db),
+    ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
+    ...(options.now ? { now: options.now } : {}),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-task-conversation-server-'));
@@ -28,14 +67,14 @@ describe('task conversation routes', () => {
   it('ingests and lists task conversation entries', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-960',
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-1',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-1',
       now: () => new Date('2026-03-10T12:00:01.000Z'),
     });
@@ -99,14 +138,14 @@ describe('task conversation routes', () => {
   it('returns a summary-first conversation payload for a task', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-961',
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-2',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-2',
       now: () => new Date('2026-03-10T12:05:01.000Z'),
     });
@@ -161,20 +200,20 @@ describe('task conversation routes', () => {
   it('tracks unread summary state and marks a task conversation as read for a dashboard session user', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humans = new HumanAccountService(db);
+    const humans = createHumanAccountServiceFromDb(db);
     humans.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-962',
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-3',
     });
     let index = 0;
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => `entry-${++index}`,
       now: () => new Date('2026-03-10T12:05:01.000Z'),
     });
@@ -262,15 +301,15 @@ describe('task conversation routes', () => {
   it('ingests a structured inbound action and applies it to the current task context', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-963',
       archonUsers: ['alice'],
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-4',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-4',
       now: () => new Date('2026-03-17T13:10:01.000Z'),
     });
@@ -333,15 +372,15 @@ describe('task conversation routes', () => {
   it('ingests advance_current with next_stage_id for a branching task context', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-964',
       archonUsers: ['opus'],
     });
-    const bindings = new TaskContextBindingService(db, {
+    const bindings = createTaskContextBindingServiceFromDb(db, {
       idGenerator: () => 'binding-5',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = createTaskConversationServiceFromDb(db, {
       idGenerator: () => 'entry-5',
       now: () => new Date('2026-03-17T13:20:01.000Z'),
     });

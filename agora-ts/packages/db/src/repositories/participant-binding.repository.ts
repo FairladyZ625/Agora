@@ -1,3 +1,4 @@
+import type { IParticipantBindingRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredParticipantBinding {
@@ -18,7 +19,7 @@ export interface StoredParticipantBinding {
   left_at: string | null;
 }
 
-export class ParticipantBindingRepository {
+export class ParticipantBindingRepository implements IParticipantBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

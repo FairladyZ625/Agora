@@ -3,31 +3,15 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { CraftsmanCallbackRequestDto, CraftsmanDispatchRequestDto, CraftsmanExecutionTailResponseDto, CraftsmanInputKeyDto, CraftsmanStopExecutionRequestDto, CreateSubtasksRequestDto, CreateSubtasksResponseDto, CreateTaskAuthorityDto, CreateTaskRequestDto, GateCommandPort, GateQueryPort, HostResourceSnapshotDto, PromoteTodoRequestDto, RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto, RuntimeRecoveryRequestDto, TaskBlueprintDto, TaskConversationEntryRecord, TaskLocaleDto, TaskRecord, TaskStatusDto, UnifiedHealthSnapshotDto, WorkflowDto } from '@agora-ts/contracts';
+import type { CraftsmanCallbackRequestDto, CraftsmanDispatchRequestDto, CraftsmanExecutionTailResponseDto, CraftsmanInputKeyDto, CraftsmanStopExecutionRequestDto, CreateSubtasksRequestDto, CreateSubtasksResponseDto, CreateTaskAuthorityDto, CreateTaskRequestDto, DatabasePort, GateCommandPort, GateQueryPort, HostResourceSnapshotDto, IApprovalRequestRepository, IArchiveJobRepository, ICraftsmanExecutionRepository, IFlowLogRepository, IInboxRepository, IProgressLogRepository, ISubtaskRepository, ITaskContextBindingRepository, ITaskConversationRepository, ITaskRepository, ITemplateRepository, ITodoRepository, PromoteTodoRequestDto, RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto, RuntimeRecoveryRequestDto, TaskBlueprintDto, TaskConversationEntryRecord, TaskLocaleDto, TaskRecord, TaskStatusDto, UnifiedHealthSnapshotDto, WorkflowDto } from '@agora-ts/contracts';
 import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
-import {
-  ApprovalRequestRepository,
-  ArchiveJobRepository,
-  CraftsmanExecutionRepository,
-  FlowLogRepository,
-  InboxRepository,
-  ProgressLogRepository,
-  SqliteGateCommandPort,
-  SqliteGateQueryPort,
-  SubtaskRepository,
-  TaskContextBindingRepository,
-  TaskConversationRepository,
-  TaskRepository,
-  TemplateRepository,
-  TodoRepository,
-  type AgoraDatabase,
-} from '@agora-ts/db';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import { CraftsmanCallbackService } from './craftsman-callback-service.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { GateService } from './gate-service.js';
 import { ModeController } from './mode-controller.js';
+import { ProgressService } from './progress-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
 import { ProjectService } from './project-service.js';
@@ -147,30 +131,30 @@ export interface TaskServiceOptions {
     inboxAfterMs?: number;
   };
   resolveHumanReminderParticipantRefs?: (input: HumanReminderParticipantResolverInput) => string[];
-  gateQueryPort?: GateQueryPort;
-  gateCommandPort?: GateCommandPort;
-  /** Pre-built repositories (skip internal new XxxRepository(db)) */
-  repositories?: {
-    task?: TaskRepository;
-    flowLog?: FlowLogRepository;
-    progressLog?: ProgressLogRepository;
-    subtask?: SubtaskRepository;
-    taskContextBinding?: TaskContextBindingRepository;
-    taskConversation?: TaskConversationRepository;
-    todo?: TodoRepository;
-    archiveJob?: ArchiveJobRepository;
-    approvalRequest?: ApprovalRequestRepository;
-    inbox?: InboxRepository;
-    craftsmanExecution?: CraftsmanExecutionRepository;
-    template?: TemplateRepository;
+  databasePort: DatabasePort;
+  gateCommandPort: GateCommandPort;
+  gateQueryPort: GateQueryPort;
+  repositories: {
+    task: ITaskRepository;
+    flowLog: IFlowLogRepository;
+    progressLog: IProgressLogRepository;
+    subtask: ISubtaskRepository;
+    taskContextBinding: ITaskContextBindingRepository;
+    taskConversation: ITaskConversationRepository;
+    todo: ITodoRepository;
+    archiveJob: IArchiveJobRepository;
+    approvalRequest: IApprovalRequestRepository;
+    inbox: IInboxRepository;
+    craftsmanExecution: ICraftsmanExecutionRepository;
+    template: ITemplateRepository;
   };
-  /** Pre-built sub-services (skip internal new XxxService(db)) */
-  subServices?: {
-    taskAuthority?: TaskAuthorityService;
-    projectMembership?: ProjectMembershipService;
-    projectAgentRoster?: ProjectAgentRosterService;
-    craftsmanCallback?: CraftsmanCallbackService;
-    projectContextWriter?: ProjectContextWriter;
+  /** Pre-built sub-services */
+  subServices: {
+    taskAuthority: TaskAuthorityService;
+    projectMembership: ProjectMembershipService;
+    projectAgentRoster: ProjectAgentRosterService;
+    craftsmanCallback: CraftsmanCallbackService;
+    projectContextWriter: ProjectContextWriter;
   };
 }
 
@@ -288,16 +272,16 @@ function defaultTaskIdGenerator() {
 
 export class TaskService {
   private static readonly CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS = [1, 3, 9] as const;
-  private readonly taskRepository: TaskRepository;
-  private readonly flowLogRepository: FlowLogRepository;
-  private readonly progressLogRepository: ProgressLogRepository;
-  private readonly subtaskRepository: SubtaskRepository;
-  private readonly taskContextBindingRepository: TaskContextBindingRepository;
-  private readonly taskConversationRepository: TaskConversationRepository;
-  private readonly todoRepository: TodoRepository;
-  private readonly archiveJobRepository: ArchiveJobRepository;
-  private readonly approvalRequestRepository: ApprovalRequestRepository;
-  private readonly inboxRepository: InboxRepository;
+  private readonly taskRepository: ITaskRepository;
+  private readonly flowLogRepository: IFlowLogRepository;
+  private readonly progressLogRepository: IProgressLogRepository;
+  private readonly subtaskRepository: ISubtaskRepository;
+  private readonly taskContextBindingRepository: ITaskContextBindingRepository;
+  private readonly taskConversationRepository: ITaskConversationRepository;
+  private readonly todoRepository: ITodoRepository;
+  private readonly archiveJobRepository: IArchiveJobRepository;
+  private readonly approvalRequestRepository: IApprovalRequestRepository;
+  private readonly inboxRepository: IInboxRepository;
   private readonly taskAuthorities: TaskAuthorityService;
   private readonly projectMemberships: ProjectMembershipService;
   private readonly projectAgentRoster: ProjectAgentRosterService;
@@ -308,11 +292,11 @@ export class TaskService {
   private readonly projectContextWriter: ProjectContextWriter;
   private readonly taskWorktreeService: TaskWorktreeService;
   private readonly craftsmanCallbacks: CraftsmanCallbackService;
-  private readonly craftsmanExecutions: CraftsmanExecutionRepository;
+  private readonly craftsmanExecutions: ICraftsmanExecutionRepository;
   private readonly craftsmanDispatcher: CraftsmanDispatcher | undefined;
   private readonly craftsmanInputPort: CraftsmanInputPort | undefined;
   private readonly isCraftsmanSessionAlive: ((sessionId: string) => boolean) | undefined;
-  private readonly templateRepository: TemplateRepository;
+  private readonly templateRepository: ITemplateRepository;
   private readonly templatesDir: string;
   private readonly taskIdGenerator: () => string;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
@@ -339,49 +323,45 @@ export class TaskService {
   private readonly pendingBackgroundOperations = new Set<Promise<void>>();
   private readonly craftsmanProbeStateByExecution = new Map<string, CraftsmanProbeState>();
   private readonly gateQueryPort: GateQueryPort;
+  private readonly db: DatabasePort;
 
-  constructor(
-    private readonly db: AgoraDatabase,
-    options: TaskServiceOptions = {},
-  ) {
-    const repos = options.repositories ?? {};
-    const subs = options.subServices ?? {};
-    this.taskRepository = repos.task ?? new TaskRepository(db);
-    this.flowLogRepository = repos.flowLog ?? new FlowLogRepository(db);
-    this.progressLogRepository = repos.progressLog ?? new ProgressLogRepository(db);
-    this.subtaskRepository = repos.subtask ?? new SubtaskRepository(db);
-    this.taskContextBindingRepository = repos.taskContextBinding ?? new TaskContextBindingRepository(db);
-    this.taskConversationRepository = repos.taskConversation ?? new TaskConversationRepository(db);
-    this.todoRepository = repos.todo ?? new TodoRepository(db);
-    this.archiveJobRepository = repos.archiveJob ?? new ArchiveJobRepository(db);
-    this.approvalRequestRepository = repos.approvalRequest ?? new ApprovalRequestRepository(db);
-    this.inboxRepository = repos.inbox ?? new InboxRepository(db);
-    this.taskAuthorities = subs.taskAuthority ?? new TaskAuthorityService(db);
-    this.projectMemberships = subs.projectMembership ?? new ProjectMembershipService(db);
-    this.projectAgentRoster = subs.projectAgentRoster ?? new ProjectAgentRosterService(db);
-    this.craftsmanExecutions = repos.craftsmanExecution ?? new CraftsmanExecutionRepository(db);
-    this.templateRepository = repos.template ?? new TemplateRepository(db);
+  constructor(options: TaskServiceOptions) {
+    const repos = options.repositories;
+    const subs = options.subServices;
+    this.db = options.databasePort;
+    this.taskRepository = repos.task;
+    this.flowLogRepository = repos.flowLog;
+    this.progressLogRepository = repos.progressLog;
+    this.subtaskRepository = repos.subtask;
+    this.taskContextBindingRepository = repos.taskContextBinding;
+    this.taskConversationRepository = repos.taskConversation;
+    this.todoRepository = repos.todo;
+    this.archiveJobRepository = repos.archiveJob;
+    this.approvalRequestRepository = repos.approvalRequest;
+    this.inboxRepository = repos.inbox;
+    this.taskAuthorities = subs.taskAuthority;
+    this.projectMemberships = subs.projectMembership;
+    this.projectAgentRoster = subs.projectAgentRoster;
+    this.craftsmanExecutions = repos.craftsmanExecution;
+    this.templateRepository = repos.template;
     this.stateMachine = new StateMachine();
     this.permissions = options.archonUsers
       ? new PermissionService({ archonUsers: options.archonUsers, allowAgents: options.allowAgents })
       : new PermissionService({ allowAgents: options.allowAgents });
-    this.gateService = new GateService(options.gateCommandPort ?? new SqliteGateCommandPort(db), this.permissions);
-    this.gateQueryPort = options.gateQueryPort ?? new SqliteGateQueryPort(db);
-    this.projectService = options.projectService ?? new ProjectService(db);
+    this.gateService = new GateService(options.gateCommandPort, this.permissions);
+    this.gateQueryPort = options.gateQueryPort;
+    this.projectService = options.projectService!;
     this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
     this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
-    this.projectContextWriter = subs.projectContextWriter ?? new ProjectContextWriter(db, {
-      projectService: this.projectService,
-      ...(this.taskBrainWorkspacePort ? { taskBrainWorkspacePort: this.taskBrainWorkspacePort } : {}),
-    });
+    this.projectContextWriter = subs.projectContextWriter;
     this.taskWorktreeService = new TaskWorktreeService({
       projectService: this.projectService,
     });
-    this.craftsmanCallbacks = subs.craftsmanCallback ?? new CraftsmanCallbackService(db);
+    this.craftsmanCallbacks = subs.craftsmanCallback;
     this.craftsmanDispatcher = options.craftsmanDispatcher;
     this.craftsmanInputPort = options.craftsmanInputPort;
     this.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
@@ -488,8 +468,8 @@ export class TaskService {
         skill_policy: input.skill_policy ?? null,
         team,
         workflow,
-        control: input.control ?? { mode: 'normal' },
-      });
+        control: input.control ?? null,
+      } as any);
 
       const created = this.taskRepository.updateTask(taskId, draft.version, {
         state: TaskState.CREATED,
@@ -1205,10 +1185,14 @@ export class TaskService {
       } : {}),
     }));
 
-    const controller = new ModeController(
-      this.db,
-      this.craftsmanDispatcher ? { dispatcher: this.craftsmanDispatcher } : {},
-    );
+    const controller = new ModeController({
+      subtaskRepository: this.subtaskRepository,
+      progressService: new ProgressService({
+        flowLogRepository: this.flowLogRepository,
+        progressLogRepository: this.progressLogRepository,
+      }),
+      ...(this.craftsmanDispatcher ? { dispatcher: this.craftsmanDispatcher } : {}),
+    });
     controller.enterExecuteMode(taskId, stage.id, executeDefs);
 
     const createdSubtasks = this.subtaskRepository

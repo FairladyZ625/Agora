@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { templateDetailSchema, type TemplateDetailDto } from '@agora-ts/contracts';
+import type { ITemplateRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -18,7 +19,7 @@ export interface TemplateRepairResult {
   updated: number;
 }
 
-export class TemplateRepository {
+export class TemplateRepository implements ITemplateRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   listTemplates(): StoredTemplate[] {

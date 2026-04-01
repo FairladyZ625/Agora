@@ -2,13 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository } from '@agora-ts/db';
 import {
   StubIMProvisioningPort,
   TaskContextBindingService,
   TaskConversationService,
-  TaskService,
 } from '@agora-ts/core';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { LiveRegressionActor } from './live-regression.js';
 
 const tempDirs: string[] = [];
@@ -38,12 +38,18 @@ describe('LiveRegressionActor', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-regression-actor-1',
     });
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       idGenerator: () => 'conversation-regression-1',
       now: () => new Date('2026-03-21T10:00:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REG-ACTOR-1',
       imProvisioningPort: provisioning,
@@ -125,11 +131,17 @@ describe('LiveRegressionActor', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-regression-actor-2',
     });
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       now: () => new Date('2026-03-21T11:00:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REG-ACTOR-2',
       imProvisioningPort: provisioning,
@@ -209,11 +221,17 @@ describe('LiveRegressionActor', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-regression-actor-3',
     });
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       now: () => new Date('2026-03-21T11:10:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REG-ACTOR-3',
       imProvisioningPort: provisioning,
@@ -293,11 +311,17 @@ describe('LiveRegressionActor', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-regression-actor-4',
     });
-    const bindings = new TaskContextBindingService(db);
-    const conversations = new TaskConversationService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       now: () => new Date('2026-03-21T11:20:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REG-ACTOR-4',
       imProvisioningPort: provisioning,

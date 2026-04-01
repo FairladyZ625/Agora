@@ -1,3 +1,4 @@
+import type { IHumanAccountRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredHumanAccount {
@@ -23,7 +24,7 @@ export interface UpdateHumanAccountInput {
   enabled?: boolean;
 }
 
-export class HumanAccountRepository {
+export class HumanAccountRepository implements IHumanAccountRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertAccount(input: InsertHumanAccountInput): StoredHumanAccount {

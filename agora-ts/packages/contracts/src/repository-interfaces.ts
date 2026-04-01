@@ -64,10 +64,32 @@ import type {
 } from './domain-types.js';
 
 import type {
+  RoleBindingDto,
+  RoleDefinitionDto,
+  RolePackManifestDto,
+} from './roles.js';
+
+import type {
+  TaskControlDto,
   TaskLocaleDto,
+  TaskSkillPolicyDto,
   TeamDto,
   WorkflowDto,
 } from './task-api.js';
+
+// ---------------------------------------------------------------------------
+// Database port — raw SQL access for Tier 3 services (task-service, dashboard-query)
+// ---------------------------------------------------------------------------
+
+export interface DatabasePortStatement {
+  run(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown[];
+}
+
+export interface DatabasePort {
+  exec(sql: string): void;
+  prepare(sql: string): DatabasePortStatement;
+}
 
 // ---------------------------------------------------------------------------
 // Gate query / command — used by StateMachine and GateService
@@ -152,8 +174,10 @@ export interface ITaskRepository {
     creator: string;
     locale: TaskLocaleDto;
     project_id?: string | null;
+    skill_policy?: TaskSkillPolicyDto | null;
     team: TeamDto;
     workflow: WorkflowDto;
+    control?: TaskControlDto | null;
   }): TaskRecord;
   updateTask(
     taskId: string,
@@ -229,9 +253,9 @@ export interface IProgressLogRepository {
 export interface ITodoRepository {
   insertTodo(input: {
     text: string;
-    project_id?: string | null;
-    due?: string | null;
-    tags?: string[];
+    project_id?: string | null | undefined;
+    due?: string | null | undefined;
+    tags?: string[] | undefined;
   }): TodoRecord;
   getTodo(todoId: number): TodoRecord | null;
   listTodos(status?: string): TodoRecord[];
@@ -321,6 +345,7 @@ export interface IApprovalRequestRepository {
 
 export interface ICraftsmanExecutionRepository {
   countActiveExecutions(): number;
+  countActiveExecutionsByAssignee(assignee: string): number;
   insertExecution(
     input: InsertCraftsmanExecutionInput,
   ): CraftsmanExecutionRecord;
@@ -334,6 +359,8 @@ export interface ICraftsmanExecutionRepository {
     subtaskId: string,
   ): CraftsmanExecutionRecord[];
   listByTaskIds(taskIds: string[]): CraftsmanExecutionRecord[];
+  listActiveExecutions(): CraftsmanExecutionRecord[];
+  listActiveExecutionCountsByAssignee(): Array<{ assignee: string; count: number }>;
 }
 
 // ─── 10. TaskContextBinding ────────────────────────────────────────────────
@@ -528,33 +555,37 @@ export interface ICitizenRepository {
 
 // ─── 23. RoleDefinition ───────────────────────────────────────────────────
 
+export interface RoleDefinitionSeedResult {
+  inserted: number;
+  updated: number;
+  manifest: RolePackManifestDto | null;
+}
+
 export interface IRoleDefinitionRepository {
   listRoleDefinitions(): RoleDefinitionRecord[];
   getRoleDefinition(roleId: string): RoleDefinitionRecord | null;
-  saveRoleDefinition(definitionInput: unknown): RoleDefinitionRecord;
-  seedFromPackDir(packDir: string): {
-    inserted: number;
-    updated: number;
-    manifest: unknown | null;
-  };
+  saveRoleDefinition(definitionInput: RoleDefinitionDto): RoleDefinitionRecord;
+  seedFromPackDir(packDir: string): RoleDefinitionSeedResult;
 }
 
 // ─── 24. RoleBinding ──────────────────────────────────────────────────────
 
+export interface RoleBindingSaveInput {
+  id: string;
+  role_id: string;
+  scope: RoleBindingDto['scope'];
+  scope_ref: string;
+  target_kind: RoleBindingDto['target_kind'];
+  target_adapter: string;
+  target_ref: string;
+  binding_mode: RoleBindingDto['binding_mode'];
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface IRoleBindingRepository {
-  saveBinding(input: {
-    id: string;
-    role_id: string;
-    scope: string;
-    scope_ref: string;
-    target_kind: string;
-    target_adapter: string;
-    target_ref: string;
-    binding_mode: string;
-    metadata?: Record<string, unknown> | null;
-  }): unknown;
-  getBinding(scope: string, scopeRef: string, roleId: string): unknown;
-  listBindingsByScope(scope: string, scopeRef: string): unknown[];
+  saveBinding(input: RoleBindingSaveInput): RoleBindingDto;
+  getBinding(scope: RoleBindingDto['scope'], scopeRef: string, roleId: string): RoleBindingDto | null;
+  listBindingsByScope(scope: RoleBindingDto['scope'], scopeRef: string): RoleBindingDto[];
 }
 
 // ─── 25. HumanAccount ─────────────────────────────────────────────────────
@@ -612,6 +643,7 @@ export interface IParticipantBindingRepository {
       reconciled_at?: string | null;
     },
   ): void;
+  attachContextBinding(taskId: string, bindingId: string): void;
 }
 
 // ─── 28. RuntimeSessionBinding ────────────────────────────────────────────

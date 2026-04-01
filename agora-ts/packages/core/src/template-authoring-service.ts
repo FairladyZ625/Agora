@@ -4,21 +4,20 @@ import {
   templateGraphSchema,
   validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
-import { TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { ITemplateRepository } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
 import { deriveGraphFromStages, deriveStagesFromGraph, normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
 
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
-  db?: AgoraDatabase;
-  templateRepository?: TemplateRepository;
+  templateRepository?: ITemplateRepository;
 }
 
 export class TemplateAuthoringService {
-  private readonly templateRepository: TemplateRepository | null;
+  private readonly templateRepository: ITemplateRepository | null;
 
   constructor(options: TemplateAuthoringServiceOptions) {
-    this.templateRepository = options.templateRepository ?? (options.db ? new TemplateRepository(options.db) : null);
+    this.templateRepository = options.templateRepository ?? null;
     this.templateRepository?.seedFromDir(options.templatesDir);
     this.templateRepository?.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository?.repairStageSemanticsFromDir(options.templatesDir);

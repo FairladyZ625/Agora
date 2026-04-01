@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, TaskRepository, SubtaskRepository, FlowLogRepository, CraftsmanExecutionRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, TaskRepository, SubtaskRepository, FlowLogRepository, ProgressLogRepository, CraftsmanExecutionRepository } from '@agora-ts/db';
 import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { ModeController } from './mode-controller.js';
+import { ProgressService } from './progress-service.js';
 
 const tempPaths: string[] = [];
 
@@ -30,7 +31,14 @@ describe('mode controller', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const flowLogs = new FlowLogRepository(db);
-    const modes = new ModeController(db);
+    const progressLogs = new ProgressLogRepository(db);
+    const modes = new ModeController({
+      subtaskRepository: subtasks,
+      progressService: new ProgressService({
+        flowLogRepository: flowLogs,
+        progressLogRepository: progressLogs,
+      }),
+    });
 
     tasks.insertTask({
       id: 'OC-950',
@@ -67,7 +75,11 @@ describe('mode controller', () => {
     const tasks = new TaskRepository(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const flowLogs = new FlowLogRepository(db);
+    const progressLogs = new ProgressLogRepository(db);
+    const dispatcher = new CraftsmanDispatcher({
+      executionRepository: executions,
+      subtaskRepository: subtasks,
       adapters: {
         codex: {
           name: 'codex',
@@ -79,7 +91,14 @@ describe('mode controller', () => {
         },
       },
     });
-    const modes = new ModeController(db, { dispatcher });
+    const modes = new ModeController({
+      subtaskRepository: subtasks,
+      progressService: new ProgressService({
+        flowLogRepository: flowLogs,
+        progressLogRepository: progressLogs,
+      }),
+      dispatcher,
+    });
 
     tasks.insertTask({
       id: 'OC-951',

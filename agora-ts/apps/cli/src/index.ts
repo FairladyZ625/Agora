@@ -56,6 +56,7 @@ import {
   ProjectBrainIndexWorkerService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
+import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
@@ -528,8 +529,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     projectBrainDoctorService = new ProjectBrainDoctorService({
       dbPath: deps.dbPath ?? composition.config.db_path,
       projectBrainService: composition.projectBrainService,
-      queueService: new ProjectBrainIndexQueueService(composition.db),
-      ...(composition.projectBrainIndexService ? { indexService: composition.projectBrainIndexService } : {}),
+      queueService: new ProjectBrainIndexQueueService({ repository: new ProjectBrainIndexJobRepository(composition.db) }),
       ...(embeddingPort ? { embeddingPort } : {}),
     });
     return projectBrainDoctorService;
@@ -547,7 +547,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       return undefined;
     }
     projectBrainIndexWorkerService = new ProjectBrainIndexWorkerService({
-      queueService: new ProjectBrainIndexQueueService(composition.db),
+      queueService: new ProjectBrainIndexQueueService({ repository: new ProjectBrainIndexJobRepository(composition.db) }),
       indexService: composition.projectBrainIndexService,
     });
     return projectBrainIndexWorkerService;

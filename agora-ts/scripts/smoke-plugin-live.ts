@@ -5,20 +5,16 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { buildApp } from "../apps/server/src/app.ts";
 import {
-  CitizenService,
-  DashboardQueryService,
   LiveSessionStore,
   ProjectBrainService,
-  ProjectService,
-  RolePackService,
   TaskContextBindingService,
   TaskConversationService,
-  TaskService,
 } from "../packages/core/src/index.ts";
 import { FilesystemProjectBrainQueryAdapter } from "../packages/core/src/adapters/filesystem-project-brain-query-adapter.ts";
 import { FilesystemProjectKnowledgeAdapter } from "../packages/core/src/adapters/filesystem-project-knowledge-adapter.ts";
 import * as pluginModule from "../../extensions/agora-plugin/src/index.ts";
-import { createAgoraDatabase, runMigrations } from "../packages/db/src/index.ts";
+import { createAgoraDatabase, runMigrations, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository } from "../packages/db/src/index.ts";
+import { createCitizenServiceFromDb, createDashboardQueryServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb, createTaskServiceFromDb } from "@agora-ts/testing";
 
 type HookName =
   | "session_start"
@@ -132,18 +128,29 @@ async function main() {
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
   const liveSessionStore = new LiveSessionStore();
-  const taskContextBindingService = new TaskContextBindingService(db);
-  const taskConversationService = new TaskConversationService(db);
-  const projectService = new ProjectService(db, {
+  const bindingRepository = new TaskContextBindingRepository(db);
+  const conversationRepository = new TaskConversationRepository(db);
+  const readCursorRepository = new TaskConversationReadCursorRepository(db);
+  const taskContextBindingService = new TaskContextBindingService({ repository: bindingRepository });
+  const taskConversationService = new TaskConversationService({
+    bindingRepository,
+    conversationRepository,
+    readCursorRepository,
+  });
+  const projectService = createProjectServiceFromDb(db, {
     knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
   });
   let taskCounter = 0;
-  const taskService = new TaskService(db, {
+  const taskService = createTaskServiceFromDb(db, {
     templatesDir,
     taskIdGenerator: () => `OC-PLUGIN-SMOKE-${++taskCounter}`,
+    projectService,
+    taskContextBindingService,
   });
-  const rolePackService = new RolePackService({ db });
-  const citizenService = new CitizenService(db, {
+  const rolePackService = createRolePackServiceFromDb(db, {
+    rolePacksDir: resolve(process.cwd(), "role-packs", "agora-default"),
+  });
+  const citizenService = createCitizenServiceFromDb(db, {
     projectService,
     rolePackService,
     projectionPorts: [],
@@ -153,7 +160,7 @@ async function main() {
     citizenService,
     projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({ brainPackRoot }),
   });
-  const dashboardQueryService = new DashboardQueryService(db, {
+  const dashboardQueryService = createDashboardQueryServiceFromDb(db, {
     templatesDir,
     liveSessions: liveSessionStore,
   });

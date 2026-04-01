@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, TaskContextBindingRepository, TaskRepository } from '@agora-ts/db';
-import { TaskParticipationService } from './task-participation-service.js';
+import { createTaskParticipationServiceFromDb } from '@agora-ts/testing';
 import type { AgentRuntimePort } from './runtime-ports.js';
 
 const tempPaths: string[] = [];
@@ -38,7 +38,7 @@ describe('task participation service', () => {
         };
       },
     };
-    const service = new TaskParticipationService(db, {
+    const service = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-1', 'pb-2'];
         return () => ids.shift() ?? 'pb-x';
@@ -105,7 +105,7 @@ describe('task participation service', () => {
     runMigrations(db);
     const tasks = new TaskRepository(db);
     const bindings = new TaskContextBindingRepository(db);
-    const service = new TaskParticipationService(db, {
+    const service = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: () => 'pb-live-1',
       runtimeSessionIdGenerator: () => 'rs-live-1',
       agentRuntimePort: {
@@ -186,7 +186,7 @@ describe('task participation service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const tasks = new TaskRepository(db);
-    const service = new TaskParticipationService(db, {
+    const service = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-exp-1', 'pb-exp-2'];
         return () => ids.shift() ?? 'pb-exp-x';
@@ -242,7 +242,7 @@ describe('task participation service', () => {
     runMigrations(db);
     const tasks = new TaskRepository(db);
     const bindings = new TaskContextBindingRepository(db);
-    const service = new TaskParticipationService(db, {
+    const service = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: () => 'pb-runtime-1',
       runtimeSessionIdGenerator: () => 'rs-runtime-1',
       agentRuntimePort: {

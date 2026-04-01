@@ -1,9 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import type { CreateProjectAdminDto, CreateProjectAgentRosterEntryDto, CreateProjectMembershipDto, ProjectRecord, TransactionManager } from '@agora-ts/contracts';
-import { ProjectRepository, TaskRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { CreateProjectAdminDto, CreateProjectAgentRosterEntryDto, CreateProjectMembershipDto, IProjectRepository, ITaskRepository, ProjectRecord, TransactionManager } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
-import { ProjectAgentRosterService } from './project-agent-roster-service.js';
-import { ProjectMembershipService } from './project-membership-service.js';
+import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import type { ProjectMembershipService } from './project-membership-service.js';
 import type {
   ProjectKnowledgeDocument,
   ProjectKnowledgeEntryInput,
@@ -26,34 +25,30 @@ export interface CreateProjectInput {
 }
 
 export interface ProjectServiceOptions {
-  projectRepository?: ProjectRepository;
-  taskRepository?: TaskRepository;
-  membershipService?: ProjectMembershipService;
-  agentRosterService?: ProjectAgentRosterService;
-  transactionManager?: TransactionManager;
+  projectRepository: IProjectRepository;
+  taskRepository: ITaskRepository;
+  membershipService: ProjectMembershipService;
+  agentRosterService: ProjectAgentRosterService;
+  transactionManager: TransactionManager;
   knowledgePort?: ProjectKnowledgePort;
   projectBrainIndexQueueService?: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'>;
 }
 
 export class ProjectService {
-  private readonly projects: ProjectRepository;
-  private readonly tasks: TaskRepository;
+  private readonly projects: IProjectRepository;
+  private readonly tasks: ITaskRepository;
   private readonly memberships: ProjectMembershipService;
   private readonly agentRoster: ProjectAgentRosterService;
   private readonly knowledgePort: ProjectKnowledgePort | undefined;
   private readonly projectBrainIndexQueueService: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'> | undefined;
   private readonly tx: TransactionManager;
 
-  constructor(db: AgoraDatabase, options: ProjectServiceOptions = {}) {
-    this.projects = options.projectRepository ?? new ProjectRepository(db);
-    this.tasks = options.taskRepository ?? new TaskRepository(db);
-    this.memberships = options.membershipService ?? new ProjectMembershipService(db);
-    this.agentRoster = options.agentRosterService ?? new ProjectAgentRosterService(db);
-    this.tx = options.transactionManager ?? {
-      begin: () => { db.exec('BEGIN'); },
-      commit: () => { db.exec('COMMIT'); },
-      rollback: () => { db.exec('ROLLBACK'); },
-    };
+  constructor(options: ProjectServiceOptions) {
+    this.projects = options.projectRepository;
+    this.tasks = options.taskRepository;
+    this.memberships = options.membershipService;
+    this.agentRoster = options.agentRosterService;
+    this.tx = options.transactionManager;
     this.knowledgePort = options.knowledgePort;
     this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }

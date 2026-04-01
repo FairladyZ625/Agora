@@ -1,5 +1,4 @@
-import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, CraftsmanExecutionRecord, SubtaskRecord, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TemplateRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
+import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, CraftsmanExecutionRecord, DatabasePort, IArchiveJobRepository, ICraftsmanExecutionRepository, ISubtaskRepository, ITaskRepository, ITemplateRepository, ITodoRepository, SubtaskRecord, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
 import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
 import type { IMProvisioningPort } from './im-ports.js';
@@ -20,12 +19,13 @@ import { parseAcpSessionId } from './adapters/acp-session-ref.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
-  taskRepository?: TaskRepository;
-  subtaskRepository?: SubtaskRepository;
-  archiveJobRepository?: ArchiveJobRepository;
-  todoRepository?: TodoRepositoryType;
-  executionRepository?: CraftsmanExecutionRepository;
-  templateRepository?: TemplateRepository;
+  taskRepository: ITaskRepository;
+  subtaskRepository: ISubtaskRepository;
+  archiveJobRepository: IArchiveJobRepository;
+  todoRepository: ITodoRepository;
+  executionRepository: ICraftsmanExecutionRepository;
+  templateRepository: ITemplateRepository;
+  databasePort: DatabasePort;
   archiveJobNotifier?: ArchiveJobNotifier;
   archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
   imProvisioningPort?: IMProvisioningPort;
@@ -43,12 +43,13 @@ export interface DashboardQueryServiceOptions {
 }
 
 export class DashboardQueryService {
-  private readonly tasks: TaskRepository;
-  private readonly subtasks: SubtaskRepository;
-  private readonly archives: ArchiveJobRepository;
-  private readonly todos: TodoRepositoryType;
-  private readonly executions: CraftsmanExecutionRepository;
-  private readonly templateRepository: TemplateRepository;
+  private readonly tasks: ITaskRepository;
+  private readonly subtasks: ISubtaskRepository;
+  private readonly archives: IArchiveJobRepository;
+  private readonly todos: ITodoRepository;
+  private readonly executions: ICraftsmanExecutionRepository;
+  private readonly templateRepository: ITemplateRepository;
+  private readonly db: DatabasePort;
   private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
   private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
@@ -65,16 +66,14 @@ export class DashboardQueryService {
   private agentsStatusCache: { value: AgentsStatusDto; expiresAtMs: number } | null = null;
   private readonly backgroundOperations = new Set<Promise<void>>();
 
-  constructor(
-    private readonly db: AgoraDatabase,
-    options: DashboardQueryServiceOptions,
-  ) {
-    this.tasks = options.taskRepository ?? new TaskRepository(db);
-    this.subtasks = options.subtaskRepository ?? new SubtaskRepository(db);
-    this.archives = options.archiveJobRepository ?? new ArchiveJobRepository(db);
-    this.todos = options.todoRepository ?? new TodoRepository(db);
-    this.executions = options.executionRepository ?? new CraftsmanExecutionRepository(db);
-    this.templateRepository = options.templateRepository ?? new TemplateRepository(db);
+  constructor(options: DashboardQueryServiceOptions) {
+    this.tasks = options.taskRepository;
+    this.subtasks = options.subtaskRepository;
+    this.archives = options.archiveJobRepository;
+    this.todos = options.todoRepository;
+    this.executions = options.executionRepository;
+    this.templateRepository = options.templateRepository;
+    this.db = options.databasePort;
     this.templateRepository.seedFromDir(options.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository.repairStageSemanticsFromDir(options.templatesDir);

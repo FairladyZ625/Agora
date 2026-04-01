@@ -116,6 +116,8 @@ import {
   ProjectBootstrapService,
   type ProjectService,
   ProjectService as ProjectServiceImpl,
+  ProjectMembershipService,
+  ProjectAgentRosterService,
   type TaskConversationService,
   type TaskInboundService,
   type TaskParticipationService,
@@ -126,7 +128,17 @@ import {
   type WorkspaceBootstrapService,
   WorkspaceBootstrapService as WorkspaceBootstrapServiceImpl,
 } from '@agora-ts/core';
-import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
+import {
+  NotificationOutboxRepository,
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  ProjectMembershipRepository,
+  ProjectAgentRosterRepository,
+  ProjectRepository,
+  TaskRepository,
+  type AgoraDatabase,
+} from '@agora-ts/db';
+import type { TransactionManager } from '@agora-ts/contracts';
 
 export interface BuildAppOptions {
   db?: AgoraDatabase;
@@ -687,11 +699,22 @@ export function buildApp(options: BuildAppOptions = {}) {
   app.addHook('onClose', async () => {
     await taskService?.drainBackgroundOperations?.();
   });
-  const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl({
+    projectRepository: new ProjectRepository(options.db),
+    taskRepository: new TaskRepository(options.db),
+    membershipService: new ProjectMembershipService({
+      membershipRepository: new ProjectMembershipRepository(options.db),
+      accountRepository: new HumanAccountRepository(options.db),
+    }),
+    agentRosterService: new ProjectAgentRosterService({
+      repository: new ProjectAgentRosterRepository(options.db),
+    }),
+    transactionManager: { begin: () => options.db!.exec('BEGIN'), commit: () => options.db!.exec('COMMIT'), rollback: () => options.db!.exec('ROLLBACK') },
+  }) : undefined);
   const workspaceBootstrapService = options.workspaceBootstrapService ?? (
     options.db && taskService
       ? new WorkspaceBootstrapServiceImpl({
-          db: options.db,
+          taskRepository: new TaskRepository(options.db),
           taskService,
           runtimeReady: options.workspaceBootstrap?.runtimeReady ?? false,
           runtimeReadinessReason: options.workspaceBootstrap?.runtimeReadinessReason ?? null,

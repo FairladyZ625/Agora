@@ -6,6 +6,7 @@ import { createAgoraDatabase, runMigrations, ArchiveJobRepository } from '@agora
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
 import { LiveSessionStore, TaskService } from '@agora-ts/core';
 import type { TmuxRuntimeService } from '@agora-ts/core';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { createServerRuntime } from './runtime.js';
 
 const tempPaths: string[] = [];
@@ -85,6 +86,7 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     runMigrations: vi.fn(),
     ArchiveJobRepository: class ArchiveJobRepository {},
     CraftsmanExecutionRepository: class CraftsmanExecutionRepository {},
+    ProjectBrainIndexJobRepository: class ProjectBrainIndexJobRepository {},
     SubtaskRepository: class SubtaskRepository {},
   }));
   vi.doMock('@agora-ts/core', () => ({
@@ -285,7 +287,7 @@ describe('server runtime', () => {
     );
     const bootstrapDb = createAgoraDatabase({ dbPath });
     runMigrations(bootstrapDb);
-    const bootstrapTaskService = new TaskService(bootstrapDb, {
+    const bootstrapTaskService = createTaskServiceFromDb(bootstrapDb, {
       templatesDir: new URL('../../../templates', import.meta.url).pathname,
       taskIdGenerator: () => 'OC-BOOT',
       isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
@@ -532,7 +534,7 @@ describe('server runtime', () => {
             ? Reflect.get(adapter, 'runtime') as object | undefined
             : undefined;
           inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
-          return new TaskService(context.db, {
+          return createTaskServiceFromDb(context.db, {
             templatesDir: context.templatesDir,
           });
         },
@@ -593,7 +595,7 @@ describe('server runtime', () => {
 
     const bootstrapDb = createAgoraDatabase({ dbPath });
     runMigrations(bootstrapDb);
-    const bootstrapTaskService = new TaskService(bootstrapDb, {
+    const bootstrapTaskService = createTaskServiceFromDb(bootstrapDb, {
       templatesDir: new URL('../../../templates', import.meta.url).pathname,
       taskIdGenerator: () => 'OC-ARCHIVE',
     });

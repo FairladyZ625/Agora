@@ -1,31 +1,34 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { IngestTaskConversationEntryRequestDto, TaskContextBindingRecord, TaskConversationEntryDto, TaskConversationMarkReadRequestDto, TaskConversationSummaryDto } from '@agora-ts/contracts';
-import {
-  TaskContextBindingRepository,
-  TaskConversationRepository,
-  TaskConversationReadCursorRepository,
-  type AgoraDatabase,
-} from '@agora-ts/db';
+import type {
+  ITaskContextBindingRepository,
+  ITaskConversationReadCursorRepository,
+  ITaskConversationRepository,
+  IngestTaskConversationEntryRequestDto,
+  TaskContextBindingRecord,
+  TaskConversationEntryDto,
+  TaskConversationMarkReadRequestDto,
+  TaskConversationSummaryDto,
+} from '@agora-ts/contracts';
 
 export interface TaskConversationServiceOptions {
-  bindingRepository?: TaskContextBindingRepository;
-  conversationRepository?: TaskConversationRepository;
-  readCursorRepository?: TaskConversationReadCursorRepository;
+  bindingRepository: ITaskContextBindingRepository;
+  conversationRepository: ITaskConversationRepository;
+  readCursorRepository: ITaskConversationReadCursorRepository;
   idGenerator?: () => string;
   now?: () => Date;
 }
 
 export class TaskConversationService {
-  private readonly bindings: TaskContextBindingRepository;
-  private readonly entries: TaskConversationRepository;
-  private readonly readCursors: TaskConversationReadCursorRepository;
+  private readonly bindings: ITaskContextBindingRepository;
+  private readonly entries: ITaskConversationRepository;
+  private readonly readCursors: ITaskConversationReadCursorRepository;
   private readonly idGenerator: () => string;
   private readonly now: () => Date;
 
-  constructor(db: AgoraDatabase, options: TaskConversationServiceOptions = {}) {
-    this.bindings = options.bindingRepository ?? new TaskContextBindingRepository(db);
-    this.entries = options.conversationRepository ?? new TaskConversationRepository(db);
-    this.readCursors = options.readCursorRepository ?? new TaskConversationReadCursorRepository(db);
+  constructor(options: TaskConversationServiceOptions) {
+    this.bindings = options.bindingRepository;
+    this.entries = options.conversationRepository;
+    this.readCursors = options.readCursorRepository;
     this.idGenerator = options.idGenerator ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
   }

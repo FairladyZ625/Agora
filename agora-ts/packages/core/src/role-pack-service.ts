@@ -1,38 +1,32 @@
-import type { RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto, TemplateDetailDto } from '@agora-ts/contracts';
-import { RoleBindingRepository, RoleDefinitionRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { IRoleBindingRepository, IRoleDefinitionRepository, RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto, RoleDefinitionRecord, TemplateDetailDto } from '@agora-ts/contracts';
 
 export interface RolePackServiceOptions {
-  db?: AgoraDatabase;
-  roleDefinitions?: RoleDefinitionRepository;
-  roleBindings?: RoleBindingRepository;
+  roleDefinitions: IRoleDefinitionRepository;
+  roleBindings: IRoleBindingRepository;
   rolePacksDir?: string | null;
 }
 
 export class RolePackService {
-  private readonly roleDefinitions: RoleDefinitionRepository;
-  private readonly roleBindings: RoleBindingRepository;
+  private readonly roleDefinitions: IRoleDefinitionRepository;
+  private readonly roleBindings: IRoleBindingRepository;
 
   constructor(options: RolePackServiceOptions) {
-    const hasAllRepos = options.roleDefinitions && options.roleBindings;
-    if (!hasAllRepos && !options.db) {
-      throw new Error('RolePackService requires either db or both roleDefinitions and roleBindings');
-    }
-    this.roleDefinitions = options.roleDefinitions ?? new RoleDefinitionRepository(options.db!);
-    this.roleBindings = options.roleBindings ?? new RoleBindingRepository(options.db!);
+    this.roleDefinitions = options.roleDefinitions;
+    this.roleBindings = options.roleBindings;
     if (options.rolePacksDir) {
       this.roleDefinitions.seedFromPackDir(options.rolePacksDir);
     }
   }
 
-  listRoleDefinitions(): ReturnType<RoleDefinitionRepository['listRoleDefinitions']> {
+  listRoleDefinitions(): RoleDefinitionRecord[] {
     return this.roleDefinitions.listRoleDefinitions();
   }
 
-  getRoleDefinition(roleId: string): ReturnType<RoleDefinitionRepository['getRoleDefinition']> {
+  getRoleDefinition(roleId: string): RoleDefinitionRecord | null {
     return this.roleDefinitions.getRoleDefinition(roleId);
   }
 
-  saveRoleDefinition(definition: RoleDefinitionDto): ReturnType<RoleDefinitionRepository['saveRoleDefinition']> {
+  saveRoleDefinition(definition: RoleDefinitionDto): RoleDefinitionRecord {
     return this.roleDefinitions.saveRoleDefinition(definition);
   }
 

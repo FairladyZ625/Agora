@@ -7,8 +7,9 @@ import { Command } from 'commander';
 import { buildApp } from '../apps/server/src/app.ts';
 import { DiscordIMProvisioningAdapter } from '../packages/adapters-discord/src/index.ts';
 import { loadAgoraConfig } from '../packages/config/src/index.ts';
-import { TaskContextBindingService, TaskConversationService, TaskInboundService, TaskService } from '../packages/core/src/index.ts';
-import { createAgoraDatabase, runMigrations } from '../packages/db/src/index.ts';
+import { TaskContextBindingService, TaskConversationService, TaskInboundService } from '../packages/core/src/index.ts';
+import { createAgoraDatabase, runMigrations, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository } from '../packages/db/src/index.ts';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { loadOpenClawDiscordAccountTokens } from '../packages/adapters-openclaw/src/index.ts';
 
 function sleep(ms: number) {
@@ -70,9 +71,16 @@ async function main() {
   const dbPath = join(tempDir, 'smoke.db');
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
-  const bindings = new TaskContextBindingService(db);
-  const conversations = new TaskConversationService(db);
-  const taskService = new TaskService(db, {
+  const bindingRepository = new TaskContextBindingRepository(db);
+  const conversationRepository = new TaskConversationRepository(db);
+  const readCursorRepository = new TaskConversationReadCursorRepository(db);
+  const bindings = new TaskContextBindingService({ repository: bindingRepository });
+  const conversations = new TaskConversationService({
+    bindingRepository,
+    conversationRepository,
+    readCursorRepository,
+  });
+  const taskService = createTaskServiceFromDb(db, {
     templatesDir: join(process.cwd(), 'templates'),
     taskIdGenerator: () => options.taskId,
     imProvisioningPort: provisioning,

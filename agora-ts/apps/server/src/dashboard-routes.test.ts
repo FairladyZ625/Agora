@@ -7,17 +7,45 @@ import {
   runMigrations,
   ArchiveJobRepository,
   CraftsmanExecutionRepository,
+  ParticipantBindingRepository,
   ProjectRepository,
+  RuntimeSessionBindingRepository,
   SubtaskRepository,
+  TaskContextBindingRepository,
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
 import { DashboardQueryService, FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, StubIMProvisioningPort, TaskContextBindingService, TaskParticipationService, TaskService, TmuxRuntimeService } from '@agora-ts/core';
+import { createDashboardQueryServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+
+function createTaskContextBindingServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  options: Partial<ConstructorParameters<typeof TaskContextBindingService>[0]> = {},
+) {
+  return new TaskContextBindingService({
+    repository: options.repository ?? new TaskContextBindingRepository(db),
+    ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
+  });
+}
+
+function createTaskParticipationServiceFromDb(
+  db: ReturnType<typeof createAgoraDatabase>,
+  options: Partial<ConstructorParameters<typeof TaskParticipationService>[0]> = {},
+) {
+  return new TaskParticipationService({
+    participantRepository: options.participantRepository ?? new ParticipantBindingRepository(db),
+    runtimeSessionRepository: options.runtimeSessionRepository ?? new RuntimeSessionBindingRepository(db),
+    taskBindingRepository: options.taskBindingRepository ?? new TaskContextBindingRepository(db),
+    ...(options.participantIdGenerator ? { participantIdGenerator: options.participantIdGenerator } : {}),
+    ...(options.runtimeSessionIdGenerator ? { runtimeSessionIdGenerator: options.runtimeSessionIdGenerator } : {}),
+    ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-server-'));
@@ -38,11 +66,11 @@ describe('dashboard routes', () => {
   it('serves agents status, archive jobs, todos, and templates', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-500',
     });
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
     const archives = new ArchiveJobRepository(db);
@@ -188,7 +216,7 @@ describe('dashboard routes', () => {
         },
       ],
     };
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir, agentRegistry, presenceSource });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir, agentRegistry, presenceSource });
     const app = buildApp({ dashboardQueryService: dashboardQueries });
 
     const summary = await app.inject({ method: 'GET', url: '/api/agents/status' });
@@ -232,12 +260,12 @@ describe('dashboard routes', () => {
     const dbPath = makeDbPath();
     const db = createAgoraDatabase({ dbPath });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-501',
     });
     const outboxDir = join(dirname(dbPath), 'archive-outbox');
-    const dashboardQueries = new DashboardQueryService(db, {
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       archiveJobNotifier: new FileArchiveJobNotifier({
         outboxDir,
@@ -363,11 +391,11 @@ describe('dashboard routes', () => {
   it('returns 400 for malformed todo payloads and invalid numeric ids', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-502',
     });
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir });
     const app = buildApp({ taskService, dashboardQueryService: dashboardQueries });
 
     const badCreateTodo = await app.inject({
@@ -399,11 +427,11 @@ describe('dashboard routes', () => {
   it('supports manual stale archive scan', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-503',
     });
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir });
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
 
@@ -450,12 +478,12 @@ describe('dashboard routes', () => {
     const dbPath = makeDbPath();
     const db = createAgoraDatabase({ dbPath });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-504',
     });
     const receiptDir = join(dirname(dbPath), 'archive-receipts');
-    const dashboardQueries = new DashboardQueryService(db, {
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({
         receiptDir,
@@ -517,19 +545,19 @@ describe('dashboard routes', () => {
   it('syncs a pending archive job and rejects the legacy approve route', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db);
+    const bindings = createTaskContextBindingServiceFromDb(db);
     const provisioning = new StubIMProvisioningPort({
       im_provider: 'discord',
       conversation_ref: 'discord-parent',
       thread_ref: 'discord-thread-route-cleanup',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-ROUTE-ARCHIVE-CLEANUP',
       taskContextBindingService: bindings,
       imProvisioningPort: provisioning,
     });
-    const dashboardQueries = new DashboardQueryService(db, {
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       taskContextBindingService: bindings,
       imProvisioningPort: provisioning,
@@ -583,7 +611,7 @@ describe('dashboard routes', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T07:00:30.000Z'),
     });
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir, liveSessions });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir, liveSessions });
     const app = buildApp({ dashboardQueryService: dashboardQueries, liveSessionStore: liveSessions });
 
     const ingest = await app.inject({
@@ -651,8 +679,8 @@ describe('dashboard routes', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T07:00:30.000Z'),
     });
-    const taskContextBindings = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const taskContextBindings = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-route-1', 'pb-route-2', 'pb-route-3', 'pb-route-4'];
         return () => ids.shift() ?? 'pb-route-x';
@@ -668,7 +696,7 @@ describe('dashboard routes', () => {
         },
       },
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-592',
       taskContextBindingService: taskContextBindings,
@@ -762,7 +790,7 @@ describe('dashboard routes', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T07:02:00.000Z'),
     });
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir, liveSessions });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir, liveSessions });
     const app = buildApp({ dashboardQueryService: dashboardQueries, liveSessionStore: liveSessions });
 
     await app.inject({
@@ -818,7 +846,7 @@ describe('dashboard routes', () => {
     });
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dashboardQueries = new DashboardQueryService(db, { templatesDir, legacyRuntimeService });
+    const dashboardQueries = createDashboardQueryServiceFromDb(db, { templatesDir, legacyRuntimeService });
     const app = buildApp({ dashboardQueryService: dashboardQueries, legacyRuntimeService });
 
     const runtimeIdentity = await app.inject({

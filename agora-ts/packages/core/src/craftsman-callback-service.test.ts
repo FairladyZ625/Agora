@@ -14,7 +14,7 @@ import {
   TaskContextBindingRepository,
   TaskRepository,
 } from '@agora-ts/db';
-import { CraftsmanCallbackService } from './craftsman-callback-service.js';
+import { createCraftsmanCallbackServiceFromDb } from '@agora-ts/testing';
 
 const tempPaths: string[] = [];
 
@@ -42,7 +42,7 @@ describe('craftsman callback service', () => {
     const executions = new CraftsmanExecutionRepository(db);
     const flowLogs = new FlowLogRepository(db);
     const progressLogs = new ProgressLogRepository(db);
-    const callback = new CraftsmanCallbackService(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
 
     tasks.insertTask({
       id: 'OC-970',
@@ -141,7 +141,7 @@ describe('craftsman callback service', () => {
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
     const flowLogs = new FlowLogRepository(db);
-    const callback = new CraftsmanCallbackService(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
 
     tasks.insertTask({
       id: 'OC-971',
@@ -219,7 +219,7 @@ describe('craftsman callback service', () => {
     const executions = new CraftsmanExecutionRepository(db);
     const flowLogs = new FlowLogRepository(db);
     const progressLogs = new ProgressLogRepository(db);
-    const callback = new CraftsmanCallbackService(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
 
     tasks.insertTask({
       id: 'OC-972',
@@ -297,7 +297,7 @@ describe('craftsman callback service', () => {
     const executions = new CraftsmanExecutionRepository(db);
     const flowLogs = new FlowLogRepository(db);
     const progressLogs = new ProgressLogRepository(db);
-    const callback = new CraftsmanCallbackService(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
 
     tasks.insertTask({
       id: 'OC-973',
@@ -385,7 +385,7 @@ describe('craftsman callback service', () => {
     const bindings = new TaskContextBindingRepository(db);
     const outbox = new NotificationOutboxRepository(db);
     const conversations = new TaskConversationRepository(db);
-    const callback = new CraftsmanCallbackService(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
 
     tasks.insertTask({
       id: 'OC-974',
@@ -483,7 +483,7 @@ describe('craftsman callback service', () => {
     const bindings = new TaskContextBindingRepository(db);
     const outbox = new NotificationOutboxRepository(db);
     const conversations = new TaskConversationRepository(db);
-    const callback = new CraftsmanCallbackService(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
 
     tasks.insertTask({
       id: 'OC-975',
