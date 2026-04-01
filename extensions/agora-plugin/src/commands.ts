@@ -284,17 +284,19 @@ async function handleAdvance(bridge: AgoraBridge, args: string[], senderId: stri
 async function handleApprove(
   bridge: AgoraBridge,
   args: string[],
-  ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; provider?: string },
+  ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; channelId?: string; provider?: string },
 ): Promise<CommandResult> {
   const senderId = ctx.senderId || ctx.from || "unknown";
-  if (!looksLikeTaskId(args[0]) && (ctx.threadId || ctx.conversationId)) {
+  const threadRef = ctx.threadId ?? ctx.channelId;
+  const conversationRef = ctx.conversationId;
+  if (!looksLikeTaskId(args[0]) && (threadRef || conversationRef)) {
     if (!ctx.provider) {
       return { text: "Provider context is required for current-thread /task approve" };
     }
     const task = await bridge.approveCurrent({
       provider: ctx.provider,
-      threadRef: ctx.threadId,
-      conversationRef: ctx.conversationId,
+      threadRef,
+      conversationRef,
       actorId: senderId,
       comment: args.join(" "),
     });
@@ -305,24 +307,26 @@ async function handleApprove(
     return { text: "Usage: /task approve [task_id] [comment]" };
   }
   const comment = args.slice(1).join(" ");
-  const task = await bridge.approve(taskId, senderId, comment);
+  const task = await bridge.approve(taskId, senderId, comment, ctx.provider);
   return { text: `${task.id} approved` };
 }
 
 async function handleReject(
   bridge: AgoraBridge,
   args: string[],
-  ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; provider?: string },
+  ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; channelId?: string; provider?: string },
 ): Promise<CommandResult> {
   const senderId = ctx.senderId || ctx.from || "unknown";
-  if (!looksLikeTaskId(args[0]) && (ctx.threadId || ctx.conversationId)) {
+  const threadRef = ctx.threadId ?? ctx.channelId;
+  const conversationRef = ctx.conversationId;
+  if (!looksLikeTaskId(args[0]) && (threadRef || conversationRef)) {
     if (!ctx.provider) {
       return { text: "Provider context is required for current-thread /task reject" };
     }
     const task = await bridge.rejectCurrent({
       provider: ctx.provider,
-      threadRef: ctx.threadId,
-      conversationRef: ctx.conversationId,
+      threadRef,
+      conversationRef,
       actorId: senderId,
       reason: args.join(" "),
     });
@@ -333,7 +337,7 @@ async function handleReject(
     return { text: "Usage: /task reject [task_id] [reason]" };
   }
   const reason = args.slice(1).join(" ");
-  const task = await bridge.reject(taskId, senderId, reason);
+  const task = await bridge.reject(taskId, senderId, reason, ctx.provider);
   return { text: `${task.id} rejected` };
 }
 

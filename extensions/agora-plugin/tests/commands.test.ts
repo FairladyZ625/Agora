@@ -219,6 +219,80 @@ describe("registerTaskCommands", () => {
     expect(result.text).toBe(expected);
   });
 
+  it("passes provider through direct task approve inside discord context", async () => {
+    const approve = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { approve } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({
+      args: "approve OC-1775041938434",
+      senderId: "530383608410800138",
+      provider: "discord",
+    });
+
+    expect(approve).toHaveBeenCalledWith("OC-1775041938434", "530383608410800138", "", "discord");
+    expect(result.text).toContain("OC-1775041938434 approved");
+  });
+
+  it("uses channelId as thread context fallback for current-thread approve", async () => {
+    const approveCurrent = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { approveCurrent } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({
+      args: "approve",
+      senderId: "530383608410800138",
+      provider: "discord",
+      channelId: "discord-thread-1",
+    });
+
+    expect(approveCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "discord-thread-1",
+      conversationRef: undefined,
+      actorId: "530383608410800138",
+      comment: "",
+    });
+    expect(result.text).toContain("OC-1775041938434 approved");
+  });
+
+  it("passes provider through direct task reject inside discord context", async () => {
+    const reject = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { reject } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({
+      args: "reject OC-1775041938434 needs-fixes",
+      senderId: "530383608410800138",
+      provider: "discord",
+    });
+
+    expect(reject).toHaveBeenCalledWith("OC-1775041938434", "530383608410800138", "needs-fixes", "discord");
+    expect(result.text).toContain("OC-1775041938434 rejected");
+  });
+
+  it("uses channelId as thread context fallback for current-thread reject", async () => {
+    const rejectCurrent = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { rejectCurrent } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({
+      args: "reject",
+      senderId: "530383608410800138",
+      provider: "discord",
+      channelId: "discord-thread-1",
+    });
+
+    expect(rejectCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "discord-thread-1",
+      conversationRef: undefined,
+      actorId: "530383608410800138",
+      reason: "",
+    });
+    expect(result.text).toContain("OC-1775041938434 rejected");
+  });
+
   it("formats happy-path command replies across the task command surface", async () => {
     const bridge = {
       listTasks: vi.fn(async () => [{ id: "OC-101", state: "active", current_stage: "develop", title: "Task one" }]),

@@ -335,11 +335,17 @@ export class AgoraBridge {
     });
   }
 
-  async approve(taskId: string, approverId: string, comment = ""): Promise<TaskDto> {
+  async approve(
+    taskId: string,
+    approverId: string,
+    comment = "",
+    provider?: string,
+  ): Promise<TaskDto> {
     const body: ApproveTaskRequestDto = { approver_id: approverId, comment };
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/approve`, {
       method: "POST",
       body,
+      headers: provider ? this.humanIdentityHeaders(provider, approverId) : {},
     });
   }
 
@@ -363,11 +369,17 @@ export class AgoraBridge {
     });
   }
 
-  async reject(taskId: string, rejectorId: string, reason = ""): Promise<TaskDto> {
+  async reject(
+    taskId: string,
+    rejectorId: string,
+    reason = "",
+    provider?: string,
+  ): Promise<TaskDto> {
     const body: RejectTaskRequestDto = { rejector_id: rejectorId, reason };
     return this.request(`/api/tasks/${encodeURIComponent(taskId)}/reject`, {
       method: "POST",
       body,
+      headers: provider ? this.humanIdentityHeaders(provider, rejectorId) : {},
     });
   }
 

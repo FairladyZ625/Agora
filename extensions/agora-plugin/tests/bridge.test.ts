@@ -227,6 +227,36 @@ describe("AgoraBridge", () => {
     );
   });
 
+  it("sends human identity headers for direct approve and reject actions when provider is present", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-002" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const bridge = new AgoraBridge("http://127.0.0.1:8420");
+    await bridge.approve("OC-002", "discord-user-1", "ship it", "discord");
+    await bridge.reject("OC-003", "discord-user-2", "needs fixes", "discord");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8420/api/tasks/OC-002/approve",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-agora-human-provider": "discord",
+          "x-agora-human-external-id": "discord-user-1",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8420/api/tasks/OC-003/reject",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-agora-human-provider": "discord",
+          "x-agora-human-external-id": "discord-user-2",
+        }),
+      }),
+    );
+  });
+
   it("posts thread-scoped current-task approval and rejection requests", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "OC-777" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
