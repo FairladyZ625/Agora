@@ -256,6 +256,28 @@ describe("registerTaskCommands", () => {
     expect(result.text).toContain("OC-1775041938434 approved");
   });
 
+  it("infers provider from from-context for current-thread approve", async () => {
+    const approveCurrent = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { approveCurrent } as any, createPluginTrace(api as any));
+
+    const result = await getCommand().handler({
+      args: "approve",
+      senderId: "530383608410800138",
+      from: "discord:channel:1488858559230771381",
+      channelId: "1488858559230771381",
+    });
+
+    expect(approveCurrent).toHaveBeenCalledWith({
+      provider: "discord",
+      threadRef: "1488858559230771381",
+      conversationRef: undefined,
+      actorId: "530383608410800138",
+      comment: "",
+    });
+    expect(result.text).toContain("OC-1775041938434 approved");
+  });
+
   it("passes provider through direct task reject inside discord context", async () => {
     const reject = vi.fn(async () => ({ id: "OC-1775041938434" }));
     const { api, getCommand } = buildApi();
@@ -291,6 +313,27 @@ describe("registerTaskCommands", () => {
       reason: "",
     });
     expect(result.text).toContain("OC-1775041938434 rejected");
+  });
+
+  it("infers provider from from-context for direct task approve and reject", async () => {
+    const approve = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const reject = vi.fn(async () => ({ id: "OC-1775041938434" }));
+    const { api, getCommand } = buildApi();
+    registerTaskCommands(api as any, { approve, reject } as any, createPluginTrace(api as any));
+
+    await getCommand().handler({
+      args: "approve OC-1775041938434",
+      senderId: "530383608410800138",
+      from: "discord:channel:1488858559230771381",
+    });
+    await getCommand().handler({
+      args: "reject OC-1775041938434 not-yet",
+      senderId: "530383608410800138",
+      from: "discord:channel:1488858559230771381",
+    });
+
+    expect(approve).toHaveBeenCalledWith("OC-1775041938434", "530383608410800138", "", "discord");
+    expect(reject).toHaveBeenCalledWith("OC-1775041938434", "530383608410800138", "not-yet", "discord");
   });
 
   it("formats happy-path command replies across the task command surface", async () => {
@@ -415,14 +458,12 @@ describe("registerTaskCommands", () => {
 
     await expect(getCommand().handler({
       args: "approve",
-      from: "legacy-user",
       threadId: "thread-11",
     })).resolves.toEqual({
       text: "Provider context is required for current-thread /task approve",
     });
     await expect(getCommand().handler({
       args: "reject",
-      from: "legacy-user",
       conversationId: "channel-11",
     })).resolves.toEqual({
       text: "Provider context is required for current-thread /task reject",

@@ -287,14 +287,15 @@ async function handleApprove(
   ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; channelId?: string; provider?: string },
 ): Promise<CommandResult> {
   const senderId = ctx.senderId || ctx.from || "unknown";
+  const provider = resolveProvider(ctx);
   const threadRef = ctx.threadId ?? ctx.channelId;
   const conversationRef = ctx.conversationId;
   if (!looksLikeTaskId(args[0]) && (threadRef || conversationRef)) {
-    if (!ctx.provider) {
+    if (!provider) {
       return { text: "Provider context is required for current-thread /task approve" };
     }
     const task = await bridge.approveCurrent({
-      provider: ctx.provider,
+      provider,
       threadRef,
       conversationRef,
       actorId: senderId,
@@ -307,7 +308,7 @@ async function handleApprove(
     return { text: "Usage: /task approve [task_id] [comment]" };
   }
   const comment = args.slice(1).join(" ");
-  const task = await bridge.approve(taskId, senderId, comment, ctx.provider);
+  const task = await bridge.approve(taskId, senderId, comment, provider);
   return { text: `${task.id} approved` };
 }
 
@@ -317,14 +318,15 @@ async function handleReject(
   ctx: { senderId?: string; from?: string; threadId?: string; conversationId?: string; channelId?: string; provider?: string },
 ): Promise<CommandResult> {
   const senderId = ctx.senderId || ctx.from || "unknown";
+  const provider = resolveProvider(ctx);
   const threadRef = ctx.threadId ?? ctx.channelId;
   const conversationRef = ctx.conversationId;
   if (!looksLikeTaskId(args[0]) && (threadRef || conversationRef)) {
-    if (!ctx.provider) {
+    if (!provider) {
       return { text: "Provider context is required for current-thread /task reject" };
     }
     const task = await bridge.rejectCurrent({
-      provider: ctx.provider,
+      provider,
       threadRef,
       conversationRef,
       actorId: senderId,
@@ -337,7 +339,7 @@ async function handleReject(
     return { text: "Usage: /task reject [task_id] [reason]" };
   }
   const reason = args.slice(1).join(" ");
-  const task = await bridge.reject(taskId, senderId, reason, ctx.provider);
+  const task = await bridge.reject(taskId, senderId, reason, provider);
   return { text: `${task.id} rejected` };
 }
 
@@ -351,11 +353,12 @@ async function handleArchonApprove(
     return { text: "Usage: /task archon-approve <task_id> [comment]" };
   }
   const senderId = ctx.senderId || ctx.from || "unknown";
-  if (!ctx.provider) {
+  const provider = resolveProvider(ctx);
+  if (!provider) {
     return { text: "Provider context is required for /task archon-approve" };
   }
   const comment = args.slice(1).join(" ");
-  const task = await bridge.archonApprove(taskId, senderId, ctx.provider, comment);
+  const task = await bridge.archonApprove(taskId, senderId, provider, comment);
   return { text: `${task.id} archon-approved` };
 }
 
@@ -369,12 +372,25 @@ async function handleArchonReject(
     return { text: "Usage: /task archon-reject <task_id> [reason]" };
   }
   const senderId = ctx.senderId || ctx.from || "unknown";
-  if (!ctx.provider) {
+  const provider = resolveProvider(ctx);
+  if (!provider) {
     return { text: "Provider context is required for /task archon-reject" };
   }
   const reason = args.slice(1).join(" ");
-  const task = await bridge.archonReject(taskId, senderId, ctx.provider, reason);
+  const task = await bridge.archonReject(taskId, senderId, provider, reason);
   return { text: `${task.id} archon-rejected` };
+}
+
+function resolveProvider(ctx: { provider?: string; from?: string }): string | undefined {
+  if (ctx.provider?.trim()) {
+    return ctx.provider.trim();
+  }
+  const from = ctx.from?.trim();
+  if (!from) {
+    return undefined;
+  }
+  const [provider] = from.split(":");
+  return provider?.trim() || undefined;
 }
 
 async function handleConfirm(bridge: AgoraBridge, args: string[], senderId: string): Promise<CommandResult> {
