@@ -178,18 +178,39 @@ function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
 }
 
-function parseNumericOptionList(rawValues: string[] = [], optionName: string): number[] {
-  return rawValues.map((value) => {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error(`invalid ${optionName} value: ${value}. Expected positive integer.`);
-    }
+function resolveAccountId(
+  humanAccountService: HumanAccountService,
+  rawValue: string,
+  optionName: string,
+): number {
+  const trimmed = rawValue.trim();
+  const parsed = Number(trimmed);
+  if (Number.isSafeInteger(parsed) && parsed > 0) {
     return parsed;
-  });
+  }
+  const discordBoundAccount = humanAccountService.resolveIdentity('discord', trimmed);
+  if (discordBoundAccount) {
+    return discordBoundAccount.id;
+  }
+  throw new Error(
+    `invalid ${optionName} value: ${rawValue}. Expected positive integer human account id or bound Discord user id.`,
+  );
 }
 
-function parseRequiredNumericOption(rawValue: string, optionName: string): number {
-  const [parsed] = parseNumericOptionList([rawValue], optionName);
+function parseAccountOptionList(
+  humanAccountService: HumanAccountService,
+  rawValues: string[] = [],
+  optionName: string,
+): number[] {
+  return rawValues.map((value) => resolveAccountId(humanAccountService, value, optionName));
+}
+
+function parseRequiredAccountOption(
+  humanAccountService: HumanAccountService,
+  rawValue: string,
+  optionName: string,
+): number {
+  const [parsed] = parseAccountOptionList(humanAccountService, [rawValue], optionName);
   if (parsed === undefined) {
     throw new Error(`missing ${optionName} value`);
   }
@@ -1880,8 +1901,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       metadataJson?: string;
     }) => {
       const nomosId = requireSupportedNomosId(options.nomosId);
-      const adminAccountIds = parseNumericOptionList(options.adminAccountId, '--admin-account-id');
-      const memberAccountIds = parseNumericOptionList(options.memberAccountId, '--member-account-id');
+      const adminAccountIds = parseAccountOptionList(humanAccountService, options.adminAccountId, '--admin-account-id');
+      const memberAccountIds = parseAccountOptionList(humanAccountService, options.memberAccountId, '--member-account-id');
       const derivedOwner = options.owner
         ?? (adminAccountIds[0] ? resolveAccountLabel(humanAccountService, adminAccountIds[0]) : undefined);
       const input = createProjectRequestSchema.parse({
@@ -1965,7 +1986,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--account-id <accountId>', 'human account id')
     .option('--role <role>', 'admin|member', 'member')
     .action((projectId: string, options: { accountId: string; role?: 'admin' | 'member' }) => {
-      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
+      const accountId = parseRequiredAccountOption(humanAccountService, options.accountId, '--account-id');
       const membership = projectService.addProjectMembership({
         projectId,
         account_id: accountId,
@@ -1980,7 +2001,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .argument('<projectId>', 'project id')
     .requiredOption('--account-id <accountId>', 'human account id')
     .action((projectId: string, options: { accountId: string }) => {
-      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
+      const accountId = parseRequiredAccountOption(humanAccountService, options.accountId, '--account-id');
       const membership = projectService.removeProjectMembership(projectId, accountId);
       writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
       writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
