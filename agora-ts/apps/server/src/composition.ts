@@ -24,12 +24,10 @@ import {
   InboxService,
   InventoryBackedAgentRuntimePort,
   LiveSessionStore,
-  ModeController,
   NotificationDispatcher,
   OpenClawCitizenProjectionAdapter,
   OsHostResourcePort,
   HumanAccountService,
-  ProgressService,
   ProjectAgentRosterService,
   ProjectBrainIndexQueueService,
   type ProjectBrainIndexWorkerService,
@@ -317,10 +315,6 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       const inboxRepository = new InboxRepository(db);
       const craftsmanExecutionRepository = new CraftsmanExecutionRepository(db);
       const templateRepository = new TemplateRepository(db);
-      const progressService = new ProgressService({
-        flowLogRepository,
-        progressLogRepository,
-      });
       const projectMembershipService = new ProjectMembershipService({
         membershipRepository: new ProjectMembershipRepository(db),
         accountRepository: new HumanAccountRepository(db),

@@ -100,9 +100,7 @@ export function createRolePackServiceFromDb(
 
 export function createTaskBrainBindingServiceFromDb(
   db: AgoraDatabase,
-  options: ConstructorParameters<typeof TaskBrainBindingService>[0] = {
-    repository: new TaskBrainBindingRepository(db),
-  },
+  options: Partial<ConstructorParameters<typeof TaskBrainBindingService>[0]> = {},
 ): TaskBrainBindingService {
   return new TaskBrainBindingService({
     repository: options.repository ?? new TaskBrainBindingRepository(db),
@@ -112,9 +110,7 @@ export function createTaskBrainBindingServiceFromDb(
 
 export function createTaskContextBindingServiceFromDb(
   db: AgoraDatabase,
-  options: ConstructorParameters<typeof TaskContextBindingService>[0] = {
-    repository: new TaskContextBindingRepository(db),
-  },
+  options: Partial<ConstructorParameters<typeof TaskContextBindingService>[0]> = {},
 ): TaskContextBindingService {
   return new TaskContextBindingService({
     repository: options.repository ?? new TaskContextBindingRepository(db),

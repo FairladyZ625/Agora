@@ -15,8 +15,6 @@ import {
   createTaskServiceFromDb,
 } from '@agora-ts/testing';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
-import { CitizenService } from './citizen-service.js';
-import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
@@ -26,13 +24,11 @@ import { LiveSessionStore } from './live-session-store.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
 import { ProjectContextWriter } from './project-context-writer.js';
-import { ProjectService } from './project-service.js';
-import { RolePackService } from './role-pack-service.js';
-import { TaskService } from './task-service.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+type TaskServiceBuilderOptions = NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>;
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-task-service-'));
@@ -112,7 +108,7 @@ describe('task service', () => {
           claude: new StubCraftsmanAdapter('claude'),
         },
       }),
-      liveSessionStore,
+      liveSessionStore: liveSessionStore as unknown as NonNullable<TaskServiceBuilderOptions['liveSessionStore']>,
       hostResourcePort: {
         readSnapshot: () => ({
           observed_at: '2026-03-14T04:30:00.000Z',
@@ -1061,15 +1057,15 @@ describe('task service', () => {
       },
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
-      citizenService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
+      citizenService: citizenService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['citizenService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     const automationService = new ProjectBrainAutomationService({
-      projectBrainService,
+      projectBrainService: projectBrainService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainAutomationService>[0]['projectBrainService']>,
     });
     const service = createTaskServiceFromDb(db, {
       templatesDir,
@@ -1082,7 +1078,7 @@ describe('task service', () => {
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
-      projectBrainAutomationService: automationService,
+      projectBrainAutomationService: automationService as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
     });
 
     service.createTask({
@@ -1153,7 +1149,7 @@ describe('task service', () => {
         buildBootstrapContext,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
-      } as unknown as ProjectBrainAutomationService,
+      } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
     });
 
     service.createTask({
@@ -5664,7 +5660,7 @@ describe('task service', () => {
         buildBootstrapContext,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
-      } as unknown as ProjectBrainAutomationService,
+      } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
     });
     const subtasks = new SubtaskRepository(db);
 

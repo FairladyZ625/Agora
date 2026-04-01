@@ -11,7 +11,7 @@ import {
   TaskConversationReadCursorRepository,
   TaskConversationRepository,
 } from '@agora-ts/db';
-import { HumanAccountService, TaskContextBindingService, TaskConversationService, TaskInboundService, TaskService } from '@agora-ts/core';
+import { HumanAccountService, TaskContextBindingService, TaskConversationService, TaskInboundService } from '@agora-ts/core';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 

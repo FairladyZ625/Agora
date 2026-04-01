@@ -127,8 +127,8 @@ describe('project brain automation service', () => {
       },
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
-      citizenService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
+      citizenService: citizenService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['citizenService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -198,7 +198,7 @@ describe('project brain automation service', () => {
       source_task_ids: ['OC-100'],
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -267,7 +267,7 @@ describe('project brain automation service', () => {
       source_task_ids: ['OC-100'],
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
       citizenService: {
         listCitizens: vi.fn().mockReturnValue([
           {

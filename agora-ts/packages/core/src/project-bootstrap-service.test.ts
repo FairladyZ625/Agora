@@ -59,11 +59,14 @@ describe('project bootstrap service', () => {
       owner: 'archon',
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as ConstructorParameters<typeof ProjectBrainService>[0]['projectService'],
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
+    });
+    const automationService = new ProjectBrainAutomationService({
+      projectBrainService: projectBrainService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainAutomationService>[0]['projectBrainService']>,
     });
     const taskService = createTaskServiceFromDb(db, {
       templatesDir,
@@ -76,13 +79,11 @@ describe('project bootstrap service', () => {
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
-      projectBrainAutomationService: new ProjectBrainAutomationService({
-        projectBrainService,
-      }),
+      projectBrainAutomationService: automationService as unknown as NonNullable<NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>['projectBrainAutomationService']>,
     });
     const service = new ProjectBootstrapService({
-      projectService,
-      taskService,
+      projectService: projectService as unknown as ConstructorParameters<typeof ProjectBootstrapService>[0]['projectService'],
+      taskService: taskService as unknown as ConstructorParameters<typeof ProjectBootstrapService>[0]['taskService'],
     });
 
     const task = service.createHarnessBootstrapTask({

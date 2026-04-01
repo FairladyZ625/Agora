@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskService } from '@agora-ts/core';
-import { StubIMProvisioningPort, TaskService as CoreTaskService } from '@agora-ts/core';
+import { StubIMProvisioningPort } from '@agora-ts/core';
 import type { TmuxRuntimeService } from '@agora-ts/core';
 import { createCliComposition } from './composition.js';
 
@@ -84,6 +84,9 @@ describe('cli composition', () => {
     expect(composition.taskService).toBeDefined();
     expect(composition.legacyRuntimeService).toBeDefined();
     expect(composition.tmuxRuntimeService).toBe(composition.legacyRuntimeService);
+    expect(Reflect.get(composition.taskService as object, 'gateQueryPort')?.constructor?.name).toBe('SqliteGateQueryPort');
+    expect(Reflect.get(composition.taskService as object, 'gateService')?.constructor?.name).toBe('GateService');
+    expect(Reflect.get(composition.taskService as object, 'taskRepository')?.constructor?.name).toBe('TaskRepository');
     expect(Reflect.get(composition.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(Reflect.get(composition.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     composition.db.close();
@@ -283,9 +286,9 @@ describe('cli composition', () => {
             ? Reflect.get(adapter, 'runtime') as object | undefined
             : undefined;
           inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
-          return new CoreTaskService(context.db, {
-            templatesDir: context.templatesDir,
-          });
+          return {
+            listTasks: () => [],
+          } as unknown as TaskService;
         },
       },
     );

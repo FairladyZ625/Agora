@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, TemplateRepository } from '@agora-ts/db';
-import { DashboardQueryService, InboxService, TaskService, TemplateAuthoringService } from '@agora-ts/core';
+import { TemplateAuthoringService } from '@agora-ts/core';
 import { createDashboardQueryServiceFromDb, createInboxServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
@@ -252,7 +252,10 @@ describe('authoring routes', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-802',
     });
-    const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+    const templateAuthoringService = new TemplateAuthoringService({
+      templatesDir,
+      templateRepository: new TemplateRepository(db),
+    });
     const app = buildApp({ taskService, templateAuthoringService });
 
     const validateTemplate = await app.inject({

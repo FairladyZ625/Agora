@@ -63,7 +63,11 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-1',
     });
 
-    const inbound = new TaskInboundService(conversations, bindings, taskService);
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+    );
     const result = inbound.ingest({
       provider: 'discord',
       thread_ref: 'thread-inbound-1',
@@ -157,7 +161,11 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-branch-1',
     });
 
-    const inbound = new TaskInboundService(conversations, bindings, taskService);
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+    );
     const result = inbound.ingest({
       provider: 'discord',
       thread_ref: 'thread-inbound-branch-1',
@@ -242,7 +250,11 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-complete-1',
     });
 
-    const inbound = new TaskInboundService(conversations, bindings, taskService);
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+    );
     const result = inbound.ingest({
       provider: 'discord',
       thread_ref: 'thread-inbound-complete-1',

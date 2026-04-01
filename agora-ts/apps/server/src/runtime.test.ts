@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository } from '@agora-ts/db';
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
-import { LiveSessionStore, TaskService } from '@agora-ts/core';
-import type { TmuxRuntimeService } from '@agora-ts/core';
+import { LiveSessionStore } from '@agora-ts/core';
+import type { TmuxRuntimeService , TaskService } from '@agora-ts/core';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { createServerRuntime } from './runtime.js';
 

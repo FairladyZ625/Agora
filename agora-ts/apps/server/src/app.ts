@@ -131,14 +131,12 @@ import {
 import {
   NotificationOutboxRepository,
   HumanAccountRepository,
-  HumanIdentityBindingRepository,
   ProjectMembershipRepository,
   ProjectAgentRosterRepository,
   ProjectRepository,
   TaskRepository,
   type AgoraDatabase,
 } from '@agora-ts/db';
-import type { TransactionManager } from '@agora-ts/contracts';
 
 export interface BuildAppOptions {
   db?: AgoraDatabase;

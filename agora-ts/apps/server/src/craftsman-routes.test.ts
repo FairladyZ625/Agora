@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
-import { CraftsmanDispatcher, StubCraftsmanAdapter, TaskService } from '@agora-ts/core';
+import type { TaskService } from '@agora-ts/core';
+import { CraftsmanDispatcher, StubCraftsmanAdapter } from '@agora-ts/core';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 

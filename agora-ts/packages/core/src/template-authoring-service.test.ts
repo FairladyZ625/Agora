@@ -22,6 +22,13 @@ function makeDbPath() {
   return join(dir, 'tasks.db');
 }
 
+function createTemplateAuthoringServiceFromDb(db: ReturnType<typeof createAgoraDatabase>, templatesDir: string) {
+  return new TemplateAuthoringService({
+    templatesDir,
+    templateRepository: new TemplateRepository(db),
+  });
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -36,7 +43,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const invalid = service.validateTemplate({
       name: '非法模板',
@@ -108,7 +115,7 @@ describe('template authoring service', () => {
       type: 'atomic',
       stages: [{ id: 'old', gate: { type: 'command' } }],
     }, 'user');
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     service.saveTemplate('atomic', {
       name: 'atomic',
@@ -129,7 +136,7 @@ describe('template authoring service', () => {
     const templatesDir = makeTemplatesDir();
     const repository = new TemplateRepository(db);
     repository.seedFromDir(templatesDir);
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     service.saveTemplate('db_persisted', {
       name: '数据库持久化模板',
@@ -173,7 +180,7 @@ describe('template authoring service', () => {
       '2026-03-13T00:00:00.000Z',
     );
 
-    new TemplateAuthoringService({ db, templatesDir });
+    createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     expect(repository.getTemplate('coding')).toMatchObject({
       template: {
@@ -190,7 +197,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     expect(service.validateTemplate({
       name: '非法治理模板',
@@ -221,7 +228,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const missingController = service.validateTemplate({
       name: '缺主控模板',
@@ -254,7 +261,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const result = service.validateTemplate({
       name: '带回边模板',
@@ -296,7 +303,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const saved = service.saveTemplate('graph_ready', {
       name: '图就绪模板',
@@ -330,7 +337,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const result = service.validateTemplate({
       name: '坏图模板',
@@ -360,7 +367,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const invalidApproval = service.validateTemplate({
       name: '缺 approver 的审批模板',
@@ -397,7 +404,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const invalid = service.validateGraph({
       graph_version: 1,
@@ -419,7 +426,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const invalid = service.validateGraph({
       graph_version: 1,
@@ -446,7 +453,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const invalid = service.validateGraph({
       graph_version: 1,
@@ -472,7 +479,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const valid = service.validateGraph({
       graph_version: 1,
@@ -512,7 +519,7 @@ describe('template authoring service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const templatesDir = makeTemplatesDir();
-    const service = new TemplateAuthoringService({ db, templatesDir });
+    const service = createTemplateAuthoringServiceFromDb(db, templatesDir);
 
     const valid = service.validateGraph({
       graph_version: 1,

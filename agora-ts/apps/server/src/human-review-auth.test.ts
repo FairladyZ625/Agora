@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { HumanAccountRepository, HumanIdentityBindingRepository } from '@agora-ts/db';
-import { HumanAccountService, TaskService } from '@agora-ts/core';
+import { HumanAccountService } from '@agora-ts/core';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 

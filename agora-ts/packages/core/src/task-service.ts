@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { CraftsmanCallbackRequestDto, CraftsmanDispatchRequestDto, CraftsmanExecutionTailResponseDto, CraftsmanInputKeyDto, CraftsmanStopExecutionRequestDto, CreateSubtasksRequestDto, CreateSubtasksResponseDto, CreateTaskAuthorityDto, CreateTaskRequestDto, DatabasePort, GateCommandPort, GateQueryPort, HostResourceSnapshotDto, IApprovalRequestRepository, IArchiveJobRepository, ICraftsmanExecutionRepository, IFlowLogRepository, IInboxRepository, IProgressLogRepository, ISubtaskRepository, ITaskContextBindingRepository, ITaskConversationRepository, ITaskRepository, ITemplateRepository, ITodoRepository, PromoteTodoRequestDto, RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto, RuntimeRecoveryRequestDto, TaskBlueprintDto, TaskConversationEntryRecord, TaskLocaleDto, TaskRecord, TaskStatusDto, UnifiedHealthSnapshotDto, WorkflowDto } from '@agora-ts/contracts';
 import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
-import { CraftsmanCallbackService } from './craftsman-callback-service.js';
+import type { CraftsmanCallbackService } from './craftsman-callback-service.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { GateService } from './gate-service.js';
@@ -14,7 +14,7 @@ import { ModeController } from './mode-controller.js';
 import { ProgressService } from './progress-service.js';
 import { TaskState } from './enums.js';
 import { PermissionService } from './permission-service.js';
-import { ProjectService } from './project-service.js';
+import type { ProjectService } from './project-service.js';
 import { StateMachine } from './state-machine.js';
 import type { IMMessagingPort, IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
@@ -33,12 +33,12 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
-import { ProjectAgentRosterService } from './project-agent-roster-service.js';
-import { ProjectContextWriter } from './project-context-writer.js';
-import { ProjectMembershipService } from './project-membership-service.js';
+import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import type { ProjectContextWriter } from './project-context-writer.js';
+import type { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
 import { StageRosterService } from './stage-roster-service.js';
-import { TaskAuthorityService } from './task-authority-service.js';
+import type { TaskAuthorityService } from './task-authority-service.js';
 import { TaskWorktreeService } from './task-worktree-service.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
@@ -456,7 +456,7 @@ export class TaskService {
           this.projectAgentRoster.requireActiveAgent(projectId, input.authority.controller_agent_ref);
         }
       }
-      const draft = this.taskRepository.insertTask({
+      const draftInput: Parameters<ITaskRepository['insertTask']>[0] = {
         id: taskId,
         title: input.title,
         description: input.description,
@@ -469,7 +469,8 @@ export class TaskService {
         team,
         workflow,
         control: input.control ?? null,
-      } as any);
+      };
+      const draft = this.taskRepository.insertTask(draftInput);
 
       const created = this.taskRepository.updateTask(taskId, draft.version, {
         state: TaskState.CREATED,

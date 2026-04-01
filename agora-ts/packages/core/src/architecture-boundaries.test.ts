@@ -1,7 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
 const SOURCE_ROOT = new URL('./', import.meta.url);
 
 function collectProductionSourceFiles(dir: URL): string[] {
@@ -31,11 +29,20 @@ function findDbCouplings(filePath: string): string[] {
   if (source.includes("require('@agora-ts/db')") || source.includes('require("@agora-ts/db")')) {
     matches.push("require('@agora-ts/db')");
   }
+  if (/\bnew\s+[A-Za-z0-9_]+Repository\s*\(/.test(source)) {
+    matches.push('concrete repository construction');
+  }
+  if (/\bnew\s+SqliteGate(?:Command|Query)Port\s*\(/.test(source)) {
+    matches.push('sqlite gate construction');
+  }
+  if (/\bAgoraDatabase\b/.test(source)) {
+    matches.push('AgoraDatabase reference');
+  }
   return matches;
 }
 
 describe('core architecture boundaries', () => {
-  it('keeps production core sources free of direct @agora-ts/db imports and requires', () => {
+  it('keeps production core sources free of direct db adapter couplings and concrete fallback constructors', () => {
     const offenders = collectProductionSourceFiles(SOURCE_ROOT)
       .map((filePath) => ({
         filePath,

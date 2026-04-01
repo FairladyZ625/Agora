@@ -7,16 +7,15 @@ import {
   createAgoraDatabase,
   HumanAccountRepository,
   HumanIdentityBindingRepository,
-  ParticipantBindingRepository,
   RoleBindingRepository,
   RoleDefinitionRepository,
   runMigrations,
-  RuntimeSessionBindingRepository,
   SubtaskRepository,
   TaskContextBindingRepository,
   TaskRepository,
 } from '@agora-ts/db';
-import { CitizenService, DashboardQueryService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, ProjectService, RolePackService, StubIMProvisioningPort, TaskContextBindingService, TaskParticipationService, TaskService } from '@agora-ts/core';
+import type { ProjectService } from '@agora-ts/core';
+import { CitizenService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, RolePackService, StubIMProvisioningPort, TaskContextBindingService } from '@agora-ts/core';
 import { createDashboardQueryServiceFromDb, createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
@@ -37,20 +36,6 @@ function createTaskContextBindingServiceFromDb(
   return new TaskContextBindingService({
     repository: options.repository ?? new TaskContextBindingRepository(db),
     ...(options.idGenerator ? { idGenerator: options.idGenerator } : {}),
-  });
-}
-
-function createTaskParticipationServiceFromDb(
-  db: ReturnType<typeof createAgoraDatabase>,
-  options: Partial<ConstructorParameters<typeof TaskParticipationService>[0]> = {},
-) {
-  return new TaskParticipationService({
-    participantRepository: options.participantRepository ?? new ParticipantBindingRepository(db),
-    runtimeSessionRepository: options.runtimeSessionRepository ?? new RuntimeSessionBindingRepository(db),
-    taskBindingRepository: options.taskBindingRepository ?? new TaskContextBindingRepository(db),
-    ...(options.participantIdGenerator ? { participantIdGenerator: options.participantIdGenerator } : {}),
-    ...(options.runtimeSessionIdGenerator ? { runtimeSessionIdGenerator: options.runtimeSessionIdGenerator } : {}),
-    ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
   });
 }
 

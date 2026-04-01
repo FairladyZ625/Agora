@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { HumanAccountRepository, HumanIdentityBindingRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { HumanAccountService } from './human-account-service.js';
 
 const tempPaths: string[] = [];
@@ -26,7 +26,10 @@ describe('human account service', () => {
   it('bootstraps an admin account, verifies password, and resolves discord identity bindings', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new HumanAccountService(db);
+    const service = new HumanAccountService({
+      accountRepository: new HumanAccountRepository(db),
+      identityBindingRepository: new HumanIdentityBindingRepository(db),
+    });
 
     const admin = service.bootstrapAdmin({
       username: 'lizeyu',

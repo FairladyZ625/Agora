@@ -104,8 +104,8 @@ describe('project brain service', () => {
       },
     });
     const service = new ProjectBrainService({
-      projectService,
-      citizenService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
+      citizenService: citizenService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['citizenService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -164,7 +164,7 @@ describe('project brain service', () => {
     });
     const enqueueDocumentSync = vi.fn();
     const service = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),

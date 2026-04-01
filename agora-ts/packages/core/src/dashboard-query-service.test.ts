@@ -14,6 +14,7 @@ import { TaskContextBindingService } from './task-context-binding-service.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+type DashboardQueryBuilderOptions = NonNullable<Parameters<typeof createDashboardQueryServiceFromDb>[1]>;
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-core-'));
@@ -356,13 +357,13 @@ describe('dashboard query service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-ARCHIVE-CTX',
       imProvisioningPort: provisioningPort,
-      taskContextBindingService: bindings,
+      taskContextBindingService: bindings as unknown as NonNullable<NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>['taskContextBindingService']>,
     });
     const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
-      taskBrainBindingService: brainBindings,
+      taskBrainBindingService: brainBindings as unknown as NonNullable<DashboardQueryBuilderOptions['taskBrainBindingService']>,
       taskBrainWorkspacePort,
-      taskContextBindingService: bindings,
+      taskContextBindingService: bindings as unknown as NonNullable<DashboardQueryBuilderOptions['taskContextBindingService']>,
       imProvisioningPort: provisioningPort,
     });
 
@@ -624,7 +625,10 @@ describe('dashboard query service', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T06:10:30.000Z'),
     });
-    const queries = createDashboardQueryServiceFromDb(db, { templatesDir, liveSessions });
+    const queries = createDashboardQueryServiceFromDb(db, {
+      templatesDir,
+      liveSessions: liveSessions as unknown as NonNullable<DashboardQueryBuilderOptions['liveSessions']>,
+    });
 
     liveSessions.upsert({
       source: 'openclaw',
@@ -695,7 +699,11 @@ describe('dashboard query service', () => {
         },
       ],
     };
-    const queries = createDashboardQueryServiceFromDb(db, { templatesDir, liveSessions, agentRegistry });
+    const queries = createDashboardQueryServiceFromDb(db, {
+      templatesDir,
+      liveSessions: liveSessions as unknown as NonNullable<DashboardQueryBuilderOptions['liveSessions']>,
+      agentRegistry,
+    });
 
     liveSessions.upsert({
       source: 'openclaw',
@@ -775,7 +783,10 @@ describe('dashboard query service', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T06:47:30.000Z'),
     });
-    const queries = createDashboardQueryServiceFromDb(db, { templatesDir, liveSessions });
+    const queries = createDashboardQueryServiceFromDb(db, {
+      templatesDir,
+      liveSessions: liveSessions as unknown as NonNullable<DashboardQueryBuilderOptions['liveSessions']>,
+    });
 
     liveSessions.upsert({
       source: 'openclaw',
