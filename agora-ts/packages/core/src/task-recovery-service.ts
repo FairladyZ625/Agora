@@ -24,7 +24,7 @@ type EscalationPolicy = {
 type ApprovalWaitProbe = {
   request: {
     id: string;
-  };
+  } | null;
   participantRefs: string[];
 } | null;
 
@@ -548,7 +548,7 @@ export class TaskRecoveryService {
             ensureParticipantRefsJoined: approvalWaitProbe.participantRefs,
             bodyLines: [
               `Task is waiting for human approval and has remained idle for ${Math.round(idleMs / 1000)} seconds.`,
-              `Approval Request: ${approvalWaitProbe.request.id}`,
+              ...(approvalWaitProbe.request ? [`Approval Request: ${approvalWaitProbe.request.id}`] : []),
               'Please review the pending approval and decide in Dashboard or the task thread.',
             ],
           });
@@ -559,7 +559,7 @@ export class TaskRecoveryService {
             stage_id: task.current_stage,
             detail: {
               idle_ms: idleMs,
-              approval_request_id: approvalWaitProbe.request.id,
+              approval_request_id: approvalWaitProbe.request?.id,
               participant_refs: approvalWaitProbe.participantRefs,
             },
             actor: 'system',
@@ -580,7 +580,7 @@ export class TaskRecoveryService {
               current_stage: task.current_stage,
               idle_ms: idleMs,
               reason: 'approval_waiting',
-              approval_request_id: approvalWaitProbe.request.id,
+              approval_request_id: approvalWaitProbe.request?.id,
             },
           });
           this.flowLogRepository.insertFlowLog({
@@ -591,7 +591,7 @@ export class TaskRecoveryService {
             detail: {
               idle_ms: idleMs,
               reason: 'approval_waiting',
-              approval_request_id: approvalWaitProbe.request.id,
+              approval_request_id: approvalWaitProbe.request?.id,
             },
             actor: 'system',
           });
