@@ -30,6 +30,7 @@ import type {
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
+import { TaskParticipantSyncService } from './task-participant-sync-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import type { ProjectContextWriter } from './project-context-writer.js';
@@ -310,6 +311,7 @@ export class TaskService {
   private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   private readonly stageRosterService: StageRosterService;
   private readonly taskBroadcastService: TaskBroadcastService;
+  private readonly taskParticipantSyncService: TaskParticipantSyncService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -379,6 +381,13 @@ export class TaskService {
       taskConversationRepository: this.taskConversationRepository,
       imProvisioningPort: this.imProvisioningPort,
       getTaskBrainWorkspacePath: (taskId) => this.taskBrainBindingService?.getActiveBinding(taskId)?.workspace_path ?? null,
+      trackBackgroundOperation: (operation) => this.trackBackgroundOperation(operation),
+    });
+    this.taskParticipantSyncService = new TaskParticipantSyncService({
+      taskContextBindingRepository: this.taskContextBindingRepository,
+      taskParticipationService: this.taskParticipationService,
+      imProvisioningPort: this.imProvisioningPort,
+      stageRosterService: this.stageRosterService,
       trackBackgroundOperation: (operation) => this.trackBackgroundOperation(operation),
     });
     this.agentRuntimePort = options.agentRuntimePort;
@@ -522,8 +531,7 @@ export class TaskService {
       this.taskParticipationService?.seedParticipants(taskId, team);
       if (firstStageId) {
         const firstStage = workflow.stages?.[0] ?? null;
-        const exposureStates = this.stageRosterService.resolveExposureDecisions(team, firstStage ?? undefined);
-        this.taskParticipationService?.applyExposureStates(taskId, firstStageId, exposureStates);
+        this.taskParticipantSyncService.seedStageExposure(taskId, team, firstStage ?? undefined);
       }
       if (this.taskBrainWorkspacePort && this.taskBrainBindingService) {
         brainWorkspaceBinding = this.taskBrainWorkspacePort.createWorkspace(this.buildTaskBrainWorkspaceRequest(active, input.type));
@@ -601,26 +609,9 @@ export class TaskService {
           ...(provisioned.thread_ref ? { thread_ref: provisioned.thread_ref } : {}),
           ...(provisioned.message_root_ref ? { message_root_ref: provisioned.message_root_ref } : {}),
         });
-        this.taskParticipationService?.attachContextBinding(taskId, binding.id);
+        this.taskParticipantSyncService.attachProvisionedContext(taskId, binding.id);
         this.mirrorProvisioningConversationEntry(taskId, binding, `Task **${taskId}** created: ${input.title}`);
-        await Promise.all(imParticipantRefs.map(async (participantRef) => {
-          try {
-            const result = await provisioningPort.joinParticipant({
-              binding_id: binding.id,
-              participant_ref: participantRef,
-              ...(binding.conversation_ref ? { conversation_ref: binding.conversation_ref } : {}),
-              ...(binding.thread_ref ? { thread_ref: binding.thread_ref } : {}),
-            });
-            if (result.status === 'joined' || result.status === 'ignored') {
-              this.markParticipantBindingJoined(taskId, participantRef);
-            }
-          } catch (err: unknown) {
-            console.error(
-              `[TaskService] IM participant join failed for task ${taskId} participant ${participantRef}:`,
-              err,
-            );
-          }
-        }));
+        await this.taskParticipantSyncService.joinProvisionedParticipants(taskId, binding, imParticipantRefs);
         const bootstrapMessages = this.buildBootstrapMessages(createdTask, brainWorkspace, imParticipantRefs);
         if (bootstrapMessages.length > 0) {
           await provisioningPort.publishMessages({
@@ -3607,83 +3598,8 @@ export class TaskService {
     this.taskBroadcastService.mirrorPublishedMessagesToConversation(taskId, binding, messages);
   }
 
-  private markParticipantBindingJoined(taskId: string, participantRef: string) {
-    this.taskParticipationService?.markParticipantJoinState(taskId, participantRef, 'joined', {
-      joined_at: new Date().toISOString(),
-      left_at: null,
-    });
-  }
-
-  private markParticipantBindingLeft(taskId: string, participantRef: string) {
-    this.taskParticipationService?.markParticipantJoinState(taskId, participantRef, 'left', {
-      left_at: new Date().toISOString(),
-    });
-  }
-
   private reconcileStageParticipants(task: TaskRecord, stage: WorkflowStageLike | null) {
-    if (!stage || !this.imProvisioningPort || !this.taskParticipationService) {
-      return;
-    }
-    const binding = this.taskContextBindingRepository.getActiveByTask(task.id);
-    if (!binding) {
-      return;
-    }
-    const exposureStates = this.stageRosterService.resolveExposureDecisions(task.team, stage);
-    this.taskParticipationService.applyExposureStates(task.id, stage.id, exposureStates);
-    this.taskParticipationService.reconcileRuntimeSessions(task.id, stage.id, exposureStates);
-    const desiredRefs = exposureStates
-      .filter((decision) => decision.desired_exposure === 'in_thread')
-      .map((decision) => decision.agent_ref);
-    const participants = this.taskParticipationService.listParticipants(task.id);
-    const interactiveRefs = new Set(task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId));
-    const joinedRefs = new Set(
-      participants
-        .filter((participant) => participant.join_status === 'joined')
-        .map((participant) => participant.agent_ref),
-    );
-    const toJoin = desiredRefs.filter((participantRef) => !joinedRefs.has(participantRef));
-    const toLeave = participants
-      .filter((participant) => participant.join_status === 'joined' && interactiveRefs.has(participant.agent_ref))
-      .map((participant) => participant.agent_ref)
-      .filter((participantRef, index, values) => values.indexOf(participantRef) === index)
-      .filter((participantRef) => !desiredRefs.includes(participantRef));
-
-    if (toJoin.length === 0 && toLeave.length === 0) {
-      return;
-    }
-
-    this.trackBackgroundOperation(Promise.all([
-      ...toJoin.map(async (participantRef) => {
-        try {
-          const result = await this.imProvisioningPort?.joinParticipant({
-            binding_id: binding.id,
-            participant_ref: participantRef,
-            conversation_ref: binding.conversation_ref,
-            thread_ref: binding.thread_ref,
-          });
-          if (result?.status === 'joined' || result?.status === 'ignored') {
-            this.markParticipantBindingJoined(task.id, participantRef);
-          }
-        } catch (error: unknown) {
-          console.error(`[TaskService] stage roster join failed for task ${task.id} participant ${participantRef}:`, error);
-        }
-      }),
-      ...toLeave.map(async (participantRef) => {
-        try {
-          const result = await this.imProvisioningPort?.removeParticipant({
-            binding_id: binding.id,
-            participant_ref: participantRef,
-            conversation_ref: binding.conversation_ref,
-            thread_ref: binding.thread_ref,
-          });
-          if (result?.status === 'removed' || result?.status === 'ignored') {
-            this.markParticipantBindingLeft(task.id, participantRef);
-          }
-        } catch (error: unknown) {
-          console.error(`[TaskService] stage roster remove failed for task ${task.id} participant ${participantRef}:`, error);
-        }
-      }),
-    ]));
+    this.taskParticipantSyncService.reconcileStageParticipants(task, stage);
   }
 
   private trackBackgroundOperation<T>(operation: Promise<T>): Promise<T> {

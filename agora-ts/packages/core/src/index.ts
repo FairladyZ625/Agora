@@ -59,6 +59,7 @@ export * from './task-brain-port.js';
 export * from './task-conversation-service.js';
 export * from './task-inbound-service.js';
 export * from './task-participation-service.js';
+export * from './task-participant-sync-service.js';
 export * from './task-worktree-service.js';
 export * from './task-service.js';
 export * from './template-authoring-service.js';
