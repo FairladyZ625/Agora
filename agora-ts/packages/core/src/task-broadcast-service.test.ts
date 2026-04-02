@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TaskContextBindingRepository, TaskConversationRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
@@ -281,6 +281,99 @@ describe('TaskBroadcastService', () => {
       );
       expect(taskContextBindingRepository.getById('binding-state-1')?.status).toBe('active');
     } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it('builds bootstrap root and role brief messages from workspace context and skill catalog', () => {
+    const fixture = makeDb();
+    const workspaceDir = mkdtempSync(join(tmpdir(), 'agora-ts-bootstrap-workspace-'));
+    try {
+      const { db } = fixture;
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const taskConversationRepository = new TaskConversationRepository(db);
+
+      mkdirSync(join(workspaceDir, '05-agents', 'opus'), { recursive: true });
+      writeFileSync(join(workspaceDir, '05-agents', 'opus', '00-role-brief.md'), '# opus brief\n', 'utf8');
+      writeFileSync(join(workspaceDir, '05-agents', 'opus', '03-citizen-scaffold.md'), '# opus scaffold\n', 'utf8');
+
+      const service = new TaskBroadcastService({
+        taskContextBindingRepository,
+        taskConversationRepository,
+      });
+
+      const messages = service.buildBootstrapMessages({
+        task: {
+          id: 'OC-BOOTSTRAP-UNIT-1',
+          version: 1,
+          title: 'Bootstrap Unit Task',
+          description: 'bootstrap everyone into context',
+          type: 'coding',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
+          project_id: null,
+          state: 'active',
+          archive_status: null,
+          current_stage: 'build',
+          skill_policy: {
+            global_refs: ['planning-with-files'],
+            role_refs: {
+              architect: ['brainstorming'],
+              developer: ['refactoring-ui'],
+            },
+            enforcement: 'required',
+          },
+          team: {
+            members: [
+              { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning', agent_origin: 'agora_managed', briefing_mode: 'overlay_delta' },
+              { role: 'developer', agentId: 'sonnet', member_kind: 'citizen', model_preference: 'balanced', agent_origin: 'user_managed', briefing_mode: 'overlay_full' },
+            ],
+          },
+          workflow: {
+            type: 'custom',
+            stages: [
+              {
+                id: 'build',
+                mode: 'execute',
+                execution_kind: 'craftsman_dispatch',
+                allowed_actions: ['execute', 'dispatch_craftsman'],
+              },
+            ],
+          },
+          control: { mode: 'normal' },
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+          created_at: '2026-04-02T00:00:00.000Z',
+          updated_at: '2026-04-02T00:00:00.000Z',
+        },
+        workspacePath: workspaceDir,
+        imParticipantRefs: ['opus', 'sonnet'],
+        skillCatalog: new Map([
+          ['planning-with-files', { skill_ref: 'planning-with-files', relative_path: 'planning-with-files', resolved_path: '/tmp/skills/planning-with-files/SKILL.md', source_root: '/tmp/skills', source_label: 'agora', precedence: 0, mtime: '2026-03-19T12:00:00.000Z', shadowed_paths: [] }],
+          ['brainstorming', { skill_ref: 'brainstorming', relative_path: 'brainstorming', resolved_path: '/tmp/skills/brainstorming/SKILL.md', source_root: '/tmp/skills', source_label: 'agora', precedence: 0, mtime: '2026-03-19T12:00:00.000Z', shadowed_paths: [] }],
+          ['refactoring-ui', { skill_ref: 'refactoring-ui', relative_path: 'refactoring-ui', resolved_path: '/tmp/skills/refactoring-ui/SKILL.md', source_root: '/tmp/skills', source_label: 'agora', precedence: 0, mtime: '2026-03-19T12:00:00.000Z', shadowed_paths: [] }],
+        ]),
+      });
+
+      const rootBrief = messages.find((message) => message.kind === 'bootstrap_root');
+      const opusBrief = messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'opus');
+      const sonnetBrief = messages.find((message) => message.kind === 'role_brief' && message.participant_refs?.[0] === 'sonnet');
+
+      expect(rootBrief?.body).toContain('主控: opus');
+      expect(rootBrief?.body).toContain('Task Skills:');
+      expect(rootBrief?.body).toContain('planning-with-files -> /tmp/skills/planning-with-files/SKILL.md');
+      expect(opusBrief?.body).toContain('简报模式: overlay_delta');
+      expect(opusBrief?.body).toContain(join(workspaceDir, '05-agents', 'opus', '00-role-brief.md'));
+      expect(opusBrief?.body).not.toContain('阅读角色文档:');
+      expect(sonnetBrief?.body).toContain('简报模式: overlay_full');
+      expect(sonnetBrief?.body).toContain('阅读角色文档:');
+      expect(sonnetBrief?.body).toContain('refactoring-ui -> /tmp/skills/refactoring-ui/SKILL.md');
+    } finally {
+      rmSync(workspaceDir, { recursive: true, force: true });
       fixture.cleanup();
     }
   });

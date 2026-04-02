@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CraftsmanCallbackRequestDto, CraftsmanDispatchRequestDto, CraftsmanExecutionTailResponseDto, CraftsmanInputKeyDto, CraftsmanStopExecutionRequestDto, CreateSubtasksRequestDto, CreateSubtasksResponseDto, CreateTaskAuthorityDto, CreateTaskRequestDto, DatabasePort, GateCommandPort, GateQueryPort, HostResourceSnapshotDto, IApprovalRequestRepository, IArchiveJobRepository, ICraftsmanExecutionRepository, IFlowLogRepository, IInboxRepository, IProgressLogRepository, ISubtaskRepository, ITaskContextBindingRepository, ITaskConversationRepository, ITaskRepository, ITemplateRepository, ITodoRepository, PromoteTodoRequestDto, RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto, RuntimeRecoveryRequestDto, TaskBlueprintDto, TaskConversationEntryRecord, TaskLocaleDto, TaskRecord, TaskStatusDto, UnifiedHealthSnapshotDto, WorkflowDto } from '@agora-ts/contracts';
 import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
@@ -2580,186 +2579,14 @@ export class TaskService {
     brainWorkspace: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null,
     imParticipantRefs: string[],
   ): IMPublishMessageInput[] {
-    if (!task.current_stage) {
-      return [];
-    }
-    const stage = this.getStageByIdOrThrow(task, task.current_stage);
-    const controllerRef = resolveControllerRef(task.team.members);
-    const workspacePath = brainWorkspace?.workspace_path ?? null;
     const skillCatalog = new Map<string, SkillCatalogEntry>(
       (this.skillCatalogPort?.listSkills({ refresh: true }) ?? []).map((entry) => [entry.skill_ref, entry]),
     );
-    const globalSkillLines = this.renderResolvedSkillLines(task.skill_policy?.global_refs ?? [], skillCatalog);
-    const mentionMapLines = task.team.members
-      .filter(isInteractiveParticipant)
-      .map((member) => `- ${member.agentId}: {{participant:${member.agentId}}}`);
-    const rootMessages: IMPublishMessageInput[] = [
-      {
-        kind: 'bootstrap_root',
-        participant_refs: imParticipantRefs,
-        body: [
-          taskText(task, 'Agora 任务启动简报', 'Agora task bootstrap'),
-          `${taskText(task, '任务', 'Task')}: ${task.id} — ${task.title}`,
-          `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
-          `${taskText(task, '主控', 'Controller')}: ${controllerRef ?? '-'}`,
-          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage}`,
-          `${taskText(task, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(stage) ?? '-'}`,
-          `${taskText(task, '允许动作', 'Allowed Actions')}: ${resolveAllowedActions(stage).join(', ') || '-'}`,
-          '',
-          `${taskText(task, '成员清单', 'Roster')}:`,
-          ...task.team.members.map((member) => (
-            `- ${member.agentId} | ${member.role} | ${member.member_kind ?? 'citizen'} | ${member.agent_origin ?? 'user_managed'} | ${member.briefing_mode ?? 'overlay_full'}`
-          )),
-          '',
-          `${taskText(task, '首先阅读', 'Read first')}:`,
-          `- ${join(homedir(), '.agora', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
-          `- ${join(homedir(), '.codex', 'skills', 'agora-bootstrap', 'SKILL.md')}`,
-          ...(workspacePath
-            ? [
-                `- ${join(workspacePath, '00-bootstrap.md')}`,
-                `- ${join(workspacePath, '01-task-brief.md')}`,
-                `- ${join(workspacePath, '02-roster.md')}`,
-                `- ${join(workspacePath, '03-stage-state.md')}`,
-              ]
-            : []),
-          ...(globalSkillLines.length > 0
-            ? [
-                '',
-                `${taskText(task, 'Task Skills', 'Task Skills')}:`,
-                ...globalSkillLines,
-              ]
-            : []),
-        ].join('\n'),
-      },
-      {
-        kind: 'bootstrap_runbook',
-        participant_refs: imParticipantRefs,
-        body: [
-          `${taskText(task, '快速决策表', 'Quick decision table')}:`,
-          `- ${taskText(task, '只想一轮给出结果 -> `one_shot`', 'Need a single prompt -> result run -> `one_shot`')}`,
-          `- ${taskText(task, '预计会 `needs_input` / `awaiting_choice` -> `interactive`', 'Expect `needs_input` / `awaiting_choice` -> `interactive`')}`,
-          `- ${taskText(task, '可能出现 plan mode / 菜单选择 -> `interactive`', 'Expect plan mode / menu choices -> `interactive`')}`,
-          '',
-          `${taskText(task, '常用命令', 'Common commands')}:`,
-          `- agora subtasks list ${task.id}`,
-          `- agora subtasks create ${task.id} --caller-id ${controllerRef ?? '<controller>'} --file subtasks.json`,
-          `- agora craftsman input-text <executionId> "<text>"`,
-          `- agora craftsman input-keys <executionId> Down Enter`,
-          `- agora craftsman submit-choice <executionId> Down`,
-          `- agora craftsman probe <executionId>`,
-          '',
-          `${taskText(task, 'Craftsman 循环', 'Craftsman loop')}:`,
-          `- ${taskText(task, '在当前任务线程内，使用 subtask 作为正式执行绑定对象。', 'Use subtasks as the formal execution binding object inside this task thread.')}`,
-          `- ${taskText(task, '每个 subtask 都必须显式声明 `execution_target`：`manual` 或 `craftsman`。', 'Every subtask must declare `execution_target` explicitly: `manual` or `craftsman`.')}`,
-          `- ${taskText(task, '仅当活动阶段允许 `craftsman_dispatch` 时，才从 subtask 调度 craftsman。', 'Dispatch craftsmen from subtasks only when the active stage allows `craftsman_dispatch`.')}`,
-          `- ${taskText(task, '执行模式优先使用 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Prefer `one_shot` (single result) or `interactive` (continued dialogue) as the execution mode.')}`,
-          `- ${taskText(task, '如果 craftsman 进入 `needs_input` 或 `awaiting_choice`，通过它的 `execution_id` 继续同一个执行。', 'If a craftsman pauses with `needs_input` or `awaiting_choice`, continue the same execution through its `execution_id`.')}`,
-          `- ${taskText(task, '继续执行后，用 `agora craftsman probe <executionId>` 同步最新状态；只有 probe 无法推断结果时，才回退到 `agora craftsman callback ...`。', 'After a continued execution, sync the latest state with `agora craftsman probe <executionId>`; only fall back to `agora craftsman callback ...` if probe cannot infer the result.')}`,
-          `- ${taskText(task, '把原始 tmux pane 命令视为调试 transport，不要当成默认产品流程。', 'Treat raw tmux pane commands as debug-only transport tools, not as the default product workflow.')}`,
-        ].join('\n'),
-      },
-      {
-        kind: 'bootstrap_mentions',
-        participant_refs: imParticipantRefs,
-        body: [
-          `${taskText(task, 'Discord 提及规则', 'Discord mention rule')}:`,
-          `- ${taskText(task, '要可靠唤醒 bot 或人类，请使用真实的 Discord mention 语法 `<@USER_ID>`。', 'To wake a bot or human reliably, use the real Discord mention syntax `<@USER_ID>`.')}`,
-          `- ${taskText(task, '不要输入显示名，例如 `@Opus` 或 `@Sonnet`。', 'Do not type display names like `@Opus` or `@Sonnet`.')}`,
-          `- ${taskText(task, '尽量复用本线程里已经出现过的真实 mention。', 'Reuse the real mentions already shown in this thread whenever possible.')}`,
-          `- ${taskText(task, '如果本机找不到 `~/.agora/skills/agora-bootstrap/SKILL.md`，再尝试 `~/.codex/skills/agora-bootstrap/SKILL.md`。', 'If `~/.agora/skills/agora-bootstrap/SKILL.md` is missing, fall back to `~/.codex/skills/agora-bootstrap/SKILL.md`.')}`,
-          ...(mentionMapLines.length > 0
-            ? [
-                `${taskText(task, '成员 mention 对照表', 'Roster mention map')}:`,
-                ...mentionMapLines,
-              ]
-            : []),
-          ...(task.control?.mode === 'smoke_test'
-            ? [
-                '',
-                `${taskText(task, '冒烟测试模式', 'Smoke Test Mode')}:`,
-                `- ${taskText(task, '当前任务运行在 smoke/test 模式下。', 'This task is running in smoke/test mode.')}`,
-                `- ${taskText(task, '额外测试引导仅用于验证。', 'Extra testing guidance may appear for validation only.')}`,
-                `- ${taskText(task, '这不是默认的终端用户产品流程。', 'This is not the default end-user product flow.')}`,
-              ]
-            : task.control?.mode === 'regression_test'
-              ? [
-                  '',
-                  `${taskText(task, '回归代理模式', 'Regression Proxy Mode')}:`,
-                  `- ${taskText(task, '当前任务运行在开发期 regression mode 下。', 'This task is running in developer regression mode.')}`,
-                  `- ${taskText(task, 'AgoraBot 在当前线程里代表开发者执行回归，并可主动牵引任务推进。', 'AgoraBot represents the developer in this thread for regression and may actively steer task progression.')}`,
-                  `- ${taskText(task, '这套代理语义仅用于开发验证，不代表正式终端用户产品权限。', 'This proxy contract is for development validation only and does not represent normal end-user permissions.')}`,
-                ]
-            : []),
-        ].join('\n'),
-      },
-    ];
-    const messages: IMPublishMessageInput[] = [...rootMessages];
-    const initialBriefRecipients = new Set(imParticipantRefs);
-
-    for (const member of task.team.members.filter((candidate) => (
-      isInteractiveParticipant(candidate) && initialBriefRecipients.has(candidate.agentId)
-    ))) {
-      const roleBriefPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '00-role-brief.md') : null;
-      const citizenScaffoldPath = workspacePath ? join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md') : null;
-      const roleDocPath = workspacePath ? resolve(workspacePath, '..', '..', 'roles', `${member.role}.md`) : null;
-      const roleSkillLines = this.renderResolvedSkillLines(task.skill_policy?.role_refs?.[member.role] ?? [], skillCatalog);
-      messages.push({
-        kind: 'role_brief',
-        participant_refs: [member.agentId],
-        body: [
-          `${taskText(task, '角色简报', 'Role briefing')} ${member.agentId}`,
-          `${taskText(task, 'Agora 角色', 'Agora Role')}: ${member.role}`,
-          `${taskText(task, '成员类型', 'Member Kind')}: ${member.member_kind ?? 'citizen'}`,
-          `${taskText(task, 'Agent 来源', 'Agent Origin')}: ${member.agent_origin ?? 'user_managed'}`,
-          `${taskText(task, '简报模式', 'Briefing Mode')}: ${member.briefing_mode ?? 'overlay_full'}`,
-          `${taskText(task, '主控', 'Controller')}: ${controllerRef ?? '-'}`,
-          `${taskText(task, '当前阶段', 'Current Stage')}: ${task.current_stage}`,
-          `${taskText(task, '任务目标', 'Task Goal')}: ${task.description?.trim() || task.title}`,
-          taskText(task, '执行模式：优先 `one_shot`（单次结果）或 `interactive`（持续交互）。', 'Execution Mode: prefer `one_shot` (single result) or `interactive` (continued dialogue).'),
-          taskText(task, '快速决策：一次性结果用 `one_shot`；需要后续输入或菜单选择用 `interactive`。', 'Quick decision: use `one_shot` for one-pass results; use `interactive` when you expect more input or menu choices.'),
-          taskText(task, 'subtask 意图：显式写 `execution_target: "manual"` 或 `execution_target: "craftsman"`。', 'Subtask intent: explicitly write `execution_target: "manual"` or `execution_target: "craftsman"`.'),
-          `agora subtasks create ${task.id} --caller-id ${controllerRef ?? '<controller>'} --file subtasks.json`,
-          `agora subtasks list ${task.id}`,
-          taskText(task, 'Craftsman 循环：使用正式 subtask 绑定 craftsman，等待中的执行通过 `execution_id` 继续，而不是靠原始 pane 名。', 'Craftsman Loop: use formal subtasks and continue waiting craftsmen through `execution_id`, not raw pane names.'),
-          'agora craftsman input-text <executionId> "<text>"',
-          'agora craftsman input-keys <executionId> Down Enter',
-          'agora craftsman submit-choice <executionId> Down',
-          taskText(task, '继续规则：继续 craftsman execution 后，用 `agora craftsman probe <executionId>` 同步；只有必要时才回退到 `agora craftsman callback ...`。', 'Continuation Rule: after continuing a craftsman execution, sync it with `agora craftsman probe <executionId>`; use `agora craftsman callback ...` only as a fallback.'),
-          taskText(task, 'Discord 提及规则：使用真实 `<@USER_ID>` mention，不要用显示名。', 'Discord Mention Rule: use real `<@USER_ID>` mentions, not display names.'),
-          `${taskText(task, '成员 mention', 'Roster mention')}: {{participant:${member.agentId}}}`,
-          ...(task.control?.mode === 'smoke_test'
-            ? [taskText(task, '冒烟测试模式：当前线程仅用于验证，不代表默认产品体验。', 'Smoke Test Mode: this thread is being used for validation, not for the default product UX.')]
-            : task.control?.mode === 'regression_test'
-              ? [taskText(task, '回归代理模式：AgoraBot 在当前线程里代表开发者推进任务、执行回归牵引；这只在开发环境中生效。', 'Regression Proxy Mode: AgoraBot represents the developer in this thread to drive the task and perform regression steering; this only applies in developer environments.')]
-              : []),
-          ...(member.briefing_mode !== 'overlay_delta' && roleDocPath ? [`${taskText(task, '阅读角色文档', 'Read role doc')}: ${roleDocPath}`] : []),
-          ...(member.briefing_mode === 'overlay_delta'
-            ? [taskText(task, '该 Agent 已自带 Agora 托管的基础角色上下文；以下 role brief 只提供本任务增量。', 'This agent already carries Agora-managed base role context; use the role brief below as task delta.')]
-            : [taskText(task, '该 Agent 应在行动前加载完整的 Agora 角色覆盖上下文。', 'This agent should load the full Agora role overlay before acting.')]),
-          ...(citizenScaffoldPath ? [`${taskText(task, '阅读 Citizen Scaffold', 'Read citizen scaffold')}: ${citizenScaffoldPath}`] : []),
-          ...(roleBriefPath ? [`${taskText(task, '阅读角色简报', 'Read role brief')}: ${roleBriefPath}`] : []),
-          ...(roleSkillLines.length > 0
-            ? [
-                `${taskText(task, 'Role Skills', 'Role Skills')}:`,
-                ...roleSkillLines,
-              ]
-            : []),
-        ].join('\n'),
-      });
-    }
-
-    return messages;
-  }
-
-  private renderResolvedSkillLines(skillRefs: string[], catalog: Map<string, SkillCatalogEntry>) {
-    if (skillRefs.length === 0) {
-      return [];
-    }
-    return skillRefs.map((skillRef) => {
-      const resolved = catalog.get(skillRef);
-      return resolved
-        ? `- ${skillRef} -> ${resolved.resolved_path}`
-        : `- ${skillRef} -> (unresolved)`;
+    return this.taskBroadcastService.buildBootstrapMessages({
+      task,
+      workspacePath: brainWorkspace?.workspace_path ?? null,
+      imParticipantRefs,
+      skillCatalog,
     });
   }
 
@@ -4195,11 +4022,6 @@ type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
 
 function resolveTaskLocale(locale: string | null | undefined): TaskLocaleDto {
   return locale === 'en-US' ? 'en-US' : 'zh-CN';
-}
-
-function taskText(task: Pick<TaskRecord, 'locale'> | TaskLocaleDto, zh: string, en: string) {
-  const locale = typeof task === 'string' ? task : task.locale;
-  return locale === 'en-US' ? en : zh;
 }
 
 function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) {
