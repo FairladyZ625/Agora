@@ -1305,7 +1305,11 @@ export class TaskService {
         `Caller: ${input.caller_id}`,
         `Adapter: ${normalizedAdapter}`,
         `Execution: ${dispatched.execution.execution_id}`,
-        ...this.buildSmokeExecutionCommands(task, dispatched.execution.execution_id, dispatched.execution.status),
+        ...this.taskBroadcastService.buildSmokeExecutionCommandsForTask(
+          task,
+          dispatched.execution.execution_id,
+          dispatched.execution.status,
+        ),
       ],
     });
     return dispatched;
@@ -2758,43 +2762,6 @@ export class TaskService {
     return lines;
   }
 
-  private buildSmokeExecutionCommands(task: TaskRecord, executionId: string, status: string): string[] {
-    if (task.control?.mode !== 'smoke_test') {
-      return [];
-    }
-    const lines = [
-      '',
-      'Smoke Next Step:',
-      `- Inspect task conversation: \`agora task conversation ${task.id} --json\``,
-    ];
-    if (status === 'needs_input') {
-      lines.push(`- Continue this execution with text: \`agora craftsman input-text ${executionId} "<text>"\``);
-      lines.push(`- Or send structured keys: \`agora craftsman input-keys ${executionId} Down Enter\``);
-      lines.push(`- Then sync the latest state: \`agora craftsman probe ${executionId}\``);
-    } else if (status === 'awaiting_choice') {
-      lines.push(`- Continue this choice flow: \`agora craftsman submit-choice ${executionId} Down\``);
-      lines.push(`- If needed, fall back to explicit keys: \`agora craftsman input-keys ${executionId} Down Enter\``);
-      lines.push(`- Then sync the latest state: \`agora craftsman probe ${executionId}\``);
-    } else if (status === 'running') {
-      lines.push(`- If the pane looks finished, sync it now: \`agora craftsman probe ${executionId}\``);
-      lines.push('- Do not dispatch another craftsman into the same slot until this execution settles.');
-    }
-    return lines;
-  }
-
-  private buildSmokePostInputCommands(task: TaskRecord, executionId: string): string[] {
-    if (task.control?.mode !== 'smoke_test') {
-      return [];
-    }
-    return [
-      '',
-      'Smoke Next Step:',
-      '- Inspect the craftsman pane or session output now.',
-      `- Sync the latest execution state: \`agora craftsman probe ${executionId}\``,
-      '- If it still needs input after probing, continue through the same execution_id.',
-    ];
-  }
-
   private sendImmediateCraftsmanNotification(taskId: string, executionId: string, subtaskId: string) {
     const task = this.getTask(taskId);
     if (!task) {
@@ -2805,31 +2772,10 @@ export class TaskService {
     if (!execution || !subtask) {
       return;
     }
-    const eventType = execution.status === 'succeeded'
-      ? 'craftsman_completed'
-      : execution.status === 'running'
-        ? 'craftsman_running'
-      : execution.status === 'needs_input'
-        ? 'craftsman_needs_input'
-        : execution.status === 'awaiting_choice'
-          ? 'craftsman_awaiting_choice'
-          : 'craftsman_failed';
-    const payload = execution.callback_payload as { input_request?: { hint?: string | null; choice_options?: Array<{ id: string; label: string }> | null } } | null;
-    this.publishTaskStatusBroadcast(task, {
-      kind: eventType,
-      bodyLines: [
-        `Craftsman callback settled for subtask ${subtask.id}.`,
-        `Adapter: ${execution.adapter}`,
-        `Execution: ${execution.execution_id}`,
-        `Status: ${execution.status}`,
-        ...(subtask.output ? [`Output: ${subtask.output}`] : []),
-        ...(payload?.input_request?.hint ? [`Input Hint: ${payload.input_request.hint}`] : []),
-        ...((payload?.input_request?.choice_options?.length ?? 0) > 0
-          ? [`Choices: ${payload?.input_request?.choice_options?.map((option) => `${option.id}:${option.label}`).join(', ')}`]
-          : []),
-        ...this.buildSmokeExecutionCommands(task, execution.execution_id, execution.status),
-      ],
-      ...(execution.finished_at ? { occurredAt: execution.finished_at } : {}),
+    this.taskBroadcastService.publishCraftsmanExecutionUpdate({
+      task,
+      subtask,
+      execution,
     });
   }
 
@@ -3975,26 +3921,13 @@ export class TaskService {
       },
       actor: 'archon',
     });
-    this.mirrorConversationEntry(taskId, {
+    this.taskBroadcastService.publishCraftsmanInputUpdate({
+      task,
       actor: 'archon',
-      body: `Craftsman input sent for ${subtaskId}`,
-      metadata: {
-        event_type: 'craftsman_input_sent',
-        execution_id: executionId,
-        subtask_id: subtaskId,
-        input_type: inputType,
-        detail,
-      },
-    });
-    this.publishTaskStatusBroadcast(task, {
-      kind: 'craftsman_input_sent',
-      bodyLines: [
-        `Craftsman input submitted for subtask ${subtaskId}.`,
-        `Execution: ${executionId}`,
-        `Input Type: ${inputType}`,
-        ...(detail ? [`Detail: ${detail}`] : []),
-        ...this.buildSmokePostInputCommands(task, executionId),
-      ],
+      subtaskId,
+      executionId,
+      inputType,
+      detail,
     });
   }
 }

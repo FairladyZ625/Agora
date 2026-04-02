@@ -377,4 +377,202 @@ describe('TaskBroadcastService', () => {
       fixture.cleanup();
     }
   });
+
+  it('publishes craftsman callback settlement updates', () => {
+    const fixture = makeDb();
+    try {
+      const { db } = fixture;
+      const taskRepository = new TaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const taskConversationRepository = new TaskConversationRepository(db);
+      const imProvisioningPort = new StubIMProvisioningPort({
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'discord-thread',
+      });
+
+      taskRepository.insertTask({
+        id: 'OC-CALLBACK-1',
+        title: 'Callback smoke',
+        description: '',
+        type: 'coding',
+        creator: 'archon',
+        priority: 'normal',
+        locale: 'zh-CN',
+        workflow: { type: 'custom', stages: [{ id: 'develop', mode: 'execute', execution_kind: 'craftsman_dispatch', allowed_actions: ['execute', 'dispatch_craftsman'] }] },
+        team: {
+          members: [{ role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' }],
+        },
+      });
+
+      taskContextBindingRepository.insert({
+        id: 'binding-callback-1',
+        task_id: 'OC-CALLBACK-1',
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'discord-thread',
+        status: 'active',
+      });
+
+      const service = new TaskBroadcastService({
+        taskContextBindingRepository,
+        taskConversationRepository,
+        imProvisioningPort,
+      });
+
+      service.publishCraftsmanExecutionUpdate({
+        task: {
+          id: 'OC-CALLBACK-1',
+          version: 1,
+          title: 'Callback smoke',
+          description: '',
+          type: 'coding',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
+          project_id: null,
+          state: 'active',
+          archive_status: null,
+          current_stage: 'develop',
+          skill_policy: null,
+          team: {
+            members: [{ role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' }],
+          },
+          workflow: { type: 'custom', stages: [{ id: 'develop', mode: 'execute', execution_kind: 'craftsman_dispatch', allowed_actions: ['execute', 'dispatch_craftsman'] }] },
+          control: { mode: 'normal' },
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+          created_at: '2026-04-02T00:00:00.000Z',
+          updated_at: '2026-04-02T00:00:00.000Z',
+        },
+        subtask: {
+          id: 'sub-callback-1',
+          output: 'implemented and ready',
+        },
+        execution: {
+          execution_id: 'exec-callback-1',
+          adapter: 'codex',
+          status: 'succeeded',
+          callback_payload: {
+            output: {
+              summary: 'implemented and ready',
+              artifacts: [],
+              structured: null,
+              text: null,
+              stderr: null,
+            },
+          },
+          finished_at: '2026-04-02T00:01:00.000Z',
+        },
+      });
+
+      const message = imProvisioningPort.published[0]?.messages[0];
+      expect(message?.kind).toBe('craftsman_completed');
+      expect(message?.body).toContain('Execution: exec-callback-1');
+      expect(message?.body).toContain('implemented and ready');
+      expect(taskConversationRepository.listByTask('OC-CALLBACK-1')[0]?.metadata).toMatchObject({
+        event_type: 'craftsman_completed',
+        controller_ref: 'opus',
+      });
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it('mirrors craftsman input updates into conversation and thread broadcasts', () => {
+    const fixture = makeDb();
+    try {
+      const { db } = fixture;
+      const taskRepository = new TaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const taskConversationRepository = new TaskConversationRepository(db);
+      const imProvisioningPort = new StubIMProvisioningPort({
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'discord-thread',
+      });
+
+      taskRepository.insertTask({
+        id: 'OC-INPUT-UNIT-1',
+        title: 'Input smoke',
+        description: '',
+        type: 'coding',
+        creator: 'archon',
+        priority: 'normal',
+        locale: 'zh-CN',
+        workflow: { type: 'custom', stages: [{ id: 'develop', mode: 'execute', execution_kind: 'craftsman_dispatch', allowed_actions: ['execute', 'dispatch_craftsman'] }] },
+        team: {
+          members: [{ role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' }],
+        },
+      });
+
+      taskContextBindingRepository.insert({
+        id: 'binding-input-1',
+        task_id: 'OC-INPUT-UNIT-1',
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'discord-thread',
+        status: 'active',
+      });
+
+      const service = new TaskBroadcastService({
+        taskContextBindingRepository,
+        taskConversationRepository,
+        imProvisioningPort,
+      });
+
+      service.publishCraftsmanInputUpdate({
+        task: {
+          id: 'OC-INPUT-UNIT-1',
+          version: 1,
+          title: 'Input smoke',
+          description: '',
+          type: 'coding',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
+          project_id: null,
+          state: 'active',
+          archive_status: null,
+          current_stage: 'develop',
+          skill_policy: null,
+          team: {
+            members: [{ role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' }],
+          },
+          workflow: { type: 'custom', stages: [{ id: 'develop', mode: 'execute', execution_kind: 'craftsman_dispatch', allowed_actions: ['execute', 'dispatch_craftsman'] }] },
+          control: { mode: 'normal' },
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+          created_at: '2026-04-02T00:00:00.000Z',
+          updated_at: '2026-04-02T00:00:00.000Z',
+        },
+        actor: 'archon',
+        subtaskId: 'sub-input-1',
+        executionId: 'exec-input-1',
+        inputType: 'text',
+        detail: 'Continue',
+      });
+
+      const conversationEntries = taskConversationRepository.listByTask('OC-INPUT-UNIT-1');
+      expect(conversationEntries.find((entry) => entry.author_ref === 'archon')?.metadata).toMatchObject({
+        event_type: 'craftsman_input_sent',
+        execution_id: 'exec-input-1',
+      });
+      expect(conversationEntries.find((entry) => entry.author_ref === 'agora-bot')?.metadata).toMatchObject({
+        event_type: 'craftsman_input_sent',
+      });
+      const message = imProvisioningPort.published[0]?.messages[0];
+      expect(message?.kind).toBe('craftsman_input_sent');
+      expect(message?.body).toContain('Input Type: text');
+      expect(message?.body).toContain('Detail: Continue');
+    } finally {
+      fixture.cleanup();
+    }
+  });
 });
