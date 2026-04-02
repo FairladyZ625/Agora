@@ -22,6 +22,7 @@ import type { CraftsmanInputPort } from './craftsman-input-port.js';
 import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
+import { TaskRecoveryService } from './task-recovery-service.js';
 import type {
   TaskBrainContextArtifact,
   TaskBrainContextAudience,
@@ -40,7 +41,7 @@ import { StageRosterService } from './stage-roster-service.js';
 import { TaskBroadcastService } from './task-broadcast-service.js';
 import type { TaskAuthorityService } from './task-authority-service.js';
 import { TaskWorktreeService } from './task-worktree-service.js';
-import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
+import { resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAlignment, validateTemplateGraph } from './template-graph-service.js';
 
@@ -312,6 +313,7 @@ export class TaskService {
   private readonly stageRosterService: StageRosterService;
   private readonly taskBroadcastService: TaskBroadcastService;
   private readonly taskParticipantSyncService: TaskParticipantSyncService;
+  private readonly taskRecoveryService: TaskRecoveryService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -413,6 +415,20 @@ export class TaskService {
       rosterAfterMs: options.escalationPolicy?.rosterAfterMs ?? 900_000,
       inboxAfterMs: options.escalationPolicy?.inboxAfterMs ?? 1_800_000,
     };
+    this.taskRecoveryService = new TaskRecoveryService({
+      databasePort: this.db,
+      taskRepository: this.taskRepository,
+      flowLogRepository: this.flowLogRepository,
+      inboxRepository: this.inboxRepository,
+      escalationPolicy: this.escalationPolicy,
+      publishTaskStatusBroadcast: (task, input) => this.publishTaskStatusBroadcast(task, input),
+      mirrorConversationEntry: (taskId, input) => this.mirrorConversationEntry(taskId, input),
+      buildSchedulerSnapshot: (task, reason) => this.buildSchedulerSnapshot(task, reason),
+      failMissingCraftsmanSessions: (taskId, options) => this.failMissingCraftsmanSessions(taskId, options),
+      resolveLatestBusinessActivityMs: (task) => this.resolveLatestBusinessActivityMs(task),
+      getProbeState: (taskId, latestActivityMs) => this.getProbeState(taskId, latestActivityMs),
+      resolveApprovalWaitProbe: (task) => this.resolveApprovalWaitProbe(task),
+    });
   }
 
   async drainBackgroundOperations(): Promise<void> {
@@ -1988,238 +2004,11 @@ export class TaskService {
   }
 
   startupRecoveryScan(): StartupRecoveryScanResult {
-    const result: StartupRecoveryScanResult = {
-      scanned_tasks: 0,
-      blocked_tasks: 0,
-      failed_subtasks: 0,
-      failed_executions: 0,
-    };
-
-    for (const task of this.taskRepository.listTasks(TaskState.ACTIVE)) {
-      result.scanned_tasks += 1;
-      const schedulerSnapshot = this.buildSchedulerSnapshot(task, 'startup_recovery_scan');
-
-      this.db.exec('BEGIN');
-      try {
-        const impacts = this.failMissingCraftsmanSessions(task.id, {
-          event: 'craftsman_session_missing_on_startup',
-          messagePrefix: 'Craftsman session not alive on startup recovery',
-        });
-
-        if (impacts.length === 0) {
-          this.db.exec('COMMIT');
-          continue;
-        }
-
-        const reason = 'startup recovery blocked task after missing craftsmen sessions';
-        this.taskRepository.updateTask(task.id, task.version, {
-          state: TaskState.BLOCKED,
-          error_detail: reason,
-          scheduler_snapshot: schedulerSnapshot,
-        });
-        this.flowLogRepository.insertFlowLog({
-          task_id: task.id,
-          kind: 'flow',
-          event: 'state_changed',
-          stage_id: task.current_stage,
-          from_state: task.state,
-          to_state: TaskState.BLOCKED,
-          detail: {
-            reason,
-            recovered_subtasks: impacts.map((impact) => impact.subtask_id),
-          },
-          actor: 'system',
-        });
-        this.flowLogRepository.insertFlowLog({
-          task_id: task.id,
-          kind: 'flow',
-          event: 'blocked',
-          stage_id: task.current_stage,
-          from_state: task.state,
-          to_state: TaskState.BLOCKED,
-          detail: {
-            reason,
-            recovered_subtasks: impacts.map((impact) => impact.subtask_id),
-          },
-          actor: 'system',
-        });
-        this.mirrorConversationEntry(task.id, {
-          actor: 'system',
-          body: `Task blocked: ${reason}`,
-          metadata: {
-            event: 'blocked',
-            from_state: task.state,
-            to_state: TaskState.BLOCKED,
-            reason,
-            recovered_subtasks: impacts.map((impact) => impact.subtask_id),
-          },
-        });
-        this.db.exec('COMMIT');
-
-        result.blocked_tasks += 1;
-        result.failed_subtasks += impacts.length;
-        result.failed_executions += impacts.reduce((sum, impact) => sum + impact.execution_ids.length, 0);
-      } catch (error) {
-        this.db.exec('ROLLBACK');
-        throw error;
-      }
-    }
-
-    return result;
+    return this.taskRecoveryService.startupRecoveryScan();
   }
 
   probeInactiveTasks(options: InactiveTaskProbeOptions): InactiveTaskProbeResult {
-    const thresholds = this.resolveEscalationPolicy(options);
-    const now = options.now ?? new Date();
-    const result: InactiveTaskProbeResult = {
-      scanned_tasks: 0,
-      controller_pings: 0,
-      roster_pings: 0,
-      human_pings: 0,
-      inbox_items: 0,
-    };
-
-    for (const task of this.taskRepository.listTasks(TaskState.ACTIVE)) {
-      result.scanned_tasks += 1;
-      const latestActivityMs = this.resolveLatestBusinessActivityMs(task);
-      const idleMs = now.getTime() - latestActivityMs;
-      const controllerRef = resolveControllerRef(task.team.members);
-      const interactiveRefs = task.team.members.filter(isInteractiveParticipant).map((member) => member.agentId);
-      const probeState = this.getProbeState(task.id, latestActivityMs);
-      const approvalWaitProbe = this.resolveApprovalWaitProbe(task);
-
-      if (approvalWaitProbe) {
-        if (idleMs >= thresholds.controllerAfterMs && !probeState.humanApprovalNotified && approvalWaitProbe.participantRefs.length > 0) {
-          this.publishTaskStatusBroadcast(task, {
-            kind: 'human_approval_pinged',
-            participantRefs: approvalWaitProbe.participantRefs,
-            ensureParticipantRefsJoined: approvalWaitProbe.participantRefs,
-            bodyLines: [
-              `Task is waiting for human approval and has remained idle for ${Math.round(idleMs / 1000)} seconds.`,
-              `Approval Request: ${approvalWaitProbe.request.id}`,
-              'Please review the pending approval and decide in Dashboard or the task thread.',
-            ],
-          });
-          this.flowLogRepository.insertFlowLog({
-            task_id: task.id,
-            kind: 'flow',
-            event: 'human_approval_pinged',
-            stage_id: task.current_stage,
-            detail: {
-              idle_ms: idleMs,
-              approval_request_id: approvalWaitProbe.request.id,
-              participant_refs: approvalWaitProbe.participantRefs,
-            },
-            actor: 'system',
-          });
-          result.human_pings += 1;
-          continue;
-        }
-
-        if (idleMs >= thresholds.inboxAfterMs && !probeState.inboxRaised) {
-          this.inboxRepository.insertInboxItem({
-            text: `Task ${task.id} is awaiting human approval`,
-            source: 'inbox_escalated',
-            notes: `Task ${task.id} has waited ${Math.round(idleMs / 1000)} seconds for human approval at stage ${task.current_stage ?? '-'}.`,
-            tags: ['task', 'approval_waiting'],
-            metadata: {
-              task_id: task.id,
-              kind: 'inbox_escalated',
-              current_stage: task.current_stage,
-              idle_ms: idleMs,
-              reason: 'approval_waiting',
-              approval_request_id: approvalWaitProbe.request.id,
-            },
-          });
-          this.flowLogRepository.insertFlowLog({
-            task_id: task.id,
-            kind: 'flow',
-            event: 'inbox_escalated',
-            stage_id: task.current_stage,
-            detail: {
-              idle_ms: idleMs,
-              reason: 'approval_waiting',
-              approval_request_id: approvalWaitProbe.request.id,
-            },
-            actor: 'system',
-          });
-          result.inbox_items += 1;
-        }
-        continue;
-      }
-
-      if (idleMs < thresholds.controllerAfterMs) {
-        continue;
-      }
-
-      if (!probeState.controllerNotified && controllerRef) {
-        this.publishTaskStatusBroadcast(task, {
-          kind: 'controller_pinged',
-          participantRefs: [controllerRef],
-          bodyLines: [
-            `Task appears inactive for ${Math.round(idleMs / 1000)} seconds.`,
-            'No meaningful progress has been detected. Please inspect the thread and continue orchestration.',
-          ],
-        });
-        this.flowLogRepository.insertFlowLog({
-          task_id: task.id,
-          kind: 'flow',
-          event: 'controller_pinged',
-          stage_id: task.current_stage,
-          detail: { idle_ms: idleMs, controller_ref: controllerRef },
-          actor: 'system',
-        });
-        result.controller_pings += 1;
-        continue;
-      }
-
-      if (idleMs >= thresholds.rosterAfterMs && probeState.controllerNotified && !probeState.rosterNotified && interactiveRefs.length > 0) {
-        this.publishTaskStatusBroadcast(task, {
-          kind: 'roster_pinged',
-          participantRefs: interactiveRefs,
-          bodyLines: [
-            `Task remains inactive for ${Math.round(idleMs / 1000)} seconds after controller probe.`,
-            'Interactive roster should check the thread, unblock the current stage, and continue execution.',
-          ],
-        });
-        this.flowLogRepository.insertFlowLog({
-          task_id: task.id,
-          kind: 'flow',
-          event: 'roster_pinged',
-          stage_id: task.current_stage,
-          detail: { idle_ms: idleMs, participant_refs: interactiveRefs },
-          actor: 'system',
-        });
-        result.roster_pings += 1;
-        continue;
-      }
-
-      if (idleMs >= thresholds.inboxAfterMs && probeState.rosterNotified && !probeState.inboxRaised) {
-        this.inboxRepository.insertInboxItem({
-          text: `Task ${task.id} appears stuck`,
-          source: 'inbox_escalated',
-          notes: `Task ${task.id} has remained inactive for ${Math.round(idleMs / 1000)} seconds at stage ${task.current_stage ?? '-'}.`,
-          tags: ['task', 'stuck'],
-          metadata: {
-            task_id: task.id,
-            kind: 'inbox_escalated',
-            current_stage: task.current_stage,
-            idle_ms: idleMs,
-          },
-        });
-        this.flowLogRepository.insertFlowLog({
-          task_id: task.id,
-          kind: 'flow',
-          event: 'inbox_escalated',
-          stage_id: task.current_stage,
-          detail: { idle_ms: idleMs },
-          actor: 'system',
-        });
-        result.inbox_items += 1;
-      }
-    }
-
-    return result;
+    return this.taskRecoveryService.probeInactiveTasks(options);
   }
 
   private buildWorkflow(template: TaskTemplate): WorkflowDto {
