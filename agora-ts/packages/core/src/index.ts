@@ -58,6 +58,7 @@ export * from './task-brain-binding-service.js';
 export * from './task-brain-port.js';
 export * from './task-conversation-service.js';
 export * from './task-inbound-service.js';
+export * from './task-lifecycle-service.js';
 export * from './task-participation-service.js';
 export * from './task-participant-sync-service.js';
 export * from './task-recovery-service.js';

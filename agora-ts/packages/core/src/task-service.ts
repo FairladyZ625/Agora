@@ -23,6 +23,7 @@ import type { CraftsmanExecutionProbePort } from './craftsman-probe-port.js';
 import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
 import { TaskRecoveryService } from './task-recovery-service.js';
+import { TaskLifecycleService } from './task-lifecycle-service.js';
 import type {
   TaskBrainContextArtifact,
   TaskBrainContextAudience,
@@ -314,6 +315,7 @@ export class TaskService {
   private readonly taskBroadcastService: TaskBroadcastService;
   private readonly taskParticipantSyncService: TaskParticipantSyncService;
   private readonly taskRecoveryService: TaskRecoveryService;
+  private readonly taskLifecycleService: TaskLifecycleService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -438,6 +440,18 @@ export class TaskService {
       resolveLatestBusinessActivityMs: (task) => this.resolveLatestBusinessActivityMs(task),
       getProbeState: (taskId, latestActivityMs) => this.getProbeState(taskId, latestActivityMs),
       resolveApprovalWaitProbe: (task) => this.resolveApprovalWaitProbe(task),
+    });
+    this.taskLifecycleService = new TaskLifecycleService({
+      databasePort: this.db,
+      taskRepository: this.taskRepository,
+      flowLogRepository: this.flowLogRepository,
+      progressLogRepository: this.progressLogRepository,
+      subtaskRepository: this.subtaskRepository,
+      todoRepository: this.todoRepository,
+      createTask: (input) => this.createTask(input),
+      withControllerRef: (task) => this.withControllerRef(task),
+      buildTaskBlueprint: (task) => this.buildTaskBlueprint(task),
+      buildCurrentStageRoster: (task) => this.buildCurrentStageRoster(task),
     });
   }
 
@@ -657,24 +671,15 @@ export class TaskService {
   }
 
   getTask(taskId: string): TaskRecord | null {
-    const task = this.taskRepository.getTask(taskId);
-    return task ? this.withControllerRef(task) : null;
+    return this.taskLifecycleService.getTask(taskId);
   }
 
   listTasks(state?: string, projectId?: string): TaskRecord[] {
-    return this.taskRepository.listTasks(state, projectId).map((task) => this.withControllerRef(task));
+    return this.taskLifecycleService.listTasks(state, projectId);
   }
 
   getTaskStatus(taskId: string): TaskStatusDto {
-    const task = this.getTaskOrThrow(taskId);
-    return {
-      task: this.withControllerRef(task) as TaskStatusDto['task'],
-      task_blueprint: this.buildTaskBlueprint(task),
-      current_stage_roster: this.buildCurrentStageRoster(task),
-      flow_log: this.flowLogRepository.listByTask(taskId),
-      progress_log: this.progressLogRepository.listByTask(taskId),
-      subtasks: this.subtaskRepository.listByTask(taskId),
-    };
+    return this.taskLifecycleService.getTaskStatus(taskId);
   }
 
   advanceTask(taskId: string, options: AdvanceTaskOptions): TaskRecord {
@@ -1725,55 +1730,11 @@ export class TaskService {
   }
 
   promoteTodo(todoId: number, options: PromoteTodoRequestDto) {
-    const todo = this.todoRepository.getTodo(todoId);
-    if (!todo) {
-      throw new NotFoundError(`Todo ${todoId} not found`);
-    }
-    if (todo.promoted_to) {
-      throw new Error(`Todo ${todoId} already promoted to ${todo.promoted_to}`);
-    }
-    const task = this.createTask({
-      title: todo.text,
-      type: options.type,
-      creator: options.creator,
-      description: '',
-      priority: options.priority,
-      locale: 'zh-CN',
-      ...(todo.project_id ? { project_id: todo.project_id } : {}),
-    });
-    const updatedTodo = this.todoRepository.updateTodo(todoId, {
-      promoted_to: task.id,
-    });
-    return { todo: updatedTodo, task };
+    return this.taskLifecycleService.promoteTodo(todoId, options);
   }
 
   cleanupOrphaned(taskId?: string): number {
-    const rows = taskId
-      ? (this.db.prepare("SELECT id FROM tasks WHERE id = ? AND state = 'orphaned'").all(taskId) as Array<{ id: string }>)
-      : (this.db.prepare("SELECT id FROM tasks WHERE state = 'orphaned'").all() as Array<{ id: string }>);
-
-    let count = 0;
-    for (const row of rows) {
-      const orphanedTaskId = row.id;
-      this.db.exec('BEGIN');
-      try {
-        this.db.prepare('DELETE FROM craftsman_executions WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM subtasks WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM flow_log WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM progress_log WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM stage_history WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM archon_reviews WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM approvals WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM quorum_votes WHERE task_id = ?').run(orphanedTaskId);
-        this.db.prepare('DELETE FROM tasks WHERE id = ?').run(orphanedTaskId);
-        this.db.exec('COMMIT');
-      } catch (error) {
-        this.db.exec('ROLLBACK');
-        throw error;
-      }
-      count += 1;
-    }
-    return count;
+    return this.taskLifecycleService.cleanupOrphaned(taskId);
   }
 
   startupRecoveryScan(): StartupRecoveryScanResult {
