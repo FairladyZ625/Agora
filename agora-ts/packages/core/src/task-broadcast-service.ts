@@ -293,6 +293,42 @@ export class TaskBroadcastService {
     });
   }
 
+  syncImContextForTaskState(
+    taskId: string,
+    fromState: TaskStateLike,
+    toState: TaskStateLike,
+    reason?: string,
+    onSuccess?: () => void,
+  ) {
+    if (!this.imProvisioningPort) {
+      return;
+    }
+    const binding = this.taskContextBindingRepository.listByTask(taskId)[0];
+    if (!binding) {
+      return;
+    }
+    const mode = resolveImContextModeForStateTransition(fromState, toState);
+    if (!mode) {
+      return;
+    }
+    this.queueBackgroundOperation(this.imProvisioningPort.archiveContext({
+      binding_id: binding.id,
+      conversation_ref: binding.conversation_ref,
+      thread_ref: binding.thread_ref,
+      mode,
+      reason: reason ?? null,
+    }).then(() => {
+      this.taskContextBindingRepository.updateStatus(
+        binding.id,
+        mode === 'archive' ? 'archived' : mode === 'unarchive' ? 'active' : 'destroyed',
+      );
+      onSuccess?.();
+    }).catch((err: unknown) => {
+      console.error(`[TaskBroadcastService] IM context transition failed for task ${taskId}:`, err);
+      this.taskContextBindingRepository.updateStatus(binding.id, 'failed');
+    }));
+  }
+
   private queueBackgroundOperation<T>(operation: Promise<T>) {
     if (this.trackBackgroundOperation) {
       this.trackBackgroundOperation(operation);
@@ -462,4 +498,17 @@ function resolveAllowedActions(stage: WorkflowStageLike | null | undefined) {
     default:
       return [];
   }
+}
+
+function resolveImContextModeForStateTransition(
+  fromState: TaskStateLike,
+  toState: TaskStateLike,
+): 'archive' | 'unarchive' | null {
+  if (toState === 'paused' || toState === 'cancelled') {
+    return 'archive';
+  }
+  if (fromState === 'paused' && toState === 'active') {
+    return 'unarchive';
+  }
+  return null;
 }

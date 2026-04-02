@@ -199,4 +199,89 @@ describe('TaskBroadcastService', () => {
       fixture.cleanup();
     }
   });
+
+  it('archives and restores the latest IM context binding for task state transitions', async () => {
+    const fixture = makeDb();
+    try {
+      const { db } = fixture;
+      const taskRepository = new TaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const taskConversationRepository = new TaskConversationRepository(db);
+      const imProvisioningPort = new StubIMProvisioningPort({
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'discord-thread',
+      });
+
+      taskRepository.insertTask({
+        id: 'OC-STATE-1',
+        title: 'State transition smoke',
+        description: '',
+        type: 'coding',
+        creator: 'archon',
+        priority: 'normal',
+        locale: 'zh-CN',
+        workflow: {
+          type: 'custom',
+          stages: [
+            {
+              id: 'build',
+              mode: 'execute',
+              execution_kind: 'craftsman_dispatch',
+              allowed_actions: ['execute', 'dispatch_craftsman'],
+            },
+          ],
+        },
+        team: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          ],
+        },
+      });
+
+      taskContextBindingRepository.insert({
+        id: 'binding-state-1',
+        task_id: 'OC-STATE-1',
+        im_provider: 'discord',
+        conversation_ref: 'discord-parent',
+        thread_ref: 'discord-thread',
+        status: 'active',
+      });
+
+      const service = new TaskBroadcastService({
+        taskContextBindingRepository,
+        taskConversationRepository,
+        imProvisioningPort,
+      });
+
+      service.syncImContextForTaskState('OC-STATE-1', 'active', 'paused', 'hold for review');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(imProvisioningPort.archived).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            binding_id: 'binding-state-1',
+            conversation_ref: 'discord-parent',
+            thread_ref: 'discord-thread',
+            mode: 'archive',
+            reason: 'hold for review',
+          }),
+        ]),
+      );
+      expect(taskContextBindingRepository.getById('binding-state-1')?.status).toBe('archived');
+
+      service.syncImContextForTaskState('OC-STATE-1', 'paused', 'active');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(imProvisioningPort.archived).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            binding_id: 'binding-state-1',
+            mode: 'unarchive',
+          }),
+        ]),
+      );
+      expect(taskContextBindingRepository.getById('binding-state-1')?.status).toBe('active');
+    } finally {
+      fixture.cleanup();
+    }
+  });
 });

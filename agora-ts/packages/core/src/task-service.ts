@@ -3784,46 +3784,7 @@ export class TaskService {
     reason?: string,
     onSuccess?: () => void,
   ) {
-    if (!this.imProvisioningPort || !this.taskContextBindingService) {
-      return;
-    }
-    const binding = this.taskContextBindingService.getLatestBinding(taskId);
-    if (!binding) {
-      return;
-    }
-    const mode = this.resolveImContextModeForStateTransition(fromState, toState);
-    if (!mode) {
-      return;
-    }
-    this.trackBackgroundOperation(this.imProvisioningPort.archiveContext({
-      binding_id: binding.id,
-      conversation_ref: binding.conversation_ref,
-      thread_ref: binding.thread_ref,
-      mode,
-      reason: reason ?? null,
-    }).then(() => {
-      this.taskContextBindingService?.updateStatus(
-        binding.id,
-        mode === 'archive' ? 'archived' : mode === 'unarchive' ? 'active' : 'destroyed',
-      );
-      onSuccess?.();
-    }).catch((err: unknown) => {
-      console.error(`[TaskService] IM context transition failed for task ${taskId}:`, err);
-      this.taskContextBindingService?.updateStatus(binding.id, 'failed');
-    }));
-  }
-
-  private resolveImContextModeForStateTransition(
-    fromState: TaskState,
-    toState: TaskState,
-  ): 'archive' | 'unarchive' | null {
-    if (toState === TaskState.PAUSED || toState === TaskState.CANCELLED) {
-      return 'archive';
-    }
-    if (fromState === TaskState.PAUSED && toState === TaskState.ACTIVE) {
-      return 'unarchive';
-    }
-    return null;
+    this.taskBroadcastService.syncImContextForTaskState(taskId, fromState, toState, reason, onSuccess);
   }
 
   private describeGateState(stage: WorkflowStageLike | null) {
