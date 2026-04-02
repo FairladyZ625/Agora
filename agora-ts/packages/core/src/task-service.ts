@@ -418,9 +418,19 @@ export class TaskService {
     this.taskRecoveryService = new TaskRecoveryService({
       databasePort: this.db,
       taskRepository: this.taskRepository,
+      taskContextBindingRepository: this.taskContextBindingRepository,
       flowLogRepository: this.flowLogRepository,
       inboxRepository: this.inboxRepository,
       escalationPolicy: this.escalationPolicy,
+      runtimeRecoveryPort: this.runtimeRecoveryPort,
+      listLiveSessions: this.liveSessionStore ? () => this.liveSessionStore!.listAll() : undefined,
+      getRuntimeStaleAfterMs: this.liveSessionStore ? () => this.liveSessionStore!.getStaleAfterMs() : undefined,
+      getCraftsmanGovernanceSnapshot: () => this.getCraftsmanGovernanceSnapshot(),
+      assertTaskRuntimeControl: (task, callerId, action) => this.assertTaskRuntimeControl(task, callerId, action),
+      resolveTaskRuntimeParticipant: (task, agentRef) => this.resolveTaskRuntimeParticipant(task, agentRef),
+      getCraftsmanExecution: (executionId) => this.getCraftsmanExecution(executionId),
+      getSubtaskOrThrow: (taskId, subtaskId) => this.getSubtaskOrThrow(taskId, subtaskId),
+      assertSubtaskControl: (task, subtask, callerId) => this.assertSubtaskControl(task, subtask, callerId),
       publishTaskStatusBroadcast: (task, input) => this.publishTaskStatusBroadcast(task, input),
       mirrorConversationEntry: (taskId, input) => this.mirrorConversationEntry(taskId, input),
       buildSchedulerSnapshot: (task, reason) => this.buildSchedulerSnapshot(task, reason),
@@ -1396,256 +1406,19 @@ export class TaskService {
   }
 
   getHealthSnapshot(): UnifiedHealthSnapshotDto {
-    const generatedAt = new Date().toISOString();
-    const tasks = this.taskRepository.listTasks();
-    const taskCounts = {
-      total_tasks: tasks.length,
-      active_tasks: tasks.filter((task) => task.state === 'active').length,
-      paused_tasks: tasks.filter((task) => task.state === 'paused').length,
-      blocked_tasks: tasks.filter((task) => task.state === 'blocked').length,
-      done_tasks: tasks.filter((task) => task.state === 'done').length,
-    };
-
-    const activeBindings = tasks
-      .map((task) => this.taskContextBindingRepository.getActiveByTask(task.id))
-      .filter((binding): binding is NonNullable<typeof binding> => binding !== null);
-    const bindingsByProvider = Array.from(
-      activeBindings.reduce((map, binding) => {
-        map.set(binding.im_provider, (map.get(binding.im_provider) ?? 0) + 1);
-        return map;
-      }, new Map<string, number>()),
-    ).map(([label, count]) => ({ label, count })).sort((a, b) => a.label.localeCompare(b.label));
-
-    const sessions = this.liveSessionStore?.listAll() ?? [];
-    const runtimeAgents = Array.from(
-      sessions.reduce((map, session) => {
-        const current = map.get(session.agent_id) ?? {
-          agent_id: session.agent_id,
-          status: session.status,
-          session_count: 0,
-          last_event_at: session.last_event_at,
-        };
-        current.session_count += 1;
-        if (current.last_event_at === null || current.last_event_at < session.last_event_at) {
-          current.status = session.status;
-          current.last_event_at = session.last_event_at;
-        }
-        map.set(session.agent_id, current);
-        return map;
-      }, new Map<string, { agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>()),
-    ).map(([, agent]) => agent).sort((a, b) => a.agent_id.localeCompare(b.agent_id));
-
-    const activeExecutions = this.craftsmanExecutions.listActiveExecutions();
-    const governance = this.getCraftsmanGovernanceSnapshot();
-    const hostSnapshot = governance.host;
-    const hostStatus = !hostSnapshot
-      ? 'unavailable'
-      : this.isHostHealthDegraded(hostSnapshot)
-        ? 'degraded'
-        : 'healthy';
-    const escalationSnapshot = this.buildEscalationSnapshot(tasks, runtimeAgents);
-
-    return {
-      generated_at: generatedAt,
-      tasks: {
-        status: taskCounts.blocked_tasks > 0 ? 'degraded' : 'healthy',
-        ...taskCounts,
-      },
-      im: {
-        status: activeBindings.length > 0 ? 'healthy' : 'unavailable',
-        active_bindings: activeBindings.length,
-        active_threads: activeBindings.filter((binding) => binding.thread_ref !== null).length,
-        bindings_by_provider: bindingsByProvider,
-      },
-      runtime: {
-        status: !this.liveSessionStore
-          ? 'unavailable'
-          : runtimeAgents.some((agent) => agent.status === 'closed')
-            ? 'degraded'
-            : 'healthy',
-        available: !!this.liveSessionStore,
-        stale_after_ms: this.liveSessionStore?.getStaleAfterMs() ?? null,
-        active_sessions: sessions.filter((session) => session.status === 'active').length,
-        idle_sessions: sessions.filter((session) => session.status === 'idle').length,
-        closed_sessions: sessions.filter((session) => session.status === 'closed').length,
-        agents: runtimeAgents,
-      },
-      craftsman: {
-        status: activeExecutions.length === 0
-          ? 'healthy'
-          : activeExecutions.some((execution) => execution.status === 'needs_input' || execution.status === 'awaiting_choice')
-            ? 'degraded'
-            : 'healthy',
-        active_executions: activeExecutions.length,
-        queued_executions: activeExecutions.filter((execution) => execution.status === 'queued').length,
-        running_executions: activeExecutions.filter((execution) => execution.status === 'running').length,
-        waiting_input_executions: activeExecutions.filter((execution) => execution.status === 'needs_input').length,
-        awaiting_choice_executions: activeExecutions.filter((execution) => execution.status === 'awaiting_choice').length,
-        active_by_assignee: governance.active_by_assignee.map((item) => ({
-          label: item.assignee,
-          count: item.count,
-        })),
-      },
-      host: {
-        status: hostStatus,
-        snapshot: hostSnapshot,
-      },
-      escalation: escalationSnapshot,
-    };
+    return this.taskRecoveryService.getHealthSnapshot();
   }
 
   requestRuntimeDiagnosis(taskId: string, options: RuntimeRecoveryRequestDto): RuntimeDiagnosisResultDto {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskRuntimeControl(task, options.caller_id, `runtime diagnosis for agent '${options.agent_ref}'`);
-    if (!this.runtimeRecoveryPort) {
-      throw new Error('Runtime recovery port is not configured');
-    }
-    const runtimeResolution = this.resolveTaskRuntimeParticipant(task, options.agent_ref);
-    const result = this.runtimeRecoveryPort.requestRuntimeDiagnosis({
-      taskId,
-      agentRef: options.agent_ref,
-      runtimeProvider: runtimeResolution.runtime_provider,
-      runtimeActorRef: runtimeResolution.runtime_actor_ref,
-      reason: options.reason ?? null,
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'system',
-      event: 'runtime_diagnosis_requested',
-      stage_id: task.current_stage,
-      detail: {
-        agent_ref: options.agent_ref,
-        caller_id: options.caller_id,
-        status: result.status,
-        health: result.health,
-      },
-      actor: options.caller_id,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.caller_id,
-      body: `Runtime diagnosis requested for ${options.agent_ref}.`,
-      metadata: {
-        event: 'runtime_diagnosis_requested',
-        status: result.status,
-        health: result.health,
-        summary: result.summary,
-      },
-    });
-    this.publishTaskStatusBroadcast(task, {
-      kind: 'runtime_diagnosis_requested',
-      participantRefs: [options.agent_ref],
-      bodyLines: [
-        `Agent: ${options.agent_ref}`,
-        `Caller: ${options.caller_id}`,
-        `Status: ${result.status}`,
-        `Health: ${result.health}`,
-        `Summary: ${result.summary}`,
-      ],
-    });
-    return result;
+    return this.taskRecoveryService.requestRuntimeDiagnosis(taskId, options);
   }
 
   restartCitizenRuntime(taskId: string, options: RuntimeRecoveryRequestDto): RuntimeRecoveryActionDto {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskRuntimeControl(task, options.caller_id, `runtime restart for agent '${options.agent_ref}'`);
-    if (!this.runtimeRecoveryPort) {
-      throw new Error('Runtime recovery port is not configured');
-    }
-    const runtimeResolution = this.resolveTaskRuntimeParticipant(task, options.agent_ref);
-    const result = this.runtimeRecoveryPort.restartCitizenRuntime({
-      taskId,
-      agentRef: options.agent_ref,
-      runtimeProvider: runtimeResolution.runtime_provider,
-      runtimeActorRef: runtimeResolution.runtime_actor_ref,
-      reason: options.reason ?? null,
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'system',
-      event: 'runtime_restart_requested',
-      stage_id: task.current_stage,
-      detail: {
-        agent_ref: options.agent_ref,
-        caller_id: options.caller_id,
-        status: result.status,
-      },
-      actor: options.caller_id,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.caller_id,
-      body: `Runtime restart requested for ${options.agent_ref}.`,
-      metadata: {
-        event: 'runtime_restart_requested',
-        status: result.status,
-        summary: result.summary,
-      },
-    });
-    this.publishTaskStatusBroadcast(task, {
-      kind: 'runtime_restart_requested',
-      participantRefs: [options.agent_ref],
-      bodyLines: [
-        `Agent: ${options.agent_ref}`,
-        `Caller: ${options.caller_id}`,
-        `Status: ${result.status}`,
-        `Summary: ${result.summary}`,
-      ],
-    });
-    return result;
+    return this.taskRecoveryService.restartCitizenRuntime(taskId, options);
   }
 
   stopCraftsmanExecution(executionId: string, options: CraftsmanStopExecutionRequestDto & { caller_id: string }): RuntimeRecoveryActionDto {
-    const execution = this.getCraftsmanExecution(executionId);
-    if (TERMINAL_EXECUTION_STATUSES.has(execution.status)) {
-      throw new Error(`Craftsman execution ${executionId} is already terminal (status=${execution.status})`);
-    }
-    const task = this.getTaskOrThrow(execution.task_id);
-    const subtask = this.getSubtaskOrThrow(execution.task_id, execution.subtask_id);
-    this.assertSubtaskControl(task, subtask, options.caller_id);
-    if (!this.runtimeRecoveryPort) {
-      throw new Error('Runtime recovery port is not configured');
-    }
-    const result = this.runtimeRecoveryPort.stopExecution({
-      taskId: execution.task_id,
-      subtaskId: execution.subtask_id,
-      executionId: execution.execution_id,
-      adapter: execution.adapter,
-      sessionId: execution.session_id,
-      workdir: execution.workdir,
-      reason: options.reason ?? null,
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: execution.task_id,
-      kind: 'system',
-      event: 'craftsman_stop_requested',
-      stage_id: subtask.stage_id,
-      detail: {
-        execution_id: execution.execution_id,
-        subtask_id: execution.subtask_id,
-        caller_id: options.caller_id,
-        status: result.status,
-      },
-      actor: options.caller_id,
-    });
-    this.mirrorConversationEntry(execution.task_id, {
-      actor: options.caller_id,
-      body: `Craftsman stop requested for execution ${execution.execution_id}.`,
-      metadata: {
-        event: 'craftsman_stop_requested',
-        status: result.status,
-        summary: result.summary,
-      },
-    });
-    this.publishTaskStatusBroadcast(task, {
-      kind: 'craftsman_stop_requested',
-      bodyLines: [
-        `Execution: ${execution.execution_id}`,
-        `Subtask: ${execution.subtask_id}`,
-        `Caller: ${options.caller_id}`,
-        `Status: ${result.status}`,
-        `Summary: ${result.summary}`,
-      ],
-    });
-    return result;
+    return this.taskRecoveryService.stopCraftsmanExecution(executionId, options);
   }
 
   sendCraftsmanInputText(executionId: string, text: string, submit = true) {

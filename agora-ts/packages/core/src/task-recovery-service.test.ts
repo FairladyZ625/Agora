@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { FlowLogRepository, InboxRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { FlowLogRepository, InboxRepository, TaskContextBindingRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { TaskRecoveryService } from './task-recovery-service.js';
 
 function makeDb() {
@@ -24,6 +24,7 @@ describe('TaskRecoveryService', () => {
     try {
       const { db } = fixture;
       const taskRepository = new TaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
       const flowLogRepository = new FlowLogRepository(db);
       const inboxRepository = new InboxRepository(db);
       const task = taskRepository.insertTask({
@@ -54,6 +55,7 @@ describe('TaskRecoveryService', () => {
       const service = new TaskRecoveryService({
         databasePort: db,
         taskRepository,
+        taskContextBindingRepository,
         flowLogRepository,
         inboxRepository,
         escalationPolicy: {
@@ -61,6 +63,34 @@ describe('TaskRecoveryService', () => {
           rosterAfterMs: 2_000,
           inboxAfterMs: 3_000,
         },
+        getCraftsmanGovernanceSnapshot: () => ({
+          active_executions: 0,
+          active_by_assignee: [],
+          active_execution_details: [],
+          host_pressure_status: 'healthy',
+          warnings: [],
+          host: null,
+        }),
+        assertTaskRuntimeControl: () => {},
+        resolveTaskRuntimeParticipant: () => ({
+          runtime_provider: null,
+          runtime_actor_ref: null,
+        }),
+        getCraftsmanExecution: () => ({
+          execution_id: 'exec-1',
+          task_id: 'OC-RECOVERY-1',
+          subtask_id: 'sub-1',
+          adapter: 'claude',
+          session_id: null,
+          workdir: null,
+          status: 'running',
+        }),
+        getSubtaskOrThrow: () => ({
+          id: 'sub-1',
+          assignee: 'opus',
+          stage_id: 'build',
+        }),
+        assertSubtaskControl: () => {},
         publishTaskStatusBroadcast: () => {},
         mirrorConversationEntry: (taskId, input) => {
           mirrored.push({ taskId, body: input.body });
@@ -115,6 +145,7 @@ describe('TaskRecoveryService', () => {
     try {
       const { db } = fixture;
       const taskRepository = new TaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
       const flowLogRepository = new FlowLogRepository(db);
       const inboxRepository = new InboxRepository(db);
       const task = taskRepository.insertTask({
@@ -153,6 +184,7 @@ describe('TaskRecoveryService', () => {
       const service = new TaskRecoveryService({
         databasePort: db,
         taskRepository,
+        taskContextBindingRepository,
         flowLogRepository,
         inboxRepository,
         escalationPolicy: {
@@ -160,6 +192,34 @@ describe('TaskRecoveryService', () => {
           rosterAfterMs: 2_000,
           inboxAfterMs: 3_000,
         },
+        getCraftsmanGovernanceSnapshot: () => ({
+          active_executions: 0,
+          active_by_assignee: [],
+          active_execution_details: [],
+          host_pressure_status: 'healthy',
+          warnings: [],
+          host: null,
+        }),
+        assertTaskRuntimeControl: () => {},
+        resolveTaskRuntimeParticipant: () => ({
+          runtime_provider: null,
+          runtime_actor_ref: null,
+        }),
+        getCraftsmanExecution: () => ({
+          execution_id: 'exec-2',
+          task_id: 'OC-RECOVERY-2',
+          subtask_id: 'sub-2',
+          adapter: 'claude',
+          session_id: null,
+          workdir: null,
+          status: 'running',
+        }),
+        getSubtaskOrThrow: () => ({
+          id: 'sub-2',
+          assignee: 'glm5',
+          stage_id: 'review',
+        }),
+        assertSubtaskControl: () => {},
         publishTaskStatusBroadcast: (taskRecord, input) => {
           broadcasts.push({
             taskId: taskRecord.id,
