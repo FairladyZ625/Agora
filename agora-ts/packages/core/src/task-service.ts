@@ -26,6 +26,7 @@ import { TaskRecoveryService } from './task-recovery-service.js';
 import { TaskLifecycleService } from './task-lifecycle-service.js';
 import { TaskApprovalService } from './task-approval-service.js';
 import { TaskStageService } from './task-stage-service.js';
+import { TaskCraftsmanService } from './task-craftsman-service.js';
 import type {
   TaskBrainContextArtifact,
   TaskBrainContextAudience,
@@ -319,6 +320,7 @@ export class TaskService {
   private readonly taskLifecycleService: TaskLifecycleService;
   private readonly taskApprovalService: TaskApprovalService;
   private readonly taskStageService: TaskStageService;
+  private readonly taskCraftsmanService: TaskCraftsmanService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -602,6 +604,70 @@ export class TaskService {
       publishTaskStateBroadcast: (task, fromState, toState, reason) => this.publishTaskStateBroadcast(task, fromState, toState, reason),
       getDoneStateBroadcastLines: () => ['Task reached done state and has been queued for archive handling.'],
     });
+    this.taskCraftsmanService = new TaskCraftsmanService({
+      getTaskOrThrow: (taskId) => this.getTaskOrThrow(taskId),
+      getSubtaskOrThrow: (taskId, subtaskId) => this.getSubtaskOrThrow(taskId, subtaskId),
+      assertSubtaskControl: (task, subtask, callerId) => this.assertSubtaskControl(task, subtask, callerId),
+      updateSubtask: (taskId, subtaskId, patch) => {
+        this.subtaskRepository.updateSubtask(taskId, subtaskId, patch);
+      },
+      listExecutionsBySubtask: (taskId, subtaskId) => this.craftsmanExecutions.listBySubtask(taskId, subtaskId),
+      updateExecution: (executionId, patch) => this.craftsmanExecutions.updateExecution(executionId, patch),
+      getExecution: (executionId) => this.craftsmanExecutions.getExecution(executionId),
+      ...(this.craftsmanExecutionTailPort
+        ? {
+            tailExecution: (execution: {
+              execution_id: string;
+              adapter: string;
+              session_id: string | null;
+              workdir: string | null;
+              status: string;
+            }, lines: number) => this.craftsmanExecutionTailPort!.tail({
+              executionId: execution.execution_id,
+              adapter: execution.adapter,
+              sessionId: execution.session_id,
+              workdir: execution.workdir,
+              status: execution.status,
+            }, lines),
+          }
+        : {}),
+      insertFlowLog: (input) => this.flowLogRepository.insertFlowLog(input),
+      mirrorConversationEntry: (taskId, input) => this.mirrorConversationEntry(taskId, input),
+      publishTaskStatusBroadcast: (task, input) => this.publishTaskStatusBroadcast(task, input),
+      countActiveExecutions: () => this.craftsmanExecutions.countActiveExecutions(),
+      listActiveExecutionCountsByAssignee: () => this.craftsmanExecutions.listActiveExecutionCountsByAssignee(),
+      listActiveExecutions: () => this.craftsmanExecutions.listActiveExecutions(),
+      readHostSnapshot: () => this.hostResourcePort?.readSnapshot() ?? null,
+      resolveHostPressureStatus: (snapshot) => this.resolveHostPressureStatus(snapshot),
+      buildHostGovernanceWarnings: (snapshot) => this.buildHostGovernanceWarnings(snapshot),
+      governanceLimits: this.craftsmanGovernance,
+      requireInteractiveExecution: (executionId) => this.requireInteractiveExecution(executionId),
+      ...(this.craftsmanInputPort
+        ? {
+            sendText: (execution: ReturnType<TaskService['requireInteractiveExecution']>, text: string, submit: boolean) => this.craftsmanInputPort!.sendText(execution, text, submit),
+            sendKeys: (execution: ReturnType<TaskService['requireInteractiveExecution']>, keys: CraftsmanInputKeyDto[]) => this.craftsmanInputPort!.sendKeys(execution, keys),
+            submitChoice: (execution: ReturnType<TaskService['requireInteractiveExecution']>, keys: CraftsmanInputKeyDto[]) => this.craftsmanInputPort!.submitChoice(execution, keys),
+          }
+        : {}),
+      recordCraftsmanInput: (taskId, subtaskId, executionId, inputType, detail) => {
+        this.recordCraftsmanInput(taskId, subtaskId, executionId, inputType, detail);
+      },
+      ...(this.craftsmanExecutionProbePort
+        ? {
+            probeViaPort: (execution: {
+              executionId: string;
+              adapter: string;
+              sessionId: string | null;
+              workdir: string | null;
+              status: string;
+            }) => this.craftsmanExecutionProbePort!.probe(execution),
+          }
+        : {}),
+      handleCraftsmanCallback: (input) => this.handleCraftsmanCallback(input),
+      getCraftsmanProbeState: (executionId, latestActivityMs) => this.getCraftsmanProbeState(executionId, latestActivityMs),
+      shouldProbeCraftsmanExecution: (nowMs, thresholdMs, probeState) => this.shouldProbeCraftsmanExecution(nowMs, thresholdMs, probeState),
+      noteCraftsmanAutoProbe: (executionId, latestActivityMs, nowMs) => this.noteCraftsmanAutoProbe(executionId, latestActivityMs, nowMs),
+    });
   }
 
   async drainBackgroundOperations(): Promise<void> {
@@ -712,125 +778,15 @@ export class TaskService {
   }
 
   completeSubtask(taskId: string, options: CompleteSubtaskOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
-    this.assertSubtaskControl(task, subtask, options.callerId);
-    this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
-      status: 'done',
-      output: options.output,
-      done_at: new Date().toISOString(),
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'system',
-      event: 'subtask_done',
-      stage_id: subtask.stage_id,
-      detail: { subtask_id: options.subtaskId },
-      actor: options.callerId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.callerId,
-      body: `Subtask ${options.subtaskId} marked done`,
-      metadata: {
-        event: 'subtask_done',
-        subtask_id: options.subtaskId,
-      },
-    });
-    return task;
+    return this.taskCraftsmanService.completeSubtask(taskId, options);
   }
 
   archiveSubtask(taskId: string, options: SubtaskLifecycleOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
-    this.assertSubtaskControl(task, subtask, options.callerId);
-    if (TERMINAL_SUBTASK_STATES.has(subtask.status)) {
-      throw new Error(`Subtask ${options.subtaskId} is already terminal (${subtask.status})`);
-    }
-    const now = new Date().toISOString();
-    this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
-      status: 'archived',
-      output: options.note || subtask.output || `Subtask archived by ${options.callerId}`,
-      done_at: now,
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'system',
-      event: 'subtask_archived',
-      stage_id: subtask.stage_id,
-      detail: { subtask_id: options.subtaskId, note: options.note || null },
-      actor: options.callerId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.callerId,
-      body: `Subtask ${options.subtaskId} archived`,
-      metadata: {
-        event: 'subtask_archived',
-        subtask_id: options.subtaskId,
-        note: options.note || null,
-      },
-    });
-    this.publishTaskStatusBroadcast(task, {
-      kind: 'subtask_archived',
-      bodyLines: [
-        `Subtask ${options.subtaskId} archived by ${options.callerId}.`,
-        ...(options.note ? [`Note: ${options.note}`] : []),
-      ],
-    });
-    return task;
+    return this.taskCraftsmanService.archiveSubtask(taskId, options);
   }
 
   cancelSubtask(taskId: string, options: SubtaskLifecycleOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    const subtask = this.getSubtaskOrThrow(taskId, options.subtaskId);
-    this.assertSubtaskControl(task, subtask, options.callerId);
-    if (TERMINAL_SUBTASK_STATES.has(subtask.status)) {
-      throw new Error(`Subtask ${options.subtaskId} is already terminal (${subtask.status})`);
-    }
-    const now = new Date().toISOString();
-    const reason = options.note || `Subtask cancelled by ${options.callerId}`;
-    this.subtaskRepository.updateSubtask(taskId, options.subtaskId, {
-      status: 'cancelled',
-      output: reason,
-      dispatch_status: subtask.dispatch_status && !TERMINAL_EXECUTION_STATUSES.has(subtask.dispatch_status)
-        ? 'failed'
-        : subtask.dispatch_status,
-      done_at: now,
-    });
-    for (const execution of this.craftsmanExecutions.listBySubtask(taskId, subtask.id)) {
-      if (TERMINAL_EXECUTION_STATUSES.has(execution.status)) {
-        continue;
-      }
-      this.craftsmanExecutions.updateExecution(execution.execution_id, {
-        status: 'cancelled',
-        error: reason,
-        finished_at: now,
-      });
-    }
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'system',
-      event: 'subtask_cancelled',
-      stage_id: subtask.stage_id,
-      detail: { subtask_id: options.subtaskId, note: options.note || null },
-      actor: options.callerId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.callerId,
-      body: `Subtask ${options.subtaskId} cancelled`,
-      metadata: {
-        event: 'subtask_cancelled',
-        subtask_id: options.subtaskId,
-        note: options.note || null,
-      },
-    });
-    this.publishTaskStatusBroadcast(task, {
-      kind: 'subtask_cancelled',
-      bodyLines: [
-        `Subtask ${options.subtaskId} cancelled by ${options.callerId}.`,
-        ...(options.note ? [`Reason: ${options.note}`] : []),
-      ],
-    });
-    return task;
+    return this.taskCraftsmanService.cancelSubtask(taskId, options);
   }
 
   createSubtasks(taskId: string, options: CreateSubtasksRequestDto): CreateSubtasksResponseDto {
@@ -1050,76 +1006,19 @@ export class TaskService {
   }
 
   getCraftsmanExecution(executionId: string) {
-    const execution = this.craftsmanExecutions.getExecution(executionId);
-    if (!execution) {
-      throw new NotFoundError(`Craftsman execution ${executionId} not found`);
-    }
-    return execution;
+    return this.taskCraftsmanService.getCraftsmanExecution(executionId);
   }
 
   getCraftsmanExecutionTail(executionId: string, lines = 120): CraftsmanExecutionTailResponseDto {
-    if (!Number.isFinite(lines) || lines <= 0) {
-      throw new Error('lines must be a positive number');
-    }
-    const execution = this.getCraftsmanExecution(executionId);
-    if (!this.craftsmanExecutionTailPort) {
-      return {
-        execution_id: execution.execution_id,
-        available: false,
-        output: null,
-        source: 'unavailable',
-      };
-    }
-    return this.craftsmanExecutionTailPort.tail({
-      executionId: execution.execution_id,
-      adapter: execution.adapter,
-      sessionId: execution.session_id,
-      workdir: execution.workdir,
-      status: execution.status,
-    }, lines) ?? {
-      execution_id: execution.execution_id,
-      available: false,
-      output: null,
-      source: 'unavailable',
-    };
+    return this.taskCraftsmanService.getCraftsmanExecutionTail(executionId, lines);
   }
 
   listCraftsmanExecutions(taskId: string, subtaskId: string) {
-    return this.craftsmanExecutions.listBySubtask(taskId, subtaskId);
+    return this.taskCraftsmanService.listCraftsmanExecutions(taskId, subtaskId);
   }
 
   getCraftsmanGovernanceSnapshot() {
-    const hostSnapshot = this.hostResourcePort?.readSnapshot() ?? null;
-    return {
-      limits: {
-        max_concurrent_running: this.craftsmanGovernance.maxConcurrentRunning,
-        max_concurrent_per_agent: this.craftsmanGovernance.maxConcurrentPerAgent,
-        host_memory_warning_utilization_limit: this.craftsmanGovernance.hostMemoryWarningUtilizationLimit,
-        host_memory_utilization_limit: this.craftsmanGovernance.hostMemoryUtilizationLimit,
-        host_swap_warning_utilization_limit: this.craftsmanGovernance.hostSwapWarningUtilizationLimit,
-        host_swap_utilization_limit: this.craftsmanGovernance.hostSwapUtilizationLimit,
-        host_load_per_cpu_warning_limit: this.craftsmanGovernance.hostLoadPerCpuWarningLimit,
-        host_load_per_cpu_limit: this.craftsmanGovernance.hostLoadPerCpuLimit,
-      },
-      active_executions: this.craftsmanExecutions.countActiveExecutions(),
-      active_by_assignee: this.craftsmanExecutions.listActiveExecutionCountsByAssignee(),
-      active_execution_details: this.craftsmanExecutions.listActiveExecutions().map((execution) => {
-        const subtask = this.getSubtaskOrThrow(execution.task_id, execution.subtask_id);
-        return {
-          execution_id: execution.execution_id,
-          task_id: execution.task_id,
-          subtask_id: execution.subtask_id,
-          assignee: subtask.assignee,
-          adapter: execution.adapter,
-          status: execution.status,
-          session_id: execution.session_id,
-          workdir: subtask.craftsman_workdir,
-        };
-      }),
-      host_pressure_status: this.resolveHostPressureStatus(hostSnapshot),
-      warnings: this.buildHostGovernanceWarnings(hostSnapshot),
-      host: hostSnapshot,
-    };
+    return this.taskCraftsmanService.getCraftsmanGovernanceSnapshot();
   }
 
   getHealthSnapshot(): UnifiedHealthSnapshotDto {
@@ -1139,94 +1038,23 @@ export class TaskService {
   }
 
   sendCraftsmanInputText(executionId: string, text: string, submit = true) {
-    const execution = this.requireInteractiveExecution(executionId);
-    this.craftsmanInputPort?.sendText(execution, text, submit);
-    this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'text', text);
-    this.probeCraftsmanExecution(execution.executionId);
-    return execution;
+    return this.taskCraftsmanService.sendCraftsmanInputText(executionId, text, submit);
   }
 
   sendCraftsmanInputKeys(executionId: string, keys: CraftsmanInputKeyDto[]) {
-    const execution = this.requireInteractiveExecution(executionId);
-    this.craftsmanInputPort?.sendKeys(execution, keys);
-    this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'keys', keys.join(','));
-    this.probeCraftsmanExecution(execution.executionId);
-    return execution;
+    return this.taskCraftsmanService.sendCraftsmanInputKeys(executionId, keys);
   }
 
   submitCraftsmanChoice(executionId: string, keys: CraftsmanInputKeyDto[] = []) {
-    const execution = this.requireInteractiveExecution(executionId);
-    this.craftsmanInputPort?.submitChoice(execution, keys);
-    this.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'choice', keys.join(','));
-    this.probeCraftsmanExecution(execution.executionId);
-    return execution;
+    return this.taskCraftsmanService.submitCraftsmanChoice(executionId, keys);
   }
 
   probeCraftsmanExecution(executionId: string) {
-    const execution = this.getCraftsmanExecution(executionId);
-    if (!this.craftsmanExecutionProbePort) {
-      return { execution, probed: false as const };
-    }
-    const callback = this.craftsmanExecutionProbePort.probe({
-      executionId: execution.execution_id,
-      adapter: execution.adapter,
-      sessionId: execution.session_id,
-      workdir: execution.workdir,
-      status: execution.status,
-    });
-    if (!callback) {
-      return { execution, probed: false as const };
-    }
-    return {
-      ...this.handleCraftsmanCallback(callback),
-      probed: true as const,
-    };
+    return this.taskCraftsmanService.probeCraftsmanExecution(executionId);
   }
 
   observeCraftsmanExecutions(options: ObserveCraftsmanExecutionsOptions): ObserveCraftsmanExecutionsResult {
-    const nowMs = (options.now ?? new Date()).getTime();
-    const result: ObserveCraftsmanExecutionsResult = {
-      scanned: 0,
-      probed: 0,
-      progressed: 0,
-    };
-    for (const execution of this.craftsmanExecutions.listActiveExecutions()) {
-      result.scanned += 1;
-      const lastActivityMs = Date.parse(execution.updated_at ?? execution.started_at ?? execution.created_at);
-      if (!Number.isFinite(lastActivityMs)) {
-        continue;
-      }
-      const thresholdMs = execution.status === 'needs_input' || execution.status === 'awaiting_choice'
-        ? options.waitingAfterMs
-        : options.runningAfterMs;
-      if (nowMs - lastActivityMs < thresholdMs) {
-        continue;
-      }
-      const probeState = this.getCraftsmanProbeState(execution.execution_id, lastActivityMs);
-      if (!this.shouldProbeCraftsmanExecution(nowMs, thresholdMs, probeState)) {
-        continue;
-      }
-      this.flowLogRepository.insertFlowLog({
-        task_id: execution.task_id,
-        kind: 'system',
-        event: 'craftsman_auto_probe',
-        stage_id: this.subtaskRepository.listByTask(execution.task_id).find((item) => item.id === execution.subtask_id)?.stage_id ?? null,
-        detail: {
-          execution_id: execution.execution_id,
-          status: execution.status,
-        },
-        actor: 'system',
-      });
-      this.noteCraftsmanAutoProbe(execution.execution_id, lastActivityMs, nowMs);
-      const probeResult = this.probeCraftsmanExecution(execution.execution_id);
-      if (probeResult.probed) {
-        result.probed += 1;
-        if (probeResult.execution.status !== execution.status) {
-          result.progressed += 1;
-        }
-      }
-    }
-    return result;
+    return this.taskCraftsmanService.observeCraftsmanExecutions(options);
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): TaskRecord {
