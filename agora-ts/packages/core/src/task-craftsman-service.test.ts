@@ -34,11 +34,15 @@ function buildService() {
   const task = makeTask();
   const subtask = {
     id: 'sub-1',
+    task_id: task.id,
     assignee: 'codex',
     stage_id: 'execute',
+    title: 'Run codex',
     status: 'in_progress',
     output: null,
     dispatch_status: 'running',
+    dispatched_at: '2026-04-03T00:01:00.000Z',
+    done_at: null,
     craftsman_workdir: '/tmp/task',
   };
   const execution = {
@@ -60,6 +64,11 @@ function buildService() {
   const updateSubtask = vi.fn();
   const updateExecution = vi.fn();
   const handleCraftsmanCallback = vi.fn(() => ({
+    task,
+    subtask: {
+      id: subtask.id,
+      status: 'waiting_input',
+    },
     execution: {
       execution_id: 'exec-1',
       status: 'running',
@@ -67,11 +76,28 @@ function buildService() {
   }));
   const service = new TaskCraftsmanService({
     getTaskOrThrow: () => task,
+    withControllerRef: (currentTask) => currentTask,
+    listSubtasksByTask: () => [subtask],
     getSubtaskOrThrow: () => subtask,
+    getCurrentStageOrThrow: () => ({
+      id: 'execute',
+      mode: 'execute',
+      execution_kind: 'craftsman_dispatch',
+    } as never),
+    getStageByIdOrThrow: () => ({
+      id: 'execute',
+      mode: 'execute',
+      execution_kind: 'craftsman_dispatch',
+    } as never),
     assertSubtaskControl: () => {},
     updateSubtask: (taskId, subtaskId, patch) => {
       updateSubtask(taskId, subtaskId, patch);
     },
+    assertCraftsmanInteractionGuard: () => {},
+    assertCraftsmanDispatchAllowed: () => {},
+    resolveDispatchWorkdir: () => '/tmp/task',
+    materializeExecutionBrief: () => '/tmp/task/brief.md',
+    enterExecuteMode: vi.fn(),
     listExecutionsBySubtask: () => [execution],
     updateExecution: (executionId, patch) => {
       updateExecution(executionId, patch);
@@ -114,8 +140,17 @@ function buildService() {
     sendKeys: vi.fn(),
     submitChoice: vi.fn(),
     recordCraftsmanInput: vi.fn(),
+    buildSmokeSubtaskCommands: () => [],
+    buildSmokeExecutionCommandsForTask: () => [],
+    dispatchSubtask: vi.fn(() => ({
+      execution: {
+        execution_id: 'exec-1',
+        status: 'running',
+      },
+    })),
     probeViaPort: vi.fn(() => ({ execution_id: 'exec-1' } as never)),
-    handleCraftsmanCallback,
+    processCraftsmanCallback: handleCraftsmanCallback,
+    publishImmediateCraftsmanNotification: vi.fn(),
     getCraftsmanProbeState: () => ({
       activityMs: Date.parse('2026-04-03T00:10:00.000Z'),
       lastProbeMs: null,

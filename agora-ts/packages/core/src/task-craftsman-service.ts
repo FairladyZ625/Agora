@@ -1,14 +1,22 @@
 import type {
   CraftsmanCallbackRequestDto,
+  CraftsmanDispatchRequestDto,
   CraftsmanExecutionTailResponseDto,
   CraftsmanInputKeyDto,
+  CreateSubtasksRequestDto,
+  CreateSubtasksResponseDto,
   HostResourceSnapshotDto,
   TaskRecord,
+  WorkflowDto,
 } from '@agora-ts/contracts';
+import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
+import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 import { NotFoundError } from './errors.js';
+import { TaskState } from './enums.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
+type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
 
 export interface ObserveCraftsmanExecutionsOptions {
   runningAfterMs: number;
@@ -39,21 +47,76 @@ type InteractiveExecution = {
 
 export interface TaskCraftsmanServiceOptions {
   getTaskOrThrow: (taskId: string) => TaskRecord;
+  withControllerRef: (task: TaskRecord) => TaskRecord;
+  listSubtasksByTask: (taskId: string) => Array<{
+    id: string;
+    task_id?: string;
+    assignee: string;
+    stage_id: string;
+    title: string;
+    status: string;
+    output: string | null;
+    dispatch_status: string | null;
+    dispatched_at?: string | null;
+    done_at?: string | null;
+    craftsman_type?: string | null;
+    craftsman_workdir?: string | null;
+    craftsman_prompt?: string | null;
+  }>;
   getSubtaskOrThrow: (taskId: string, subtaskId: string) => {
     id: string;
     assignee: string;
     stage_id: string;
+    title: string;
     status: string;
     output: string | null;
     dispatch_status: string | null;
     craftsman_type?: string | null;
     craftsman_workdir?: string | null;
+    craftsman_prompt?: string | null;
   };
+  getCurrentStageOrThrow: (task: TaskRecord) => WorkflowStageLike;
+  getStageByIdOrThrow: (task: TaskRecord, stageId: string) => WorkflowStageLike;
   assertSubtaskControl: (task: TaskRecord, subtask: { id: string; assignee: string }, callerId: string) => void;
   updateSubtask: (
     taskId: string,
     subtaskId: string,
     patch: Record<string, unknown>,
+  ) => void;
+  assertCraftsmanInteractionGuard: (
+    mode: 'one_shot' | 'interactive',
+    interactionExpectation: 'one_shot' | 'needs_input' | 'awaiting_choice',
+    scope: string,
+  ) => void;
+  assertCraftsmanDispatchAllowed: (assignee: string, additionalPlanned?: number) => void;
+  resolveDispatchWorkdir: (task: TaskRecord) => string;
+  materializeExecutionBrief: (
+    task: TaskRecord,
+    input: {
+      subtask_id: string;
+      subtask_title: string;
+      assignee: string;
+      adapter: string;
+      mode: 'one_shot' | 'interactive';
+      prompt: string | null;
+      workdir: string | null;
+    },
+  ) => string | null;
+  enterExecuteMode: (
+    taskId: string,
+    stageId: string,
+    executeDefs: Array<{
+      id: string;
+      title: string;
+      assignee: string;
+      craftsman?: {
+        adapter: string;
+        mode: 'one_shot' | 'interactive';
+        workdir: string | null;
+        prompt: string | null;
+        brief_path: string | null;
+      };
+    }>,
   ) => void;
   listExecutionsBySubtask: (taskId: string, subtaskId: string) => Array<{
     execution_id: string;
@@ -146,6 +209,32 @@ export interface TaskCraftsmanServiceOptions {
     inputType: 'text' | 'keys' | 'choice',
     detail: string,
   ) => void;
+  buildSmokeSubtaskCommands: (
+    task: TaskRecord,
+    callerId: string,
+    createdSubtasks: Array<{ id: string }>,
+    dispatchedExecutions: Array<{ execution_id: string }>,
+  ) => string[];
+  buildSmokeExecutionCommandsForTask: (
+    task: TaskRecord,
+    executionId: string,
+    status: string,
+  ) => string[];
+  dispatchSubtask?: (input: {
+    task_id: string;
+    stage_id: string;
+    subtask_id: string;
+    adapter: string;
+    mode: 'one_shot' | 'interactive';
+    workdir: string;
+    prompt: string | null;
+    brief_path: string | null;
+  }) => {
+    execution: {
+      execution_id: string;
+      status: string;
+    };
+  };
   probeViaPort?: (execution: {
     executionId: string;
     adapter: string;
@@ -153,9 +242,12 @@ export interface TaskCraftsmanServiceOptions {
     workdir: string | null;
     status: string;
   }) => CraftsmanCallbackRequestDto | null;
-  handleCraftsmanCallback: (input: CraftsmanCallbackRequestDto) => {
+  processCraftsmanCallback: (input: CraftsmanCallbackRequestDto) => {
+    task: TaskRecord;
+    subtask: { id: string; status: string };
     execution: { execution_id: string; status: string };
   };
+  publishImmediateCraftsmanNotification: (taskId: string, executionId: string, subtaskId: string) => void;
   getCraftsmanProbeState: (executionId: string, latestActivityMs: number) => CraftsmanProbeState;
   shouldProbeCraftsmanExecution: (nowMs: number, thresholdMs: number, probeState: CraftsmanProbeState) => boolean;
   noteCraftsmanAutoProbe: (executionId: string, latestActivityMs: number, nowMs: number) => void;
@@ -290,6 +382,214 @@ export class TaskCraftsmanService {
     return task;
   }
 
+  createSubtasks(taskId: string, options: CreateSubtasksRequestDto): CreateSubtasksResponseDto {
+    const parsed = createSubtasksRequestSchema.parse(options);
+    const task = this.options.getTaskOrThrow(taskId);
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
+    }
+    if (!task.current_stage) {
+      throw new Error(`Task ${taskId} has no current_stage set`);
+    }
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (controllerRef && parsed.caller_id !== controllerRef) {
+      throw new Error(`Subtask creation requires controller ownership: expected '${controllerRef}', received '${parsed.caller_id}'`);
+    }
+    const stage = this.options.getCurrentStageOrThrow(task);
+    const executionKind = resolveStageExecutionKind(stage);
+    if (executionKind !== 'citizen_execute' && executionKind !== 'craftsman_dispatch') {
+      throw new Error(`Stage '${stage.id}' does not allow execute-mode subtasks`);
+    }
+    const duplicateIds = new Set<string>();
+    const existingIds = new Set(this.options.listSubtasksByTask(taskId).map((subtask) => subtask.id));
+    const normalizedSubtasks = parsed.subtasks.map((subtask) => ({
+      ...subtask,
+      ...(subtask.craftsman ? {
+        craftsman: {
+          ...subtask.craftsman,
+          adapter: normalizeCraftsmanAdapter(subtask.craftsman.adapter),
+        },
+      } : {}),
+    }));
+    const plannedByAssignee = new Map<string, number>();
+    for (const subtask of normalizedSubtasks) {
+      if (duplicateIds.has(subtask.id) || existingIds.has(subtask.id)) {
+        throw new Error(`Subtask id '${subtask.id}' already exists in task ${taskId}`);
+      }
+      duplicateIds.add(subtask.id);
+      if (subtask.execution_target === 'craftsman' && !stageAllowsCraftsmanDispatch(stage)) {
+        throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
+      }
+      if (subtask.execution_target === 'craftsman' && subtask.craftsman) {
+        this.options.assertCraftsmanInteractionGuard(
+          subtask.craftsman.mode,
+          subtask.craftsman.interaction_expectation,
+          `subtask '${subtask.id}'`,
+        );
+        plannedByAssignee.set(subtask.assignee, (plannedByAssignee.get(subtask.assignee) ?? 0) + 1);
+      }
+      if (
+        task.control?.mode === 'smoke_test'
+        && stageAllowsCraftsmanDispatch(stage)
+        && subtask.execution_target === 'manual'
+      ) {
+        throw new Error([
+          `Smoke task ${taskId} is in a craftsman-capable stage '${stage.id}', but subtask '${subtask.id}' declares execution_target='manual'.`,
+          'If you want a craftsman run, use execution_target="craftsman" and include a craftsman block.',
+          'Example:',
+          JSON.stringify({
+            id: subtask.id,
+            title: subtask.title,
+            assignee: subtask.assignee,
+            execution_target: 'craftsman',
+            craftsman: {
+              adapter: 'claude',
+              mode: 'one_shot',
+              interaction_expectation: 'one_shot',
+              prompt: '<prompt>',
+            },
+          }, null, 2),
+        ].join('\n'));
+      }
+    }
+    for (const [assignee, planned] of plannedByAssignee) {
+      this.options.assertCraftsmanDispatchAllowed(assignee, planned);
+    }
+
+    const executeDefs = normalizedSubtasks.map((subtask) => ({
+      id: subtask.id,
+      title: subtask.title,
+      assignee: subtask.assignee,
+      ...(subtask.execution_target === 'craftsman' && subtask.craftsman ? {
+        craftsman: {
+          adapter: subtask.craftsman.adapter,
+          mode: subtask.craftsman.mode,
+          workdir: subtask.craftsman.workdir ?? this.options.resolveDispatchWorkdir(task),
+          prompt: subtask.craftsman.prompt ?? null,
+          brief_path: subtask.craftsman.brief_path
+            ?? this.options.materializeExecutionBrief(task, {
+              subtask_id: subtask.id,
+              subtask_title: subtask.title,
+              assignee: subtask.assignee,
+              adapter: subtask.craftsman.adapter,
+              mode: subtask.craftsman.mode,
+              prompt: subtask.craftsman.prompt ?? null,
+              workdir: subtask.craftsman.workdir ?? this.options.resolveDispatchWorkdir(task),
+            }),
+        },
+      } : {}),
+    }));
+    this.options.enterExecuteMode(taskId, stage.id, executeDefs);
+
+    const createdSubtasks = this.options
+      .listSubtasksByTask(taskId)
+      .filter((subtask) => duplicateIds.has(subtask.id));
+    const dispatchedExecutions = createdSubtasks
+      .flatMap((subtask) => this.options.listExecutionsBySubtask(taskId, subtask.id))
+      .map((execution) => craftsmanExecutionSchema.parse(execution));
+
+    this.options.publishTaskStatusBroadcast(task, {
+      kind: 'subtasks_created',
+      bodyLines: [
+        `Controller ${parsed.caller_id} created ${createdSubtasks.length} subtasks in stage ${stage.id}.`,
+        ...createdSubtasks.map((subtask) => `- ${subtask.id} | ${subtask.assignee} | ${subtask.craftsman_type ?? 'manual'}`),
+        ...(dispatchedExecutions.length > 0
+          ? [`Auto-dispatched executions: ${dispatchedExecutions.map((execution) => `${execution.subtask_id}:${execution.execution_id}`).join(', ')}`]
+          : []),
+        ...this.options.buildSmokeSubtaskCommands(task, parsed.caller_id, createdSubtasks, dispatchedExecutions),
+      ],
+    });
+
+    return {
+      task: this.options.withControllerRef(this.options.getTaskOrThrow(taskId)) as CreateSubtasksResponseDto['task'],
+      subtasks: createdSubtasks as CreateSubtasksResponseDto['subtasks'],
+      dispatched_executions: dispatchedExecutions,
+    };
+  }
+
+  listSubtasks(taskId: string) {
+    this.options.getTaskOrThrow(taskId);
+    return this.options.listSubtasksByTask(taskId);
+  }
+
+  handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {
+    const result = this.options.processCraftsmanCallback(input);
+    if (
+      result.task.state !== TaskState.PAUSED
+      && ['done', 'failed', 'in_progress', 'waiting_input'].includes(result.subtask.status)
+      && ['running', 'succeeded', 'failed', 'cancelled', 'needs_input', 'awaiting_choice'].includes(result.execution.status)
+    ) {
+      this.options.publishImmediateCraftsmanNotification(result.task.id, result.execution.execution_id, result.subtask.id);
+    }
+    return result;
+  }
+
+  dispatchCraftsman(input: CraftsmanDispatchRequestDto) {
+    if (!this.options.dispatchSubtask) {
+      throw new Error('Craftsman dispatcher is not configured');
+    }
+    const normalizedAdapter = normalizeCraftsmanAdapter(input.adapter);
+    const task = this.options.getTaskOrThrow(input.task_id);
+    if (task.state !== TaskState.ACTIVE) {
+      throw new Error(`Task ${input.task_id} is in state '${task.state}', expected 'active'`);
+    }
+    const subtask = this.options.getSubtaskOrThrow(input.task_id, input.subtask_id);
+    const controllerRef = resolveControllerRef(task.team.members);
+    if (controllerRef && input.caller_id !== controllerRef) {
+      throw new Error(`Craftsman dispatch requires controller ownership: expected '${controllerRef}', received '${input.caller_id}'`);
+    }
+    if (task.current_stage !== subtask.stage_id) {
+      throw new Error(
+        `Craftsman dispatch requires the active stage '${task.current_stage ?? 'null'}' to match subtask stage '${subtask.stage_id}'`,
+      );
+    }
+    const stage = this.options.getStageByIdOrThrow(task, subtask.stage_id);
+    if (!stageAllowsCraftsmanDispatch(stage)) {
+      throw new Error(`Stage '${stage.id}' does not allow craftsman dispatch`);
+    }
+    this.options.assertCraftsmanInteractionGuard(
+      input.mode,
+      input.interaction_expectation,
+      `dispatch for subtask '${subtask.id}'`,
+    );
+    this.options.assertCraftsmanDispatchAllowed(subtask.assignee);
+    const resolvedWorkdir = input.workdir ?? subtask.craftsman_workdir ?? this.options.resolveDispatchWorkdir(task);
+    const dispatched = this.options.dispatchSubtask({
+      task_id: input.task_id,
+      stage_id: subtask.stage_id,
+      subtask_id: input.subtask_id,
+      adapter: normalizedAdapter,
+      mode: input.mode,
+      workdir: resolvedWorkdir ?? '',
+      prompt: subtask.craftsman_prompt ?? null,
+      brief_path: input.brief_path
+        ?? this.options.materializeExecutionBrief(task, {
+          subtask_id: subtask.id,
+          subtask_title: subtask.title,
+          assignee: subtask.assignee,
+          adapter: normalizedAdapter,
+          mode: input.mode,
+          prompt: subtask.craftsman_prompt ?? null,
+          workdir: resolvedWorkdir,
+        }),
+    });
+    this.options.publishTaskStatusBroadcast(task, {
+      kind: 'craftsman_started',
+      bodyLines: [
+        `Craftsman dispatch started for subtask ${subtask.id}.`,
+        `Caller: ${input.caller_id}`,
+        `Adapter: ${normalizedAdapter}`,
+        `Execution: ${dispatched.execution.execution_id}`,
+        ...this.options.buildSmokeExecutionCommandsForTask(
+          task,
+          dispatched.execution.execution_id,
+          dispatched.execution.status,
+        ),
+      ],
+    });
+    return dispatched;
+  }
+
   getCraftsmanExecution(executionId: string) {
     const execution = this.options.getExecution(executionId);
     if (!execution) {
@@ -403,7 +703,7 @@ export class TaskCraftsmanService {
       return { execution, probed: false as const };
     }
     return {
-      ...this.options.handleCraftsmanCallback(callback),
+      ...this.handleCraftsmanCallback(callback),
       probed: true as const,
     };
   }
@@ -453,4 +753,43 @@ export class TaskCraftsmanService {
     }
     return result;
   }
+}
+
+function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) {
+  return stage?.execution_kind
+    ?? (
+      stage?.mode === 'execute'
+        ? 'citizen_execute'
+        : stage?.mode === 'discuss'
+          ? 'citizen_discuss'
+          : null
+    );
+}
+
+function resolveAllowedActions(stage: WorkflowStageLike | null | undefined) {
+  if (!stage) {
+    return [];
+  }
+  if (stage.allowed_actions?.length) {
+    return stage.allowed_actions;
+  }
+  switch (resolveStageExecutionKind(stage)) {
+    case 'citizen_execute':
+      return ['advance', 'create_subtasks'];
+    case 'craftsman_dispatch':
+      return ['advance', 'create_subtasks', 'dispatch_craftsman'];
+    case 'citizen_discuss':
+      return ['advance'];
+    default:
+      return [];
+  }
+}
+
+function stageAllowsCraftsmanDispatch(stage: WorkflowStageLike | null | undefined) {
+  return resolveStageExecutionKind(stage) === 'craftsman_dispatch'
+    || resolveAllowedActions(stage).includes('dispatch_craftsman');
+}
+
+function resolveControllerRef(members: TaskRecord['team']['members']) {
+  return members.find((member) => member.member_kind === 'controller')?.agentId ?? null;
 }
