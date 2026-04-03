@@ -44,7 +44,6 @@ import type { TaskAuthorityService } from './task-authority-service.js';
 import { TaskWorktreeService } from './task-worktree-service.js';
 import { resolveControllerRef } from './team-member-kind.js';
 import type { LiveSessionStore } from './live-session-store.js';
-import { validateRuntimeSupportedGraphSemantics, validateRuntimeWorkflowGraphAlignment, validateTemplateGraph } from './template-graph-service.js';
 
 const TERMINAL_SUBTASK_STATES = new Set(['done', 'failed', 'cancelled', 'archived']);
 const TERMINAL_EXECUTION_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
@@ -449,6 +448,79 @@ export class TaskService {
       subtaskRepository: this.subtaskRepository,
       todoRepository: this.todoRepository,
       createTask: (input) => this.createTask(input),
+      tryLoadTemplate: (taskType) => this.tryLoadTemplate(taskType),
+      buildWorkflow: (template) => this.buildWorkflow(template),
+      buildTeam: (template) => this.buildTeam(template),
+      enrichTeam: (team) => this.enrichTeam(team),
+      taskIdGenerator: () => this.taskIdGenerator(),
+      validateProjectBinding: ({ projectId, creator, authority }) => {
+        this.projectService.requireProject(projectId);
+        if (this.projectMemberships.hasConfiguredMemberships(projectId)) {
+          this.projectMemberships.requireActiveCreatorMembership(projectId, creator);
+          this.projectMemberships.requireActiveMemberAccounts(projectId, [
+            authority?.requester_account_id,
+            authority?.owner_account_id,
+            authority?.assignee_account_id,
+            authority?.approver_account_id,
+          ]);
+        }
+        if (authority?.controller_agent_ref && this.projectAgentRoster.hasConfiguredRoster(projectId)) {
+          this.projectAgentRoster.requireActiveAgent(projectId, authority.controller_agent_ref);
+        }
+      },
+      enterStage: (taskId, stageId) => this.enterStage(taskId, stageId),
+      seedTaskParticipants: ({ taskId, team, firstStage }) => {
+        this.taskParticipationService?.seedParticipants(taskId, team);
+        if (firstStage) {
+          this.taskParticipantSyncService.seedStageExposure(taskId, team, firstStage);
+        }
+      },
+      createTaskBrainWorkspace: (task, templateId) => {
+        if (!this.taskBrainWorkspacePort || !this.taskBrainBindingService) {
+          return null;
+        }
+        const binding = this.taskBrainWorkspacePort.createWorkspace(this.buildTaskBrainWorkspaceRequest(task, templateId));
+        this.taskBrainBindingService.createBinding({
+          task_id: task.id,
+          brain_pack_ref: binding.brain_pack_ref,
+          brain_task_id: binding.brain_task_id,
+          workspace_path: binding.workspace_path,
+          metadata: binding.metadata ?? null,
+        });
+        return {
+          ...binding,
+          metadata: binding.metadata ?? null,
+        };
+      },
+      destroyTaskBrainWorkspace: (binding) => {
+        if (!this.taskBrainWorkspacePort) {
+          return;
+        }
+        this.taskBrainWorkspacePort.destroyWorkspace(binding);
+      },
+      recordProjectTaskBinding: ({ projectId, taskId, title, state, workspacePath }) => {
+        this.projectService.recordTaskBinding({
+          project_id: projectId,
+          task_id: taskId,
+          title,
+          state,
+          workspace_path: workspacePath,
+          bound_at: new Date().toISOString(),
+        });
+      },
+      persistTaskAuthority: (taskId, authority) => {
+        if (!authority) {
+          return;
+        }
+        this.taskAuthorities.createOrUpdate({
+          task_id: taskId,
+          requester_account_id: authority.requester_account_id ?? null,
+          owner_account_id: authority.owner_account_id ?? null,
+          assignee_account_id: authority.assignee_account_id ?? null,
+          approver_account_id: authority.approver_account_id ?? null,
+          controller_agent_ref: authority.controller_agent_ref ?? null,
+        });
+      },
       withControllerRef: (task) => this.withControllerRef(task),
       buildTaskBlueprint: (task) => this.buildTaskBlueprint(task),
       buildCurrentStageRoster: (task) => this.buildCurrentStageRoster(task),
@@ -462,162 +534,8 @@ export class TaskService {
   }
 
   createTask(input: CreateTaskInputLike): TaskRecord {
-    const template = this.tryLoadTemplate(input.type);
-    const workflow = input.workflow_override ?? (template ? this.buildWorkflow(template) : null);
-    const requestedTeam = input.team_override ?? (template ? this.buildTeam(template) : null);
-    if (!workflow || !requestedTeam) {
-      throw new NotFoundError(`Template not found: ${input.type}`);
-    }
-    if (workflow.graph) {
-      const graphErrors = [
-        ...validateTemplateGraph(workflow.graph),
-        ...validateRuntimeWorkflowGraphAlignment(workflow.stages, workflow.graph),
-        ...validateRuntimeSupportedGraphSemantics(workflow.graph),
-      ];
-      if (graphErrors.length > 0) {
-        throw new Error(`workflow graph violates runtime-supported graph semantics: ${graphErrors.join('; ')}`);
-      }
-    }
-    const team = this.enrichTeam(requestedTeam);
-    const taskId = this.taskIdGenerator();
-    const projectId = input.project_id ?? null;
-    const nomosAuthoring = input.control?.nomos_authoring;
-    const firstStageId = workflow.graph?.entry_nodes[0] ?? workflow.stages?.[0]?.id ?? null;
-    const templateLabel = template?.name ?? input.type;
-    let active: TaskRecord;
-    let brainWorkspaceBinding: ReturnType<NonNullable<TaskBrainWorkspacePort['createWorkspace']>> | null = null;
-
-    this.db.exec('BEGIN');
-    try {
-      if (nomosAuthoring?.kind === 'project_nomos') {
-        if (!projectId) {
-          throw new Error('project_nomos authoring tasks must be bound to a project');
-        }
-        if (nomosAuthoring.project_id !== projectId) {
-          throw new Error(`project_nomos authoring project mismatch: task=${projectId} control=${nomosAuthoring.project_id}`);
-        }
-      }
-      if (projectId) {
-        this.projectService.requireProject(projectId);
-        if (this.projectMemberships.hasConfiguredMemberships(projectId)) {
-          this.projectMemberships.requireActiveCreatorMembership(projectId, input.creator);
-          this.projectMemberships.requireActiveMemberAccounts(projectId, [
-            input.authority?.requester_account_id,
-            input.authority?.owner_account_id,
-            input.authority?.assignee_account_id,
-            input.authority?.approver_account_id,
-          ]);
-        }
-        if (input.authority?.controller_agent_ref && this.projectAgentRoster.hasConfiguredRoster(projectId)) {
-          this.projectAgentRoster.requireActiveAgent(projectId, input.authority.controller_agent_ref);
-        }
-      }
-      const draftInput: Parameters<ITaskRepository['insertTask']>[0] = {
-        id: taskId,
-        title: input.title,
-        description: input.description,
-        type: input.type,
-        priority: input.priority,
-        creator: input.creator,
-        locale: resolveTaskLocale(input.locale),
-        project_id: projectId,
-        skill_policy: input.skill_policy ?? null,
-        team,
-        workflow,
-        control: input.control ?? null,
-      };
-      const draft = this.taskRepository.insertTask(draftInput);
-
-      const created = this.taskRepository.updateTask(taskId, draft.version, {
-        state: TaskState.CREATED,
-      });
-
-      this.flowLogRepository.insertFlowLog({
-        task_id: taskId,
-        kind: 'flow',
-        event: 'state_changed',
-        from_state: TaskState.DRAFT,
-        to_state: TaskState.CREATED,
-        detail: { template: templateLabel, task_type: input.type },
-        actor: 'system',
-      });
-
-      active = this.taskRepository.updateTask(taskId, created.version, {
-        state: TaskState.ACTIVE,
-        current_stage: firstStageId,
-      });
-
-      this.flowLogRepository.insertFlowLog({
-        task_id: taskId,
-        kind: 'flow',
-        event: 'state_changed',
-        stage_id: firstStageId,
-        from_state: TaskState.CREATED,
-        to_state: TaskState.ACTIVE,
-        actor: 'system',
-      });
-      if (firstStageId) {
-        this.enterStage(taskId, firstStageId);
-        this.progressLogRepository.insertProgressLog({
-          task_id: taskId,
-          kind: 'progress',
-          stage_id: firstStageId,
-          content: `Entered stage ${firstStageId}`,
-          artifacts: { stage_id: firstStageId },
-          actor: 'system',
-        });
-      }
-
-      this.taskParticipationService?.seedParticipants(taskId, team);
-      if (firstStageId) {
-        const firstStage = workflow.stages?.[0] ?? null;
-        this.taskParticipantSyncService.seedStageExposure(taskId, team, firstStage ?? undefined);
-      }
-      if (this.taskBrainWorkspacePort && this.taskBrainBindingService) {
-        brainWorkspaceBinding = this.taskBrainWorkspacePort.createWorkspace(this.buildTaskBrainWorkspaceRequest(active, input.type));
-        this.taskBrainBindingService.createBinding({
-          task_id: taskId,
-          brain_pack_ref: brainWorkspaceBinding.brain_pack_ref,
-          brain_task_id: brainWorkspaceBinding.brain_task_id,
-          workspace_path: brainWorkspaceBinding.workspace_path,
-          metadata: brainWorkspaceBinding.metadata ?? null,
-        });
-      }
-      if (projectId) {
-        this.projectService.recordTaskBinding({
-          project_id: projectId,
-          task_id: taskId,
-          title: input.title,
-          state: TaskState.ACTIVE,
-          workspace_path: brainWorkspaceBinding?.workspace_path ?? null,
-          bound_at: new Date().toISOString(),
-        });
-      }
-      if (input.authority) {
-        this.taskAuthorities.createOrUpdate({
-          task_id: taskId,
-          requester_account_id: input.authority.requester_account_id ?? null,
-          owner_account_id: input.authority.owner_account_id ?? null,
-          assignee_account_id: input.authority.assignee_account_id ?? null,
-          approver_account_id: input.authority.approver_account_id ?? null,
-          controller_agent_ref: input.authority.controller_agent_ref ?? null,
-        });
-      }
-
-      this.db.exec('COMMIT');
-    } catch (error) {
-      this.db.exec('ROLLBACK');
-      if (brainWorkspaceBinding && this.taskBrainWorkspacePort) {
-        try {
-          this.taskBrainWorkspacePort.destroyWorkspace(brainWorkspaceBinding);
-        } catch {
-          // Ignore cleanup errors on rollback; DB remains canonical.
-        }
-      }
-      throw error;
-    }
-
-    const createdTask = active!;
+    const { task: createdTask, brainWorkspaceBinding } = this.taskLifecycleService.createTaskCore(input);
+    const taskId = createdTask.id;
     const initialStage = createdTask.current_stage
       ? this.getStageByIdOrThrow(createdTask, createdTask.current_stage)
       : null;
@@ -3391,10 +3309,6 @@ function isSystemEchoConversationEntry(
 }
 
 type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
-
-function resolveTaskLocale(locale: string | null | undefined): TaskLocaleDto {
-  return locale === 'en-US' ? 'en-US' : 'zh-CN';
-}
 
 function resolveStageExecutionKind(stage: WorkflowStageLike | null | undefined) {
   if (!stage) {

@@ -19,6 +19,23 @@ function makeDb() {
   };
 }
 
+function buildLifecycleCallbacks() {
+  return {
+    tryLoadTemplate: () => null,
+    buildWorkflow: () => ({ type: 'custom', stages: [] }),
+    buildTeam: () => ({ members: [] }),
+    enrichTeam: (team: TaskRecord['team']) => team,
+    taskIdGenerator: () => 'OC-LIFECYCLE-CREATE-1',
+    validateProjectBinding: () => {},
+    enterStage: () => {},
+    seedTaskParticipants: () => {},
+    createTaskBrainWorkspace: () => null,
+    destroyTaskBrainWorkspace: () => {},
+    recordProjectTaskBinding: () => {},
+    persistTaskAuthority: () => {},
+  };
+}
+
 describe('TaskLifecycleService', () => {
   it('builds task status using lifecycle-owned query assembly', () => {
     const fixture = makeDb();
@@ -86,6 +103,7 @@ describe('TaskLifecycleService', () => {
         createTask: () => {
           throw new Error('not used');
         },
+        ...buildLifecycleCallbacks(),
         withControllerRef: (task) => ({
           ...task,
           controller_ref: 'opus',
@@ -162,6 +180,7 @@ describe('TaskLifecycleService', () => {
             state: 'active',
           });
         },
+        ...buildLifecycleCallbacks(),
         withControllerRef: (task) => task,
         buildTaskBlueprint: () => ({
           graph_version: 1,
@@ -241,6 +260,7 @@ describe('TaskLifecycleService', () => {
         createTask: () => {
           throw new Error('not used');
         },
+        ...buildLifecycleCallbacks(),
         withControllerRef: (task) => task,
         buildTaskBlueprint: () => ({
           graph_version: 1,
@@ -259,6 +279,136 @@ describe('TaskLifecycleService', () => {
       expect(cleaned).toBe(1);
       expect(taskRepository.getTask('OC-LIFECYCLE-ORPHAN-1')).toBeNull();
       expect(executions.getExecution('exec-orphan-life-1')).toBeNull();
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it('creates active tasks through lifecycle-owned transactional core', () => {
+    const fixture = makeDb();
+    try {
+      const { db } = fixture;
+      const taskRepository = new TaskRepository(db);
+      const flowLogRepository = new FlowLogRepository(db);
+      const progressLogRepository = new ProgressLogRepository(db);
+      const subtaskRepository = new SubtaskRepository(db);
+      const todoRepository = new TodoRepository(db);
+      const enterStageCalls: Array<{ taskId: string; stageId: string }> = [];
+      const seedCalls: Array<{ taskId: string; team: TaskRecord['team']; firstStageId: string | null }> = [];
+      const authorityCalls: Array<{ taskId: string; approver_account_id: number | null }> = [];
+      const service = new TaskLifecycleService({
+        databasePort: db,
+        taskRepository,
+        flowLogRepository,
+        progressLogRepository,
+        subtaskRepository,
+        todoRepository,
+        createTask: () => {
+          throw new Error('not used');
+        },
+        tryLoadTemplate: () => ({
+          name: 'Coding Template',
+          defaultWorkflow: 'custom',
+          stages: [
+            { id: 'draft', mode: 'discuss', gate: { type: 'command' } },
+          ],
+          defaultTeam: {
+            architect: { suggested: ['opus'], member_kind: 'controller', model_preference: 'strong_reasoning' },
+          },
+        }),
+        buildWorkflow: (template) => ({
+          type: template.defaultWorkflow ?? 'custom',
+          stages: template.stages ?? [],
+        }),
+        buildTeam: (template) => ({
+          members: Object.entries(template.defaultTeam ?? {}).map(([role, config]) => ({
+            role,
+            agentId: config.suggested?.[0] ?? role,
+            ...(config.member_kind ? { member_kind: config.member_kind } : {}),
+            model_preference: config.model_preference ?? '',
+          })),
+        }),
+        enrichTeam: (team) => team,
+        taskIdGenerator: () => 'OC-LIFECYCLE-CREATE-1',
+        validateProjectBinding: () => {},
+        enterStage: (taskId, stageId) => {
+          enterStageCalls.push({ taskId, stageId });
+        },
+        seedTaskParticipants: (input) => {
+          seedCalls.push({
+            taskId: input.taskId,
+            team: input.team,
+            firstStageId: input.firstStage?.id ?? null,
+          });
+        },
+        createTaskBrainWorkspace: () => ({
+          brain_pack_ref: 'brain-pack',
+          brain_task_id: 'brain-task',
+          workspace_path: '/tmp/agora-task-life',
+          metadata: null,
+        }),
+        destroyTaskBrainWorkspace: () => {},
+        recordProjectTaskBinding: () => {},
+        persistTaskAuthority: (taskId, authority) => {
+          authorityCalls.push({
+            taskId,
+            approver_account_id: authority?.approver_account_id ?? null,
+          });
+        },
+        withControllerRef: (task) => task,
+        buildTaskBlueprint: () => ({
+          graph_version: 1,
+          entry_nodes: ['draft'],
+          controller_ref: 'opus',
+          nodes: [],
+          edges: [],
+          artifact_contracts: [],
+          role_bindings: [],
+        }),
+        buildCurrentStageRoster: () => undefined,
+      });
+
+      const result = service.createTaskCore({
+        title: 'Create task with skill policy',
+        type: 'coding',
+        creator: 'archon',
+        description: '',
+        priority: 'normal',
+        control: {
+          mode: 'smoke_test',
+        },
+        skill_policy: {
+          global_refs: ['planning-with-files'],
+          role_refs: {
+            architect: ['brainstorming'],
+          },
+          enforcement: 'required',
+        },
+        authority: {
+          approver_account_id: 42,
+        },
+      });
+
+      expect(result.task.id).toBe('OC-LIFECYCLE-CREATE-1');
+      expect(result.task.state).toBe('active');
+      expect(result.task.current_stage).toBe('draft');
+      expect(result.task.skill_policy).toEqual({
+        global_refs: ['planning-with-files'],
+        role_refs: {
+          architect: ['brainstorming'],
+        },
+        enforcement: 'required',
+      });
+      expect(result.task.control).toMatchObject({
+        mode: 'smoke_test',
+      });
+      expect(result.brainWorkspaceBinding?.workspace_path).toBe('/tmp/agora-task-life');
+      expect(flowLogRepository.listByTask('OC-LIFECYCLE-CREATE-1')).toHaveLength(2);
+      expect(progressLogRepository.listByTask('OC-LIFECYCLE-CREATE-1')).toHaveLength(1);
+      expect(enterStageCalls).toEqual([{ taskId: 'OC-LIFECYCLE-CREATE-1', stageId: 'draft' }]);
+      expect(seedCalls).toHaveLength(1);
+      expect(seedCalls[0]?.firstStageId).toBe('draft');
+      expect(authorityCalls).toEqual([{ taskId: 'OC-LIFECYCLE-CREATE-1', approver_account_id: 42 }]);
     } finally {
       fixture.cleanup();
     }
