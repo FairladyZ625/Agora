@@ -96,9 +96,29 @@ describe('LiveRegressionActor', () => {
       threadRef: 'discord-thread-regression-actor-1',
       state: 'active',
       currentStage: expect.any(String),
+      settled: true,
+      initialState: 'active',
+      appliedTaskAction: {
+        kind: 'approve_current',
+        actorRef: 'archon',
+        source: 'auto',
+      },
+      actionResult: expect.objectContaining({
+        kind: 'approve_current',
+        state: 'active',
+      }),
+      latestConversation: expect.objectContaining({
+        entryId: expect.any(String),
+        bodyExcerpt: expect.any(String),
+      }),
+      failureHint: null,
     });
-    expect(provisioning.published).toHaveLength(1);
-    expect(provisioning.published[0]).toMatchObject({
+    const regressionPublishes = provisioning.published.filter((entry) => entry.messages.some((message) => (
+      message.kind === 'regression_operator'
+      && message.body === 'Please continue the regression flow and report blockers.'
+    )));
+    expect(regressionPublishes.length).toBeGreaterThan(0);
+    expect(regressionPublishes).toContainEqual(expect.objectContaining({
       thread_ref: 'discord-thread-regression-actor-1',
       messages: [
         expect.objectContaining({
@@ -107,7 +127,7 @@ describe('LiveRegressionActor', () => {
           body: 'Please continue the regression flow and report blockers.',
         }),
       ],
-    });
+    }));
     expect(conversations.listByTask('OC-REG-ACTOR-1')).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'conversation-regression-1',
@@ -202,6 +222,20 @@ describe('LiveRegressionActor', () => {
 
     expect(result.currentStage).toBe('execute');
     expect(result.state).toBe('active');
+    expect(result.settled).toBe(true);
+    expect(result.initialStage).toBe('triage');
+    expect(result.stageChanged).toBe(true);
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'advance_current',
+      actorRef: 'archon',
+      source: 'explicit',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'advance_current',
+      state: 'active',
+      currentStage: 'execute',
+    });
+    expect(result.failureHint).toBeNull();
     expect(conversations.listByTask('OC-REG-ACTOR-2')).toEqual(expect.arrayContaining([
       expect.objectContaining({
         direction: 'outbound',
@@ -290,6 +324,16 @@ describe('LiveRegressionActor', () => {
     });
 
     expect(result.currentStage).toBe('execute');
+    expect(result.settled).toBe(true);
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'advance_current',
+      actorRef: 'opus',
+      source: 'auto',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'advance_current',
+      currentStage: 'execute',
+    });
     expect(conversations.listByTask('OC-REG-ACTOR-3')).toEqual(expect.arrayContaining([
       expect.objectContaining({
         direction: 'outbound',
@@ -383,6 +427,17 @@ describe('LiveRegressionActor', () => {
 
     expect(result.currentStage).toBe('execute');
     expect(result.state).toBe('active');
+    expect(result.settled).toBe(true);
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'approve_current',
+      actorRef: 'archon',
+      source: 'explicit',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'approve_current',
+      state: 'active',
+      currentStage: 'execute',
+    });
     expect(conversations.listByTask('OC-REG-ACTOR-4')).toEqual(expect.arrayContaining([
       expect.objectContaining({
         direction: 'outbound',
@@ -393,5 +448,605 @@ describe('LiveRegressionActor', () => {
         }),
       }),
     ]));
+  });
+
+  it('reports quorum action evidence for explicit confirm_current actions', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-5',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date('2026-03-21T11:30:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-5',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor quorum task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'quorum evidence reporting',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'vote',
+            mode: 'discuss',
+            gate: { type: 'quorum', required: 2 },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'archon', member_kind: 'controller', model_preference: 'test' },
+          { role: 'reviewer', agentId: 'reviewer-a', member_kind: 'citizen', model_preference: 'test' },
+          { role: 'developer', agentId: 'developer-a', member_kind: 'citizen', model_preference: 'test' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T11:30:00.000Z'),
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-5' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Record the first quorum vote',
+      message: 'Cast one quorum vote and report the tally.',
+      taskAction: {
+        kind: 'confirm_current',
+        actor_ref: 'reviewer-a',
+        vote: 'approve',
+        comment: 'regression quorum vote',
+      },
+    });
+
+    expect(result.currentStage).toBe('vote');
+    expect(result.settled).toBe(true);
+    expect(result.stageChanged).toBe(false);
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'confirm_current',
+      actorRef: 'reviewer-a',
+      source: 'explicit',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'confirm_current',
+      state: 'active',
+      currentStage: 'vote',
+      quorum: {
+        approved: 1,
+        total: 1,
+      },
+    });
+    expect(result.latestConversation.entryId).toEqual(expect.any(String));
+    expect(result.latestConversation.bodyExcerpt).toEqual(expect.any(String));
+    expect(result.failureHint).toBeNull();
+  });
+
+  it('auto-selects approve_current for approval-gated stages using the reviewer role', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-6',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date('2026-03-21T11:40:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-6',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor auto approval task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'approval-gated auto progression',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'approval', approver_role: 'reviewer' },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T11:40:00.000Z'),
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-6' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Auto-progress approval gate',
+      message: 'If the task is approval-gated, continue automatically.',
+    });
+
+    expect(result.currentStage).toBe('execute');
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'approve_current',
+      actorRef: 'haiku',
+      source: 'auto',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'approve_current',
+      currentStage: 'execute',
+    });
+  });
+
+  it('auto-selects approve_current for archon_review stages using the archon actor', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-7',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date('2026-03-21T11:50:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-7',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor auto archon review task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'archon-gated auto progression',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'archon_review' },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T11:50:00.000Z'),
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-7' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Auto-progress archon review gate',
+      message: 'If the task is archon-review-gated, continue automatically.',
+    });
+
+    expect(result.currentStage).toBe('execute');
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'approve_current',
+      actorRef: 'archon',
+      source: 'auto',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'approve_current',
+      currentStage: 'execute',
+    });
+  });
+
+  it('auto-selects confirm_current for quorum stages using an in-roster participant', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-8',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date('2026-03-21T12:00:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-8',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor auto quorum task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'quorum-gated auto progression',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'vote',
+            mode: 'discuss',
+            gate: { type: 'quorum', required: 2 },
+            roster: {
+              include_roles: ['reviewer'],
+              keep_controller: false,
+            },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T12:00:00.000Z'),
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-8' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Auto-cast a quorum vote',
+      message: 'If the task is quorum-gated, cast the next vote automatically.',
+    });
+
+    expect(result.currentStage).toBe('vote');
+    expect(result.stageChanged).toBe(false);
+    expect(result.appliedTaskAction).toEqual({
+      kind: 'confirm_current',
+      actorRef: 'haiku',
+      source: 'auto',
+    });
+    expect(result.actionResult).toMatchObject({
+      kind: 'confirm_current',
+      currentStage: 'vote',
+      quorum: {
+        approved: 1,
+        total: 1,
+      },
+    });
+  });
+
+  it('waits for the expected stage transition before reporting success', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-9',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date('2026-03-21T12:10:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-9',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor observed quorum task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'waits for a follow-up stage transition',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'vote',
+            mode: 'discuss',
+            gate: { type: 'quorum', required: 2 },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'archon', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
+          { role: 'developer', agentId: 'glm47', member_kind: 'citizen', model_preference: 'cost_regression' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    let observedWaits = 0;
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T12:10:00.000Z'),
+      sleep: async () => {
+        observedWaits += 1;
+        if (observedWaits === 1) {
+          taskService.confirmTask('OC-REG-ACTOR-9', {
+            voterId: 'glm47',
+            vote: 'approve',
+            comment: 'second quorum vote',
+          });
+          taskService.advanceTask('OC-REG-ACTOR-9', { callerId: 'archon' });
+        }
+      },
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-9' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Observe the task until it reaches execute',
+      message: 'Cast the first vote, then keep watching until execute.',
+      taskAction: {
+        kind: 'confirm_current',
+        actor_ref: 'haiku',
+        vote: 'approve',
+        comment: 'first quorum vote',
+      },
+      waitFor: {
+        currentStage: 'execute',
+        timeoutMs: 10,
+        pollIntervalMs: 0,
+      },
+    });
+
+    expect(result.currentStage).toBe('execute');
+    expect(result.goalSatisfied).toBe(true);
+    expect(result.timedOut).toBe(false);
+    expect(result.observationAttempts).toBeGreaterThan(1);
+    expect(result.failureHint).toBeNull();
+    expect(result.latestConversation.bodyExcerpt).toContain('当前阶段: execute');
+  });
+
+  it('reports a target mismatch when the expected stage is not reached before timeout', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-10',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date('2026-03-21T12:20:01.000Z'),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-10',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor timed-out quorum task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'reports an unmet target stage',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'vote',
+            mode: 'discuss',
+            gate: { type: 'quorum', required: 2 },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'archon', member_kind: 'controller', model_preference: 'cost_regression' },
+          { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
+          { role: 'developer', agentId: 'glm47', member_kind: 'citizen', model_preference: 'cost_regression' },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date('2026-03-21T12:20:00.000Z'),
+      sleep: async () => {},
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-10' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Observe the task until it reaches execute',
+      message: 'Cast the first vote and report if execute is never reached.',
+      taskAction: {
+        kind: 'confirm_current',
+        actor_ref: 'haiku',
+        vote: 'approve',
+        comment: 'first quorum vote',
+      },
+      waitFor: {
+        currentStage: 'execute',
+        timeoutMs: 0,
+        pollIntervalMs: 0,
+      },
+    });
+
+    expect(result.currentStage).toBe('vote');
+    expect(result.goalSatisfied).toBe(false);
+    expect(result.timedOut).toBe(true);
+    expect(result.observationAttempts).toBe(1);
+    expect(result.failureHint).toContain('expected currentStage=execute');
   });
 });

@@ -2437,6 +2437,98 @@ describe('agora-ts cli', () => {
     ]));
   });
 
+  it('exposes wait targets through the live regression cli command', async () => {
+    process.env.AGORA_DEV_REGRESSION_MODE = 'true';
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+    });
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-cli-regression-wait',
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLI-REG-WAIT',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'cli regression wait task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'drive execute stage from cli regression with wait target',
+      priority: 'normal',
+      control: { mode: 'regression_test' },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'triage',
+            mode: 'discuss',
+            gate: { type: 'command' },
+          },
+          {
+            id: 'execute',
+            mode: 'execute',
+            gate: { type: 'all_subtasks_done' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({
+      taskService,
+      taskConversationService: conversations,
+      taskContextBindingService: bindings,
+      imProvisioningPort: provisioning,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'regression',
+      'live',
+      '--task-id', 'OC-CLI-REG-WAIT',
+      '--goal', 'drive execute stage from cli and verify observed target',
+      '--message', 'advance if ready and confirm execute is reached',
+      '--action', 'advance_current',
+      '--action-actor', 'archon',
+      '--wait-stage', 'execute',
+      '--wait-timeout-ms', '1',
+      '--wait-poll-ms', '0',
+      '--json',
+    ], { from: 'user' });
+
+    const payload = JSON.parse(stdout.value);
+    expect(stderr.value).toBe('');
+    expect(payload).toMatchObject({
+      taskId: 'OC-CLI-REG-WAIT',
+      currentStage: 'execute',
+      goalSatisfied: true,
+      timedOut: false,
+      observationAttempts: 1,
+      failureHint: null,
+    });
+  });
+
   it('can create a regression-mode task directly from the live regression command', async () => {
     process.env.AGORA_DEV_REGRESSION_MODE = 'true';
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
