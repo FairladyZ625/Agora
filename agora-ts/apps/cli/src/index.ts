@@ -730,6 +730,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--comment <text>', 'comment for approve/confirm actions')
     .option('--reason <text>', 'reason for reject actions')
     .option('--vote <vote>', 'vote for confirm_current (approve|reject)')
+    .option('--wait-stage <stage>', 'wait until the task reaches this stage')
+    .option('--wait-state <state>', 'wait until the task reaches this state')
+    .option('--wait-body-includes <text>', 'wait until the latest conversation contains this text')
+    .option('--wait-timeout-ms <ms>', 'overall observation timeout in milliseconds')
+    .option('--wait-poll-ms <ms>', 'observation poll interval in milliseconds')
     .option('--json', 'emit JSON', false)
     .action(async (options: {
       taskId?: string;
@@ -754,6 +759,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       comment?: string;
       reason?: string;
       vote?: 'approve' | 'reject';
+      waitStage?: string;
+      waitState?: string;
+      waitBodyIncludes?: string;
+      waitTimeoutMs?: string;
+      waitPollMs?: string;
       json?: boolean;
     }) => {
       if (!isDeveloperRegressionEnabled(process.env)) {
@@ -783,6 +793,21 @@ export function createCliProgram(deps: CliDependencies = {}) {
             ...(options.comment ? { comment: options.comment } : {}),
             ...(options.reason ? { reason: options.reason } : {}),
             ...(options.vote ? { vote: options.vote } : {}),
+          }
+        : undefined;
+      const waitFor = (
+        options.waitStage
+        || options.waitState
+        || options.waitBodyIncludes
+        || options.waitTimeoutMs
+        || options.waitPollMs
+      )
+        ? {
+            ...(options.waitStage ? { currentStage: options.waitStage } : {}),
+            ...(options.waitState ? { state: options.waitState } : {}),
+            ...(options.waitBodyIncludes ? { latestConversationBodyIncludes: options.waitBodyIncludes } : {}),
+            ...(options.waitTimeoutMs ? { timeoutMs: Number(options.waitTimeoutMs) } : {}),
+            ...(options.waitPollMs ? { pollIntervalMs: Number(options.waitPollMs) } : {}),
           }
         : undefined;
       if (taskAction && !taskAction.actor_ref) {
@@ -836,6 +861,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         message,
         ...(options.participant ? { participantRefs: options.participant } : {}),
         ...(taskAction ? { taskAction } : {}),
+        ...(waitFor ? { waitFor } : {}),
       });
       if (options.json) {
         writeLine(stdout, JSON.stringify(result, null, 2));
@@ -846,6 +872,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `State: ${result.state}`);
       writeLine(stdout, `Stage: ${result.currentStage ?? '-'}`);
       writeLine(stdout, `Conversation Entry: ${result.conversationEntryId ?? '-'}`);
+      writeLine(stdout, `Goal Satisfied: ${result.goalSatisfied}`);
+      writeLine(stdout, `Timed Out: ${result.timedOut}`);
     });
 
   const roles = program

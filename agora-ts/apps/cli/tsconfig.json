@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@agora-ts/testing": ["packages/testing/src/index.ts"]
+    },
     "rootDir": "src",
     "outDir": "dist",
     "tsBuildInfoFile": "tsconfig.typecheck.tsbuildinfo"
@@ -11,6 +15,7 @@
     { "path": "../../packages/config" },
     { "path": "../../packages/contracts" },
     { "path": "../../packages/core" },
-    { "path": "../../packages/db" }
+    { "path": "../../packages/db" },
+    { "path": "../../packages/testing" }
   ]
 }
