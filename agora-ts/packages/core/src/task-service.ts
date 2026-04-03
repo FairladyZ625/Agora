@@ -24,6 +24,7 @@ import type { CraftsmanExecutionTailPort } from './craftsman-tail-port.js';
 import type { HostResourcePort } from './host-resource-port.js';
 import { TaskRecoveryService } from './task-recovery-service.js';
 import { TaskLifecycleService } from './task-lifecycle-service.js';
+import { TaskApprovalService } from './task-approval-service.js';
 import type {
   TaskBrainContextArtifact,
   TaskBrainContextAudience,
@@ -315,6 +316,7 @@ export class TaskService {
   private readonly taskParticipantSyncService: TaskParticipantSyncService;
   private readonly taskRecoveryService: TaskRecoveryService;
   private readonly taskLifecycleService: TaskLifecycleService;
+  private readonly taskApprovalService: TaskApprovalService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -525,6 +527,34 @@ export class TaskService {
       buildTaskBlueprint: (task) => this.buildTaskBlueprint(task),
       buildCurrentStageRoster: (task) => this.buildCurrentStageRoster(task),
     });
+    this.taskApprovalService = new TaskApprovalService({
+      getTaskOrThrow: (taskId) => this.getTaskOrThrow(taskId),
+      assertTaskActive: (task) => this.assertTaskActive(task),
+      getCurrentStageOrThrow: (task) => this.getCurrentStageOrThrow(task),
+      assertStageRosterAction: (task, stage, callerId, action) => this.assertStageRosterAction(task, stage, callerId, action),
+      assertApprovalAuthority: (task, actorAccountId) => this.assertApprovalAuthority(task, actorAccountId),
+      routeGateCommand: (task, stage, command, callerId) => this.gateService.routeGateCommand(task, stage, command, callerId),
+      getApproverRole: (stage) => this.getApproverRole(stage),
+      recordApproval: (taskId, stageId, approverRole, approverId, comment) => {
+        this.gateService.recordApproval(taskId, stageId, approverRole, approverId, comment);
+      },
+      recordArchonReview: (taskId, stageId, decision, reviewerId, note) => {
+        this.gateService.recordArchonReview(taskId, stageId, decision, reviewerId, note);
+      },
+      recordQuorumVote: (taskId, stageId, voterId, vote, comment) => {
+        return this.gateService.recordQuorumVote(taskId, stageId, voterId, vote, comment);
+      },
+      insertFlowLog: (input) => this.flowLogRepository.insertFlowLog(input),
+      mirrorConversationEntry: (taskId, input) => this.mirrorConversationEntry(taskId, input),
+      resolvePendingApprovalRequest: (taskId, stageId, status, resolvedBy, resolutionComment) => {
+        this.resolvePendingApprovalRequest(taskId, stageId, status, resolvedBy, resolutionComment);
+      },
+      advanceSatisfiedStage: (task, actor) => this.advanceSatisfiedStage(task, actor),
+      rewindRejectedStage: (task, currentStageId, decisionEvent, actor, reason) => {
+        return this.rewindRejectedStage(task, currentStageId, decisionEvent, actor, reason);
+      },
+      publishGateDecisionBroadcast: (task, input) => this.publishGateDecisionBroadcast(task, input),
+    });
   }
 
   async drainBackgroundOperations(): Promise<void> {
@@ -641,170 +671,19 @@ export class TaskService {
   }
 
   approveTask(taskId: string, options: ApproveTaskOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskActive(task);
-    const stage = this.getCurrentStageOrThrow(task);
-    this.assertStageRosterAction(task, stage, options.approverId, 'approve');
-    this.assertApprovalAuthority(task, options.approverAccountId ?? null);
-    this.gateService.routeGateCommand(task, stage, 'approve', options.approverId);
-    const approverRole = this.getApproverRole(stage);
-    this.gateService.recordApproval(taskId, stage.id, approverRole, options.approverId, options.comment);
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'gate_passed',
-      stage_id: stage.id,
-      detail: { gate_type: 'approval', passed: true, comment: options.comment },
-      actor: options.approverId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.approverId,
-      body: options.comment ? `Approval passed: ${options.comment}` : 'Approval passed',
-      metadata: {
-        event: 'gate_passed',
-        gate_type: 'approval',
-      },
-    });
-    this.resolvePendingApprovalRequest(taskId, stage.id, 'approved', options.approverId, options.comment);
-    const advanced = this.advanceSatisfiedStage(task, options.approverId);
-    this.publishGateDecisionBroadcast(advanced, {
-      decision: 'approved',
-      reviewer: options.approverId,
-      comment: options.comment,
-      gateType: 'approval',
-    });
-    return advanced;
+    return this.taskApprovalService.approveTask(taskId, options);
   }
 
   rejectTask(taskId: string, options: RejectTaskOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskActive(task);
-    const stage = this.getCurrentStageOrThrow(task);
-    this.assertStageRosterAction(task, stage, options.rejectorId, 'reject');
-    this.assertApprovalAuthority(task, options.rejectorAccountId ?? null);
-    this.gateService.routeGateCommand(task, stage, 'reject', options.rejectorId);
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'gate_failed',
-      stage_id: stage.id,
-      detail: { gate_type: 'approval', passed: false, reason: options.reason },
-      actor: options.rejectorId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.rejectorId,
-      body: `Approval rejected: ${options.reason}`,
-      metadata: {
-        event: 'gate_failed',
-        gate_type: 'approval',
-      },
-    });
-    this.resolvePendingApprovalRequest(taskId, stage.id, 'rejected', options.rejectorId, options.reason);
-    const rewound = this.rewindRejectedStage(task, stage.id, 'rejected', options.rejectorId, options.reason);
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'rejected',
-      stage_id: stage.id,
-      detail: {
-        reason: options.reason,
-        ...(rewound ? { reject_target: rewound.current_stage } : {}),
-      },
-      actor: options.rejectorId,
-    });
-    this.publishGateDecisionBroadcast(rewound, {
-      decision: 'rejected',
-      reviewer: options.rejectorId,
-      reason: options.reason,
-      gateType: 'approval',
-    });
-    return rewound;
+    return this.taskApprovalService.rejectTask(taskId, options);
   }
 
   archonApproveTask(taskId: string, options: ArchonDecisionOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskActive(task);
-    const stage = this.getCurrentStageOrThrow(task);
-    this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-approve');
-    this.gateService.routeGateCommand(task, stage, 'archon-approve', options.reviewerId);
-    this.gateService.recordArchonReview(taskId, stage.id, 'approved', options.reviewerId, options.comment ?? '');
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'gate_passed',
-      stage_id: stage.id,
-      detail: { gate_type: 'archon_review', passed: true, comment: options.comment ?? '' },
-      actor: options.reviewerId,
-    });
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'archon',
-      event: 'archon_approved',
-      stage_id: stage.id,
-      detail: { decision: 'approved', comment: options.comment ?? '' },
-      actor: options.reviewerId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.reviewerId,
-      body: options.comment ? `Archon approved: ${options.comment}` : 'Archon approved',
-      metadata: {
-        event: 'archon_approved',
-      },
-    });
-    this.resolvePendingApprovalRequest(taskId, stage.id, 'approved', options.reviewerId, options.comment ?? '');
-    const advanced = this.advanceSatisfiedStage(task, options.reviewerId);
-    this.publishGateDecisionBroadcast(advanced, {
-      decision: 'approved',
-      reviewer: options.reviewerId,
-      comment: options.comment ?? '',
-      gateType: 'archon_review',
-    });
-    return advanced;
+    return this.taskApprovalService.archonApproveTask(taskId, options);
   }
 
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskActive(task);
-    const stage = this.getCurrentStageOrThrow(task);
-    this.assertStageRosterAction(task, stage, options.reviewerId, 'archon-reject');
-    this.gateService.routeGateCommand(task, stage, 'archon-reject', options.reviewerId);
-    this.gateService.recordArchonReview(taskId, stage.id, 'rejected', options.reviewerId, options.reason ?? '');
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'gate_failed',
-      stage_id: stage.id,
-      detail: { gate_type: 'archon_review', passed: false, reason: options.reason ?? '' },
-      actor: options.reviewerId,
-    });
-    const rewound = this.rewindRejectedStage(task, stage.id, 'archon_rejected', options.reviewerId, options.reason ?? '');
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'archon',
-      event: 'archon_rejected',
-      stage_id: stage.id,
-      detail: {
-        decision: 'rejected',
-        reason: options.reason ?? '',
-        ...(rewound ? { reject_target: rewound.current_stage } : {}),
-      },
-      actor: options.reviewerId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.reviewerId,
-      body: options.reason ? `Archon rejected: ${options.reason}` : 'Archon rejected',
-      metadata: {
-        event: 'archon_rejected',
-      },
-    });
-    this.resolvePendingApprovalRequest(taskId, stage.id, 'rejected', options.reviewerId, options.reason ?? '');
-    this.publishGateDecisionBroadcast(rewound, {
-      decision: 'rejected',
-      reviewer: options.reviewerId,
-      reason: options.reason ?? '',
-      gateType: 'archon_review',
-    });
-    return rewound;
+    return this.taskApprovalService.archonRejectTask(taskId, options);
   }
 
   private advanceSatisfiedStage(task: TaskRecord, actor: string, nextStageId?: string): TaskRecord {
@@ -1517,38 +1396,7 @@ export class TaskService {
   }
 
   confirmTask(taskId: string, options: ConfirmTaskOptions): TaskRecord & { quorum: { approved: number; total: number } } {
-    const task = this.getTaskOrThrow(taskId);
-    this.assertTaskActive(task);
-    const stage = this.getCurrentStageOrThrow(task);
-    this.assertStageRosterAction(task, stage, options.voterId, 'confirm');
-    this.gateService.routeGateCommand(task, stage, 'confirm', options.voterId);
-    const quorum = this.gateService.recordQuorumVote(taskId, stage.id, options.voterId, options.vote, options.comment);
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'quorum_vote',
-      stage_id: stage.id,
-      detail: {
-        vote: options.vote,
-        approved: quorum.approved,
-        total: quorum.total,
-      },
-      actor: options.voterId,
-    });
-    this.mirrorConversationEntry(taskId, {
-      actor: options.voterId,
-      body: `Quorum vote ${options.vote} (${quorum.approved}/${quorum.total})`,
-      metadata: {
-        event: 'quorum_vote',
-        vote: options.vote,
-        approved: quorum.approved,
-        total: quorum.total,
-      },
-    });
-    return {
-      ...task,
-      quorum,
-    };
+    return this.taskApprovalService.confirmTask(taskId, options);
   }
 
   pauseTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
