@@ -25,6 +25,7 @@ import type { HostResourcePort } from './host-resource-port.js';
 import { TaskRecoveryService } from './task-recovery-service.js';
 import { TaskLifecycleService } from './task-lifecycle-service.js';
 import { TaskApprovalService } from './task-approval-service.js';
+import { TaskStageService } from './task-stage-service.js';
 import type {
   TaskBrainContextArtifact,
   TaskBrainContextAudience,
@@ -317,6 +318,7 @@ export class TaskService {
   private readonly taskRecoveryService: TaskRecoveryService;
   private readonly taskLifecycleService: TaskLifecycleService;
   private readonly taskApprovalService: TaskApprovalService;
+  private readonly taskStageService: TaskStageService;
   private readonly agentRuntimePort: AgentRuntimePort | undefined;
   private readonly runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
   private readonly craftsmanExecutionProbePort: CraftsmanExecutionProbePort | undefined;
@@ -549,11 +551,56 @@ export class TaskService {
       resolvePendingApprovalRequest: (taskId, stageId, status, resolvedBy, resolutionComment) => {
         this.resolvePendingApprovalRequest(taskId, stageId, status, resolvedBy, resolutionComment);
       },
-      advanceSatisfiedStage: (task, actor) => this.advanceSatisfiedStage(task, actor),
+      advanceSatisfiedStage: (task, actor) => this.taskStageService.advanceSatisfiedStage(task, actor),
       rewindRejectedStage: (task, currentStageId, decisionEvent, actor, reason) => {
-        return this.rewindRejectedStage(task, currentStageId, decisionEvent, actor, reason);
+        return this.taskStageService.rewindRejectedStage(task, currentStageId, decisionEvent, actor, reason);
       },
       publishGateDecisionBroadcast: (task, input) => this.publishGateDecisionBroadcast(task, input),
+    });
+    this.taskStageService = new TaskStageService({
+      getTaskOrThrow: (taskId) => this.getTaskOrThrow(taskId),
+      getCurrentStageOrThrow: (task) => this.getCurrentStageOrThrow(task),
+      assertStageRosterAction: (task, stage, callerId, action) => this.assertStageRosterAction(task, stage, callerId, action),
+      routeGateCommand: (task, stage, command, callerId) => this.gateService.routeGateCommand(task, stage, command, callerId),
+      checkGate: (task, stage, callerId) => this.stateMachine.checkGate(this.gateQueryPort, task, stage, callerId),
+      ensureApprovalRequestForGate: (task, stage, requester) => this.ensureApprovalRequestForGate(task, stage, requester),
+      publishTaskStatusBroadcast: (task, input) => this.publishTaskStatusBroadcast(task, input),
+      advanceWorkflow: (task, nextStageId) => this.stateMachine.advance(task.workflow, task.current_stage!, nextStageId),
+      getRejectStage: (task, currentStageId) => this.stateMachine.getRejectStage(task.workflow, currentStageId),
+      reconcileStageExitSubtasks: (taskId, stageId, targetStatus, reason) => {
+        return this.reconcileStageExitSubtasks(taskId, stageId, targetStatus, reason);
+      },
+      exitStage: (taskId, stageId, reason) => this.exitStage(taskId, stageId, reason),
+      runTaskDoneAutomation: (task) => this.runTaskDoneAutomation(task),
+      updateTask: (taskId, version, patch) => this.taskRepository.updateTask(taskId, version, patch),
+      refreshTaskBrainWorkspace: (task) => this.refreshTaskBrainWorkspace(task),
+      materializeTaskCloseRecap: (task, actor, reason) => this.materializeTaskCloseRecap(task, actor, reason),
+      ensureArchiveJobForTask: (taskId) => this.ensureArchiveJobForTask(taskId),
+      insertFlowLog: (input) => this.flowLogRepository.insertFlowLog(input),
+      mirrorConversationEntry: (taskId, input) => this.mirrorConversationEntry(taskId, input),
+      publishControllerCloseoutReminder: (task, archiveJob) => this.publishControllerCloseoutReminder(task, archiveJob as ReturnType<TaskService['ensureArchiveJobForTask']>),
+      enterStage: (taskId, stageId) => this.enterStage(taskId, stageId),
+      insertProgressLog: (input) => this.progressLogRepository.insertProgressLog(input),
+      describeGateState: (stage) => this.describeGateState(stage),
+      buildSmokeStageEntryCommands: (task, stage) => this.buildSmokeStageEntryCommands(task, stage),
+      reconcileStageParticipants: (task, stage) => this.reconcileStageParticipants(task, stage),
+      validateTransition: (fromState, toState) => this.stateMachine.validateTransition(fromState, toState),
+      buildSchedulerSnapshot: (task, reason) => this.buildSchedulerSnapshot(task, reason),
+      dbBegin: () => this.db.exec('BEGIN'),
+      dbCommit: () => this.db.exec('COMMIT'),
+      dbRollback: () => this.db.exec('ROLLBACK'),
+      applyStateTransitionSideEffects: (task, newState, options) => this.applyStateTransitionSideEffects(task, newState, options),
+      cancelOpenWork: (taskId, reason) => this.cancelOpenWork(taskId, reason),
+      buildStateChangeDetail: (options, actionDetail) => this.buildStateChangeDetail(options, actionDetail),
+      buildStateConversationBody: (fromState, toState, options) => this.buildStateConversationBody(fromState, toState, options),
+      getStateActionEvent: (fromState, toState) => this.getStateActionEvent(fromState, toState),
+      resumeDeferredCallbacks: (taskId) => this.craftsmanCallbacks.resumeDeferredCallbacks(taskId),
+      failMissingCraftsmanSessionsOnResume: (taskId) => this.failMissingCraftsmanSessionsOnResume(taskId),
+      syncImContextForTaskState: (taskId, fromState, toState, reason, onSuccess) => {
+        this.syncImContextForTaskState(taskId, fromState, toState, reason, onSuccess);
+      },
+      publishTaskStateBroadcast: (task, fromState, toState, reason) => this.publishTaskStateBroadcast(task, fromState, toState, reason),
+      getDoneStateBroadcastLines: () => ['Task reached done state and has been queued for archive handling.'],
     });
   }
 
@@ -631,43 +678,7 @@ export class TaskService {
   }
 
   advanceTask(taskId: string, options: AdvanceTaskOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    if (task.state !== TaskState.ACTIVE) {
-      throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
-    }
-    if (!task.current_stage) {
-      throw new Error(`Task ${taskId} has no current_stage set`);
-    }
-
-    const currentStage = this.stateMachine.getCurrentStage(task.workflow, task.current_stage);
-    this.assertStageRosterAction(task, currentStage, options.callerId, 'advance');
-    this.gateService.routeGateCommand(task, currentStage, 'advance', options.callerId);
-    if (!this.stateMachine.checkGate(this.gateQueryPort, task, currentStage, options.callerId)) {
-      const refreshed = this.getTaskOrThrow(taskId);
-      if (
-        refreshed.current_stage !== task.current_stage
-        || refreshed.state !== task.state
-        || refreshed.version !== task.version
-      ) {
-        return refreshed;
-      }
-      const approvalRequest = this.ensureApprovalRequestForGate(task, currentStage, options.callerId);
-      if (approvalRequest?.shouldBroadcast) {
-        this.publishTaskStatusBroadcast(task, {
-          kind: 'gate_waiting',
-          bodyLines: [
-            `Gate ${approvalRequest.request.gate_type} is waiting for human decision.`,
-            `Approval Request: ${approvalRequest.request.id}`,
-            ...(approvalRequest.request.summary_path ? [`Summary Path: ${approvalRequest.request.summary_path}`] : []),
-          ],
-        });
-      }
-      throw new PermissionDeniedError(
-        `Gate check failed for stage '${task.current_stage}' (gate type: ${currentStage.gate?.type ?? 'command'})`,
-      );
-    }
-
-    return this.advanceSatisfiedStage(task, options.callerId, options.nextStageId);
+    return this.taskStageService.advanceTask(taskId, options);
   }
 
   approveTask(taskId: string, options: ApproveTaskOptions): TaskRecord {
@@ -684,102 +695,6 @@ export class TaskService {
 
   archonRejectTask(taskId: string, options: ArchonDecisionOptions): TaskRecord {
     return this.taskApprovalService.archonRejectTask(taskId, options);
-  }
-
-  private advanceSatisfiedStage(task: TaskRecord, actor: string, nextStageId?: string): TaskRecord {
-    if (task.state !== TaskState.ACTIVE) {
-      throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
-    }
-    if (!task.current_stage) {
-      throw new Error(`Task ${task.id} has no current_stage set`);
-    }
-    const advance = this.stateMachine.advance(task.workflow, task.current_stage, nextStageId);
-    this.reconcileStageExitSubtasks(task.id, advance.currentStage.id, 'archived', 'stage_advanced');
-    this.exitStage(task.id, advance.currentStage.id, 'advance');
-
-    if (advance.completesTask) {
-      this.runTaskDoneAutomation(task);
-      const done = this.taskRepository.updateTask(task.id, task.version, {
-        state: TaskState.DONE,
-        current_stage: null,
-      });
-      this.refreshTaskBrainWorkspace(done);
-      this.materializeTaskCloseRecap(done, actor);
-      const archiveJob = this.ensureArchiveJobForTask(task.id);
-      this.flowLogRepository.insertFlowLog({
-        task_id: task.id,
-        kind: 'flow',
-        event: 'state_changed',
-        stage_id: advance.currentStage.id,
-        from_state: TaskState.ACTIVE,
-        to_state: TaskState.DONE,
-        actor,
-      });
-      this.mirrorConversationEntry(task.id, {
-        actor,
-        body: 'Task completed',
-        metadata: {
-          event: 'state_changed',
-          from_state: TaskState.ACTIVE,
-          to_state: TaskState.DONE,
-        },
-      });
-      this.publishTaskStatusBroadcast(done, {
-        kind: 'task_completed',
-        bodyLines: ['Task reached done state and has been queued for archive handling.'],
-      });
-      this.publishControllerCloseoutReminder(done, archiveJob);
-      return done;
-    }
-
-    const nextStage = advance.nextStage;
-    const updated = this.taskRepository.updateTask(task.id, task.version, {
-      current_stage: nextStage?.id ?? null,
-    });
-    if (nextStage) {
-      this.enterStage(task.id, nextStage.id);
-    }
-    this.refreshTaskBrainWorkspace(updated);
-    this.flowLogRepository.insertFlowLog({
-      task_id: task.id,
-      kind: 'flow',
-      event: 'stage_advanced',
-      stage_id: nextStage?.id ?? null,
-      detail: {
-        from_stage: advance.currentStage.id,
-        to_stage: nextStage?.id ?? 'done',
-      },
-      actor,
-    });
-    if (nextStage) {
-      this.progressLogRepository.insertProgressLog({
-        task_id: task.id,
-        kind: 'progress',
-        stage_id: nextStage.id,
-        content: `Advanced to stage ${nextStage.id}`,
-        artifacts: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
-        actor,
-      });
-      this.mirrorConversationEntry(task.id, {
-        actor,
-        body: `Advanced to stage ${nextStage.id}`,
-        metadata: {
-          event: 'stage_advanced',
-          from_stage: advance.currentStage.id,
-          to_stage: nextStage.id,
-        },
-      });
-      this.publishTaskStatusBroadcast(updated, {
-        kind: 'stage_entered',
-        bodyLines: [
-          `Advanced from ${advance.currentStage.id} to ${nextStage.id}.`,
-          ...this.describeGateState(nextStage),
-          ...this.buildSmokeStageEntryCommands(updated, nextStage),
-        ],
-      });
-      this.reconcileStageParticipants(updated, nextStage);
-    }
-    return updated;
   }
 
   private runTaskDoneAutomation(task: TaskRecord) {
@@ -1315,84 +1230,7 @@ export class TaskService {
   }
 
   forceAdvanceTask(taskId: string, options: ForceAdvanceOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    if (task.state !== TaskState.ACTIVE) {
-      throw new Error(`Task ${taskId} is in state '${task.state}', expected 'active'`);
-    }
-    if (!task.current_stage) {
-      throw new Error(`Task ${taskId} has no current_stage set`);
-    }
-    const advance = this.stateMachine.advance(task.workflow, task.current_stage);
-    this.reconcileStageExitSubtasks(taskId, advance.currentStage.id, 'archived', 'force_advanced');
-    this.exitStage(taskId, advance.currentStage.id, 'force_advance');
-    this.flowLogRepository.insertFlowLog({
-      task_id: taskId,
-      kind: 'flow',
-      event: 'force_advance',
-      stage_id: task.current_stage,
-      detail: { reason: options.reason },
-      actor: 'archon',
-    });
-
-    if (advance.completesTask) {
-      this.runTaskDoneAutomation(task);
-      const done = this.taskRepository.updateTask(taskId, task.version, {
-        state: TaskState.DONE,
-        current_stage: null,
-      });
-      this.refreshTaskBrainWorkspace(done);
-      this.materializeTaskCloseRecap(done, 'archon', options.reason);
-      const archiveJob = this.ensureArchiveJobForTask(taskId);
-      this.flowLogRepository.insertFlowLog({
-        task_id: taskId,
-        kind: 'flow',
-        event: 'state_changed',
-        stage_id: advance.currentStage.id,
-        from_state: TaskState.ACTIVE,
-        to_state: TaskState.DONE,
-        actor: 'archon',
-      });
-      this.mirrorConversationEntry(taskId, {
-        actor: 'archon',
-        body: 'Force advanced task to done',
-        metadata: {
-          event: 'force_advance',
-          to_state: TaskState.DONE,
-        },
-      });
-      this.publishTaskStatusBroadcast(done, {
-        kind: 'task_completed',
-        bodyLines: ['Task reached done state and has been queued for archive handling.'],
-      });
-      this.publishControllerCloseoutReminder(done, archiveJob);
-      return done;
-    }
-
-    const nextStage = advance.nextStage;
-    const updated = this.taskRepository.updateTask(taskId, task.version, {
-      current_stage: nextStage?.id ?? null,
-    });
-    if (nextStage) {
-      this.enterStage(taskId, nextStage.id);
-      this.flowLogRepository.insertFlowLog({
-        task_id: taskId,
-        kind: 'flow',
-        event: 'stage_advanced',
-        stage_id: nextStage.id,
-        detail: { from_stage: advance.currentStage.id, to_stage: nextStage.id },
-        actor: 'archon',
-      });
-      this.mirrorConversationEntry(taskId, {
-        actor: 'archon',
-        body: `Force advanced to stage ${nextStage.id}`,
-        metadata: {
-          event: 'force_advance',
-          to_stage: nextStage.id,
-        },
-      });
-      this.reconcileStageParticipants(updated, nextStage);
-    }
-    return updated;
+    return this.taskStageService.forceAdvanceTask(taskId, options);
   }
 
   confirmTask(taskId: string, options: ConfirmTaskOptions): TaskRecord & { quorum: { approved: number; total: number } } {
@@ -1400,99 +1238,23 @@ export class TaskService {
   }
 
   pauseTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
-    return this.updateTaskState(taskId, TaskState.PAUSED, options);
+    return this.taskStageService.updateTaskState(taskId, TaskState.PAUSED, options);
   }
 
   resumeTask(taskId: string): TaskRecord {
-    return this.updateTaskState(taskId, TaskState.ACTIVE, { reason: 'resumed' });
+    return this.taskStageService.updateTaskState(taskId, TaskState.ACTIVE, { reason: 'resumed' });
   }
 
   cancelTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
-    return this.updateTaskState(taskId, TaskState.CANCELLED, options);
+    return this.taskStageService.updateTaskState(taskId, TaskState.CANCELLED, options);
   }
 
   unblockTask(taskId: string, options: UpdateTaskStateOptions): TaskRecord {
-    return this.updateTaskState(taskId, TaskState.ACTIVE, options);
+    return this.taskStageService.updateTaskState(taskId, TaskState.ACTIVE, options);
   }
 
   updateTaskState(taskId: string, newState: string, options: UpdateTaskStateOptions): TaskRecord {
-    const task = this.getTaskOrThrow(taskId);
-    if (!this.stateMachine.validateTransition(task.state as TaskState, newState as TaskState)) {
-      throw new Error(`Invalid transition: ${task.state} -> ${newState}`);
-    }
-    const schedulerSnapshot = this.buildSchedulerSnapshot(task, options.reason);
-    const errorDetail = newState === TaskState.ACTIVE ? null : (options.reason ?? task.error_detail);
-    const actionEvent = this.getStateActionEvent(task.state as TaskState, newState as TaskState);
-
-    this.db.exec('BEGIN');
-    try {
-      const actionDetail = this.applyStateTransitionSideEffects(task, newState as TaskState, options);
-      const updated = this.taskRepository.updateTask(taskId, task.version, {
-        state: newState,
-        scheduler_snapshot: schedulerSnapshot,
-        error_detail: errorDetail,
-      });
-
-      if (newState === TaskState.CANCELLED) {
-        this.cancelOpenWork(taskId, options.reason);
-      }
-      if (newState === TaskState.DONE || newState === TaskState.CANCELLED) {
-        this.ensureArchiveJobForTask(taskId);
-      }
-
-      this.flowLogRepository.insertFlowLog({
-        task_id: taskId,
-        kind: 'flow',
-        event: 'state_changed',
-        stage_id: task.current_stage,
-        from_state: task.state,
-        to_state: newState,
-        detail: this.buildStateChangeDetail(options, actionDetail),
-        actor: 'system',
-      });
-      const conversationBody = this.buildStateConversationBody(task.state as TaskState, newState as TaskState, options);
-      if (conversationBody) {
-        this.mirrorConversationEntry(taskId, {
-          actor: 'system',
-          body: conversationBody,
-          metadata: {
-            event: actionEvent ?? 'state_changed',
-            from_state: task.state,
-            to_state: newState,
-            ...(options.reason ? { reason: options.reason } : {}),
-          },
-        });
-      }
-      if (actionEvent) {
-        this.flowLogRepository.insertFlowLog({
-          task_id: taskId,
-          kind: 'flow',
-          event: actionEvent,
-          stage_id: task.current_stage,
-          from_state: task.state,
-          to_state: newState,
-          detail: this.buildStateChangeDetail(options, actionDetail),
-          actor: 'system',
-        });
-      }
-      if (task.state === TaskState.PAUSED && newState === TaskState.ACTIVE) {
-        this.craftsmanCallbacks.resumeDeferredCallbacks(taskId);
-        this.failMissingCraftsmanSessionsOnResume(taskId);
-      }
-      this.db.exec('COMMIT');
-      this.refreshTaskBrainWorkspace(updated);
-      const broadcast = () => this.publishTaskStateBroadcast(updated, task.state as TaskState, newState as TaskState, options.reason);
-      if (task.state === TaskState.PAUSED && newState === TaskState.ACTIVE) {
-        this.syncImContextForTaskState(taskId, task.state as TaskState, newState as TaskState, options.reason, broadcast);
-      } else {
-        broadcast();
-        this.syncImContextForTaskState(taskId, task.state as TaskState, newState as TaskState, options.reason);
-      }
-      return updated;
-    } catch (error) {
-      this.db.exec('ROLLBACK');
-      throw error;
-    }
+    return this.taskStageService.updateTaskState(taskId, newState, options);
   }
 
   promoteTodo(todoId: number, options: PromoteTodoRequestDto) {
@@ -2057,54 +1819,6 @@ export class TaskService {
       subtask,
       execution,
     });
-  }
-
-  private rewindRejectedStage(
-    task: TaskRecord,
-    currentStageId: string,
-    decisionEvent: 'rejected' | 'archon_rejected',
-    actor: string,
-    reason: string,
-  ): TaskRecord {
-    const rejectStage = this.stateMachine.getRejectStage(task.workflow, currentStageId);
-    if (!rejectStage) {
-      return task;
-    }
-
-    this.reconcileStageExitSubtasks(task.id, currentStageId, 'archived', decisionEvent);
-    this.exitStage(task.id, currentStageId, decisionEvent);
-    const updated = this.taskRepository.updateTask(task.id, task.version, {
-      current_stage: rejectStage.id,
-    });
-    this.enterStage(task.id, rejectStage.id);
-    this.flowLogRepository.insertFlowLog({
-      task_id: task.id,
-      kind: 'flow',
-      event: 'stage_rewound',
-      stage_id: rejectStage.id,
-      detail: {
-        from_stage: currentStageId,
-        to_stage: rejectStage.id,
-        reason,
-        decision_event: decisionEvent,
-      },
-      actor,
-    });
-    this.progressLogRepository.insertProgressLog({
-      task_id: task.id,
-      kind: 'progress',
-      stage_id: rejectStage.id,
-      content: `Rewound to stage ${rejectStage.id} after ${decisionEvent}`,
-      artifacts: {
-        from_stage: currentStageId,
-        to_stage: rejectStage.id,
-        reason,
-      },
-      actor,
-    });
-    this.refreshTaskBrainWorkspace(updated);
-    this.reconcileStageParticipants(updated, rejectStage);
-    return updated;
   }
 
   private collectImParticipantRefs(
