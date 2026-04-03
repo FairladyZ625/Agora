@@ -2,10 +2,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CraftsmanCallbackRequestDto, CraftsmanDispatchRequestDto, CraftsmanExecutionTailResponseDto, CraftsmanInputKeyDto, CraftsmanStopExecutionRequestDto, CreateSubtasksRequestDto, CreateSubtasksResponseDto, CreateTaskAuthorityDto, CreateTaskRequestDto, DatabasePort, GateCommandPort, GateQueryPort, HostResourceSnapshotDto, IApprovalRequestRepository, IArchiveJobRepository, ICraftsmanExecutionRepository, IFlowLogRepository, IInboxRepository, IProgressLogRepository, ISubtaskRepository, ITaskContextBindingRepository, ITaskConversationRepository, ITaskRepository, ITemplateRepository, ITodoRepository, PromoteTodoRequestDto, RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto, RuntimeRecoveryRequestDto, TaskBlueprintDto, TaskConversationEntryRecord, TaskLocaleDto, TaskRecord, TaskStatusDto, UnifiedHealthSnapshotDto, WorkflowDto } from '@agora-ts/contracts';
-import { craftsmanExecutionSchema, createSubtasksRequestSchema } from '@agora-ts/contracts';
 import { PermissionDeniedError, NotFoundError } from './errors.js';
 import type { CraftsmanCallbackService } from './craftsman-callback-service.js';
-import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 import { GateService } from './gate-service.js';
 import { ModeController } from './mode-controller.js';
@@ -1213,14 +1211,6 @@ export class TaskService {
     };
   }
 
-  private loadTemplate(taskType: string): TaskTemplate {
-    const stored = this.templateRepository.getTemplate(taskType);
-    if (!stored) {
-      throw new NotFoundError(`Template not found: ${taskType}`);
-    }
-    return stored.template as TaskTemplate;
-  }
-
   private tryLoadTemplate(taskType: string): TaskTemplate | null {
     const stored = this.templateRepository.getTemplate(taskType);
     return stored ? stored.template as TaskTemplate : null;
@@ -1628,19 +1618,6 @@ export class TaskService {
     return options.action ? { action: options.action } : undefined;
   }
 
-  private assertCraftsmanGovernanceForSubtasks(subtasks: CreateSubtasksRequestDto['subtasks']) {
-    const plannedByAssignee = new Map<string, number>();
-    for (const subtask of subtasks) {
-      if (!subtask.craftsman) {
-        continue;
-      }
-      plannedByAssignee.set(subtask.assignee, (plannedByAssignee.get(subtask.assignee) ?? 0) + 1);
-    }
-    for (const [assignee, planned] of plannedByAssignee) {
-      this.assertCraftsmanDispatchAllowed(assignee, planned);
-    }
-  }
-
   private assertCraftsmanDispatchAllowed(assignee: string, additionalPlanned = 1) {
     this.assertHostResourcesAllowDispatch();
     const limit = this.craftsmanGovernance.maxConcurrentPerAgent;
@@ -1741,10 +1718,6 @@ export class TaskService {
       || dispatchStatus === 'running'
       || dispatchStatus === 'needs_input'
       || dispatchStatus === 'awaiting_choice';
-  }
-
-  private isHostHealthDegraded(snapshot: HostResourceSnapshotDto) {
-    return this.resolveHostPressureStatus(snapshot) !== 'healthy';
   }
 
   private resolveHostPressureStatus(snapshot: HostResourceSnapshotDto | null) {
@@ -2388,14 +2361,6 @@ export class TaskService {
     };
   }
 
-  private resolveEscalationPolicy(options: InactiveTaskProbeOptions) {
-    return {
-      controllerAfterMs: options.controllerAfterMs ?? this.escalationPolicy.controllerAfterMs,
-      rosterAfterMs: options.rosterAfterMs ?? this.escalationPolicy.rosterAfterMs,
-      inboxAfterMs: options.inboxAfterMs ?? this.escalationPolicy.inboxAfterMs,
-    };
-  }
-
   private getCraftsmanProbeState(executionId: string, latestActivityMs: number): CraftsmanProbeState {
     const current = this.craftsmanProbeStateByExecution.get(executionId);
     if (!current || current.activityMs !== latestActivityMs) {
@@ -2428,47 +2393,6 @@ export class TaskService {
     );
     const cooldownMs = thresholdMs * TaskService.CRAFTSMAN_PROBE_BACKOFF_MULTIPLIERS[multiplierIndex]!;
     return nowMs - probeState.lastProbeMs >= cooldownMs;
-  }
-
-  private buildEscalationSnapshot(
-    tasks: TaskRecord[],
-    runtimeAgents: Array<{ agent_id: string; status: 'active' | 'idle' | 'closed'; session_count: number; last_event_at: string | null }>,
-  ): UnifiedHealthSnapshotDto['escalation'] {
-    const activeTasks = tasks.filter((task) => task.state === TaskState.ACTIVE);
-    let controllerPingedTasks = 0;
-    let rosterPingedTasks = 0;
-    let inboxEscalatedTasks = 0;
-
-    for (const task of activeTasks) {
-      const latestActivityMs = this.resolveLatestBusinessActivityMs(task);
-      const probeState = this.getProbeState(task.id, latestActivityMs);
-      if (probeState.inboxRaised) {
-        inboxEscalatedTasks += 1;
-      } else if (probeState.rosterNotified) {
-        rosterPingedTasks += 1;
-      } else if (probeState.controllerNotified) {
-        controllerPingedTasks += 1;
-      }
-    }
-
-    const unhealthyRuntimeAgents = runtimeAgents.filter((agent) => agent.status === 'closed').length;
-    const runtimeUnhealthy = !!this.liveSessionStore && unhealthyRuntimeAgents > 0;
-
-    return {
-      status: controllerPingedTasks > 0 || rosterPingedTasks > 0 || inboxEscalatedTasks > 0 || runtimeUnhealthy
-        ? 'degraded'
-        : 'healthy',
-      policy: {
-        controller_after_ms: this.escalationPolicy.controllerAfterMs,
-        roster_after_ms: this.escalationPolicy.rosterAfterMs,
-        inbox_after_ms: this.escalationPolicy.inboxAfterMs,
-      },
-      controller_pinged_tasks: controllerPingedTasks,
-      roster_pinged_tasks: rosterPingedTasks,
-      inbox_escalated_tasks: inboxEscalatedTasks,
-      unhealthy_runtime_agents: unhealthyRuntimeAgents,
-      runtime_unhealthy: runtimeUnhealthy,
-    };
   }
 
   private requireInteractiveExecution(executionId: string) {
