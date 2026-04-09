@@ -6,7 +6,7 @@ import type {
 } from '../acp-runtime-port.js';
 import { ProcessCraftsmanAdapter, type InteractiveResumeCommand, type ProcessCraftsmanAdapterOptions } from './process-craftsman-adapter.js';
 import { WatchedProcessCraftsmanAdapter } from './watched-process-craftsman-adapter.js';
-import { buildAcpSessionId } from './acp-session-ref.js';
+import { buildAcpSessionId } from '../acp-session-ref.js';
 
 export interface AcpCraftsmanSessionDefaults {
   model?: string | null;

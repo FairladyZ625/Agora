@@ -6,7 +6,12 @@ export interface CoreBoundaryViolation {
   violations: string[];
 }
 
-export type CoreBoundaryMode = 'db-imports' | 'legacy-fallback' | 'all';
+export type CoreBoundaryMode = 'db-imports' | 'legacy-fallback' | 'adapter-utility-paths' | 'all';
+
+const FORBIDDEN_CORE_ADAPTER_UTILITY_PATHS = new Map<string, string>([
+  ['adapters/markdown-frontmatter.ts', 'forbidden core utility kept under adapters/markdown-frontmatter.ts'],
+  ['adapters/acp-session-ref.ts', 'forbidden core utility kept under adapters/acp-session-ref.ts'],
+]);
 
 const PATTERNS: Record<CoreBoundaryMode, Array<{ label: string; pattern: RegExp }>> = {
   'db-imports': [
@@ -18,10 +23,11 @@ const PATTERNS: Record<CoreBoundaryMode, Array<{ label: string; pattern: RegExp 
     { label: 'forbidden concrete repository construction', pattern: /\bnew\s+[A-Za-z0-9_]+Repository\s*\(/ },
     { label: 'forbidden sqlite gate construction', pattern: /\bnew\s+SqliteGate(?:Command|Query)Port\s*\(/ },
   ],
+  'adapter-utility-paths': [],
   all: [],
 };
 
-PATTERNS.all = [...PATTERNS['db-imports'], ...PATTERNS['legacy-fallback']];
+PATTERNS.all = [...PATTERNS['db-imports'], ...PATTERNS['legacy-fallback'], ...PATTERNS['adapter-utility-paths']];
 
 export function collectCoreProductionSourceFiles(rootDir: string): string[] {
   const files: string[] = [];
@@ -48,12 +54,25 @@ export function scanCoreBoundaryViolations(
   return collectCoreProductionSourceFiles(rootDir)
     .map((filePath) => {
       const source = readFileSync(filePath, 'utf8');
-      const violations = patterns
+      const pathViolations = collectCoreBoundaryPathViolations(filePath, rootDir, mode);
+      const contentViolations = patterns
         .filter(({ pattern }) => pattern.test(source))
         .map(({ label }) => label);
+      const violations = [...pathViolations, ...contentViolations];
       return { filePath, violations };
     })
     .filter((entry) => entry.violations.length > 0);
+}
+
+function collectCoreBoundaryPathViolations(filePath: string, rootDir: string, mode: CoreBoundaryMode): string[] {
+  if (mode !== 'adapter-utility-paths' && mode !== 'all') {
+    return [];
+  }
+  const normalizedRelativePath = filePath
+    .replace(`${rootDir}${filePath.startsWith(rootDir + '/') ? '/' : ''}`, '')
+    .replace(/\\/g, '/');
+  const violation = FORBIDDEN_CORE_ADAPTER_UTILITY_PATHS.get(normalizedRelativePath);
+  return violation ? [violation] : [];
 }
 
 export function formatCoreBoundaryViolations(violations: CoreBoundaryViolation[]): string {
@@ -79,7 +98,7 @@ export function runCoreBoundaryGate(rootDir: string, mode: CoreBoundaryMode = 'a
 
 function parseArgs(argv: string[]): { rootDir: string; mode: CoreBoundaryMode } {
   const modeArg = argv[0];
-  const mode: CoreBoundaryMode = modeArg === 'db-imports' || modeArg === 'legacy-fallback' || modeArg === 'all'
+  const mode: CoreBoundaryMode = modeArg === 'db-imports' || modeArg === 'legacy-fallback' || modeArg === 'adapter-utility-paths' || modeArg === 'all'
     ? modeArg
     : 'all';
   const rootFlagIndex = argv.indexOf('--root');

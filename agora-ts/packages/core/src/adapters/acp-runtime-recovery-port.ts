@@ -1,7 +1,7 @@
 import type { RuntimeDiagnosisResultDto, RuntimeRecoveryActionDto } from '@agora-ts/contracts';
 import type { RuntimeRecoveryPort } from '../runtime-recovery-port.js';
 import type { AcpRuntimePort } from '../acp-runtime-port.js';
-import { parseAcpSessionId } from './acp-session-ref.js';
+import { parseAcpSessionId } from '../acp-session-ref.js';
 
 const ACP_AGENTS = new Set(['codex', 'claude', 'gemini']);
 

@@ -1,7 +1,7 @@
 import type { CraftsmanInputKeyDto } from '@agora-ts/contracts';
 import type { AcpRuntimePort } from '../acp-runtime-port.js';
 import type { CraftsmanInputPort, CraftsmanInputPortExecution } from '../craftsman-input-port.js';
-import { parseAcpSessionId } from './acp-session-ref.js';
+import { parseAcpSessionId } from '../acp-session-ref.js';
 
 const ACP_AGENTS = new Set(['codex', 'claude', 'gemini']);
 

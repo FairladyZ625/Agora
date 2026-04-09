@@ -1,6 +1,6 @@
 import type { CraftsmanExecutionTailPort, CraftsmanTailPortExecution } from '../craftsman-tail-port.js';
 import type { AcpRuntimePort } from '../acp-runtime-port.js';
-import { parseAcpSessionId } from './acp-session-ref.js';
+import { parseAcpSessionId } from '../acp-session-ref.js';
 
 const ACP_AGENTS = new Set(['codex', 'claude', 'gemini']);
 

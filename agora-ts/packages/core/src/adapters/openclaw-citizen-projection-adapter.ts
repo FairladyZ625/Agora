@@ -1,6 +1,6 @@
 import type { CitizenProjectionPreviewDto } from '@agora-ts/contracts';
 import type { CitizenProjectionPort } from '../citizen-projection-port.js';
-import { renderMarkdownFrontmatter } from './markdown-frontmatter.js';
+import { renderMarkdownFrontmatter } from '../markdown-frontmatter.js';
 
 function toMarkdownSection(title: string, lines: string[]) {
   return [`## ${title}`, ...lines, ''].join('\n');

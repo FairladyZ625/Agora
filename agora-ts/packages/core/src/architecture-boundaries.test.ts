@@ -38,6 +38,12 @@ function findDbCouplings(filePath: string): string[] {
   if (/\bAgoraDatabase\b/.test(source)) {
     matches.push('AgoraDatabase reference');
   }
+  if (filePath.endsWith('/adapters/markdown-frontmatter.ts')) {
+    matches.push('core utility kept under adapters/markdown-frontmatter.ts');
+  }
+  if (filePath.endsWith('/adapters/acp-session-ref.ts')) {
+    matches.push('core utility kept under adapters/acp-session-ref.ts');
+  }
   return matches;
 }
 

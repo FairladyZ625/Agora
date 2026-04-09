@@ -78,4 +78,22 @@ describe('scanCoreBoundaryViolations', () => {
       },
     ]);
   });
+
+  it('flags core-local utilities that drift back under adapters/', () => {
+    const dir = makeCoreFixture();
+    mkdirSync(join(dir, 'adapters'), { recursive: true });
+    writeFileSync(join(dir, 'adapters', 'markdown-frontmatter.ts'), 'export const utility = true;\n', 'utf8');
+    writeFileSync(join(dir, 'adapters', 'acp-session-ref.ts'), 'export const utility = true;\n', 'utf8');
+
+    expect(scanCoreBoundaryViolations(dir, 'adapter-utility-paths')).toEqual([
+      {
+        filePath: join(dir, 'adapters', 'acp-session-ref.ts'),
+        violations: ['forbidden core utility kept under adapters/acp-session-ref.ts'],
+      },
+      {
+        filePath: join(dir, 'adapters', 'markdown-frontmatter.ts'),
+        violations: ['forbidden core utility kept under adapters/markdown-frontmatter.ts'],
+      },
+    ]);
+  });
 });

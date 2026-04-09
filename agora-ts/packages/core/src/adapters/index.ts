@@ -20,7 +20,6 @@ export * from './filesystem-task-brain-workspace-adapter.js';
 export * from './filesystem-skill-catalog-adapter.js';
 export * from './filesystem-project-knowledge-adapter.js';
 export * from './filesystem-project-brain-query-adapter.js';
-export * from './markdown-frontmatter.js';
 export * from './openai-compatible-project-brain-embedding-adapter.js';
 export * from './openclaw-citizen-projection-adapter.js';
 export * from './os-host-resource-port.js';

@@ -12,7 +12,7 @@ import type {
   ProjectKnowledgeTaskRecapInput,
 } from '../project-knowledge-port.js';
 import { ensureCanonicalProjectRoot, ensureCanonicalProjectRootBootstrapCommit } from '../project-state-root.js';
-import { extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from './markdown-frontmatter.js';
+import { extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter } from '../markdown-frontmatter.js';
 
 export interface FilesystemProjectKnowledgeAdapterOptions {
   brainPackRoot: string;

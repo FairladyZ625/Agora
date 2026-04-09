@@ -1,5 +1,5 @@
 import type { TaskRecord } from '@agora-ts/contracts';
-import { renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './adapters/markdown-frontmatter.js';
+import { renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './markdown-frontmatter.js';
 import type { ProjectKnowledgeKind } from './project-knowledge-port.js';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';

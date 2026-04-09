@@ -9,7 +9,7 @@ import type {
   ProjectBrainSearchResult,
 } from '../project-brain-query-port.js';
 import { FilesystemProjectKnowledgeAdapter, type FilesystemProjectKnowledgeAdapterOptions } from './filesystem-project-knowledge-adapter.js';
-import { appendMarkdownBlock, extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './markdown-frontmatter.js';
+import { appendMarkdownBlock, extractMarkdownHeading, parseMarkdownFrontmatter, renderMarkdownFrontmatter, stripMarkdownFrontmatter } from '../markdown-frontmatter.js';
 
 export type FilesystemProjectBrainQueryAdapterOptions = FilesystemProjectKnowledgeAdapterOptions;
 

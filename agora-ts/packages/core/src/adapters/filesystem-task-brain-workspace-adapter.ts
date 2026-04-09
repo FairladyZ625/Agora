@@ -11,7 +11,7 @@ import type {
   TaskBrainWorkspaceRequest,
   TaskBrainWorkspaceResult,
 } from '../task-brain-port.js';
-import { renderMarkdownFrontmatter } from './markdown-frontmatter.js';
+import { renderMarkdownFrontmatter } from '../markdown-frontmatter.js';
 
 export interface FilesystemTaskBrainWorkspaceAdapterOptions {
   brainPackRoot: string;

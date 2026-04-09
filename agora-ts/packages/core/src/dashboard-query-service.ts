@@ -15,7 +15,7 @@ import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TmuxRuntimeService } from './tmux-runtime-service.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
-import { parseAcpSessionId } from './adapters/acp-session-ref.js';
+import { parseAcpSessionId } from './acp-session-ref.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
