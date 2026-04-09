@@ -10,8 +10,8 @@ import {
   TaskContextBindingService,
   TaskConversationService,
 } from "../packages/core/src/index.ts";
-import { FilesystemProjectBrainQueryAdapter } from "../packages/core/src/adapters/filesystem-project-brain-query-adapter.ts";
-import { FilesystemProjectKnowledgeAdapter } from "../packages/core/src/adapters/filesystem-project-knowledge-adapter.ts";
+import { FilesystemProjectBrainQueryAdapter } from "../packages/adapters-brain/src/filesystem-project-brain-query-adapter.ts";
+import { FilesystemProjectKnowledgeAdapter } from "../packages/adapters-brain/src/filesystem-project-knowledge-adapter.ts";
 import * as pluginModule from "../../extensions/agora-plugin/src/index.ts";
 import { createAgoraDatabase, runMigrations, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository } from "../packages/db/src/index.ts";
 import { createCitizenServiceFromDb, createDashboardQueryServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb, createTaskServiceFromDb } from "@agora-ts/testing";

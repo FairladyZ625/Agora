@@ -49,13 +49,14 @@ import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
   deriveGraphFromStages,
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  type InteractiveRuntimePort,
   ProjectBootstrapService,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
+import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
 import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
@@ -74,7 +75,6 @@ import type {
   TaskConversationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   IMProvisioningPort,
 } from '@agora-ts/core';
 import type {
@@ -149,7 +149,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type LegacyRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
+type LegacyRuntimeServiceLike = Pick<InteractiveRuntimePort, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);

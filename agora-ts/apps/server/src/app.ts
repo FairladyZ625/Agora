@@ -111,6 +111,7 @@ import {
   type LiveSessionStore,
   type NotificationDispatcher,
   type CitizenService,
+  type InteractiveRuntimePort,
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
@@ -123,7 +124,6 @@ import {
   type TaskParticipationService,
   type TaskContextBindingService,
   type TaskService,
-  type TmuxRuntimeService,
   type TemplateAuthoringService,
   type WorkspaceBootstrapService,
   WorkspaceBootstrapService as WorkspaceBootstrapServiceImpl,
@@ -151,11 +151,11 @@ export interface BuildAppOptions {
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
   legacyRuntimeService?: Pick<
-    TmuxRuntimeService,
+    InteractiveRuntimePort,
     'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
   >;
   tmuxRuntimeService?: Pick<
-    TmuxRuntimeService,
+    InteractiveRuntimePort,
     'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
   >;
   taskContextBindingService?: TaskContextBindingService;
@@ -636,7 +636,7 @@ function recordCraftsmanCallback(metrics: MetricsState, status: string) {
 function renderMetrics(options: {
   metrics: MetricsState;
   taskService: TaskService | undefined;
-  legacyRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
+  legacyRuntimeService: Pick<InteractiveRuntimePort, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
 }) {
   const lines: string[] = [
     '# HELP agora_http_requests_total Total HTTP requests served by agora-ts server.',

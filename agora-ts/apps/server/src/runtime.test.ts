@@ -4,8 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository } from '@agora-ts/db';
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
-import { LiveSessionStore } from '@agora-ts/core';
-import type { TmuxRuntimeService , TaskService } from '@agora-ts/core';
+import { LiveSessionStore, type InteractiveRuntimePort, type TaskService } from '@agora-ts/core';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { createServerRuntime } from './runtime.js';
 
@@ -486,7 +485,7 @@ describe('server runtime', () => {
     const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
     const legacyRuntimeService = {
       status: () => ({ session: 'override', panes: [] }),
-    } as unknown as TmuxRuntimeService;
+    } as unknown as InteractiveRuntimePort;
 
     const runtime = createServerRuntime({
       configPath,

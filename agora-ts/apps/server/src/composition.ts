@@ -1,32 +1,17 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import {
-  AcpCraftsmanInputPort,
-  AcpCraftsmanProbePort,
-  AcpCraftsmanTailPort,
   CitizenService,
-  AcpRuntimeRecoveryPort,
-  ClaudeCraftsmanAdapter,
-  CodexCraftsmanAdapter,
-  createDefaultCraftsmanAdapters,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
-  DirectAcpxRuntimePort,
   DashboardQueryService,
-  FilesystemSkillCatalogAdapter,
-  FilesystemProjectBrainQueryAdapter,
-  FilesystemProjectKnowledgeAdapter,
-  FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
-  GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   InboxService,
   InventoryBackedAgentRuntimePort,
   LiveSessionStore,
   NotificationDispatcher,
-  OpenClawCitizenProjectionAdapter,
-  OsHostResourcePort,
   HumanAccountService,
   ProjectAgentRosterService,
   ProjectBrainIndexQueueService,
@@ -37,14 +22,11 @@ import {
   ProjectService,
   RolePackService,
   TaskAuthorityService,
-  TmuxCraftsmanInputPort,
-  TmuxCraftsmanProbePort,
-  TmuxCraftsmanTailPort,
-  TmuxRuntimeRecoveryPort,
   type ProjectKnowledgePort,
   type CraftsmanInputPort,
   type CraftsmanExecutionProbePort,
   type CraftsmanExecutionTailPort,
+  type InteractiveRuntimePort,
   type RuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   TaskBrainBindingService,
@@ -56,14 +38,17 @@ import {
   resolveCraftsmanRuntimeMode,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   type AgentInventorySource,
   type AgentRuntimePort,
   type IMMessagingPort,
   type IMProvisioningPort,
   type PresenceSource,
 } from '@agora-ts/core';
-import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
+import { FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { OsHostResourcePort } from '@agora-ts/adapters-host';
+import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
+import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawCitizenProjectionAdapter, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveAgoraProjectStateLayout, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import {
@@ -128,8 +113,8 @@ export interface ServerComposition {
   templateAuthoringService: TemplateAuthoringService;
   inboxService: InboxService;
   liveSessionStore: LiveSessionStore;
-  legacyRuntimeService: TmuxRuntimeService;
-  tmuxRuntimeService: TmuxRuntimeService;
+  legacyRuntimeService: InteractiveRuntimePort;
+  tmuxRuntimeService: InteractiveRuntimePort;
   taskContextBindingService: TaskContextBindingService;
   taskParticipationService: TaskParticipationService;
   humanAccountService: HumanAccountService;
@@ -150,13 +135,13 @@ export interface ServerCompositionFactories {
       acpRuntime?: DirectAcpxRuntimePort;
     },
   ) => CraftsmanDispatcher;
-  createLegacyRuntimeService: (context: ServerCompositionContext) => TmuxRuntimeService;
-  createTmuxRuntimeService?: (context: ServerCompositionContext) => TmuxRuntimeService;
+  createLegacyRuntimeService: (context: ServerCompositionContext) => InteractiveRuntimePort;
+  createTmuxRuntimeService?: (context: ServerCompositionContext) => InteractiveRuntimePort;
   createTaskService: (
     context: ServerCompositionContext,
     deps: {
       craftsmanDispatcher: CraftsmanDispatcher;
-      legacyRuntimeService: TmuxRuntimeService;
+      legacyRuntimeService: InteractiveRuntimePort;
       imProvisioningPort: IMProvisioningPort | undefined;
       messagingPort: IMMessagingPort;
       taskBrainBindingService: TaskBrainBindingService;
@@ -181,7 +166,7 @@ export interface ServerCompositionFactories {
       liveSessionStore: LiveSessionStore;
       agentRegistry: AgentInventorySource;
       presenceSource: PresenceSource;
-      legacyRuntimeService: TmuxRuntimeService;
+      legacyRuntimeService: InteractiveRuntimePort;
       archiveJobNotifier: FileArchiveJobNotifier | undefined;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor | undefined;
       imProvisioningPort: IMProvisioningPort | undefined;
@@ -683,7 +668,7 @@ export function buildServerComposition(
   };
 }
 
-function defaultSessionAliveProbe(legacyRuntimeService: TmuxRuntimeService) {
+function defaultSessionAliveProbe(legacyRuntimeService: InteractiveRuntimePort) {
   return (sessionId: string) => {
     if (!sessionId.startsWith('tmux:')) {
       return true;
@@ -698,7 +683,7 @@ function defaultSessionAliveProbe(legacyRuntimeService: TmuxRuntimeService) {
 
 function createCraftsmanTransportDeps(
   mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
-  legacyRuntimeService: TmuxRuntimeService,
+  legacyRuntimeService: InteractiveRuntimePort,
   acpRuntime?: DirectAcpxRuntimePort,
 ): {
   craftsmanInputPort: CraftsmanInputPort;

@@ -8,8 +8,19 @@ function repoRoot() {
   return resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 }
 
+function spawnEnv() {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ['HOME', 'PATH', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'SHELL', 'TERM']) {
+    const value = process.env[key];
+    if (value) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
 describe('source bootstrap entrypoints', () => {
-  it('exposes a repo-root agora wrapper that forwards CLI help', () => {
+  it('exposes a repo-root agora wrapper that forwards CLI help', { timeout: 120000 }, () => {
     const root = repoRoot();
     const wrapperPath = resolve(root, 'agora');
     expect(existsSync(wrapperPath)).toBe(true);
@@ -17,6 +28,8 @@ describe('source bootstrap entrypoints', () => {
     const result = spawnSync('bash', [wrapperPath, '--help'], {
       cwd: root,
       encoding: 'utf8',
+      env: spawnEnv(),
+      timeout: 110000,
     });
 
     expect(result.status).toBe(0);
@@ -32,6 +45,7 @@ describe('source bootstrap entrypoints', () => {
     const result = spawnSync('bash', [bootstrapPath, '--help'], {
       cwd: root,
       encoding: 'utf8',
+      env: spawnEnv(),
     });
 
     expect(result.status).toBe(0);

@@ -52,55 +52,35 @@ import { dirname, join, resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
   CitizenService,
-  AcpCraftsmanInputPort,
-  AcpCraftsmanProbePort,
-  AcpCraftsmanTailPort,
-  AcpRuntimeRecoveryPort,
-  ClaudeCraftsmanAdapter,
-  CodexCraftsmanAdapter,
-  createDefaultCraftsmanAdapters,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
-  DirectAcpxRuntimePort,
   DashboardQueryService,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
-  FilesystemSkillCatalogAdapter,
-  FilesystemProjectBrainQueryAdapter,
-  FilesystemProjectKnowledgeAdapter,
-  FilesystemTaskBrainWorkspaceAdapter,
-  GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
-  OpenClawCitizenProjectionAdapter,
   ProjectBrainAutomationService,
   ProjectBrainChunkingPolicy,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainRetrievalService,
-  OsHostResourcePort,
   ProjectBrainService,
   ProjectContextWriter,
   ProjectMembershipService,
   ProjectAgentRosterService,
   ProjectService,
-  QdrantProjectBrainVectorIndexAdapter,
   StubIMMessagingPort,
   RolePackService,
   TaskAuthorityService,
   TaskBrainBindingService,
-  TmuxCraftsmanInputPort,
-  TmuxCraftsmanProbePort,
-  TmuxCraftsmanTailPort,
-  TmuxRuntimeRecoveryPort,
   type ProjectKnowledgePort,
   type ProjectBrainEmbeddingPort,
   type ProjectBrainVectorIndexPort,
   type CraftsmanInputPort,
   type CraftsmanExecutionProbePort,
   type CraftsmanExecutionTailPort,
+  type InteractiveRuntimePort,
   type RuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
@@ -109,12 +89,15 @@ import {
   TaskParticipationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   type AgentRuntimePort,
   type IMMessagingPort,
   type IMProvisioningPort,
 } from '@agora-ts/core';
-import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry } from '@agora-ts/adapters-openclaw';
+import { FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { OsHostResourcePort } from '@agora-ts/adapters-host';
+import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
+import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import type { TransactionManager } from '@agora-ts/contracts';
 
@@ -189,8 +172,8 @@ export interface CliCompositionFactories {
       runtimeRecoveryPort: RuntimeRecoveryPort;
     },
   ) => TaskService;
-  createLegacyRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
-  createTmuxRuntimeService?: (context: CliCompositionContext) => TmuxRuntimeService;
+  createLegacyRuntimeService: (context: CliCompositionContext) => InteractiveRuntimePort;
+  createTmuxRuntimeService?: (context: CliCompositionContext) => InteractiveRuntimePort;
   createDashboardSessionClient: (context: CliCompositionContext) => DashboardSessionClient;
   createHumanAccountService: (context: CliCompositionContext) => HumanAccountService;
   createTaskConversationService: (context: CliCompositionContext) => TaskConversationService;
@@ -244,8 +227,8 @@ export interface CliComposition {
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   citizenService: CitizenService;
-  legacyRuntimeService: TmuxRuntimeService;
-  tmuxRuntimeService: TmuxRuntimeService;
+  legacyRuntimeService: InteractiveRuntimePort;
+  tmuxRuntimeService: InteractiveRuntimePort;
   dashboardSessionClient: DashboardSessionClient;
   humanAccountService: HumanAccountService;
   taskConversationService: TaskConversationService;
@@ -712,7 +695,7 @@ export function createCliComposition(
 
 function createCraftsmanTransportDeps(
   mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
-  legacyRuntimeService: TmuxRuntimeService,
+  legacyRuntimeService: InteractiveRuntimePort,
   acpRuntime?: DirectAcpxRuntimePort,
 ): {
   craftsmanInputPort: CraftsmanInputPort;

@@ -5,7 +5,12 @@
     { "path": "./packages/contracts" },
     { "path": "./packages/core" },
     { "path": "./packages/db" },
+    { "path": "./packages/adapters-craftsman" },
+    { "path": "./packages/adapters-runtime" },
+    { "path": "./packages/adapters-brain" },
+    { "path": "./packages/adapters-host" },
     { "path": "./packages/adapters-openclaw" },
+    { "path": "./packages/adapters-discord" },
     { "path": "./packages/testing" },
     { "path": "./apps/server" },
     { "path": "./apps/cli" }

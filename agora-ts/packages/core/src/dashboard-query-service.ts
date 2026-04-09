@@ -13,7 +13,7 @@ import type { SkillCatalogPort } from './skill-catalog-port.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
-import type { TmuxRuntimeService } from './tmux-runtime-service.js';
+import type { InteractiveRuntimePort } from './interactive-runtime-port.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
 import { parseAcpSessionId } from './acp-session-ref.js';
 
@@ -35,8 +35,8 @@ export interface DashboardQueryServiceOptions {
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
-  legacyRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
-  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
+  legacyRuntimeService?: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'>;
+  tmuxRuntimeService?: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'>;
   skillCatalogPort?: SkillCatalogPort;
   agentsStatusCacheTtlMs?: number;
   now?: () => Date;
@@ -59,7 +59,7 @@ export class DashboardQueryService {
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
-  private readonly legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined;
+  private readonly legacyRuntimeService: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'> | undefined;
   private readonly skillCatalogPort: SkillCatalogPort | undefined;
   private readonly agentsStatusCacheTtlMs: number;
   private readonly now: () => Date;
@@ -660,7 +660,7 @@ type LegacyRuntimeTransportView = {
 } | null;
 
 function buildLegacyRuntimeView(
-  legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
+  legacyRuntimeService: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'> | undefined,
   options: { includeTailPreview: boolean },
 ): LegacyRuntimeTransportView {
   if (!legacyRuntimeService) {
@@ -708,7 +708,7 @@ function buildLegacyRuntimeView(
 }
 
 function safeTail(
-  legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>,
+  legacyRuntimeService: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'>,
   agent: string,
 ) {
   try {
