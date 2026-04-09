@@ -20,10 +20,14 @@ import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project
 import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
+import type { CraftsmanInputPortExecution } from './craftsman-input-port.js';
+import type { CraftsmanProbePortExecution } from './craftsman-probe-port.js';
+import type { CraftsmanTailPortExecution } from './craftsman-tail-port.js';
 import { LiveSessionStore } from './live-session-store.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
 import { ProjectContextWriter } from './project-context-writer.js';
+import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
@@ -360,7 +364,7 @@ describe('task service', () => {
         restartCitizenRuntime: () => {
           throw new Error('not used');
         },
-        stopExecution: (input) => ({
+        stopExecution: (input: Parameters<RuntimeRecoveryPort['stopExecution']>[0]) => ({
           operation: 'stop_execution',
           status: 'accepted',
           task_id: input.taskId,
@@ -3300,7 +3304,7 @@ describe('task service', () => {
     const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-115',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
@@ -3366,7 +3370,7 @@ describe('task service', () => {
     const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-116',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
@@ -3438,7 +3442,7 @@ describe('task service', () => {
     const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-116B',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     const bindings = new TaskContextBindingRepository(db);
     const subtasks = new SubtaskRepository(db);
@@ -5359,7 +5363,7 @@ describe('task service', () => {
       mode: 'one_shot',
       interaction_expectation: 'one_shot',
       workdir: null,
-    });
+    }) as unknown as { execution: { workdir: string | null } };
 
     const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-repo-workdir', 'OC-DISPATCH-WORKDIR-REPO');
     expect(result.execution.workdir).toBe(expected);
@@ -5440,7 +5444,7 @@ describe('task service', () => {
       mode: 'one_shot',
       interaction_expectation: 'one_shot',
       workdir: null,
-    });
+    }) as unknown as { execution: { workdir: string | null } };
 
     const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-project-workdir', 'OC-DISPATCH-WORKDIR-PROJECT');
     expect(result.execution.workdir).toBe(expected);
@@ -5592,7 +5596,7 @@ describe('task service', () => {
       mode: 'one_shot',
       interaction_expectation: 'one_shot',
       workdir: '/tmp/brief-dispatch',
-    });
+    }) as unknown as { execution: { brief_path: string | null } };
 
     expect(captured).toHaveLength(1);
     expect(captured[0]?.brief_path).toBeTruthy();
@@ -6018,7 +6022,7 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GOV-3',
       craftsmanExecutionProbePort: {
-        probe: ({ executionId }) => ({
+        probe: ({ executionId }: CraftsmanProbePortExecution) => ({
           execution_id: executionId,
           status: 'running',
           session_id: 'tmux:observed',
@@ -7197,13 +7201,13 @@ describe('task service', () => {
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
       craftsmanInputPort: {
-        sendText: (execution, text, submit = true) => {
+        sendText: (execution: CraftsmanInputPortExecution, text: string, submit = true) => {
           inputCalls.push({ kind: 'text', executionId: execution.executionId, payload: { text, submit } });
         },
-        sendKeys: (execution, keys) => {
+        sendKeys: (execution: CraftsmanInputPortExecution, keys: string[]) => {
           inputCalls.push({ kind: 'keys', executionId: execution.executionId, payload: keys });
         },
-        submitChoice: (execution, keys) => {
+        submitChoice: (execution: CraftsmanInputPortExecution, keys: string[]) => {
           inputCalls.push({ kind: 'choice', executionId: execution.executionId, payload: keys });
         },
       },
@@ -7346,7 +7350,7 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-TAIL-1',
       craftsmanExecutionTailPort: {
-        tail: (execution, lines) => ({
+        tail: (execution: CraftsmanTailPortExecution, lines: number) => ({
           execution_id: execution.executionId,
           available: true,
           output: `tail:${execution.adapter}:${lines}`,
@@ -7401,7 +7405,7 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-TAIL-ACP-1',
       craftsmanExecutionTailPort: {
-        tail: (execution, lines) => ({
+        tail: (execution: CraftsmanTailPortExecution, lines: number) => ({
           execution_id: execution.executionId,
           available: true,
           output: `acp-tail:${execution.adapter}:${execution.workdir}:${lines}`,
@@ -7459,7 +7463,7 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-1',
       craftsmanInputPort: {
-        sendText: (execution, text, submit = true) => {
+        sendText: (execution: CraftsmanInputPortExecution, text: string, submit = true) => {
           calls.push({ kind: 'text', executionId: execution.executionId, payload: { text, submit } });
         },
         sendKeys: () => {},
@@ -7514,7 +7518,7 @@ describe('task service', () => {
       templatesDir,
       taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-ACP-1',
       craftsmanInputPort: {
-        sendText: (execution, text, submit = true) => {
+        sendText: (execution: CraftsmanInputPortExecution, text: string, submit = true) => {
           calls.push({ kind: 'text', executionId: execution.executionId, workdir: execution.workdir, payload: { text, submit } });
         },
         sendKeys: () => {},
@@ -7588,7 +7592,7 @@ describe('task service', () => {
         submitChoice: () => {},
       },
       craftsmanExecutionProbePort: {
-        probe: (execution) => ({
+        probe: (execution: CraftsmanProbePortExecution) => ({
           execution_id: execution.executionId,
           status: 'running',
           session_id: execution.sessionId,
