@@ -2,6 +2,8 @@ export * from './craftsman-adapter.js';
 export * from './citizen-projection-port.js';
 export * from './citizen-service.js';
 export * from './acp-runtime-port.js';
+export * from './cc-connect-inspection-service.js';
+export * from './cc-connect-management-service.js';
 export * from './craftsman-callback-service.js';
 export * from './craftsman-dispatcher.js';
 export * from './craftsman-input-port.js';
