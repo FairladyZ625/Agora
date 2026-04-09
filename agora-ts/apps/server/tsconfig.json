@@ -12,6 +12,8 @@
     { "path": "../../packages/contracts" },
     { "path": "../../packages/core" },
     { "path": "../../packages/db" },
+    { "path": "../../packages/adapters-craftsman" },
+    { "path": "../../packages/adapters-runtime" },
     { "path": "../../packages/adapters-openclaw" },
     { "path": "../../packages/adapters-discord" }
   ]

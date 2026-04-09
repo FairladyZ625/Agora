@@ -6,6 +6,8 @@
   },
   "references": [
     { "path": "../core/tsconfig.build.json" },
+    { "path": "../adapters-craftsman/tsconfig.build.json" },
+    { "path": "../adapters-runtime/tsconfig.build.json" },
     { "path": "../db/tsconfig.build.json" }
   ],
   "exclude": ["src/**/*.test.ts", "dist", "**/dist/**"]

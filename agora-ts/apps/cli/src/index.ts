@@ -49,13 +49,16 @@ import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
   deriveGraphFromStages,
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  CcConnectInspectionService,
+  CcConnectManagementService,
+  type InteractiveRuntimePort,
   ProjectBootstrapService,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
+import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
 import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
@@ -74,7 +77,6 @@ import type {
   TaskConversationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   IMProvisioningPort,
 } from '@agora-ts/core';
 import type {
@@ -92,6 +94,7 @@ import type {
   TemplateGraphDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import {
   craftsmanExecutionSendKeysRequestSchema,
   craftsmanExecutionSendTextRequestSchema,
@@ -138,6 +141,8 @@ export interface CliDependencies {
   templateAuthoringService?: TemplateAuthoringService;
   rolePackService?: RolePackService;
   dashboardQueryService?: DashboardQueryService;
+  ccConnectInspectionService?: CcConnectInspectionService;
+  ccConnectManagementService?: CcConnectManagementService;
   imProvisioningPort?: IMProvisioningPort;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
@@ -149,7 +154,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type LegacyRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
+type LegacyRuntimeServiceLike = Pick<InteractiveRuntimePort, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
@@ -507,6 +512,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const getCcConnectInspectionService = () => deps.ccConnectInspectionService ?? new CcConnectInspectionService();
+  const getCcConnectManagementService = () => deps.ccConnectManagementService ?? new CcConnectManagementService();
   const getImProvisioningPort = () => deps.imProvisioningPort ?? resolveComposition().imProvisioningPort;
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
@@ -3837,7 +3844,300 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action(async () => {
       await runInitCommand({
         humanAccountService,
+        });
+    });
+
+  const externalBridge = program
+    .command('external-bridge')
+    .description('external bridge diagnostics and compatibility commands');
+
+  const ccConnect = externalBridge
+    .command('cc-connect')
+    .description('inspect a local or remote cc-connect bridge');
+
+  const runCcConnectDetect = async (options: {
+    command?: string;
+    config?: string;
+    baseUrl?: string;
+    token?: string;
+    timeout?: string;
+    json?: boolean;
+  }) => {
+    const timeoutSeconds = options.timeout ? Number(options.timeout) : 5;
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+      throw new Error(`invalid --timeout value: ${options.timeout}. Expected positive number.`);
+    }
+    const result = await getCcConnectInspectionService().inspect({
+      timeoutMs: Math.round(timeoutSeconds * 1000),
+      ...(options.command !== undefined ? { command: options.command } : {}),
+      ...(options.config !== undefined ? { configPath: options.config } : {}),
+      ...(options.baseUrl !== undefined ? { managementBaseUrl: options.baseUrl } : {}),
+      ...(options.token !== undefined ? { managementToken: options.token } : {}),
+    });
+    if (options.json) {
+      writeLine(stdout, JSON.stringify(result, null, 2));
+      return;
+    }
+    writeLine(stdout, `cc-connect binary: ${result.binary.found ? 'found' : 'missing'}`);
+    writeLine(stdout, `  command=${result.binary.command}`);
+    writeLine(stdout, `  path=${result.binary.resolvedPath ?? '-'}`);
+    writeLine(stdout, `  version=${result.binary.version ?? '-'}`);
+    if (result.binary.reason) {
+      writeLine(stdout, `  reason=${result.binary.reason}`);
+    }
+    if (result.binary.error) {
+      writeLine(stdout, `  error=${result.binary.error}`);
+    }
+    writeLine(stdout, `cc-connect config: ${result.config.exists ? 'found' : 'missing'}`);
+    writeLine(stdout, `  path=${result.config.path}`);
+    writeLine(stdout, `  management_enabled=${result.config.management.enabled ?? 'unknown'}`);
+    writeLine(stdout, `  management_port=${result.config.management.port ?? '-'}`);
+    writeLine(stdout, `  management_token_present=${result.config.management.tokenPresent}`);
+    writeLine(stdout, `management api: ${result.management.reachable ? 'reachable' : 'unreachable'}`);
+    writeLine(stdout, `  url=${result.management.url ?? '-'}`);
+    writeLine(stdout, `  version=${result.management.version ?? '-'}`);
+    writeLine(stdout, `  projects=${result.management.projectsCount ?? '-'}`);
+    writeLine(stdout, `  bridge_adapters=${result.management.bridgeAdapterCount ?? '-'}`);
+    writeLine(stdout, `  connected_platforms=${result.management.connectedPlatforms.join(',') || '-'}`);
+    if (result.management.reason) {
+      writeLine(stdout, `  reason=${result.management.reason}`);
+    }
+    if (result.management.error) {
+      writeLine(stdout, `  error=${result.management.error}`);
+    }
+  };
+
+  for (const commandName of ['detect', 'status'] as const) {
+    ccConnect
+      .command(commandName)
+      .option('--command <command>', 'cc-connect executable name or path', 'cc-connect')
+      .option('--config <path>', 'cc-connect config path')
+      .option('--base-url <url>', 'management api base url override')
+      .option('--token <token>', 'management api token override')
+      .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+      .option('--json', '输出 JSON', false)
+      .action(runCcConnectDetect);
+  }
+
+  function parseCcConnectTimeout(options: { timeout?: string }) {
+    const timeoutSeconds = options.timeout ? Number(options.timeout) : 5;
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+      throw new Error(`invalid --timeout value: ${options.timeout}. Expected positive number.`);
+    }
+    return Math.round(timeoutSeconds * 1000);
+  }
+
+  function buildCcConnectManagementInput(options: {
+    config?: string;
+    baseUrl?: string;
+    token?: string;
+    timeout?: string;
+  }) {
+    return {
+      timeoutMs: parseCcConnectTimeout(options),
+      ...(options.config !== undefined ? { configPath: options.config } : {}),
+      ...(options.baseUrl !== undefined ? { managementBaseUrl: options.baseUrl } : {}),
+      ...(options.token !== undefined ? { managementToken: options.token } : {}),
+    };
+  }
+
+  ccConnect
+    .command('projects')
+    .description('list cc-connect projects through the management api')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().listProjects(buildCcConnectManagementInput(options));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ projects: result }, null, 2));
+        return;
+      }
+      if (result.length === 0) {
+        writeLine(stdout, '没有检测到 cc-connect projects');
+        return;
+      }
+      for (const item of result) {
+        writeLine(stdout, `${item.name}\t${item.agent_type}\t${item.platforms.join(',')}\t${item.sessions_count}\theartbeat=${item.heartbeat_enabled}`);
+      }
+    });
+
+  ccConnect
+    .command('project')
+    .description('show cc-connect project detail')
+    .argument('<projectName>', 'cc-connect project name')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (projectName: string, options: {
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().getProject({
+        project: projectName,
+        ...buildCcConnectManagementInput(options),
       });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `${result.name}\t${result.agent_type}\tsessions=${result.sessions_count}\tmode=${result.agent_mode ?? result.mode ?? '-'}`);
+      writeLine(stdout, `platforms=${result.platforms.map((item) => `${item.type}:${item.connected ? 'connected' : 'disconnected'}`).join(',') || '-'}`);
+      writeLine(stdout, `active_session_keys=${result.active_session_keys.join(',') || '-'}`);
+      writeLine(stdout, `work_dir=${result.work_dir ?? '-'}`);
+      writeLine(stdout, `show_context_indicator=${result.show_context_indicator ?? '-'}`);
+      writeLine(stdout, `allow_from=${result.platform_configs.map((item) => `${item.type}:${item.allow_from ?? '-'}`).join(',') || '-'}`);
+    });
+
+  ccConnect
+    .command('sessions')
+    .description('list cc-connect sessions for a project')
+    .requiredOption('--project <projectName>', 'cc-connect project name')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().listSessions({
+        project: options.project,
+        ...buildCcConnectManagementInput(options),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ sessions: result }, null, 2));
+        return;
+      }
+      if (result.length === 0) {
+        writeLine(stdout, '没有检测到 cc-connect sessions');
+        return;
+      }
+      for (const item of result) {
+        writeLine(stdout, `${item.id}\t${item.session_key}\t${item.agent_type}\tactive=${item.active}\tlive=${item.live}\thistory=${item.history_count}`);
+      }
+    });
+
+  ccConnect
+    .command('session')
+    .description('show cc-connect session detail')
+    .requiredOption('--project <projectName>', 'cc-connect project name')
+    .requiredOption('--session <sessionId>', 'cc-connect session id')
+    .option('--history-limit <count>', 'history entries to return', '20')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      session: string;
+      historyLimit?: string;
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const historyLimit = options.historyLimit ? Number(options.historyLimit) : 20;
+      if (!Number.isInteger(historyLimit) || historyLimit <= 0) {
+        throw new Error(`invalid --history-limit value: ${options.historyLimit}. Expected positive integer.`);
+      }
+      const result = await getCcConnectManagementService().getSession({
+        project: options.project,
+        sessionId: options.session,
+        historyLimit,
+        ...buildCcConnectManagementInput(options),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `${result.id}\t${result.session_key}\t${result.agent_type}\tactive=${result.active}\tlive=${result.live}\thistory=${result.history_count}`);
+      for (const entry of result.history) {
+        writeLine(stdout, `${entry.timestamp ?? '-'}\t${entry.role}\t${entry.content}`);
+      }
+    });
+
+  ccConnect
+    .command('bridges')
+    .description('list connected cc-connect bridge adapters')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().listBridgeAdapters(buildCcConnectManagementInput(options));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ adapters: result }, null, 2));
+        return;
+      }
+      if (result.length === 0) {
+        writeLine(stdout, '没有检测到已连接的 bridge adapters');
+        return;
+      }
+      for (const item of result) {
+        writeLine(stdout, `${item.platform}\t${item.project ?? '-'}\t${item.capabilities.join(',') || '-'}\t${item.connected_at ?? '-'}`);
+      }
+    });
+
+  ccConnect
+    .command('send')
+    .description('send a message into a live cc-connect session')
+    .requiredOption('--project <projectName>', 'cc-connect project name')
+    .requiredOption('--session-key <sessionKey>', 'cc-connect session key')
+    .requiredOption('--message <text>', 'message body to send')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      sessionKey: string;
+      message: string;
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().sendMessage({
+        project: options.project,
+        sessionKey: options.sessionKey,
+        message: options.message,
+        ...buildCcConnectManagementInput(options),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, result.message);
     });
 
   program

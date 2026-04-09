@@ -3,13 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { TaskService } from '@agora-ts/core';
+import type { InteractiveRuntimePort, TaskService } from '@agora-ts/core';
 import { StubIMProvisioningPort } from '@agora-ts/core';
-import type { TmuxRuntimeService } from '@agora-ts/core';
 import { createCliComposition } from './composition.js';
 
 const tempDirs: string[] = [];
-const originalCwd = process.cwd();
 const originalHome = process.env.HOME;
 const originalEnv = {
   AGORA_BRAIN_PACK_ROOT: process.env.AGORA_BRAIN_PACK_ROOT,
@@ -43,7 +41,6 @@ function makeTempDir() {
 }
 
 afterEach(() => {
-  process.chdir(originalCwd);
   if (originalHome === undefined) {
     delete process.env.HOME;
   } else {
@@ -104,7 +101,7 @@ describe('cli composition', () => {
     } as unknown as TaskService;
     const overriddenLegacyRuntimeService = {
       status: () => ({ session: 'override', panes: [] }),
-    } as unknown as TmuxRuntimeService;
+    } as unknown as InteractiveRuntimePort;
 
     const composition = createCliComposition(
       { configPath },
@@ -398,7 +395,6 @@ describe('cli composition', () => {
     const configPath = join(dir, 'agora.json');
     const expectedDbPath = join(dir, 'expected-home', '.agora', 'agora.db');
     const repoLocalDbPath = join(dir, '$HOME', '.agora', 'agora.db');
-    process.chdir(dir);
     process.env.HOME = join(dir, 'expected-home');
     process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     process.env.AGORA_DB_PATH = '$HOME/.agora/agora.db';

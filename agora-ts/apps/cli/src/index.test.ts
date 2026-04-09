@@ -5,8 +5,11 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, HumanAccountRepository, HumanIdentityBindingRepository, runMigrations, SubtaskRepository, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository, TaskRepository, TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { CcConnectInspectionService, CcConnectManagementService, DashboardQueryService, TaskService } from '@agora-ts/core';
 import type { DashboardQueryService, TaskService } from '@agora-ts/core';
-import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainAutomationService, ProjectBrainService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TemplateAuthoringService } from '@agora-ts/core';
+import { HumanAccountService, ProjectBrainAutomationService, ProjectBrainService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TemplateAuthoringService } from '@agora-ts/core';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { createCitizenServiceFromDb, createCraftsmanDispatcherFromDb, createDashboardQueryServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { createCliProgram, isCliEntrypoint } from './index.js';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
@@ -1861,6 +1864,275 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"nomos_drift"');
     expect(stdout.value).toContain('"risk_level": "high"');
     expect(stdout.value).toContain('"nomos_id": "project/proj-brain"');
+  });
+
+  it('prints cc-connect detection output through an injected inspection service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const ccConnectInspectionService = {
+      inspect: vi.fn().mockResolvedValue({
+        binary: {
+          command: 'cc-connect',
+          found: true,
+          resolvedPath: '/usr/local/bin/cc-connect',
+          version: 'v1.2.2-beta.5',
+          reason: null,
+        },
+        config: {
+          path: '/Users/lizeyu/.cc-connect/config.toml',
+          exists: true,
+          management: {
+            enabled: true,
+            port: 9820,
+            tokenPresent: true,
+          },
+        },
+        management: {
+          url: 'http://127.0.0.1:9820',
+          reachable: true,
+          version: 'v1.2.2-beta.5',
+          projectsCount: 3,
+          bridgeAdapterCount: 2,
+          connectedPlatforms: ['discord', 'telegram'],
+          reason: null,
+          error: null,
+        },
+      }),
+    } satisfies Pick<CcConnectInspectionService, 'inspect'>;
+    const program = createCliProgram({
+      ccConnectInspectionService: ccConnectInspectionService as CcConnectInspectionService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'detect',
+      '--config', '/Users/lizeyu/.cc-connect/config.toml',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(ccConnectInspectionService.inspect).toHaveBeenCalledWith({
+      command: 'cc-connect',
+      configPath: '/Users/lizeyu/.cc-connect/config.toml',
+      managementBaseUrl: undefined,
+      managementToken: undefined,
+      timeoutMs: 5000,
+    });
+    expect(stdout.value).toContain('cc-connect binary: found');
+    expect(stdout.value).toContain('version=v1.2.2-beta.5');
+    expect(stdout.value).toContain('management api: reachable');
+    expect(stdout.value).toContain('projects=3');
+    expect(stdout.value).toContain('bridge_adapters=2');
+  });
+
+  it('prints cc-connect project summaries through an injected management service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const ccConnectManagementService = {
+      listProjects: vi.fn().mockResolvedValue([
+        {
+          name: 'proj-a',
+          agent_type: 'codex',
+          platforms: ['discord'],
+          sessions_count: 2,
+          heartbeat_enabled: false,
+        },
+        {
+          name: 'proj-b',
+          agent_type: 'claudecode',
+          platforms: ['telegram', 'slack'],
+          sessions_count: 5,
+          heartbeat_enabled: true,
+        },
+      ]),
+    } satisfies Pick<CcConnectManagementService, 'listProjects'>;
+    const program = createCliProgram({
+      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'projects',
+      '--config', '/Users/lizeyu/.cc-connect/config.toml',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(ccConnectManagementService.listProjects).toHaveBeenCalledWith({
+      configPath: '/Users/lizeyu/.cc-connect/config.toml',
+      managementBaseUrl: undefined,
+      managementToken: undefined,
+      timeoutMs: 5000,
+    });
+    expect(stdout.value).toContain('proj-a\tcodex\tdiscord\t2\theartbeat=false');
+    expect(stdout.value).toContain('proj-b\tclaudecode\ttelegram,slack\t5\theartbeat=true');
+  });
+
+  it('prints cc-connect project detail through an injected management service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const ccConnectManagementService = {
+      getProject: vi.fn().mockResolvedValue({
+        name: 'agora-codex-immediate',
+        agent_type: 'codex',
+        platforms: [{ type: 'discord', connected: true }],
+        platform_configs: [{ type: 'discord', allow_from: '*' }],
+        sessions_count: 1,
+        active_session_keys: ['discord:1475328660373372940'],
+        heartbeat: null,
+        settings: {
+          language: 'zh',
+          admin_from: '',
+          disabled_commands: [],
+          quiet: false,
+        },
+        work_dir: '/Users/lizeyu/Projects/Agora',
+        agent_mode: 'full-auto',
+        mode: 'full-auto',
+        show_context_indicator: false,
+      }),
+    } satisfies Pick<CcConnectManagementService, 'getProject'>;
+    const program = createCliProgram({
+      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'project', 'agora-codex-immediate',
+      '--config', '/Users/lizeyu/.cc-connect/config-immediate.toml',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(ccConnectManagementService.getProject).toHaveBeenCalledWith({
+      project: 'agora-codex-immediate',
+      configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
+      managementBaseUrl: undefined,
+      managementToken: undefined,
+      timeoutMs: 5000,
+    });
+    expect(stdout.value).toContain('agora-codex-immediate\tcodex\tsessions=1\tmode=full-auto');
+    expect(stdout.value).toContain('platforms=discord:connected');
+    expect(stdout.value).toContain('allow_from=discord:*');
+  });
+
+  it('prints cc-connect session detail through an injected management service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const ccConnectManagementService = {
+      getSession: vi.fn().mockResolvedValue({
+        id: 's1',
+        session_key: 'discord:1475328660373372940',
+        name: 'default',
+        platform: 'discord',
+        agent_type: 'codex',
+        agent_session_id: 'agent-1',
+        active: true,
+        live: false,
+        history_count: 2,
+        created_at: '2026-04-09T21:01:32.716175+08:00',
+        updated_at: '2026-04-09T21:01:32.716175+08:00',
+        history: [
+          { role: 'user', content: '你好', timestamp: '2026-04-09T21:01:32.721222+08:00' },
+          { role: 'assistant', content: '你好。请直接说任务。', timestamp: '2026-04-09T21:01:40.049924+08:00' },
+        ],
+      }),
+    } satisfies Pick<CcConnectManagementService, 'getSession'>;
+    const program = createCliProgram({
+      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'session',
+      '--project', 'agora-codex-immediate',
+      '--session', 's1',
+      '--history-limit', '10',
+      '--config', '/Users/lizeyu/.cc-connect/config-immediate.toml',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(ccConnectManagementService.getSession).toHaveBeenCalledWith({
+      project: 'agora-codex-immediate',
+      sessionId: 's1',
+      historyLimit: 10,
+      configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
+      managementBaseUrl: undefined,
+      managementToken: undefined,
+      timeoutMs: 5000,
+    });
+    expect(stdout.value).toContain('s1\tdiscord:1475328660373372940\tcodex\tactive=true\tlive=false\thistory=2');
+    expect(stdout.value).toContain('2026-04-09T21:01:32.721222+08:00\tuser\t你好');
+  });
+
+  it('prints cc-connect bridge adapters through an injected management service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const ccConnectManagementService = {
+      listBridgeAdapters: vi.fn().mockResolvedValue([
+        {
+          platform: 'custom',
+          project: 'proj-a',
+          capabilities: ['text', 'files'],
+          connected_at: '2026-04-09T21:10:00Z',
+        },
+      ]),
+    } satisfies Pick<CcConnectManagementService, 'listBridgeAdapters'>;
+    const program = createCliProgram({
+      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'bridges',
+      '--config', '/Users/lizeyu/.cc-connect/config.toml',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(ccConnectManagementService.listBridgeAdapters).toHaveBeenCalledWith({
+      configPath: '/Users/lizeyu/.cc-connect/config.toml',
+      managementBaseUrl: undefined,
+      managementToken: undefined,
+      timeoutMs: 5000,
+    });
+    expect(stdout.value).toContain('custom\tproj-a\ttext,files\t2026-04-09T21:10:00Z');
+  });
+
+  it('sends a message into a live cc-connect session through an injected management service', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const ccConnectManagementService = {
+      sendMessage: vi.fn().mockResolvedValue({
+        message: 'message sent',
+      }),
+    } satisfies Pick<CcConnectManagementService, 'sendMessage'>;
+    const program = createCliProgram({
+      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'external-bridge', 'cc-connect', 'send',
+      '--project', 'agora-codex-immediate',
+      '--session-key', 'discord:1475328660373372940',
+      '--message', 'follow-up from agora',
+      '--config', '/Users/lizeyu/.cc-connect/config-immediate.toml',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(ccConnectManagementService.sendMessage).toHaveBeenCalledWith({
+      project: 'agora-codex-immediate',
+      sessionKey: 'discord:1475328660373372940',
+      message: 'follow-up from agora',
+      configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
+      managementBaseUrl: undefined,
+      managementToken: undefined,
+      timeoutMs: 5000,
+    });
+    expect(stdout.value).toContain('message sent');
   });
 
   it('routes project brain task query through an injected retrieval service', async () => {

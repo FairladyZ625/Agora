@@ -10,7 +10,7 @@ import {
   runMigrations,
 } from '@agora-ts/db';
 import { createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
+import { FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
 
 const tempPaths: string[] = [];
 

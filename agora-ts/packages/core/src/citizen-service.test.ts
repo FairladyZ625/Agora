@@ -14,7 +14,7 @@ import {
   runMigrations,
   TaskRepository,
 } from '@agora-ts/db';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { CitizenService } from './citizen-service.js';
 import { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import { ProjectMembershipService } from './project-membership-service.js';

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it, vi } from 'vitest';
 import { runScenarioCli } from './cli.js';
 import { scenarioNames } from './scenarios.js';
 
@@ -121,5 +122,26 @@ describe('agora-ts scenario cli', () => {
     expect(stdout.value).toBe('');
     expect(stderr.value).toContain('Unknown scenario command: unknown-scenario');
     expect(stderr.value).toContain('Usage: scenario [list|all|');
+  });
+
+  it('sets process.exitCode when the module is executed as the entrypoint', async () => {
+    const originalArgv = process.argv;
+    const originalExitCode = process.exitCode;
+    const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    try {
+      vi.resetModules();
+      process.exitCode = undefined;
+      process.argv = ['node', fileURLToPath(new URL('./cli.ts', import.meta.url)), 'list'];
+      await import('./cli.js');
+      await Promise.resolve();
+
+      expect(process.exitCode).toBe(0);
+      expect(stdoutWrite).toHaveBeenCalledWith(expect.stringContaining('happy-path'));
+    } finally {
+      process.argv = originalArgv;
+      process.exitCode = originalExitCode;
+      stdoutWrite.mockRestore();
+    }
   });
 });

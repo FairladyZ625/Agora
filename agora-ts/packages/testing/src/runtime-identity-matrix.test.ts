@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GeminiSessionIdentity } from '@agora-ts/core';
+import type { GeminiSessionIdentity } from '@agora-ts/adapters-runtime';
 import { createTestRuntime } from './index.js';
 
 function discoveryIdentity(sessionReference = 'gemini-chat-file-999'): GeminiSessionIdentity {

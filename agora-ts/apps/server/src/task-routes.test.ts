@@ -15,7 +15,9 @@ import {
   TaskRepository,
 } from '@agora-ts/db';
 import type { ProjectService } from '@agora-ts/core';
-import { CitizenService, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, HumanAccountService, OpenClawCitizenProjectionAdapter, ProjectBrainService, RolePackService, StubIMProvisioningPort, TaskContextBindingService } from '@agora-ts/core';
+import { CitizenService, HumanAccountService, ProjectBrainService, RolePackService, StubIMProvisioningPort, TaskContextBindingService } from '@agora-ts/core';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { createDashboardQueryServiceFromDb, createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
