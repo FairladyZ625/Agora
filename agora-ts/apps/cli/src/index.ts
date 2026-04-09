@@ -94,7 +94,6 @@ import type {
   TemplateGraphDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
-import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import {
   craftsmanExecutionSendKeysRequestSchema,
   craftsmanExecutionSendTextRequestSchema,
@@ -3868,11 +3867,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       throw new Error(`invalid --timeout value: ${options.timeout}. Expected positive number.`);
     }
     const result = await getCcConnectInspectionService().inspect({
-      command: options.command,
-      configPath: options.config,
-      managementBaseUrl: options.baseUrl,
-      managementToken: options.token,
       timeoutMs: Math.round(timeoutSeconds * 1000),
+      ...(options.command ? { command: options.command } : {}),
+      ...(options.config ? { configPath: options.config } : {}),
+      ...(options.baseUrl ? { managementBaseUrl: options.baseUrl } : {}),
+      ...(options.token ? { managementToken: options.token } : {}),
     });
     if (options.json) {
       writeLine(stdout, JSON.stringify(result, null, 2));
@@ -3934,10 +3933,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
     timeout?: string;
   }) {
     return {
-      configPath: options.config,
-      managementBaseUrl: options.baseUrl,
-      managementToken: options.token,
       timeoutMs: parseCcConnectTimeout(options),
+      ...(options.config ? { configPath: options.config } : {}),
+      ...(options.baseUrl ? { managementBaseUrl: options.baseUrl } : {}),
+      ...(options.token ? { managementToken: options.token } : {}),
     };
   }
 

@@ -200,9 +200,9 @@ async function defaultFetchJson(
   try {
     const response = await fetch(url, {
       method: init.method ?? 'GET',
-      body: init.body,
       headers: init.headers,
       signal: controller.signal,
+      ...(init.body !== undefined ? { body: init.body } : {}),
     });
     return {
       status: response.status,
@@ -271,7 +271,7 @@ export class CcConnectManagementService {
       method: options.method ?? 'GET',
       headers,
       timeoutMs: connection.timeoutMs,
-      body,
+      ...(body !== undefined ? { body } : {}),
     });
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`cc-connect management api returned status ${response.status}`);

@@ -99,6 +99,19 @@ describe('scanCoreBoundaryViolations', () => {
       },
     ]);
   });
+
+  it('flags export-star usage in the core barrel', () => {
+    const dir = makeCoreFixture();
+    writeFileSync(join(dir, 'index.ts'), "export * from './task-service.js';\n", 'utf8');
+    writeFileSync(join(dir, 'task-service.ts'), 'export class TaskService {}\n', 'utf8');
+
+    expect(scanCoreBoundaryViolations(dir, 'barrel-exports')).toEqual([
+      {
+        filePath: join(dir, 'index.ts'),
+        violations: ['forbidden export-star in core barrel'],
+      },
+    ]);
+  });
 });
 
 describe('core boundary gate entrypoints', () => {
