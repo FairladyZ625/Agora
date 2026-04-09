@@ -14,12 +14,10 @@ import {
   createTaskParticipationServiceFromDb,
   createTaskServiceFromDb,
 } from '@agora-ts/testing';
+import { AcpCraftsmanProbePort } from '@agora-ts/adapters-runtime';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
-import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
-import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
-import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import type { CraftsmanInputPortExecution } from './craftsman-input-port.js';
 import type { CraftsmanProbePortExecution } from './craftsman-probe-port.js';
 import type { CraftsmanTailPortExecution } from './craftsman-tail-port.js';

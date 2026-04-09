@@ -1,4 +1,4 @@
-import { stripMarkdownFrontmatter } from './adapters/markdown-frontmatter.js';
+import { stripMarkdownFrontmatter } from './markdown-frontmatter.js';
 import type { ProjectBrainChunk } from './project-brain-chunk.js';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
 

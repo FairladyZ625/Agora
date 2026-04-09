@@ -8,14 +8,13 @@ import {
   type AgoraConfig,
 } from '@agora-ts/config';
 import {
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
   ProjectBrainChunkingPolicy,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainIndexWorkerService,
-  QdrantProjectBrainVectorIndexAdapter,
 } from '@agora-ts/core';
+import { OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions extends ServerCompositionOptions {

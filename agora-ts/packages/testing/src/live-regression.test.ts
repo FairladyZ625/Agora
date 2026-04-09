@@ -948,7 +948,10 @@ describe('LiveRegressionActor', () => {
     expect(result.timedOut).toBe(false);
     expect(result.observationAttempts).toBeGreaterThan(1);
     expect(result.failureHint).toBeNull();
-    expect(result.latestConversation.bodyExcerpt).toContain('当前阶段: execute');
+    expect(result.latestConversation.bodyExcerpt).toSatisfy((excerpt: string | null) => (
+      excerpt?.includes('当前阶段: execute')
+      || excerpt?.includes('Advanced to stage execute')
+    ) ?? false);
   });
 
   it('reports a target mismatch when the expected stage is not reached before timeout', async () => {

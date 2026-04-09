@@ -36,19 +36,12 @@ import {
 } from '@agora-ts/db';
 import {
   CitizenService,
-  ClaudeCraftsmanAdapter,
-  CodexCraftsmanAdapter,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
   DashboardQueryService,
-  FilesystemProjectBrainQueryAdapter,
-  FilesystemProjectKnowledgeAdapter,
-  FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
-  GeminiCraftsmanAdapter,
   InboxService,
-  OpenClawCitizenProjectionAdapter,
   ProjectAgentRosterService,
   ProjectBrainAutomationService,
   ProjectBrainService,
@@ -65,12 +58,15 @@ import {
   TaskParticipationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   type AgentRuntimePort,
   type CraftsmanAdapter,
-  type GeminiSessionDiscovery,
+  type InteractiveRuntimePort,
   type WorkdirIsolator,
 } from '@agora-ts/core';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
+import { TmuxRuntimeService, type GeminiSessionIdentity } from '@agora-ts/adapters-runtime';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
@@ -82,7 +78,7 @@ export interface CreateTestRuntimeOptions {
   workdirIsolator?: WorkdirIsolator;
   agentRuntimePort?: AgentRuntimePort;
   tmuxExec?: (args: string[]) => string;
-  geminiSessionDiscovery?: Pick<GeminiSessionDiscovery, 'resolveIdentity'>;
+  geminiSessionDiscovery?: { resolveIdentity(input: { workspaceRoot: string }): GeminiSessionIdentity | null };
 }
 
 export interface TestRuntime {
@@ -106,7 +102,7 @@ export interface TestRuntime {
   taskContextBindingService: TaskContextBindingService;
   taskConversationService: TaskConversationService;
   taskParticipationService: TaskParticipationService;
-  tmuxRuntimeService: TmuxRuntimeService;
+  tmuxRuntimeService: InteractiveRuntimePort;
   cleanup: () => void;
 }
 

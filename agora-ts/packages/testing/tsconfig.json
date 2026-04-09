@@ -9,6 +9,8 @@
   "exclude": ["dist", "**/dist/**"],
   "references": [
     { "path": "../core" },
+    { "path": "../adapters-craftsman" },
+    { "path": "../adapters-runtime" },
     { "path": "../db" }
   ]
 }

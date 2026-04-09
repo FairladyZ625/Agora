@@ -11,12 +11,12 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ -f "$CLI_DIST" ]; then
-  exec node "$CLI_DIST" "$@"
-fi
-
 if [ -x "$TSX_BIN" ] && [ -f "$CLI_SRC" ]; then
   exec "$TSX_BIN" "$CLI_SRC" "$@"
+fi
+
+if [ -f "$CLI_DIST" ]; then
+  exec node "$CLI_DIST" "$@"
 fi
 
 cat <<'EOF'

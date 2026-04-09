@@ -122,6 +122,23 @@ describe("run", () => {
     vi.useRealTimers();
   });
 
+  it("escalates to SIGKILL when the child ignores SIGTERM after timeout", async () => {
+    vi.useFakeTimers();
+    const child = createChildProcessStub();
+    child.kill = vi.fn(() => true);
+    spawn.mockReturnValue(child);
+
+    const pending = run("npx", ["tsx", "noop"], 25);
+    await vi.advanceTimersByTimeAsync(25);
+    await vi.advanceTimersByTimeAsync(2_000);
+    child.emit("exit", null);
+
+    await expect(pending).resolves.toBe(124);
+    expect(child.kill).toHaveBeenNthCalledWith(1, "SIGTERM");
+    expect(child.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
+    vi.useRealTimers();
+  });
+
   it("runs the wrapper main with the default command envelope", async () => {
     const child = createChildProcessStub();
     spawn.mockReturnValue(child);

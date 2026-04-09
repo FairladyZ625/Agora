@@ -15,7 +15,8 @@ import {
   TaskRepository,
   TodoRepository,
 } from '@agora-ts/db';
-import { FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, StubIMProvisioningPort, TaskContextBindingService, TaskParticipationService, TmuxRuntimeService } from '@agora-ts/core';
+import { FileArchiveJobNotifier, FileArchiveJobReceiptIngestor, LiveSessionStore, StubIMProvisioningPort, TaskContextBindingService, TaskParticipationService } from '@agora-ts/core';
+import { TmuxRuntimeService } from '@agora-ts/adapters-runtime';
 import { createDashboardQueryServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 import type { AgentInventorySource, PresenceSource } from '@agora-ts/core';

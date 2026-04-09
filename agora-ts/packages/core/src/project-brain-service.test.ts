@@ -4,10 +4,9 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { createCitizenServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb } from '@agora-ts/testing';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
-import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { ProjectBrainService } from './project-brain-service.js';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
 
 const tempPaths: string[] = [];
 
