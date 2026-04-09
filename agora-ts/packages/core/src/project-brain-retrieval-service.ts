@@ -1,5 +1,6 @@
-import type { TaskRecord } from '@agora-ts/contracts';
+import type { RetrievalPlanDto, RetrievalResultDto, TaskRecord } from '@agora-ts/contracts';
 import type { ProjectBrainChunk } from './project-brain-chunk.js';
+import type { RetrievalPort } from './context-retrieval-port.js';
 import type { ProjectBrainEmbeddingPort } from './project-brain-embedding-port.js';
 import type { ProjectBrainSearchResult } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';
@@ -31,8 +32,34 @@ export interface ProjectBrainRetrievalServiceOptions {
   vectorIndexPort: Pick<ProjectBrainVectorIndexPort, 'querySimilarChunks'>;
 }
 
-export class ProjectBrainRetrievalService {
+export class ProjectBrainRetrievalService implements RetrievalPort {
+  readonly provider = 'project_brain';
+
   constructor(private readonly options: ProjectBrainRetrievalServiceOptions) {}
+
+  supports(plan: RetrievalPlanDto) {
+    if (plan.scope !== 'project_brain' || plan.mode !== 'task_context') {
+      return false;
+    }
+    return Boolean(plan.context.task_id && coerceAudience(plan.context.audience));
+  }
+
+  async retrieve(plan: RetrievalPlanDto): Promise<RetrievalResultDto[]> {
+    if (!this.supports(plan)) {
+      return [];
+    }
+    const audience = coerceAudience(plan.context.audience);
+    if (!audience) {
+      return [];
+    }
+    const results = await this.searchTaskContext({
+      task_id: plan.context.task_id!,
+      audience,
+      query: plan.query.text,
+      ...(plan.limit !== undefined ? { max_results: plan.limit } : {}),
+    });
+    return results.map(mapToRetrievalResult);
+  }
 
   async searchTaskContext(input: SearchTaskProjectBrainContextInput): Promise<ProjectBrainRetrievalResult[]> {
     const task = this.options.taskLookup.getTask(input.task_id);
@@ -71,6 +98,28 @@ export class ProjectBrainRetrievalService {
   }
 }
 
+function mapToRetrievalResult(result: ProjectBrainRetrievalResult): RetrievalResultDto {
+  return {
+    scope: 'project_brain',
+    provider: 'project_brain',
+    reference_key: `${result.kind}:${result.slug}${result.chunk_id ? `#${result.chunk_id}` : ''}`,
+    project_id: result.project_id,
+    title: result.title,
+    path: result.path,
+    preview: result.snippet,
+    score: (result.vector_score ?? 0) + (result.lexical_score ?? 0),
+    metadata: {
+      kind: result.kind,
+      slug: result.slug,
+      retrieval_mode: result.retrieval_mode,
+      ...(result.chunk_id ? { chunk_id: result.chunk_id } : {}),
+      ...(result.heading_path ? { heading_path: result.heading_path } : {}),
+      ...(result.vector_score !== undefined ? { vector_score: result.vector_score } : {}),
+      ...(result.lexical_score !== undefined ? { lexical_score: result.lexical_score } : {}),
+    },
+  };
+}
+
 function mapHybridResult(chunk: ProjectBrainChunk, query: string, vectorScore: number): ProjectBrainRetrievalResult {
   const snippet = chunk.text.replace(/\n+/g, ' ').trim().slice(0, 160);
   return {
@@ -86,6 +135,12 @@ function mapHybridResult(chunk: ProjectBrainChunk, query: string, vectorScore: n
     vector_score: vectorScore,
     lexical_score: lexicalScore(query, chunk),
   };
+}
+
+function coerceAudience(value: string | undefined): ProjectBrainRetrievalAudience | null {
+  return value === 'controller' || value === 'citizen' || value === 'craftsman'
+    ? value
+    : null;
 }
 
 function lexicalScore(query: string, chunk: ProjectBrainChunk) {

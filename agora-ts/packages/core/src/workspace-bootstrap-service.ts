@@ -44,6 +44,7 @@ export class WorkspaceBootstrapService {
         'Bootstrap goals:',
         '- confirm runtime and IM setup',
         '- capture org-wide working norms and decision boundaries',
+        '- identify shared docs, vaults, and external references worth treating as workspace-level context sources',
         '- identify the current project portfolio and review expectations',
       ].join('\n'),
       priority: 'high',

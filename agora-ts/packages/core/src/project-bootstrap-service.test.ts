@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { createProjectServiceFromDb, createTaskBrainBindingServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
+import { ContextSourceBindingService } from './context-source-binding-service.js';
 import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
 import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
 import { ProjectBootstrapService } from './project-bootstrap-service.js';
@@ -84,6 +85,9 @@ describe('project bootstrap service', () => {
     const service = new ProjectBootstrapService({
       projectService: projectService as unknown as ConstructorParameters<typeof ProjectBootstrapService>[0]['projectService'],
       taskService: taskService as unknown as ConstructorParameters<typeof ProjectBootstrapService>[0]['taskService'],
+      contextSourceBindingService: new ContextSourceBindingService({
+        projectService,
+      }),
     });
 
     const task = service.createHarnessBootstrapTask({
@@ -97,6 +101,17 @@ describe('project bootstrap service', () => {
       project_nomos_draft_root: '/Users/example/.agora/projects/proj-bootstrap/nomos/project-nomos',
       bootstrap_prompt_path: '/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md',
       bootstrap_mode: 'existing_repo',
+      context_sources: [
+        {
+          source_id: 'docs-architecture',
+          scope: 'project',
+          kind: 'docs_repo',
+          label: 'Architecture Docs',
+          location: '/repo/docs/architecture',
+          access: 'read_only',
+          enabled: true,
+        },
+      ],
     });
 
     expect(task.id).toBe('OC-HARNESS-BOOTSTRAP');
@@ -108,6 +123,7 @@ describe('project bootstrap service', () => {
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/nomos/project-nomos');
     expect(task.description).toContain('/Users/example/.agora/projects/proj-bootstrap/prompts/bootstrap/interview.md');
     expect(task.description).toContain('Bootstrap mode: `existing_repo`');
+    expect(task.description).toContain('[docs_repo] Architecture Docs -> `/repo/docs/architecture`');
     expect(task.description).toContain('agora nomos refine-project --project-id proj-bootstrap');
     expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'facts', 'bootstrap-current-surface.md'), 'utf8')).toContain(
       'Bootstrap Current Surface',
@@ -118,9 +134,27 @@ describe('project bootstrap service', () => {
     expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'open-questions', 'bootstrap-open-questions.md'), 'utf8')).toContain(
       'Bootstrap Open Questions',
     );
+    expect(readFileSync(join(projectStateDir, 'proj-bootstrap', 'knowledge', 'references', 'bootstrap-context-sources.md'), 'utf8')).toContain(
+      'Bootstrap Context Sources',
+    );
     expect(projectService.getKnowledgeEntry('proj-bootstrap', 'fact', 'bootstrap-current-surface')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
     expect(projectService.getKnowledgeEntry('proj-bootstrap', 'decision', 'bootstrap-known-constraints')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
     expect(projectService.getKnowledgeEntry('proj-bootstrap', 'open_question', 'bootstrap-open-questions')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(projectService.getKnowledgeEntry('proj-bootstrap', 'reference', 'bootstrap-context-sources')?.source_task_ids).toEqual(['OC-HARNESS-BOOTSTRAP']);
+    expect(projectService.requireProject('proj-bootstrap').metadata).toEqual(
+      expect.objectContaining({
+        agora: expect.objectContaining({
+          context_harness: expect.objectContaining({
+            project_context_sources: expect.arrayContaining([
+              expect.objectContaining({
+                source_id: 'docs-architecture',
+                kind: 'docs_repo',
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
     expect(existsSync(join(projectStateDir, 'proj-bootstrap', 'tasks', 'OC-HARNESS-BOOTSTRAP', '00-bootstrap.md'))).toBe(true);
     expect(existsSync(join(brainPackDir, 'project-index', 'proj-bootstrap', 'index.md'))).toBe(false);
   });

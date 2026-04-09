@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { RetrievalPlanDto } from '@agora-ts/contracts';
 import type { StoredTask } from '@agora-ts/db';
 import type { ProjectBrainChunk } from './project-brain-chunk.js';
 import type { ProjectBrainSearchResult } from './project-brain-query-port.js';
@@ -275,6 +276,48 @@ describe('project brain retrieval service', () => {
       expect.objectContaining({
         slug: 'runtime-boundary',
         retrieval_mode: 'raw_fallback',
+      }),
+    ]);
+  });
+
+  it('implements the generic retrieval port contract for task context retrieval', async () => {
+    const taskLookup = {
+      getTask: vi.fn().mockReturnValue(makeTask()),
+    };
+    const service = new ProjectBrainRetrievalService({
+      taskLookup: taskLookup as never,
+      projectBrainService: {
+        queryDocuments: vi.fn().mockReturnValue([
+          makeFallbackResult(),
+        ]),
+      } as never,
+      embeddingPort: {
+        embedText: vi.fn().mockRejectedValue(new Error('provider unavailable')),
+      } as never,
+      vectorIndexPort: {
+        querySimilarChunks: vi.fn(),
+      } as never,
+    });
+    const plan: RetrievalPlanDto = {
+      scope: 'project_brain',
+      mode: 'task_context',
+      query: { text: 'runtime' },
+      limit: 5,
+      context: {
+        task_id: 'OC-200',
+        audience: 'controller',
+      },
+    };
+
+    const results = await service.retrieve(plan);
+
+    expect(service.supports(plan)).toBe(true);
+    expect(results).toEqual([
+      expect.objectContaining({
+        provider: 'project_brain',
+        scope: 'project_brain',
+        reference_key: 'decision:runtime-boundary',
+        preview: 'Keep runtime-specific logic out of core.',
       }),
     ]);
   });

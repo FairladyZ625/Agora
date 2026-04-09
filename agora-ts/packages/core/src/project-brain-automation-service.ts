@@ -1,9 +1,9 @@
-import type { TaskRecord } from '@agora-ts/contracts';
+import type { ReferenceBundleDto, RetrievalPlanDto, RetrievalResultDto, TaskRecord } from '@agora-ts/contracts';
 import { renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './adapters/markdown-frontmatter.js';
+import { ReferenceBundleService } from './reference-bundle-service.js';
 import type { ProjectKnowledgeKind } from './project-knowledge-port.js';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';
-import type { ProjectBrainRetrievalService } from './project-brain-retrieval-service.js';
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import { resolveControllerRef } from './team-member-kind.js';
@@ -16,6 +16,7 @@ export interface ProjectBrainBootstrapContext {
   project_id: string;
   audience: ProjectBrainAutomationAudience;
   markdown: string;
+  reference_bundle?: ReferenceBundleDto;
   source_documents: Array<{
     kind: ProjectBrainDocument['kind'];
     slug: string;
@@ -50,62 +51,67 @@ export interface ProjectBrainAutomationServiceOptions {
   policy?: ProjectBrainAutomationPolicy;
   taskBrainBindingService?: TaskBrainBindingService;
   taskBrainWorkspacePort?: TaskBrainWorkspacePort;
-  retrievalService?: Pick<ProjectBrainRetrievalService, 'searchTaskContext'>;
+  retrievalService?: {
+    retrieve(plan: RetrievalPlanDto): Promise<RetrievalResultDto[]>;
+  };
 }
 
 export class ProjectBrainAutomationService {
   private readonly policy: ProjectBrainAutomationPolicy;
+  private readonly referenceBundleService: ReferenceBundleService;
 
   constructor(private readonly options: ProjectBrainAutomationServiceOptions) {
     this.policy = options.policy ?? new ProjectBrainAutomationPolicy();
+    this.referenceBundleService = new ReferenceBundleService({
+      projectBrainService: options.projectBrainService,
+      policy: this.policy,
+      ...(options.retrievalService ? { retrievalService: options.retrievalService } : {}),
+    });
   }
 
   buildBootstrapContext(input: BuildProjectBrainBootstrapContextInput): ProjectBrainBootstrapContext {
-    const documents = this.options.projectBrainService.listDocuments(input.project_id);
-    const preferredDocumentKeys = this.buildLexicalPreferredDocumentKeys(input);
-    return this.renderBootstrapContext(documents, input, preferredDocumentKeys);
+    const bundle = this.referenceBundleService.buildReferenceBundle({
+      project_id: input.project_id,
+      mode: 'bootstrap',
+      audience: input.audience,
+      ...(input.citizen_id ? { citizen_id: input.citizen_id } : {}),
+      ...(input.task_id ? { task_id: input.task_id } : {}),
+      ...(input.task_title ? { task_title: input.task_title } : {}),
+      ...(input.task_description ? { task_description: input.task_description } : {}),
+      ...(input.allowed_citizen_ids && input.allowed_citizen_ids.length > 0 ? { allowed_citizen_ids: input.allowed_citizen_ids } : {}),
+    });
+    return this.renderBootstrapContext(input, bundle);
   }
 
   async buildBootstrapContextAsync(input: BuildProjectBrainBootstrapContextInput): Promise<ProjectBrainBootstrapContext> {
-    const documents = this.options.projectBrainService.listDocuments(input.project_id);
-    const query = buildTaskAwareQuery(input);
-    if (input.task_id && query && this.options.retrievalService) {
-      try {
-        const results = await this.options.retrievalService.searchTaskContext({
-          task_id: input.task_id,
-          audience: input.audience,
-          query,
-          max_results: 6,
-        });
-        const preferredDocumentKeys = results.map((result) => `${result.kind}:${result.slug}`);
-        return this.renderBootstrapContext(documents, input, preferredDocumentKeys);
-      } catch {
-        // fall through to synchronous lexical fallback
-      }
-    }
-    return this.renderBootstrapContext(documents, input, this.buildLexicalPreferredDocumentKeys(input));
+    const bundle = await this.referenceBundleService.buildReferenceBundleAsync({
+      project_id: input.project_id,
+      mode: 'bootstrap',
+      audience: input.audience,
+      ...(input.citizen_id ? { citizen_id: input.citizen_id } : {}),
+      ...(input.task_id ? { task_id: input.task_id } : {}),
+      ...(input.task_title ? { task_title: input.task_title } : {}),
+      ...(input.task_description ? { task_description: input.task_description } : {}),
+      ...(input.allowed_citizen_ids && input.allowed_citizen_ids.length > 0 ? { allowed_citizen_ids: input.allowed_citizen_ids } : {}),
+    });
+    return this.renderBootstrapContext(input, bundle);
   }
 
   private renderBootstrapContext(
-    documents: ProjectBrainDocument[],
     input: BuildProjectBrainBootstrapContextInput,
-    preferredDocumentKeys: string[],
+    bundle: ReferenceBundleDto,
   ): ProjectBrainBootstrapContext {
-    const selected = this.policy.selectBootstrapDocuments(
-      documents,
-      {
-        audience: input.audience,
-        ...(input.citizen_id ? { citizen_id: input.citizen_id } : {}),
-        ...(input.task_id ? { task_id: input.task_id } : {}),
-        ...(input.task_title ? { task_title: input.task_title } : {}),
-        ...(input.task_description ? { task_description: input.task_description } : {}),
-        ...(input.allowed_citizen_ids && input.allowed_citizen_ids.length > 0 ? { allowed_citizen_ids: input.allowed_citizen_ids } : {}),
-        ...(preferredDocumentKeys.length > 0 ? { preferred_document_keys: preferredDocumentKeys } : {}),
-      },
-    );
+    const selected = bundle.references
+      .map((reference) => this.options.projectBrainService.getDocument(
+        input.project_id,
+        reference.kind as ProjectBrainDocument['kind'],
+        reference.slug,
+      ))
+      .filter(Boolean) as ProjectBrainDocument[];
     return {
       project_id: input.project_id,
       audience: input.audience,
+      reference_bundle: bundle,
       source_documents: selected.map((doc) => ({
         kind: doc.kind,
         slug: doc.slug,
@@ -114,16 +120,6 @@ export class ProjectBrainAutomationService {
       })),
       markdown: renderBootstrapMarkdown(input.project_id, input.audience, selected),
     };
-  }
-
-  private buildLexicalPreferredDocumentKeys(input: BuildProjectBrainBootstrapContextInput) {
-    const query = buildTaskAwareQuery(input);
-    if (!query) {
-      return [];
-    }
-    return this.options.projectBrainService
-      .queryDocuments(input.project_id, query)
-      .map((result) => `${result.kind}:${result.slug}`);
   }
 
   promoteKnowledge(input: PromoteProjectBrainKnowledgeInput) {
@@ -212,14 +208,6 @@ function renderBootstrapMarkdown(
   }
 
   return `${frontmatter}${sections.join('\n').trimEnd()}\n`;
-}
-
-function buildTaskAwareQuery(input: BuildProjectBrainBootstrapContextInput) {
-  const parts = [input.task_title?.trim(), input.task_description?.trim()].filter((part): part is string => Boolean(part));
-  if (parts.length === 0) {
-    return null;
-  }
-  return parts.join('\n\n');
 }
 
 function excerptDocument(document: ProjectBrainDocument) {

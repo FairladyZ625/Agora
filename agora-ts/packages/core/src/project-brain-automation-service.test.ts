@@ -156,6 +156,7 @@ describe('project brain automation service', () => {
     expect(context.markdown).toContain('Automation Project');
     expect(context.markdown).toContain('citizen-alpha');
     expect(context.markdown).toContain('Core First');
+    expect(context.reference_bundle?.project_map.index_reference_key).toBe('index:index');
 
     const promoted = service.promoteKnowledge({
       project_id: 'proj-automation',
@@ -301,24 +302,36 @@ describe('project brain automation service', () => {
       }),
     });
     const retrievalService = {
-      searchTaskContext: vi.fn().mockResolvedValue([
+      retrieve: vi.fn().mockResolvedValue([
         {
+          scope: 'project_brain',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
           project_id: 'proj-automation',
-          kind: 'decision',
-          slug: 'runtime-boundary',
           title: 'Runtime Boundary',
           path: '/brain/decision/runtime-boundary.md',
-          snippet: 'Keep runtime-specific logic out of core.',
-          retrieval_mode: 'hybrid',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 4,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            retrieval_mode: 'hybrid',
+          },
         },
         {
+          scope: 'project_brain',
+          provider: 'project_brain',
+          reference_key: 'citizen_scaffold:citizen-alpha',
           project_id: 'proj-automation',
-          kind: 'citizen_scaffold',
-          slug: 'citizen-alpha',
           title: 'Citizen Alpha',
           path: '/brain/citizen/citizen-alpha.md',
-          snippet: 'Citizen Alpha scaffold',
-          retrieval_mode: 'hybrid',
+          preview: 'Citizen Alpha scaffold',
+          score: 3,
+          metadata: {
+            kind: 'citizen_scaffold',
+            slug: 'citizen-alpha',
+            retrieval_mode: 'hybrid',
+          },
         },
       ]),
     };
@@ -337,12 +350,23 @@ describe('project brain automation service', () => {
       audience: 'craftsman',
     });
 
-    expect(retrievalService.searchTaskContext).toHaveBeenCalledWith({
-      task_id: 'OC-100',
-      audience: 'craftsman',
-      query: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
-      max_results: 6,
+    expect(retrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_brain',
+      mode: 'task_context',
+      query: {
+        text: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
+      },
+      limit: 6,
+      context: {
+        task_id: 'OC-100',
+        project_id: 'proj-automation',
+        audience: 'craftsman',
+      },
     });
+    expect(context.reference_bundle?.attention_anchors).toEqual([
+      expect.objectContaining({ reference_key: 'decision:runtime-boundary' }),
+      expect.objectContaining({ reference_key: 'citizen_scaffold:citizen-alpha' }),
+    ]);
     expect(context.source_documents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'index', slug: 'index' }),

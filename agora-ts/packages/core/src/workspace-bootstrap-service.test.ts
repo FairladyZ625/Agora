@@ -41,6 +41,7 @@ describe('workspace bootstrap service', () => {
 
     expect(created).not.toBeNull();
     expect(created?.title).toBe('Workspace Bootstrap Interview');
+    expect(created?.description).toContain('shared docs, vaults, and external references');
     expect(created?.control).toMatchObject({
       workspace_bootstrap: {
         kind: 'orchestrator_onboarding',

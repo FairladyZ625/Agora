@@ -1,4 +1,5 @@
-import type { TaskRecord } from '@agora-ts/contracts';
+import type { ContextSourceBindingDto, TaskRecord } from '@agora-ts/contracts';
+import type { ContextSourceBindingService } from './context-source-binding-service.js';
 import type { ProjectService } from './project-service.js';
 import type { TaskService } from './task-service.js';
 
@@ -13,20 +14,24 @@ export interface CreateProjectHarnessBootstrapTaskInput {
   project_nomos_draft_root?: string | null | undefined;
   bootstrap_prompt_path?: string | null | undefined;
   bootstrap_mode?: 'existing_repo' | 'new_repo' | 'no_repo' | null | undefined;
+  context_sources?: ContextSourceBindingDto[] | undefined;
 }
 
 export interface ProjectBootstrapServiceOptions {
   projectService: ProjectService;
   taskService: TaskService;
+  contextSourceBindingService?: Pick<ContextSourceBindingService, 'replaceProjectBindings'>;
 }
 
 export class ProjectBootstrapService {
   private readonly projectService: ProjectService;
   private readonly taskService: TaskService;
+  private readonly contextSourceBindingService: Pick<ContextSourceBindingService, 'replaceProjectBindings'> | undefined;
 
   constructor(options: ProjectBootstrapServiceOptions) {
     this.projectService = options.projectService;
     this.taskService = options.taskService;
+    this.contextSourceBindingService = options.contextSourceBindingService;
   }
 
   createHarnessBootstrapTask(input: CreateProjectHarnessBootstrapTaskInput): TaskRecord {
@@ -47,6 +52,9 @@ export class ProjectBootstrapService {
         },
       },
     });
+    if (input.context_sources && input.context_sources.length > 0 && this.contextSourceBindingService) {
+      this.contextSourceBindingService.replaceProjectBindings(input.project_id, input.context_sources);
+    }
     this.seedNomosBootstrapScaffolds(input.project_id, task.id);
     return task;
   }
@@ -73,6 +81,18 @@ export class ProjectBootstrapService {
           '- Product or architecture boundaries',
           '- Human approval requirements',
           '- Operational or repo constraints',
+        ].join('\n'),
+      },
+      {
+        kind: 'reference' as const,
+        slug: 'bootstrap-context-sources',
+        title: 'Bootstrap Context Sources',
+        summary: 'Record the external docs, repos, vaults, and paths that should become project context sources.',
+        body: [
+          '- Source label',
+          '- Source kind (`local_path`, `docs_repo`, `obsidian_rest`)',
+          '- Canonical location / URL',
+          '- Why this source matters for the project',
         ].join('\n'),
       },
       {
@@ -143,6 +163,12 @@ function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTa
   if (input.bootstrap_mode) {
     lines.push(`- Bootstrap mode: \`${input.bootstrap_mode}\``);
   }
+  if (input.context_sources && input.context_sources.length > 0) {
+    lines.push('- Initial context sources:');
+    for (const source of input.context_sources) {
+      lines.push(`  - [${source.kind}] ${source.label} -> \`${source.location}\``);
+    }
+  }
 
   lines.push(
     '',
@@ -152,6 +178,7 @@ function buildHarnessBootstrapDescription(input: CreateProjectHarnessBootstrapTa
     'Interview checklist:',
     '- What already exists today, and what kind of project is this?',
     '- Which repo/workspace path is the real execution surface?',
+    '- Which external docs, vaults, repos, or paths should be bound as project context sources?',
     '- Which default methodologies should stay, and which should change?',
     '- Which lifecycle modules, approvals, and doctor rules should this project Nomos enforce?',
     '- What remains unknown and must stay visible in the authoring spec before the Nomos is finalized?',
