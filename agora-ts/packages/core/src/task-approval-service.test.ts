@@ -32,7 +32,10 @@ function makeTask(): TaskRecord {
 
 function createService() {
   const task = makeTask();
-  const stage = task.workflow.stages?.[0]!;
+  const stage = task.workflow.stages?.[0];
+  if (!stage) {
+    throw new Error('approval fixture is missing review stage');
+  }
   const logs: Array<Record<string, unknown>> = [];
   const mirrors: Array<Record<string, unknown>> = [];
   const resolved: Array<Record<string, unknown>> = [];
@@ -40,7 +43,18 @@ function createService() {
   const routeGateCommand = vi.fn();
   const recordApproval = vi.fn();
   const recordArchonReview = vi.fn();
-  const recordQuorumVote = vi.fn((taskId: string, stageId: string, voterId: string, vote: 'approve' | 'reject', comment: string) => {
+  const recordQuorumVote = vi.fn((
+    taskId: string,
+    stageId: string,
+    voterId: string,
+    vote: 'approve' | 'reject',
+    comment: string,
+  ) => {
+    void taskId;
+    void stageId;
+    void voterId;
+    void vote;
+    void comment;
     return { approved: 2, total: 3 };
   });
   const advanceSatisfiedStage = vi.fn(() => ({ ...task, current_stage: 'done' }));

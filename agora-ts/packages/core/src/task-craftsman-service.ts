@@ -1,5 +1,6 @@
 import type {
   CraftsmanCallbackRequestDto,
+  CraftsmanExecutionPayloadDto,
   CraftsmanDispatchRequestDto,
   CraftsmanExecutionTailResponseDto,
   CraftsmanInputKeyDto,
@@ -44,6 +45,50 @@ type InteractiveExecution = {
   taskId: string;
   subtaskId: string;
 };
+
+export interface TaskCraftsmanExecutionView {
+  execution_id: string;
+  task_id: string;
+  subtask_id: string;
+  adapter: string;
+  mode: string;
+  session_id: string | null;
+  status: string;
+  brief_path?: string | null;
+  workdir: string | null;
+  callback_payload?: CraftsmanExecutionPayloadDto | null;
+  error?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface TaskCraftsmanSubtaskView {
+  id: string;
+  task_id?: string;
+  stage_id?: string;
+  title?: string;
+  assignee?: string;
+  status: string;
+  output?: string | null;
+  dispatch_status?: string | null;
+  done_at?: string | null;
+}
+
+export interface CraftsmanDispatchResult {
+  execution: TaskCraftsmanExecutionView;
+}
+
+export interface HandleCraftsmanCallbackResult {
+  task: TaskRecord;
+  subtask: TaskCraftsmanSubtaskView;
+  execution: TaskCraftsmanExecutionView;
+}
+
+export type ProbeCraftsmanExecutionResult =
+  | { execution: TaskCraftsmanExecutionView; probed: false }
+  | (HandleCraftsmanCallbackResult & { probed: true });
 
 export interface TaskCraftsmanServiceOptions {
   getTaskOrThrow: (taskId: string) => TaskRecord;
@@ -229,12 +274,7 @@ export interface TaskCraftsmanServiceOptions {
     workdir: string;
     prompt: string | null;
     brief_path: string | null;
-  }) => {
-    execution: {
-      execution_id: string;
-      status: string;
-    };
-  };
+  }) => CraftsmanDispatchResult;
   probeViaPort?: (execution: {
     executionId: string;
     adapter: string;
@@ -242,11 +282,7 @@ export interface TaskCraftsmanServiceOptions {
     workdir: string | null;
     status: string;
   }) => CraftsmanCallbackRequestDto | null;
-  processCraftsmanCallback: (input: CraftsmanCallbackRequestDto) => {
-    task: TaskRecord;
-    subtask: { id: string; status: string };
-    execution: { execution_id: string; status: string };
-  };
+  processCraftsmanCallback: (input: CraftsmanCallbackRequestDto) => HandleCraftsmanCallbackResult;
   publishImmediateCraftsmanNotification: (taskId: string, executionId: string, subtaskId: string) => void;
   getCraftsmanProbeState: (executionId: string, latestActivityMs: number) => CraftsmanProbeState;
   shouldProbeCraftsmanExecution: (nowMs: number, thresholdMs: number, probeState: CraftsmanProbeState) => boolean;
@@ -512,7 +548,7 @@ export class TaskCraftsmanService {
     return this.options.listSubtasksByTask(taskId);
   }
 
-  handleCraftsmanCallback(input: CraftsmanCallbackRequestDto) {
+  handleCraftsmanCallback(input: CraftsmanCallbackRequestDto): HandleCraftsmanCallbackResult {
     const result = this.options.processCraftsmanCallback(input);
     if (
       result.task.state !== TaskState.PAUSED
@@ -524,7 +560,7 @@ export class TaskCraftsmanService {
     return result;
   }
 
-  dispatchCraftsman(input: CraftsmanDispatchRequestDto) {
+  dispatchCraftsman(input: CraftsmanDispatchRequestDto): CraftsmanDispatchResult {
     if (!this.options.dispatchSubtask) {
       throw new Error('Craftsman dispatcher is not configured');
     }
@@ -590,7 +626,7 @@ export class TaskCraftsmanService {
     return dispatched;
   }
 
-  getCraftsmanExecution(executionId: string) {
+  getCraftsmanExecution(executionId: string): TaskCraftsmanExecutionView {
     const execution = this.options.getExecution(executionId);
     if (!execution) {
       throw new NotFoundError(`Craftsman execution ${executionId} not found`);
@@ -625,7 +661,7 @@ export class TaskCraftsmanService {
     };
   }
 
-  listCraftsmanExecutions(taskId: string, subtaskId: string) {
+  listCraftsmanExecutions(taskId: string, subtaskId: string): TaskCraftsmanExecutionView[] {
     return this.options.listExecutionsBySubtask(taskId, subtaskId);
   }
 
@@ -663,7 +699,7 @@ export class TaskCraftsmanService {
     };
   }
 
-  sendCraftsmanInputText(executionId: string, text: string, submit = true) {
+  sendCraftsmanInputText(executionId: string, text: string, submit = true): InteractiveExecution {
     const execution = this.options.requireInteractiveExecution(executionId);
     this.options.sendText?.(execution, text, submit);
     this.options.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'text', text);
@@ -671,7 +707,7 @@ export class TaskCraftsmanService {
     return execution;
   }
 
-  sendCraftsmanInputKeys(executionId: string, keys: CraftsmanInputKeyDto[]) {
+  sendCraftsmanInputKeys(executionId: string, keys: CraftsmanInputKeyDto[]): InteractiveExecution {
     const execution = this.options.requireInteractiveExecution(executionId);
     this.options.sendKeys?.(execution, keys);
     this.options.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'keys', keys.join(','));
@@ -679,7 +715,7 @@ export class TaskCraftsmanService {
     return execution;
   }
 
-  submitCraftsmanChoice(executionId: string, keys: CraftsmanInputKeyDto[] = []) {
+  submitCraftsmanChoice(executionId: string, keys: CraftsmanInputKeyDto[] = []): InteractiveExecution {
     const execution = this.options.requireInteractiveExecution(executionId);
     this.options.submitChoice?.(execution, keys);
     this.options.recordCraftsmanInput(execution.taskId, execution.subtaskId, execution.executionId, 'choice', keys.join(','));
@@ -687,7 +723,7 @@ export class TaskCraftsmanService {
     return execution;
   }
 
-  probeCraftsmanExecution(executionId: string) {
+  probeCraftsmanExecution(executionId: string): ProbeCraftsmanExecutionResult {
     const execution = this.getCraftsmanExecution(executionId);
     if (!this.options.probeViaPort) {
       return { execution, probed: false as const };

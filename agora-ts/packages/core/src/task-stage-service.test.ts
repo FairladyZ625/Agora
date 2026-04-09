@@ -39,8 +39,11 @@ function makeTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
 
 function createStageService() {
   const task = makeTask();
-  const currentStage = task.workflow.stages?.[0]!;
-  const nextStage = task.workflow.stages?.[1]!;
+  const currentStage = task.workflow.stages?.[0];
+  const nextStage = task.workflow.stages?.[1];
+  if (!currentStage || !nextStage) {
+    throw new Error('stage fixture is missing workflow stages');
+  }
   const flowLogs: Array<Record<string, unknown>> = [];
   const progressLogs: Array<Record<string, unknown>> = [];
   const mirrors: Array<Record<string, unknown>> = [];

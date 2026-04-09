@@ -290,7 +290,7 @@ describe('server runtime', () => {
     const bootstrapTaskService = createTaskServiceFromDb(bootstrapDb, {
       templatesDir: new URL('../../../templates', import.meta.url).pathname,
       taskIdGenerator: () => 'OC-BOOT',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     bootstrapTaskService.createTask({
       title: 'boot recovery runtime',

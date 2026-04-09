@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TaskRecord } from '@agora-ts/contracts';
+import type { CraftsmanDispatchResult, HandleCraftsmanCallbackResult } from './task-craftsman-service.js';
 import { TaskCraftsmanService } from './task-craftsman-service.js';
 
 function makeTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
@@ -63,15 +64,22 @@ function buildService() {
   const broadcasts: Array<Record<string, unknown>> = [];
   const updateSubtask = vi.fn();
   const updateExecution = vi.fn();
-  const handleCraftsmanCallback = vi.fn(() => ({
+  const handleCraftsmanCallback = vi.fn<() => HandleCraftsmanCallbackResult>(() => ({
     task,
     subtask: {
       id: subtask.id,
       status: 'waiting_input',
+      output: 'waiting for input',
     },
     execution: {
       execution_id: 'exec-1',
       status: 'running',
+      task_id: task.id,
+      subtask_id: subtask.id,
+      adapter: 'codex',
+      mode: 'interactive',
+      session_id: 'tmux:1',
+      workdir: '/tmp/task',
     },
   }));
   const service = new TaskCraftsmanService({
@@ -142,10 +150,16 @@ function buildService() {
     recordCraftsmanInput: vi.fn(),
     buildSmokeSubtaskCommands: () => [],
     buildSmokeExecutionCommandsForTask: () => [],
-    dispatchSubtask: vi.fn(() => ({
+    dispatchSubtask: vi.fn<() => CraftsmanDispatchResult>(() => ({
       execution: {
         execution_id: 'exec-1',
+        task_id: task.id,
+        subtask_id: subtask.id,
+        adapter: 'codex',
+        mode: 'interactive',
+        session_id: 'tmux:1',
         status: 'running',
+        workdir: '/tmp/task',
       },
     })),
     probeViaPort: vi.fn(() => ({ execution_id: 'exec-1' } as never)),
