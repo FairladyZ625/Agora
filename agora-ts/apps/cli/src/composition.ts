@@ -52,6 +52,7 @@ import { dirname, join, resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
   CitizenService,
+  CompositeAgentInventorySource,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
   DashboardQueryService,
@@ -89,10 +90,12 @@ import {
   TaskParticipationService,
   TaskService,
   TemplateAuthoringService,
+  type AgentInventorySource,
   type AgentRuntimePort,
   type IMMessagingPort,
   type IMProvisioningPort,
 } from '@agora-ts/core';
+import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter } from '@agora-ts/adapters-cc-connect';
 import { FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
@@ -184,6 +187,7 @@ export interface CliCompositionFactories {
   createDashboardQueryService: (
     context: CliCompositionContext,
     deps: {
+      agentRegistry: AgentInventorySource;
       archiveJobNotifier: FileArchiveJobNotifier;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;
       imProvisioningPort: IMProvisioningPort | undefined;
@@ -276,11 +280,14 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       return new CraftsmanDispatcher(options);
     },
     createAgentRuntimePort: () => {
-      const registry = new OpenClawAgentRegistry(
-        process.env.AGORA_OPENCLAW_CONFIG_PATH
-          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
-          : {},
-      );
+      const registry = new CompositeAgentInventorySource([
+        new OpenClawAgentRegistry(
+          process.env.AGORA_OPENCLAW_CONFIG_PATH
+            ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+            : {},
+        ),
+        new CcConnectAgentRegistry(),
+      ]);
       return new InventoryBackedAgentRuntimePort(registry);
     },
     createIMMessagingPort: (context) => {
@@ -346,7 +353,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       repository: new CitizenRepository(context.db),
       projectService: deps.projectService,
       rolePackService: deps.rolePackService,
-      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+      projectionPorts: [new OpenClawCitizenProjectionAdapter(), new CcConnectCitizenProjectionAdapter()],
     }),
     createProjectBrainAutomationService: (_context, deps) => new ProjectBrainAutomationService({
       projectBrainService: deps.projectBrainService,
@@ -515,6 +522,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       executionRepository: new CraftsmanExecutionRepository(context.db),
       templateRepository: new TemplateRepository(context.db),
       databasePort: context.db,
+      agentRegistry: deps.agentRegistry,
       archiveJobNotifier: deps.archiveJobNotifier,
       archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor,
       taskBrainBindingService: deps.taskBrainBindingService,
@@ -662,6 +670,14 @@ export function createCliComposition(
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
   const dashboardQueryService = factories.createDashboardQueryService(context, {
+    agentRegistry: new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
     archiveJobNotifier,
     archiveJobReceiptIngestor,
     imProvisioningPort,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { InventoryBackedAgentRuntimePort } from './runtime-ports.js';
+import {
+  CompositeAgentInventorySource,
+  CompositePresenceSource,
+  InventoryBackedAgentRuntimePort,
+} from './runtime-ports.js';
 
 describe('runtime ports', () => {
   it('resolves runtime participants from inventory', () => {
@@ -26,5 +30,143 @@ describe('runtime ports', () => {
       briefing_mode: 'overlay_delta',
     });
     expect(port.resolveAgent('missing')).toBeNull();
+  });
+
+  it('merges provider inventories without leaking provider logic into callers', () => {
+    const source = new CompositeAgentInventorySource([
+      {
+        listAgents: () => [
+          {
+            id: 'shared',
+            host_framework: 'openclaw',
+            channel_providers: ['discord'],
+            inventory_sources: ['openclaw'],
+            primary_model: 'sonnet',
+            workspace_dir: '/tmp/openclaw',
+          },
+        ],
+      },
+      {
+        listAgents: () => [
+          {
+            id: 'shared',
+            host_framework: null,
+            channel_providers: ['slack'],
+            inventory_sources: ['cc-connect'],
+            primary_model: null,
+            workspace_dir: null,
+          },
+          {
+            id: 'cc-connect:codex',
+            host_framework: 'cc-connect',
+            channel_providers: ['discord'],
+            inventory_sources: ['cc-connect'],
+            primary_model: 'gpt-5.4',
+            workspace_dir: '/tmp/cc-connect',
+          },
+        ],
+      },
+    ]);
+
+    expect(source.listAgents()).toEqual([
+      {
+        id: 'cc-connect:codex',
+        host_framework: 'cc-connect',
+        channel_providers: ['discord'],
+        inventory_sources: ['cc-connect'],
+        primary_model: 'gpt-5.4',
+        workspace_dir: '/tmp/cc-connect',
+      },
+      {
+        id: 'shared',
+        host_framework: 'openclaw',
+        channel_providers: ['discord', 'slack'],
+        inventory_sources: ['cc-connect', 'openclaw'],
+        primary_model: 'sonnet',
+        workspace_dir: '/tmp/openclaw',
+      },
+    ]);
+  });
+
+  it('merges presence/history/signals from multiple sources', () => {
+    const source = new CompositePresenceSource([
+      {
+        listPresence: () => [{
+          agent_id: 'openclaw:opus',
+          presence: 'online',
+          provider: 'discord',
+          account_id: 'opus',
+          last_seen_at: '2026-04-09T10:00:00.000Z',
+          reason: 'provider_ready',
+        }],
+        listHistory: () => [{
+          occurred_at: '2026-04-09T10:00:00.000Z',
+          agent_id: 'openclaw:opus',
+          provider: 'discord',
+          account_id: 'opus',
+          presence: 'online',
+          reason: 'provider_ready',
+        }],
+      },
+      {
+        listPresence: () => [{
+          agent_id: 'cc-connect:codex',
+          presence: 'disconnected',
+          provider: 'discord',
+          account_id: null,
+          last_seen_at: '2026-04-09T10:02:00.000Z',
+          reason: 'management_disconnected',
+        }],
+        listSignals: () => [{
+          occurred_at: '2026-04-09T10:02:00.000Z',
+          provider: 'discord',
+          agent_id: 'cc-connect:codex',
+          account_id: null,
+          kind: 'transport_error',
+          severity: 'error',
+          detail: 'platform disconnected',
+        }],
+      },
+    ]);
+
+    expect(source.listPresence()).toEqual([
+      {
+        agent_id: 'openclaw:opus',
+        presence: 'online',
+        provider: 'discord',
+        account_id: 'opus',
+        last_seen_at: '2026-04-09T10:00:00.000Z',
+        reason: 'provider_ready',
+      },
+      {
+        agent_id: 'cc-connect:codex',
+        presence: 'disconnected',
+        provider: 'discord',
+        account_id: null,
+        last_seen_at: '2026-04-09T10:02:00.000Z',
+        reason: 'management_disconnected',
+      },
+    ]);
+    expect(source.listHistory?.()).toEqual([
+      {
+        occurred_at: '2026-04-09T10:00:00.000Z',
+        agent_id: 'openclaw:opus',
+        provider: 'discord',
+        account_id: 'opus',
+        presence: 'online',
+        reason: 'provider_ready',
+      },
+    ]);
+    expect(source.listSignals?.()).toEqual([
+      {
+        occurred_at: '2026-04-09T10:02:00.000Z',
+        provider: 'discord',
+        agent_id: 'cc-connect:codex',
+        account_id: null,
+        kind: 'transport_error',
+        severity: 'error',
+        detail: 'platform disconnected',
+      },
+    ]);
   });
 });

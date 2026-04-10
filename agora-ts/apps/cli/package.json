@@ -17,6 +17,7 @@
   "dependencies": {
     "@agora-ts/adapters-brain": "0.0.0",
     "@agora-ts/adapters-craftsman": "0.0.0",
+    "@agora-ts/adapters-cc-connect": "0.0.0",
     "@agora-ts/adapters-discord": "0.0.0",
     "@agora-ts/adapters-host": "0.0.0",
     "@agora-ts/adapters-openclaw": "0.0.0",

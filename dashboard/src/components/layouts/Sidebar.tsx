@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router';
 import {
   Archive,
   Bot,
+  Cable,
   LayoutDashboard,
   Columns3,
   FolderKanban,
@@ -34,6 +35,7 @@ const navIcons = {
   projects: FolderKanban,
   tasks: ListTodo,
   agents: Bot,
+  bridges: Cable,
   todos: ListTodo,
   archive: Archive,
   templates: Workflow,

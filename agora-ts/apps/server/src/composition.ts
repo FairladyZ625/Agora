@@ -2,6 +2,9 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import {
   CitizenService,
+  CcConnectManagementService,
+  CompositeAgentInventorySource,
+  CompositePresenceSource,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
   DashboardQueryService,
@@ -44,6 +47,7 @@ import {
   type IMProvisioningPort,
   type PresenceSource,
 } from '@agora-ts/core';
+import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter, CcConnectManagementPresenceSource, CcConnectSessionMirrorService } from '@agora-ts/adapters-cc-connect';
 import { FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
@@ -121,6 +125,7 @@ export interface ServerComposition {
   notificationDispatcher: NotificationDispatcher;
   taskConversationService: TaskConversationService;
   taskInboundService: TaskInboundService;
+  ccConnectSessionMirrorService?: CcConnectSessionMirrorService;
   discordPresenceService?: DiscordGatewayPresenceService;
 }
 
@@ -212,6 +217,13 @@ export interface ServerCompositionFactories {
     deps: { taskConversationService: TaskConversationService; taskContextBindingService: TaskContextBindingService; taskService: TaskService },
   ) => TaskInboundService;
   createDiscordPresenceService: (context: ServerCompositionContext) => DiscordGatewayPresenceService | undefined;
+  createCcConnectSessionMirrorService?: (
+    context: ServerCompositionContext,
+    deps: {
+      liveSessionStore: LiveSessionStore;
+      taskParticipationService: TaskParticipationService;
+    },
+  ) => CcConnectSessionMirrorService | undefined;
 }
 
 export function ensureRuntimeBrainPackRoot(projectRoot: string): string {
@@ -232,21 +244,31 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
     createLiveSessionStore: () => new LiveSessionStore({
       staleAfterMs: Number(process.env.AGORA_LIVE_SESSION_TTL_MS ?? 15 * 60 * 1000),
     }),
-    createAgentRegistry: () => new OpenClawAgentRegistry(
-      process.env.AGORA_OPENCLAW_CONFIG_PATH
-        ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
-        : {},
-    ),
-    createPresenceSource: () => new OpenClawLogPresenceSource(
-      process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH
-        ? {
-            logPath: process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH,
-            staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
-        }
-        : {
-            staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
-          },
-    ),
+    createAgentRegistry: () => new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
+    createPresenceSource: () => new CompositePresenceSource([
+      new OpenClawLogPresenceSource(
+        process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH
+          ? {
+              logPath: process.env.AGORA_OPENCLAW_GATEWAY_LOG_PATH,
+              staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
+          }
+          : {
+              staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
+            },
+      ),
+      new CcConnectManagementPresenceSource({
+        managementService: new CcConnectManagementService(),
+        staleAfterMs: Number(process.env.AGORA_PROVIDER_STALE_AFTER_MS ?? 10 * 60 * 1000),
+        pollIntervalMs: Number(process.env.AGORA_CC_CONNECT_POLL_INTERVAL_MS ?? 30_000),
+      }),
+    ]),
     createAgentRuntimePort: (_context, deps) => new InventoryBackedAgentRuntimePort(deps.agentRegistry),
     createCraftsmanDispatcher: (context, deps) => {
       const adapterMode = resolveCraftsmanRuntimeMode('server');
@@ -508,7 +530,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       repository: new CitizenRepository(context.db),
       projectService: deps.projectService,
       rolePackService: deps.rolePackService,
-      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+      projectionPorts: [new OpenClawCitizenProjectionAdapter(), new CcConnectCitizenProjectionAdapter()],
     }),
     createProjectBrainService: (context, deps) => new ProjectBrainService({
       projectService: deps.projectService,
@@ -564,6 +586,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         },
       });
     },
+    createCcConnectSessionMirrorService: () => undefined,
   };
 }
 
@@ -646,6 +669,18 @@ export function buildServerComposition(
     taskService,
   });
   const discordPresenceService = factories.createDiscordPresenceService(context);
+  const ccConnectSessionMirrorService = overrides.createCcConnectSessionMirrorService
+    ? overrides.createCcConnectSessionMirrorService(context, {
+        liveSessionStore,
+        taskParticipationService,
+      })
+    : new CcConnectSessionMirrorService({
+        managementService: new CcConnectManagementService(),
+        liveSessionStore,
+        onSessionSync: (session) => {
+          taskParticipationService.syncLiveSession(session);
+        },
+      });
 
   return {
     taskService,
@@ -664,6 +699,7 @@ export function buildServerComposition(
     notificationDispatcher,
     taskConversationService,
     taskInboundService,
+    ...(ccConnectSessionMirrorService ? { ccConnectSessionMirrorService } : {}),
     ...(discordPresenceService ? { discordPresenceService } : {}),
   };
 }
