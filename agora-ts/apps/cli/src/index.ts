@@ -94,7 +94,6 @@ import type {
   TemplateGraphDto,
   ValidateWorkflowRequestDto,
 } from '@agora-ts/contracts';
-import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import {
   craftsmanExecutionSendKeysRequestSchema,
   craftsmanExecutionSendTextRequestSchema,

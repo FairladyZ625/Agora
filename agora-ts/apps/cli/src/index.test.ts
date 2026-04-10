@@ -6,7 +6,6 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, HumanAccountRepository, HumanIdentityBindingRepository, runMigrations, SubtaskRepository, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository, TaskRepository, TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
 import type { CcConnectInspectionService, CcConnectManagementService, DashboardQueryService, TaskService } from '@agora-ts/core';
-import type { DashboardQueryService, TaskService } from '@agora-ts/core';
 import { HumanAccountService, ProjectBrainAutomationService, ProjectBrainService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TemplateAuthoringService } from '@agora-ts/core';
 import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
 import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
@@ -1900,7 +1899,7 @@ describe('agora-ts cli', () => {
       }),
     } satisfies Pick<CcConnectInspectionService, 'inspect'>;
     const program = createCliProgram({
-      ccConnectInspectionService: ccConnectInspectionService as CcConnectInspectionService,
+      ccConnectInspectionService: ccConnectInspectionService as unknown as CcConnectInspectionService,
       stdout,
       stderr,
     }).exitOverride();
@@ -1914,8 +1913,6 @@ describe('agora-ts cli', () => {
     expect(ccConnectInspectionService.inspect).toHaveBeenCalledWith({
       command: 'cc-connect',
       configPath: '/Users/lizeyu/.cc-connect/config.toml',
-      managementBaseUrl: undefined,
-      managementToken: undefined,
       timeoutMs: 5000,
     });
     expect(stdout.value).toContain('cc-connect binary: found');
@@ -1947,7 +1944,7 @@ describe('agora-ts cli', () => {
       ]),
     } satisfies Pick<CcConnectManagementService, 'listProjects'>;
     const program = createCliProgram({
-      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      ccConnectManagementService: ccConnectManagementService as unknown as CcConnectManagementService,
       stdout,
       stderr,
     }).exitOverride();
@@ -1960,8 +1957,6 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(ccConnectManagementService.listProjects).toHaveBeenCalledWith({
       configPath: '/Users/lizeyu/.cc-connect/config.toml',
-      managementBaseUrl: undefined,
-      managementToken: undefined,
       timeoutMs: 5000,
     });
     expect(stdout.value).toContain('proj-a\tcodex\tdiscord\t2\theartbeat=false');
@@ -1993,7 +1988,7 @@ describe('agora-ts cli', () => {
       }),
     } satisfies Pick<CcConnectManagementService, 'getProject'>;
     const program = createCliProgram({
-      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      ccConnectManagementService: ccConnectManagementService as unknown as CcConnectManagementService,
       stdout,
       stderr,
     }).exitOverride();
@@ -2007,8 +2002,6 @@ describe('agora-ts cli', () => {
     expect(ccConnectManagementService.getProject).toHaveBeenCalledWith({
       project: 'agora-codex-immediate',
       configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
-      managementBaseUrl: undefined,
-      managementToken: undefined,
       timeoutMs: 5000,
     });
     expect(stdout.value).toContain('agora-codex-immediate\tcodex\tsessions=1\tmode=full-auto');
@@ -2039,7 +2032,7 @@ describe('agora-ts cli', () => {
       }),
     } satisfies Pick<CcConnectManagementService, 'getSession'>;
     const program = createCliProgram({
-      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      ccConnectManagementService: ccConnectManagementService as unknown as CcConnectManagementService,
       stdout,
       stderr,
     }).exitOverride();
@@ -2058,8 +2051,6 @@ describe('agora-ts cli', () => {
       sessionId: 's1',
       historyLimit: 10,
       configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
-      managementBaseUrl: undefined,
-      managementToken: undefined,
       timeoutMs: 5000,
     });
     expect(stdout.value).toContain('s1\tdiscord:1475328660373372940\tcodex\tactive=true\tlive=false\thistory=2');
@@ -2080,7 +2071,7 @@ describe('agora-ts cli', () => {
       ]),
     } satisfies Pick<CcConnectManagementService, 'listBridgeAdapters'>;
     const program = createCliProgram({
-      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      ccConnectManagementService: ccConnectManagementService as unknown as CcConnectManagementService,
       stdout,
       stderr,
     }).exitOverride();
@@ -2093,8 +2084,6 @@ describe('agora-ts cli', () => {
     expect(stderr.value).toBe('');
     expect(ccConnectManagementService.listBridgeAdapters).toHaveBeenCalledWith({
       configPath: '/Users/lizeyu/.cc-connect/config.toml',
-      managementBaseUrl: undefined,
-      managementToken: undefined,
       timeoutMs: 5000,
     });
     expect(stdout.value).toContain('custom\tproj-a\ttext,files\t2026-04-09T21:10:00Z');
@@ -2109,7 +2098,7 @@ describe('agora-ts cli', () => {
       }),
     } satisfies Pick<CcConnectManagementService, 'sendMessage'>;
     const program = createCliProgram({
-      ccConnectManagementService: ccConnectManagementService as CcConnectManagementService,
+      ccConnectManagementService: ccConnectManagementService as unknown as CcConnectManagementService,
       stdout,
       stderr,
     }).exitOverride();
@@ -2128,8 +2117,6 @@ describe('agora-ts cli', () => {
       sessionKey: 'discord:1475328660373372940',
       message: 'follow-up from agora',
       configPath: '/Users/lizeyu/.cc-connect/config-immediate.toml',
-      managementBaseUrl: undefined,
-      managementToken: undefined,
       timeoutMs: 5000,
     });
     expect(stdout.value).toContain('message sent');

@@ -9,8 +9,12 @@ export default defineConfig({
       '@agora-ts/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
       '@agora-ts/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
       '@agora-ts/testing': fileURLToPath(new URL('./packages/testing/src/index.ts', import.meta.url)),
+      '@agora-ts/adapters-brain': fileURLToPath(new URL('./packages/adapters-brain/src/index.ts', import.meta.url)),
+      '@agora-ts/adapters-craftsman': fileURLToPath(new URL('./packages/adapters-craftsman/src/index.ts', import.meta.url)),
       '@agora-ts/adapters-discord': fileURLToPath(new URL('./packages/adapters-discord/src/index.ts', import.meta.url)),
+      '@agora-ts/adapters-host': fileURLToPath(new URL('./packages/adapters-host/src/index.ts', import.meta.url)),
       '@agora-ts/adapters-openclaw': fileURLToPath(new URL('./packages/adapters-openclaw/src/index.ts', import.meta.url)),
+      '@agora-ts/adapters-runtime': fileURLToPath(new URL('./packages/adapters-runtime/src/index.ts', import.meta.url)),
     },
   },
   test: {
