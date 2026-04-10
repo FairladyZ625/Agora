@@ -8,6 +8,7 @@ export * from './health.js';
 export * from './context-harvest.js';
 export * from './inbox.js';
 export * from './live-status.js';
+export * from './orchestrator-direct-create.js';
 export * from './task.js';
 export * from './dashboard.js';
 export * from './task-api.js';

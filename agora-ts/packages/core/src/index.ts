@@ -133,6 +133,8 @@ export type { NotificationDispatcherOptions } from './notification-dispatcher.js
 export { NotificationDispatcher } from './notification-dispatcher.js';
 export type { AgentPermission, PermissionServiceOptions } from './permission-service.js';
 export { PermissionService } from './permission-service.js';
+export type { OrchestratorDirectCreateServiceOptions } from './orchestrator-direct-create-service.js';
+export { OrchestratorDirectCreateService } from './orchestrator-direct-create-service.js';
 export type { ProgressServiceOptions } from './progress-service.js';
 export { ProgressService } from './progress-service.js';
 
