@@ -156,6 +156,8 @@ describe('project brain automation service', () => {
     expect(context.markdown).toContain('citizen-alpha');
     expect(context.markdown).toContain('Core First');
     expect(context.reference_bundle?.project_map.index_reference_key).toBe('index:index');
+    expect(context.attention_routing_plan?.routes[0]?.reference_key).toBe('index:index');
+    expect(context.markdown).toContain('## Attention Routing');
 
     const promoted = service.promoteKnowledge({
       project_id: 'proj-automation',
@@ -362,10 +364,13 @@ describe('project brain automation service', () => {
         audience: 'craftsman',
       },
     });
-    expect(context.reference_bundle?.attention_anchors).toEqual([
-      expect.objectContaining({ reference_key: 'decision:runtime-boundary' }),
-      expect.objectContaining({ reference_key: 'citizen_scaffold:citizen-alpha' }),
-    ]);
+    expect(context.attention_routing_plan?.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reference_key: 'decision:runtime-boundary', kind: 'focus' }),
+        expect.objectContaining({ reference_key: 'citizen_scaffold:citizen-alpha', kind: 'focus' }),
+      ]),
+    );
+    expect(context.attention_routing_plan?.summary).toContain('project map');
     expect(context.source_documents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'index', slug: 'index' }),
@@ -374,5 +379,6 @@ describe('project brain automation service', () => {
         expect.objectContaining({ kind: 'citizen_scaffold', slug: 'citizen-alpha' }),
       ]),
     );
+    expect(context.markdown).toContain('Matched the current task query');
   });
 });

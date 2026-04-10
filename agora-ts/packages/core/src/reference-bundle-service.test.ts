@@ -1,5 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { RetrievalResultDto } from '@agora-ts/contracts';
+import { describe, expect, it } from 'vitest';
 import type { ProjectBrainDocument } from './project-brain-query-port.js';
 import { ProjectBrainAutomationPolicy } from './project-brain-automation-policy.js';
 import { ReferenceBundleService } from './reference-bundle-service.js';
@@ -15,25 +14,6 @@ function makeDocument(overrides: Partial<ProjectBrainDocument> = {}): ProjectBra
     created_at: '2026-04-09T10:00:00.000Z',
     updated_at: '2026-04-09T12:00:00.000Z',
     source_task_ids: [],
-    ...overrides,
-  };
-}
-
-function makeRetrievalResult(overrides: Partial<RetrievalResultDto> = {}): RetrievalResultDto {
-  return {
-    scope: 'project_brain',
-    provider: 'project_brain',
-    reference_key: 'decision:runtime-boundary#chunk-1',
-    project_id: 'proj-brain',
-    title: 'Runtime Boundary',
-    path: '/brain/decision/runtime-boundary.md',
-    preview: 'Keep runtime-specific logic out of core.',
-    score: 4.2,
-    metadata: {
-      kind: 'decision',
-      slug: 'runtime-boundary',
-      document_key: 'decision:runtime-boundary',
-    },
     ...overrides,
   };
 }
@@ -70,12 +50,7 @@ describe('reference bundle service', () => {
     ]);
   });
 
-  it('turns retrieval matches into attention anchors and preferred references', async () => {
-    const retrievalService = {
-      retrieve: vi.fn().mockResolvedValue([
-        makeRetrievalResult(),
-      ]),
-    };
+  it('keeps async bundle generation equivalent to sync generation', async () => {
     const documents = [
       makeDocument({ kind: 'index', slug: 'index', title: 'Project Index', path: '/brain/index.md' }),
       makeDocument({ kind: 'timeline', slug: 'timeline', title: 'Timeline', path: '/brain/timeline.md' }),
@@ -87,10 +62,17 @@ describe('reference bundle service', () => {
         listDocuments: () => documents,
       },
       policy: new ProjectBrainAutomationPolicy(),
-      retrievalService,
     });
 
-    const bundle = await service.buildReferenceBundleAsync({
+    const asyncBundle = await service.buildReferenceBundleAsync({
+      project_id: 'proj-brain',
+      mode: 'bootstrap',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+    });
+    const syncBundle = service.buildReferenceBundle({
       project_id: 'proj-brain',
       mode: 'bootstrap',
       audience: 'craftsman',
@@ -99,26 +81,8 @@ describe('reference bundle service', () => {
       task_description: 'Need vector recall and lexical rerank.',
     });
 
-    expect(retrievalService.retrieve).toHaveBeenCalledWith({
-      scope: 'project_brain',
-      mode: 'task_context',
-      query: {
-        text: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
-      },
-      limit: 6,
-      context: {
-        task_id: 'OC-200',
-        project_id: 'proj-brain',
-        audience: 'craftsman',
-      },
-    });
-    expect(bundle.attention_anchors).toEqual([
-      expect.objectContaining({
-        reference_key: 'decision:runtime-boundary',
-        reason: 'Matched current task query in project brain.',
-      }),
-    ]);
-    expect(bundle.references).toEqual(
+    expect(asyncBundle).toEqual(syncBundle);
+    expect(asyncBundle.references).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ reference_key: 'decision:runtime-boundary' }),
       ]),

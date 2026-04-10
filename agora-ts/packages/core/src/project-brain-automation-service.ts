@@ -1,4 +1,5 @@
-import type { ReferenceBundleDto, RetrievalPlanDto, RetrievalResultDto, TaskRecord } from '@agora-ts/contracts';
+import type { AttentionRoutingPlanDto, ReferenceBundleDto, RetrievalPlanDto, RetrievalResultDto, TaskRecord } from '@agora-ts/contracts';
+import { AttentionRoutingService } from './attention-routing-service.js';
 import { renderMarkdownFrontmatter, stripMarkdownFrontmatter } from './markdown-frontmatter.js';
 import { ReferenceBundleService } from './reference-bundle-service.js';
 import type { ProjectKnowledgeKind } from './project-knowledge-port.js';
@@ -17,6 +18,7 @@ export interface ProjectBrainBootstrapContext {
   audience: ProjectBrainAutomationAudience;
   markdown: string;
   reference_bundle?: ReferenceBundleDto;
+  attention_routing_plan?: AttentionRoutingPlanDto;
   source_documents: Array<{
     kind: ProjectBrainDocument['kind'];
     slug: string;
@@ -59,12 +61,15 @@ export interface ProjectBrainAutomationServiceOptions {
 export class ProjectBrainAutomationService {
   private readonly policy: ProjectBrainAutomationPolicy;
   private readonly referenceBundleService: ReferenceBundleService;
+  private readonly attentionRoutingService: AttentionRoutingService;
 
   constructor(private readonly options: ProjectBrainAutomationServiceOptions) {
     this.policy = options.policy ?? new ProjectBrainAutomationPolicy();
     this.referenceBundleService = new ReferenceBundleService({
       projectBrainService: options.projectBrainService,
       policy: this.policy,
+    });
+    this.attentionRoutingService = new AttentionRoutingService({
       ...(options.retrievalService ? { retrievalService: options.retrievalService } : {}),
     });
   }
@@ -80,7 +85,16 @@ export class ProjectBrainAutomationService {
       ...(input.task_description ? { task_description: input.task_description } : {}),
       ...(input.allowed_citizen_ids && input.allowed_citizen_ids.length > 0 ? { allowed_citizen_ids: input.allowed_citizen_ids } : {}),
     });
-    return this.renderBootstrapContext(input, bundle);
+    const attentionRoutingPlan = this.attentionRoutingService.buildPlan({
+      project_id: input.project_id,
+      mode: 'bootstrap',
+      audience: input.audience,
+      reference_bundle: bundle,
+      ...(input.task_id ? { task_id: input.task_id } : {}),
+      ...(input.task_title ? { task_title: input.task_title } : {}),
+      ...(input.task_description ? { task_description: input.task_description } : {}),
+    });
+    return this.renderBootstrapContext(input, bundle, attentionRoutingPlan);
   }
 
   async buildBootstrapContextAsync(input: BuildProjectBrainBootstrapContextInput): Promise<ProjectBrainBootstrapContext> {
@@ -94,12 +108,22 @@ export class ProjectBrainAutomationService {
       ...(input.task_description ? { task_description: input.task_description } : {}),
       ...(input.allowed_citizen_ids && input.allowed_citizen_ids.length > 0 ? { allowed_citizen_ids: input.allowed_citizen_ids } : {}),
     });
-    return this.renderBootstrapContext(input, bundle);
+    const attentionRoutingPlan = await this.attentionRoutingService.buildPlanAsync({
+      project_id: input.project_id,
+      mode: 'bootstrap',
+      audience: input.audience,
+      reference_bundle: bundle,
+      ...(input.task_id ? { task_id: input.task_id } : {}),
+      ...(input.task_title ? { task_title: input.task_title } : {}),
+      ...(input.task_description ? { task_description: input.task_description } : {}),
+    });
+    return this.renderBootstrapContext(input, bundle, attentionRoutingPlan);
   }
 
   private renderBootstrapContext(
     input: BuildProjectBrainBootstrapContextInput,
     bundle: ReferenceBundleDto,
+    attentionRoutingPlan: AttentionRoutingPlanDto,
   ): ProjectBrainBootstrapContext {
     const selected = bundle.references
       .map((reference) => this.options.projectBrainService.getDocument(
@@ -112,13 +136,14 @@ export class ProjectBrainAutomationService {
       project_id: input.project_id,
       audience: input.audience,
       reference_bundle: bundle,
+      attention_routing_plan: attentionRoutingPlan,
       source_documents: selected.map((doc) => ({
         kind: doc.kind,
         slug: doc.slug,
         title: doc.title,
         path: doc.path,
       })),
-      markdown: renderBootstrapMarkdown(input.project_id, input.audience, selected),
+      markdown: renderBootstrapMarkdown(input.project_id, input.audience, selected, attentionRoutingPlan),
     };
   }
 
@@ -174,6 +199,7 @@ function renderBootstrapMarkdown(
   projectId: string,
   audience: ProjectBrainAutomationAudience,
   documents: ProjectBrainDocument[],
+  attentionRoutingPlan: AttentionRoutingPlanDto,
 ) {
   const projectName = documents.find((doc) => doc.kind === 'index')?.title ?? projectId;
   const frontmatter = renderMarkdownFrontmatter({
@@ -193,6 +219,12 @@ function renderBootstrapMarkdown(
     '## Read Order',
     '',
     ...documents.map((doc) => `- ${doc.kind}/${doc.slug} | ${doc.title ?? '-'} | ${doc.path}`),
+    '',
+    '## Attention Routing',
+    '',
+    attentionRoutingPlan.summary,
+    '',
+    ...attentionRoutingPlan.routes.map((route) => `${route.ordinal}. ${route.reference_key} — ${route.rationale}`),
   ];
 
   for (const doc of documents) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ReferenceBundleDto } from '@agora-ts/contracts';
+import type { AttentionRoutingPlanDto, ReferenceBundleDto } from '@agora-ts/contracts';
 import { ContextLifecycleEngine } from './context-lifecycle-engine.js';
 
 function makeReferenceBundle(): ReferenceBundleDto {
@@ -28,8 +28,20 @@ function makeReferenceBundle(): ReferenceBundleDto {
       { scope: 'project_brain', reference_key: 'index:index', project_id: 'proj-brain', kind: 'index', slug: 'index', title: 'Project Index', path: '/brain/index.md' },
       { scope: 'project_brain', reference_key: 'decision:runtime-boundary', project_id: 'proj-brain', kind: 'decision', slug: 'runtime-boundary', title: 'Runtime Boundary', path: '/brain/decision/runtime-boundary.md' },
     ],
-    attention_anchors: [
-      { reference_key: 'decision:runtime-boundary', reason: 'Matched current task query in project brain.', score: 4.2 },
+  };
+}
+
+function makeAttentionRoutingPlan(): AttentionRoutingPlanDto {
+  return {
+    scope: 'project_brain',
+    mode: 'disclose',
+    project_id: 'proj-brain',
+    task_id: 'OC-200',
+    audience: 'controller',
+    summary: 'Start from the project map, then focus on the task-matched decision note.',
+    routes: [
+      { reference_key: 'index:index', kind: 'project_map', ordinal: 1, rationale: 'Start here for project structure.' },
+      { reference_key: 'decision:runtime-boundary', kind: 'focus', ordinal: 2, rationale: 'Matched the current task query.', score: 4.2 },
     ],
   };
 }
@@ -53,6 +65,9 @@ describe('context lifecycle engine', () => {
       },
       referenceBundleService: {
         buildReferenceBundleAsync: vi.fn().mockResolvedValue(makeReferenceBundle()),
+      },
+      attentionRoutingService: {
+        buildPlanAsync: vi.fn().mockResolvedValue(makeAttentionRoutingPlan()),
       },
       taskWorktreeService: {
         resolveBaseWorkdir: () => '/Users/example/.agora/projects/proj-brain',
@@ -105,6 +120,12 @@ describe('context lifecycle engine', () => {
         expect.objectContaining({ phase: 'harvest', status: 'ready' }),
         expect.objectContaining({ phase: 'evolve', status: 'ready' }),
       ]),
+    );
+    expect(snapshot.phases.find((phase) => phase.phase === 'disclose')?.metadata).toEqual(
+      expect.objectContaining({
+        attention_route_keys: ['index:index', 'decision:runtime-boundary'],
+        attention_summary: 'Start from the project map, then focus on the task-matched decision note.',
+      }),
     );
   });
 

@@ -28,7 +28,7 @@ describe('context reference contracts', () => {
     expect(parsed.entries[0]?.reference_key).toBe('index:index');
   });
 
-  it('accepts a reference bundle with project map and attention anchors', () => {
+  it('accepts a reference bundle with project map and curated references', () => {
     const parsed = referenceBundleSchema.parse({
       scope: 'project_brain',
       mode: 'bootstrap',
@@ -56,15 +56,8 @@ describe('context reference contracts', () => {
           path: '/brain/decision/runtime-boundary.md',
         },
       ],
-      attention_anchors: [
-        {
-          reference_key: 'decision:runtime-boundary',
-          reason: 'Matched current task query in project brain.',
-          score: 4.1,
-        },
-      ],
     });
 
-    expect(parsed.attention_anchors[0]?.reference_key).toBe('decision:runtime-boundary');
+    expect(parsed.references[0]?.reference_key).toBe('decision:runtime-boundary');
   });
 });
