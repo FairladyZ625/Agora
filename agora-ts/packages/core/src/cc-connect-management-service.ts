@@ -16,7 +16,7 @@ type ManagementDependencies = {
   readFile?: (path: string, encoding: BufferEncoding) => string;
   exists?: (path: string) => boolean;
   fetchJson?: (url: string, init: {
-    method?: 'GET' | 'POST';
+    method?: 'GET' | 'POST' | 'DELETE';
     headers: Record<string, string>;
     timeoutMs: number;
     body?: string;
@@ -125,6 +125,22 @@ export interface CcConnectSendMessageReceipt {
   message: string;
 }
 
+export interface CcConnectSessionCreateReceipt {
+  id: string;
+  session_key: string;
+  name: string | null;
+  created_at: string | null;
+}
+
+export interface CcConnectSessionSwitchReceipt {
+  message: string;
+  active_session_id: string;
+}
+
+export interface CcConnectDeleteReceipt {
+  message: string;
+}
+
 function normalizeBaseUrl(input: string): string {
   return input.endsWith('/') ? input.slice(0, -1) : input;
 }
@@ -189,7 +205,7 @@ function parseManagementConfig(raw: string): { enabled: boolean | null; port: nu
 async function defaultFetchJson(
   url: string,
   init: {
-    method?: 'GET' | 'POST';
+    method?: 'GET' | 'POST' | 'DELETE';
     headers: Record<string, string>;
     timeoutMs: number;
     body?: string;
@@ -257,7 +273,7 @@ export class CcConnectManagementService {
   private async request<T>(
     connection: ResolvedConnection,
     path: string,
-    options: { method?: 'GET' | 'POST'; body?: unknown } = {},
+    options: { method?: 'GET' | 'POST' | 'DELETE'; body?: unknown } = {},
   ): Promise<T> {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${connection.token}`,
@@ -351,6 +367,53 @@ export class CcConnectManagementService {
           session_key: input.sessionKey,
           message: input.message,
         },
+      },
+    );
+  }
+
+  async createSession(
+    input: CcConnectManagementInput & { project: string; sessionKey: string; name?: string | null },
+  ): Promise<CcConnectSessionCreateReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectSessionCreateReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/sessions`,
+      {
+        method: 'POST',
+        body: {
+          session_key: input.sessionKey,
+          ...(input.name?.trim() ? { name: input.name.trim() } : {}),
+        },
+      },
+    );
+  }
+
+  async switchSession(
+    input: CcConnectManagementInput & { project: string; sessionKey: string; sessionId: string },
+  ): Promise<CcConnectSessionSwitchReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectSessionSwitchReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/sessions/switch`,
+      {
+        method: 'POST',
+        body: {
+          session_key: input.sessionKey,
+          session_id: input.sessionId,
+        },
+      },
+    );
+  }
+
+  async deleteSession(
+    input: CcConnectManagementInput & { project: string; sessionId: string },
+  ): Promise<CcConnectDeleteReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectDeleteReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/sessions/${encodeURIComponent(input.sessionId)}`,
+      {
+        method: 'DELETE',
       },
     );
   }

@@ -70,6 +70,60 @@ export interface AgentRuntimePort {
   resolveAgent(agentRef: string): RuntimeParticipantResolution | null;
 }
 
+export class CompositeAgentInventorySource implements AgentInventorySource {
+  constructor(private readonly sources: AgentInventorySource[]) {}
+
+  listAgents(): RegisteredAgent[] {
+    const merged = new Map<string, RegisteredAgent>();
+
+    for (const source of this.sources) {
+      for (const agent of source.listAgents()) {
+        const current = merged.get(agent.id);
+        if (!current) {
+          merged.set(agent.id, {
+            ...agent,
+            channel_providers: [...agent.channel_providers].sort(),
+            inventory_sources: [...agent.inventory_sources].sort(),
+          });
+          continue;
+        }
+        merged.set(agent.id, {
+          ...current,
+          host_framework: current.host_framework ?? agent.host_framework,
+          channel_providers: mergeUniqueSorted(current.channel_providers, agent.channel_providers),
+          inventory_sources: mergeUniqueSorted(current.inventory_sources, agent.inventory_sources),
+          primary_model: current.primary_model ?? agent.primary_model,
+          workspace_dir: current.workspace_dir ?? agent.workspace_dir,
+          agent_origin: current.agent_origin ?? agent.agent_origin,
+          briefing_mode: current.briefing_mode ?? agent.briefing_mode,
+        });
+      }
+    }
+
+    return Array.from(merged.values()).sort((left, right) => left.id.localeCompare(right.id));
+  }
+}
+
+export class CompositePresenceSource implements PresenceSource {
+  constructor(private readonly sources: PresenceSource[]) {}
+
+  listPresence(): AgentPresenceSnapshot[] {
+    return this.sources.flatMap((source) => source.listPresence());
+  }
+
+  listHistory(): AgentPresenceHistoryEvent[] {
+    return this.sources
+      .flatMap((source) => typeof source.listHistory === 'function' ? source.listHistory() : [])
+      .sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime());
+  }
+
+  listSignals(): AgentProviderSignalEvent[] {
+    return this.sources
+      .flatMap((source) => typeof source.listSignals === 'function' ? source.listSignals() : [])
+      .sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime());
+  }
+}
+
 export class InventoryBackedAgentRuntimePort implements AgentRuntimePort {
   constructor(private readonly agentInventory: AgentInventorySource) {}
 
@@ -86,4 +140,8 @@ export class InventoryBackedAgentRuntimePort implements AgentRuntimePort {
       ...(agent.briefing_mode ? { briefing_mode: agent.briefing_mode } : {}),
     };
   }
+}
+
+function mergeUniqueSorted(left: string[], right: string[]) {
+  return Array.from(new Set([...left, ...right])).sort();
 }

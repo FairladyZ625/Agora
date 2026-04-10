@@ -310,6 +310,7 @@ export class DashboardQueryService {
     }
 
     for (const session of this.liveSessions?.listActive() ?? []) {
+      const sessionSource = session.source;
       const current = agents.get(session.agent_id) ?? {
         id: session.agent_id,
         role: null,
@@ -324,8 +325,8 @@ export class DashboardQueryService {
         last_active_at: session.last_event_at,
         last_seen_at: session.last_event_at,
         channel_providers: [] as string[],
-        host_framework: 'openclaw' as string | null,
-        inventory_sources: ['openclaw'] as string[],
+        host_framework: sessionSource as string | null,
+        inventory_sources: [sessionSource] as string[],
         account_id: null,
         primary_model: null as string | null,
         workspace_dir: null as string | null,
@@ -336,8 +337,8 @@ export class DashboardQueryService {
       current.last_active_at = session.last_event_at;
       current.last_seen_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
-      current.host_framework = current.host_framework ?? 'openclaw';
-      mergeUnique(current.inventory_sources, 'openclaw');
+      current.host_framework = current.host_framework ?? sessionSource;
+      mergeUnique(current.inventory_sources, sessionSource);
       const channelProvider = normalizeChannelProvider(session.channel);
       if (channelProvider && channelProvider !== session.agent_id) {
         mergeUnique(current.channel_providers, channelProvider);

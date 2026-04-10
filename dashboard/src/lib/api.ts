@@ -367,6 +367,146 @@ const projectNomosInstallFromRegisteredSourceSchema = z.object({
 
 export type ApiProjectNomosInstallFromRegisteredSourceDto = z.infer<typeof projectNomosInstallFromRegisteredSourceSchema>;
 
+const ccConnectInspectSchema = z.object({
+  binary: z.object({
+    command: z.string().min(1),
+    found: z.boolean(),
+    resolvedPath: z.string().nullable(),
+    version: z.string().nullable(),
+    reason: z.string().nullable(),
+    error: z.string().nullable().optional(),
+  }),
+  config: z.object({
+    path: z.string().min(1),
+    exists: z.boolean(),
+    management: z.object({
+      enabled: z.boolean().nullable(),
+      port: z.number().nullable(),
+      tokenPresent: z.boolean(),
+    }),
+  }),
+  management: z.object({
+    url: z.string().nullable(),
+    reachable: z.boolean(),
+    version: z.string().nullable(),
+    projectsCount: z.number().nullable(),
+    bridgeAdapterCount: z.number().nullable(),
+    connectedPlatforms: z.array(z.string().min(1)),
+    reason: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+const ccConnectSessionMessageSchema = z.object({
+  role: z.string().min(1),
+  content: z.string(),
+  timestamp: z.string().nullable(),
+});
+
+const ccConnectProjectSummarySchema = z.object({
+  name: z.string().min(1),
+  agent_type: z.string().min(1),
+  platforms: z.array(z.string().min(1)),
+  sessions_count: z.number(),
+  heartbeat_enabled: z.boolean(),
+});
+
+const ccConnectSessionSummarySchema = z.object({
+  id: z.string().min(1),
+  session_key: z.string().min(1),
+  name: z.string().nullable(),
+  platform: z.string().min(1),
+  agent_type: z.string().min(1),
+  active: z.boolean(),
+  live: z.boolean(),
+  history_count: z.number(),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
+  user_name: z.string().nullable(),
+  chat_name: z.string().nullable(),
+  last_message: ccConnectSessionMessageSchema.nullable().optional(),
+});
+
+const ccConnectProjectDetailSchema = z.object({
+  name: z.string().min(1),
+  agent_type: z.string().min(1),
+  platforms: z.array(z.object({
+    type: z.string().min(1),
+    connected: z.boolean(),
+  })),
+  platform_configs: z.array(z.object({
+    type: z.string().min(1),
+    allow_from: z.string().nullable(),
+  })),
+  sessions_count: z.number(),
+  active_session_keys: z.array(z.string().min(1)),
+  heartbeat: z.object({
+    enabled: z.boolean(),
+    paused: z.boolean(),
+    interval_mins: z.number().nullable(),
+    session_key: z.string().nullable(),
+  }).nullable(),
+  settings: z.object({
+    language: z.string().nullable(),
+    admin_from: z.string().nullable(),
+    disabled_commands: z.array(z.string().min(1)),
+    quiet: z.boolean().nullable(),
+  }),
+  work_dir: z.string().nullable(),
+  agent_mode: z.string().nullable(),
+  mode: z.string().nullable(),
+  show_context_indicator: z.boolean().nullable(),
+});
+
+const ccConnectSessionDetailSchema = z.object({
+  id: z.string().min(1),
+  session_key: z.string().min(1),
+  name: z.string().nullable(),
+  platform: z.string().min(1),
+  agent_type: z.string().min(1),
+  agent_session_id: z.string().nullable(),
+  active: z.boolean(),
+  live: z.boolean(),
+  history_count: z.number(),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
+  history: z.array(ccConnectSessionMessageSchema),
+});
+
+const ccConnectBridgeAdapterSummarySchema = z.object({
+  platform: z.string().min(1),
+  project: z.string().nullable(),
+  capabilities: z.array(z.string().min(1)),
+  connected_at: z.string().nullable(),
+});
+
+const ccConnectSendMessageReceiptSchema = z.object({
+  message: z.string(),
+});
+
+const ccConnectSessionCreateReceiptSchema = z.object({
+  id: z.string().min(1),
+  session_key: z.string().min(1),
+  name: z.string().nullable(),
+  created_at: z.string().nullable(),
+});
+
+const ccConnectSessionSwitchReceiptSchema = z.object({
+  message: z.string(),
+  active_session_id: z.string().min(1),
+});
+
+export type ApiCcConnectInspectionDto = z.infer<typeof ccConnectInspectSchema>;
+export type ApiCcConnectProjectSummaryDto = z.infer<typeof ccConnectProjectSummarySchema>;
+export type ApiCcConnectSessionMessageDto = z.infer<typeof ccConnectSessionMessageSchema>;
+export type ApiCcConnectSessionSummaryDto = z.infer<typeof ccConnectSessionSummarySchema>;
+export type ApiCcConnectProjectDetailDto = z.infer<typeof ccConnectProjectDetailSchema>;
+export type ApiCcConnectSessionDetailDto = z.infer<typeof ccConnectSessionDetailSchema>;
+export type ApiCcConnectBridgeAdapterSummaryDto = z.infer<typeof ccConnectBridgeAdapterSummarySchema>;
+export type ApiCcConnectSendMessageReceiptDto = z.infer<typeof ccConnectSendMessageReceiptSchema>;
+export type ApiCcConnectSessionCreateReceiptDto = z.infer<typeof ccConnectSessionCreateReceiptSchema>;
+export type ApiCcConnectSessionSwitchReceiptDto = z.infer<typeof ccConnectSessionSwitchReceiptSchema>;
+
 class ApiError extends Error {
   status: number;
   statusText: string;
@@ -921,6 +1061,119 @@ export function getCraftsmanRuntimeTail(agent: string, lines = 20): Promise<{ ou
   return request<{ output: string | null }>(
     `/craftsmen/runtime/tail/${encodeURIComponent(agent)}?lines=${encodeURIComponent(String(lines))}`,
     z.object({ output: z.string().nullable() }),
+  );
+}
+
+export function getCcConnectDetect(): Promise<ApiCcConnectInspectionDto> {
+  return request<ApiCcConnectInspectionDto>(
+    '/external-bridges/cc-connect/detect',
+    ccConnectInspectSchema,
+  );
+}
+
+export function getCcConnectStatus(): Promise<ApiCcConnectProjectSummaryDto[]> {
+  return request<ApiCcConnectProjectSummaryDto[]>(
+    '/external-bridges/cc-connect/status',
+    z.array(ccConnectProjectSummarySchema),
+  );
+}
+
+export function listCcConnectProjects(): Promise<ApiCcConnectProjectSummaryDto[]> {
+  return request<ApiCcConnectProjectSummaryDto[]>(
+    '/external-bridges/cc-connect/projects',
+    z.array(ccConnectProjectSummarySchema),
+  );
+}
+
+export function getCcConnectProject(project: string): Promise<ApiCcConnectProjectDetailDto> {
+  return request<ApiCcConnectProjectDetailDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}`,
+    ccConnectProjectDetailSchema,
+  );
+}
+
+export function listCcConnectSessions(project: string): Promise<ApiCcConnectSessionSummaryDto[]> {
+  return request<ApiCcConnectSessionSummaryDto[]>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/sessions`,
+    z.array(ccConnectSessionSummarySchema),
+  );
+}
+
+export function getCcConnectSession(
+  project: string,
+  sessionId: string,
+  historyLimit?: number,
+): Promise<ApiCcConnectSessionDetailDto> {
+  const params = new URLSearchParams();
+  if (historyLimit !== undefined) {
+    params.set('history_limit', String(historyLimit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return request<ApiCcConnectSessionDetailDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/sessions/${encodeURIComponent(sessionId)}${query}`,
+    ccConnectSessionDetailSchema,
+  );
+}
+
+export function createCcConnectSession(
+  project: string,
+  input: { session_key: string; name?: string },
+): Promise<ApiCcConnectSessionCreateReceiptDto> {
+  return request<ApiCcConnectSessionCreateReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/sessions`,
+    ccConnectSessionCreateReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function switchCcConnectSession(
+  project: string,
+  input: { session_key: string; session_id: string },
+): Promise<ApiCcConnectSessionSwitchReceiptDto> {
+  return request<ApiCcConnectSessionSwitchReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/sessions/switch`,
+    ccConnectSessionSwitchReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function deleteCcConnectSession(
+  project: string,
+  sessionId: string,
+): Promise<ApiCcConnectSendMessageReceiptDto> {
+  return request<ApiCcConnectSendMessageReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/sessions/${encodeURIComponent(sessionId)}`,
+    ccConnectSendMessageReceiptSchema,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
+export function listCcConnectBridges(): Promise<ApiCcConnectBridgeAdapterSummaryDto[]> {
+  return request<ApiCcConnectBridgeAdapterSummaryDto[]>(
+    '/external-bridges/cc-connect/bridges',
+    z.array(ccConnectBridgeAdapterSummarySchema),
+  );
+}
+
+export function sendCcConnectProjectMessage(
+  project: string,
+  input: { session_key: string; message: string },
+): Promise<ApiCcConnectSendMessageReceiptDto> {
+  return request<ApiCcConnectSendMessageReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/send`,
+    ccConnectSendMessageReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
   );
 }
 

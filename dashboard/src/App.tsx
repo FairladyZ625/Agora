@@ -12,6 +12,7 @@ import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 import { TasksPage } from '@/pages/TasksPage';
 import { CreateTaskPage } from '@/pages/CreateTaskPage';
 import { AgentsPage } from '@/pages/AgentsPage';
+import { ExternalBridgesPage } from '@/pages/ExternalBridgesPage';
 import { TodosPage } from '@/pages/TodosPage';
 import { ArchivePage } from '@/pages/ArchivePage';
 import { TemplatesPage } from '@/pages/TemplatesPage';
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
         <Route path="/projects/:projectId/brain" element={<ProjectBrainPage />} />
         <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/bridges" element={<ExternalBridgesPage />} />
         <Route path="/todos" element={<TodosPage />} />
         <Route path="/archive" element={<ArchivePage />} />
         <Route path="/templates" element={<TemplatesPage />} />

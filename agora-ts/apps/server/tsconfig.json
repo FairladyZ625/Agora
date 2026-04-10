@@ -15,6 +15,7 @@
     { "path": "../../packages/adapters-craftsman" },
     { "path": "../../packages/adapters-runtime" },
     { "path": "../../packages/adapters-openclaw" },
+    { "path": "../../packages/adapters-cc-connect" },
     { "path": "../../packages/adapters-discord" }
   ]
 }

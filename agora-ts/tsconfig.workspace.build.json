@@ -10,6 +10,7 @@
     { "path": "./packages/adapters-brain/tsconfig.build.json" },
     { "path": "./packages/adapters-host/tsconfig.build.json" },
     { "path": "./packages/adapters-openclaw/tsconfig.build.json" },
+    { "path": "./packages/adapters-cc-connect/tsconfig.build.json" },
     { "path": "./packages/adapters-discord/tsconfig.build.json" },
     { "path": "./packages/testing/tsconfig.build.json" },
     { "path": "./apps/server/tsconfig.build.json" },

@@ -12,6 +12,7 @@
     { "path": "../../packages/adapters-craftsman/tsconfig.build.json" },
     { "path": "../../packages/adapters-runtime/tsconfig.build.json" },
     { "path": "../../packages/adapters-openclaw/tsconfig.build.json" },
+    { "path": "../../packages/adapters-cc-connect/tsconfig.build.json" },
     { "path": "../../packages/adapters-discord/tsconfig.build.json" }
   ],
   "exclude": ["src/**/*.test.ts", "dist", "**/dist/**"]
