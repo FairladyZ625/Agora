@@ -2,8 +2,11 @@ import { create } from 'zustand';
 import * as api from '@/lib/api';
 import type {
   CcConnectBridgeAdapterSummary,
+  CcConnectHeartbeatStatus,
   CcConnectInspection,
+  CcConnectModelState,
   CcConnectProjectDetail,
+  CcConnectProviderState,
   CcConnectProjectSummary,
   CcConnectSessionDetail,
   CcConnectSessionMessage,
@@ -137,6 +140,41 @@ function mapBridge(dto: api.ApiCcConnectBridgeAdapterSummaryDto): CcConnectBridg
   };
 }
 
+function mapProviderState(dto: api.ApiCcConnectProviderListDto): CcConnectProviderState {
+  return {
+    providers: dto.providers.map((item) => ({
+      name: item.name,
+      active: item.active,
+      model: item.model,
+      baseUrl: item.base_url,
+    })),
+    activeProvider: dto.active_provider,
+  };
+}
+
+function mapModelState(dto: api.ApiCcConnectModelListDto): CcConnectModelState {
+  return {
+    models: dto.models,
+    current: dto.current,
+  };
+}
+
+function mapHeartbeatStatus(dto: api.ApiCcConnectHeartbeatStatusDto): CcConnectHeartbeatStatus {
+  return {
+    enabled: dto.enabled,
+    paused: dto.paused,
+    intervalMins: dto.interval_mins,
+    onlyWhenIdle: dto.only_when_idle ?? null,
+    sessionKey: dto.session_key,
+    silent: dto.silent ?? null,
+    runCount: dto.run_count ?? null,
+    errorCount: dto.error_count ?? null,
+    skippedBusy: dto.skipped_busy ?? null,
+    lastRun: dto.last_run ?? null,
+    lastError: dto.last_error ?? null,
+  };
+}
+
 function pickDefaultSession(sessions: CcConnectSessionSummary[]): CcConnectSessionSummary | null {
   return sessions.find((item) => item.live) ?? sessions.find((item) => item.active) ?? sessions[0] ?? null;
 }
@@ -151,10 +189,14 @@ interface CcConnectStore {
   sessionsByProject: Record<string, CcConnectSessionSummary[]>;
   selectedSessionIdByProject: Record<string, string | null>;
   sessionDetailsByProject: Record<string, Record<string, CcConnectSessionDetail>>;
+  providersByProject: Record<string, CcConnectProviderState>;
+  modelsByProject: Record<string, CcConnectModelState>;
+  heartbeatByProject: Record<string, CcConnectHeartbeatStatus>;
   loading: boolean;
   detailLoading: boolean;
   sendLoading: boolean;
   sessionActionLoading: boolean;
+  controlActionLoading: boolean;
   error: string | null;
   sendReceipt: string | null;
   fetchSnapshot: () => Promise<'live' | 'error'>;
@@ -164,6 +206,12 @@ interface CcConnectStore {
   createNamedSession: (name: string) => Promise<'live' | 'error'>;
   switchActiveSession: (sessionId: string) => Promise<'live' | 'error'>;
   deleteSelectedSession: () => Promise<'live' | 'error'>;
+  activateProvider: (provider: string) => Promise<'live' | 'error'>;
+  setModel: (model: string) => Promise<'live' | 'error'>;
+  pauseHeartbeat: () => Promise<'live' | 'error'>;
+  resumeHeartbeat: () => Promise<'live' | 'error'>;
+  runHeartbeat: () => Promise<'live' | 'error'>;
+  updateHeartbeatInterval: (minutes: number) => Promise<'live' | 'error'>;
   clearError: () => void;
 }
 
@@ -177,10 +225,14 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
   sessionsByProject: {},
   selectedSessionIdByProject: {},
   sessionDetailsByProject: {},
+  providersByProject: {},
+  modelsByProject: {},
+  heartbeatByProject: {},
   loading: false,
   detailLoading: false,
   sendLoading: false,
   sessionActionLoading: false,
+  controlActionLoading: false,
   error: null,
   sendReceipt: null,
 
@@ -231,9 +283,12 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
     }
     set({ selectedProjectName: projectName, detailLoading: true, error: null, sendReceipt: null });
     try {
-      const [projectDto, sessionsDto] = await Promise.all([
+      const [projectDto, sessionsDto, providersDto, modelsDto, heartbeatDto] = await Promise.all([
         api.getCcConnectProject(projectName),
         api.listCcConnectSessions(projectName),
+        api.listCcConnectProviders(projectName),
+        api.listCcConnectModels(projectName),
+        api.getCcConnectHeartbeat(projectName),
       ]);
       const sessions = sessionsDto.map(mapSessionSummary);
       const selectedSession = pickDefaultSession(sessions);
@@ -242,6 +297,18 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
         sessionsByProject: {
           ...state.sessionsByProject,
           [projectName]: sessions,
+        },
+        providersByProject: {
+          ...state.providersByProject,
+          [projectName]: mapProviderState(providersDto),
+        },
+        modelsByProject: {
+          ...state.modelsByProject,
+          [projectName]: mapModelState(modelsDto),
+        },
+        heartbeatByProject: {
+          ...state.heartbeatByProject,
+          [projectName]: mapHeartbeatStatus(heartbeatDto),
         },
         selectedSessionIdByProject: {
           ...state.selectedSessionIdByProject,
@@ -448,6 +515,156 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
     } catch (error) {
       set({
         sessionActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  activateProvider: async (provider) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.activateCcConnectProvider(projectName, provider);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  setModel: async (model) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.setCcConnectModel(projectName, model);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  pauseHeartbeat: async () => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.pauseCcConnectHeartbeat(projectName);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  resumeHeartbeat: async () => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.resumeCcConnectHeartbeat(projectName);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  runHeartbeat: async () => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.runCcConnectHeartbeat(projectName);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  updateHeartbeatInterval: async (minutes) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.updateCcConnectHeartbeatInterval(projectName, minutes);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
         error: error instanceof Error ? error.message : String(error),
       });
       return 'error';

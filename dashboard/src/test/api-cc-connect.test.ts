@@ -1,15 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  activateCcConnectProvider,
   createCcConnectSession,
   deleteCcConnectSession,
+  getCcConnectHeartbeat,
   getCcConnectDetect,
   getCcConnectProject,
   getCcConnectSession,
+  listCcConnectModels,
   listCcConnectBridges,
   listCcConnectProjects,
+  listCcConnectProviders,
   listCcConnectSessions,
+  pauseCcConnectHeartbeat,
+  resumeCcConnectHeartbeat,
+  runCcConnectHeartbeat,
   sendCcConnectProjectMessage,
+  setCcConnectModel,
   switchCcConnectSession,
+  updateCcConnectHeartbeatInterval,
 } from '@/lib/api';
 
 function expectFetchCall(path: string, init: Record<string, unknown>) {
@@ -162,6 +171,84 @@ describe('cc-connect api client', () => {
           }),
         };
       }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/providers')) {
+        return {
+          ok: true,
+          json: async () => ({
+            providers: [{ name: 'gac', active: true, model: 'gpt-5.4', base_url: 'https://gaccode.com/codex/v1' }],
+            active_provider: 'gac',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/providers/relay/activate') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            active_provider: 'relay',
+            message: 'provider activated',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/models')) {
+        return {
+          ok: true,
+          json: async () => ({
+            models: ['gpt-5.4', 'gpt-5.3-codex'],
+            current: 'gpt-5.4',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/model') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            model: 'gpt-5.3-codex',
+            message: 'model updated',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/heartbeat')) {
+        return {
+          ok: true,
+          json: async () => ({
+            enabled: true,
+            paused: false,
+            interval_mins: 30,
+            only_when_idle: true,
+            session_key: 'discord:thread:1',
+            silent: true,
+            run_count: 4,
+            error_count: 0,
+            skipped_busy: 1,
+            last_run: '2026-04-10T00:10:00.000Z',
+            last_error: '',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/heartbeat/pause') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ message: 'heartbeat paused' }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/heartbeat/resume') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ message: 'heartbeat resumed' }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/heartbeat/run') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ message: 'heartbeat triggered' }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/heartbeat/interval') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ interval_mins: 15, message: 'interval updated' }),
+        };
+      }
       throw new Error(`unexpected fetch: ${url}`);
     }) as unknown as typeof fetch;
   });
@@ -229,5 +316,27 @@ describe('cc-connect api client', () => {
     expectFetchCall('/external-bridges/cc-connect/projects/agora-codex/sessions/session-2', {
       method: 'DELETE',
     });
+  });
+
+  it('reads and controls providers, model, and heartbeat', async () => {
+    const providers = await listCcConnectProviders('agora-codex');
+    const activateProviderReceipt = await activateCcConnectProvider('agora-codex', 'relay');
+    const models = await listCcConnectModels('agora-codex');
+    const modelReceipt = await setCcConnectModel('agora-codex', 'gpt-5.3-codex');
+    const heartbeat = await getCcConnectHeartbeat('agora-codex');
+    const pauseReceipt = await pauseCcConnectHeartbeat('agora-codex');
+    const resumeReceipt = await resumeCcConnectHeartbeat('agora-codex');
+    const runReceipt = await runCcConnectHeartbeat('agora-codex');
+    const intervalReceipt = await updateCcConnectHeartbeatInterval('agora-codex', 15);
+
+    expect(providers.active_provider).toBe('gac');
+    expect(activateProviderReceipt.active_provider).toBe('relay');
+    expect(models.current).toBe('gpt-5.4');
+    expect(modelReceipt.model).toBe('gpt-5.3-codex');
+    expect(heartbeat.interval_mins).toBe(30);
+    expect(pauseReceipt.message).toBe('heartbeat paused');
+    expect(resumeReceipt.message).toBe('heartbeat resumed');
+    expect(runReceipt.message).toBe('heartbeat triggered');
+    expect(intervalReceipt.interval_mins).toBe(15);
   });
 });

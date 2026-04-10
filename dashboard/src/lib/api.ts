@@ -496,6 +496,56 @@ const ccConnectSessionSwitchReceiptSchema = z.object({
   active_session_id: z.string().min(1),
 });
 
+const ccConnectProviderSummarySchema = z.object({
+  name: z.string().min(1),
+  active: z.boolean(),
+  model: z.string().nullable(),
+  base_url: z.string().nullable(),
+});
+
+const ccConnectProviderListSchema = z.object({
+  providers: z.array(ccConnectProviderSummarySchema),
+  active_provider: z.string().nullable(),
+});
+
+const ccConnectActivateProviderReceiptSchema = z.object({
+  active_provider: z.string().min(1),
+  message: z.string(),
+});
+
+const ccConnectModelListSchema = z.object({
+  models: z.array(z.string().min(1)),
+  current: z.string().nullable(),
+});
+
+const ccConnectSetModelReceiptSchema = z.object({
+  model: z.string().min(1),
+  message: z.string(),
+});
+
+const ccConnectHeartbeatStatusSchema = z.object({
+  enabled: z.boolean(),
+  paused: z.boolean(),
+  interval_mins: z.number().nullable(),
+  only_when_idle: z.boolean().nullable().optional(),
+  session_key: z.string().nullable(),
+  silent: z.boolean().nullable().optional(),
+  run_count: z.number().nullable().optional(),
+  error_count: z.number().nullable().optional(),
+  skipped_busy: z.number().nullable().optional(),
+  last_run: z.string().nullable().optional(),
+  last_error: z.string().nullable().optional(),
+});
+
+const ccConnectHeartbeatReceiptSchema = z.object({
+  message: z.string(),
+});
+
+const ccConnectHeartbeatIntervalReceiptSchema = z.object({
+  interval_mins: z.number().nullable(),
+  message: z.string(),
+});
+
 export type ApiCcConnectInspectionDto = z.infer<typeof ccConnectInspectSchema>;
 export type ApiCcConnectProjectSummaryDto = z.infer<typeof ccConnectProjectSummarySchema>;
 export type ApiCcConnectSessionMessageDto = z.infer<typeof ccConnectSessionMessageSchema>;
@@ -506,6 +556,14 @@ export type ApiCcConnectBridgeAdapterSummaryDto = z.infer<typeof ccConnectBridge
 export type ApiCcConnectSendMessageReceiptDto = z.infer<typeof ccConnectSendMessageReceiptSchema>;
 export type ApiCcConnectSessionCreateReceiptDto = z.infer<typeof ccConnectSessionCreateReceiptSchema>;
 export type ApiCcConnectSessionSwitchReceiptDto = z.infer<typeof ccConnectSessionSwitchReceiptSchema>;
+export type ApiCcConnectProviderSummaryDto = z.infer<typeof ccConnectProviderSummarySchema>;
+export type ApiCcConnectProviderListDto = z.infer<typeof ccConnectProviderListSchema>;
+export type ApiCcConnectActivateProviderReceiptDto = z.infer<typeof ccConnectActivateProviderReceiptSchema>;
+export type ApiCcConnectModelListDto = z.infer<typeof ccConnectModelListSchema>;
+export type ApiCcConnectSetModelReceiptDto = z.infer<typeof ccConnectSetModelReceiptSchema>;
+export type ApiCcConnectHeartbeatStatusDto = z.infer<typeof ccConnectHeartbeatStatusSchema>;
+export type ApiCcConnectHeartbeatReceiptDto = z.infer<typeof ccConnectHeartbeatReceiptSchema>;
+export type ApiCcConnectHeartbeatIntervalReceiptDto = z.infer<typeof ccConnectHeartbeatIntervalReceiptSchema>;
 
 class ApiError extends Error {
   status: number;
@@ -1152,6 +1210,102 @@ export function deleteCcConnectSession(
     ccConnectSendMessageReceiptSchema,
     {
       method: 'DELETE',
+    },
+  );
+}
+
+export function listCcConnectProviders(project: string): Promise<ApiCcConnectProviderListDto> {
+  return request<ApiCcConnectProviderListDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/providers`,
+    ccConnectProviderListSchema,
+  );
+}
+
+export function activateCcConnectProvider(
+  project: string,
+  provider: string,
+): Promise<ApiCcConnectActivateProviderReceiptDto> {
+  return request<ApiCcConnectActivateProviderReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/providers/${encodeURIComponent(provider)}/activate`,
+    ccConnectActivateProviderReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function listCcConnectModels(project: string): Promise<ApiCcConnectModelListDto> {
+  return request<ApiCcConnectModelListDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/models`,
+    ccConnectModelListSchema,
+  );
+}
+
+export function setCcConnectModel(
+  project: string,
+  model: string,
+): Promise<ApiCcConnectSetModelReceiptDto> {
+  return request<ApiCcConnectSetModelReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/model`,
+    ccConnectSetModelReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    },
+  );
+}
+
+export function getCcConnectHeartbeat(project: string): Promise<ApiCcConnectHeartbeatStatusDto> {
+  return request<ApiCcConnectHeartbeatStatusDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/heartbeat`,
+    ccConnectHeartbeatStatusSchema,
+  );
+}
+
+export function pauseCcConnectHeartbeat(project: string): Promise<ApiCcConnectHeartbeatReceiptDto> {
+  return request<ApiCcConnectHeartbeatReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/heartbeat/pause`,
+    ccConnectHeartbeatReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function resumeCcConnectHeartbeat(project: string): Promise<ApiCcConnectHeartbeatReceiptDto> {
+  return request<ApiCcConnectHeartbeatReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/heartbeat/resume`,
+    ccConnectHeartbeatReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function runCcConnectHeartbeat(project: string): Promise<ApiCcConnectHeartbeatReceiptDto> {
+  return request<ApiCcConnectHeartbeatReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/heartbeat/run`,
+    ccConnectHeartbeatReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+  );
+}
+
+export function updateCcConnectHeartbeatInterval(
+  project: string,
+  minutes: number,
+): Promise<ApiCcConnectHeartbeatIntervalReceiptDto> {
+  return request<ApiCcConnectHeartbeatIntervalReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/heartbeat/interval`,
+    ccConnectHeartbeatIntervalReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify({ minutes }),
     },
   );
 }

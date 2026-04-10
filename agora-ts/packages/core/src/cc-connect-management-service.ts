@@ -141,6 +141,56 @@ export interface CcConnectDeleteReceipt {
   message: string;
 }
 
+export interface CcConnectProviderSummary {
+  name: string;
+  active: boolean;
+  model: string | null;
+  base_url: string | null;
+}
+
+export interface CcConnectProviderList {
+  providers: CcConnectProviderSummary[];
+  active_provider: string | null;
+}
+
+export interface CcConnectActivateProviderReceipt {
+  active_provider: string;
+  message: string;
+}
+
+export interface CcConnectModelList {
+  models: string[];
+  current: string | null;
+}
+
+export interface CcConnectSetModelReceipt {
+  model: string;
+  message: string;
+}
+
+export interface CcConnectHeartbeatStatus {
+  enabled: boolean;
+  paused: boolean;
+  interval_mins: number | null;
+  only_when_idle: boolean | null;
+  session_key: string | null;
+  silent: boolean | null;
+  run_count: number | null;
+  error_count: number | null;
+  skipped_busy: number | null;
+  last_run: string | null;
+  last_error: string | null;
+}
+
+export interface CcConnectHeartbeatReceipt {
+  message: string;
+}
+
+export interface CcConnectHeartbeatIntervalReceipt {
+  interval_mins: number | null;
+  message: string;
+}
+
 function normalizeBaseUrl(input: string): string {
   return input.endsWith('/') ? input.slice(0, -1) : input;
 }
@@ -414,6 +464,120 @@ export class CcConnectManagementService {
       `/api/v1/projects/${encodeURIComponent(input.project)}/sessions/${encodeURIComponent(input.sessionId)}`,
       {
         method: 'DELETE',
+      },
+    );
+  }
+
+  async listProviders(
+    input: CcConnectManagementInput & { project: string },
+  ): Promise<CcConnectProviderList> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectProviderList>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/providers`,
+    );
+  }
+
+  async activateProvider(
+    input: CcConnectManagementInput & { project: string; provider: string },
+  ): Promise<CcConnectActivateProviderReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectActivateProviderReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/providers/${encodeURIComponent(input.provider)}/activate`,
+      {
+        method: 'POST',
+      },
+    );
+  }
+
+  async listModels(
+    input: CcConnectManagementInput & { project: string },
+  ): Promise<CcConnectModelList> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectModelList>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/models`,
+    );
+  }
+
+  async setModel(
+    input: CcConnectManagementInput & { project: string; model: string },
+  ): Promise<CcConnectSetModelReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectSetModelReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/model`,
+      {
+        method: 'POST',
+        body: {
+          model: input.model,
+        },
+      },
+    );
+  }
+
+  async getHeartbeat(
+    input: CcConnectManagementInput & { project: string },
+  ): Promise<CcConnectHeartbeatStatus> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectHeartbeatStatus>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/heartbeat`,
+    );
+  }
+
+  async pauseHeartbeat(
+    input: CcConnectManagementInput & { project: string },
+  ): Promise<CcConnectHeartbeatReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectHeartbeatReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/heartbeat/pause`,
+      {
+        method: 'POST',
+      },
+    );
+  }
+
+  async resumeHeartbeat(
+    input: CcConnectManagementInput & { project: string },
+  ): Promise<CcConnectHeartbeatReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectHeartbeatReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/heartbeat/resume`,
+      {
+        method: 'POST',
+      },
+    );
+  }
+
+  async runHeartbeat(
+    input: CcConnectManagementInput & { project: string },
+  ): Promise<CcConnectHeartbeatReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectHeartbeatReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/heartbeat/run`,
+      {
+        method: 'POST',
+      },
+    );
+  }
+
+  async updateHeartbeatInterval(
+    input: CcConnectManagementInput & { project: string; minutes: number },
+  ): Promise<CcConnectHeartbeatIntervalReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectHeartbeatIntervalReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/heartbeat/interval`,
+      {
+        method: 'POST',
+        body: {
+          minutes: input.minutes,
+        },
       },
     );
   }

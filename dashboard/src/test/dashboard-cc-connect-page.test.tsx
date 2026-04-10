@@ -11,6 +11,12 @@ const sendMessage = vi.fn(async () => 'live');
 const createNamedSession = vi.fn(async () => 'live');
 const switchActiveSession = vi.fn(async () => 'live');
 const deleteSelectedSession = vi.fn(async () => 'live');
+const activateProvider = vi.fn(async () => 'live');
+const setModel = vi.fn(async () => 'live');
+const pauseHeartbeat = vi.fn(async () => 'live');
+const resumeHeartbeat = vi.fn(async () => 'live');
+const runHeartbeat = vi.fn(async () => 'live');
+const updateHeartbeatInterval = vi.fn(async () => 'live');
 const showMessage = vi.fn();
 
 const storeState = {
@@ -125,10 +131,41 @@ const storeState = {
       },
     },
   },
+  providersByProject: {
+    'agora-codex': {
+      providers: [
+        { name: 'gac', active: true, model: 'gpt-5.4', baseUrl: 'https://gaccode.com/codex/v1' },
+        { name: 'relay', active: false, model: 'gpt-5.3-codex', baseUrl: 'https://relay.example.com' },
+      ],
+      activeProvider: 'gac',
+    },
+  },
+  modelsByProject: {
+    'agora-codex': {
+      models: ['gpt-5.4', 'gpt-5.3-codex'],
+      current: 'gpt-5.4',
+    },
+  },
+  heartbeatByProject: {
+    'agora-codex': {
+      enabled: true,
+      paused: false,
+      intervalMins: 30,
+      onlyWhenIdle: true,
+      sessionKey: 'discord:thread:1',
+      silent: true,
+      runCount: 4,
+      errorCount: 0,
+      skippedBusy: 1,
+      lastRun: '2026-04-10T00:10:00.000Z',
+      lastError: '',
+    },
+  },
   loading: false,
   detailLoading: false,
   sendLoading: false,
   sessionActionLoading: false,
+  controlActionLoading: false,
   error: null,
   sendReceipt: null,
   fetchSnapshot,
@@ -138,6 +175,12 @@ const storeState = {
   createNamedSession,
   switchActiveSession,
   deleteSelectedSession,
+  activateProvider,
+  setModel,
+  pauseHeartbeat,
+  resumeHeartbeat,
+  runHeartbeat,
+  updateHeartbeatInterval,
   clearError: vi.fn(),
 };
 
@@ -170,6 +213,9 @@ describe('cc-connect dashboard page', () => {
     expect(screen.getAllByText(/discord:thread:1/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText('hello').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /create named session|创建命名 session/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /activate provider|切换 provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /update model|更新模型/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /trigger heartbeat now|立即触发 heartbeat/i })).toBeInTheDocument();
     expect(fetchSnapshot).toHaveBeenCalled();
   });
 
@@ -213,5 +259,43 @@ describe('cc-connect dashboard page', () => {
     expect(createNamedSession).toHaveBeenCalledWith('work');
     expect(switchActiveSession).toHaveBeenCalledWith('session-1');
     expect(deleteSelectedSession).toHaveBeenCalled();
+  });
+
+  it('activates provider, updates model, and controls heartbeat', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /activate provider|切换 provider/i }));
+    });
+
+    fireEvent.change(screen.getByLabelText(/set model/i), {
+      target: { value: 'gpt-5.3-codex' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /update model|更新模型/i }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /trigger heartbeat now|立即触发 heartbeat/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /pause heartbeat|暂停 heartbeat/i }));
+    });
+    fireEvent.change(screen.getByLabelText(/heartbeat interval/i), {
+      target: { value: '15' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /update heartbeat interval|更新 heartbeat 间隔/i }));
+    });
+
+    expect(activateProvider).toHaveBeenCalledWith('relay');
+    expect(setModel).toHaveBeenCalledWith('gpt-5.3-codex');
+    expect(runHeartbeat).toHaveBeenCalled();
+    expect(pauseHeartbeat).toHaveBeenCalled();
+    expect(updateHeartbeatInterval).toHaveBeenCalledWith(15);
   });
 });

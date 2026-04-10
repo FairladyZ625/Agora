@@ -31,10 +31,14 @@ export function ExternalBridgesPage() {
   const sessionsByProject = useCcConnectStore((state) => state.sessionsByProject);
   const selectedSessionIdByProject = useCcConnectStore((state) => state.selectedSessionIdByProject);
   const sessionDetailsByProject = useCcConnectStore((state) => state.sessionDetailsByProject);
+  const providersByProject = useCcConnectStore((state) => state.providersByProject);
+  const modelsByProject = useCcConnectStore((state) => state.modelsByProject);
+  const heartbeatByProject = useCcConnectStore((state) => state.heartbeatByProject);
   const loading = useCcConnectStore((state) => state.loading);
   const detailLoading = useCcConnectStore((state) => state.detailLoading);
   const sendLoading = useCcConnectStore((state) => state.sendLoading);
   const sessionActionLoading = useCcConnectStore((state) => state.sessionActionLoading);
+  const controlActionLoading = useCcConnectStore((state) => state.controlActionLoading);
   const error = useCcConnectStore((state) => state.error);
   const sendReceipt = useCcConnectStore((state) => state.sendReceipt);
   const fetchSnapshot = useCcConnectStore((state) => state.fetchSnapshot);
@@ -44,10 +48,18 @@ export function ExternalBridgesPage() {
   const createNamedSession = useCcConnectStore((state) => state.createNamedSession);
   const switchActiveSession = useCcConnectStore((state) => state.switchActiveSession);
   const deleteSelectedSession = useCcConnectStore((state) => state.deleteSelectedSession);
+  const activateProvider = useCcConnectStore((state) => state.activateProvider);
+  const setModel = useCcConnectStore((state) => state.setModel);
+  const pauseHeartbeat = useCcConnectStore((state) => state.pauseHeartbeat);
+  const resumeHeartbeat = useCcConnectStore((state) => state.resumeHeartbeat);
+  const runHeartbeat = useCcConnectStore((state) => state.runHeartbeat);
+  const updateHeartbeatInterval = useCcConnectStore((state) => state.updateHeartbeatInterval);
   const clearError = useCcConnectStore((state) => state.clearError);
   const { showMessage } = useFeedbackStore();
   const [messageDraft, setMessageDraft] = useState('');
   const [sessionNameDraft, setSessionNameDraft] = useState('');
+  const [modelDraft, setModelDraft] = useState('');
+  const [heartbeatIntervalDraft, setHeartbeatIntervalDraft] = useState('15');
 
   useEffect(() => {
     void fetchSnapshot();
@@ -65,6 +77,9 @@ export function ExternalBridgesPage() {
   const selectedSessionDetail = selectedProjectName && selectedSessionId
     ? sessionDetailsByProject[selectedProjectName]?.[selectedSessionId] ?? null
     : null;
+  const providerState = selectedProjectName ? providersByProject[selectedProjectName] ?? null : null;
+  const modelState = selectedProjectName ? modelsByProject[selectedProjectName] ?? null : null;
+  const heartbeatState = selectedProjectName ? heartbeatByProject[selectedProjectName] ?? null : null;
 
   const bridgeCount = bridges.length;
   const liveSessionCount = useMemo(
@@ -87,6 +102,29 @@ export function ExternalBridgesPage() {
     if (result === 'live') {
       setSessionNameDraft('');
       showMessage(copy.feedback.sessionCreateSuccessTitle, copy.feedback.sessionCreateSuccessDetail, 'success');
+    }
+  };
+
+  const submitModel = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!modelDraft.trim()) {
+      return;
+    }
+    const result = await setModel(modelDraft.trim());
+    if (result === 'live') {
+      showMessage(copy.feedback.modelUpdateSuccessTitle, copy.feedback.modelUpdateSuccessDetail, 'success');
+    }
+  };
+
+  const submitHeartbeatInterval = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const minutes = Number(heartbeatIntervalDraft);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      return;
+    }
+    const result = await updateHeartbeatInterval(minutes);
+    if (result === 'live') {
+      showMessage(copy.feedback.heartbeatUpdateSuccessTitle, copy.feedback.heartbeatUpdateSuccessDetail, 'success');
     }
   };
 
@@ -347,6 +385,102 @@ export function ExternalBridgesPage() {
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="detail-card">
+                      <p className="detail-card__kicker">{copy.labels.providers}</p>
+                      <h4 className="detail-card__title">{providerState?.activeProvider ?? copy.emptyValue}</h4>
+                      <div className="mt-3 space-y-2">
+                        {(providerState?.providers ?? []).map((provider) => (
+                          <div key={provider.name} className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <strong className="type-heading-sm">{provider.name}</strong>
+                              <p className="type-text-xs">{provider.model ?? copy.emptyValue}</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              disabled={controlActionLoading || provider.active}
+                              onClick={() => void activateProvider(provider.name)}
+                            >
+                              <span>{provider.active ? copy.labels.active : copy.activateProviderAction}</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="detail-card">
+                      <p className="detail-card__kicker">{copy.labels.models}</p>
+                      <h4 className="detail-card__title">{modelState?.current ?? copy.emptyValue}</h4>
+                      <form className="mt-3 space-y-3" onSubmit={(event) => void submitModel(event)}>
+                        <label className="space-y-2">
+                          <span className="field-label">{copy.labels.setModel}</span>
+                          <select
+                            className="input-shell"
+                            aria-label={copy.labels.setModel}
+                            value={modelDraft}
+                            onChange={(event) => setModelDraft(event.target.value)}
+                          >
+                            <option value="">{copy.emptyValue}</option>
+                            {(modelState?.models ?? []).map((model) => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <button type="submit" className="button-secondary" disabled={controlActionLoading}>
+                          <span>{controlActionLoading ? copy.updatingModel : copy.updateModelAction}</span>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+
+                  <div className="detail-card">
+                    <p className="detail-card__kicker">{copy.labels.heartbeatStatus}</p>
+                    <h4 className="detail-card__title">{heartbeatState?.paused ? copy.labels.heartbeatPaused : copy.labels.heartbeatRunning}</h4>
+                    <div className="type-text-xs mt-3 flex flex-wrap gap-3">
+                      <span>{copy.labels.heartbeat}: {heartbeatState?.intervalMins ?? copy.emptyValue}</span>
+                      <span>{copy.labels.sessionKey}: {heartbeatState?.sessionKey ?? copy.emptyValue}</span>
+                      <span>{copy.labels.lastRun}: {heartbeatState?.lastRun ?? copy.emptyValue}</span>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" className="button-secondary" disabled={controlActionLoading} onClick={() => void runHeartbeat()}>
+                        <span>{controlActionLoading ? copy.runningHeartbeat : copy.runHeartbeatAction}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        disabled={controlActionLoading || Boolean(heartbeatState?.paused)}
+                        onClick={() => void pauseHeartbeat()}
+                      >
+                        <span>{controlActionLoading ? copy.pausingHeartbeat : copy.pauseHeartbeatAction}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        disabled={controlActionLoading || !heartbeatState?.paused}
+                        onClick={() => void resumeHeartbeat()}
+                      >
+                        <span>{controlActionLoading ? copy.resumingHeartbeat : copy.resumeHeartbeatAction}</span>
+                      </button>
+                    </div>
+                    <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(event) => void submitHeartbeatInterval(event)}>
+                      <label className="space-y-2">
+                        <span className="field-label">{copy.labels.heartbeatInterval}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input-shell"
+                          aria-label={copy.labels.heartbeatInterval}
+                          value={heartbeatIntervalDraft}
+                          onChange={(event) => setHeartbeatIntervalDraft(event.target.value)}
+                        />
+                      </label>
+                      <button type="submit" className="button-secondary" disabled={controlActionLoading}>
+                        <span>{controlActionLoading ? copy.updatingHeartbeat : copy.updateHeartbeatAction}</span>
+                      </button>
+                    </form>
                   </div>
 
                   <form className="space-y-3" onSubmit={(event) => void submitMessage(event)}>
