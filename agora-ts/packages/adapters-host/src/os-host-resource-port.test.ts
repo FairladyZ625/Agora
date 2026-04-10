@@ -76,4 +76,31 @@ describe('os host resource port', () => {
       swap_utilization: null,
     });
   });
+
+  it('tolerates unparsable darwin host command output and zero memory totals', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+    vi.mocked(os.totalmem).mockReturnValue(0);
+    vi.mocked(os.freemem).mockReturnValue(0);
+    vi.mocked(execFileSync).mockImplementation((command: string) => {
+      if (command === '/usr/sbin/sysctl') {
+        return 'vm.swapusage: total = nope used = nope';
+      }
+      if (command === '/usr/bin/memory_pressure') {
+        return 'System-wide memory free percentage: ???';
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    const port = new OsHostResourcePort();
+    expect(port.readSnapshot()).toMatchObject({
+      platform: 'darwin',
+      memory_total_bytes: 0,
+      memory_used_bytes: 0,
+      memory_utilization: null,
+      memory_pressure: null,
+      swap_total_bytes: null,
+      swap_used_bytes: null,
+      swap_utilization: null,
+    });
+  });
 });

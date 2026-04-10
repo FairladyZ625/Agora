@@ -139,6 +139,45 @@ describe('DirectAcpxRuntimePort', () => {
     });
   });
 
+  it('maps blank tail output to an unavailable response and preserves custom base args', () => {
+    const spawnSync = vi.fn(() => ok('   '));
+    const port = new DirectAcpxRuntimePort({
+      spawnSync,
+      command: 'custom-acpx',
+      baseArgs: ['gateway', 'forward'],
+    });
+
+    expect(port.tailExecution({
+      agent: 'codex',
+      cwd: '/tmp/project',
+      sessionName: 'exec-blank-tail',
+    }, 5)).toEqual({
+      execution_id: 'exec-blank-tail',
+      available: false,
+      output: null,
+      source: 'acpx',
+    });
+
+    expect(spawnSync).toHaveBeenCalledWith(
+      'custom-acpx',
+      [
+        'gateway',
+        'forward',
+        '--cwd',
+        '/tmp/project',
+        '--format',
+        'text',
+        'codex',
+        'sessions',
+        'read',
+        '--tail',
+        '5',
+        'exec-blank-tail',
+      ],
+      expect.objectContaining({ cwd: '/tmp/project' }),
+    );
+  });
+
   it('cancels active sessions and rejects structured key transport for now', () => {
     const spawnSync = vi.fn(() => ok('cancelled'));
     const port = new DirectAcpxRuntimePort({ spawnSync });
@@ -220,5 +259,47 @@ describe('DirectAcpxRuntimePort', () => {
       cwd: '/tmp/project',
       sessionName: 'exec-6',
     }, ['Enter'])).toThrow(/does not support choice-key submission yet/i);
+  });
+
+  it('throws descriptive errors for invalid json payloads, failed commands, and spawn errors', () => {
+    const spawnSync = vi
+      .fn()
+      .mockImplementationOnce(() => ok('[]'))
+      .mockImplementationOnce(() => ({
+        status: 7,
+        stdout: '',
+        stderr: '',
+        pid: 101,
+        output: [null, '', ''],
+        signal: null,
+      }))
+      .mockImplementationOnce(() => ({
+        status: 0,
+        stdout: '',
+        stderr: '',
+        pid: 102,
+        output: [null, '', ''],
+        signal: null,
+        error: new Error('spawn sync exploded'),
+      }));
+    const port = new DirectAcpxRuntimePort({ spawnSync });
+
+    expect(() => port.ensureSession({
+      agent: 'claude',
+      cwd: '/tmp/project',
+      sessionName: 'exec-invalid-json',
+    })).toThrow(/expected acpx JSON output to be an object/i);
+
+    expect(() => port.stopExecution({
+      agent: 'claude',
+      cwd: '/tmp/project',
+      sessionName: 'exec-command-fail',
+    })).toThrow(/acpx command failed: acpx --cwd \/tmp\/project --approve-reads --format quiet claude cancel -s exec-command-fail/i);
+
+    expect(() => port.probeExecution({
+      agent: 'claude',
+      cwd: '/tmp/project',
+      sessionName: 'exec-spawn-error',
+    })).toThrow('spawn sync exploded');
   });
 });

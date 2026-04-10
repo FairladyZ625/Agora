@@ -86,10 +86,7 @@ export class DirectAcpxRuntimePort implements AcpRuntimePort {
   probeExecution(request: AcpRuntimeSessionRef): AcpRuntimeProbeResult {
     const payload = this.runJsonCommand(
       [
-        '--cwd',
-        request.cwd,
-        '--format',
-        'json',
+        ...this.buildReadArgs(request.cwd, 'json'),
         request.agent,
         'status',
         '-s',
@@ -111,10 +108,7 @@ export class DirectAcpxRuntimePort implements AcpRuntimePort {
   tailExecution(request: AcpRuntimeSessionRef, lines: number): CraftsmanExecutionTailResponseDto {
     const output = this.runTextCommand(
       [
-        '--cwd',
-        request.cwd,
-        '--format',
-        'text',
+        ...this.buildReadArgs(request.cwd, 'text'),
         request.agent,
         'sessions',
         'read',
@@ -196,6 +190,19 @@ export class DirectAcpxRuntimePort implements AcpRuntimePort {
     }
     if (typeof request.ttlSeconds === 'number') {
       args.push('--ttl', String(request.ttlSeconds));
+    }
+    return [...this.baseArgs, ...args];
+  }
+
+  private buildReadArgs(cwd: string, format: 'json' | 'text') {
+    const args = [
+      '--cwd',
+      cwd,
+      '--format',
+      format,
+    ];
+    if (format === 'json') {
+      args.push('--json-strict');
     }
     return [...this.baseArgs, ...args];
   }
