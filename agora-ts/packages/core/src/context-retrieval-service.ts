@@ -1,5 +1,5 @@
 import type { RetrievalHealthDto, RetrievalPlanDto, RetrievalResultDto } from '@agora-ts/contracts';
-import { RetrievalRegistry } from './context-retrieval-registry.js';
+import type { RetrievalRegistry } from './context-retrieval-registry.js';
 
 export interface RetrievalServiceOptions {
   registry: RetrievalRegistry;

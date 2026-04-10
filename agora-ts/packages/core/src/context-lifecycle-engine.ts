@@ -10,6 +10,7 @@ import type { ProjectBrainDoctorReport, ProjectBrainDoctorService } from './proj
 import type { ProjectBootstrapService } from './project-bootstrap-service.js';
 import type { ProjectContextWriter } from './project-context-writer.js';
 import type { ReferenceBundleDto } from '@agora-ts/contracts';
+import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import type { ReferenceBundleService } from './reference-bundle-service.js';
 import type { TaskWorktreeService } from './task-worktree-service.js';
 import type { WorkspaceBootstrapService } from './workspace-bootstrap-service.js';
@@ -30,7 +31,7 @@ export interface ContextLifecycleEngineOptions {
   projectBootstrapService?: Pick<ProjectBootstrapService, 'createHarnessBootstrapTask'>;
   referenceBundleService?: Pick<ReferenceBundleService, 'buildReferenceBundleAsync'>;
   taskWorktreeService?: Pick<TaskWorktreeService, 'resolveBaseWorkdir'>;
-  projectBrainAutomationService?: Pick<import('./project-brain-automation-service.js').ProjectBrainAutomationService, 'recordTaskCloseRecap'>;
+  projectBrainAutomationService?: Pick<ProjectBrainAutomationService, 'recordTaskCloseRecap'>;
   projectContextWriter?: Pick<ProjectContextWriter, 'getLock'>;
   projectBrainDoctorService?: Pick<ProjectBrainDoctorService, 'diagnoseProject'>;
 }

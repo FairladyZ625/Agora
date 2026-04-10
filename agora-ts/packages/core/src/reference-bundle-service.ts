@@ -6,7 +6,6 @@ import type {
 } from '@agora-ts/contracts';
 import type { ContextDeliveryPort, BuildReferenceBundleInput } from './context-delivery-port.js';
 import type { ProjectBrainAutomationPolicy } from './project-brain-automation-policy.js';
-import type { ProjectBrainDocument } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';
 import { ReferenceIndexService, toReferenceKey } from './reference-index-service.js';
 
