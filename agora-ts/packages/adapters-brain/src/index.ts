@@ -6,6 +6,8 @@ export type { FilesystemTaskBrainWorkspaceAdapterOptions } from './filesystem-ta
 export { FilesystemTaskBrainWorkspaceAdapter } from './filesystem-task-brain-workspace-adapter.js';
 export type { FilesystemSkillCatalogAdapterOptions } from './filesystem-skill-catalog-adapter.js';
 export { FilesystemSkillCatalogAdapter } from './filesystem-skill-catalog-adapter.js';
+export type { FilesystemContextSourceRetrievalAdapterOptions } from './filesystem-context-source-retrieval-adapter.js';
+export { FilesystemContextSourceRetrievalAdapter } from './filesystem-context-source-retrieval-adapter.js';
 export { OpenAiCompatibleProjectBrainEmbeddingAdapter } from './openai-compatible-project-brain-embedding-adapter.js';
 export type { QdrantProjectBrainVectorIndexAdapterOptions } from './qdrant-project-brain-vector-index-adapter.js';
 export { QdrantProjectBrainVectorIndexAdapter } from './qdrant-project-brain-vector-index-adapter.js';
