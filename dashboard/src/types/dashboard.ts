@@ -267,6 +267,37 @@ export interface CcConnectBridgeAdapterSummary {
   connectedAt: string | null;
 }
 
+export interface CcConnectProviderSummary {
+  name: string;
+  active: boolean;
+  model: string | null;
+  baseUrl: string | null;
+}
+
+export interface CcConnectProviderState {
+  providers: CcConnectProviderSummary[];
+  activeProvider: string | null;
+}
+
+export interface CcConnectModelState {
+  models: string[];
+  current: string | null;
+}
+
+export interface CcConnectHeartbeatStatus {
+  enabled: boolean;
+  paused: boolean;
+  intervalMins: number | null;
+  onlyWhenIdle: boolean | null;
+  sessionKey: string | null;
+  silent: boolean | null;
+  runCount: number | null;
+  errorCount: number | null;
+  skippedBusy: number | null;
+  lastRun: string | null;
+  lastError: string | null;
+}
+
 export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];

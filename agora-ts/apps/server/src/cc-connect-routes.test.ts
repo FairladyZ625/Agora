@@ -18,6 +18,15 @@ describe('cc-connect routes', () => {
       createSession: vi.fn().mockResolvedValue({ id: 's2', session_key: 'discord:1', name: 'work', created_at: '2026-04-10T00:00:00Z' }),
       switchSession: vi.fn().mockResolvedValue({ message: 'active session switched', active_session_id: 's2' }),
       deleteSession: vi.fn().mockResolvedValue({ message: 'session deleted' }),
+      listProviders: vi.fn().mockResolvedValue({ providers: [{ name: 'gac', active: true, model: 'gpt-5.4', base_url: 'https://gaccode.com/codex/v1' }], active_provider: 'gac' }),
+      activateProvider: vi.fn().mockResolvedValue({ active_provider: 'relay', message: 'provider activated' }),
+      listModels: vi.fn().mockResolvedValue({ models: ['gpt-5.4', 'gpt-5.3-codex'], current: 'gpt-5.4' }),
+      setModel: vi.fn().mockResolvedValue({ model: 'gpt-5.3-codex', message: 'model updated' }),
+      getHeartbeat: vi.fn().mockResolvedValue({ enabled: true, paused: false, interval_mins: 30, session_key: 'discord:1' }),
+      pauseHeartbeat: vi.fn().mockResolvedValue({ message: 'heartbeat paused' }),
+      resumeHeartbeat: vi.fn().mockResolvedValue({ message: 'heartbeat resumed' }),
+      runHeartbeat: vi.fn().mockResolvedValue({ message: 'heartbeat triggered' }),
+      updateHeartbeatInterval: vi.fn().mockResolvedValue({ interval_mins: 15, message: 'interval updated' }),
       listBridgeAdapters: vi.fn().mockResolvedValue([{ platform: 'discord', project: 'agora-codex' }]),
       sendMessage: vi.fn().mockResolvedValue({ message: 'queued' }),
     };
@@ -70,6 +79,48 @@ describe('cc-connect routes', () => {
       method: 'DELETE',
       url: '/api/external-bridges/cc-connect/projects/agora-codex/sessions/s2?managementToken=secret',
     });
+    const providers = await app.inject({
+      method: 'GET',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/providers',
+    });
+    const activateProvider = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/providers/relay/activate',
+      payload: {},
+    });
+    const models = await app.inject({
+      method: 'GET',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/models',
+    });
+    const setModel = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/model',
+      payload: { model: 'gpt-5.3-codex' },
+    });
+    const heartbeat = await app.inject({
+      method: 'GET',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/heartbeat',
+    });
+    const pauseHeartbeat = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/heartbeat/pause',
+      payload: {},
+    });
+    const resumeHeartbeat = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/heartbeat/resume',
+      payload: {},
+    });
+    const runHeartbeat = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/heartbeat/run',
+      payload: {},
+    });
+    const intervalHeartbeat = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/heartbeat/interval',
+      payload: { minutes: 15 },
+    });
     const send = await app.inject({
       method: 'POST',
       url: '/api/external-bridges/cc-connect/projects/agora-codex/send',
@@ -89,6 +140,15 @@ describe('cc-connect routes', () => {
     expect(createSession.statusCode).toBe(200);
     expect(switchSession.statusCode).toBe(200);
     expect(deleteSession.statusCode).toBe(200);
+    expect(providers.statusCode).toBe(200);
+    expect(activateProvider.statusCode).toBe(200);
+    expect(models.statusCode).toBe(200);
+    expect(setModel.statusCode).toBe(200);
+    expect(heartbeat.statusCode).toBe(200);
+    expect(pauseHeartbeat.statusCode).toBe(200);
+    expect(resumeHeartbeat.statusCode).toBe(200);
+    expect(runHeartbeat.statusCode).toBe(200);
+    expect(intervalHeartbeat.statusCode).toBe(200);
     expect(send.statusCode).toBe(200);
 
     expect(ccConnectInspectionService.inspect).toHaveBeenCalledWith({
@@ -124,6 +184,36 @@ describe('cc-connect routes', () => {
       managementToken: 'secret',
       project: 'agora-codex',
       sessionId: 's2',
+    });
+    expect(ccConnectManagementService.listProviders).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.activateProvider).toHaveBeenCalledWith({
+      project: 'agora-codex',
+      provider: 'relay',
+    });
+    expect(ccConnectManagementService.listModels).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.setModel).toHaveBeenCalledWith({
+      project: 'agora-codex',
+      model: 'gpt-5.3-codex',
+    });
+    expect(ccConnectManagementService.getHeartbeat).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.pauseHeartbeat).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.resumeHeartbeat).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.runHeartbeat).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.updateHeartbeatInterval).toHaveBeenCalledWith({
+      project: 'agora-codex',
+      minutes: 15,
     });
     expect(ccConnectManagementService.listBridgeAdapters).toHaveBeenCalledWith({});
     expect(ccConnectManagementService.sendMessage).toHaveBeenCalledWith({

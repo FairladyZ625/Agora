@@ -1095,6 +1095,182 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.get('/api/external-bridges/cc-connect/projects/:project/providers', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listProviders({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/providers/:provider/activate', async (request, reply) => {
+    try {
+      const params = request.params as { project: string; provider: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.activateProvider({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        provider: params.provider,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/models', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listModels({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/model', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        model: string;
+      };
+      return reply.send(await ccConnectManagementService.setModel({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        model: body.model,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/heartbeat', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.getHeartbeat({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/pause', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.pauseHeartbeat({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/resume', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.resumeHeartbeat({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/run', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.runHeartbeat({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/interval', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        minutes: number;
+      };
+      return reply.send(await ccConnectManagementService.updateHeartbeatInterval({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        minutes: body.minutes,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/external-bridges/cc-connect/bridges', async (request, reply) => {
     try {
       const query = request.query as {
