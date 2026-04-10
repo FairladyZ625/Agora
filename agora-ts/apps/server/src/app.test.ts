@@ -902,6 +902,53 @@ describe('agora-ts server bootstrap', () => {
     expect(malformedCreate.statusCode).toBe(400);
   });
 
+  it('creates tasks through the orchestrator direct-create route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DIRECT-ROUTE',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/orchestrator/direct-create',
+      payload: {
+        orchestrator_ref: 'agora-executive-controller',
+        confirmation: {
+          kind: 'conversation_confirmation',
+          confirmation_mode: 'oral',
+          confirmed_by: 'lizeyu',
+          confirmed_at: '2026-04-10T09:00:00.000Z',
+          source: 'conversation',
+          source_ref: 'discord:thread-1',
+        },
+        create: {
+          title: 'Route direct create',
+          type: 'coding',
+          creator: 'agora-executive-controller',
+          description: '',
+          priority: 'high',
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-DIRECT-ROUTE',
+      title: 'Route direct create',
+      control: {
+        orchestrator_intake: {
+          kind: 'direct_create',
+          confirmation_mode: 'oral',
+          confirmed_by: 'lizeyu',
+          source_ref: 'discord:thread-1',
+        },
+      },
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {
