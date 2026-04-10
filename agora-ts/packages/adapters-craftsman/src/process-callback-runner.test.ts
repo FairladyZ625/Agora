@@ -119,6 +119,62 @@ describe('process callback runner', () => {
     });
   });
 
+  it('falls back to the default failure payload when the child emits no output', async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: PassThrough };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    vi.mocked(spawn).mockImplementation(() => {
+      queueMicrotask(() => {
+        stdout.end();
+        stderr.end();
+        child.emit('close', 1);
+      });
+      return child as never;
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runCallbackProcess({
+      executionId: 'exec-runner-4',
+      callbackUrl: 'http://127.0.0.1:9999/callback',
+      apiToken: null,
+      command: '/usr/bin/node',
+      args: ['-e', 'process.exit(1)'],
+      cwd: process.cwd(),
+      env: {
+        AGORA_EXECUTION: 'exec-runner-4',
+      },
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      '/usr/bin/node',
+      ['-e', 'process.exit(1)'],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          AGORA_EXECUTION: 'exec-runner-4',
+        }),
+      }),
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsed = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      execution_id: 'exec-runner-4',
+      status: 'failed',
+      error: 'craftsman failed',
+      payload: {
+        output: {
+          summary: null,
+          text: null,
+          stderr: 'craftsman failed',
+        },
+      },
+    });
+  });
+
   it('rejects when the child process fails before producing a callback payload', async () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
@@ -145,5 +201,48 @@ describe('process callback runner', () => {
     })).rejects.toThrow('spawn failed');
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the default success summary when stdout is empty', async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const child = new EventEmitter() as EventEmitter & { stdout: PassThrough; stderr: PassThrough };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    vi.mocked(spawn).mockImplementation(() => {
+      queueMicrotask(() => {
+        stdout.end();
+        stderr.end();
+        child.emit('close', 0);
+      });
+      return child as never;
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runCallbackProcess({
+      executionId: 'exec-runner-5',
+      callbackUrl: 'http://127.0.0.1:9999/callback',
+      apiToken: 'secret-token',
+      command: '/usr/bin/node',
+      args: ['-e', 'process.exit(0)'],
+      cwd: process.cwd(),
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const parsed = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(parsed).toMatchObject({
+      execution_id: 'exec-runner-5',
+      status: 'succeeded',
+      error: null,
+      payload: {
+        output: {
+          summary: 'craftsman completed',
+          text: null,
+          stderr: null,
+        },
+      },
+    });
   });
 });

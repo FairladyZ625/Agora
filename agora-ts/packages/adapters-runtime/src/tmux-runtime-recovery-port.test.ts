@@ -89,6 +89,77 @@ describe('tmux runtime recovery port', () => {
     });
   });
 
+  it('marks diagnosis as degraded when the pane exists but is not ready', () => {
+    const tail = vi.fn(() => 'last known output');
+    const port = new TmuxRuntimeRecoveryPort({
+      doctor: () => ({
+        session: 'agora',
+        panes: [
+          {
+            agent: 'gemini',
+            pane: '%3',
+            command: 'gemini',
+            active: false,
+            ready: false,
+            continuityBackend: 'gemini_session_id',
+            resumeCapability: 'resume_last',
+            sessionReference: 'gemini-session',
+            identitySource: 'chat_file',
+            lastRecoveryMode: 'resume_latest',
+            transportSessionId: 'tmux:gemini',
+          },
+        ],
+      }),
+      tail,
+      sendKeys: vi.fn(),
+    });
+
+    expect(port.requestRuntimeDiagnosis({
+      taskId: 'OC-DIAG-3',
+      agentRef: 'gemini',
+      runtimeProvider: 'tmux',
+      runtimeActorRef: 'gemini',
+    })).toMatchObject({
+      status: 'accepted',
+      health: 'degraded',
+      summary: 'gemini pane is present but not ready.',
+      detail: 'last known output',
+    });
+    expect(tail).toHaveBeenCalledWith('gemini', 40);
+  });
+
+  it('returns unsupported or unavailable when the runtime actor is not tmux-manageable', () => {
+    const tail = vi.fn();
+    const port = new TmuxRuntimeRecoveryPort({
+      doctor: () => ({ session: 'agora', panes: [] }),
+      tail,
+      sendKeys: vi.fn(),
+    });
+
+    expect(port.requestRuntimeDiagnosis({
+      taskId: 'OC-DIAG-4',
+      agentRef: 'writer',
+      runtimeProvider: 'discord',
+      runtimeActorRef: 'writer',
+    })).toMatchObject({
+      status: 'unsupported',
+      health: 'unavailable',
+      detail: 'Provider discord has no diagnosis adapter yet.',
+    });
+
+    expect(port.requestRuntimeDiagnosis({
+      taskId: 'OC-DIAG-5',
+      agentRef: 'writer',
+      runtimeProvider: null,
+      runtimeActorRef: null,
+    })).toMatchObject({
+      status: 'unavailable',
+      health: 'unavailable',
+      detail: 'No runtime provider is bound to this agent.',
+    });
+    expect(tail).not.toHaveBeenCalled();
+  });
+
   it('sends Ctrl-C when stopping a tmux-backed craftsman execution', () => {
     const sendKeys = vi.fn();
     const port = new TmuxRuntimeRecoveryPort({
@@ -134,5 +205,29 @@ describe('tmux runtime recovery port', () => {
       execution_id: 'exec-2',
     });
     expect(result.detail).toContain('no tmux session binding');
+  });
+
+  it('rejects stop requests for non-tmux adapters or invalid session ids', () => {
+    const sendKeys = vi.fn();
+    const port = new TmuxRuntimeRecoveryPort({
+      doctor: () => ({ session: 'agora', panes: [] }),
+      tail: () => '',
+      sendKeys,
+    });
+
+    const result = port.stopExecution({
+      taskId: 'OC-STOP-3',
+      subtaskId: 'sub-3',
+      executionId: 'exec-3',
+      adapter: 'shell',
+      sessionId: 'ssh:remote',
+    });
+
+    expect(sendKeys).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: 'unsupported',
+      execution_id: 'exec-3',
+    });
+    expect(result.detail).toContain('Only tmux-backed codex/claude/gemini executions');
   });
 });

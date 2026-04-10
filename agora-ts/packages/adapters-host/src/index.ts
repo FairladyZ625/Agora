@@ -1,1 +1,1 @@
-export * from './os-host-resource-port.js';
+export { OsHostResourcePort } from './os-host-resource-port.js';

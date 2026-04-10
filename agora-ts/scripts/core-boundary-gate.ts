@@ -6,7 +6,7 @@ export interface CoreBoundaryViolation {
   violations: string[];
 }
 
-export type CoreBoundaryMode = 'db-imports' | 'legacy-fallback' | 'adapter-utility-paths' | 'all';
+export type CoreBoundaryMode = 'db-imports' | 'legacy-fallback' | 'adapter-utility-paths' | 'barrel-exports' | 'all';
 
 const FORBIDDEN_CORE_ADAPTER_UTILITY_PATHS = new Map<string, string>([
   ['adapters/markdown-frontmatter.ts', 'forbidden core utility kept under adapters/markdown-frontmatter.ts'],
@@ -23,11 +23,14 @@ const PATTERNS: Record<CoreBoundaryMode, Array<{ label: string; pattern: RegExp 
     { label: 'forbidden concrete repository construction', pattern: /\bnew\s+[A-Za-z0-9_]+Repository\s*\(/ },
     { label: 'forbidden sqlite gate construction', pattern: /\bnew\s+SqliteGate(?:Command|Query)Port\s*\(/ },
   ],
+  'barrel-exports': [
+    { label: 'forbidden export-star in core barrel', pattern: /^export\s+\*\s+from\s+/m },
+  ],
   'adapter-utility-paths': [],
   all: [],
 };
 
-PATTERNS.all = [...PATTERNS['db-imports'], ...PATTERNS['legacy-fallback'], ...PATTERNS['adapter-utility-paths']];
+PATTERNS.all = [...PATTERNS['db-imports'], ...PATTERNS['legacy-fallback'], ...PATTERNS['barrel-exports'], ...PATTERNS['adapter-utility-paths']];
 
 export function collectCoreProductionSourceFiles(rootDir: string): string[] {
   const files: string[] = [];
@@ -98,7 +101,7 @@ export function runCoreBoundaryGate(rootDir: string, mode: CoreBoundaryMode = 'a
 
 function parseArgs(argv: string[]): { rootDir: string; mode: CoreBoundaryMode } {
   const modeArg = argv[0];
-  const mode: CoreBoundaryMode = modeArg === 'db-imports' || modeArg === 'legacy-fallback' || modeArg === 'adapter-utility-paths' || modeArg === 'all'
+  const mode: CoreBoundaryMode = modeArg === 'db-imports' || modeArg === 'legacy-fallback' || modeArg === 'adapter-utility-paths' || modeArg === 'barrel-exports' || modeArg === 'all'
     ? modeArg
     : 'all';
   const rootFlagIndex = argv.indexOf('--root');
