@@ -224,9 +224,13 @@ function parseScalar(raw: string): string | number | boolean | null {
   if (/^-?\d+$/.test(value)) {
     return Number(value);
   }
-  const stringMatch = value.match(/^"(.*)"$/);
-  if (stringMatch) {
-    return stringMatch[1] ?? '';
+  const doubleQuoted = value.match(/^"(.*)"$/);
+  if (doubleQuoted) {
+    return doubleQuoted[1] ?? '';
+  }
+  const singleQuoted = value.match(/^'(.*)'$/);
+  if (singleQuoted) {
+    return singleQuoted[1] ?? '';
   }
   return null;
 }

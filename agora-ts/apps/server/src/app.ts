@@ -350,24 +350,26 @@ function isDashboardSessionRoute(url: string) {
 }
 
 function isDashboardProtectedApiRoute(method: string, url: string) {
-  if (method !== 'GET' && method !== 'HEAD') {
-    return false;
+  const isRead = method === 'GET' || method === 'HEAD';
+  if (isRead) {
+    return url.startsWith('/api/tasks')
+      || url.startsWith('/api/projects')
+      || url.startsWith('/api/agents/')
+      || url === '/api/agents/status'
+      || url.startsWith('/api/archive/')
+      || url === '/api/archive/jobs'
+      || url.startsWith('/api/todos')
+      || url.startsWith('/api/templates')
+      || url.startsWith('/api/craftsmen/runtime/')
+      || url.startsWith('/api/craftsmen/executions/')
+      || url.startsWith('/api/craftsmen/tasks/')
+      || url.startsWith('/api/nomos')
+      || url === '/api/skills'
+      || url.startsWith('/api/inbox')
+      || url === '/api/craftsmen/governance';
   }
-  return url.startsWith('/api/tasks')
-    || url.startsWith('/api/projects')
-    || url.startsWith('/api/agents/')
-    || url === '/api/agents/status'
-    || url.startsWith('/api/archive/')
-    || url === '/api/archive/jobs'
-    || url.startsWith('/api/todos')
-    || url.startsWith('/api/templates')
-    || url.startsWith('/api/craftsmen/runtime/')
-    || url.startsWith('/api/craftsmen/executions/')
-    || url.startsWith('/api/craftsmen/tasks/')
-    || url.startsWith('/api/nomos')
-    || url === '/api/skills'
-    || url.startsWith('/api/inbox')
-    || url === '/api/craftsmen/governance';
+  // Mutation routes under cc-connect require an authenticated dashboard session.
+  return url.startsWith('/api/external-bridges/cc-connect/');
 }
 
 function isDashboardSessionBypassRoute(url: string) {
