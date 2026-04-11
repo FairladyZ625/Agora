@@ -108,7 +108,7 @@ function parseCcConnectConfig(raw: string, configPath: string): CcConnectProject
   let currentProject: MutableProjectTarget | null = null;
 
   for (const rawLine of raw.split('\n')) {
-    const line = rawLine.replace(/#.*/, '').trim();
+    const line = stripTomlComment(rawLine).trim();
     if (!line) {
       continue;
     }
@@ -244,4 +244,20 @@ function splitPathLikeList(raw: string | undefined) {
 
 function resolveTilde(path: string) {
   return path.startsWith('~/') ? resolve(homedir(), path.slice(2)) : path;
+}
+
+function stripTomlComment(line: string): string {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '#' && !inSingle && !inDouble) {
+      return line.slice(0, i);
+    }
+  }
+  return line;
 }

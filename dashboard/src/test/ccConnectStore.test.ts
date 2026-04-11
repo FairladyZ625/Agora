@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CcConnectProjectDetail } from '@/types/dashboard';
 import { useCcConnectStore } from '@/stores/ccConnectStore';
 
 // ---------------------------------------------------------------------------
@@ -373,7 +374,7 @@ describe('ccConnectStore', () => {
   // -------------------------------------------------------------------------
   describe('selectProject', () => {
     it('clears selection when called with null', async () => {
-      useCcConnectStore.setState({ selectedProjectName: 'old-project', selectedProject: {} as any });
+      useCcConnectStore.setState({ selectedProjectName: 'old-project', selectedProject: { name: 'old-project' } as unknown as CcConnectProjectDetail });
 
       await useCcConnectStore.getState().selectProject(null);
 
@@ -382,7 +383,7 @@ describe('ccConnectStore', () => {
     });
 
     it('clears selection when called with empty string', async () => {
-      useCcConnectStore.setState({ selectedProjectName: 'old-project', selectedProject: {} as any });
+      useCcConnectStore.setState({ selectedProjectName: 'old-project', selectedProject: { name: 'old-project' } as unknown as CcConnectProjectDetail });
 
       await useCcConnectStore.getState().selectProject('');
 
@@ -1060,7 +1061,7 @@ describe('ccConnectStore', () => {
     it('returns error when no session key is available', async () => {
       useCcConnectStore.setState({
         selectedProjectName: 'agora-codex',
-        selectedProject: { activeSessionKeys: [] } as any,
+        selectedProject: { activeSessionKeys: [] } as unknown as CcConnectProjectDetail,
         selectedSessionIdByProject: {},
         sessionsByProject: {},
       });
