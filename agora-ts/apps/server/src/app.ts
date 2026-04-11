@@ -220,6 +220,7 @@ export interface BuildAppOptions {
 interface MetricsState {
   requestsByMethodAndStatus: Map<string, number>;
   taskActionsByResult: Map<string, number>;
+  dashboardHumanActionsByResult: Map<string, number>;
   craftsmanDispatchByAdapterAndResult: Map<string, number>;
   craftsmanCallbacksByStatus: Map<string, number>;
 }
@@ -676,6 +677,35 @@ function recordTaskAction(metrics: MetricsState, action: string, result: string)
   incrementCounter(metrics.taskActionsByResult, `${action}:${result}`);
 }
 
+function recordDashboardHumanAction(options: {
+  metrics: MetricsState;
+  structuredLogs: boolean;
+  action:
+    | 'dashboard-session-login'
+    | 'dashboard-session-logout'
+    | 'dashboard-user-create'
+    | 'dashboard-user-disable'
+    | 'dashboard-user-password'
+    | 'dashboard-user-bind-identity';
+  result: 'success' | 'error' | 'denied';
+  actor?: string | null;
+  targetUsername?: string | null;
+  provider?: string | null;
+  reason?: string | null;
+}) {
+  incrementCounter(options.metrics.dashboardHumanActionsByResult, `${options.action}:${options.result}`);
+  emitStructuredLog(options.structuredLogs, {
+    module: 'dashboard_auth',
+    msg: 'human_action',
+    action: options.action,
+    result: options.result,
+    ...(options.actor ? { actor: options.actor } : {}),
+    ...(options.targetUsername ? { target_username: options.targetUsername } : {}),
+    ...(options.provider ? { provider: options.provider } : {}),
+    ...(options.reason ? { reason: options.reason } : {}),
+  });
+}
+
 function recordHumanReviewTaskAction(options: {
   metrics: MetricsState;
   structuredLogs: boolean;
@@ -744,6 +774,13 @@ function renderMetrics(options: {
   for (const [key, value] of options.metrics.taskActionsByResult.entries()) {
     const [action, result] = key.split(':');
     lines.push(`agora_task_actions_total{action="${action}",result="${result}"} ${value}`);
+  }
+
+  lines.push('# HELP agora_dashboard_human_actions_total Total dashboard human/session actions grouped by action and result.');
+  lines.push('# TYPE agora_dashboard_human_actions_total counter');
+  for (const [key, value] of options.metrics.dashboardHumanActionsByResult.entries()) {
+    const [action, result] = key.split(':');
+    lines.push(`agora_dashboard_human_actions_total{action="${action}",result="${result}"} ${value}`);
   }
 
   lines.push('# HELP agora_craftsman_dispatch_total Total craftsman dispatch requests grouped by adapter and result.');
@@ -830,6 +867,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const metrics: MetricsState = {
     requestsByMethodAndStatus: new Map(),
     taskActionsByResult: new Map(),
+    dashboardHumanActionsByResult: new Map(),
     craftsmanDispatchByAdapterAndResult: new Map(),
     craftsmanCallbacksByStatus: new Map(),
   };
@@ -1521,6 +1559,14 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (humanAccountService?.hasAccounts()) {
         const account = humanAccountService.authenticate(payload.username, payload.password);
         if (!account) {
+          recordDashboardHumanAction({
+            metrics,
+            structuredLogs,
+            action: 'dashboard-session-login',
+            result: 'denied',
+            actor: payload.username,
+            reason: 'invalid_dashboard_credentials',
+          });
           return reply.status(403).send({ message: 'invalid dashboard credentials' });
         }
         const session = issueDashboardSession(account.id, account.username, account.role, dashboardAuth, dashboardSessions);
@@ -1528,6 +1574,13 @@ export function buildApp(options: BuildAppOptions = {}) {
           'Set-Cookie',
           `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
         );
+        recordDashboardHumanAction({
+          metrics,
+          structuredLogs,
+          action: 'dashboard-session-login',
+          result: 'success',
+          actor: account.username,
+        });
         return reply.send(dashboardSessionLoginResponseSchema.parse({
           ok: true,
           username: account.username,
@@ -1536,6 +1589,14 @@ export function buildApp(options: BuildAppOptions = {}) {
       }
       const allowed = dashboardAuth.allowedUsers.length === 0 || dashboardAuth.allowedUsers.includes(payload.username);
       if (!allowed || payload.password !== dashboardAuth.password) {
+        recordDashboardHumanAction({
+          metrics,
+          structuredLogs,
+          action: 'dashboard-session-login',
+          result: 'denied',
+          actor: payload.username,
+          reason: 'invalid_dashboard_credentials',
+        });
         return reply.status(403).send({ message: 'invalid dashboard credentials' });
       }
       const session = issueDashboardSession(null, payload.username, 'admin', dashboardAuth, dashboardSessions);
@@ -1543,6 +1604,13 @@ export function buildApp(options: BuildAppOptions = {}) {
         'Set-Cookie',
         `${DASHBOARD_SESSION_COOKIE}=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${session.ttlHours * 60 * 60}`,
       );
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-session-login',
+        result: 'success',
+        actor: payload.username,
+      });
       return reply.send(dashboardSessionLoginResponseSchema.parse({
         ok: true,
         username: payload.username,
@@ -1558,11 +1626,19 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!dashboardAuth?.enabled || dashboardAuth.method !== 'session') {
       return reply.status(404).send({ message: 'dashboard session auth is not enabled' });
     }
+    const current = getDashboardSession(request, dashboardSessions);
     clearDashboardSession(request, dashboardSessions);
     reply.header(
       'Set-Cookie',
       `${DASHBOARD_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
     );
+    recordDashboardHumanAction({
+      metrics,
+      structuredLogs,
+      action: 'dashboard-session-logout',
+      result: 'success',
+      actor: current?.session.username ?? null,
+    });
     return reply.send(dashboardSessionLogoutResponseSchema.parse({ ok: true }));
   });
 
@@ -1618,11 +1694,29 @@ export function buildApp(options: BuildAppOptions = {}) {
         password: payload.password,
         role: 'member',
       });
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-create',
+        result: 'success',
+        actor: session.username,
+        targetUsername: payload.username,
+      });
       return reply.send(dashboardUserListResponseSchema.parse({
         users: humanAccountService.listUsersWithIdentities(),
       }));
     } catch (error) {
       const translated = translateError(error);
+      const payload = request.body as { username?: string } | undefined;
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-create',
+        result: 'error',
+        actor: session.username,
+        targetUsername: payload?.username ?? null,
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -1638,11 +1732,29 @@ export function buildApp(options: BuildAppOptions = {}) {
     try {
       const params = request.params as { username: string };
       humanAccountService.disableUser(params.username);
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-disable',
+        result: 'success',
+        actor: session.username,
+        targetUsername: params.username,
+      });
       return reply.send(dashboardUserListResponseSchema.parse({
         users: humanAccountService.listUsersWithIdentities(),
       }));
     } catch (error) {
       const translated = translateError(error);
+      const params = request.params as { username: string };
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-disable',
+        result: 'error',
+        actor: session.username,
+        targetUsername: params.username,
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -1659,11 +1771,29 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { username: string };
       const payload = dashboardUserUpdatePasswordRequestSchema.parse(request.body);
       humanAccountService.setPassword(params.username, payload.password);
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-password',
+        result: 'success',
+        actor: session.username,
+        targetUsername: params.username,
+      });
       return reply.send(dashboardUserListResponseSchema.parse({
         users: humanAccountService.listUsersWithIdentities(),
       }));
     } catch (error) {
       const translated = translateError(error);
+      const params = request.params as { username: string };
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-password',
+        result: 'error',
+        actor: session.username,
+        targetUsername: params.username,
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -1684,11 +1814,32 @@ export function buildApp(options: BuildAppOptions = {}) {
         provider: payload.provider,
         externalUserId: payload.external_user_id,
       });
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-bind-identity',
+        result: 'success',
+        actor: session.username,
+        targetUsername: params.username,
+        provider: payload.provider,
+      });
       return reply.send(dashboardUserListResponseSchema.parse({
         users: humanAccountService.listUsersWithIdentities(),
       }));
     } catch (error) {
       const translated = translateError(error);
+      const params = request.params as { username: string };
+      const payload = request.body as { provider?: string } | undefined;
+      recordDashboardHumanAction({
+        metrics,
+        structuredLogs,
+        action: 'dashboard-user-bind-identity',
+        result: 'error',
+        actor: session.username,
+        targetUsername: params.username,
+        provider: payload?.provider ?? null,
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
