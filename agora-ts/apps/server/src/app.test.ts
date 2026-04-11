@@ -1188,6 +1188,116 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('builds a project context attention routing plan through the unified route surface', async () => {
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 7,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          },
+        },
+      ]),
+    };
+    const app = buildApp({
+      taskService: {
+        getTask: () => ({
+          id: 'OC-200',
+          title: 'Implement hybrid retrieval',
+          description: 'Need vector recall and lexical rerank.',
+        }),
+      } as never,
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      projectBrainService: {
+        listDocuments: () => [
+          {
+            project_id: 'proj-ctx',
+            kind: 'index',
+            slug: 'index',
+            title: 'Project Index',
+            path: '/brain/index.md',
+            content: '# Index',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'timeline',
+            slug: 'timeline',
+            title: 'Timeline',
+            path: '/brain/timeline.md',
+            content: '# Timeline',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            title: 'Runtime Boundary',
+            path: '/brain/decision/runtime-boundary.md',
+            content: '# Runtime Boundary',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+        ],
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/attention-routing',
+      payload: {
+        mode: 'bootstrap',
+        audience: 'craftsman',
+        task_id: 'OC-200',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_brain',
+      mode: 'task_context',
+      query: {
+        text: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
+      },
+      limit: 6,
+      context: {
+        task_id: 'OC-200',
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+      },
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      bundle: expect.objectContaining({
+        project_id: 'proj-ctx',
+      }),
+      plan: expect.objectContaining({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        routes: expect.arrayContaining([
+          expect.objectContaining({ reference_key: 'index:index', kind: 'project_map' }),
+          expect.objectContaining({ reference_key: 'decision:runtime-boundary', kind: 'focus' }),
+        ]),
+      }),
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {

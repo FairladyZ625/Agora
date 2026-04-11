@@ -36,6 +36,8 @@ import {
   validateProjectNomos,
 } from '@agora-ts/config';
 import {
+  projectContextAttentionRoutingRequestSchema,
+  projectContextAttentionRoutingResponseSchema,
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
   craftsmanExecutionSendKeysRequestSchema,
@@ -119,6 +121,7 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
+  AttentionRoutingService,
   type CitizenService,
   type InteractiveRuntimePort,
   OrchestratorDirectCreateService,
@@ -1753,6 +1756,56 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(projectContextReferenceBundleResponseSchema.parse({
         scope: 'project_context',
         bundle,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/attention-routing', async (request, reply) => {
+    if (!projectService || !projectBrainService) {
+      return reply.status(503).send({ message: 'Project attention routing is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextAttentionRoutingRequestSchema.parse(request.body);
+      const bundleService = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const task = payload.task_id ? taskService?.getTask(payload.task_id) : null;
+      const taskTitle = payload.task_title ?? task?.title;
+      const taskDescription = payload.task_description ?? task?.description;
+      const bundle = await bundleService.buildReferenceBundleAsync({
+        project_id: params.projectId,
+        mode: payload.mode,
+        audience: payload.audience,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      });
+      const routingService = new AttentionRoutingService({
+        ...(contextRetrievalService ? { retrievalService: contextRetrievalService } : {}),
+      });
+      const plan = await routingService.buildPlanAsync({
+        project_id: params.projectId,
+        mode: payload.mode,
+        audience: payload.audience,
+        reference_bundle: bundle,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+      });
+      return reply.send(projectContextAttentionRoutingResponseSchema.parse({
+        scope: 'project_context',
+        bundle,
+        plan,
       }));
     } catch (error) {
       const translated = translateError(error);

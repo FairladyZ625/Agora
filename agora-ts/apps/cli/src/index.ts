@@ -48,6 +48,7 @@ import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
+  AttentionRoutingService,
   deriveGraphFromStages,
   CcConnectInspectionService,
   CcConnectManagementService,
@@ -2215,6 +2216,76 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `mode: ${bundle.mode}`);
       writeLine(stdout, `references: ${bundle.references.length}`);
       writeLine(stdout, `inventory: ${bundle.inventory.entries.length}`);
+    });
+
+  context
+    .command('route')
+    .description('通过统一 attention routing surface 生成 project context read order')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'bootstrap|disclose', 'bootstrap')
+    .option('--task <taskId>', 'optional task id')
+    .option('--task-title <text>', 'optional task title override')
+    .option('--task-description <text>', 'optional task description override')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      mode: 'bootstrap' | 'disclose';
+      task?: string;
+      taskTitle?: string;
+      taskDescription?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const task = options.task ? taskService.getTask(options.task) : null;
+      const taskTitle = options.taskTitle ?? task?.title;
+      const taskDescription = options.taskDescription ?? task?.description;
+      const bundleService = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const bundle = await bundleService.buildReferenceBundleAsync({
+        project_id: options.project,
+        mode: options.mode,
+        audience: options.audience,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+        ...(options.allowedCitizen && options.allowedCitizen.length > 0
+          ? { allowed_citizen_ids: options.allowedCitizen }
+          : {}),
+      });
+      const routingService = new AttentionRoutingService({
+        retrievalService: getContextRetrievalService(),
+      });
+      const plan = await routingService.buildPlanAsync({
+        project_id: options.project,
+        mode: options.mode,
+        audience: options.audience,
+        reference_bundle: bundle,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          bundle,
+          plan,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `routing scope: project_context`);
+      writeLine(stdout, `project: ${plan.project_id}`);
+      writeLine(stdout, `summary: ${plan.summary}`);
+      for (const route of plan.routes) {
+        writeLine(stdout, `${route.ordinal}. ${route.kind}\t${route.reference_key}`);
+      }
     });
 
   projectKnowledge

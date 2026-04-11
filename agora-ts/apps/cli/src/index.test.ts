@@ -2372,6 +2372,108 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"reference_key": "decision:runtime-boundary"');
   });
 
+  it('builds a project context attention routing plan through the unified cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 7,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          },
+        },
+      ]),
+    } satisfies Pick<RetrievalService, 'retrieve'>;
+    const projectBrainService = {
+      listDocuments: vi.fn().mockReturnValue([
+        {
+          project_id: 'proj-ctx',
+          kind: 'index',
+          slug: 'index',
+          title: 'Project Index',
+          path: '/brain/index.md',
+          content: '# Index',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+          source_task_ids: [],
+        },
+        {
+          project_id: 'proj-ctx',
+          kind: 'timeline',
+          slug: 'timeline',
+          title: 'Timeline',
+          path: '/brain/timeline.md',
+          content: '# Timeline',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+          source_task_ids: [],
+        },
+        {
+          project_id: 'proj-ctx',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          content: '# Runtime Boundary',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+          source_task_ids: [],
+        },
+      ]),
+    } satisfies Pick<ProjectBrainService, 'listDocuments'>;
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-200',
+        title: 'Implement hybrid retrieval',
+        description: 'Need vector recall and lexical rerank.',
+      }),
+    } satisfies Pick<TaskService, 'getTask'>;
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectBrainService: projectBrainService as never,
+      contextRetrievalService: contextRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'route',
+      '--project', 'proj-ctx',
+      '--audience', 'craftsman',
+      '--mode', 'bootstrap',
+      '--task', 'OC-200',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-200');
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_brain',
+      mode: 'task_context',
+      query: {
+        text: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
+      },
+      limit: 6,
+      context: {
+        task_id: 'OC-200',
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+      },
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"reference_key": "decision:runtime-boundary"');
+    expect(stdout.value).toContain('"kind": "focus"');
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
