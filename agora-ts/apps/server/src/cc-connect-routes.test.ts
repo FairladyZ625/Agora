@@ -19,6 +19,8 @@ describe('cc-connect routes', () => {
       switchSession: vi.fn().mockResolvedValue({ message: 'active session switched', active_session_id: 's2' }),
       deleteSession: vi.fn().mockResolvedValue({ message: 'session deleted' }),
       listProviders: vi.fn().mockResolvedValue({ providers: [{ name: 'gac', active: true, model: 'gpt-5.4', base_url: 'https://gaccode.com/codex/v1' }], active_provider: 'gac' }),
+      addProvider: vi.fn().mockResolvedValue({ name: 'relay', message: 'provider added' }),
+      removeProvider: vi.fn().mockResolvedValue({ message: 'provider removed' }),
       activateProvider: vi.fn().mockResolvedValue({ active_provider: 'relay', message: 'provider activated' }),
       listModels: vi.fn().mockResolvedValue({ models: ['gpt-5.4', 'gpt-5.3-codex'], current: 'gpt-5.4' }),
       setModel: vi.fn().mockResolvedValue({ model: 'gpt-5.3-codex', message: 'model updated' }),
@@ -27,6 +29,33 @@ describe('cc-connect routes', () => {
       resumeHeartbeat: vi.fn().mockResolvedValue({ message: 'heartbeat resumed' }),
       runHeartbeat: vi.fn().mockResolvedValue({ message: 'heartbeat triggered' }),
       updateHeartbeatInterval: vi.fn().mockResolvedValue({ interval_mins: 15, message: 'interval updated' }),
+      listCronJobs: vi.fn().mockResolvedValue([{
+        id: 'cron-1',
+        project: 'agora-codex',
+        session_key: 'discord:1',
+        cron_expr: '0 * * * *',
+        prompt: 'Summarize the latest thread state.',
+        exec: null,
+        work_dir: null,
+        description: 'Hourly summary',
+        enabled: true,
+        silent: true,
+        created_at: '2026-04-11T00:00:00Z',
+        last_run: null,
+        last_error: null,
+      }]),
+      createCronPrompt: vi.fn().mockResolvedValue({
+        id: 'cron-2',
+        project: 'agora-codex',
+        session_key: 'discord:1',
+        cron_expr: '*/30 * * * *',
+        prompt: 'Ping the live session.',
+        exec: null,
+        description: 'Half-hour ping',
+        enabled: true,
+        created_at: '2026-04-11T00:30:00Z',
+      }),
+      deleteCronJob: vi.fn().mockResolvedValue({ message: 'cron deleted' }),
       listBridgeAdapters: vi.fn().mockResolvedValue([{ platform: 'discord', project: 'agora-codex' }]),
       sendMessage: vi.fn().mockResolvedValue({ message: 'queued' }),
     };
@@ -88,6 +117,21 @@ describe('cc-connect routes', () => {
       url: '/api/external-bridges/cc-connect/projects/agora-codex/providers/relay/activate',
       payload: {},
     });
+    const addProvider = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/providers',
+      payload: {
+        name: 'relay',
+        api_key: 'sk-relay',
+        base_url: 'https://relay.example.com',
+        model: 'gpt-5.3-codex',
+      },
+    });
+    const removeProvider = await app.inject({
+      method: 'DELETE',
+      url: '/api/external-bridges/cc-connect/projects/agora-codex/providers/relay',
+      payload: {},
+    });
     const models = await app.inject({
       method: 'GET',
       url: '/api/external-bridges/cc-connect/projects/agora-codex/models',
@@ -121,6 +165,26 @@ describe('cc-connect routes', () => {
       url: '/api/external-bridges/cc-connect/projects/agora-codex/heartbeat/interval',
       payload: { minutes: 15 },
     });
+    const cronJobs = await app.inject({
+      method: 'GET',
+      url: '/api/external-bridges/cc-connect/cron?project=agora-codex',
+    });
+    const createCron = await app.inject({
+      method: 'POST',
+      url: '/api/external-bridges/cc-connect/cron',
+      payload: {
+        project: 'agora-codex',
+        session_key: 'discord:1',
+        cron_expr: '*/30 * * * *',
+        prompt: 'Ping the live session.',
+        description: 'Half-hour ping',
+        silent: true,
+      },
+    });
+    const deleteCron = await app.inject({
+      method: 'DELETE',
+      url: '/api/external-bridges/cc-connect/cron/cron-2?managementToken=secret',
+    });
     const send = await app.inject({
       method: 'POST',
       url: '/api/external-bridges/cc-connect/projects/agora-codex/send',
@@ -141,6 +205,8 @@ describe('cc-connect routes', () => {
     expect(switchSession.statusCode).toBe(200);
     expect(deleteSession.statusCode).toBe(200);
     expect(providers.statusCode).toBe(200);
+    expect(addProvider.statusCode).toBe(200);
+    expect(removeProvider.statusCode).toBe(200);
     expect(activateProvider.statusCode).toBe(200);
     expect(models.statusCode).toBe(200);
     expect(setModel.statusCode).toBe(200);
@@ -149,6 +215,9 @@ describe('cc-connect routes', () => {
     expect(resumeHeartbeat.statusCode).toBe(200);
     expect(runHeartbeat.statusCode).toBe(200);
     expect(intervalHeartbeat.statusCode).toBe(200);
+    expect(cronJobs.statusCode).toBe(200);
+    expect(createCron.statusCode).toBe(200);
+    expect(deleteCron.statusCode).toBe(200);
     expect(send.statusCode).toBe(200);
 
     expect(ccConnectInspectionService.inspect).toHaveBeenCalledWith({
@@ -188,6 +257,17 @@ describe('cc-connect routes', () => {
     expect(ccConnectManagementService.listProviders).toHaveBeenCalledWith({
       project: 'agora-codex',
     });
+    expect(ccConnectManagementService.addProvider).toHaveBeenCalledWith({
+      project: 'agora-codex',
+      name: 'relay',
+      apiKey: 'sk-relay',
+      baseUrl: 'https://relay.example.com',
+      model: 'gpt-5.3-codex',
+    });
+    expect(ccConnectManagementService.removeProvider).toHaveBeenCalledWith({
+      project: 'agora-codex',
+      provider: 'relay',
+    });
     expect(ccConnectManagementService.activateProvider).toHaveBeenCalledWith({
       project: 'agora-codex',
       provider: 'relay',
@@ -214,6 +294,21 @@ describe('cc-connect routes', () => {
     expect(ccConnectManagementService.updateHeartbeatInterval).toHaveBeenCalledWith({
       project: 'agora-codex',
       minutes: 15,
+    });
+    expect(ccConnectManagementService.listCronJobs).toHaveBeenCalledWith({
+      project: 'agora-codex',
+    });
+    expect(ccConnectManagementService.createCronPrompt).toHaveBeenCalledWith({
+      project: 'agora-codex',
+      sessionKey: 'discord:1',
+      cronExpr: '*/30 * * * *',
+      prompt: 'Ping the live session.',
+      description: 'Half-hour ping',
+      silent: true,
+    });
+    expect(ccConnectManagementService.deleteCronJob).toHaveBeenCalledWith({
+      managementToken: 'secret',
+      jobId: 'cron-2',
     });
     expect(ccConnectManagementService.listBridgeAdapters).toHaveBeenCalledWith({});
     expect(ccConnectManagementService.sendMessage).toHaveBeenCalledWith({

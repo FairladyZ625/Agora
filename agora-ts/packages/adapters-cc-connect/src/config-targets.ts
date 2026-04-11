@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
+const DEFAULT_CC_CONNECT_CONFIG_DIR = resolve(homedir(), '.cc-connect');
 const DEFAULT_CC_CONNECT_CONFIG_PATH = resolve(homedir(), '.cc-connect', 'config.toml');
 const DEFAULT_CC_CONNECT_MANAGEMENT_HOST = '127.0.0.1';
 const DEFAULT_CC_CONNECT_MANAGEMENT_PORT = 9820;
@@ -10,6 +11,7 @@ type ConfigTargetDependencies = {
   env?: NodeJS.ProcessEnv;
   exists?: (path: string) => boolean;
   readFile?: (path: string, encoding: BufferEncoding) => string;
+  readDir?: (path: string) => string[];
 };
 
 type MutableProjectTarget = {
@@ -40,17 +42,41 @@ export interface CcConnectProjectTarget {
   };
 }
 
-export function parseCcConnectConfigPaths(env: NodeJS.ProcessEnv = process.env) {
+export function parseCcConnectConfigPaths(
+  env: NodeJS.ProcessEnv = process.env,
+  readDir: (path: string) => string[] = readdirSync,
+) {
   const multi = splitPathLikeList(env.AGORA_CC_CONNECT_CONFIG_PATHS);
   const single = env.AGORA_CC_CONNECT_CONFIG_PATH?.trim();
   const candidates = [
     ...multi,
     ...(single ? [single] : []),
   ];
-  if (candidates.length === 0) {
-    return [DEFAULT_CC_CONNECT_CONFIG_PATH];
+  if (candidates.length > 0) {
+    return Array.from(new Set(candidates.map(resolveTilde)));
   }
-  return Array.from(new Set(candidates.map(resolveTilde)));
+
+  try {
+    const discovered = readDir(DEFAULT_CC_CONNECT_CONFIG_DIR)
+      .filter((entry) => entry.endsWith('.toml'))
+      .map((entry) => resolve(DEFAULT_CC_CONNECT_CONFIG_DIR, entry))
+      .sort((left, right) => {
+        if (left === DEFAULT_CC_CONNECT_CONFIG_PATH) {
+          return -1;
+        }
+        if (right === DEFAULT_CC_CONNECT_CONFIG_PATH) {
+          return 1;
+        }
+        return left.localeCompare(right);
+      });
+    if (discovered.length > 0) {
+      return Array.from(new Set(discovered));
+    }
+  } catch {
+    // Fall through to the historical default path when the directory is absent.
+  }
+
+  return [DEFAULT_CC_CONNECT_CONFIG_PATH];
 }
 
 export function loadCcConnectProjectTargets(
@@ -59,9 +85,10 @@ export function loadCcConnectProjectTargets(
   const env = deps.env ?? process.env;
   const exists = deps.exists ?? existsSync;
   const readFile = deps.readFile ?? readFileSync;
+  const readDir = deps.readDir ?? readdirSync;
 
   const targets: CcConnectProjectTarget[] = [];
-  for (const configPath of parseCcConnectConfigPaths(env)) {
+  for (const configPath of parseCcConnectConfigPaths(env, readDir)) {
     if (!exists(configPath)) {
       continue;
     }
