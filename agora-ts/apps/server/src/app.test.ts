@@ -1056,6 +1056,67 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('routes project context health through the unified retrieval surface', async () => {
+    const contextRetrievalService = {
+      checkHealth: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'filesystem_context_source',
+          status: 'ready',
+          message: 'filesystem context sources reachable',
+          metadata: {
+            source_ids: ['docs-main'],
+          },
+        },
+      ]),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/health',
+      payload: {
+        task_id: 'OC-200',
+        audience: 'craftsman',
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.checkHealth).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'task_context',
+      query: {
+        text: 'health',
+      },
+      context: {
+        project_id: 'proj-ctx',
+        task_id: 'OC-200',
+        audience: 'craftsman',
+      },
+      metadata: {
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+      },
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      mode: 'task_context',
+      health: [
+        expect.objectContaining({
+          provider: 'filesystem_context_source',
+          status: 'ready',
+        }),
+      ],
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {

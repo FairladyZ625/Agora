@@ -2257,6 +2257,60 @@ describe('agora-ts cli', () => {
     });
   });
 
+  it('routes project context health through the unified retrieval cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const contextRetrievalService = {
+      checkHealth: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'filesystem_context_source',
+          status: 'ready',
+          message: 'filesystem context sources reachable',
+          metadata: {
+            source_ids: ['docs-main'],
+          },
+        },
+      ]),
+    } satisfies Pick<RetrievalService, 'checkHealth'>;
+    const program = createCliProgram({
+      contextRetrievalService: contextRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'health',
+      '--project', 'proj-ctx',
+      '--task', 'OC-200',
+      '--audience', 'craftsman',
+      '--provider', 'filesystem_context_source',
+      '--source', 'docs-main',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(contextRetrievalService.checkHealth).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'task_context',
+      query: {
+        text: 'health',
+      },
+      context: {
+        project_id: 'proj-ctx',
+        task_id: 'OC-200',
+        audience: 'craftsman',
+      },
+      metadata: {
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+      },
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"provider": "filesystem_context_source"');
+    expect(stdout.value).toContain('"status": "ready"');
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

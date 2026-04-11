@@ -224,9 +224,31 @@ async function main() {
       '--limit', '5',
       '--json',
     ], retrievalService);
+    const healthRestResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-smoke/context/health',
+      payload: {
+        task_id: 'OC-200',
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+      },
+    });
+    if (healthRestResponse.statusCode !== 200) {
+      throw new Error(`health rest smoke failed: ${healthRestResponse.statusCode} ${healthRestResponse.body}`);
+    }
+    const healthCliResult = await runCliCommand([
+      'context',
+      'health',
+      '--project', 'proj-smoke',
+      '--task', 'OC-200',
+      '--provider', 'filesystem_context_source',
+      '--source', 'docs-main',
+      '--json',
+    ], retrievalService);
 
     const restJson = restResponse.json();
     const sourceAwareRestJson = sourceAwareRestResponse.json();
+    const healthRestJson = healthRestResponse.json();
     if (!Array.isArray(restJson.results) || restJson.results.length === 0) {
       throw new Error('rest smoke returned no retrieval results');
     }
@@ -241,6 +263,12 @@ async function main() {
     }
     if (!sourceAwareCliResult.stdout.includes('"source_id": "docs-main"')) {
       throw new Error('source-aware cli smoke missing docs-main source id');
+    }
+    if (!Array.isArray(healthRestJson.health) || healthRestJson.health.length === 0) {
+      throw new Error('health rest smoke returned no health results');
+    }
+    if (!healthCliResult.stdout.includes('"status": "ready"')) {
+      throw new Error('health cli smoke missing ready status');
     }
 
     process.stdout.write(JSON.stringify({
@@ -261,6 +289,13 @@ async function main() {
       },
       source_aware_cli: {
         stdout: sourceAwareCliResult.stdout.trim().split('\n'),
+      },
+      health_rest: {
+        health_count: healthRestJson.health.length,
+        first_provider: healthRestJson.health[0]?.provider ?? null,
+      },
+      health_cli: {
+        stdout: healthCliResult.stdout.trim().split('\n'),
       },
     }, null, 2));
     process.stdout.write('\n');

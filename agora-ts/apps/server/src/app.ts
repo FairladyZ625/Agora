@@ -75,6 +75,8 @@ import {
   ingestTaskConversationEntryRequestSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
+  projectContextHealthRequestSchema,
+  projectContextHealthResponseSchema,
   projectContextRetrieveRequestSchema,
   projectContextRetrieveResponseSchema,
   type HealthResponse,
@@ -150,7 +152,7 @@ export interface BuildAppOptions {
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
-  contextRetrievalService?: Pick<RetrievalService, 'retrieve'>;
+  contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   workspaceBootstrapService?: WorkspaceBootstrapService;
   citizenService?: CitizenService;
@@ -1672,6 +1674,49 @@ export function buildApp(options: BuildAppOptions = {}) {
         scope: 'project_context',
         mode,
         results,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/health', async (request, reply) => {
+    if (!projectService || !contextRetrievalService) {
+      return reply.status(503).send({ message: 'Project context retrieval is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextHealthRequestSchema.parse(request.body);
+      const mode = payload.task_id ? (payload.mode ?? 'task_context') : (payload.mode ?? 'lookup');
+      const health = await contextRetrievalService.checkHealth?.({
+        scope: 'project_context',
+        mode,
+        query: {
+          text: 'health',
+        },
+        context: {
+          project_id: params.projectId,
+          ...(payload.task_id ? { task_id: payload.task_id } : {}),
+          ...(payload.audience ? { audience: payload.audience } : {}),
+        },
+        ...(payload.providers && payload.providers.length > 0 ? {
+          metadata: {
+            providers: payload.providers,
+            ...(payload.source_ids && payload.source_ids.length > 0 ? { source_ids: payload.source_ids } : {}),
+          },
+        } : {}),
+        ...(!payload.providers?.length && payload.source_ids?.length ? {
+          metadata: {
+            source_ids: payload.source_ids,
+          },
+        } : {}),
+      }) ?? [];
+      return reply.send(projectContextHealthResponseSchema.parse({
+        scope: 'project_context',
+        mode,
+        health,
       }));
     } catch (error) {
       const translated = translateError(error);

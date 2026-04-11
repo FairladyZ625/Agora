@@ -133,7 +133,7 @@ export interface CliDependencies {
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   projectBrainIndexWorkerService?: ProjectBrainIndexWorkerServiceContract;
-  contextRetrievalService?: Pick<RetrievalService, 'retrieve'>;
+  contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   citizenService?: CitizenService;
   legacyRuntimeService?: LegacyRuntimeServiceLike;
   tmuxRuntimeService?: LegacyRuntimeServiceLike;
@@ -2104,6 +2104,67 @@ export function createCliProgram(deps: CliDependencies = {}) {
       for (const item of results) {
         writeLine(stdout, `${item.provider}\t${item.reference_key}\t${item.path}`);
         writeLine(stdout, `  ${item.preview}`);
+      }
+    });
+
+  context
+    .command('health')
+    .description('通过统一 retrieval surface 检查 project context provider/source 健康度')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--task <taskId>', 'optional task id for task-aware health')
+    .option('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'lookup|task_context')
+    .option('--provider <provider>', 'limit retrieval providers', collectOption, [])
+    .option('--source <sourceId>', 'limit retrieval source ids', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      task?: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
+      mode?: string;
+      provider?: string[];
+      source?: string[];
+      json?: boolean;
+    }) => {
+      const retrievalService = getContextRetrievalService();
+      const mode = options.task ? (options.mode ?? 'task_context') : (options.mode ?? 'lookup');
+      const health = await retrievalService.checkHealth?.({
+        scope: 'project_context',
+        mode,
+        query: {
+          text: 'health',
+        },
+        context: {
+          project_id: options.project,
+          ...(options.task ? { task_id: options.task } : {}),
+          ...(options.audience ? { audience: options.audience } : {}),
+        },
+        ...(options.provider && options.provider.length > 0 ? {
+          metadata: {
+            providers: options.provider,
+            ...(options.source && options.source.length > 0 ? { source_ids: options.source } : {}),
+          },
+        } : {}),
+        ...(!options.provider?.length && options.source?.length ? {
+          metadata: {
+            source_ids: options.source,
+          },
+        } : {}),
+      }) ?? [];
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          mode,
+          health,
+        }, null, 2));
+        return;
+      }
+      if (health.length === 0) {
+        writeLine(stdout, '没有匹配的 context provider/source health 项');
+        return;
+      }
+      for (const item of health) {
+        writeLine(stdout, `${item.provider}\t${item.status}\t${item.message ?? '-'}`);
       }
     });
 
