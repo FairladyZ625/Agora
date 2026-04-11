@@ -344,6 +344,12 @@ describe('cc-connect dashboard page', () => {
     fireEvent.change(screen.getByLabelText(/provider base url/i), {
       target: { value: 'https://relay.example.com' },
     });
+    fireEvent.change(screen.getByLabelText(/provider thinking/i), {
+      target: { value: 'disabled' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider env json/i), {
+      target: { value: '{"AWS_PROFILE":"bedrock"}' },
+    });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /add provider/i }));
     });
@@ -356,6 +362,10 @@ describe('cc-connect dashboard page', () => {
       apiKey: 'sk-relay',
       baseUrl: 'https://relay.example.com',
       model: '',
+      thinking: 'disabled',
+      env: {
+        AWS_PROFILE: 'bedrock',
+      },
     });
     expect(removeProvider).toHaveBeenCalledWith('relay');
   });

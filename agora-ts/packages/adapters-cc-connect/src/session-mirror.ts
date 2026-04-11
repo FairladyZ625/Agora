@@ -34,6 +34,9 @@ type MirrorDependencies = {
   readFile?: (path: string, encoding: BufferEncoding) => string;
   managementService: ManagementReader;
   now?: () => Date;
+  logger?: {
+    warn?: (message: string, meta?: Record<string, unknown>) => void;
+  };
 };
 
 export interface CcConnectSessionMirrorServiceOptions extends MirrorDependencies {
@@ -54,6 +57,7 @@ export class CcConnectSessionMirrorService {
   private readonly onSessionSync: ((session: MirroredLiveSessionDto) => unknown) | undefined;
   private readonly now: () => Date;
   private readonly pollIntervalMs: number;
+  private readonly logger: NonNullable<MirrorDependencies['logger']>;
   private readonly mirroredSessionKeys = new Set<string>();
   private interval: NodeJS.Timeout | null = null;
   private refreshPromise: Promise<void> | null = null;
@@ -69,6 +73,7 @@ export class CcConnectSessionMirrorService {
     this.onSessionSync = options.onSessionSync;
     this.now = options.now ?? (() => new Date());
     this.pollIntervalMs = options.pollIntervalMs ?? 30_000;
+    this.logger = options.logger ?? {};
 
     if (options.autoStart !== false) {
       this.start();
@@ -79,9 +84,17 @@ export class CcConnectSessionMirrorService {
     if (this.interval) {
       return;
     }
-    void this.refreshNow();
+    void this.refreshNow().catch((error) => {
+      this.logger.warn?.('[agora] cc-connect session mirror refresh failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
     this.interval = setInterval(() => {
-      void this.refreshNow();
+      void this.refreshNow().catch((error) => {
+        this.logger.warn?.('[agora] cc-connect session mirror refresh failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }, this.pollIntervalMs);
     this.interval.unref?.();
   }
@@ -111,12 +124,22 @@ export class CcConnectSessionMirrorService {
       if (!target.management.enabled || !target.management.baseUrl || !target.management.token) {
         continue;
       }
-      const sessions = await this.managementService.listSessions({
-        configPath: target.configPath,
-        managementBaseUrl: target.management.baseUrl,
-        managementToken: target.management.token,
-        project: target.projectName,
-      });
+      let sessions: CcConnectSessionSummary[] = [];
+      try {
+        sessions = await this.managementService.listSessions({
+          configPath: target.configPath,
+          managementBaseUrl: target.management.baseUrl,
+          managementToken: target.management.token,
+          project: target.projectName,
+        });
+      } catch (error) {
+        this.logger.warn?.('[agora] cc-connect session mirror poll failed', {
+          project: target.projectName,
+          baseUrl: target.management.baseUrl,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
 
       for (const session of sessions) {
         const mirrored = toLiveSession(target, session, this.now().toISOString());

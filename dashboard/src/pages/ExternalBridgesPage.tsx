@@ -66,6 +66,8 @@ export function ExternalBridgesPage() {
   const [providerNameDraft, setProviderNameDraft] = useState('');
   const [providerApiKeyDraft, setProviderApiKeyDraft] = useState('');
   const [providerBaseUrlDraft, setProviderBaseUrlDraft] = useState('');
+  const [providerThinkingDraft, setProviderThinkingDraft] = useState('');
+  const [providerEnvDraft, setProviderEnvDraft] = useState('');
   const [modelDraft, setModelDraft] = useState('');
   const [heartbeatIntervalDraft, setHeartbeatIntervalDraft] = useState('15');
   const [cronExprDraft, setCronExprDraft] = useState('0 * * * *');
@@ -130,16 +132,41 @@ export function ExternalBridgesPage() {
 
   const submitProvider = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    let env: Record<string, string> | undefined;
+    if (providerEnvDraft.trim()) {
+      try {
+        const parsed = JSON.parse(providerEnvDraft);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+          throw new Error('Provider env must be a JSON object.');
+        }
+        env = Object.fromEntries(
+          Object.entries(parsed).flatMap(([key, value]) => (
+            typeof value === 'string' ? [[key, value]] : []
+          )),
+        );
+      } catch (error) {
+        showMessage(
+          'Provider env JSON is invalid',
+          error instanceof Error ? error.message : String(error),
+          'warning',
+        );
+        return;
+      }
+    }
     const result = await addProvider({
       name: providerNameDraft,
       apiKey: providerApiKeyDraft,
       baseUrl: providerBaseUrlDraft,
       model: modelDraft,
+      thinking: providerThinkingDraft,
+      ...(env ? { env } : {}),
     });
     if (result === 'live') {
       setProviderNameDraft('');
       setProviderApiKeyDraft('');
       setProviderBaseUrlDraft('');
+      setProviderThinkingDraft('');
+      setProviderEnvDraft('');
       showMessage('Provider added', 'The cc-connect runtime accepted the new provider.', 'success');
     }
   };
@@ -463,6 +490,27 @@ export function ExternalBridgesPage() {
                             aria-label="Provider base URL"
                             value={providerBaseUrlDraft}
                             onChange={(event) => setProviderBaseUrlDraft(event.target.value)}
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="field-label">Provider thinking</span>
+                          <select
+                            className="input-shell"
+                            aria-label="Provider thinking"
+                            value={providerThinkingDraft}
+                            onChange={(event) => setProviderThinkingDraft(event.target.value)}
+                          >
+                            <option value="">{copy.emptyValue}</option>
+                            <option value="disabled">disabled</option>
+                          </select>
+                        </label>
+                        <label className="space-y-2">
+                          <span className="field-label">Provider env JSON</span>
+                          <textarea
+                            className="input-shell min-h-24"
+                            aria-label="Provider env JSON"
+                            value={providerEnvDraft}
+                            onChange={(event) => setProviderEnvDraft(event.target.value)}
                           />
                         </label>
                         <button type="submit" className="button-secondary" disabled={controlActionLoading}>
