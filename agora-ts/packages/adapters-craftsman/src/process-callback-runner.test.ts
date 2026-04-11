@@ -1,11 +1,10 @@
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
+import type * as ChildProcessModule from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type ChildProcessModule = typeof import('node:child_process');
-
 vi.mock('node:child_process', async (importOriginal) => {
-  const actual = await importOriginal<ChildProcessModule>();
+  const actual = await importOriginal<typeof ChildProcessModule>();
   return {
     ...actual,
     spawn: vi.fn(),

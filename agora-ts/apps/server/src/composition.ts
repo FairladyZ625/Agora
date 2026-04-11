@@ -60,6 +60,7 @@ import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawCitize
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
 import { ObsidianContextSourceRetrievalAdapter } from '@agora-ts/adapters-obsidian';
 import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveAgoraProjectStateLayout, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
+import type { LiveSessionDto } from '@agora-ts/contracts';
 import {
   type AgoraDatabase,
   ApprovalRequestRepository,
@@ -706,7 +707,7 @@ export function buildServerComposition(
     : new CcConnectSessionMirrorService({
         managementService: new CcConnectManagementService(),
         liveSessionStore,
-        onSessionSync: (session) => {
+        onSessionSync: (session: LiveSessionDto) => {
           taskParticipationService.syncLiveSession(session);
         },
         logger: {
