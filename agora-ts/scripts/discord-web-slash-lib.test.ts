@@ -118,6 +118,13 @@ describe("expectedMarkersForSlashCommand", () => {
     expect(expectedMarkersForSlashCommand("/task status OC-1")).toEqual(["flow_log=", "subtasks="]);
     expect(expectedMarkersForSlashCommand("/task")).toEqual(["Agora /task commands:", "Most common:"]);
   });
+
+  it("derives create markers from the quoted task title", () => {
+    expect(expectedMarkersForSlashCommand('/task create "quoted title regression check" coding')).toEqual([
+      "Created OC-",
+      "quoted title regression check",
+    ]);
+  });
 });
 
 describe("slashCommandAssertionPassed", () => {

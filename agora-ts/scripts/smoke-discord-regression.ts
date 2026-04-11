@@ -2,7 +2,7 @@
 import process from 'node:process';
 import { Command } from 'commander';
 import { createCliComposition } from '../apps/cli/src/composition.ts';
-import { buildLiveRegressionRecipe, LiveRegressionActor, type LiveRegressionRecipeName } from '../packages/testing/src/index.ts';
+import { buildLiveRegressionRecipe, LiveRegressionActor, type LiveRegressionRecipeName } from '@agora-ts/testing';
 
 async function main() {
   const program = new Command();

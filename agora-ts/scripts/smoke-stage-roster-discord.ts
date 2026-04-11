@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { Command } from 'commander';
-import { createAgoraDatabase, runMigrations, ParticipantBindingRepository, RuntimeSessionBindingRepository, TaskContextBindingRepository } from '../packages/db/src/index.ts';
-import { loadAgoraConfig } from '../packages/config/src/index.ts';
-import { DiscordHttpClient, DiscordIMProvisioningAdapter } from '../packages/adapters-discord/src/index.ts';
-import { loadOpenClawDiscordAccountTokens } from '../packages/adapters-openclaw/src/index.ts';
-import { TaskContextBindingService, TaskParticipationService } from '../packages/core/src/index.ts';
+import { DiscordHttpClient, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { loadOpenClawDiscordAccountTokens } from '@agora-ts/adapters-openclaw';
+import { loadAgoraConfig } from '@agora-ts/config';
+import { TaskContextBindingService, TaskParticipationService } from '@agora-ts/core';
+import { createAgoraDatabase, runMigrations, ParticipantBindingRepository, RuntimeSessionBindingRepository, TaskContextBindingRepository } from '@agora-ts/db';
 import { createTaskServiceFromDb } from '@agora-ts/testing';
 
 function sleep(ms: number) {

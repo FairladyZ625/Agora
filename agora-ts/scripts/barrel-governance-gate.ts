@@ -13,6 +13,7 @@ const DEFAULT_BARREL_PATHS = [
   'packages/adapters-brain/src/index.ts',
   'packages/adapters-host/src/index.ts',
   'packages/adapters-openclaw/src/index.ts',
+  'packages/testing/src/index.ts',
 ];
 
 const BARREL_EXPORT_STAR_PATTERN = /^export\s+\*\s+from\s+/m;

@@ -251,6 +251,7 @@ export {
 } from './runtime-ports.js';
 export type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 export type { ListSkillsInput, SkillCatalogEntry, SkillCatalogPort } from './skill-catalog-port.js';
+export { StageRosterService } from './stage-roster-service.js';
 export { StateMachine } from './state-machine.js';
 
 export type { CreateTaskAuthorityInput, TaskAuthorityServiceOptions } from './task-authority-service.js';
