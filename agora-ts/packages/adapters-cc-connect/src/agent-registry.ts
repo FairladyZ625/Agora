@@ -8,7 +8,7 @@ type RegistryDependencies = {
   readFile?: (path: string, encoding: BufferEncoding) => string;
 };
 
-export interface CcConnectAgentRegistryOptions extends RegistryDependencies {}
+export type CcConnectAgentRegistryOptions = RegistryDependencies;
 
 export function buildCcConnectAgentId(projectName: string) {
   return `cc-connect:${projectName}`;

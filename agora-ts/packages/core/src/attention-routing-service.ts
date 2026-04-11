@@ -1,7 +1,6 @@
 import type {
   AttentionRoutingPlanDto,
   AttentionRoutingRouteDto,
-  ContextInventoryEntryDto,
   ReferenceBundleDto,
   RetrievalPlanDto,
   RetrievalResultDto,
