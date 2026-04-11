@@ -2036,3 +2036,14 @@
   gap: 12px;
   margin-top: 16px;
 }
+
+.external-bridges__grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 1280px) {
+  .external-bridges__grid {
+    grid-template-columns: 1.1fr 1.1fr 1.4fr;
+  }
+}
