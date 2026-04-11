@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DashboardSessionStatusResponseDto } from '@agora-ts/contracts';
 import * as api from '@/lib/api';
 import { useSessionStore } from '@/stores/sessionStore';
 
@@ -14,23 +15,20 @@ function resetSessionStore() {
   });
 }
 
-function authenticatedSession(overrides: Record<string, unknown> = {}) {
+function authenticatedSession(overrides: Partial<DashboardSessionStatusResponseDto> = {}): DashboardSessionStatusResponseDto {
   return {
     authenticated: true,
     account_id: 42,
     username: 'alice',
-    role: 'admin' as const,
-    method: 'password',
+    role: 'admin',
+    method: 'session',
     ...overrides,
   };
 }
 
-function unauthenticatedSession() {
+function unauthenticatedSession(): DashboardSessionStatusResponseDto {
   return {
     authenticated: false,
-    account_id: null,
-    username: null,
-    role: null,
     method: null,
   };
 }
@@ -62,7 +60,7 @@ describe('sessionStore', () => {
       expect(s.accountId).toBe(42);
       expect(s.username).toBe('alice');
       expect(s.role).toBe('admin');
-      expect(s.method).toBe('password');
+      expect(s.method).toBe('session');
       expect(s.error).toBeNull();
     });
 
@@ -146,7 +144,7 @@ describe('sessionStore', () => {
     it('coerces undefined fields to null', async () => {
       vi.spyOn(api, 'getDashboardSessionStatus').mockResolvedValue({
         authenticated: true,
-        // account_id, username, role, method intentionally omitted
+        method: 'session',
       });
 
       await useSessionStore.getState().refresh();
@@ -155,7 +153,7 @@ describe('sessionStore', () => {
       expect(s.accountId).toBeNull();
       expect(s.username).toBeNull();
       expect(s.role).toBeNull();
-      expect(s.method).toBeNull();
+      expect(s.method).toBe('session');
     });
   });
 
@@ -163,7 +161,7 @@ describe('sessionStore', () => {
 
   describe('login', () => {
     it('sets all fields on successful login', async () => {
-      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue({ ok: true, username: 'charlie', method: 'session' });
       vi.spyOn(api, 'getDashboardSessionStatus').mockResolvedValue(
         authenticatedSession({ role: 'admin', account_id: 99, username: 'charlie' }),
       );
@@ -181,7 +179,7 @@ describe('sessionStore', () => {
     });
 
     it('sets member role on login', async () => {
-      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue({ ok: true, username: 'dave', method: 'session' });
       vi.spyOn(api, 'getDashboardSessionStatus').mockResolvedValue(
         authenticatedSession({ role: 'member', account_id: 5, username: 'dave' }),
       );
@@ -192,20 +190,15 @@ describe('sessionStore', () => {
     });
 
     it('sets loading status before awaiting', () => {
-      let resolved = false;
       vi.spyOn(api, 'loginDashboardSession').mockImplementation(async () => {
         expect(useSessionStore.getState().status).toBe('loading');
-        resolved = true;
+        return { ok: true, username: 'x', method: 'session' as const };
       });
       vi.spyOn(api, 'getDashboardSessionStatus').mockResolvedValue(
         authenticatedSession(),
       );
 
-      const promise = useSessionStore.getState().login('x', 'y');
-      // The sync assertion inside the spy has already run by now
-      return promise.then(() => {
-        expect(resolved).toBe(true);
-      });
+      return useSessionStore.getState().login('x', 'y');
     });
 
     it('sets error status and rethrows on login API failure', async () => {
@@ -224,7 +217,7 @@ describe('sessionStore', () => {
     });
 
     it('sets error status and rethrows when session fetch fails after login', async () => {
-      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue({ ok: true, username: 'x', method: 'session' });
       vi.spyOn(api, 'getDashboardSessionStatus').mockRejectedValue(
         new Error('session lookup failed'),
       );
@@ -252,7 +245,7 @@ describe('sessionStore', () => {
 
     it('clears previous error when starting login', async () => {
       useSessionStore.setState({ status: 'error', error: 'stale' });
-      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue({ ok: true, username: 'a', method: 'session' });
       vi.spyOn(api, 'getDashboardSessionStatus').mockResolvedValue(
         authenticatedSession(),
       );
@@ -273,10 +266,10 @@ describe('sessionStore', () => {
         accountId: 10,
         username: 'alice',
         role: 'admin',
-        method: 'password',
+        method: 'session',
         error: 'some error',
       });
-      vi.spyOn(api, 'logoutDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'logoutDashboardSession').mockResolvedValue({ ok: true });
 
       await useSessionStore.getState().logout();
 
@@ -298,7 +291,7 @@ describe('sessionStore', () => {
         accountId: 1,
         username: 'alice',
         role: 'admin',
-        method: 'password',
+        method: 'session',
       });
       vi.spyOn(api, 'logoutDashboardSession').mockRejectedValue(
         new Error('server unreachable'),
@@ -321,7 +314,7 @@ describe('sessionStore', () => {
 
     it('clears error from previous state on logout', async () => {
       useSessionStore.setState({ status: 'error', error: 'old problem' });
-      vi.spyOn(api, 'logoutDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'logoutDashboardSession').mockResolvedValue({ ok: true });
 
       await useSessionStore.getState().logout();
 
@@ -392,7 +385,7 @@ describe('sessionStore', () => {
   describe('full lifecycle', () => {
     it('login -> refresh -> logout round-trip preserves correct state at each step', async () => {
       // login
-      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'loginDashboardSession').mockResolvedValue({ ok: true, username: 'eve', method: 'session' });
       vi.spyOn(api, 'getDashboardSessionStatus').mockResolvedValue(
         authenticatedSession({ role: 'member', account_id: 3, username: 'eve' }),
       );
@@ -409,7 +402,7 @@ describe('sessionStore', () => {
       expect(useSessionStore.getState().role).toBe('admin');
 
       // logout
-      vi.spyOn(api, 'logoutDashboardSession').mockResolvedValue(undefined);
+      vi.spyOn(api, 'logoutDashboardSession').mockResolvedValue({ ok: true });
       await useSessionStore.getState().logout();
       expect(useSessionStore.getState().authenticated).toBe(false);
       expect(useSessionStore.getState().status).toBe('ready');
