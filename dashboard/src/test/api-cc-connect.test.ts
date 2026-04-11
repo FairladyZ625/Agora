@@ -423,6 +423,10 @@ describe('cc-connect api client', () => {
       api_key: 'sk-relay',
       base_url: 'https://relay.example.com',
       model: 'gpt-5.3-codex',
+      thinking: 'disabled',
+      env: {
+        AWS_PROFILE: 'bedrock',
+      },
     });
     const removeProviderReceipt = await removeCcConnectProvider('agora-codex', 'relay');
     const activateProviderReceipt = await activateCcConnectProvider('agora-codex', 'relay');
@@ -452,6 +456,10 @@ describe('cc-connect api client', () => {
         api_key: 'sk-relay',
         base_url: 'https://relay.example.com',
         model: 'gpt-5.3-codex',
+        thinking: 'disabled',
+        env: {
+          AWS_PROFILE: 'bedrock',
+        },
       }),
     });
     expectFetchCall('/external-bridges/cc-connect/projects/agora-codex/providers/relay', {

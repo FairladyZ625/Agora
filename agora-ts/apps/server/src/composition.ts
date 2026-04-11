@@ -709,6 +709,9 @@ export function buildServerComposition(
         onSessionSync: (session) => {
           taskParticipationService.syncLiveSession(session);
         },
+        logger: {
+          warn: (message, meta) => console.warn(message, meta),
+        },
       });
 
   return {

@@ -231,6 +231,8 @@ interface CcConnectStore {
     apiKey?: string;
     baseUrl?: string;
     model?: string;
+    thinking?: string;
+    env?: Record<string, string>;
   }) => Promise<'live' | 'error'>;
   removeProvider: (provider: string) => Promise<'live' | 'error'>;
   activateProvider: (provider: string) => Promise<'live' | 'error'>;
@@ -580,6 +582,8 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
         ...(input.apiKey?.trim() ? { api_key: input.apiKey.trim() } : {}),
         ...(input.baseUrl?.trim() ? { base_url: input.baseUrl.trim() } : {}),
         ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+        ...(input.thinking?.trim() ? { thinking: input.thinking.trim() } : {}),
+        ...(input.env && Object.keys(input.env).length > 0 ? { env: input.env } : {}),
       });
       await get().selectProject(projectName);
       set({

@@ -129,4 +129,78 @@ describe('CcConnectSessionMirrorService', () => {
       last_event: 'cc_connect_session_missing',
     }));
   });
+
+  it('degrades when one management endpoint fails and still mirrors other targets', async () => {
+    const upsert = vi.fn();
+    const warn = vi.fn();
+    const service = new CcConnectSessionMirrorService({
+      autoStart: false,
+      now: () => new Date('2026-04-11T07:00:00.000Z'),
+      targets: [
+        {
+          configPath: '/tmp/config.toml',
+          projectName: 'agora-codex',
+          agentType: 'codex',
+          workDir: '/repo/agora',
+          primaryModel: 'gpt-5.4',
+          channelProviders: ['discord'],
+          management: {
+            enabled: true,
+            baseUrl: 'http://127.0.0.1:9820',
+            token: 'secret-a',
+          },
+        },
+        {
+          configPath: '/tmp/config-immediate.toml',
+          projectName: 'agora-codex-immediate',
+          agentType: 'codex',
+          workDir: '/repo/agora',
+          primaryModel: 'gpt-5.4',
+          channelProviders: ['discord'],
+          management: {
+            enabled: true,
+            baseUrl: 'http://127.0.0.1:9821',
+            token: 'secret-b',
+          },
+        },
+      ],
+      managementService: {
+        listSessions: vi.fn()
+          .mockRejectedValueOnce(new Error('connect ECONNREFUSED 127.0.0.1:9821'))
+          .mockResolvedValueOnce([{
+            id: 's1',
+            session_key: 'discord:1491748680485572679',
+            platform: 'discord',
+            active: true,
+            live: true,
+            created_at: '2026-04-11T06:59:00.000Z',
+            updated_at: '2026-04-11T07:00:00.000Z',
+            chat_name: 'codex-cli',
+            user_name: 'fairladyz',
+          }]),
+      },
+      liveSessionStore: {
+        upsert,
+        end: vi.fn(),
+      },
+      logger: { warn },
+    });
+
+    await expect(service.refreshNow()).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(
+      '[agora] cc-connect session mirror poll failed',
+      expect.objectContaining({
+        project: 'agora-codex',
+        baseUrl: 'http://127.0.0.1:9820',
+        error: 'connect ECONNREFUSED 127.0.0.1:9821',
+      }),
+    );
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'cc-connect',
+      agent_id: 'cc-connect:agora-codex-immediate',
+      session_key: 'cc-connect:agora-codex-immediate:discord:1491748680485572679',
+      status: 'active',
+    }));
+  });
 });
