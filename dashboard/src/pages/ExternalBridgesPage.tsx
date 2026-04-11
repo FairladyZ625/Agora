@@ -208,7 +208,7 @@ export function ExternalBridgesPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_1.1fr_1.4fr]">
+      <section className="external-bridges__grid">
         <div className="surface-panel surface-panel--workspace" data-testid="external-bridges-projects-panel">
           <div className="section-title-row">
             <div>

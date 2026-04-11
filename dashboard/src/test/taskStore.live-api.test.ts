@@ -7,6 +7,7 @@ import type {
   ApiTaskStatusDto,
   ApiUnifiedHealthSnapshotDto,
 } from '@/types/api';
+import { useSessionStore } from '@/stores/sessionStore';
 import { useTaskStore } from '@/stores/taskStore';
 import * as api from '@/lib/api';
 
@@ -24,6 +25,8 @@ vi.mock('@/lib/api', () => ({
   closeSubtask: vi.fn(),
   archiveSubtask: vi.fn(),
   cancelSubtask: vi.fn(),
+  approveTask: vi.fn(),
+  rejectTask: vi.fn(),
   archonApprove: vi.fn(),
   archonReject: vi.fn(),
 }));
@@ -224,6 +227,15 @@ describe('task store live API mode', () => {
       filters: { state: null, search: '' },
       loading: false,
       detailLoading: false,
+      error: null,
+    });
+    useSessionStore.setState({
+      status: 'ready',
+      authenticated: true,
+      accountId: 7,
+      username: 'admin',
+      role: 'admin',
+      method: 'password',
       error: null,
     });
   });
@@ -444,7 +456,86 @@ describe('task store live API mode', () => {
     expect(state.error).toContain('conversation read unavailable');
   });
 
-  it('refreshes the selected task after a successful approval', async () => {
+  it('routes approval gates through the session-backed approve api and refreshes detail state', async () => {
+    const approvalTask = buildTaskDto({
+      current_stage: 'review',
+      workflow: {
+        type: 'discuss-execute-review',
+        stages: [
+          { id: 'develop', name: '并行开发', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          { id: 'review', name: '合并审查', mode: 'discuss', gate: { type: 'approval' } },
+        ],
+      },
+    });
+    vi.mocked(api.approveTask).mockResolvedValue(approvalTask);
+    vi.mocked(api.listTasks).mockResolvedValue([approvalTask]);
+    vi.mocked(api.getTaskStatus).mockResolvedValue(
+      buildTaskStatusDto({
+        task: approvalTask,
+      }),
+    );
+    vi.mocked(api.getTask).mockResolvedValue(approvalTask);
+    vi.mocked(api.getTaskConversationSummary).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
+    vi.mocked(api.getTaskConversation).mockResolvedValue({ entries: [] });
+    vi.mocked(api.markTaskConversationRead).mockResolvedValue(buildConversationSummaryDto({
+      unread_count: 0,
+      has_unread: false,
+    }));
+
+    useTaskStore.setState({
+      tasks: [
+        {
+          id: 'OC-001',
+          version: 3,
+          title: approvalTask.title,
+          description: approvalTask.description,
+          type: approvalTask.type,
+          priority: approvalTask.priority,
+          creator: approvalTask.creator,
+          locale: approvalTask.locale,
+          state: 'gate_waiting',
+          archiveStatus: approvalTask.archive_status,
+          authority: null,
+          controllerRef: null,
+          current_stage: 'review',
+          teamLabel: 'opus / sonnet',
+          workflowLabel: 'discuss-execute-review',
+          memberCount: 2,
+          isReviewStage: true,
+          sourceState: 'active',
+          stageName: '合并审查',
+          gateType: 'approval',
+          teamMembers: approvalTask.team?.members ?? [],
+          scheduler: approvalTask.scheduler,
+          scheduler_snapshot: approvalTask.scheduler_snapshot,
+          discord: approvalTask.discord,
+          metrics: approvalTask.metrics,
+          error_detail: approvalTask.error_detail,
+          created_at: approvalTask.created_at,
+          updated_at: approvalTask.updated_at,
+        },
+      ],
+      selectedTaskId: 'OC-001',
+      selectedTaskStatus: null,
+      filters: { state: null, search: '' },
+      loading: false,
+      detailLoading: false,
+      error: null,
+    });
+
+    const result = await useTaskStore.getState().resolveReview('OC-001', 'approve', 'looks good');
+    const state = useTaskStore.getState();
+
+    expect(result).toBe('live');
+    expect(api.approveTask).toHaveBeenCalledWith('OC-001', 'admin', 'looks good');
+    expect(api.archonApprove).not.toHaveBeenCalled();
+    expect(state.selectedTaskStatus?.task.state).toBe('gate_waiting');
+  });
+
+  it('refreshes archon review tasks through the session-backed archon api', async () => {
     vi.mocked(api.archonApprove).mockResolvedValue(buildTaskDto({ current_stage: 'review' }));
     vi.mocked(api.listTasks).mockResolvedValue([buildTaskDto({ current_stage: 'review' })]);
     vi.mocked(api.getTaskStatus).mockResolvedValue(
@@ -477,7 +568,8 @@ describe('task store live API mode', () => {
     const state = useTaskStore.getState();
 
     expect(result).toBe('live');
-    expect(api.archonApprove).toHaveBeenCalledWith('OC-001', 'looks good');
+    expect(api.archonApprove).toHaveBeenCalledWith('OC-001', 'looks good', 'admin');
+    expect(api.approveTask).not.toHaveBeenCalled();
     expect(state.selectedTaskStatus?.task.state).toBe('gate_waiting');
   });
 
