@@ -86,7 +86,7 @@ export class ObsidianContextSourceRetrievalAdapter {
   }
 
   private resolveBindings(plan: RetrievalPlanDto): ContextSourceBindingDto[] {
-    if (plan.scope !== 'context_source') {
+    if (plan.scope !== 'context_source' && plan.scope !== 'project_context') {
       return [];
     }
     const projectId = plan.context.project_id;

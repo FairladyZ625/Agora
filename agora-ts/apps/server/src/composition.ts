@@ -16,13 +16,17 @@ import {
   LiveSessionStore,
   NotificationDispatcher,
   HumanAccountService,
+  ContextSourceBindingService,
   ProjectAgentRosterService,
   ProjectBrainIndexQueueService,
+  ProjectBrainRetrievalService,
   type ProjectBrainIndexWorkerService,
   ProjectBrainService,
   ProjectContextWriter,
   ProjectMembershipService,
   ProjectService,
+  RetrievalRegistry,
+  RetrievalService,
   RolePackService,
   TaskAuthorityService,
   type ProjectKnowledgePort,
@@ -48,12 +52,13 @@ import {
   type PresenceSource,
 } from '@agora-ts/core';
 import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter, CcConnectManagementPresenceSource, CcConnectSessionMirrorService } from '@agora-ts/adapters-cc-connect';
-import { FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
 import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawCitizenProjectionAdapter, OpenClawLogPresenceSource } from '@agora-ts/adapters-openclaw';
 import { DiscordGatewayPresenceService, DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { ObsidianContextSourceRetrievalAdapter } from '@agora-ts/adapters-obsidian';
 import { agoraDataDirPath, hasInstalledBrainPack, refineProjectNomosDraftFromSpec, resolveAgoraProjectStateLayout, resolveProjectNomosRuntimePaths, resolveProjectNomosState, syncBundledBrainPackContents, type AgoraConfig } from '@agora-ts/config';
 import {
   type AgoraDatabase,
@@ -112,6 +117,7 @@ export interface ServerComposition {
   taskService: TaskService;
   projectService: ProjectService;
   projectBrainService: ProjectBrainService;
+  contextRetrievalService: RetrievalService;
   citizenService: CitizenService;
   dashboardQueryService: DashboardQueryService;
   templateAuthoringService: TemplateAuthoringService;
@@ -201,6 +207,10 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: { projectService: ProjectService; citizenService: CitizenService },
   ) => ProjectBrainService;
+  createContextRetrievalService: (
+    context: ServerCompositionContext,
+    deps: { projectService: ProjectService; projectBrainService: ProjectBrainService },
+  ) => RetrievalService;
   createProjectBrainIndexWorkerService?: (
     context: ServerCompositionContext,
     deps: { projectBrainService: ProjectBrainService },
@@ -543,6 +553,24 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         repository: new ProjectBrainIndexJobRepository(context.db),
       }),
     }),
+    createContextRetrievalService: (context, deps) => {
+      const contextSourceBindingService = new ContextSourceBindingService({
+        projectService: deps.projectService,
+      });
+      const registry = new RetrievalRegistry([
+        new ProjectBrainRetrievalService({
+          taskLookup: new TaskRepository(context.db),
+          projectBrainService: deps.projectBrainService,
+        }),
+        new FilesystemContextSourceRetrievalAdapter({
+          listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
+        }),
+        new ObsidianContextSourceRetrievalAdapter({
+          listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
+        }),
+      ]);
+      return new RetrievalService({ registry });
+    },
     createTaskParticipationService: (context, deps) => new TaskParticipationService({
       participantRepository: new ParticipantBindingRepository(context.db),
       runtimeSessionRepository: new RuntimeSessionBindingRepository(context.db),
@@ -626,6 +654,7 @@ export function buildServerComposition(
   const rolePackService = factories.createRolePackService(context);
   const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
   const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
+  const contextRetrievalService = factories.createContextRetrievalService(context, { projectService, projectBrainService });
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -686,6 +715,7 @@ export function buildServerComposition(
     taskService,
     projectService,
     projectBrainService,
+    contextRetrievalService,
     citizenService,
     dashboardQueryService,
     templateAuthoringService,

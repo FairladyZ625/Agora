@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ArchiveJobRepository, createAgoraDatabase, HumanAccountRepository, HumanIdentityBindingRepository, runMigrations, SubtaskRepository, TaskContextBindingRepository, TaskConversationReadCursorRepository, TaskConversationRepository, TaskRepository, TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
-import type { CcConnectInspectionService, CcConnectManagementService, DashboardQueryService, TaskService } from '@agora-ts/core';
+import type { CcConnectInspectionService, CcConnectManagementService, DashboardQueryService, RetrievalService, TaskService } from '@agora-ts/core';
 import { HumanAccountService, ProjectBrainAutomationService, ProjectBrainService, StubCraftsmanAdapter, StubIMProvisioningPort, TaskConversationService, TaskContextBindingService, TemplateAuthoringService } from '@agora-ts/core';
 import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
 import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
@@ -2163,6 +2163,56 @@ describe('agora-ts cli', () => {
     });
     expect(stdout.value).toContain('"retrieval_mode": "hybrid"');
     expect(stdout.value).toContain('"chunk_id": "proj-brain:decision:runtime-boundary:0"');
+  });
+
+  it('routes project context retrieval through the unified retrieval cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'filesystem_context_source',
+          reference_key: 'context_source:docs:README.md',
+          project_id: 'proj-ctx',
+          title: 'README',
+          path: '/docs/README.md',
+          preview: 'Runtime boundary overview',
+          score: 4,
+          metadata: {
+            source_id: 'docs',
+          },
+        },
+      ]),
+    } satisfies Pick<RetrievalService, 'retrieve'>;
+    const program = createCliProgram({
+      contextRetrievalService: contextRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'retrieve',
+      '--project', 'proj-ctx',
+      '--query', 'runtime boundary',
+      '--limit', '5',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'lookup',
+      query: {
+        text: 'runtime boundary',
+      },
+      limit: 5,
+      context: {
+        project_id: 'proj-ctx',
+      },
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"provider": "filesystem_context_source"');
   });
 
   it('keeps task query on the raw path when mode=raw', async () => {

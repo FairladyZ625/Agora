@@ -118,4 +118,41 @@ describe('filesystem context source retrieval adapter', () => {
       status: 'ready',
     });
   });
+
+  it('supports project_context scope as an alias for project-bound context source retrieval', async () => {
+    const root = makeTempDir();
+    writeFileSync(
+      join(root, 'README.md'),
+      'Runtime boundary rules live here.\n',
+      'utf8',
+    );
+
+    const adapter = new FilesystemContextSourceRetrievalAdapter({
+      listProjectBindings: () => [{
+        source_id: 'local-brain',
+        scope: 'project',
+        project_id: 'proj-fs',
+        kind: 'local_path',
+        label: 'Local Brain',
+        location: root,
+        access: 'read_only',
+        enabled: true,
+      }],
+    });
+
+    const plan = {
+      scope: 'project_context',
+      mode: 'lookup',
+      query: { text: 'runtime boundary' },
+      context: { project_id: 'proj-fs' },
+    } as const;
+    const results = await adapter.retrieve(plan);
+
+    expect(adapter.supports(plan)).toBe(true);
+    expect(results[0]).toMatchObject({
+      scope: 'project_context',
+      provider: 'filesystem_context_source',
+      project_id: 'proj-fs',
+    });
+  });
 });

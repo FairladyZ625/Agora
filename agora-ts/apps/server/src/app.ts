@@ -75,6 +75,8 @@ import {
   ingestTaskConversationEntryRequestSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
+  projectContextRetrieveRequestSchema,
+  projectContextRetrieveResponseSchema,
   type HealthResponse,
   unifiedHealthSnapshotSchema,
   liveSessionSchema,
@@ -119,6 +121,7 @@ import {
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
+  type RetrievalService,
   type ProjectService,
   ProjectService as ProjectServiceImpl,
   ProjectMembershipService,
@@ -147,6 +150,7 @@ export interface BuildAppOptions {
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
+  contextRetrievalService?: Pick<RetrievalService, 'retrieve'>;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   workspaceBootstrapService?: WorkspaceBootstrapService;
   citizenService?: CitizenService;
@@ -758,6 +762,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   workspaceBootstrapService?.initialize();
   const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
+  const contextRetrievalService = options.contextRetrievalService;
   const citizenService = options.citizenService;
   const dashboardQueryService = options.dashboardQueryService;
   const ccConnectInspectionService = options.ccConnectInspectionService ?? new CcConnectInspectionService();
@@ -1626,6 +1631,36 @@ export function buildApp(options: BuildAppOptions = {}) {
         });
       }
       return reply.send(projectService.requireProject(project.id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/retrieve', async (request, reply) => {
+    if (!projectService || !contextRetrievalService) {
+      return reply.status(503).send({ message: 'Project context retrieval is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextRetrieveRequestSchema.parse(request.body);
+      const results = await contextRetrievalService.retrieve({
+        scope: 'project_context',
+        mode: payload.mode,
+        query: payload.query,
+        ...(payload.limit !== undefined ? { limit: payload.limit } : {}),
+        context: {
+          project_id: params.projectId,
+          ...(payload.task_id ? { task_id: payload.task_id } : {}),
+          ...(payload.audience ? { audience: payload.audience } : {}),
+        },
+      });
+      return reply.send(projectContextRetrieveResponseSchema.parse({
+        scope: 'project_context',
+        mode: payload.mode,
+        results,
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

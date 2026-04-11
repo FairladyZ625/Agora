@@ -24,12 +24,12 @@ export interface ProjectBrainRetrievalResult extends ProjectBrainSearchResult {
 }
 
 export interface ProjectBrainRetrievalServiceOptions {
-  taskLookup: {
+  taskLookup?: {
     getTask(taskId: string): TaskRecord | null;
   };
   projectBrainService: ProjectBrainService;
-  embeddingPort: ProjectBrainEmbeddingPort;
-  vectorIndexPort: Pick<ProjectBrainVectorIndexPort, 'querySimilarChunks'>;
+  embeddingPort?: ProjectBrainEmbeddingPort;
+  vectorIndexPort?: Pick<ProjectBrainVectorIndexPort, 'querySimilarChunks'>;
 }
 
 export class ProjectBrainRetrievalService implements RetrievalPort {
@@ -38,31 +38,58 @@ export class ProjectBrainRetrievalService implements RetrievalPort {
   constructor(private readonly options: ProjectBrainRetrievalServiceOptions) {}
 
   supports(plan: RetrievalPlanDto) {
-    if (plan.scope !== 'project_brain' || plan.mode !== 'task_context') {
+    if (plan.scope === 'project_brain') {
+      return plan.mode === 'task_context'
+        && Boolean(plan.context.task_id && coerceAudience(plan.context.audience) && this.options.taskLookup);
+    }
+    if (plan.scope !== 'project_context') {
       return false;
     }
-    return Boolean(plan.context.task_id && coerceAudience(plan.context.audience));
+    if (plan.context.project_id) {
+      return true;
+    }
+    return Boolean(plan.context.task_id && this.options.taskLookup);
   }
 
   async retrieve(plan: RetrievalPlanDto): Promise<RetrievalResultDto[]> {
     if (!this.supports(plan)) {
       return [];
     }
-    const audience = coerceAudience(plan.context.audience);
-    if (!audience) {
-      return [];
+    if (plan.scope === 'project_context' && plan.context.project_id && !plan.context.task_id) {
+      const results = this.options.projectBrainService.queryDocuments?.(plan.context.project_id, plan.query.text) ?? [];
+      return results
+        .slice(0, plan.limit ?? results.length)
+        .map((result) => ({
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: `${result.kind}:${result.slug}`,
+          project_id: result.project_id,
+          title: result.title,
+          path: result.path,
+          preview: result.snippet,
+          score: null,
+          metadata: {
+            kind: result.kind,
+            slug: result.slug,
+            retrieval_mode: 'raw_lookup',
+          },
+        }));
     }
+    const audience = coerceAudience(plan.context.audience) ?? 'controller';
     const results = await this.searchTaskContext({
       task_id: plan.context.task_id!,
       audience,
       query: plan.query.text,
       ...(plan.limit !== undefined ? { max_results: plan.limit } : {}),
     });
-    return results.map(mapToRetrievalResult);
+    return results.map((result) => mapToRetrievalResult(
+      result,
+      plan.scope === 'project_context' ? 'project_context' : 'project_brain',
+    ));
   }
 
   async searchTaskContext(input: SearchTaskProjectBrainContextInput): Promise<ProjectBrainRetrievalResult[]> {
-    const task = this.options.taskLookup.getTask(input.task_id);
+    const task = this.options.taskLookup?.getTask(input.task_id);
     if (!task?.project_id) {
       throw new Error(`task ${input.task_id} is not bound to a project`);
     }
@@ -70,6 +97,9 @@ export class ProjectBrainRetrievalService implements RetrievalPort {
     const maxResults = input.max_results ?? 5;
 
     try {
+      if (!this.options.embeddingPort || !this.options.vectorIndexPort) {
+        throw new Error('vector retrieval not configured');
+      }
       const queryEmbedding = await this.options.embeddingPort.embedText(input.query);
       const vectorResults = await this.options.vectorIndexPort.querySimilarChunks({
         project_id: task.project_id,
@@ -98,9 +128,9 @@ export class ProjectBrainRetrievalService implements RetrievalPort {
   }
 }
 
-function mapToRetrievalResult(result: ProjectBrainRetrievalResult): RetrievalResultDto {
+function mapToRetrievalResult(result: ProjectBrainRetrievalResult, scope: 'project_brain' | 'project_context' = 'project_brain'): RetrievalResultDto {
   return {
-    scope: 'project_brain',
+    scope,
     provider: 'project_brain',
     reference_key: `${result.kind}:${result.slug}${result.chunk_id ? `#${result.chunk_id}` : ''}`,
     project_id: result.project_id,

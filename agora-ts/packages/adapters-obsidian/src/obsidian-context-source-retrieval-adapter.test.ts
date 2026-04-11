@@ -86,4 +86,36 @@ describe('obsidian context source retrieval adapter', () => {
       },
     });
   });
+
+  it('supports project_context scope as an alias for project-bound obsidian retrieval', async () => {
+    const transport = vi.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify([
+        {
+          filename: '03-ARCHITECTURE/runtime-boundary.md',
+          score: 7.2,
+          matches: [{ context: 'Keep runtime-specific logic out of core.' }],
+        },
+      ]),
+      headers: {},
+    });
+    const adapter = new ObsidianContextSourceRetrievalAdapter({
+      listProjectBindings: () => [makeBinding()],
+      transport,
+    });
+
+    const plan = {
+      scope: 'project_context',
+      mode: 'lookup',
+      query: { text: 'runtime boundary' },
+      context: { project_id: 'proj-obsidian' },
+    } as const;
+    const results = await adapter.retrieve(plan);
+
+    expect(adapter.supports(plan)).toBe(true);
+    expect(results[0]).toMatchObject({
+      provider: 'obsidian_rest:obsidian-main',
+      project_id: 'proj-obsidian',
+    });
+  });
 });
