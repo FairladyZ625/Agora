@@ -1659,6 +1659,12 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.providers && payload.providers.length > 0 ? {
           metadata: {
             providers: payload.providers,
+            ...(payload.source_ids && payload.source_ids.length > 0 ? { source_ids: payload.source_ids } : {}),
+          },
+        } : {}),
+        ...(!payload.providers?.length && payload.source_ids?.length ? {
+          metadata: {
+            source_ids: payload.source_ids,
           },
         } : {}),
       });

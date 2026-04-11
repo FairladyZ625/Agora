@@ -1,13 +1,13 @@
 #!/usr/bin/env tsx
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { buildApp } from '../apps/server/src/app.js';
 import { createCliProgram } from '../apps/cli/src/index.js';
-import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '../packages/adapters-brain/src/index.js';
-import { RetrievalRegistry, RetrievalService, ProjectBrainRetrievalService, ProjectBrainService } from '../packages/core/src/index.js';
-import { createAgoraDatabase, runMigrations } from '../packages/db/src/index.js';
+import { FilesystemContextSourceRetrievalAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '../packages/adapters-brain/src/index.js';
+import { ContextSourceBindingService, RetrievalRegistry, RetrievalService, ProjectBrainRetrievalService, ProjectBrainService } from '../packages/core/src/index.js';
+import { createAgoraDatabase, runMigrations, type StoredTask } from '../packages/db/src/index.js';
 import { createCitizenServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb } from '../packages/testing/src/index.js';
 
 class BufferStream {
@@ -50,8 +50,15 @@ async function main() {
   const dbPath = join(smokeRoot, 'agora.db');
   const brainPackRoot = join(smokeRoot, 'brain-pack');
   const projectStateRoot = join(smokeRoot, 'projects', 'proj-smoke');
+  const docsRoot = join(smokeRoot, 'docs-main');
   mkdirSync(brainPackRoot, { recursive: true });
   mkdirSync(projectStateRoot, { recursive: true });
+  mkdirSync(docsRoot, { recursive: true });
+  writeFileSync(
+    join(docsRoot, 'architecture.md'),
+    '# Context Harness\n\nProject context retrieval must stay reference-first and source-aware.\n',
+    'utf8',
+  );
 
   const db = createAgoraDatabase({ dbPath });
   runMigrations(db);
@@ -69,6 +76,9 @@ async function main() {
     const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
+    });
+    const contextSourceBindingService = new ContextSourceBindingService({
+      projectService,
     });
     const projectBrainService = new ProjectBrainService({
       projectService,
@@ -93,11 +103,60 @@ async function main() {
       body: 'Keep runtime-specific logic out of core.',
       source_task_ids: [],
     });
+    contextSourceBindingService.replaceProjectBindings('proj-smoke', [
+      {
+        source_id: 'docs-main',
+        scope: 'project',
+        project_id: 'proj-smoke',
+        kind: 'docs_repo',
+        label: 'Docs Main',
+        location: docsRoot,
+        access: 'read_only',
+        enabled: true,
+      },
+    ]);
+
+    const taskLookup = {
+      getTask(taskId: string): StoredTask | null {
+        if (taskId !== 'OC-200') {
+          return null;
+        }
+        return {
+          id: 'OC-200',
+          version: 1,
+          title: 'Smoke retrieval task',
+          description: 'Validate task-aware project context retrieval.',
+          type: 'coding',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
+          project_id: 'proj-smoke',
+          skill_policy: null,
+          state: 'active',
+          archive_status: null,
+          current_stage: 'implement',
+          team: { members: [] },
+          workflow: { stages: [] },
+          control: { mode: 'normal' },
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+        };
+      },
+    };
 
     const retrievalService = new RetrievalService({
       registry: new RetrievalRegistry([
         new ProjectBrainRetrievalService({
+          taskLookup,
           projectBrainService,
+        }),
+        new FilesystemContextSourceRetrievalAdapter({
+          listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
         }),
       ]),
     });
@@ -130,13 +189,58 @@ async function main() {
       '--limit', '5',
       '--json',
     ], retrievalService);
+    const taskAwareCliResult = await runCliCommand([
+      'context',
+      'retrieve',
+      '--project', 'proj-smoke',
+      '--task', 'OC-200',
+      '--provider', 'project_brain',
+      '--query', 'runtime boundary',
+      '--limit', '5',
+      '--json',
+    ], retrievalService);
+    const sourceAwareRestResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-smoke/context/retrieve',
+      payload: {
+        query: {
+          text: 'context harness',
+        },
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+        limit: 5,
+      },
+    });
+    if (sourceAwareRestResponse.statusCode !== 200) {
+      throw new Error(`source-aware rest smoke failed: ${sourceAwareRestResponse.statusCode} ${sourceAwareRestResponse.body}`);
+    }
+    const sourceAwareCliResult = await runCliCommand([
+      'context',
+      'retrieve',
+      '--project', 'proj-smoke',
+      '--query', 'context harness',
+      '--provider', 'filesystem_context_source',
+      '--source', 'docs-main',
+      '--limit', '5',
+      '--json',
+    ], retrievalService);
 
     const restJson = restResponse.json();
+    const sourceAwareRestJson = sourceAwareRestResponse.json();
     if (!Array.isArray(restJson.results) || restJson.results.length === 0) {
       throw new Error('rest smoke returned no retrieval results');
     }
     if (!cliResult.stdout.includes('"reference_key": "decision:runtime-boundary"')) {
       throw new Error('cli smoke missing decision:runtime-boundary result');
+    }
+    if (!taskAwareCliResult.stdout.includes('"provider": "project_brain"')) {
+      throw new Error('task-aware cli smoke missing project_brain provider');
+    }
+    if (!Array.isArray(sourceAwareRestJson.results) || sourceAwareRestJson.results.length === 0) {
+      throw new Error('source-aware rest smoke returned no retrieval results');
+    }
+    if (!sourceAwareCliResult.stdout.includes('"source_id": "docs-main"')) {
+      throw new Error('source-aware cli smoke missing docs-main source id');
     }
 
     process.stdout.write(JSON.stringify({
@@ -145,8 +249,18 @@ async function main() {
         result_count: restJson.results.length,
         first_reference_key: restJson.results[0]?.reference_key ?? null,
       },
+      source_aware_rest: {
+        result_count: sourceAwareRestJson.results.length,
+        first_reference_key: sourceAwareRestJson.results[0]?.reference_key ?? null,
+      },
       cli: {
         stdout: cliResult.stdout.trim().split('\n'),
+      },
+      task_aware_cli: {
+        stdout: taskAwareCliResult.stdout.trim().split('\n'),
+      },
+      source_aware_cli: {
+        stdout: sourceAwareCliResult.stdout.trim().split('\n'),
       },
     }, null, 2));
     process.stdout.write('\n');

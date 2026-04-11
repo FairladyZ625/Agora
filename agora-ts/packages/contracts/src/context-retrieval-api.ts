@@ -8,6 +8,7 @@ export const projectContextRetrieveRequestSchema = z.object({
   task_id: z.string().trim().min(1).optional(),
   audience: z.string().trim().min(1).optional(),
   providers: z.array(z.string().trim().min(1)).optional(),
+  source_ids: z.array(z.string().trim().min(1)).optional(),
 });
 
 export const projectContextRetrieveResponseSchema = z.object({

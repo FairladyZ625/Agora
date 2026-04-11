@@ -1033,6 +1033,7 @@ describe('agora-ts server bootstrap', () => {
         task_id: 'OC-200',
         audience: 'craftsman',
         providers: ['project_brain'],
+        source_ids: ['docs-main'],
       },
     });
 
@@ -1050,6 +1051,7 @@ describe('agora-ts server bootstrap', () => {
       },
       metadata: {
         providers: ['project_brain'],
+        source_ids: ['docs-main'],
       },
     });
   });

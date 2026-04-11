@@ -2233,6 +2233,7 @@ describe('agora-ts cli', () => {
       '--task', 'OC-200',
       '--audience', 'craftsman',
       '--provider', 'project_brain',
+      '--source', 'docs-main',
       '--query', 'runtime boundary',
       '--json',
     ], { from: 'user' });
@@ -2251,6 +2252,7 @@ describe('agora-ts cli', () => {
       },
       metadata: {
         providers: ['project_brain'],
+        source_ids: ['docs-main'],
       },
     });
   });

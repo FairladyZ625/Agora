@@ -2049,6 +2049,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--audience <audience>', 'controller|citizen|craftsman')
     .option('--mode <mode>', 'lookup|task_context')
     .option('--provider <provider>', 'limit retrieval providers', collectOption, [])
+    .option('--source <sourceId>', 'limit retrieval source ids', collectOption, [])
     .option('--limit <n>', 'max result count', parseIntegerOption)
     .option('--json', '输出 JSON', false)
     .action(async (options: {
@@ -2058,6 +2059,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       audience?: 'controller' | 'citizen' | 'craftsman';
       mode?: string;
       provider?: string[];
+      source?: string[];
       limit?: number;
       json?: boolean;
     }) => {
@@ -2078,6 +2080,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.provider && options.provider.length > 0 ? {
           metadata: {
             providers: options.provider,
+            ...(options.source && options.source.length > 0 ? { source_ids: options.source } : {}),
+          },
+        } : {}),
+        ...(!options.provider?.length && options.source?.length ? {
+          metadata: {
+            source_ids: options.source,
           },
         } : {}),
       });
