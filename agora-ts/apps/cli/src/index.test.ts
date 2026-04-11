@@ -2474,6 +2474,81 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"kind": "focus"');
   });
 
+  it('builds a project context briefing through the unified cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-200',
+        title: 'Implement hybrid retrieval',
+        description: 'Need vector recall and lexical rerank.',
+        project_id: 'proj-ctx',
+        team: { members: [] },
+      }),
+    };
+    const projectBrainAutomationService = {
+      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        markdown: '# Project Brain Bootstrap Context',
+        reference_bundle: {
+          scope: 'project_brain',
+          mode: 'bootstrap',
+          project_id: 'proj-ctx',
+          task_id: 'OC-200',
+          project_map: {
+            index_reference_key: 'index:index',
+            timeline_reference_key: 'timeline:timeline',
+            inventory_count: 2,
+          },
+          inventory: {
+            scope: 'project_brain',
+            project_id: 'proj-ctx',
+            generated_at: '2026-04-11T00:00:00.000Z',
+            entries: [],
+          },
+          references: [],
+        },
+        attention_routing_plan: {
+          scope: 'project_brain',
+          mode: 'bootstrap',
+          project_id: 'proj-ctx',
+          task_id: 'OC-200',
+          audience: 'craftsman',
+          summary: 'Start from the project map.',
+          routes: [],
+        },
+        source_documents: [],
+      }),
+    };
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectBrainAutomationService: projectBrainAutomationService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'briefing',
+      '--project', 'proj-ctx',
+      '--audience', 'craftsman',
+      '--task', 'OC-200',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-200');
+    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+      project_id: 'proj-ctx',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"markdown": "# Project Brain Bootstrap Context"');
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

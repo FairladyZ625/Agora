@@ -1298,6 +1298,85 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('builds a project context briefing through the unified route surface', async () => {
+    const projectBrainAutomationService = {
+      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        markdown: '# Project Brain Bootstrap Context',
+        reference_bundle: {
+          scope: 'project_brain',
+          mode: 'bootstrap',
+          project_id: 'proj-ctx',
+          task_id: 'OC-200',
+          project_map: {
+            index_reference_key: 'index:index',
+            timeline_reference_key: 'timeline:timeline',
+            inventory_count: 2,
+          },
+          inventory: {
+            scope: 'project_brain',
+            project_id: 'proj-ctx',
+            generated_at: '2026-04-11T00:00:00.000Z',
+            entries: [],
+          },
+          references: [],
+        },
+        attention_routing_plan: {
+          scope: 'project_brain',
+          mode: 'bootstrap',
+          project_id: 'proj-ctx',
+          task_id: 'OC-200',
+          audience: 'craftsman',
+          summary: 'Start from the project map.',
+          routes: [],
+        },
+        source_documents: [],
+      }),
+    };
+    const app = buildApp({
+      taskService: {
+        getTask: () => ({
+          id: 'OC-200',
+          title: 'Implement hybrid retrieval',
+          description: 'Need vector recall and lexical rerank.',
+          project_id: 'proj-ctx',
+          team: { members: [] },
+        }),
+      } as never,
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      projectBrainAutomationService: projectBrainAutomationService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/briefing',
+      payload: {
+        audience: 'craftsman',
+        task_id: 'OC-200',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+      project_id: 'proj-ctx',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      briefing: expect.objectContaining({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        markdown: '# Project Brain Bootstrap Context',
+      }),
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {

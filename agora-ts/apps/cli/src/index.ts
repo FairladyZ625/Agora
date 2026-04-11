@@ -2288,6 +2288,60 @@ export function createCliProgram(deps: CliDependencies = {}) {
       }
     });
 
+  context
+    .command('briefing')
+    .description('通过统一 project_context surface 生成 reference-first briefing artifact')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--task <taskId>', 'optional task id')
+    .option('--task-title <text>', 'optional task title override')
+    .option('--task-description <text>', 'optional task description override')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      task?: string;
+      taskTitle?: string;
+      taskDescription?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const task = options.task ? taskService.getTask(options.task) : null;
+      const taskTitle = options.taskTitle ?? task?.title;
+      const taskDescription = options.taskDescription ?? task?.description;
+      const briefing = options.task
+        ? await projectBrainAutomationService.buildBootstrapContextAsync({
+          project_id: options.project,
+          audience: options.audience,
+          task_id: options.task,
+          ...(taskTitle ? { task_title: taskTitle } : {}),
+          ...(taskDescription ? { task_description: taskDescription } : {}),
+          ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+          ...(options.allowedCitizen && options.allowedCitizen.length > 0
+            ? { allowed_citizen_ids: options.allowedCitizen }
+            : {}),
+        })
+        : projectBrainAutomationService.buildBootstrapContext({
+          project_id: options.project,
+          audience: options.audience,
+          ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+          ...(options.allowedCitizen && options.allowedCitizen.length > 0
+            ? { allowed_citizen_ids: options.allowedCitizen }
+            : {}),
+        });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          briefing,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, briefing.markdown.trimEnd());
+    });
+
   projectKnowledge
     .command('add')
     .description('新增或更新 project knowledge doc')
