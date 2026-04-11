@@ -645,13 +645,42 @@ function requireDashboardAdminSession(
   request: FastifyRequest,
   reply: FastifyReply,
   sessions: Map<string, DashboardSession>,
+  audit?: {
+    metrics: MetricsState;
+    structuredLogs: boolean;
+    action:
+      | 'dashboard-user-list'
+      | 'dashboard-user-create'
+      | 'dashboard-user-disable'
+      | 'dashboard-user-password'
+      | 'dashboard-user-bind-identity';
+  },
 ) {
   const current = getDashboardSession(request, sessions);
   if (!current) {
+    if (audit) {
+      recordDashboardHumanAction({
+        metrics: audit.metrics,
+        structuredLogs: audit.structuredLogs,
+        action: audit.action,
+        result: 'denied',
+        reason: 'missing_dashboard_session',
+      });
+    }
     reply.status(401).send({ message: 'missing dashboard session' });
     return null;
   }
   if (current.session.role !== 'admin') {
+    if (audit) {
+      recordDashboardHumanAction({
+        metrics: audit.metrics,
+        structuredLogs: audit.structuredLogs,
+        action: audit.action,
+        result: 'denied',
+        actor: current.session.username,
+        reason: 'dashboard_admin_role_required',
+      });
+    }
     reply.status(403).send({ message: 'dashboard admin role required' });
     return null;
   }
@@ -683,6 +712,7 @@ function recordDashboardHumanAction(options: {
   action:
     | 'dashboard-session-login'
     | 'dashboard-session-logout'
+    | 'dashboard-user-list'
     | 'dashboard-user-create'
     | 'dashboard-user-disable'
     | 'dashboard-user-password'
@@ -1669,11 +1699,21 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!humanAccountService) {
       return reply.status(503).send({ message: 'human account service is not configured' });
     }
-    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions, {
+      metrics,
+      structuredLogs,
+      action: 'dashboard-user-list',
+    });
     if (!session) {
       return reply;
     }
-    void session;
+    recordDashboardHumanAction({
+      metrics,
+      structuredLogs,
+      action: 'dashboard-user-list',
+      result: 'success',
+      actor: session.username,
+    });
     return reply.send(dashboardUserListResponseSchema.parse({
       users: humanAccountService.listUsersWithIdentities(),
     }));
@@ -1683,7 +1723,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!humanAccountService) {
       return reply.status(503).send({ message: 'human account service is not configured' });
     }
-    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions, {
+      metrics,
+      structuredLogs,
+      action: 'dashboard-user-create',
+    });
     if (!session) {
       return reply;
     }
@@ -1725,7 +1769,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!humanAccountService) {
       return reply.status(503).send({ message: 'human account service is not configured' });
     }
-    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions, {
+      metrics,
+      structuredLogs,
+      action: 'dashboard-user-disable',
+    });
     if (!session) {
       return reply;
     }
@@ -1763,7 +1811,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!humanAccountService) {
       return reply.status(503).send({ message: 'human account service is not configured' });
     }
-    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions, {
+      metrics,
+      structuredLogs,
+      action: 'dashboard-user-password',
+    });
     if (!session) {
       return reply;
     }
@@ -1802,7 +1854,11 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!humanAccountService) {
       return reply.status(503).send({ message: 'human account service is not configured' });
     }
-    const session = requireDashboardAdminSession(request, reply, dashboardSessions);
+    const session = requireDashboardAdminSession(request, reply, dashboardSessions, {
+      metrics,
+      structuredLogs,
+      action: 'dashboard-user-bind-identity',
+    });
     if (!session) {
       return reply;
     }

@@ -212,6 +212,11 @@ describe('dashboard user routes', () => {
       url: '/api/dashboard/users/alice/disable',
       headers,
     });
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/dashboard/users',
+      headers,
+    });
     const logout = await app.inject({
       method: 'POST',
       url: '/api/dashboard/session/logout',
@@ -226,9 +231,11 @@ describe('dashboard user routes', () => {
     expect(bind.statusCode).toBe(200);
     expect(setPassword.statusCode).toBe(200);
     expect(disable.statusCode).toBe(200);
+    expect(list.statusCode).toBe(200);
     expect(logout.statusCode).toBe(200);
     expect(metrics.statusCode).toBe(200);
     expect(metrics.body).toContain('agora_dashboard_human_actions_total{action="dashboard-session-login",result="success"} 1');
+    expect(metrics.body).toContain('agora_dashboard_human_actions_total{action="dashboard-user-list",result="success"} 1');
     expect(metrics.body).toContain('agora_dashboard_human_actions_total{action="dashboard-user-create",result="success"} 1');
     expect(metrics.body).toContain('agora_dashboard_human_actions_total{action="dashboard-user-bind-identity",result="success"} 1');
     expect(metrics.body).toContain('agora_dashboard_human_actions_total{action="dashboard-user-password",result="success"} 1');
@@ -242,6 +249,13 @@ describe('dashboard user routes', () => {
           module: 'dashboard_auth',
           msg: 'human_action',
           action: 'dashboard-session-login',
+          result: 'success',
+          actor: 'lizeyu',
+        }),
+        expect.objectContaining({
+          module: 'dashboard_auth',
+          msg: 'human_action',
+          action: 'dashboard-user-list',
           result: 'success',
           actor: 'lizeyu',
         }),
@@ -284,6 +298,85 @@ describe('dashboard user routes', () => {
           action: 'dashboard-session-logout',
           result: 'success',
           actor: 'lizeyu',
+        }),
+      ]),
+    );
+    logSpy.mockRestore();
+  });
+
+  it('records denied dashboard admin-session checks', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
+    humanAccountService.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    humanAccountService.createUser({
+      username: 'alice',
+      password: 'alice-pass',
+      role: 'member',
+    });
+
+    const app = buildApp({
+      humanAccountService,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+      observability: {
+        metricsEnabled: true,
+        structuredLogs: true,
+      },
+    });
+
+    const missingSession = await app.inject({
+      method: 'GET',
+      url: '/api/dashboard/users',
+    });
+    const memberLogin = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: { username: 'alice', password: 'alice-pass' },
+    });
+    const memberCookie = memberLogin.headers['set-cookie'];
+    const nonAdmin = await app.inject({
+      method: 'GET',
+      url: '/api/dashboard/users',
+      headers: {
+        cookie: Array.isArray(memberCookie) ? memberCookie[0] : String(memberCookie),
+      },
+    });
+    const metrics = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    });
+
+    expect(missingSession.statusCode).toBe(401);
+    expect(nonAdmin.statusCode).toBe(403);
+    expect(metrics.statusCode).toBe(200);
+    expect(metrics.body).toContain('agora_dashboard_human_actions_total{action="dashboard-user-list",result="denied"} 2');
+
+    const parsedLogs = logSpy.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
+    expect(parsedLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module: 'dashboard_auth',
+          msg: 'human_action',
+          action: 'dashboard-user-list',
+          result: 'denied',
+          reason: 'missing_dashboard_session',
+        }),
+        expect.objectContaining({
+          module: 'dashboard_auth',
+          msg: 'human_action',
+          action: 'dashboard-user-list',
+          result: 'denied',
+          actor: 'alice',
+          reason: 'dashboard_admin_role_required',
         }),
       ]),
     );
