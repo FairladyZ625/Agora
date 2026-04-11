@@ -513,6 +513,11 @@ const ccConnectActivateProviderReceiptSchema = z.object({
   message: z.string(),
 });
 
+const ccConnectProviderMutationReceiptSchema = z.object({
+  name: z.string().nullable().optional(),
+  message: z.string(),
+});
+
 const ccConnectModelListSchema = z.object({
   models: z.array(z.string().min(1)),
   current: z.string().nullable(),
@@ -546,6 +551,34 @@ const ccConnectHeartbeatIntervalReceiptSchema = z.object({
   message: z.string(),
 });
 
+const ccConnectCronJobSchema = z.object({
+  id: z.string().min(1),
+  project: z.string().nullable(),
+  session_key: z.string().min(1),
+  cron_expr: z.string().min(1),
+  prompt: z.string().nullable(),
+  exec: z.string().nullable(),
+  work_dir: z.string().nullable(),
+  description: z.string().nullable(),
+  enabled: z.boolean(),
+  silent: z.boolean().nullable().optional(),
+  created_at: z.string().nullable(),
+  last_run: z.string().nullable().optional(),
+  last_error: z.string().nullable().optional(),
+});
+
+const ccConnectCronCreateReceiptSchema = z.object({
+  id: z.string().min(1),
+  project: z.string().nullable(),
+  session_key: z.string().min(1),
+  cron_expr: z.string().min(1),
+  prompt: z.string().nullable(),
+  exec: z.string().nullable(),
+  description: z.string().nullable(),
+  enabled: z.boolean(),
+  created_at: z.string().nullable(),
+});
+
 export type ApiCcConnectInspectionDto = z.infer<typeof ccConnectInspectSchema>;
 export type ApiCcConnectProjectSummaryDto = z.infer<typeof ccConnectProjectSummarySchema>;
 export type ApiCcConnectSessionMessageDto = z.infer<typeof ccConnectSessionMessageSchema>;
@@ -559,11 +592,14 @@ export type ApiCcConnectSessionSwitchReceiptDto = z.infer<typeof ccConnectSessio
 export type ApiCcConnectProviderSummaryDto = z.infer<typeof ccConnectProviderSummarySchema>;
 export type ApiCcConnectProviderListDto = z.infer<typeof ccConnectProviderListSchema>;
 export type ApiCcConnectActivateProviderReceiptDto = z.infer<typeof ccConnectActivateProviderReceiptSchema>;
+export type ApiCcConnectProviderMutationReceiptDto = z.infer<typeof ccConnectProviderMutationReceiptSchema>;
 export type ApiCcConnectModelListDto = z.infer<typeof ccConnectModelListSchema>;
 export type ApiCcConnectSetModelReceiptDto = z.infer<typeof ccConnectSetModelReceiptSchema>;
 export type ApiCcConnectHeartbeatStatusDto = z.infer<typeof ccConnectHeartbeatStatusSchema>;
 export type ApiCcConnectHeartbeatReceiptDto = z.infer<typeof ccConnectHeartbeatReceiptSchema>;
 export type ApiCcConnectHeartbeatIntervalReceiptDto = z.infer<typeof ccConnectHeartbeatIntervalReceiptSchema>;
+export type ApiCcConnectCronJobDto = z.infer<typeof ccConnectCronJobSchema>;
+export type ApiCcConnectCronCreateReceiptDto = z.infer<typeof ccConnectCronCreateReceiptSchema>;
 
 class ApiError extends Error {
   status: number;
@@ -1235,6 +1271,40 @@ export function activateCcConnectProvider(
   );
 }
 
+export function addCcConnectProvider(
+  project: string,
+  input: {
+    name: string;
+    api_key?: string;
+    base_url?: string;
+    model?: string;
+    thinking?: string;
+    env?: Record<string, string>;
+  },
+): Promise<ApiCcConnectProviderMutationReceiptDto> {
+  return request<ApiCcConnectProviderMutationReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/providers`,
+    ccConnectProviderMutationReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function removeCcConnectProvider(
+  project: string,
+  provider: string,
+): Promise<ApiCcConnectSendMessageReceiptDto> {
+  return request<ApiCcConnectSendMessageReceiptDto>(
+    `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/providers/${encodeURIComponent(provider)}`,
+    ccConnectSendMessageReceiptSchema,
+    {
+      method: 'DELETE',
+    },
+  );
+}
+
 export function listCcConnectModels(project: string): Promise<ApiCcConnectModelListDto> {
   return request<ApiCcConnectModelListDto>(
     `/external-bridges/cc-connect/projects/${encodeURIComponent(project)}/models`,
@@ -1306,6 +1376,46 @@ export function updateCcConnectHeartbeatInterval(
     {
       method: 'POST',
       body: JSON.stringify({ minutes }),
+    },
+  );
+}
+
+export function listCcConnectCronJobs(project?: string): Promise<ApiCcConnectCronJobDto[]> {
+  const params = new URLSearchParams();
+  if (project?.trim()) {
+    params.set('project', project.trim());
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  return request<ApiCcConnectCronJobDto[]>(
+    `/external-bridges/cc-connect/cron${query}`,
+    z.array(ccConnectCronJobSchema),
+  );
+}
+
+export function createCcConnectCronPrompt(input: {
+  project: string;
+  session_key: string;
+  cron_expr: string;
+  prompt: string;
+  description?: string;
+  silent?: boolean;
+}): Promise<ApiCcConnectCronCreateReceiptDto> {
+  return request<ApiCcConnectCronCreateReceiptDto>(
+    '/external-bridges/cc-connect/cron',
+    ccConnectCronCreateReceiptSchema,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function deleteCcConnectCronJob(jobId: string): Promise<ApiCcConnectSendMessageReceiptDto> {
+  return request<ApiCcConnectSendMessageReceiptDto>(
+    `/external-bridges/cc-connect/cron/${encodeURIComponent(jobId)}`,
+    ccConnectSendMessageReceiptSchema,
+    {
+      method: 'DELETE',
     },
   );
 }

@@ -1124,6 +1124,57 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/external-bridges/cc-connect/projects/:project/providers', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        name: string;
+        api_key?: string;
+        base_url?: string;
+        model?: string;
+        thinking?: string;
+        env?: Record<string, string>;
+      };
+      return reply.send(await ccConnectManagementService.addProvider({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        name: body.name,
+        ...(body.api_key ? { apiKey: body.api_key } : {}),
+        ...(body.base_url ? { baseUrl: body.base_url } : {}),
+        ...(body.model ? { model: body.model } : {}),
+        ...(body.thinking ? { thinking: body.thinking } : {}),
+        ...(body.env ? { env: body.env } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/external-bridges/cc-connect/projects/:project/providers/:provider', async (request, reply) => {
+    try {
+      const params = request.params as { project: string; provider: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.removeProvider({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+        provider: params.provider,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/external-bridges/cc-connect/projects/:project/providers/:provider/activate', async (request, reply) => {
     try {
       const params = request.params as { project: string; provider: string };
@@ -1274,6 +1325,73 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...buildCcConnectManagementInput(body),
         project: params.project,
         minutes: body.minutes,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/cron', async (request, reply) => {
+    try {
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+        project?: string;
+      };
+      return reply.send(await ccConnectManagementService.listCronJobs({
+        ...buildCcConnectManagementInput(query),
+        ...(query.project ? { project: query.project } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/cron', async (request, reply) => {
+    try {
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        project: string;
+        session_key: string;
+        cron_expr: string;
+        prompt: string;
+        description?: string;
+        silent?: boolean;
+      };
+      return reply.send(await ccConnectManagementService.createCronPrompt({
+        ...buildCcConnectManagementInput(body),
+        project: body.project,
+        sessionKey: body.session_key,
+        cronExpr: body.cron_expr,
+        prompt: body.prompt,
+        ...(body.description ? { description: body.description } : {}),
+        ...(body.silent !== undefined ? { silent: body.silent } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/external-bridges/cc-connect/cron/:jobId', async (request, reply) => {
+    try {
+      const params = request.params as { jobId: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.deleteCronJob({
+        ...buildCcConnectManagementInput(query),
+        jobId: params.jobId,
       }));
     } catch (error) {
       const translated = translateError(error);

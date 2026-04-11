@@ -11,12 +11,16 @@ const sendMessage = vi.fn(async () => 'live');
 const createNamedSession = vi.fn(async () => 'live');
 const switchActiveSession = vi.fn(async () => 'live');
 const deleteSelectedSession = vi.fn(async () => 'live');
+const addProvider = vi.fn(async () => 'live');
+const removeProvider = vi.fn(async () => 'live');
 const activateProvider = vi.fn(async () => 'live');
 const setModel = vi.fn(async () => 'live');
 const pauseHeartbeat = vi.fn(async () => 'live');
 const resumeHeartbeat = vi.fn(async () => 'live');
 const runHeartbeat = vi.fn(async () => 'live');
 const updateHeartbeatInterval = vi.fn(async () => 'live');
+const createCronPrompt = vi.fn(async () => 'live');
+const deleteCronJob = vi.fn(async () => 'live');
 const showMessage = vi.fn();
 
 const storeState = {
@@ -161,6 +165,25 @@ const storeState = {
       lastError: '',
     },
   },
+  cronJobsByProject: {
+    'agora-codex': [
+      {
+        id: 'cron-1',
+        project: 'agora-codex',
+        sessionKey: 'discord:thread:1',
+        cronExpr: '0 * * * *',
+        prompt: 'Summarize the latest thread state.',
+        exec: null,
+        workDir: null,
+        description: 'Hourly summary',
+        enabled: true,
+        silent: true,
+        createdAt: '2026-04-11T00:00:00.000Z',
+        lastRun: null,
+        lastError: null,
+      },
+    ],
+  },
   loading: false,
   detailLoading: false,
   sendLoading: false,
@@ -175,12 +198,16 @@ const storeState = {
   createNamedSession,
   switchActiveSession,
   deleteSelectedSession,
+  addProvider,
+  removeProvider,
   activateProvider,
   setModel,
   pauseHeartbeat,
   resumeHeartbeat,
   runHeartbeat,
   updateHeartbeatInterval,
+  createCronPrompt,
+  deleteCronJob,
   clearError: vi.fn(),
 };
 
@@ -213,9 +240,11 @@ describe('cc-connect dashboard page', () => {
     expect(screen.getAllByText(/discord:thread:1/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText('hello').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /create named session|创建命名 session/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add provider/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /activate provider|切换 provider/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /update model|更新模型/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /trigger heartbeat now|立即触发 heartbeat/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create cron job|创建 cron job/i })).toBeInTheDocument();
     expect(fetchSnapshot).toHaveBeenCalled();
   });
 
@@ -297,5 +326,70 @@ describe('cc-connect dashboard page', () => {
     expect(runHeartbeat).toHaveBeenCalled();
     expect(pauseHeartbeat).toHaveBeenCalled();
     expect(updateHeartbeatInterval).toHaveBeenCalledWith(15);
+  });
+
+  it('adds and removes providers from the control surface', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/provider name/i), {
+      target: { value: 'relay' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider api key/i), {
+      target: { value: 'sk-relay' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider base url/i), {
+      target: { value: 'https://relay.example.com' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add provider/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /remove provider/i })[1]!);
+    });
+
+    expect(addProvider).toHaveBeenCalledWith({
+      name: 'relay',
+      apiKey: 'sk-relay',
+      baseUrl: 'https://relay.example.com',
+      model: '',
+    });
+    expect(removeProvider).toHaveBeenCalledWith('relay');
+  });
+
+  it('creates and deletes cron jobs from the control surface', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/cron expression|cron 表达式/i), {
+      target: { value: '*/30 * * * *' },
+    });
+    fireEvent.change(screen.getByLabelText(/cron prompt|cron 提示词/i), {
+      target: { value: 'Ping the live session.' },
+    });
+    fireEvent.change(screen.getByLabelText(/cron description|cron 描述/i), {
+      target: { value: 'Half-hour ping' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /create cron job|创建 cron job/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /delete cron job|删除 cron job/i }));
+    });
+
+    expect(createCronPrompt).toHaveBeenCalledWith({
+      cronExpr: '*/30 * * * *',
+      prompt: 'Ping the live session.',
+      description: 'Half-hour ping',
+      silent: true,
+    });
+    expect(deleteCronJob).toHaveBeenCalledWith('cron-1');
   });
 });

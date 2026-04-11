@@ -298,6 +298,22 @@ export interface CcConnectHeartbeatStatus {
   lastError: string | null;
 }
 
+export interface CcConnectCronJob {
+  id: string;
+  project: string | null;
+  sessionKey: string;
+  cronExpr: string;
+  prompt: string | null;
+  exec: string | null;
+  workDir: string | null;
+  description: string | null;
+  enabled: boolean;
+  silent: boolean | null;
+  createdAt: string | null;
+  lastRun: string | null;
+  lastError: string | null;
+}
+
 export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];
