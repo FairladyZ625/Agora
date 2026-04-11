@@ -463,11 +463,16 @@ export class TaskCoreSupport {
       return null;
     }
     const request = this.approvalRequestRepository.getLatestPending(task.id, task.current_stage);
-    if (!request) {
-      return null;
-    }
-    if (request.gate_type !== 'approval' && request.gate_type !== 'archon_review') {
-      return null;
+    if (request) {
+      if (request.gate_type !== 'approval' && request.gate_type !== 'archon_review') {
+        return null;
+      }
+    } else {
+      const stage = task.workflow?.stages?.find((candidate) => candidate.id === task.current_stage);
+      const gateType = stage?.gate?.type;
+      if (gateType !== 'approval') {
+        return null;
+      }
     }
     const provider = this.taskContextBindingService?.getLatestBinding(task.id)?.im_provider;
     const participantRefs = provider && this.resolveHumanReminderParticipantRefs
@@ -480,7 +485,7 @@ export class TaskCoreSupport {
         ))
       : [];
     return {
-      request,
+      request: request ?? null,
       participantRefs,
     };
   }

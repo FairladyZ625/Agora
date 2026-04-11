@@ -158,6 +158,11 @@ export interface CcConnectActivateProviderReceipt {
   message: string;
 }
 
+export interface CcConnectProviderMutationReceipt {
+  name?: string | null;
+  message: string;
+}
+
 export interface CcConnectModelList {
   models: string[];
   current: string | null;
@@ -189,6 +194,34 @@ export interface CcConnectHeartbeatReceipt {
 export interface CcConnectHeartbeatIntervalReceipt {
   interval_mins: number | null;
   message: string;
+}
+
+export interface CcConnectCronJob {
+  id: string;
+  project: string | null;
+  session_key: string;
+  cron_expr: string;
+  prompt: string | null;
+  exec: string | null;
+  work_dir: string | null;
+  description: string | null;
+  enabled: boolean;
+  silent: boolean | null;
+  created_at: string | null;
+  last_run: string | null;
+  last_error: string | null;
+}
+
+export interface CcConnectCronCreateReceipt {
+  id: string;
+  project: string | null;
+  session_key: string;
+  cron_expr: string;
+  prompt: string | null;
+  exec: string | null;
+  description: string | null;
+  enabled: boolean;
+  created_at: string | null;
 }
 
 function normalizeBaseUrl(input: string): string {
@@ -491,6 +524,48 @@ export class CcConnectManagementService {
     );
   }
 
+  async addProvider(
+    input: CcConnectManagementInput & {
+      project: string;
+      name: string;
+      apiKey?: string | null;
+      baseUrl?: string | null;
+      model?: string | null;
+      thinking?: string | null;
+      env?: Record<string, string>;
+    },
+  ): Promise<CcConnectProviderMutationReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectProviderMutationReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/providers`,
+      {
+        method: 'POST',
+        body: {
+          name: input.name,
+          ...(input.apiKey?.trim() ? { api_key: input.apiKey.trim() } : {}),
+          ...(input.baseUrl?.trim() ? { base_url: input.baseUrl.trim() } : {}),
+          ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+          ...(input.thinking?.trim() ? { thinking: input.thinking.trim() } : {}),
+          ...(input.env && Object.keys(input.env).length > 0 ? { env: input.env } : {}),
+        },
+      },
+    );
+  }
+
+  async removeProvider(
+    input: CcConnectManagementInput & { project: string; provider: string },
+  ): Promise<CcConnectDeleteReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectDeleteReceipt>(
+      connection,
+      `/api/v1/projects/${encodeURIComponent(input.project)}/providers/${encodeURIComponent(input.provider)}`,
+      {
+        method: 'DELETE',
+      },
+    );
+  }
+
   async listModels(
     input: CcConnectManagementInput & { project: string },
   ): Promise<CcConnectModelList> {
@@ -578,6 +653,63 @@ export class CcConnectManagementService {
         body: {
           minutes: input.minutes,
         },
+      },
+    );
+  }
+
+  async listCronJobs(
+    input: CcConnectManagementInput & { project?: string },
+  ): Promise<CcConnectCronJob[]> {
+    const connection = this.resolveConnection(input);
+    const params = new URLSearchParams();
+    if (input.project?.trim()) {
+      params.set('project', input.project.trim());
+    }
+    const query = params.size > 0 ? `?${params.toString()}` : '';
+    const data = await this.request<{ jobs?: CcConnectCronJob[] }>(
+      connection,
+      `/api/v1/cron${query}`,
+    );
+    return Array.isArray(data.jobs) ? data.jobs : [];
+  }
+
+  async createCronPrompt(
+    input: CcConnectManagementInput & {
+      project: string;
+      sessionKey: string;
+      cronExpr: string;
+      prompt: string;
+      description?: string | null;
+      silent?: boolean;
+    },
+  ): Promise<CcConnectCronCreateReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectCronCreateReceipt>(
+      connection,
+      '/api/v1/cron',
+      {
+        method: 'POST',
+        body: {
+          project: input.project,
+          session_key: input.sessionKey,
+          cron_expr: input.cronExpr,
+          prompt: input.prompt,
+          ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+          ...(input.silent !== undefined ? { silent: input.silent } : {}),
+        },
+      },
+    );
+  }
+
+  async deleteCronJob(
+    input: CcConnectManagementInput & { jobId: string },
+  ): Promise<CcConnectDeleteReceipt> {
+    const connection = this.resolveConnection(input);
+    return this.request<CcConnectDeleteReceipt>(
+      connection,
+      `/api/v1/cron/${encodeURIComponent(input.jobId)}`,
+      {
+        method: 'DELETE',
       },
     );
   }

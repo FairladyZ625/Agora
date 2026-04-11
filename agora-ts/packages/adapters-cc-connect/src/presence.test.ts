@@ -62,23 +62,7 @@ describe('CcConnectManagementPresenceSource', () => {
     const managementService = {
       getProject: vi.fn()
         .mockResolvedValueOnce({
-          name: 'agora-codex',
-          agent_type: 'codex',
           platforms: [{ type: 'discord', connected: true }],
-          platform_configs: [],
-          sessions_count: 1,
-          active_session_keys: [],
-          heartbeat: null,
-          settings: {
-            language: 'zh',
-            admin_from: null,
-            disabled_commands: [],
-            quiet: false,
-          },
-          work_dir: '/repo/agora',
-          agent_mode: 'full-auto',
-          mode: 'full-auto',
-          show_context_indicator: false,
         } satisfies CcConnectManagedProjectDetail)
         .mockResolvedValueOnce({
           platforms: [{ type: 'discord', connected: false }],

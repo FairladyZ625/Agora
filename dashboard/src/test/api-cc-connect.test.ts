@@ -1,18 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   activateCcConnectProvider,
+  addCcConnectProvider,
+  createCcConnectCronPrompt,
   createCcConnectSession,
+  deleteCcConnectCronJob,
   deleteCcConnectSession,
   getCcConnectHeartbeat,
   getCcConnectDetect,
   getCcConnectProject,
   getCcConnectSession,
+  listCcConnectCronJobs,
   listCcConnectModels,
   listCcConnectBridges,
   listCcConnectProjects,
   listCcConnectProviders,
   listCcConnectSessions,
   pauseCcConnectHeartbeat,
+  removeCcConnectProvider,
   resumeCcConnectHeartbeat,
   runCcConnectHeartbeat,
   sendCcConnectProjectMessage,
@@ -172,6 +177,15 @@ describe('cc-connect api client', () => {
         };
       }
       if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/providers')) {
+        if (method === 'POST') {
+          return {
+            ok: true,
+            json: async () => ({
+              name: 'relay',
+              message: 'provider added',
+            }),
+          };
+        }
         return {
           ok: true,
           json: async () => ({
@@ -186,6 +200,14 @@ describe('cc-connect api client', () => {
           json: async () => ({
             active_provider: 'relay',
             message: 'provider activated',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex/providers/relay') && method === 'DELETE') {
+        return {
+          ok: true,
+          json: async () => ({
+            message: 'provider removed',
           }),
         };
       }
@@ -249,6 +271,48 @@ describe('cc-connect api client', () => {
           json: async () => ({ interval_mins: 15, message: 'interval updated' }),
         };
       }
+      if (url === 'http://localhost:3000/api/external-bridges/cc-connect/cron?project=agora-codex' && method === 'GET') {
+        return {
+          ok: true,
+          json: async () => ([{
+            id: 'cron-1',
+            project: 'agora-codex',
+            session_key: 'discord:thread:1',
+            cron_expr: '0 * * * *',
+            prompt: 'Summarize the latest thread state.',
+            exec: null,
+            work_dir: null,
+            description: 'Hourly summary',
+            enabled: true,
+            silent: true,
+            created_at: '2026-04-11T00:00:00.000Z',
+            last_run: null,
+            last_error: null,
+          }]),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/cron') && method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({
+            id: 'cron-2',
+            project: 'agora-codex',
+            session_key: 'discord:thread:1',
+            cron_expr: '*/30 * * * *',
+            prompt: 'Ping the live session.',
+            exec: null,
+            description: 'Half-hour ping',
+            enabled: true,
+            created_at: '2026-04-11T00:30:00.000Z',
+          }),
+        };
+      }
+      if (url.endsWith('/external-bridges/cc-connect/cron/cron-2') && method === 'DELETE') {
+        return {
+          ok: true,
+          json: async () => ({ message: 'cron deleted' }),
+        };
+      }
       throw new Error(`unexpected fetch: ${url}`);
     }) as unknown as typeof fetch;
   });
@@ -267,6 +331,40 @@ describe('cc-connect api client', () => {
     expect(sessions[0]?.session_key).toBe('discord:thread:1');
     expect(session.agent_session_id).toBe('codex-session-1');
     expect(bridges[0]?.platform).toBe('discord');
+  });
+
+  it('reads, creates, and deletes cron jobs', async () => {
+    const jobs = await listCcConnectCronJobs('agora-codex');
+    const createReceipt = await createCcConnectCronPrompt({
+      project: 'agora-codex',
+      session_key: 'discord:thread:1',
+      cron_expr: '*/30 * * * *',
+      prompt: 'Ping the live session.',
+      description: 'Half-hour ping',
+      silent: true,
+    });
+    const deleteReceipt = await deleteCcConnectCronJob('cron-2');
+
+    expect(jobs[0]?.cron_expr).toBe('0 * * * *');
+    expect(createReceipt.id).toBe('cron-2');
+    expect(deleteReceipt.message).toBe('cron deleted');
+    expectFetchCall('/external-bridges/cc-connect/cron?project=agora-codex', {
+      method: 'GET',
+    });
+    expectFetchCall('/external-bridges/cc-connect/cron', {
+      method: 'POST',
+      body: JSON.stringify({
+        project: 'agora-codex',
+        session_key: 'discord:thread:1',
+        cron_expr: '*/30 * * * *',
+        prompt: 'Ping the live session.',
+        description: 'Half-hour ping',
+        silent: true,
+      }),
+    });
+    expectFetchCall('/external-bridges/cc-connect/cron/cron-2', {
+      method: 'DELETE',
+    });
   });
 
   it('posts send payload with session key', async () => {
@@ -320,6 +418,13 @@ describe('cc-connect api client', () => {
 
   it('reads and controls providers, model, and heartbeat', async () => {
     const providers = await listCcConnectProviders('agora-codex');
+    const addProviderReceipt = await addCcConnectProvider('agora-codex', {
+      name: 'relay',
+      api_key: 'sk-relay',
+      base_url: 'https://relay.example.com',
+      model: 'gpt-5.3-codex',
+    });
+    const removeProviderReceipt = await removeCcConnectProvider('agora-codex', 'relay');
     const activateProviderReceipt = await activateCcConnectProvider('agora-codex', 'relay');
     const models = await listCcConnectModels('agora-codex');
     const modelReceipt = await setCcConnectModel('agora-codex', 'gpt-5.3-codex');
@@ -330,6 +435,8 @@ describe('cc-connect api client', () => {
     const intervalReceipt = await updateCcConnectHeartbeatInterval('agora-codex', 15);
 
     expect(providers.active_provider).toBe('gac');
+    expect(addProviderReceipt.message).toBe('provider added');
+    expect(removeProviderReceipt.message).toBe('provider removed');
     expect(activateProviderReceipt.active_provider).toBe('relay');
     expect(models.current).toBe('gpt-5.4');
     expect(modelReceipt.model).toBe('gpt-5.3-codex');
@@ -338,5 +445,17 @@ describe('cc-connect api client', () => {
     expect(resumeReceipt.message).toBe('heartbeat resumed');
     expect(runReceipt.message).toBe('heartbeat triggered');
     expect(intervalReceipt.interval_mins).toBe(15);
+    expectFetchCall('/external-bridges/cc-connect/projects/agora-codex/providers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'relay',
+        api_key: 'sk-relay',
+        base_url: 'https://relay.example.com',
+        model: 'gpt-5.3-codex',
+      }),
+    });
+    expectFetchCall('/external-bridges/cc-connect/projects/agora-codex/providers/relay', {
+      method: 'DELETE',
+    });
   });
 });

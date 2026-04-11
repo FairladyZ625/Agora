@@ -34,6 +34,7 @@ export function ExternalBridgesPage() {
   const providersByProject = useCcConnectStore((state) => state.providersByProject);
   const modelsByProject = useCcConnectStore((state) => state.modelsByProject);
   const heartbeatByProject = useCcConnectStore((state) => state.heartbeatByProject);
+  const cronJobsByProject = useCcConnectStore((state) => state.cronJobsByProject);
   const loading = useCcConnectStore((state) => state.loading);
   const detailLoading = useCcConnectStore((state) => state.detailLoading);
   const sendLoading = useCcConnectStore((state) => state.sendLoading);
@@ -48,18 +49,28 @@ export function ExternalBridgesPage() {
   const createNamedSession = useCcConnectStore((state) => state.createNamedSession);
   const switchActiveSession = useCcConnectStore((state) => state.switchActiveSession);
   const deleteSelectedSession = useCcConnectStore((state) => state.deleteSelectedSession);
+  const addProvider = useCcConnectStore((state) => state.addProvider);
+  const removeProvider = useCcConnectStore((state) => state.removeProvider);
   const activateProvider = useCcConnectStore((state) => state.activateProvider);
   const setModel = useCcConnectStore((state) => state.setModel);
   const pauseHeartbeat = useCcConnectStore((state) => state.pauseHeartbeat);
   const resumeHeartbeat = useCcConnectStore((state) => state.resumeHeartbeat);
   const runHeartbeat = useCcConnectStore((state) => state.runHeartbeat);
   const updateHeartbeatInterval = useCcConnectStore((state) => state.updateHeartbeatInterval);
+  const createCronPrompt = useCcConnectStore((state) => state.createCronPrompt);
+  const deleteCronJob = useCcConnectStore((state) => state.deleteCronJob);
   const clearError = useCcConnectStore((state) => state.clearError);
   const { showMessage } = useFeedbackStore();
   const [messageDraft, setMessageDraft] = useState('');
   const [sessionNameDraft, setSessionNameDraft] = useState('');
+  const [providerNameDraft, setProviderNameDraft] = useState('');
+  const [providerApiKeyDraft, setProviderApiKeyDraft] = useState('');
+  const [providerBaseUrlDraft, setProviderBaseUrlDraft] = useState('');
   const [modelDraft, setModelDraft] = useState('');
   const [heartbeatIntervalDraft, setHeartbeatIntervalDraft] = useState('15');
+  const [cronExprDraft, setCronExprDraft] = useState('0 * * * *');
+  const [cronPromptDraft, setCronPromptDraft] = useState('');
+  const [cronDescriptionDraft, setCronDescriptionDraft] = useState('');
 
   useEffect(() => {
     void fetchSnapshot();
@@ -80,6 +91,7 @@ export function ExternalBridgesPage() {
   const providerState = selectedProjectName ? providersByProject[selectedProjectName] ?? null : null;
   const modelState = selectedProjectName ? modelsByProject[selectedProjectName] ?? null : null;
   const heartbeatState = selectedProjectName ? heartbeatByProject[selectedProjectName] ?? null : null;
+  const cronJobs = selectedProjectName ? cronJobsByProject[selectedProjectName] ?? [] : [];
 
   const bridgeCount = bridges.length;
   const liveSessionCount = useMemo(
@@ -116,6 +128,22 @@ export function ExternalBridgesPage() {
     }
   };
 
+  const submitProvider = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = await addProvider({
+      name: providerNameDraft,
+      apiKey: providerApiKeyDraft,
+      baseUrl: providerBaseUrlDraft,
+      model: modelDraft,
+    });
+    if (result === 'live') {
+      setProviderNameDraft('');
+      setProviderApiKeyDraft('');
+      setProviderBaseUrlDraft('');
+      showMessage('Provider added', 'The cc-connect runtime accepted the new provider.', 'success');
+    }
+  };
+
   const submitHeartbeatInterval = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const minutes = Number(heartbeatIntervalDraft);
@@ -125,6 +153,21 @@ export function ExternalBridgesPage() {
     const result = await updateHeartbeatInterval(minutes);
     if (result === 'live') {
       showMessage(copy.feedback.heartbeatUpdateSuccessTitle, copy.feedback.heartbeatUpdateSuccessDetail, 'success');
+    }
+  };
+
+  const submitCronPrompt = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const result = await createCronPrompt({
+      cronExpr: cronExprDraft,
+      prompt: cronPromptDraft,
+      description: cronDescriptionDraft,
+      silent: true,
+    });
+    if (result === 'live') {
+      setCronPromptDraft('');
+      setCronDescriptionDraft('');
+      showMessage('Cron job created', 'The cc-connect runtime accepted the scheduled prompt.', 'success');
     }
   };
 
@@ -208,7 +251,7 @@ export function ExternalBridgesPage() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.1fr_1.1fr_1.4fr]">
+      <section className="external-bridges__grid">
         <div className="surface-panel surface-panel--workspace" data-testid="external-bridges-projects-panel">
           <div className="section-title-row">
             <div>
@@ -391,6 +434,41 @@ export function ExternalBridgesPage() {
                     <div className="detail-card">
                       <p className="detail-card__kicker">{copy.labels.providers}</p>
                       <h4 className="detail-card__title">{providerState?.activeProvider ?? copy.emptyValue}</h4>
+                      <form className="mt-3 space-y-3" onSubmit={(event) => void submitProvider(event)}>
+                        <label className="space-y-2">
+                          <span className="field-label">Provider name</span>
+                          <input
+                            type="text"
+                            className="input-shell"
+                            aria-label="Provider name"
+                            value={providerNameDraft}
+                            onChange={(event) => setProviderNameDraft(event.target.value)}
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="field-label">Provider API key</span>
+                          <input
+                            type="password"
+                            className="input-shell"
+                            aria-label="Provider API key"
+                            value={providerApiKeyDraft}
+                            onChange={(event) => setProviderApiKeyDraft(event.target.value)}
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="field-label">Provider base URL</span>
+                          <input
+                            type="text"
+                            className="input-shell"
+                            aria-label="Provider base URL"
+                            value={providerBaseUrlDraft}
+                            onChange={(event) => setProviderBaseUrlDraft(event.target.value)}
+                          />
+                        </label>
+                        <button type="submit" className="button-secondary" disabled={controlActionLoading}>
+                          <span>{controlActionLoading ? 'Adding provider…' : 'Add provider'}</span>
+                        </button>
+                      </form>
                       <div className="mt-3 space-y-2">
                         {(providerState?.providers ?? []).map((provider) => (
                           <div key={provider.name} className="flex items-center justify-between gap-3">
@@ -398,14 +476,24 @@ export function ExternalBridgesPage() {
                               <strong className="type-heading-sm">{provider.name}</strong>
                               <p className="type-text-xs">{provider.model ?? copy.emptyValue}</p>
                             </div>
-                            <button
-                              type="button"
-                              className="button-secondary"
-                              disabled={controlActionLoading || provider.active}
-                              onClick={() => void activateProvider(provider.name)}
-                            >
-                              <span>{provider.active ? copy.labels.active : copy.activateProviderAction}</span>
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                disabled={controlActionLoading || provider.active}
+                                onClick={() => void activateProvider(provider.name)}
+                              >
+                                <span>{provider.active ? copy.labels.active : copy.activateProviderAction}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                disabled={controlActionLoading || provider.active}
+                                onClick={() => void removeProvider(provider.name)}
+                              >
+                                <span>{controlActionLoading ? 'Removing provider…' : 'Remove provider'}</span>
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -481,6 +569,70 @@ export function ExternalBridgesPage() {
                         <span>{controlActionLoading ? copy.updatingHeartbeat : copy.updateHeartbeatAction}</span>
                       </button>
                     </form>
+                  </div>
+
+                  <div className="detail-card">
+                    <p className="detail-card__kicker">Cron jobs</p>
+                    <h4 className="detail-card__title">{cronJobs.length}</h4>
+                    <form className="mt-4 space-y-3" onSubmit={(event) => void submitCronPrompt(event)}>
+                      <label className="space-y-2">
+                        <span className="field-label">Cron expression</span>
+                        <input
+                          type="text"
+                          className="input-shell"
+                          aria-label="Cron expression"
+                          value={cronExprDraft}
+                          onChange={(event) => setCronExprDraft(event.target.value)}
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="field-label">Cron prompt</span>
+                        <textarea
+                          className="input-shell min-h-24"
+                          aria-label="Cron prompt"
+                          value={cronPromptDraft}
+                          onChange={(event) => setCronPromptDraft(event.target.value)}
+                        />
+                      </label>
+                      <label className="space-y-2">
+                        <span className="field-label">Cron description</span>
+                        <input
+                          type="text"
+                          className="input-shell"
+                          aria-label="Cron description"
+                          value={cronDescriptionDraft}
+                          onChange={(event) => setCronDescriptionDraft(event.target.value)}
+                        />
+                      </label>
+                      <button type="submit" className="button-secondary" disabled={controlActionLoading}>
+                        <span>{controlActionLoading ? 'Creating cron job…' : 'Create cron job'}</span>
+                      </button>
+                    </form>
+                    <div className="mt-4 space-y-2">
+                      {cronJobs.length === 0 ? (
+                        <div className="empty-state">No cron jobs are currently configured.</div>
+                      ) : (
+                        cronJobs.map((job) => (
+                          <div key={job.id} className="detail-card">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <strong className="type-heading-sm">{job.description ?? job.id}</strong>
+                                <p className="type-text-xs mt-2">{job.cronExpr}</p>
+                                <p className="type-text-xs mt-2">{job.prompt ?? job.exec ?? copy.emptyValue}</p>
+                              </div>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                disabled={controlActionLoading}
+                                onClick={() => void deleteCronJob(job.id)}
+                              >
+                                <span>{controlActionLoading ? 'Deleting cron job…' : 'Delete cron job'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
 
                   <form className="space-y-3" onSubmit={(event) => void submitMessage(event)}>

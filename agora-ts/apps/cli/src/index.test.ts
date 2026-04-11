@@ -406,6 +406,13 @@ describe('agora-ts cli', () => {
         ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
         ('bob', 'hash-3', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
     `).run();
+    db.prepare(`
+      INSERT INTO human_identity_bindings (account_id, provider, external_user_id, created_at)
+      VALUES
+        (1, 'discord', '530383608410800138', '2026-03-30T00:00:00.000Z'),
+        (2, 'discord', '1475341573347610708', '2026-03-30T00:00:00.000Z'),
+        (3, 'discord', '1475473727054417951', '2026-03-30T00:00:00.000Z')
+    `).run();
     const stdout = createBuffer();
     const stderr = createBuffer();
     const projectService = createProjectServiceFromDb(db);
@@ -426,12 +433,12 @@ describe('agora-ts cli', () => {
       'projects', 'create',
       '--id', 'proj-members-cli',
       '--name', 'Project Members CLI',
-      '--admin-account-id', '1',
-      '--member-account-id', '2',
+      '--admin-account-id', '530383608410800138',
+      '--member-account-id', '1475341573347610708',
     ], { from: 'user' });
     await program.parseAsync(['projects', 'members', 'list', 'proj-members-cli'], { from: 'user' });
-    await program.parseAsync(['projects', 'members', 'add', 'proj-members-cli', '--account-id', '3', '--role', 'member'], { from: 'user' });
-    await program.parseAsync(['projects', 'members', 'remove', 'proj-members-cli', '--account-id', '3'], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'add', 'proj-members-cli', '--account-id', '1475473727054417951', '--role', 'member'], { from: 'user' });
+    await program.parseAsync(['projects', 'members', 'remove', 'proj-members-cli', '--account-id', '1475473727054417951'], { from: 'user' });
 
     expect(stderr.value).toBe('');
     expect(stdout.value).toContain('Project 已创建: proj-members-cli');

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import {
   type AgentPresenceHistoryEvent,
   type AgentPresenceSnapshot,
@@ -28,6 +28,7 @@ type PresenceDependencies = {
   env?: NodeJS.ProcessEnv;
   exists?: (path: string) => boolean;
   readFile?: (path: string, encoding: BufferEncoding) => string;
+  readDir?: (path: string) => string[];
   managementService?: ManagementReader;
   now?: () => Date;
 };
@@ -64,6 +65,7 @@ export class CcConnectManagementPresenceSource implements PresenceSource {
       env: options.env ?? process.env,
       exists: options.exists ?? existsSync,
       readFile: options.readFile ?? readFileSync,
+      readDir: options.readDir ?? readdirSync,
     });
     if (!options.managementService) {
       throw new Error('CcConnectManagementPresenceSource requires a managementService');

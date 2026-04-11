@@ -31,6 +31,7 @@ function seedPublicBarrels(repoRoot: string, overrides: Partial<Record<string, s
     'packages/adapters-brain/src/index.ts': "export { FilesystemProjectKnowledgeAdapter } from './filesystem-project-knowledge-adapter.js';\n",
     'packages/adapters-host/src/index.ts': "export { OsHostResourcePort } from './os-host-resource-port.js';\n",
     'packages/adapters-openclaw/src/index.ts': "export { OpenClawAgentRegistry } from './agent-registry.js';\n",
+    'packages/testing/src/index.ts': "export { createTestRuntime } from './runtime.js';\n",
   };
   for (const [relativePath, content] of Object.entries({ ...defaults, ...overrides })) {
     writeBarrel(repoRoot, relativePath, content);

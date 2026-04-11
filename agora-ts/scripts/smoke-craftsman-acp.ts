@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { Command } from 'commander';
-import { createAgoraDatabase, runMigrations } from '../packages/db/src/index.ts';
-import { AcpCraftsmanAdapter } from '../packages/adapters-craftsman/src/index.ts';
-import { AcpCraftsmanProbePort, AcpCraftsmanTailPort, DirectAcpxRuntimePort } from '../packages/adapters-runtime/src/index.ts';
+import { AcpCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { AcpCraftsmanProbePort, AcpCraftsmanTailPort, DirectAcpxRuntimePort } from '@agora-ts/adapters-runtime';
+import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { createCraftsmanDispatcherFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 
 function sleep(ms: number) {

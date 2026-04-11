@@ -5178,6 +5178,82 @@ describe('task service', () => {
     ).toHaveLength(1);
   });
 
+  it('suppresses controller pings when task is at an approval gate even before advanceTask is called', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-approval-no-advance',
+    });
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-APPROVAL-NO-ADVANCE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      resolveHumanReminderParticipantRefs: ({ reason }: { reason: string }) =>
+        reason === 'approval_waiting' ? ['discord-user-123'] : [],
+    });
+
+    service.createTask({
+      title: 'Approval gate no advance',
+      type: 'custom',
+      creator: 'alice',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'approval', approver: 'reviewer' },
+          },
+        ],
+      },
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+
+    // Controller has NOT called advanceTask — no approval_request row exists yet.
+    // Task is idle and at an approval gate stage.
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-NO-ADVANCE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-NO-ADVANCE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-NO-ADVANCE-1');
+
+    const result = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-29T01:00:00.000Z'),
+    });
+
+    // Should NOT ping the controller — the gate is waiting for human approval.
+    expect(result).toMatchObject({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 1,
+      inbox_items: 0,
+    });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((m) => m.kind === 'controller_pinged'),
+    ).toHaveLength(0);
+    expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
+      kind: 'human_approval_pinged',
+      participant_refs: ['discord-user-123'],
+    });
+  });
+
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

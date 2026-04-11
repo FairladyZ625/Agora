@@ -1,12 +1,12 @@
 import type { TaskConversationEntryDto, TaskConversationInboundActionDto } from '@agora-ts/contracts';
 import {
   type IMProvisioningPort,
+  StageRosterService,
   TaskInboundService,
   type TaskContextBindingService,
   type TaskConversationService,
   type TaskService,
 } from '@agora-ts/core';
-import { StageRosterService } from '../../core/src/stage-roster-service.js';
 
 export interface LiveRegressionActorOptions {
   taskService: TaskService;

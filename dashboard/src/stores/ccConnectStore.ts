@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as api from '@/lib/api';
 import type {
   CcConnectBridgeAdapterSummary,
+  CcConnectCronJob,
   CcConnectHeartbeatStatus,
   CcConnectInspection,
   CcConnectModelState,
@@ -175,6 +176,24 @@ function mapHeartbeatStatus(dto: api.ApiCcConnectHeartbeatStatusDto): CcConnectH
   };
 }
 
+function mapCronJob(dto: api.ApiCcConnectCronJobDto): CcConnectCronJob {
+  return {
+    id: dto.id,
+    project: dto.project,
+    sessionKey: dto.session_key,
+    cronExpr: dto.cron_expr,
+    prompt: dto.prompt,
+    exec: dto.exec,
+    workDir: dto.work_dir,
+    description: dto.description,
+    enabled: dto.enabled,
+    silent: dto.silent ?? null,
+    createdAt: dto.created_at,
+    lastRun: dto.last_run ?? null,
+    lastError: dto.last_error ?? null,
+  };
+}
+
 function pickDefaultSession(sessions: CcConnectSessionSummary[]): CcConnectSessionSummary | null {
   return sessions.find((item) => item.live) ?? sessions.find((item) => item.active) ?? sessions[0] ?? null;
 }
@@ -192,6 +211,7 @@ interface CcConnectStore {
   providersByProject: Record<string, CcConnectProviderState>;
   modelsByProject: Record<string, CcConnectModelState>;
   heartbeatByProject: Record<string, CcConnectHeartbeatStatus>;
+  cronJobsByProject: Record<string, CcConnectCronJob[]>;
   loading: boolean;
   detailLoading: boolean;
   sendLoading: boolean;
@@ -206,12 +226,26 @@ interface CcConnectStore {
   createNamedSession: (name: string) => Promise<'live' | 'error'>;
   switchActiveSession: (sessionId: string) => Promise<'live' | 'error'>;
   deleteSelectedSession: () => Promise<'live' | 'error'>;
+  addProvider: (input: {
+    name: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+  }) => Promise<'live' | 'error'>;
+  removeProvider: (provider: string) => Promise<'live' | 'error'>;
   activateProvider: (provider: string) => Promise<'live' | 'error'>;
   setModel: (model: string) => Promise<'live' | 'error'>;
   pauseHeartbeat: () => Promise<'live' | 'error'>;
   resumeHeartbeat: () => Promise<'live' | 'error'>;
   runHeartbeat: () => Promise<'live' | 'error'>;
   updateHeartbeatInterval: (minutes: number) => Promise<'live' | 'error'>;
+  createCronPrompt: (input: {
+    cronExpr: string;
+    prompt: string;
+    description?: string;
+    silent?: boolean;
+  }) => Promise<'live' | 'error'>;
+  deleteCronJob: (jobId: string) => Promise<'live' | 'error'>;
   clearError: () => void;
 }
 
@@ -228,6 +262,7 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
   providersByProject: {},
   modelsByProject: {},
   heartbeatByProject: {},
+  cronJobsByProject: {},
   loading: false,
   detailLoading: false,
   sendLoading: false,
@@ -283,12 +318,13 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
     }
     set({ selectedProjectName: projectName, detailLoading: true, error: null, sendReceipt: null });
     try {
-      const [projectDto, sessionsDto, providersDto, modelsDto, heartbeatDto] = await Promise.all([
+      const [projectDto, sessionsDto, providersDto, modelsDto, heartbeatDto, cronJobsDto] = await Promise.all([
         api.getCcConnectProject(projectName),
         api.listCcConnectSessions(projectName),
         api.listCcConnectProviders(projectName),
         api.listCcConnectModels(projectName),
         api.getCcConnectHeartbeat(projectName),
+        api.listCcConnectCronJobs(projectName),
       ]);
       const sessions = sessionsDto.map(mapSessionSummary);
       const selectedSession = pickDefaultSession(sessions);
@@ -309,6 +345,10 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
         heartbeatByProject: {
           ...state.heartbeatByProject,
           [projectName]: mapHeartbeatStatus(heartbeatDto),
+        },
+        cronJobsByProject: {
+          ...state.cronJobsByProject,
+          [projectName]: cronJobsDto.map(mapCronJob),
         },
         selectedSessionIdByProject: {
           ...state.selectedSessionIdByProject,
@@ -521,6 +561,66 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
     }
   },
 
+  addProvider: async (input) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    const name = input.name.trim();
+    if (!name) {
+      set({ error: 'Provider name cannot be empty.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.addCcConnectProvider(projectName, {
+        name,
+        ...(input.apiKey?.trim() ? { api_key: input.apiKey.trim() } : {}),
+        ...(input.baseUrl?.trim() ? { base_url: input.baseUrl.trim() } : {}),
+        ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+      });
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  removeProvider: async (provider) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.removeCcConnectProvider(projectName, provider);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
   activateProvider: async (provider) => {
     const state = get();
     const projectName = state.selectedProjectName;
@@ -656,6 +756,83 @@ export const useCcConnectStore = create<CcConnectStore>()((set, get) => ({
     set({ controlActionLoading: true, error: null, sendReceipt: null });
     try {
       const receipt = await api.updateCcConnectHeartbeatInterval(projectName, minutes);
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: receipt.message,
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  createCronPrompt: async (input) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    const selectedSessionId = state.selectedSessionIdByProject[projectName];
+    const session = selectedSessionId
+      ? state.sessionsByProject[projectName]?.find((item) => item.id === selectedSessionId) ?? null
+      : null;
+    const sessionKey = session?.sessionKey ?? state.selectedProject?.activeSessionKeys[0] ?? null;
+    if (!sessionKey) {
+      set({ error: 'No session key is available for cron creation.' });
+      return 'error';
+    }
+    const cronExpr = input.cronExpr.trim();
+    const prompt = input.prompt.trim();
+    if (!cronExpr) {
+      set({ error: 'Cron expression cannot be empty.' });
+      return 'error';
+    }
+    if (!prompt) {
+      set({ error: 'Cron prompt cannot be empty.' });
+      return 'error';
+    }
+
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      await api.createCcConnectCronPrompt({
+        project: projectName,
+        session_key: sessionKey,
+        cron_expr: cronExpr,
+        prompt,
+        ...(input.description?.trim() ? { description: input.description.trim() } : {}),
+        ...(input.silent !== undefined ? { silent: input.silent } : {}),
+      });
+      await get().selectProject(projectName);
+      set({
+        controlActionLoading: false,
+        sendReceipt: 'cron job created',
+      });
+      return 'live';
+    } catch (error) {
+      set({
+        controlActionLoading: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+
+  deleteCronJob: async (jobId) => {
+    const state = get();
+    const projectName = state.selectedProjectName;
+    if (!projectName) {
+      set({ error: 'No cc-connect project is selected.' });
+      return 'error';
+    }
+    set({ controlActionLoading: true, error: null, sendReceipt: null });
+    try {
+      const receipt = await api.deleteCcConnectCronJob(jobId);
       await get().selectProject(projectName);
       set({
         controlActionLoading: false,
