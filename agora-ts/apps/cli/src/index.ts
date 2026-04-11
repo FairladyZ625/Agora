@@ -2047,7 +2047,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--query <query>', 'search query')
     .option('--task <taskId>', 'optional task id for task-aware lookup')
     .option('--audience <audience>', 'controller|citizen|craftsman')
-    .option('--mode <mode>', 'lookup|task_context', 'lookup')
+    .option('--mode <mode>', 'lookup|task_context')
+    .option('--provider <provider>', 'limit retrieval providers', collectOption, [])
     .option('--limit <n>', 'max result count', parseIntegerOption)
     .option('--json', '输出 JSON', false)
     .action(async (options: {
@@ -2056,6 +2057,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       task?: string;
       audience?: 'controller' | 'citizen' | 'craftsman';
       mode?: string;
+      provider?: string[];
       limit?: number;
       json?: boolean;
     }) => {
@@ -2073,6 +2075,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
           ...(options.task ? { task_id: options.task } : {}),
           ...(options.audience ? { audience: options.audience } : {}),
         },
+        ...(options.provider && options.provider.length > 0 ? {
+          metadata: {
+            providers: options.provider,
+          },
+        } : {}),
       });
       if (options.json) {
         writeLine(stdout, JSON.stringify({

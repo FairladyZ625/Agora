@@ -114,4 +114,43 @@ describe('retrieval service', () => {
       }),
     ]);
   });
+
+  it('filters retrieval to explicitly requested providers', async () => {
+    const projectBrainPort: RetrievalPort = {
+      provider: 'project_brain',
+      supports: vi.fn().mockReturnValue(true),
+      retrieve: vi.fn().mockResolvedValue([
+        makeResult({ provider: 'project_brain', reference_key: 'decision:a', score: 3 }),
+      ]),
+    };
+    const filesystemPort: RetrievalPort = {
+      provider: 'filesystem_context_source',
+      supports: vi.fn().mockReturnValue(true),
+      retrieve: vi.fn().mockResolvedValue([
+        makeResult({ provider: 'filesystem_context_source', reference_key: 'context_source:b', score: 4 }),
+      ]),
+    };
+    const service = new RetrievalService({
+      registry: new RetrievalRegistry([projectBrainPort, filesystemPort]),
+    });
+
+    const results = await service.retrieve(makePlan({
+      scope: 'project_context',
+      mode: 'lookup',
+      context: {
+        project_id: 'proj-brain',
+      },
+      metadata: {
+        providers: ['project_brain'],
+      },
+    }));
+
+    expect(projectBrainPort.retrieve).toHaveBeenCalled();
+    expect(filesystemPort.retrieve).not.toHaveBeenCalled();
+    expect(results).toEqual([
+      expect.objectContaining({
+        provider: 'project_brain',
+      }),
+    ]);
+  });
 });

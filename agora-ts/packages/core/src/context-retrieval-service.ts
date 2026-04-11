@@ -9,7 +9,7 @@ export class RetrievalService {
   constructor(private readonly options: RetrievalServiceOptions) {}
 
   async retrieve(plan: RetrievalPlanDto): Promise<RetrievalResultDto[]> {
-    const ports = this.options.registry.resolve(plan);
+    const ports = this.filterProviders(this.options.registry.resolve(plan), plan);
     if (ports.length === 0) {
       return [];
     }
@@ -20,9 +20,12 @@ export class RetrievalService {
   }
 
   async checkHealth(plan?: RetrievalPlanDto): Promise<RetrievalHealthDto[]> {
-    const ports = plan
-      ? this.options.registry.resolve(plan)
-      : this.options.registry.listProviders();
+    const ports = this.filterProviders(
+      plan
+        ? this.options.registry.resolve(plan)
+        : this.options.registry.listProviders(),
+      plan,
+    );
     return Promise.all(ports.map(async (port) => {
       if (!port.checkHealth) {
         return {
@@ -34,6 +37,17 @@ export class RetrievalService {
       }
       return port.checkHealth(plan);
     }));
+  }
+
+  private filterProviders<T extends { provider: string }>(ports: T[], plan?: RetrievalPlanDto): T[] {
+    const providers = Array.isArray(plan?.metadata?.providers)
+      ? plan.metadata.providers.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : [];
+    if (providers.length === 0) {
+      return ports;
+    }
+    const allowed = new Set(providers);
+    return ports.filter((port) => allowed.has(port.provider));
   }
 }
 

@@ -2215,6 +2215,46 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"provider": "filesystem_context_source"');
   });
 
+  it('passes provider filters and task-aware fields through the unified retrieval cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([]),
+    } satisfies Pick<RetrievalService, 'retrieve'>;
+    const program = createCliProgram({
+      contextRetrievalService: contextRetrievalService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'retrieve',
+      '--project', 'proj-ctx',
+      '--task', 'OC-200',
+      '--audience', 'craftsman',
+      '--provider', 'project_brain',
+      '--query', 'runtime boundary',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'task_context',
+      query: {
+        text: 'runtime boundary',
+      },
+      context: {
+        project_id: 'proj-ctx',
+        task_id: 'OC-200',
+        audience: 'craftsman',
+      },
+      metadata: {
+        providers: ['project_brain'],
+      },
+    });
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

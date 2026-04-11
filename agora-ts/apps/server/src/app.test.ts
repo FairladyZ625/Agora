@@ -1012,6 +1012,48 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('passes provider filters and task-aware fields through the project context route', async () => {
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([]),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/retrieve',
+      payload: {
+        query: {
+          text: 'runtime boundary',
+        },
+        task_id: 'OC-200',
+        audience: 'craftsman',
+        providers: ['project_brain'],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'task_context',
+      query: {
+        text: 'runtime boundary',
+      },
+      context: {
+        project_id: 'proj-ctx',
+        task_id: 'OC-200',
+        audience: 'craftsman',
+      },
+      metadata: {
+        providers: ['project_brain'],
+      },
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {

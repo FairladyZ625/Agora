@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { retrievalQuerySchema, retrievalResultSchema } from './context-retrieval.js';
 
 export const projectContextRetrieveRequestSchema = z.object({
-  mode: z.string().trim().min(1).default('lookup'),
+  mode: z.string().trim().min(1).optional(),
   query: retrievalQuerySchema,
   limit: z.number().int().positive().max(50).optional(),
   task_id: z.string().trim().min(1).optional(),
   audience: z.string().trim().min(1).optional(),
+  providers: z.array(z.string().trim().min(1)).optional(),
 });
 
 export const projectContextRetrieveResponseSchema = z.object({

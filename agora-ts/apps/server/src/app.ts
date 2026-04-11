@@ -1645,9 +1645,10 @@ export function buildApp(options: BuildAppOptions = {}) {
       const params = request.params as { projectId: string };
       projectService.requireProject(params.projectId);
       const payload = projectContextRetrieveRequestSchema.parse(request.body);
+      const mode = payload.task_id ? (payload.mode ?? 'task_context') : (payload.mode ?? 'lookup');
       const results = await contextRetrievalService.retrieve({
         scope: 'project_context',
-        mode: payload.mode,
+        mode,
         query: payload.query,
         ...(payload.limit !== undefined ? { limit: payload.limit } : {}),
         context: {
@@ -1655,10 +1656,15 @@ export function buildApp(options: BuildAppOptions = {}) {
           ...(payload.task_id ? { task_id: payload.task_id } : {}),
           ...(payload.audience ? { audience: payload.audience } : {}),
         },
+        ...(payload.providers && payload.providers.length > 0 ? {
+          metadata: {
+            providers: payload.providers,
+          },
+        } : {}),
       });
       return reply.send(projectContextRetrieveResponseSchema.parse({
         scope: 'project_context',
-        mode: payload.mode,
+        mode,
         results,
       }));
     } catch (error) {
