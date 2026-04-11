@@ -1,8 +1,6 @@
-import type {
-  TaskConversationAuthorKind,
+import type { TaskConversationAuthorKind,
   TaskConversationBodyFormat,
-  TaskConversationDirection,
-} from '@agora-ts/contracts';
+  TaskConversationDirection, ITaskConversationRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -25,7 +23,7 @@ export interface StoredTaskConversationEntry {
   metadata: Record<string, unknown> | null;
 }
 
-export class TaskConversationRepository {
+export class TaskConversationRepository implements ITaskConversationRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

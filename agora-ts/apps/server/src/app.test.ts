@@ -4,11 +4,21 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { DashboardQueryService, HumanAccountService, ProjectService, TaskService } from '@agora-ts/core';
+import type { DashboardQueryService, TaskService } from '@agora-ts/core';
+import { HumanAccountService } from '@agora-ts/core';
+import { HumanAccountRepository, HumanIdentityBindingRepository } from '@agora-ts/db';
+import { createDashboardQueryServiceFromDb, createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+
+function createHumanAccountServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-app-test-'));
@@ -390,7 +400,7 @@ describe('agora-ts server bootstrap', () => {
   it('requires a dashboard session for dashboard read APIs when session auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SESSION-API',
     });
@@ -444,7 +454,7 @@ describe('agora-ts server bootstrap', () => {
   it('allows project read APIs from a dashboard session even when bearer auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-session-api',
       name: 'Session API Project',
@@ -499,7 +509,7 @@ describe('agora-ts server bootstrap', () => {
   it('accepts project admins and members on POST /api/projects and exposes project membership routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     humanAccounts.bootstrapAdmin({
       username: 'workspace-admin',
       password: 'secret-pass',
@@ -514,7 +524,7 @@ describe('agora-ts server bootstrap', () => {
       password: 'secret-pass',
       role: 'member',
     });
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     const app = buildApp({
       db,
       projectService,
@@ -602,8 +612,8 @@ describe('agora-ts server bootstrap', () => {
   it('allows POST operations from a dashboard session when bearer auth is enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, { templatesDir });
-    const dashboardQueryService = new DashboardQueryService(db, { templatesDir });
+    const taskService = createTaskServiceFromDb(db, { templatesDir });
+    const dashboardQueryService = createDashboardQueryServiceFromDb(db, { templatesDir });
     const app = buildApp({
       db,
       taskService,
@@ -813,8 +823,8 @@ describe('agora-ts server bootstrap', () => {
     const agoraHomeDir = mkdtempSync(join(tmpdir(), 'agora-ts-server-project-root-'));
     tempPaths.push(agoraHomeDir);
     process.env.AGORA_HOME_DIR = agoraHomeDir;
-    const projectService = new ProjectService(db);
-    const taskService = new TaskService(db, { templatesDir, projectService });
+    const projectService = createProjectServiceFromDb(db);
+    const taskService = createTaskServiceFromDb(db, { templatesDir, projectService });
     const app = buildApp({
       db,
       projectService,
@@ -866,7 +876,7 @@ describe('agora-ts server bootstrap', () => {
   it('returns 404 for missing tasks and 400 for malformed task payloads', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-999',
     });
@@ -890,6 +900,481 @@ describe('agora-ts server bootstrap', () => {
 
     expect(missingTask.statusCode).toBe(404);
     expect(malformedCreate.statusCode).toBe(400);
+  });
+
+  it('creates tasks through the orchestrator direct-create route', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DIRECT-ROUTE',
+    });
+    const app = buildApp({ taskService });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/orchestrator/direct-create',
+      payload: {
+        orchestrator_ref: 'agora-executive-controller',
+        confirmation: {
+          kind: 'conversation_confirmation',
+          confirmation_mode: 'oral',
+          confirmed_by: 'lizeyu',
+          confirmed_at: '2026-04-10T09:00:00.000Z',
+          source: 'conversation',
+          source_ref: 'discord:thread-1',
+        },
+        create: {
+          title: 'Route direct create',
+          type: 'coding',
+          creator: 'agora-executive-controller',
+          description: '',
+          priority: 'high',
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-DIRECT-ROUTE',
+      title: 'Route direct create',
+      control: {
+        orchestrator_intake: {
+          kind: 'direct_create',
+          confirmation_mode: 'oral',
+          confirmed_by: 'lizeyu',
+          source_ref: 'discord:thread-1',
+        },
+      },
+    });
+  });
+
+  it('routes project context retrieval through the unified retrieval surface', async () => {
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 9,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          },
+        },
+      ]),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/retrieve',
+      payload: {
+        mode: 'lookup',
+        query: {
+          text: 'runtime boundary',
+        },
+        limit: 5,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'lookup',
+      query: {
+        text: 'runtime boundary',
+      },
+      limit: 5,
+      context: {
+        project_id: 'proj-ctx',
+      },
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      mode: 'lookup',
+      results: [
+        expect.objectContaining({
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+        }),
+      ],
+    });
+  });
+
+  it('passes provider filters and task-aware fields through the project context route', async () => {
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([]),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/retrieve',
+      payload: {
+        query: {
+          text: 'runtime boundary',
+        },
+        task_id: 'OC-200',
+        audience: 'craftsman',
+        providers: ['project_brain'],
+        source_ids: ['docs-main'],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'task_context',
+      query: {
+        text: 'runtime boundary',
+      },
+      context: {
+        project_id: 'proj-ctx',
+        task_id: 'OC-200',
+        audience: 'craftsman',
+      },
+      metadata: {
+        providers: ['project_brain'],
+        source_ids: ['docs-main'],
+      },
+    });
+  });
+
+  it('routes project context health through the unified retrieval surface', async () => {
+    const contextRetrievalService = {
+      checkHealth: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'filesystem_context_source',
+          status: 'ready',
+          message: 'filesystem context sources reachable',
+          metadata: {
+            source_ids: ['docs-main'],
+          },
+        },
+      ]),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/health',
+      payload: {
+        task_id: 'OC-200',
+        audience: 'craftsman',
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.checkHealth).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'task_context',
+      query: {
+        text: 'health',
+      },
+      context: {
+        project_id: 'proj-ctx',
+        task_id: 'OC-200',
+        audience: 'craftsman',
+      },
+      metadata: {
+        providers: ['filesystem_context_source'],
+        source_ids: ['docs-main'],
+      },
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      mode: 'task_context',
+      health: [
+        expect.objectContaining({
+          provider: 'filesystem_context_source',
+          status: 'ready',
+        }),
+      ],
+    });
+  });
+
+  it('builds a project context reference bundle through the unified route surface', async () => {
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      projectBrainService: {
+        listDocuments: () => [
+          {
+            project_id: 'proj-ctx',
+            kind: 'index',
+            slug: 'index',
+            title: 'Project Index',
+            path: '/brain/index.md',
+            content: '# Index',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'timeline',
+            slug: 'timeline',
+            title: 'Timeline',
+            path: '/brain/timeline.md',
+            content: '# Timeline',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            title: 'Runtime Boundary',
+            path: '/brain/decision/runtime-boundary.md',
+            content: '# Runtime Boundary',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+        ],
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/reference-bundle',
+      payload: {
+        mode: 'bootstrap',
+        audience: 'controller',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      bundle: expect.objectContaining({
+        project_id: 'proj-ctx',
+        mode: 'bootstrap',
+        project_map: expect.objectContaining({
+          index_reference_key: 'index:index',
+          timeline_reference_key: 'timeline:timeline',
+        }),
+        references: expect.arrayContaining([
+          expect.objectContaining({ reference_key: 'index:index' }),
+          expect.objectContaining({ reference_key: 'decision:runtime-boundary' }),
+        ]),
+      }),
+    });
+  });
+
+  it('builds a project context attention routing plan through the unified route surface', async () => {
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 7,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          },
+        },
+      ]),
+    };
+    const app = buildApp({
+      taskService: {
+        getTask: () => ({
+          id: 'OC-200',
+          title: 'Implement hybrid retrieval',
+          description: 'Need vector recall and lexical rerank.',
+        }),
+      } as never,
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      projectBrainService: {
+        listDocuments: () => [
+          {
+            project_id: 'proj-ctx',
+            kind: 'index',
+            slug: 'index',
+            title: 'Project Index',
+            path: '/brain/index.md',
+            content: '# Index',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'timeline',
+            slug: 'timeline',
+            title: 'Timeline',
+            path: '/brain/timeline.md',
+            content: '# Timeline',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            title: 'Runtime Boundary',
+            path: '/brain/decision/runtime-boundary.md',
+            content: '# Runtime Boundary',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+        ],
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/attention-routing',
+      payload: {
+        mode: 'bootstrap',
+        audience: 'craftsman',
+        task_id: 'OC-200',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_brain',
+      mode: 'task_context',
+      query: {
+        text: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
+      },
+      limit: 6,
+      context: {
+        task_id: 'OC-200',
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+      },
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      bundle: expect.objectContaining({
+        project_id: 'proj-ctx',
+      }),
+      plan: expect.objectContaining({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        routes: expect.arrayContaining([
+          expect.objectContaining({ reference_key: 'index:index', kind: 'project_map' }),
+          expect.objectContaining({ reference_key: 'decision:runtime-boundary', kind: 'focus' }),
+        ]),
+      }),
+    });
+  });
+
+  it('builds a project context briefing through the unified route surface', async () => {
+    const projectBrainAutomationService = {
+      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        markdown: '# Project Brain Bootstrap Context',
+        reference_bundle: {
+          scope: 'project_brain',
+          mode: 'bootstrap',
+          project_id: 'proj-ctx',
+          task_id: 'OC-200',
+          project_map: {
+            index_reference_key: 'index:index',
+            timeline_reference_key: 'timeline:timeline',
+            inventory_count: 2,
+          },
+          inventory: {
+            scope: 'project_brain',
+            project_id: 'proj-ctx',
+            generated_at: '2026-04-11T00:00:00.000Z',
+            entries: [],
+          },
+          references: [],
+        },
+        attention_routing_plan: {
+          scope: 'project_brain',
+          mode: 'bootstrap',
+          project_id: 'proj-ctx',
+          task_id: 'OC-200',
+          audience: 'craftsman',
+          summary: 'Start from the project map.',
+          routes: [],
+        },
+        source_documents: [],
+      }),
+    };
+    const app = buildApp({
+      taskService: {
+        getTask: () => ({
+          id: 'OC-200',
+          title: 'Implement hybrid retrieval',
+          description: 'Need vector recall and lexical rerank.',
+          project_id: 'proj-ctx',
+          team: { members: [] },
+        }),
+      } as never,
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      projectBrainAutomationService: projectBrainAutomationService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/briefing',
+      payload: {
+        audience: 'craftsman',
+        task_id: 'OC-200',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+      project_id: 'proj-ctx',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      briefing: expect.objectContaining({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        markdown: '# Project Brain Bootstrap Context',
+      }),
+    });
   });
 
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
@@ -932,7 +1417,7 @@ describe('agora-ts server bootstrap', () => {
   it('serves prometheus-style metrics when observability metrics are enabled', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-777',
     });
@@ -1050,7 +1535,7 @@ describe('agora-ts server bootstrap', () => {
     const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-LOG',
     });

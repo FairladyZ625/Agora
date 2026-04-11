@@ -1,3 +1,4 @@
+import type { IArchiveJobRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -15,7 +16,7 @@ export interface StoredArchiveJob {
   payload: Record<string, unknown>;
 }
 
-export class ArchiveJobRepository {
+export class ArchiveJobRepository implements IArchiveJobRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertArchiveJob(input: {

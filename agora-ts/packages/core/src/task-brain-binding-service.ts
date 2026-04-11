@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { TaskBrainBindingRepository, type AgoraDatabase, type StoredTaskBrainBinding } from '@agora-ts/db';
+import type { ITaskBrainBindingRepository, TaskBrainBindingRecord } from '@agora-ts/contracts';
 
 export interface TaskBrainBindingServiceOptions {
+  repository: ITaskBrainBindingRepository;
   idGenerator?: () => string;
 }
 
 export class TaskBrainBindingService {
-  private readonly bindings: TaskBrainBindingRepository;
+  private readonly bindings: ITaskBrainBindingRepository;
   private readonly idGenerator: () => string;
 
-  constructor(db: AgoraDatabase, options: TaskBrainBindingServiceOptions = {}) {
-    this.bindings = new TaskBrainBindingRepository(db);
+  constructor(options: TaskBrainBindingServiceOptions) {
+    this.bindings = options.repository;
     this.idGenerator = options.idGenerator ?? (() => randomUUID());
   }
 
@@ -20,7 +21,7 @@ export class TaskBrainBindingService {
     brain_task_id: string;
     workspace_path: string;
     metadata?: Record<string, unknown> | null;
-  }): StoredTaskBrainBinding {
+  }): TaskBrainBindingRecord {
     return this.bindings.insert({
       id: this.idGenerator(),
       task_id: input.task_id,
@@ -32,11 +33,11 @@ export class TaskBrainBindingService {
     });
   }
 
-  getActiveBinding(taskId: string): StoredTaskBrainBinding | null {
+  getActiveBinding(taskId: string): TaskBrainBindingRecord | null {
     return this.bindings.getActiveByTask(taskId);
   }
 
-  listBindings(taskId: string): StoredTaskBrainBinding[] {
+  listBindings(taskId: string): TaskBrainBindingRecord[] {
     return this.bindings.listByTask(taskId);
   }
 

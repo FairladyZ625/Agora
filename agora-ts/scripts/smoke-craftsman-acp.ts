@@ -4,15 +4,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { Command } from 'commander';
-import { createAgoraDatabase, runMigrations } from '../packages/db/src/index.ts';
-import {
-  AcpCraftsmanAdapter,
-  AcpCraftsmanProbePort,
-  AcpCraftsmanTailPort,
-  CraftsmanDispatcher,
-  DirectAcpxRuntimePort,
-  TaskService,
-} from '../packages/core/src/index.ts';
+import { AcpCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { AcpCraftsmanProbePort, AcpCraftsmanTailPort, DirectAcpxRuntimePort } from '@agora-ts/adapters-runtime';
+import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createCraftsmanDispatcherFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 
 function sleep(ms: number) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -50,7 +45,7 @@ async function main() {
   const dbPath = join(tempDir, 'smoke.db');
   const db = createAgoraDatabase({ dbPath });
   const runtime = new DirectAcpxRuntimePort();
-  const dispatcher = new CraftsmanDispatcher(db, {
+  const dispatcher = createCraftsmanDispatcherFromDb(db, {
     executionIdGenerator: () => 'exec-acp-smoke-1',
     adapters: {
       [options.agent]: new AcpCraftsmanAdapter(options.agent, {
@@ -80,7 +75,7 @@ async function main() {
 
   try {
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir: resolve(process.cwd(), 'templates'),
       taskIdGenerator: () => 'OC-ACP-SMOKE-1',
       craftsmanDispatcher: dispatcher,

@@ -3,15 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
-import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
-import { CitizenService } from './citizen-service.js';
+import { createCitizenServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb } from '@agora-ts/testing';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { ProjectBrainAutomationPolicy } from './project-brain-automation-policy.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
-import { ProjectService } from './project-service.js';
-import { RolePackService } from './role-pack-service.js';
 
 const tempPaths: string[] = [];
 
@@ -48,7 +45,7 @@ describe('project brain automation service', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -88,7 +85,7 @@ describe('project brain automation service', () => {
       body: 'Core keeps orchestration semantics and adapters stay outside it.',
       source_task_ids: ['OC-100'],
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -107,7 +104,7 @@ describe('project brain automation service', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -129,8 +126,8 @@ describe('project brain automation service', () => {
       },
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
-      citizenService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
+      citizenService: citizenService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['citizenService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -158,6 +155,9 @@ describe('project brain automation service', () => {
     expect(context.markdown).toContain('Automation Project');
     expect(context.markdown).toContain('citizen-alpha');
     expect(context.markdown).toContain('Core First');
+    expect(context.reference_bundle?.project_map.index_reference_key).toBe('index:index');
+    expect(context.attention_routing_plan?.routes[0]?.reference_key).toBe('index:index');
+    expect(context.markdown).toContain('## Attention Routing');
 
     const promoted = service.promoteKnowledge({
       project_id: 'proj-automation',
@@ -179,7 +179,7 @@ describe('project brain automation service', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -200,7 +200,7 @@ describe('project brain automation service', () => {
       source_task_ids: ['OC-100'],
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -240,7 +240,7 @@ describe('project brain automation service', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -269,7 +269,7 @@ describe('project brain automation service', () => {
       source_task_ids: ['OC-100'],
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
       citizenService: {
         listCitizens: vi.fn().mockReturnValue([
           {
@@ -303,24 +303,36 @@ describe('project brain automation service', () => {
       }),
     });
     const retrievalService = {
-      searchTaskContext: vi.fn().mockResolvedValue([
+      retrieve: vi.fn().mockResolvedValue([
         {
+          scope: 'project_brain',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
           project_id: 'proj-automation',
-          kind: 'decision',
-          slug: 'runtime-boundary',
           title: 'Runtime Boundary',
           path: '/brain/decision/runtime-boundary.md',
-          snippet: 'Keep runtime-specific logic out of core.',
-          retrieval_mode: 'hybrid',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 4,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            retrieval_mode: 'hybrid',
+          },
         },
         {
+          scope: 'project_brain',
+          provider: 'project_brain',
+          reference_key: 'citizen_scaffold:citizen-alpha',
           project_id: 'proj-automation',
-          kind: 'citizen_scaffold',
-          slug: 'citizen-alpha',
           title: 'Citizen Alpha',
           path: '/brain/citizen/citizen-alpha.md',
-          snippet: 'Citizen Alpha scaffold',
-          retrieval_mode: 'hybrid',
+          preview: 'Citizen Alpha scaffold',
+          score: 3,
+          metadata: {
+            kind: 'citizen_scaffold',
+            slug: 'citizen-alpha',
+            retrieval_mode: 'hybrid',
+          },
         },
       ]),
     };
@@ -339,12 +351,26 @@ describe('project brain automation service', () => {
       audience: 'craftsman',
     });
 
-    expect(retrievalService.searchTaskContext).toHaveBeenCalledWith({
-      task_id: 'OC-100',
-      audience: 'craftsman',
-      query: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
-      max_results: 6,
+    expect(retrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_brain',
+      mode: 'task_context',
+      query: {
+        text: 'Implement hybrid retrieval\n\nNeed vector recall and lexical rerank.',
+      },
+      limit: 6,
+      context: {
+        task_id: 'OC-100',
+        project_id: 'proj-automation',
+        audience: 'craftsman',
+      },
     });
+    expect(context.attention_routing_plan?.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reference_key: 'decision:runtime-boundary', kind: 'focus' }),
+        expect.objectContaining({ reference_key: 'citizen_scaffold:citizen-alpha', kind: 'focus' }),
+      ]),
+    );
+    expect(context.attention_routing_plan?.summary).toContain('project map');
     expect(context.source_documents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'index', slug: 'index' }),
@@ -353,5 +379,6 @@ describe('project brain automation service', () => {
         expect.objectContaining({ kind: 'citizen_scaffold', slug: 'citizen-alpha' }),
       ]),
     );
+    expect(context.markdown).toContain('Matched the current task query');
   });
 });

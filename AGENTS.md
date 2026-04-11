@@ -104,6 +104,21 @@
   - 若未开 worktree，必须写明原因
 - 若执行过程中发现当前工作区是脏的，且脏改动与本轮任务无关，应暂停直接编码，先切到新 worktree，再继续。
 
+### 工作树清理规则（Worktree Hygiene）
+
+- 任何 feature / merge temp worktree，只要对应改动已经：
+  - 合入目标主线，或
+  - 明确废弃不再继续
+  就必须尽快删除，不要长期堆积。
+- 默认要求：
+  - 合入 `master` 后，删除对应旧 feature worktree
+  - 完成 merge 的临时 worktree 也要删除
+- 只有以下情况可暂时保留旧 worktree：
+  - 当前还有运行中的服务明确依赖该路径
+  - 仍在做未完成的验证或回滚比对
+  - 用户明确要求保留
+- 若选择暂时保留，必须在 `progress.md` 或交付说明里写明保留原因；验证结束后应继续删除。
+
 ### SSoT 规则
 
 - `docs/Agora-实施排期-Agora-TS.md` 是 `agora-ts/` 的实施单一入口。

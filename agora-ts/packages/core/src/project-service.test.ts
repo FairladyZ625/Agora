@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,9 +9,8 @@ import {
   ProjectMembershipRepository,
   runMigrations,
 } from '@agora-ts/db';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
-import { ProjectService } from './project-service.js';
-import { TaskService } from './task-service.js';
+import { createProjectServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
+import { FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
 
 const tempPaths: string[] = [];
 
@@ -50,7 +49,7 @@ describe('project service', () => {
     runMigrations(db);
     const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
     const projectStateDir = makeTempDir('agora-ts-project-state-');
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -100,7 +99,7 @@ describe('project service', () => {
         ('archon', 'hash-1', 'admin', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z'),
         ('alice', 'hash-2', 'member', 1, '2026-03-30T00:00:00.000Z', '2026-03-30T00:00:00.000Z')
     `).run();
-    const service = new ProjectService(db);
+    const service = createProjectServiceFromDb(db);
     const memberships = new ProjectMembershipRepository(db);
     const rosters = new ProjectAgentRosterRepository(db);
 
@@ -125,7 +124,7 @@ describe('project service', () => {
   it('requires at least one project admin when creating a project membership set', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new ProjectService(db);
+    const service = createProjectServiceFromDb(db);
 
     expect(() => service.createProject({
       id: 'proj-no-admin',
@@ -140,7 +139,7 @@ describe('project service', () => {
     runMigrations(db);
     const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
     const projectStateDir = makeTempDir('agora-ts-project-state-');
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -163,7 +162,7 @@ describe('project service', () => {
   it('throws when requiring a missing project', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new ProjectService(db);
+    const service = createProjectServiceFromDb(db);
 
     expect(() => service.requireProject('proj-missing')).toThrow('Project not found: proj-missing');
   });
@@ -173,7 +172,7 @@ describe('project service', () => {
     runMigrations(db);
     const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
     const projectStateDir = makeTempDir('agora-ts-project-state-');
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -223,7 +222,7 @@ describe('project service', () => {
     const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
     const projectStateDir = makeTempDir('agora-ts-project-state-');
     const enqueueDocumentSync = vi.fn();
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -290,7 +289,7 @@ describe('project service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
       }),
@@ -313,7 +312,7 @@ describe('project service', () => {
     const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
     tempPaths.push(brainPackDir);
     tempPaths.push(projectStateDir);
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -374,7 +373,7 @@ describe('project service', () => {
     runMigrations(db);
     const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
     tempPaths.push(brainPackDir);
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
       }),
@@ -397,7 +396,7 @@ describe('project service', () => {
     runMigrations(db);
     const brainPackDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-knowledge-'));
     tempPaths.push(brainPackDir);
-    const service = new ProjectService(db, {
+    const service = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
       }),
@@ -407,7 +406,7 @@ describe('project service', () => {
       name: 'Project Active',
       owner: 'archon',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir: join(process.cwd(), 'templates'),
       taskIdGenerator: () => 'OC-PROJ-ACTIVE-1',
       projectService: service,
@@ -427,22 +426,33 @@ describe('project service', () => {
   it('deletes an archived project when no tasks remain bound to it', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new ProjectService(db);
+    const brainPackDir = makeTempDir('agora-ts-project-knowledge-');
+    const projectStateDir = makeTempDir('agora-ts-project-state-');
+    const service = createProjectServiceFromDb(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+        projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+      }),
+    });
     service.createProject({
       id: 'proj-delete',
       name: 'Project Delete',
     });
+    mkdirSync(join(brainPackDir, 'project-index', 'proj-delete'), { recursive: true });
+    writeFileSync(join(brainPackDir, 'project-index', 'proj-delete', 'index.md'), '# internal index\n', 'utf8');
 
     service.archiveProject('proj-delete');
     service.deleteProject('proj-delete');
 
     expect(service.getProject('proj-delete')).toBeNull();
+    expect(existsSync(join(projectStateDir, 'proj-delete'))).toBe(false);
+    expect(existsSync(join(brainPackDir, 'project-index', 'proj-delete'))).toBe(false);
   });
 
   it('rejects project delete before archive or while tasks still exist', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new ProjectService(db);
+    const service = createProjectServiceFromDb(db);
     service.createProject({
       id: 'proj-delete-blocked',
       name: 'Project Delete Blocked',
@@ -450,7 +460,7 @@ describe('project service', () => {
 
     expect(() => service.deleteProject('proj-delete-blocked')).toThrow(/before it is archived/i);
 
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir: join(process.cwd(), 'templates'),
       taskIdGenerator: () => 'OC-PROJ-DELETE-1',
       projectService: service,

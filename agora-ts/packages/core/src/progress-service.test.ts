@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations, TaskRepository } from '@agora-ts/db';
+import { FlowLogRepository, ProgressLogRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { ProgressService } from './progress-service.js';
 
 const tempPaths: string[] = [];
@@ -27,7 +27,10 @@ describe('progress service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const tasks = new TaskRepository(db);
-    const progress = new ProgressService(db);
+    const progress = new ProgressService({
+      flowLogRepository: new FlowLogRepository(db),
+      progressLogRepository: new ProgressLogRepository(db),
+    });
 
     tasks.insertTask({
       id: 'OC-900',

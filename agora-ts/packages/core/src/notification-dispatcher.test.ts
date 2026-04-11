@@ -9,10 +9,15 @@ describe('NotificationDispatcher', () => {
     const runtime = createTestRuntime();
     try {
       const port = new StubIMMessagingPort();
-      const dispatcher = new NotificationDispatcher(runtime.db, { messagingPort: port });
       const bindings = new TaskContextBindingRepository(runtime.db);
       const outbox = new NotificationOutboxRepository(runtime.db);
       const conversations = new TaskConversationRepository(runtime.db);
+      const dispatcher = new NotificationDispatcher({
+        outboxRepository: outbox,
+        conversationRepository: conversations,
+        bindingRepository: bindings,
+        messagingPort: port,
+      });
 
       const task = runtime.taskService.createTask({
         title: 'Notify test',
@@ -73,8 +78,13 @@ describe('NotificationDispatcher', () => {
     const runtime = createTestRuntime();
     try {
       const port = new StubIMMessagingPort();
-      const dispatcher = new NotificationDispatcher(runtime.db, { messagingPort: port });
       const outbox = new NotificationOutboxRepository(runtime.db);
+      const dispatcher = new NotificationDispatcher({
+        outboxRepository: outbox,
+        conversationRepository: new TaskConversationRepository(runtime.db),
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        messagingPort: port,
+      });
 
       const task = runtime.taskService.createTask({
         title: 'No binding test',
@@ -112,9 +122,14 @@ describe('NotificationDispatcher', () => {
           throw new Error('Discord API error');
         },
       };
-      const dispatcher = new NotificationDispatcher(runtime.db, { messagingPort: port });
       const bindings = new TaskContextBindingRepository(runtime.db);
       const outbox = new NotificationOutboxRepository(runtime.db);
+      const dispatcher = new NotificationDispatcher({
+        outboxRepository: outbox,
+        conversationRepository: new TaskConversationRepository(runtime.db),
+        bindingRepository: bindings,
+        messagingPort: port,
+      });
 
       const task = runtime.taskService.createTask({
         title: 'Fail test',

@@ -1,25 +1,25 @@
-import { createCitizenRequestSchema, type CitizenDefinitionDto, type CitizenProjectionPreviewDto, type CreateCitizenRequestDto } from '@agora-ts/contracts';
-import { CitizenRepository, type AgoraDatabase } from '@agora-ts/db';
+import { createCitizenRequestSchema, type CitizenDefinitionDto, type CitizenProjectionPreviewDto, type CreateCitizenRequestDto, type ICitizenRepository } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
 import type { CitizenProjectionPort } from './citizen-projection-port.js';
-import { ProjectService } from './project-service.js';
+import type { ProjectService } from './project-service.js';
 import type { RolePackService } from './role-pack-service.js';
 
 export interface CitizenServiceOptions {
-  projectService?: ProjectService;
+  repository: ICitizenRepository;
+  projectService: ProjectService;
   rolePackService: RolePackService;
   projectionPorts?: CitizenProjectionPort[];
 }
 
 export class CitizenService {
-  private readonly citizens: CitizenRepository;
+  private readonly citizens: ICitizenRepository;
   private readonly projectService: ProjectService;
   private readonly rolePackService: RolePackService;
   private readonly projectionPorts: Map<string, CitizenProjectionPort>;
 
-  constructor(db: AgoraDatabase, options: CitizenServiceOptions) {
-    this.citizens = new CitizenRepository(db);
-    this.projectService = options.projectService ?? new ProjectService(db);
+  constructor(options: CitizenServiceOptions) {
+    this.citizens = options.repository;
+    this.projectService = options.projectService;
     this.rolePackService = options.rolePackService;
     this.projectionPorts = new Map((options.projectionPorts ?? []).map((port) => [port.adapter, port]));
   }

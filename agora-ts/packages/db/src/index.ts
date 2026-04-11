@@ -27,3 +27,4 @@ export * from './repositories/project-membership.repository.js';
 export * from './repositories/project-agent-roster.repository.js';
 export * from './repositories/task-authority.repository.js';
 export * from './repositories/project-write-lock.repository.js';
+export * from './ports/gate-port.js';

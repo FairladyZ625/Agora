@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations, ArchiveJobRepository } from '@agora-ts/db';
 import { CraftsmanExecutionRepository, SubtaskRepository } from '@agora-ts/db';
-import { LiveSessionStore, TaskService } from '@agora-ts/core';
-import type { TmuxRuntimeService } from '@agora-ts/core';
+import { LiveSessionStore, type InteractiveRuntimePort, type TaskService } from '@agora-ts/core';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { createServerRuntime } from './runtime.js';
 
 const tempPaths: string[] = [];
@@ -85,6 +85,7 @@ function mockRuntimeModules(existsSyncImpl: (path: string) => boolean) {
     runMigrations: vi.fn(),
     ArchiveJobRepository: class ArchiveJobRepository {},
     CraftsmanExecutionRepository: class CraftsmanExecutionRepository {},
+    ProjectBrainIndexJobRepository: class ProjectBrainIndexJobRepository {},
     SubtaskRepository: class SubtaskRepository {},
   }));
   vi.doMock('@agora-ts/core', () => ({
@@ -168,6 +169,8 @@ describe('server runtime', () => {
     expect(runtime.taskConversationService).toBeDefined();
     expect(Reflect.get(runtime.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(Reflect.get(runtime.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
+    expect(Reflect.get(runtime.dashboardQueryService as object, 'taskBrainBindingService')).toBeDefined();
+    expect(Reflect.get(runtime.dashboardQueryService as object, 'taskBrainWorkspacePort')).toBeDefined();
     expect(readFileSync(join(env.brainPackRoot, 'roles', 'controller.md'), 'utf8')).toContain('soul:');
     runtime.db.close();
   });
@@ -283,10 +286,10 @@ describe('server runtime', () => {
     );
     const bootstrapDb = createAgoraDatabase({ dbPath });
     runMigrations(bootstrapDb);
-    const bootstrapTaskService = new TaskService(bootstrapDb, {
+    const bootstrapTaskService = createTaskServiceFromDb(bootstrapDb, {
       templatesDir: new URL('../../../templates', import.meta.url).pathname,
       taskIdGenerator: () => 'OC-BOOT',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     bootstrapTaskService.createTask({
       title: 'boot recovery runtime',
@@ -482,7 +485,7 @@ describe('server runtime', () => {
     const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
     const legacyRuntimeService = {
       status: () => ({ session: 'override', panes: [] }),
-    } as unknown as TmuxRuntimeService;
+    } as unknown as InteractiveRuntimePort;
 
     const runtime = createServerRuntime({
       configPath,
@@ -530,7 +533,7 @@ describe('server runtime', () => {
             ? Reflect.get(adapter, 'runtime') as object | undefined
             : undefined;
           inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
-          return new TaskService(context.db, {
+          return createTaskServiceFromDb(context.db, {
             templatesDir: context.templatesDir,
           });
         },
@@ -591,7 +594,7 @@ describe('server runtime', () => {
 
     const bootstrapDb = createAgoraDatabase({ dbPath });
     runMigrations(bootstrapDb);
-    const bootstrapTaskService = new TaskService(bootstrapDb, {
+    const bootstrapTaskService = createTaskServiceFromDb(bootstrapDb, {
       templatesDir: new URL('../../../templates', import.meta.url).pathname,
       taskIdGenerator: () => 'OC-ARCHIVE',
     });

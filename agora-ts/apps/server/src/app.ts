@@ -36,6 +36,10 @@ import {
   validateProjectNomos,
 } from '@agora-ts/config';
 import {
+  projectContextBriefingRequestSchema,
+  projectContextBriefingResponseSchema,
+  projectContextAttentionRoutingRequestSchema,
+  projectContextAttentionRoutingResponseSchema,
   craftsmanCallbackRequestSchema,
   craftsmanDispatchRequestSchema,
   craftsmanExecutionSendKeysRequestSchema,
@@ -69,11 +73,18 @@ import {
   createTaskRequestSchema,
   createSubtasksRequestSchema,
   createTaskContextBindingRequestSchema,
+  orchestratorDirectCreateRequestSchema,
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
+  projectContextReferenceBundleRequestSchema,
+  projectContextReferenceBundleResponseSchema,
+  projectContextHealthRequestSchema,
+  projectContextHealthResponseSchema,
+  projectContextRetrieveRequestSchema,
+  projectContextRetrieveResponseSchema,
   type HealthResponse,
   unifiedHealthSnapshotSchema,
   liveSessionSchema,
@@ -103,6 +114,8 @@ import {
   workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
 import {
+  CcConnectInspectionService,
+  CcConnectManagementService,
   NotFoundError,
   PermissionDeniedError,
   type DashboardQueryService,
@@ -110,42 +123,63 @@ import {
   type InboxService,
   type LiveSessionStore,
   type NotificationDispatcher,
+  AttentionRoutingService,
   type CitizenService,
+  type InteractiveRuntimePort,
+  OrchestratorDirectCreateService,
+  ProjectBrainAutomationPolicy,
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
+  type ProjectBrainAutomationService as ProjectBrainAutomationServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
+  ProjectBrainAutomationService,
+  type RetrievalService,
   type ProjectService,
   ProjectService as ProjectServiceImpl,
+  ProjectMembershipService,
+  ProjectAgentRosterService,
+  ReferenceBundleService,
   type TaskConversationService,
   type TaskInboundService,
   type TaskParticipationService,
   type TaskContextBindingService,
   type TaskService,
-  type TmuxRuntimeService,
   type TemplateAuthoringService,
   type WorkspaceBootstrapService,
   WorkspaceBootstrapService as WorkspaceBootstrapServiceImpl,
 } from '@agora-ts/core';
-import { NotificationOutboxRepository, type AgoraDatabase } from '@agora-ts/db';
+import {
+  NotificationOutboxRepository,
+  HumanAccountRepository,
+  ProjectMembershipRepository,
+  ProjectAgentRosterRepository,
+  ProjectRepository,
+  TaskRepository,
+  type AgoraDatabase,
+} from '@agora-ts/db';
 
 export interface BuildAppOptions {
   db?: AgoraDatabase;
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
+  projectBrainAutomationService?: Pick<ProjectBrainAutomationServiceContract, 'buildBootstrapContext' | 'buildBootstrapContextAsync'>;
+  contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   workspaceBootstrapService?: WorkspaceBootstrapService;
   citizenService?: CitizenService;
   dashboardQueryService?: DashboardQueryService;
+  ccConnectInspectionService?: CcConnectInspectionService;
+  ccConnectManagementService?: CcConnectManagementService;
   inboxService?: InboxService;
   templateAuthoringService?: TemplateAuthoringService;
   liveSessionStore?: LiveSessionStore;
   legacyRuntimeService?: Pick<
-    TmuxRuntimeService,
+    InteractiveRuntimePort,
     'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
   >;
   tmuxRuntimeService?: Pick<
-    TmuxRuntimeService,
+    InteractiveRuntimePort,
     'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'
   >;
   taskContextBindingService?: TaskContextBindingService;
@@ -220,6 +254,32 @@ function translateError(error: unknown) {
     return { statusCode: 400, body: { message: error.message } };
   }
   return { statusCode: 500, body: { message: 'Unknown error' } };
+}
+
+function parseOptionalInt(value: string | number | undefined) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildCcConnectManagementInput(input: {
+  configPath?: string;
+  managementBaseUrl?: string;
+  managementToken?: string;
+  timeoutMs?: string | number;
+}) {
+  return {
+    ...(input.configPath ? { configPath: input.configPath } : {}),
+    ...(input.managementBaseUrl ? { managementBaseUrl: input.managementBaseUrl } : {}),
+    ...(input.managementToken ? { managementToken: input.managementToken } : {}),
+    ...(parseOptionalInt(input.timeoutMs) !== null ? { timeoutMs: parseOptionalInt(input.timeoutMs) as number } : {}),
+  };
 }
 
 function parseNumericId(raw: string, fieldName: string) {
@@ -626,7 +686,7 @@ function recordCraftsmanCallback(metrics: MetricsState, status: string) {
 function renderMetrics(options: {
   metrics: MetricsState;
   taskService: TaskService | undefined;
-  legacyRuntimeService: Pick<TmuxRuntimeService, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
+  legacyRuntimeService: Pick<InteractiveRuntimePort, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
 }) {
   const lines: string[] = [
     '# HELP agora_http_requests_total Total HTTP requests served by agora-ts server.',
@@ -684,14 +744,28 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: false,
   });
   const taskService = options.taskService;
+  const orchestratorDirectCreateService = taskService
+    ? new OrchestratorDirectCreateService({ taskService })
+    : undefined;
   app.addHook('onClose', async () => {
     await taskService?.drainBackgroundOperations?.();
   });
-  const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl(options.db) : undefined);
+  const projectService = options.projectService ?? (options.db ? new ProjectServiceImpl({
+    projectRepository: new ProjectRepository(options.db),
+    taskRepository: new TaskRepository(options.db),
+    membershipService: new ProjectMembershipService({
+      membershipRepository: new ProjectMembershipRepository(options.db),
+      accountRepository: new HumanAccountRepository(options.db),
+    }),
+    agentRosterService: new ProjectAgentRosterService({
+      repository: new ProjectAgentRosterRepository(options.db),
+    }),
+    transactionManager: { begin: () => options.db!.exec('BEGIN'), commit: () => options.db!.exec('COMMIT'), rollback: () => options.db!.exec('ROLLBACK') },
+  }) : undefined);
   const workspaceBootstrapService = options.workspaceBootstrapService ?? (
     options.db && taskService
       ? new WorkspaceBootstrapServiceImpl({
-          db: options.db,
+          taskRepository: new TaskRepository(options.db),
           taskService,
           runtimeReady: options.workspaceBootstrap?.runtimeReady ?? false,
           runtimeReadinessReason: options.workspaceBootstrap?.runtimeReadinessReason ?? null,
@@ -702,8 +776,11 @@ export function buildApp(options: BuildAppOptions = {}) {
   workspaceBootstrapService?.initialize();
   const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
+  const contextRetrievalService = options.contextRetrievalService;
   const citizenService = options.citizenService;
   const dashboardQueryService = options.dashboardQueryService;
+  const ccConnectInspectionService = options.ccConnectInspectionService ?? new CcConnectInspectionService();
+  const ccConnectManagementService = options.ccConnectManagementService ?? new CcConnectManagementService();
   const inboxService = options.inboxService;
   const templateAuthoringService = options.templateAuthoringService;
   const liveSessionStore = options.liveSessionStore;
@@ -858,6 +935,516 @@ export function buildApp(options: BuildAppOptions = {}) {
       const session = liveSessionStore.upsert(payload);
       const sync = taskParticipationService?.syncLiveSession(payload) ?? null;
       return reply.send(sync ? { ...session, sync } : session);
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/detect', async (request, reply) => {
+    try {
+      const query = request.query as {
+        command?: string;
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectInspectionService.inspect({
+        ...(query.command ? { command: query.command } : {}),
+        ...(query.configPath ? { configPath: query.configPath } : {}),
+        ...(query.managementBaseUrl ? { managementBaseUrl: query.managementBaseUrl } : {}),
+        ...(query.managementToken ? { managementToken: query.managementToken } : {}),
+        ...(parseOptionalInt(query.timeoutMs) !== null ? { timeoutMs: parseOptionalInt(query.timeoutMs) as number } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/status', async (request, reply) => {
+    try {
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listProjects(buildCcConnectManagementInput(query)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects', async (request, reply) => {
+    try {
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listProjects(buildCcConnectManagementInput(query)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.getProject({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/sessions', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listSessions({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/sessions/:sessionId', async (request, reply) => {
+    try {
+      const params = request.params as { project: string; sessionId: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+        historyLimit?: string;
+      };
+      return reply.send(await ccConnectManagementService.getSession({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+        sessionId: params.sessionId,
+        ...(parseOptionalInt(query.historyLimit) !== null ? { historyLimit: parseOptionalInt(query.historyLimit) as number } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/sessions', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        session_key: string;
+        name?: string;
+      };
+      return reply.send(await ccConnectManagementService.createSession({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        sessionKey: body.session_key,
+        ...(body.name ? { name: body.name } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/sessions/switch', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        session_key: string;
+        session_id: string;
+      };
+      return reply.send(await ccConnectManagementService.switchSession({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        sessionKey: body.session_key,
+        sessionId: body.session_id,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/external-bridges/cc-connect/projects/:project/sessions/:sessionId', async (request, reply) => {
+    try {
+      const params = request.params as { project: string; sessionId: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.deleteSession({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+        sessionId: params.sessionId,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/providers', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listProviders({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/providers', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        name: string;
+        api_key?: string;
+        base_url?: string;
+        model?: string;
+        thinking?: string;
+        env?: Record<string, string>;
+      };
+      return reply.send(await ccConnectManagementService.addProvider({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        name: body.name,
+        ...(body.api_key ? { apiKey: body.api_key } : {}),
+        ...(body.base_url ? { baseUrl: body.base_url } : {}),
+        ...(body.model ? { model: body.model } : {}),
+        ...(body.thinking ? { thinking: body.thinking } : {}),
+        ...(body.env ? { env: body.env } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/external-bridges/cc-connect/projects/:project/providers/:provider', async (request, reply) => {
+    try {
+      const params = request.params as { project: string; provider: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.removeProvider({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+        provider: params.provider,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/providers/:provider/activate', async (request, reply) => {
+    try {
+      const params = request.params as { project: string; provider: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.activateProvider({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        provider: params.provider,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/models', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listModels({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/model', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        model: string;
+      };
+      return reply.send(await ccConnectManagementService.setModel({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        model: body.model,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/projects/:project/heartbeat', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.getHeartbeat({
+        ...buildCcConnectManagementInput(query),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/pause', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.pauseHeartbeat({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/resume', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.resumeHeartbeat({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/run', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+      };
+      return reply.send(await ccConnectManagementService.runHeartbeat({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/heartbeat/interval', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        minutes: number;
+      };
+      return reply.send(await ccConnectManagementService.updateHeartbeatInterval({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        minutes: body.minutes,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/cron', async (request, reply) => {
+    try {
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+        project?: string;
+      };
+      return reply.send(await ccConnectManagementService.listCronJobs({
+        ...buildCcConnectManagementInput(query),
+        ...(query.project ? { project: query.project } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/cron', async (request, reply) => {
+    try {
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        project: string;
+        session_key: string;
+        cron_expr: string;
+        prompt: string;
+        description?: string;
+        silent?: boolean;
+      };
+      return reply.send(await ccConnectManagementService.createCronPrompt({
+        ...buildCcConnectManagementInput(body),
+        project: body.project,
+        sessionKey: body.session_key,
+        cronExpr: body.cron_expr,
+        prompt: body.prompt,
+        ...(body.description ? { description: body.description } : {}),
+        ...(body.silent !== undefined ? { silent: body.silent } : {}),
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.delete('/api/external-bridges/cc-connect/cron/:jobId', async (request, reply) => {
+    try {
+      const params = request.params as { jobId: string };
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.deleteCronJob({
+        ...buildCcConnectManagementInput(query),
+        jobId: params.jobId,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.get('/api/external-bridges/cc-connect/bridges', async (request, reply) => {
+    try {
+      const query = request.query as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: string;
+      };
+      return reply.send(await ccConnectManagementService.listBridgeAdapters(buildCcConnectManagementInput(query)));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/external-bridges/cc-connect/projects/:project/send', async (request, reply) => {
+    try {
+      const params = request.params as { project: string };
+      const body = request.body as {
+        configPath?: string;
+        managementBaseUrl?: string;
+        managementToken?: string;
+        timeoutMs?: number;
+        session_key: string;
+        message: string;
+      };
+      return reply.send(await ccConnectManagementService.sendMessage({
+        ...buildCcConnectManagementInput(body),
+        project: params.project,
+        sessionKey: body.session_key,
+        message: body.message,
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);
@@ -1105,6 +1692,31 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/orchestrator/direct-create', async (request, reply) => {
+    if (!orchestratorDirectCreateService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = orchestratorDirectCreateRequestSchema.parse(request.body);
+      const created = orchestratorDirectCreateService.createFromConversationConfirmation(payload);
+      recordTaskAction(metrics, 'orchestrator_direct_create', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'orchestrator_direct_create',
+        task_id: created.id,
+        state: created.state,
+        stage: created.current_stage,
+        creator: created.creator,
+      });
+      return created;
+    } catch (error) {
+      const translated = translateError(error);
+      recordTaskAction(metrics, 'orchestrator_direct_create', 'error');
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.post('/api/projects', async (request, reply) => {
     if (!projectService) {
       return reply.status(503).send({ message: 'Project service is not configured' });
@@ -1151,6 +1763,218 @@ export function buildApp(options: BuildAppOptions = {}) {
         });
       }
       return reply.send(projectService.requireProject(project.id));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/retrieve', async (request, reply) => {
+    if (!projectService || !contextRetrievalService) {
+      return reply.status(503).send({ message: 'Project context retrieval is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextRetrieveRequestSchema.parse(request.body);
+      const mode = payload.task_id ? (payload.mode ?? 'task_context') : (payload.mode ?? 'lookup');
+      const results = await contextRetrievalService.retrieve({
+        scope: 'project_context',
+        mode,
+        query: payload.query,
+        ...(payload.limit !== undefined ? { limit: payload.limit } : {}),
+        context: {
+          project_id: params.projectId,
+          ...(payload.task_id ? { task_id: payload.task_id } : {}),
+          ...(payload.audience ? { audience: payload.audience } : {}),
+        },
+        ...(payload.providers && payload.providers.length > 0 ? {
+          metadata: {
+            providers: payload.providers,
+            ...(payload.source_ids && payload.source_ids.length > 0 ? { source_ids: payload.source_ids } : {}),
+          },
+        } : {}),
+        ...(!payload.providers?.length && payload.source_ids?.length ? {
+          metadata: {
+            source_ids: payload.source_ids,
+          },
+        } : {}),
+      });
+      return reply.send(projectContextRetrieveResponseSchema.parse({
+        scope: 'project_context',
+        mode,
+        results,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/health', async (request, reply) => {
+    if (!projectService || !contextRetrievalService) {
+      return reply.status(503).send({ message: 'Project context retrieval is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextHealthRequestSchema.parse(request.body);
+      const mode = payload.task_id ? (payload.mode ?? 'task_context') : (payload.mode ?? 'lookup');
+      const health = await contextRetrievalService.checkHealth?.({
+        scope: 'project_context',
+        mode,
+        query: {
+          text: 'health',
+        },
+        context: {
+          project_id: params.projectId,
+          ...(payload.task_id ? { task_id: payload.task_id } : {}),
+          ...(payload.audience ? { audience: payload.audience } : {}),
+        },
+        ...(payload.providers && payload.providers.length > 0 ? {
+          metadata: {
+            providers: payload.providers,
+            ...(payload.source_ids && payload.source_ids.length > 0 ? { source_ids: payload.source_ids } : {}),
+          },
+        } : {}),
+        ...(!payload.providers?.length && payload.source_ids?.length ? {
+          metadata: {
+            source_ids: payload.source_ids,
+          },
+        } : {}),
+      }) ?? [];
+      return reply.send(projectContextHealthResponseSchema.parse({
+        scope: 'project_context',
+        mode,
+        health,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/reference-bundle', async (request, reply) => {
+    if (!projectService || !projectBrainService) {
+      return reply.status(503).send({ message: 'Project reference bundle is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextReferenceBundleRequestSchema.parse(request.body);
+      const service = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const bundle = await service.buildReferenceBundleAsync({
+        project_id: params.projectId,
+        mode: payload.mode,
+        audience: payload.audience,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      });
+      return reply.send(projectContextReferenceBundleResponseSchema.parse({
+        scope: 'project_context',
+        bundle,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/attention-routing', async (request, reply) => {
+    if (!projectService || !projectBrainService) {
+      return reply.status(503).send({ message: 'Project attention routing is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextAttentionRoutingRequestSchema.parse(request.body);
+      const bundleService = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const task = payload.task_id ? taskService?.getTask(payload.task_id) : null;
+      const taskTitle = payload.task_title ?? task?.title;
+      const taskDescription = payload.task_description ?? task?.description;
+      const bundle = await bundleService.buildReferenceBundleAsync({
+        project_id: params.projectId,
+        mode: payload.mode,
+        audience: payload.audience,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      });
+      const routingService = new AttentionRoutingService({
+        ...(contextRetrievalService ? { retrievalService: contextRetrievalService } : {}),
+      });
+      const plan = await routingService.buildPlanAsync({
+        project_id: params.projectId,
+        mode: payload.mode,
+        audience: payload.audience,
+        reference_bundle: bundle,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+      });
+      return reply.send(projectContextAttentionRoutingResponseSchema.parse({
+        scope: 'project_context',
+        bundle,
+        plan,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/briefing', async (request, reply) => {
+    if (!projectService || (!projectBrainService && !options.projectBrainAutomationService)) {
+      return reply.status(503).send({ message: 'Project context briefing is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextBriefingRequestSchema.parse(request.body);
+      const service = options.projectBrainAutomationService ?? new ProjectBrainAutomationService({
+        projectBrainService: projectBrainService!,
+        ...(contextRetrievalService ? { retrievalService: contextRetrievalService } : {}),
+      });
+      const task = payload.task_id ? taskService?.getTask(payload.task_id) : null;
+      const taskTitle = payload.task_title ?? task?.title;
+      const taskDescription = payload.task_description ?? task?.description;
+      const briefing = payload.task_id
+        ? await service.buildBootstrapContextAsync({
+          project_id: params.projectId,
+          audience: payload.audience,
+          task_id: payload.task_id,
+          ...(taskTitle ? { task_title: taskTitle } : {}),
+          ...(taskDescription ? { task_description: taskDescription } : {}),
+          ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+          ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+            ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+            : {}),
+        })
+        : service.buildBootstrapContext({
+          project_id: params.projectId,
+          audience: payload.audience,
+          ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+          ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+            ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+            : {}),
+        });
+      return reply.send(projectContextBriefingResponseSchema.parse({
+        scope: 'project_context',
+        briefing,
+      }));
     } catch (error) {
       const translated = translateError(error);
       return reply.status(translated.statusCode).send(translated.body);

@@ -1,44 +1,55 @@
-import type { CraftsmanCallbackRequestDto, CraftsmanExecutionPayloadDto } from '@agora-ts/contracts';
-import {
-  CraftsmanExecutionRepository,
-  FlowLogRepository,
-  NotificationOutboxRepository,
-  ProgressLogRepository,
-  SubtaskRepository,
-  TaskConversationRepository,
-  TaskContextBindingRepository,
-  TaskRepository,
-  type StoredCraftsmanExecution,
-  type StoredSubtask,
-  type StoredTask,
-  type AgoraDatabase,
-} from '@agora-ts/db';
 import { randomUUID } from 'node:crypto';
+import type {
+  CraftsmanCallbackRequestDto,
+  CraftsmanExecutionPayloadDto,
+  CraftsmanExecutionRecord,
+  ICraftsmanExecutionRepository,
+  IFlowLogRepository,
+  INotificationOutboxRepository,
+  IProgressLogRepository,
+  ISubtaskRepository,
+  ITaskContextBindingRepository,
+  ITaskConversationRepository,
+  ITaskRepository,
+  SubtaskRecord,
+  TaskRecord,
+} from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
-import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
+import { formatCraftsmanOutput, normalizeCraftsmanOutput, summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 const INPUT_WAITING_STATUSES = new Set(['needs_input', 'awaiting_choice']);
 
-export class CraftsmanCallbackService {
-  private readonly executions: CraftsmanExecutionRepository;
-  private readonly subtasks: SubtaskRepository;
-  private readonly tasks: TaskRepository;
-  private readonly flowLogs: FlowLogRepository;
-  private readonly progressLogs: ProgressLogRepository;
-  private readonly outbox: NotificationOutboxRepository;
-  private readonly bindings: TaskContextBindingRepository;
-  private readonly conversations: TaskConversationRepository;
+export interface CraftsmanCallbackServiceOptions {
+  executionRepository: ICraftsmanExecutionRepository;
+  subtaskRepository: ISubtaskRepository;
+  taskRepository: ITaskRepository;
+  flowLogRepository: IFlowLogRepository;
+  progressLogRepository: IProgressLogRepository;
+  outboxRepository: INotificationOutboxRepository;
+  bindingRepository: ITaskContextBindingRepository;
+  conversationRepository: ITaskConversationRepository;
+}
 
-  constructor(private readonly db: AgoraDatabase) {
-    this.executions = new CraftsmanExecutionRepository(db);
-    this.subtasks = new SubtaskRepository(db);
-    this.tasks = new TaskRepository(db);
-    this.flowLogs = new FlowLogRepository(db);
-    this.progressLogs = new ProgressLogRepository(db);
-    this.outbox = new NotificationOutboxRepository(db);
-    this.bindings = new TaskContextBindingRepository(db);
-    this.conversations = new TaskConversationRepository(db);
+export class CraftsmanCallbackService {
+  private readonly executions: ICraftsmanExecutionRepository;
+  private readonly subtasks: ISubtaskRepository;
+  private readonly tasks: ITaskRepository;
+  private readonly flowLogs: IFlowLogRepository;
+  private readonly progressLogs: IProgressLogRepository;
+  private readonly outbox: INotificationOutboxRepository;
+  private readonly bindings: ITaskContextBindingRepository;
+  private readonly conversations: ITaskConversationRepository;
+
+  constructor(options: CraftsmanCallbackServiceOptions) {
+    this.executions = options.executionRepository;
+    this.subtasks = options.subtaskRepository;
+    this.tasks = options.taskRepository;
+    this.flowLogs = options.flowLogRepository;
+    this.progressLogs = options.progressLogRepository;
+    this.outbox = options.outboxRepository;
+    this.bindings = options.bindingRepository;
+    this.conversations = options.conversationRepository;
   }
 
   handleCallback(input: CraftsmanCallbackRequestDto) {
@@ -121,13 +132,13 @@ export class CraftsmanCallbackService {
   }
 
   private settleExecutionResult(
-    task: StoredTask,
-    subtask: StoredSubtask,
-    execution: StoredCraftsmanExecution,
+    task: TaskRecord,
+    subtask: SubtaskRecord,
+    execution: CraftsmanExecutionRecord,
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const normalizedOutput = normalizeCraftsmanOutput(payload);
-    let nextSubtask: StoredSubtask;
+    let nextSubtask: SubtaskRecord;
     let eventType: string;
 
     if (execution.status === 'succeeded') {
@@ -200,9 +211,9 @@ export class CraftsmanCallbackService {
   }
 
   private recordInputRequired(
-    task: StoredTask,
-    subtask: StoredSubtask,
-    execution: StoredCraftsmanExecution,
+    task: TaskRecord,
+    subtask: SubtaskRecord,
+    execution: CraftsmanExecutionRecord,
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const inputRequest = payload?.input_request ?? null;
@@ -244,9 +255,9 @@ export class CraftsmanCallbackService {
   }
 
   private recordRunningProgress(
-    task: StoredTask,
-    subtask: StoredSubtask,
-    execution: StoredCraftsmanExecution,
+    task: TaskRecord,
+    subtask: SubtaskRecord,
+    execution: CraftsmanExecutionRecord,
   ) {
     const payload = execution.callback_payload as CraftsmanExecutionPayloadDto | null;
     const output = formatCraftsmanOutput(payload) ?? `${execution.adapter} resumed and is running`;
@@ -283,15 +294,16 @@ export class CraftsmanCallbackService {
   }
 
   private enqueueNotification(
-    task: StoredTask,
-    execution: StoredCraftsmanExecution,
-    subtask: StoredSubtask,
+    task: TaskRecord,
+    execution: CraftsmanExecutionRecord,
+    subtask: SubtaskRecord,
     eventType: string,
   ) {
     const binding = this.bindings.getActiveByTask(task.id);
     if (!binding) {
       return;
     }
+    const displayOutput = summarizeCraftsmanOutputForHuman(subtask.output, `${execution.adapter} ${eventType}`);
     this.outbox.insert({
       id: randomUUID(),
       task_id: task.id,
@@ -303,6 +315,7 @@ export class CraftsmanCallbackService {
         adapter: execution.adapter,
         status: execution.status,
         output: subtask.output,
+        display_output: displayOutput,
       },
       sequence_no: Date.now(),
     });
@@ -315,7 +328,7 @@ export class CraftsmanCallbackService {
       author_kind: 'craftsman',
       author_ref: execution.adapter,
       display_name: execution.adapter,
-      body: subtask.output ?? `${execution.adapter} ${eventType}`,
+      body: displayOutput,
       body_format: 'plain_text',
       occurred_at: execution.finished_at ?? new Date().toISOString(),
       dedupe_key: `callback:${execution.execution_id}:${eventType}`,

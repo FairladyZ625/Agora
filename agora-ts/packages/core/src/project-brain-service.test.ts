@@ -3,13 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
-import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
-import { CitizenService } from './citizen-service.js';
+import { createCitizenServiceFromDb, createProjectServiceFromDb, createRolePackServiceFromDb } from '@agora-ts/testing';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { ProjectBrainService } from './project-brain-service.js';
-import { ProjectService } from './project-service.js';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
-import { RolePackService } from './role-pack-service.js';
 
 const tempPaths: string[] = [];
 
@@ -46,7 +43,7 @@ describe('project brain service', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -65,7 +62,7 @@ describe('project brain service', () => {
       body: 'Core keeps orchestration semantics. Runtime adapters stay outside core.',
       source_task_ids: ['OC-100'],
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -84,7 +81,7 @@ describe('project brain service', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -106,8 +103,8 @@ describe('project brain service', () => {
       },
     });
     const service = new ProjectBrainService({
-      projectService,
-      citizenService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
+      citizenService: citizenService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['citizenService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -154,7 +151,7 @@ describe('project brain service', () => {
     runMigrations(db);
     const brainPackRoot = makeBrainPackDir();
     const projectStateDir = makeProjectStateDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -166,7 +163,7 @@ describe('project brain service', () => {
     });
     const enqueueDocumentSync = vi.fn();
     const service = new ProjectBrainService({
-      projectService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),

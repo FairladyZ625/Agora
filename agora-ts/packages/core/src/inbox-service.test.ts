@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations, TodoRepository } from '@agora-ts/db';
-import { InboxService } from './inbox-service.js';
-import { TaskService } from './task-service.js';
+import { createInboxServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -28,11 +27,11 @@ describe('inbox service', () => {
   it('promotes inbox items to todo or task and blocks duplicate promotion', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-700',
     });
-    const inboxService = new InboxService(db, taskService);
+    const inboxService = createInboxServiceFromDb(db, taskService);
     const todos = new TodoRepository(db);
 
     const todoInbox = inboxService.createInboxItem({

@@ -1,5 +1,6 @@
-import type { StoredTask } from '@agora-ts/db';
+import type { RetrievalPlanDto, RetrievalResultDto, TaskRecord } from '@agora-ts/contracts';
 import type { ProjectBrainChunk } from './project-brain-chunk.js';
+import type { RetrievalPort } from './context-retrieval-port.js';
 import type { ProjectBrainEmbeddingPort } from './project-brain-embedding-port.js';
 import type { ProjectBrainSearchResult } from './project-brain-query-port.js';
 import type { ProjectBrainService } from './project-brain-service.js';
@@ -23,19 +24,72 @@ export interface ProjectBrainRetrievalResult extends ProjectBrainSearchResult {
 }
 
 export interface ProjectBrainRetrievalServiceOptions {
-  taskLookup: {
-    getTask(taskId: string): StoredTask | null;
+  taskLookup?: {
+    getTask(taskId: string): TaskRecord | null;
   };
   projectBrainService: ProjectBrainService;
-  embeddingPort: ProjectBrainEmbeddingPort;
-  vectorIndexPort: Pick<ProjectBrainVectorIndexPort, 'querySimilarChunks'>;
+  embeddingPort?: ProjectBrainEmbeddingPort;
+  vectorIndexPort?: Pick<ProjectBrainVectorIndexPort, 'querySimilarChunks'>;
 }
 
-export class ProjectBrainRetrievalService {
+export class ProjectBrainRetrievalService implements RetrievalPort {
+  readonly provider = 'project_brain';
+
   constructor(private readonly options: ProjectBrainRetrievalServiceOptions) {}
 
+  supports(plan: RetrievalPlanDto) {
+    if (plan.scope === 'project_brain') {
+      return plan.mode === 'task_context'
+        && Boolean(plan.context.task_id && coerceAudience(plan.context.audience) && this.options.taskLookup);
+    }
+    if (plan.scope !== 'project_context') {
+      return false;
+    }
+    if (plan.context.project_id) {
+      return true;
+    }
+    return Boolean(plan.context.task_id && this.options.taskLookup);
+  }
+
+  async retrieve(plan: RetrievalPlanDto): Promise<RetrievalResultDto[]> {
+    if (!this.supports(plan)) {
+      return [];
+    }
+    if (plan.scope === 'project_context' && plan.context.project_id && !plan.context.task_id) {
+      const results = this.options.projectBrainService.queryDocuments?.(plan.context.project_id, plan.query.text) ?? [];
+      return results
+        .slice(0, plan.limit ?? results.length)
+        .map((result) => ({
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: `${result.kind}:${result.slug}`,
+          project_id: result.project_id,
+          title: result.title,
+          path: result.path,
+          preview: result.snippet,
+          score: null,
+          metadata: {
+            kind: result.kind,
+            slug: result.slug,
+            retrieval_mode: 'raw_lookup',
+          },
+        }));
+    }
+    const audience = coerceAudience(plan.context.audience) ?? 'controller';
+    const results = await this.searchTaskContext({
+      task_id: plan.context.task_id!,
+      audience,
+      query: plan.query.text,
+      ...(plan.limit !== undefined ? { max_results: plan.limit } : {}),
+    });
+    return results.map((result) => mapToRetrievalResult(
+      result,
+      plan.scope === 'project_context' ? 'project_context' : 'project_brain',
+    ));
+  }
+
   async searchTaskContext(input: SearchTaskProjectBrainContextInput): Promise<ProjectBrainRetrievalResult[]> {
-    const task = this.options.taskLookup.getTask(input.task_id);
+    const task = this.options.taskLookup?.getTask(input.task_id);
     if (!task?.project_id) {
       throw new Error(`task ${input.task_id} is not bound to a project`);
     }
@@ -43,6 +97,9 @@ export class ProjectBrainRetrievalService {
     const maxResults = input.max_results ?? 5;
 
     try {
+      if (!this.options.embeddingPort || !this.options.vectorIndexPort) {
+        throw new Error('vector retrieval not configured');
+      }
       const queryEmbedding = await this.options.embeddingPort.embedText(input.query);
       const vectorResults = await this.options.vectorIndexPort.querySimilarChunks({
         project_id: task.project_id,
@@ -71,6 +128,28 @@ export class ProjectBrainRetrievalService {
   }
 }
 
+function mapToRetrievalResult(result: ProjectBrainRetrievalResult, scope: 'project_brain' | 'project_context' = 'project_brain'): RetrievalResultDto {
+  return {
+    scope,
+    provider: 'project_brain',
+    reference_key: `${result.kind}:${result.slug}${result.chunk_id ? `#${result.chunk_id}` : ''}`,
+    project_id: result.project_id,
+    title: result.title,
+    path: result.path,
+    preview: result.snippet,
+    score: (result.vector_score ?? 0) + (result.lexical_score ?? 0),
+    metadata: {
+      kind: result.kind,
+      slug: result.slug,
+      retrieval_mode: result.retrieval_mode,
+      ...(result.chunk_id ? { chunk_id: result.chunk_id } : {}),
+      ...(result.heading_path ? { heading_path: result.heading_path } : {}),
+      ...(result.vector_score !== undefined ? { vector_score: result.vector_score } : {}),
+      ...(result.lexical_score !== undefined ? { lexical_score: result.lexical_score } : {}),
+    },
+  };
+}
+
 function mapHybridResult(chunk: ProjectBrainChunk, query: string, vectorScore: number): ProjectBrainRetrievalResult {
   const snippet = chunk.text.replace(/\n+/g, ' ').trim().slice(0, 160);
   return {
@@ -86,6 +165,12 @@ function mapHybridResult(chunk: ProjectBrainChunk, query: string, vectorScore: n
     vector_score: vectorScore,
     lexical_score: lexicalScore(query, chunk),
   };
+}
+
+function coerceAudience(value: string | undefined): ProjectBrainRetrievalAudience | null {
+  return value === 'controller' || value === 'citizen' || value === 'craftsman'
+    ? value
+    : null;
 }
 
 function lexicalScore(query: string, chunk: ProjectBrainChunk) {
@@ -132,21 +217,21 @@ function dedupeHybridResults(results: ProjectBrainRetrievalResult[]) {
   });
 }
 
-function isChunkAllowedForAudience(chunk: ProjectBrainChunk, task: StoredTask, audience: ProjectBrainRetrievalAudience) {
+function isChunkAllowedForAudience(chunk: ProjectBrainChunk, task: TaskRecord, audience: ProjectBrainRetrievalAudience) {
   if (chunk.document_kind !== 'citizen_scaffold') {
     return true;
   }
   return isScaffoldAllowedForAudience(chunk.document_slug, task, audience);
 }
 
-function isSearchResultAllowedForAudience(result: ProjectBrainSearchResult, task: StoredTask, audience: ProjectBrainRetrievalAudience) {
+function isSearchResultAllowedForAudience(result: ProjectBrainSearchResult, task: TaskRecord, audience: ProjectBrainRetrievalAudience) {
   if (result.kind !== 'citizen_scaffold') {
     return true;
   }
   return isScaffoldAllowedForAudience(result.slug, task, audience);
 }
 
-function isScaffoldAllowedForAudience(slug: string, task: StoredTask, audience: ProjectBrainRetrievalAudience) {
+function isScaffoldAllowedForAudience(slug: string, task: TaskRecord, audience: ProjectBrainRetrievalAudience) {
   if (audience !== 'craftsman') {
     return true;
   }

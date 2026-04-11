@@ -142,6 +142,30 @@ describe('task api contracts', () => {
     });
   });
 
+  it('parses create task payloads with orchestrator direct-create intake metadata', () => {
+    expect(
+      createTaskRequestSchema.parse({
+        title: 'orchestrator direct create',
+        type: 'coding',
+        creator: 'workspace-orchestrator',
+        description: '',
+        priority: 'high',
+        control: {
+          mode: 'normal',
+          orchestrator_intake: {
+            kind: 'direct_create',
+            source: 'conversation',
+            confirmation_mode: 'oral',
+            orchestrator_ref: 'workspace-orchestrator',
+            confirmed_by: 'archon',
+            confirmed_at: '2026-04-10T11:05:00.000Z',
+            source_ref: 'discord:thread-123',
+          },
+        },
+      }).control?.orchestrator_intake?.confirmation_mode,
+    ).toBe('oral');
+  });
+
   it('parses task status responses with nested flow/progress/subtasks', () => {
     expect(
       taskStatusSchema.parse({

@@ -55,7 +55,7 @@ export function listAppliedMigrations(db: AgoraDatabase): string[] {
 }
 
 function hasColumn(db: AgoraDatabase, tableName: string, columnName: string): boolean {
-  const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  const rows = db.prepare('SELECT name FROM pragma_table_info(?)').all(tableName) as Array<{ name: string }>;
   return rows.some((row) => row.name === columnName);
 }
 

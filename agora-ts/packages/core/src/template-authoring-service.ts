@@ -1,33 +1,23 @@
-import type {
-  DuplicateTemplateRequestDto,
-  TemplateDetailDto,
-  TemplateGraphDto,
-  TemplateStageDto,
-  TemplateValidationResponseDto,
-  UpdateTemplateGraphRequestDto,
-  UpdateTemplateWorkflowRequestDto,
-  ValidateTemplateGraphRequestDto,
-  ValidateWorkflowRequestDto,
-} from '@agora-ts/contracts';
+import type { DuplicateTemplateRequestDto, TemplateDetailDto, TemplateGraphDto, TemplateStageDto, TemplateValidationResponseDto, UpdateTemplateGraphRequestDto, UpdateTemplateWorkflowRequestDto, ValidateTemplateGraphRequestDto, ValidateWorkflowRequestDto } from '@agora-ts/contracts';
 import {
   templateDetailSchema,
   templateGraphSchema,
   validateWorkflowRequestSchema,
 } from '@agora-ts/contracts';
-import { TemplateRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { ITemplateRepository } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
 import { deriveGraphFromStages, deriveStagesFromGraph, normalizeTemplateGraph, validateTemplateGraph } from './template-graph-service.js';
 
 export interface TemplateAuthoringServiceOptions {
   templatesDir: string;
-  db?: AgoraDatabase;
+  templateRepository?: ITemplateRepository;
 }
 
 export class TemplateAuthoringService {
-  private readonly templateRepository: TemplateRepository | null;
+  private readonly templateRepository: ITemplateRepository | null;
 
-  constructor(private readonly options: TemplateAuthoringServiceOptions) {
-    this.templateRepository = options.db ? new TemplateRepository(options.db) : null;
+  constructor(options: TemplateAuthoringServiceOptions) {
+    this.templateRepository = options.templateRepository ?? null;
     this.templateRepository?.seedFromDir(options.templatesDir);
     this.templateRepository?.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository?.repairStageSemanticsFromDir(options.templatesDir);

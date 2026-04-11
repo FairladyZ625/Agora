@@ -2,7 +2,7 @@
 import process from 'node:process';
 import { Command } from 'commander';
 import { createCliComposition } from '../apps/cli/src/composition.ts';
-import { LiveRegressionActor } from '../packages/testing/src/live-regression.ts';
+import { buildLiveRegressionRecipe, LiveRegressionActor, type LiveRegressionRecipeName } from '@agora-ts/testing';
 
 async function main() {
   const program = new Command();
@@ -10,8 +10,14 @@ async function main() {
     .option('--config <path>', 'Agora config path override')
     .option('--task-id <id>', 'task id override', `OC-REG-SMOKE-${Date.now()}`)
     .option('--title <title>', 'task title override')
-    .option('--goal <goal>', 'regression goal', 'verify real discord regression smoke script')
-    .option('--message <message>', 'operator prompt message', 'AgoraBot regression smoke: continue this command-gated task and report blockers here.')
+    .option('--recipe <name>', 'command-gated|approval-gated|quorum-gated', 'command-gated')
+    .option('--goal <goal>', 'regression goal override')
+    .option('--message <message>', 'operator prompt message override')
+    .option('--wait-stage <stage>', 'wait until the task reaches this stage')
+    .option('--wait-state <state>', 'wait until the task reaches this state')
+    .option('--wait-body-includes <text>', 'wait until the latest conversation contains this text')
+    .option('--wait-timeout-ms <ms>', 'overall observation timeout in milliseconds')
+    .option('--wait-poll-ms <ms>', 'observation poll interval in milliseconds')
     .option('--cleanup-mode <mode>', 'delete|archive|unarchive', 'archive')
     .option('--keep-thread', 'skip archive/delete cleanup', false)
     .parse(process.argv);
@@ -20,8 +26,14 @@ async function main() {
     config?: string;
     taskId: string;
     title?: string;
+    recipe: LiveRegressionRecipeName;
     goal: string;
     message: string;
+    waitStage?: string;
+    waitState?: string;
+    waitBodyIncludes?: string;
+    waitTimeoutMs?: string;
+    waitPollMs?: string;
     cleanupMode: 'delete' | 'archive' | 'unarchive';
     keepThread: boolean;
   }>();
@@ -47,59 +59,45 @@ async function main() {
 
   let bindingId: string | null = null;
   let threadRef: string | null = null;
+  const waitFor = (
+    options.waitStage
+    || options.waitState
+    || options.waitBodyIncludes
+    || options.waitTimeoutMs
+    || options.waitPollMs
+  )
+    ? {
+        ...(options.waitStage ? { currentStage: options.waitStage } : {}),
+        ...(options.waitState ? { state: options.waitState } : {}),
+        ...(options.waitBodyIncludes ? { latestConversationBodyIncludes: options.waitBodyIncludes } : {}),
+        ...(options.waitTimeoutMs ? { timeoutMs: Number(options.waitTimeoutMs) } : {}),
+        ...(options.waitPollMs ? { pollIntervalMs: Number(options.waitPollMs) } : {}),
+      }
+    : undefined;
 
   try {
+    const recipe = buildLiveRegressionRecipe(options.recipe, {
+      taskId: options.taskId,
+      ...(options.title ? { title: options.title } : {}),
+      ...(options.goal ? { goal: options.goal } : {}),
+      ...(options.message ? { message: options.message } : {}),
+    });
     const result = await actor.run({
-      target: {
-        createTask: {
-          title: options.title ?? `Discord Regression Smoke ${options.taskId}`,
-          type: 'coding',
-          creator: 'archon',
-          description: 'real discord live regression smoke',
-          priority: 'normal',
-          locale: 'zh-CN',
-          control: { mode: 'regression_test' },
-          team_override: {
-            members: [
-              { role: 'architect', agentId: 'glm5', member_kind: 'controller', model_preference: 'cost_regression' },
-              { role: 'developer', agentId: 'glm47', member_kind: 'citizen', model_preference: 'cost_regression' },
-              { role: 'reviewer', agentId: 'haiku', member_kind: 'citizen', model_preference: 'cost_regression' },
-              { role: 'craftsman', agentId: 'claude_code', member_kind: 'craftsman', model_preference: 'coding_cli' },
-            ],
-          },
-          workflow_override: {
-            type: 'custom',
-            stages: [
-              {
-                id: 'triage',
-                mode: 'discuss',
-                gate: { type: 'command' },
-              },
-              {
-                id: 'execute',
-                mode: 'execute',
-                gate: { type: 'all_subtasks_done' },
-              },
-            ],
-          },
-          im_target: {
-            provider: 'discord',
-            visibility: 'private',
-          },
-        },
-      },
+      target: recipe.target,
       actorRef: 'agora-bot',
       displayName: 'AgoraBot',
-      goal: options.goal,
-      message: options.message,
-      participantRefs: ['glm5'],
+      goal: recipe.goal,
+      message: recipe.message,
+      participantRefs: recipe.participantRefs,
+      ...(recipe.taskAction ? { taskAction: recipe.taskAction } : {}),
+      ...(waitFor ? { waitFor } : {}),
     });
 
     bindingId = result.bindingId;
     threadRef = result.threadRef;
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    if (result.currentStage !== 'execute') {
-      throw new Error(`expected currentStage=execute, got ${result.currentStage}`);
+    if (result.currentStage !== recipe.expectCurrentStage) {
+      throw new Error(`expected currentStage=${recipe.expectCurrentStage}, got ${result.currentStage}`);
     }
   } finally {
     await composition.taskService.drainBackgroundOperations();

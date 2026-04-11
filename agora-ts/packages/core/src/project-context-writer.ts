@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ProjectWriteLockRepository, type AgoraDatabase, type StoredTask } from '@agora-ts/db';
+import type { IProjectWriteLockRepository, TaskRecord } from '@agora-ts/contracts';
 import type { ProjectKnowledgeTaskRecapInput } from './project-knowledge-port.js';
 import type {
   TaskBrainCloseRecapRequest,
@@ -15,6 +15,7 @@ import { resolveControllerRef } from './team-member-kind.js';
 type ExecFileLike = (command: string, args: string[], options?: { cwd?: string }) => string;
 
 export interface ProjectContextWriterOptions {
+  writeLockRepository: IProjectWriteLockRepository;
   projectService: Pick<ProjectService, 'getProjectStateRoot' | 'recordTaskRecap'>;
   taskBrainWorkspacePort?: TaskBrainWorkspacePort;
   execFile?: ExecFileLike;
@@ -38,14 +39,13 @@ export interface TaskCloseoutWriteProposal {
 }
 
 export class ProjectContextWriter {
-  private readonly locks: ProjectWriteLockRepository;
+  private readonly locks: IProjectWriteLockRepository;
   private readonly execFile: ExecFileLike;
 
   constructor(
-    db: AgoraDatabase,
     private readonly options: ProjectContextWriterOptions,
   ) {
-    this.locks = new ProjectWriteLockRepository(db);
+    this.locks = options.writeLockRepository;
     this.execFile = options.execFile ?? ((command, args, execOptions) => execFileSync(command, args, {
       cwd: execOptions?.cwd,
       encoding: 'utf8',
@@ -54,7 +54,7 @@ export class ProjectContextWriter {
   }
 
   buildTaskCloseoutProposal(input: {
-    task: StoredTask;
+    task: TaskRecord;
     binding: TaskBrainWorkspaceBindingRef;
     actor: string;
     reason?: string;
@@ -162,7 +162,7 @@ export class ProjectContextWriter {
   }
 }
 
-function buildTaskCloseSummary(task: Pick<StoredTask, 'locale' | 'current_stage' | 'team'>, actor: string, reason?: string) {
+function buildTaskCloseSummary(task: Pick<TaskRecord, 'locale' | 'current_stage' | 'team'>, actor: string, reason?: string) {
   return [
     task.locale === 'zh-CN'
       ? '任务已到达 done，已进入 archive 流程。'

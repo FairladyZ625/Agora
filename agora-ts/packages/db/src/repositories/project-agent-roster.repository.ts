@@ -1,3 +1,4 @@
+import type { IProjectAgentRosterRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredProjectAgentRosterEntry {
@@ -26,7 +27,7 @@ export interface UpdateProjectAgentRosterEntryInput {
   status?: string;
 }
 
-export class ProjectAgentRosterRepository {
+export class ProjectAgentRosterRepository implements IProjectAgentRosterRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   upsertEntry(input: UpsertProjectAgentRosterEntryInput): StoredProjectAgentRosterEntry {

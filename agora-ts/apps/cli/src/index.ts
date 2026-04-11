@@ -48,14 +48,23 @@ import type { StartCommandRunner } from './start-command.js';
 import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
+  AttentionRoutingService,
   deriveGraphFromStages,
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
+  CcConnectInspectionService,
+  CcConnectManagementService,
+  type InteractiveRuntimePort,
+  OrchestratorDirectCreateService,
+  ProjectBrainAutomationPolicy,
   ProjectBootstrapService,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
+  ReferenceBundleService,
+  type RetrievalService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
+import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
+import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
 import type {
@@ -73,7 +82,6 @@ import type {
   TaskConversationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   IMProvisioningPort,
 } from '@agora-ts/core';
 import type {
@@ -84,6 +92,7 @@ import type {
   CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
   CreateCitizenRequestDto,
+  OrchestratorDirectCreateRequestDto,
   CreateProjectRequestDto,
   CreateSubtasksRequestDto,
   TaskPriority,
@@ -127,6 +136,7 @@ export interface CliDependencies {
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   projectBrainIndexWorkerService?: ProjectBrainIndexWorkerServiceContract;
+  contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   citizenService?: CitizenService;
   legacyRuntimeService?: LegacyRuntimeServiceLike;
   tmuxRuntimeService?: LegacyRuntimeServiceLike;
@@ -137,6 +147,8 @@ export interface CliDependencies {
   templateAuthoringService?: TemplateAuthoringService;
   rolePackService?: RolePackService;
   dashboardQueryService?: DashboardQueryService;
+  ccConnectInspectionService?: CcConnectInspectionService;
+  ccConnectManagementService?: CcConnectManagementService;
   imProvisioningPort?: IMProvisioningPort;
   factories?: Partial<CliCompositionFactories>;
   startCommandRunner?: StartCommandRunner;
@@ -148,7 +160,7 @@ export interface CliDependencies {
   stderr?: Writable;
 }
 
-type LegacyRuntimeServiceLike = Pick<TmuxRuntimeService, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
+type LegacyRuntimeServiceLike = Pick<InteractiveRuntimePort, 'up' | 'status' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'start' | 'resume' | 'task' | 'tail' | 'doctor' | 'down' | 'recordIdentity'>;
 
 function writeLine(stream: Writable, message: string) {
   stream.write(`${message}\n`);
@@ -169,20 +181,49 @@ function collectStringOption(value: string, previous: string[]) {
   return [...previous, value];
 }
 
-function parseNumericOptionList(rawValues: string[] = [], optionName: string): number[] {
-  return rawValues.map((value) => {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error(`invalid ${optionName} value: ${value}. Expected positive integer.`);
-    }
+function resolveAccountId(
+  humanAccountService: HumanAccountService,
+  rawValue: string,
+  optionName: string,
+): number {
+  const trimmed = rawValue.trim();
+  const parsed = Number(trimmed);
+  if (Number.isSafeInteger(parsed) && parsed > 0) {
     return parsed;
-  });
+  }
+  const discordBoundAccount = humanAccountService.resolveIdentity('discord', trimmed);
+  if (discordBoundAccount) {
+    return discordBoundAccount.id;
+  }
+  throw new Error(
+    `invalid ${optionName} value: ${rawValue}. Expected positive integer human account id or bound Discord user id.`,
+  );
 }
 
-function parseRequiredNumericOption(rawValue: string, optionName: string): number {
-  const [parsed] = parseNumericOptionList([rawValue], optionName);
+function parseAccountOptionList(
+  humanAccountService: HumanAccountService,
+  rawValues: string[] = [],
+  optionName: string,
+): number[] {
+  return rawValues.map((value) => resolveAccountId(humanAccountService, value, optionName));
+}
+
+function parseRequiredAccountOption(
+  humanAccountService: HumanAccountService,
+  rawValue: string,
+  optionName: string,
+): number {
+  const [parsed] = parseAccountOptionList(humanAccountService, [rawValue], optionName);
   if (parsed === undefined) {
     throw new Error(`missing ${optionName} value`);
+  }
+  return parsed;
+}
+
+function parseIntegerOption(rawValue: string): number {
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`invalid integer value: ${rawValue}`);
   }
   return parsed;
 }
@@ -506,7 +547,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const templateAuthoringService = createLazyObject(() => deps.templateAuthoringService ?? resolveComposition().templateAuthoringService);
   const rolePackService = createLazyObject(() => deps.rolePackService ?? resolveComposition().rolePackService);
   const dashboardQueryService = createLazyObject(() => deps.dashboardQueryService ?? resolveComposition().dashboardQueryService);
+  const getCcConnectInspectionService = () => deps.ccConnectInspectionService ?? new CcConnectInspectionService();
+  const getCcConnectManagementService = () => deps.ccConnectManagementService ?? new CcConnectManagementService();
   const getImProvisioningPort = () => deps.imProvisioningPort ?? resolveComposition().imProvisioningPort;
+  const getContextRetrievalService = () => deps.contextRetrievalService ?? resolveComposition().contextRetrievalService;
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
@@ -528,8 +572,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     projectBrainDoctorService = new ProjectBrainDoctorService({
       dbPath: deps.dbPath ?? composition.config.db_path,
       projectBrainService: composition.projectBrainService,
-      queueService: new ProjectBrainIndexQueueService(composition.db),
-      ...(composition.projectBrainIndexService ? { indexService: composition.projectBrainIndexService } : {}),
+      queueService: new ProjectBrainIndexQueueService({ repository: new ProjectBrainIndexJobRepository(composition.db) }),
       ...(embeddingPort ? { embeddingPort } : {}),
     });
     return projectBrainDoctorService;
@@ -547,7 +590,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       return undefined;
     }
     projectBrainIndexWorkerService = new ProjectBrainIndexWorkerService({
-      queueService: new ProjectBrainIndexQueueService(composition.db),
+      queueService: new ProjectBrainIndexQueueService({ repository: new ProjectBrainIndexJobRepository(composition.db) }),
       indexService: composition.projectBrainIndexService,
     });
     return projectBrainIndexWorkerService;
@@ -686,6 +729,29 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
     });
 
+  const orchestrator = program
+    .command('orchestrator')
+    .description('orchestrator entry commands');
+
+  orchestrator
+    .command('direct-create')
+    .description('create a task from an orchestrator confirmation payload')
+    .requiredOption('--request-json <json>', 'direct-create request JSON')
+    .action((options: { requestJson: string }) => {
+      const request = parseJsonString(
+        options.requestJson,
+        '--request-json',
+      ) as unknown as OrchestratorDirectCreateRequestDto;
+      const service = new OrchestratorDirectCreateService({ taskService });
+      const task = service.createFromConversationConfirmation(request);
+      writeLine(stdout, `任务已创建: ${task.id}`);
+      writeLine(stdout, `标题: ${task.title}`);
+      writeLine(stdout, `类型: ${task.type}`);
+      writeLine(stdout, `Project: ${task.project_id ?? '-'}`);
+      writeLine(stdout, `状态: ${task.state}`);
+      writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
+    });
+
   program
     .command('status')
     .description('查看任务状态详情')
@@ -730,6 +796,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--comment <text>', 'comment for approve/confirm actions')
     .option('--reason <text>', 'reason for reject actions')
     .option('--vote <vote>', 'vote for confirm_current (approve|reject)')
+    .option('--wait-stage <stage>', 'wait until the task reaches this stage')
+    .option('--wait-state <state>', 'wait until the task reaches this state')
+    .option('--wait-body-includes <text>', 'wait until the latest conversation contains this text')
+    .option('--wait-timeout-ms <ms>', 'overall observation timeout in milliseconds')
+    .option('--wait-poll-ms <ms>', 'observation poll interval in milliseconds')
     .option('--json', 'emit JSON', false)
     .action(async (options: {
       taskId?: string;
@@ -754,6 +825,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
       comment?: string;
       reason?: string;
       vote?: 'approve' | 'reject';
+      waitStage?: string;
+      waitState?: string;
+      waitBodyIncludes?: string;
+      waitTimeoutMs?: string;
+      waitPollMs?: string;
       json?: boolean;
     }) => {
       if (!isDeveloperRegressionEnabled(process.env)) {
@@ -783,6 +859,21 @@ export function createCliProgram(deps: CliDependencies = {}) {
             ...(options.comment ? { comment: options.comment } : {}),
             ...(options.reason ? { reason: options.reason } : {}),
             ...(options.vote ? { vote: options.vote } : {}),
+          }
+        : undefined;
+      const waitFor = (
+        options.waitStage
+        || options.waitState
+        || options.waitBodyIncludes
+        || options.waitTimeoutMs
+        || options.waitPollMs
+      )
+        ? {
+            ...(options.waitStage ? { currentStage: options.waitStage } : {}),
+            ...(options.waitState ? { state: options.waitState } : {}),
+            ...(options.waitBodyIncludes ? { latestConversationBodyIncludes: options.waitBodyIncludes } : {}),
+            ...(options.waitTimeoutMs ? { timeoutMs: Number(options.waitTimeoutMs) } : {}),
+            ...(options.waitPollMs ? { pollIntervalMs: Number(options.waitPollMs) } : {}),
           }
         : undefined;
       if (taskAction && !taskAction.actor_ref) {
@@ -836,6 +927,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
         message,
         ...(options.participant ? { participantRefs: options.participant } : {}),
         ...(taskAction ? { taskAction } : {}),
+        ...(waitFor ? { waitFor } : {}),
       });
       if (options.json) {
         writeLine(stdout, JSON.stringify(result, null, 2));
@@ -846,6 +938,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `State: ${result.state}`);
       writeLine(stdout, `Stage: ${result.currentStage ?? '-'}`);
       writeLine(stdout, `Conversation Entry: ${result.conversationEntryId ?? '-'}`);
+      writeLine(stdout, `Goal Satisfied: ${result.goalSatisfied}`);
+      writeLine(stdout, `Timed Out: ${result.timedOut}`);
     });
 
   const roles = program
@@ -962,6 +1056,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const citizens = program
     .command('citizens')
     .description('citizen definition and projection preview commands');
+  const context = program
+    .command('context')
+    .description('project-scoped unified context retrieval commands');
 
   const graph = program
     .command('graph')
@@ -1645,11 +1742,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   nomos
     .command('refine-project')
-    .description('根据 project-nomos authoring spec 重写该 project 的 draft pack')
+    .description('根据 project-nomos authoring spec 刷新该 project 的 draft pack；默认保留已编辑正文')
     .requiredOption('--project-id <projectId>', 'project id')
+    .option('--replace-existing', 'destructively rebuild the draft pack from template', false)
     .option('--json', '输出 JSON', false)
-    .action((options: { projectId: string; json?: boolean }) => {
-      const refined = refineProjectNomosDraftFromSpec(options.projectId);
+    .action((options: { projectId: string; replaceExisting?: boolean; json?: boolean }) => {
+      const refined = refineProjectNomosDraftFromSpec(options.projectId, {
+        ...(options.replaceExisting ? { replaceExisting: true } : {}),
+      });
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           project_id: options.projectId,
@@ -1807,8 +1907,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       metadataJson?: string;
     }) => {
       const nomosId = requireSupportedNomosId(options.nomosId);
-      const adminAccountIds = parseNumericOptionList(options.adminAccountId, '--admin-account-id');
-      const memberAccountIds = parseNumericOptionList(options.memberAccountId, '--member-account-id');
+      const adminAccountIds = parseAccountOptionList(humanAccountService, options.adminAccountId, '--admin-account-id');
+      const memberAccountIds = parseAccountOptionList(humanAccountService, options.memberAccountId, '--member-account-id');
       const derivedOwner = options.owner
         ?? (adminAccountIds[0] ? resolveAccountLabel(humanAccountService, adminAccountIds[0]) : undefined);
       const input = createProjectRequestSchema.parse({
@@ -1892,7 +1992,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--account-id <accountId>', 'human account id')
     .option('--role <role>', 'admin|member', 'member')
     .action((projectId: string, options: { accountId: string; role?: 'admin' | 'member' }) => {
-      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
+      const accountId = parseRequiredAccountOption(humanAccountService, options.accountId, '--account-id');
       const membership = projectService.addProjectMembership({
         projectId,
         account_id: accountId,
@@ -1907,7 +2007,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .argument('<projectId>', 'project id')
     .requiredOption('--account-id <accountId>', 'human account id')
     .action((projectId: string, options: { accountId: string }) => {
-      const accountId = parseRequiredNumericOption(options.accountId, '--account-id');
+      const accountId = parseRequiredAccountOption(humanAccountService, options.accountId, '--account-id');
       const membership = projectService.removeProjectMembership(projectId, accountId);
       writeLine(stdout, `Project member 已移除: ${resolveAccountLabel(humanAccountService, membership.account_id)}`);
       writeLine(stdout, `${membership.account_id}\t${membership.role}\t${membership.status}`);
@@ -1966,6 +2066,305 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projectBrain = projects
     .command('brain')
     .description('project brain query / append commands');
+
+  context
+    .command('retrieve')
+    .description('通过统一 retrieval surface 检索 project context')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--query <query>', 'search query')
+    .option('--task <taskId>', 'optional task id for task-aware lookup')
+    .option('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'lookup|task_context')
+    .option('--provider <provider>', 'limit retrieval providers', collectOption, [])
+    .option('--source <sourceId>', 'limit retrieval source ids', collectOption, [])
+    .option('--limit <n>', 'max result count', parseIntegerOption)
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      query: string;
+      task?: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
+      mode?: string;
+      provider?: string[];
+      source?: string[];
+      limit?: number;
+      json?: boolean;
+    }) => {
+      const retrievalService = getContextRetrievalService();
+      const mode = options.task ? (options.mode ?? 'task_context') : (options.mode ?? 'lookup');
+      const results = await retrievalService.retrieve({
+        scope: 'project_context',
+        mode,
+        query: {
+          text: options.query,
+        },
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
+        context: {
+          project_id: options.project,
+          ...(options.task ? { task_id: options.task } : {}),
+          ...(options.audience ? { audience: options.audience } : {}),
+        },
+        ...(options.provider && options.provider.length > 0 ? {
+          metadata: {
+            providers: options.provider,
+            ...(options.source && options.source.length > 0 ? { source_ids: options.source } : {}),
+          },
+        } : {}),
+        ...(!options.provider?.length && options.source?.length ? {
+          metadata: {
+            source_ids: options.source,
+          },
+        } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          mode,
+          results,
+        }, null, 2));
+        return;
+      }
+      if (results.length === 0) {
+        writeLine(stdout, '没有匹配结果');
+        return;
+      }
+      for (const item of results) {
+        writeLine(stdout, `${item.provider}\t${item.reference_key}\t${item.path}`);
+        writeLine(stdout, `  ${item.preview}`);
+      }
+    });
+
+  context
+    .command('health')
+    .description('通过统一 retrieval surface 检查 project context provider/source 健康度')
+    .requiredOption('--project <projectId>', 'project id')
+    .option('--task <taskId>', 'optional task id for task-aware health')
+    .option('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'lookup|task_context')
+    .option('--provider <provider>', 'limit retrieval providers', collectOption, [])
+    .option('--source <sourceId>', 'limit retrieval source ids', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      task?: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
+      mode?: string;
+      provider?: string[];
+      source?: string[];
+      json?: boolean;
+    }) => {
+      const retrievalService = getContextRetrievalService();
+      const mode = options.task ? (options.mode ?? 'task_context') : (options.mode ?? 'lookup');
+      const health = await retrievalService.checkHealth?.({
+        scope: 'project_context',
+        mode,
+        query: {
+          text: 'health',
+        },
+        context: {
+          project_id: options.project,
+          ...(options.task ? { task_id: options.task } : {}),
+          ...(options.audience ? { audience: options.audience } : {}),
+        },
+        ...(options.provider && options.provider.length > 0 ? {
+          metadata: {
+            providers: options.provider,
+            ...(options.source && options.source.length > 0 ? { source_ids: options.source } : {}),
+          },
+        } : {}),
+        ...(!options.provider?.length && options.source?.length ? {
+          metadata: {
+            source_ids: options.source,
+          },
+        } : {}),
+      }) ?? [];
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          mode,
+          health,
+        }, null, 2));
+        return;
+      }
+      if (health.length === 0) {
+        writeLine(stdout, '没有匹配的 context provider/source health 项');
+        return;
+      }
+      for (const item of health) {
+        writeLine(stdout, `${item.provider}\t${item.status}\t${item.message ?? '-'}`);
+      }
+    });
+
+  context
+    .command('bundle')
+    .description('通过统一 reference bundle surface 生成 project context bundle')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'bootstrap|disclose', 'bootstrap')
+    .option('--task <taskId>', 'optional task id')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      mode: 'bootstrap' | 'disclose';
+      task?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const service = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const bundle = await service.buildReferenceBundleAsync({
+        project_id: options.project,
+        mode: options.mode,
+        audience: options.audience,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+        ...(options.allowedCitizen && options.allowedCitizen.length > 0
+          ? { allowed_citizen_ids: options.allowedCitizen }
+          : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          bundle,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `bundle scope: project_context`);
+      writeLine(stdout, `project: ${bundle.project_id}`);
+      writeLine(stdout, `mode: ${bundle.mode}`);
+      writeLine(stdout, `references: ${bundle.references.length}`);
+      writeLine(stdout, `inventory: ${bundle.inventory.entries.length}`);
+    });
+
+  context
+    .command('route')
+    .description('通过统一 attention routing surface 生成 project context read order')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'bootstrap|disclose', 'bootstrap')
+    .option('--task <taskId>', 'optional task id')
+    .option('--task-title <text>', 'optional task title override')
+    .option('--task-description <text>', 'optional task description override')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      mode: 'bootstrap' | 'disclose';
+      task?: string;
+      taskTitle?: string;
+      taskDescription?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const task = options.task ? taskService.getTask(options.task) : null;
+      const taskTitle = options.taskTitle ?? task?.title;
+      const taskDescription = options.taskDescription ?? task?.description;
+      const bundleService = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const bundle = await bundleService.buildReferenceBundleAsync({
+        project_id: options.project,
+        mode: options.mode,
+        audience: options.audience,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+        ...(options.allowedCitizen && options.allowedCitizen.length > 0
+          ? { allowed_citizen_ids: options.allowedCitizen }
+          : {}),
+      });
+      const routingService = new AttentionRoutingService({
+        retrievalService: getContextRetrievalService(),
+      });
+      const plan = await routingService.buildPlanAsync({
+        project_id: options.project,
+        mode: options.mode,
+        audience: options.audience,
+        reference_bundle: bundle,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          bundle,
+          plan,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `routing scope: project_context`);
+      writeLine(stdout, `project: ${plan.project_id}`);
+      writeLine(stdout, `summary: ${plan.summary}`);
+      for (const route of plan.routes) {
+        writeLine(stdout, `${route.ordinal}. ${route.kind}\t${route.reference_key}`);
+      }
+    });
+
+  context
+    .command('briefing')
+    .description('通过统一 project_context surface 生成 reference-first briefing artifact')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--task <taskId>', 'optional task id')
+    .option('--task-title <text>', 'optional task title override')
+    .option('--task-description <text>', 'optional task description override')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      task?: string;
+      taskTitle?: string;
+      taskDescription?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const task = options.task ? taskService.getTask(options.task) : null;
+      const taskTitle = options.taskTitle ?? task?.title;
+      const taskDescription = options.taskDescription ?? task?.description;
+      const briefing = options.task
+        ? await projectBrainAutomationService.buildBootstrapContextAsync({
+          project_id: options.project,
+          audience: options.audience,
+          task_id: options.task,
+          ...(taskTitle ? { task_title: taskTitle } : {}),
+          ...(taskDescription ? { task_description: taskDescription } : {}),
+          ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+          ...(options.allowedCitizen && options.allowedCitizen.length > 0
+            ? { allowed_citizen_ids: options.allowedCitizen }
+            : {}),
+        })
+        : projectBrainAutomationService.buildBootstrapContext({
+          project_id: options.project,
+          audience: options.audience,
+          ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+          ...(options.allowedCitizen && options.allowedCitizen.length > 0
+            ? { allowed_citizen_ids: options.allowedCitizen }
+            : {}),
+        });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          briefing,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, briefing.markdown.trimEnd());
+    });
 
   projectKnowledge
     .command('add')
@@ -3809,7 +4208,300 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .action(async () => {
       await runInitCommand({
         humanAccountService,
+        });
+    });
+
+  const externalBridge = program
+    .command('external-bridge')
+    .description('external bridge diagnostics and compatibility commands');
+
+  const ccConnect = externalBridge
+    .command('cc-connect')
+    .description('inspect a local or remote cc-connect bridge');
+
+  const runCcConnectDetect = async (options: {
+    command?: string;
+    config?: string;
+    baseUrl?: string;
+    token?: string;
+    timeout?: string;
+    json?: boolean;
+  }) => {
+    const timeoutSeconds = options.timeout ? Number(options.timeout) : 5;
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+      throw new Error(`invalid --timeout value: ${options.timeout}. Expected positive number.`);
+    }
+    const result = await getCcConnectInspectionService().inspect({
+      timeoutMs: Math.round(timeoutSeconds * 1000),
+      ...(options.command !== undefined ? { command: options.command } : {}),
+      ...(options.config !== undefined ? { configPath: options.config } : {}),
+      ...(options.baseUrl !== undefined ? { managementBaseUrl: options.baseUrl } : {}),
+      ...(options.token !== undefined ? { managementToken: options.token } : {}),
+    });
+    if (options.json) {
+      writeLine(stdout, JSON.stringify(result, null, 2));
+      return;
+    }
+    writeLine(stdout, `cc-connect binary: ${result.binary.found ? 'found' : 'missing'}`);
+    writeLine(stdout, `  command=${result.binary.command}`);
+    writeLine(stdout, `  path=${result.binary.resolvedPath ?? '-'}`);
+    writeLine(stdout, `  version=${result.binary.version ?? '-'}`);
+    if (result.binary.reason) {
+      writeLine(stdout, `  reason=${result.binary.reason}`);
+    }
+    if (result.binary.error) {
+      writeLine(stdout, `  error=${result.binary.error}`);
+    }
+    writeLine(stdout, `cc-connect config: ${result.config.exists ? 'found' : 'missing'}`);
+    writeLine(stdout, `  path=${result.config.path}`);
+    writeLine(stdout, `  management_enabled=${result.config.management.enabled ?? 'unknown'}`);
+    writeLine(stdout, `  management_port=${result.config.management.port ?? '-'}`);
+    writeLine(stdout, `  management_token_present=${result.config.management.tokenPresent}`);
+    writeLine(stdout, `management api: ${result.management.reachable ? 'reachable' : 'unreachable'}`);
+    writeLine(stdout, `  url=${result.management.url ?? '-'}`);
+    writeLine(stdout, `  version=${result.management.version ?? '-'}`);
+    writeLine(stdout, `  projects=${result.management.projectsCount ?? '-'}`);
+    writeLine(stdout, `  bridge_adapters=${result.management.bridgeAdapterCount ?? '-'}`);
+    writeLine(stdout, `  connected_platforms=${result.management.connectedPlatforms.join(',') || '-'}`);
+    if (result.management.reason) {
+      writeLine(stdout, `  reason=${result.management.reason}`);
+    }
+    if (result.management.error) {
+      writeLine(stdout, `  error=${result.management.error}`);
+    }
+  };
+
+  for (const commandName of ['detect', 'status'] as const) {
+    ccConnect
+      .command(commandName)
+      .option('--command <command>', 'cc-connect executable name or path', 'cc-connect')
+      .option('--config <path>', 'cc-connect config path')
+      .option('--base-url <url>', 'management api base url override')
+      .option('--token <token>', 'management api token override')
+      .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+      .option('--json', '输出 JSON', false)
+      .action(runCcConnectDetect);
+  }
+
+  function parseCcConnectTimeout(options: { timeout?: string }) {
+    const timeoutSeconds = options.timeout ? Number(options.timeout) : 5;
+    if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+      throw new Error(`invalid --timeout value: ${options.timeout}. Expected positive number.`);
+    }
+    return Math.round(timeoutSeconds * 1000);
+  }
+
+  function buildCcConnectManagementInput(options: {
+    config?: string;
+    baseUrl?: string;
+    token?: string;
+    timeout?: string;
+  }) {
+    return {
+      timeoutMs: parseCcConnectTimeout(options),
+      ...(options.config !== undefined ? { configPath: options.config } : {}),
+      ...(options.baseUrl !== undefined ? { managementBaseUrl: options.baseUrl } : {}),
+      ...(options.token !== undefined ? { managementToken: options.token } : {}),
+    };
+  }
+
+  ccConnect
+    .command('projects')
+    .description('list cc-connect projects through the management api')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().listProjects(buildCcConnectManagementInput(options));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ projects: result }, null, 2));
+        return;
+      }
+      if (result.length === 0) {
+        writeLine(stdout, '没有检测到 cc-connect projects');
+        return;
+      }
+      for (const item of result) {
+        writeLine(stdout, `${item.name}\t${item.agent_type}\t${item.platforms.join(',')}\t${item.sessions_count}\theartbeat=${item.heartbeat_enabled}`);
+      }
+    });
+
+  ccConnect
+    .command('project')
+    .description('show cc-connect project detail')
+    .argument('<projectName>', 'cc-connect project name')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (projectName: string, options: {
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().getProject({
+        project: projectName,
+        ...buildCcConnectManagementInput(options),
       });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `${result.name}\t${result.agent_type}\tsessions=${result.sessions_count}\tmode=${result.agent_mode ?? result.mode ?? '-'}`);
+      writeLine(stdout, `platforms=${result.platforms.map((item) => `${item.type}:${item.connected ? 'connected' : 'disconnected'}`).join(',') || '-'}`);
+      writeLine(stdout, `active_session_keys=${result.active_session_keys.join(',') || '-'}`);
+      writeLine(stdout, `work_dir=${result.work_dir ?? '-'}`);
+      writeLine(stdout, `show_context_indicator=${result.show_context_indicator ?? '-'}`);
+      writeLine(stdout, `allow_from=${result.platform_configs.map((item) => `${item.type}:${item.allow_from ?? '-'}`).join(',') || '-'}`);
+    });
+
+  ccConnect
+    .command('sessions')
+    .description('list cc-connect sessions for a project')
+    .requiredOption('--project <projectName>', 'cc-connect project name')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().listSessions({
+        project: options.project,
+        ...buildCcConnectManagementInput(options),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ sessions: result }, null, 2));
+        return;
+      }
+      if (result.length === 0) {
+        writeLine(stdout, '没有检测到 cc-connect sessions');
+        return;
+      }
+      for (const item of result) {
+        writeLine(stdout, `${item.id}\t${item.session_key}\t${item.agent_type}\tactive=${item.active}\tlive=${item.live}\thistory=${item.history_count}`);
+      }
+    });
+
+  ccConnect
+    .command('session')
+    .description('show cc-connect session detail')
+    .requiredOption('--project <projectName>', 'cc-connect project name')
+    .requiredOption('--session <sessionId>', 'cc-connect session id')
+    .option('--history-limit <count>', 'history entries to return', '20')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      session: string;
+      historyLimit?: string;
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const historyLimit = options.historyLimit ? Number(options.historyLimit) : 20;
+      if (!Number.isInteger(historyLimit) || historyLimit <= 0) {
+        throw new Error(`invalid --history-limit value: ${options.historyLimit}. Expected positive integer.`);
+      }
+      const result = await getCcConnectManagementService().getSession({
+        project: options.project,
+        sessionId: options.session,
+        historyLimit,
+        ...buildCcConnectManagementInput(options),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, `${result.id}\t${result.session_key}\t${result.agent_type}\tactive=${result.active}\tlive=${result.live}\thistory=${result.history_count}`);
+      for (const entry of result.history) {
+        writeLine(stdout, `${entry.timestamp ?? '-'}\t${entry.role}\t${entry.content}`);
+      }
+    });
+
+  ccConnect
+    .command('bridges')
+    .description('list connected cc-connect bridge adapters')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().listBridgeAdapters(buildCcConnectManagementInput(options));
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({ adapters: result }, null, 2));
+        return;
+      }
+      if (result.length === 0) {
+        writeLine(stdout, '没有检测到已连接的 bridge adapters');
+        return;
+      }
+      for (const item of result) {
+        writeLine(stdout, `${item.platform}\t${item.project ?? '-'}\t${item.capabilities.join(',') || '-'}\t${item.connected_at ?? '-'}`);
+      }
+    });
+
+  ccConnect
+    .command('send')
+    .description('send a message into a live cc-connect session')
+    .requiredOption('--project <projectName>', 'cc-connect project name')
+    .requiredOption('--session-key <sessionKey>', 'cc-connect session key')
+    .requiredOption('--message <text>', 'message body to send')
+    .option('--config <path>', 'cc-connect config path')
+    .option('--base-url <url>', 'management api base url override')
+    .option('--token <token>', 'management api token override')
+    .option('--timeout <seconds>', 'probe timeout in seconds', '5')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      sessionKey: string;
+      message: string;
+      config?: string;
+      baseUrl?: string;
+      token?: string;
+      timeout?: string;
+      json?: boolean;
+    }) => {
+      const result = await getCcConnectManagementService().sendMessage({
+        project: options.project,
+        sessionKey: options.sessionKey,
+        message: options.message,
+        ...buildCcConnectManagementInput(options),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify(result, null, 2));
+        return;
+      }
+      writeLine(stdout, result.message);
     });
 
   program

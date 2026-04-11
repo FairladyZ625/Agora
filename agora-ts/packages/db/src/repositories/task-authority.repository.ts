@@ -1,3 +1,4 @@
+import type { ITaskAuthorityRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredTaskAuthority {
@@ -20,7 +21,7 @@ export interface UpsertTaskAuthorityInput {
   controller_agent_ref?: string | null;
 }
 
-export class TaskAuthorityRepository {
+export class TaskAuthorityRepository implements ITaskAuthorityRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   upsertTaskAuthority(input: UpsertTaskAuthorityInput): StoredTaskAuthority {

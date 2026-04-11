@@ -37,14 +37,14 @@ function createReviewFixturePayload() {
       type: 'graph-driven',
       stages: [
         { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
-        { id: 'review', mode: 'discuss', gate: { type: 'archon_review' } },
+        { id: 'review', mode: 'discuss', gate: { type: 'approval' } },
       ],
       graph: {
         graph_version: 1,
         entry_nodes: ['triage'],
         nodes: [
           { id: 'triage', kind: 'stage', gate: { type: 'command' } },
-          { id: 'review', kind: 'stage', gate: { type: 'archon_review' } },
+          { id: 'review', kind: 'stage', gate: { type: 'approval' } },
         ],
         edges: [
           { id: 'triage__advance__review', from: 'triage', to: 'review', kind: 'advance' },

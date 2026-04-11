@@ -1,3 +1,4 @@
+import type { IProjectWriteLockRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredProjectWriteLock {
@@ -11,7 +12,7 @@ export interface AcquireProjectWriteLockInput {
   holder_task_id: string;
 }
 
-export class ProjectWriteLockRepository {
+export class ProjectWriteLockRepository implements IProjectWriteLockRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   acquireLock(input: AcquireProjectWriteLockInput): StoredProjectWriteLock | null {

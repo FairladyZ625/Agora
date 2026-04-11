@@ -1,15 +1,13 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { TaskService } from '@agora-ts/core';
-import { StubIMProvisioningPort, TaskService as CoreTaskService } from '@agora-ts/core';
-import type { TmuxRuntimeService } from '@agora-ts/core';
+import type { InteractiveRuntimePort, TaskService } from '@agora-ts/core';
+import { StubIMProvisioningPort } from '@agora-ts/core';
 import { createCliComposition } from './composition.js';
 
 const tempDirs: string[] = [];
-const originalCwd = process.cwd();
 const originalHome = process.env.HOME;
 const originalEnv = {
   AGORA_BRAIN_PACK_ROOT: process.env.AGORA_BRAIN_PACK_ROOT,
@@ -43,7 +41,6 @@ function makeTempDir() {
 }
 
 afterEach(() => {
-  process.chdir(originalCwd);
   if (originalHome === undefined) {
     delete process.env.HOME;
   } else {
@@ -84,6 +81,9 @@ describe('cli composition', () => {
     expect(composition.taskService).toBeDefined();
     expect(composition.legacyRuntimeService).toBeDefined();
     expect(composition.tmuxRuntimeService).toBe(composition.legacyRuntimeService);
+    expect(Reflect.get(composition.taskService as object, 'gateQueryPort')?.constructor?.name).toBe('SqliteGateQueryPort');
+    expect(Reflect.get(composition.taskService as object, 'gateService')?.constructor?.name).toBe('GateService');
+    expect(Reflect.get(composition.taskService as object, 'taskRepository')?.constructor?.name).toBe('TaskRepository');
     expect(Reflect.get(composition.taskService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     expect(Reflect.get(composition.dashboardQueryService as object, 'skillCatalogPort')?.constructor?.name).toBe('FilesystemSkillCatalogAdapter');
     composition.db.close();
@@ -101,7 +101,7 @@ describe('cli composition', () => {
     } as unknown as TaskService;
     const overriddenLegacyRuntimeService = {
       status: () => ({ session: 'override', panes: [] }),
-    } as unknown as TmuxRuntimeService;
+    } as unknown as InteractiveRuntimePort;
 
     const composition = createCliComposition(
       { configPath },
@@ -195,6 +195,8 @@ describe('cli composition', () => {
 
     expect(Reflect.get(composition.dashboardQueryService as object, 'archiveJobNotifier')?.constructor?.name).toBe('FileArchiveJobNotifier');
     expect(Reflect.get(composition.dashboardQueryService as object, 'archiveJobReceiptIngestor')?.constructor?.name).toBe('FileArchiveJobReceiptIngestor');
+    expect(Reflect.get(composition.dashboardQueryService as object, 'taskBrainBindingService')).toBe(composition.taskBrainBindingService);
+    expect(Reflect.get(composition.dashboardQueryService as object, 'taskBrainWorkspacePort')).toBeDefined();
     expect(Reflect.get(composition.dashboardQueryService as object, 'taskContextBindingService')).toBe(composition.taskContextBindingService);
     expect(Reflect.get(composition.dashboardQueryService as object, 'imProvisioningPort')).toBe(stubProvisioning);
     composition.db.close();
@@ -281,9 +283,9 @@ describe('cli composition', () => {
             ? Reflect.get(adapter, 'runtime') as object | undefined
             : undefined;
           inputRuntime = Reflect.get(deps.craftsmanInputPort as object, 'runtime') as object | undefined;
-          return new CoreTaskService(context.db, {
-            templatesDir: context.templatesDir,
-          });
+          return {
+            listTasks: () => [],
+          } as unknown as TaskService;
         },
       },
     );
@@ -369,22 +371,80 @@ describe('cli composition', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    const docsRoot = join(dir, 'docs');
     process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
     process.env.OPENAI_EMBEDDING_DIMENSION = '8';
     process.env.QDRANT_URL = 'http://127.0.0.1:6333';
+    mkdirSync(docsRoot, { recursive: true });
+    writeFileSync(join(docsRoot, 'architecture.md'), '# Runtime Boundary\n\nKeep runtime adapters outside core.\n');
     writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
 
     const composition = createCliComposition({ configPath });
+    const projectId = `proj-context-source-${Date.now()}`;
+    composition.projectService.createProject({
+      id: projectId,
+      name: 'Context Source Project',
+      metadata: {
+        agora: {
+          context_harness: {
+            project_context_sources: [{
+              source_id: 'docs-architecture',
+              scope: 'project',
+              project_id: projectId,
+              kind: 'docs_repo',
+              label: 'Architecture Docs',
+              location: docsRoot,
+              access: 'read_only',
+              enabled: true,
+            }],
+          },
+        },
+      },
+    });
 
     expect(composition.projectBrainIndexService?.constructor.name).toBe('ProjectBrainIndexService');
     expect(composition.projectBrainRetrievalService?.constructor.name).toBe('ProjectBrainRetrievalService');
+    expect(composition.contextRetrievalService?.constructor.name).toBe('RetrievalService');
     expect(Reflect.get(composition.projectBrainAutomationService as object, 'options')).toEqual(
       expect.objectContaining({
-        retrievalService: composition.projectBrainRetrievalService,
+        retrievalService: composition.contextRetrievalService,
       }),
     );
+      return composition.contextRetrievalService?.retrieve({
+        scope: 'context_source',
+        mode: 'project_context',
+        query: { text: 'runtime boundary' },
+        limit: 5,
+        context: {
+          project_id: projectId,
+        },
+      }).then((results) => {
+      expect(results).toEqual([
+        expect.objectContaining({
+          provider: 'filesystem_context_source',
+          path: join(docsRoot, 'architecture.md'),
+        }),
+      ]);
+      composition.db.close();
+    });
+  });
+
+  it('registers obsidian context source provider in the unified retrieval registry', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
+
+    const composition = createCliComposition({ configPath });
+    const registry = Reflect.get(
+      Reflect.get(composition.contextRetrievalService as object, 'options') as object,
+      'registry',
+    ) as { listProviders(): Array<{ provider: string }> };
+
+    expect(registry.listProviders().map((provider) => provider.provider)).toContain('obsidian_context_source');
     composition.db.close();
   });
 
@@ -393,7 +453,6 @@ describe('cli composition', () => {
     const configPath = join(dir, 'agora.json');
     const expectedDbPath = join(dir, 'expected-home', '.agora', 'agora.db');
     const repoLocalDbPath = join(dir, '$HOME', '.agora', 'agora.db');
-    process.chdir(dir);
     process.env.HOME = join(dir, 'expected-home');
     process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     process.env.AGORA_DB_PATH = '$HOME/.agora/agora.db';

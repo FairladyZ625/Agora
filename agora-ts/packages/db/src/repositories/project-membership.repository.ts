@@ -1,3 +1,4 @@
+import type { IProjectMembershipRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredProjectMembership {
@@ -26,7 +27,7 @@ export interface UpdateProjectMembershipInput {
   added_by_account_id?: number | null;
 }
 
-export class ProjectMembershipRepository {
+export class ProjectMembershipRepository implements IProjectMembershipRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   upsertMembership(input: UpsertProjectMembershipInput): StoredProjectMembership {

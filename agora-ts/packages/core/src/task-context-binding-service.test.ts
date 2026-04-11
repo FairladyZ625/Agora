@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createTestRuntime } from '@agora-ts/testing';
+import { TaskContextBindingRepository } from '@agora-ts/db';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 
 describe('TaskContextBindingService', () => {
   it('creates and retrieves an active binding for a task', () => {
     const runtime = createTestRuntime();
     try {
-      const service = new TaskContextBindingService(runtime.db, {
+      const service = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
         idGenerator: () => 'binding-1',
       });
       const task = runtime.taskService.createTask({
@@ -39,7 +41,9 @@ describe('TaskContextBindingService', () => {
   it('returns null when no active binding exists', () => {
     const runtime = createTestRuntime();
     try {
-      const service = new TaskContextBindingService(runtime.db);
+      const service = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
+      });
       expect(service.getActiveBinding('nonexistent')).toBeNull();
     } finally {
       runtime.cleanup();
@@ -49,7 +53,8 @@ describe('TaskContextBindingService', () => {
   it('updates binding status and sets closed_at for terminal states', () => {
     const runtime = createTestRuntime();
     try {
-      const service = new TaskContextBindingService(runtime.db, {
+      const service = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
         idGenerator: () => 'binding-2',
       });
       const task = runtime.taskService.createTask({

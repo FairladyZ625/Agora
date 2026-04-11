@@ -3,11 +3,20 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { HumanAccountService, TaskService } from '@agora-ts/core';
+import { HumanAccountRepository, HumanIdentityBindingRepository } from '@agora-ts/db';
+import { HumanAccountService } from '@agora-ts/core';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+
+function createHumanAccountServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-human-review-auth-'));
@@ -28,7 +37,7 @@ describe('human review auth', () => {
   it('rejects approval-gate decisions from a human actor who is not the designated task approver', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     const approver = humanAccounts.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
@@ -38,7 +47,7 @@ describe('human review auth', () => {
       password: 'member-pass',
       role: 'admin',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-HUMAN-APPROVER-GATE',
       archonUsers: ['lizeyu'],
@@ -118,12 +127,12 @@ describe('human review auth', () => {
   it('allows approve and reject from a dashboard session without trusting payload actor fields', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     humanAccounts.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: (() => {
         const ids = ['OC-HUMAN-SESSION-APPROVE', 'OC-HUMAN-SESSION-REJECT'];
@@ -216,12 +225,12 @@ describe('human review auth', () => {
   it('allows archon approval from a dashboard session without trusting reviewer_id in the payload', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     humanAccounts.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-HUMAN-1',
       archonUsers: ['lizeyu'],
@@ -286,7 +295,7 @@ describe('human review auth', () => {
   it('allows archon approval from a bound discord sender identity when bearer auth is present', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     humanAccounts.bootstrapAdmin({
       username: 'discord-admin',
       password: 'secret-pass',
@@ -296,7 +305,7 @@ describe('human review auth', () => {
       provider: 'discord',
       externalUserId: 'discord-user-42',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-HUMAN-2',
       archonUsers: ['discord-admin'],
@@ -347,12 +356,12 @@ describe('human review auth', () => {
   it('rejects bare bearer-token calls for human-only approve and reject routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccounts = new HumanAccountService(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
     humanAccounts.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-HUMAN-BEARER',
       archonUsers: ['lizeyu'],

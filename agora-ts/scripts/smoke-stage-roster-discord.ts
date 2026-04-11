@@ -4,11 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
 import { Command } from 'commander';
-import { createAgoraDatabase, runMigrations } from '../packages/db/src/index.ts';
-import { loadAgoraConfig } from '../packages/config/src/index.ts';
-import { DiscordHttpClient, DiscordIMProvisioningAdapter } from '../packages/adapters-discord/src/index.ts';
-import { loadOpenClawDiscordAccountTokens } from '../packages/adapters-openclaw/src/index.ts';
-import { TaskContextBindingService, TaskParticipationService, TaskService } from '../packages/core/src/index.ts';
+import { DiscordHttpClient, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { loadOpenClawDiscordAccountTokens } from '@agora-ts/adapters-openclaw';
+import { loadAgoraConfig } from '@agora-ts/config';
+import { TaskContextBindingService, TaskParticipationService } from '@agora-ts/core';
+import { createAgoraDatabase, runMigrations, ParticipantBindingRepository, RuntimeSessionBindingRepository, TaskContextBindingRepository } from '@agora-ts/db';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 
 function sleep(ms: number) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -95,8 +96,12 @@ async function main() {
   const tempDir = mkdtempSync(join(tmpdir(), 'agora-stage-roster-smoke-'));
   const dbPath = join(tempDir, 'smoke.db');
   const db = createAgoraDatabase({ dbPath });
-  const bindingService = new TaskContextBindingService(db);
-  const taskParticipation = new TaskParticipationService(db, {
+  const bindingRepository = new TaskContextBindingRepository(db);
+  const bindingService = new TaskContextBindingService({ repository: bindingRepository });
+  const taskParticipation = new TaskParticipationService({
+    participantRepository: new ParticipantBindingRepository(db),
+    runtimeSessionRepository: new RuntimeSessionBindingRepository(db),
+    taskBindingRepository: bindingRepository,
     participantIdGenerator: (() => {
       let i = 0;
       return () => `pb-smoke-${++i}`;
@@ -134,7 +139,7 @@ async function main() {
 
   try {
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir: join(process.cwd(), 'templates'),
       taskIdGenerator: () => options.taskId,
       imProvisioningPort: provisioning,

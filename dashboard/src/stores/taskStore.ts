@@ -13,6 +13,7 @@ import type {
 } from '@/types/task';
 import * as api from '@/lib/api';
 import { translate } from '@/lib/i18n';
+import { useSessionStore } from '@/stores/sessionStore';
 import {
   mapCraftsmanExecutionDto,
   mapCraftsmanGovernanceSnapshotDto,
@@ -86,9 +87,33 @@ interface LoadedTaskStatusResult {
   syncError: string | null;
 }
 
+type ReviewGateType = 'approval' | 'archon_review';
+
 async function refreshTaskContext(get: () => TaskStore, taskId: string) {
   await get().fetchTasks();
   await get().selectTask(taskId);
+}
+
+function resolveReviewGateType(get: () => TaskStore, taskId: string): ReviewGateType {
+  const selected = get().selectedTaskStatus?.task;
+  if (selected?.id === taskId && (selected.gateType === 'approval' || selected.gateType === 'archon_review')) {
+    return selected.gateType;
+  }
+
+  const queued = get().tasks.find((task) => task.id === taskId);
+  if (queued && (queued.gateType === 'approval' || queued.gateType === 'archon_review')) {
+    return queued.gateType;
+  }
+
+  return 'archon_review';
+}
+
+function requireDashboardSessionUsername() {
+  const username = useSessionStore.getState().username?.trim();
+  if (!username) {
+    throw new Error('missing dashboard session actor');
+  }
+  return username;
 }
 
 async function loadTaskStatus(taskId: string): Promise<LoadedTaskStatusResult> {
@@ -437,10 +462,18 @@ export const useTaskStore = create<TaskStore>()((set, get) => ({
 
   resolveReview: async (id, decision, note) => {
     set({ error: null });
-    if (decision === 'approve') {
-      await api.archonApprove(id, note);
+    const gateType = resolveReviewGateType(get, id);
+    const sessionUsername = requireDashboardSessionUsername();
+    if (gateType === 'approval') {
+      if (decision === 'approve') {
+        await api.approveTask(id, sessionUsername, note);
+      } else {
+        await api.rejectTask(id, sessionUsername, note || translate('common.rejectionFallbackNote'));
+      }
+    } else if (decision === 'approve') {
+      await api.archonApprove(id, note, sessionUsername);
     } else {
-      await api.archonReject(id, note || translate('common.rejectionFallbackNote'));
+      await api.archonReject(id, note || translate('common.rejectionFallbackNote'), sessionUsername);
     }
     await refreshTaskContext(get, id);
     return 'live';

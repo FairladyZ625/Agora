@@ -150,6 +150,170 @@ export interface CraftsmanRuntimeStatus {
   slots: CraftsmanRuntimeSlot[];
 }
 
+export interface CcConnectBinaryInspection {
+  command: string;
+  found: boolean;
+  resolvedPath: string | null;
+  version: string | null;
+  reason: string | null;
+  error: string | null;
+}
+
+export interface CcConnectConfigInspection {
+  path: string;
+  exists: boolean;
+  managementEnabled: boolean | null;
+  managementPort: number | null;
+  tokenPresent: boolean;
+}
+
+export interface CcConnectManagementInspection {
+  url: string | null;
+  reachable: boolean;
+  version: string | null;
+  projectsCount: number | null;
+  bridgeAdapterCount: number | null;
+  connectedPlatforms: string[];
+  reason: string | null;
+  error: string | null;
+}
+
+export interface CcConnectInspection {
+  binary: CcConnectBinaryInspection;
+  config: CcConnectConfigInspection;
+  management: CcConnectManagementInspection;
+}
+
+export interface CcConnectProjectSummary {
+  name: string;
+  agentType: string;
+  platforms: string[];
+  sessionsCount: number;
+  heartbeatEnabled: boolean;
+}
+
+export interface CcConnectSessionMessage {
+  role: string;
+  content: string;
+  timestamp: string | null;
+}
+
+export interface CcConnectSessionSummary {
+  id: string;
+  sessionKey: string;
+  name: string | null;
+  platform: string;
+  agentType: string;
+  active: boolean;
+  live: boolean;
+  historyCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  userName: string | null;
+  chatName: string | null;
+  lastMessage: CcConnectSessionMessage | null;
+}
+
+export interface CcConnectProjectDetail {
+  name: string;
+  agentType: string;
+  platforms: Array<{
+    type: string;
+    connected: boolean;
+  }>;
+  platformConfigs: Array<{
+    type: string;
+    allowFrom: string | null;
+  }>;
+  sessionsCount: number;
+  activeSessionKeys: string[];
+  heartbeat: {
+    enabled: boolean;
+    paused: boolean;
+    intervalMins: number | null;
+    sessionKey: string | null;
+  } | null;
+  settings: {
+    language: string | null;
+    adminFrom: string | null;
+    disabledCommands: string[];
+    quiet: boolean | null;
+  };
+  workDir: string | null;
+  agentMode: string | null;
+  mode: string | null;
+  showContextIndicator: boolean | null;
+}
+
+export interface CcConnectSessionDetail {
+  id: string;
+  sessionKey: string;
+  name: string | null;
+  platform: string;
+  agentType: string;
+  agentSessionId: string | null;
+  active: boolean;
+  live: boolean;
+  historyCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  history: CcConnectSessionMessage[];
+}
+
+export interface CcConnectBridgeAdapterSummary {
+  platform: string;
+  project: string | null;
+  capabilities: string[];
+  connectedAt: string | null;
+}
+
+export interface CcConnectProviderSummary {
+  name: string;
+  active: boolean;
+  model: string | null;
+  baseUrl: string | null;
+}
+
+export interface CcConnectProviderState {
+  providers: CcConnectProviderSummary[];
+  activeProvider: string | null;
+}
+
+export interface CcConnectModelState {
+  models: string[];
+  current: string | null;
+}
+
+export interface CcConnectHeartbeatStatus {
+  enabled: boolean;
+  paused: boolean;
+  intervalMins: number | null;
+  onlyWhenIdle: boolean | null;
+  sessionKey: string | null;
+  silent: boolean | null;
+  runCount: number | null;
+  errorCount: number | null;
+  skippedBusy: number | null;
+  lastRun: string | null;
+  lastError: string | null;
+}
+
+export interface CcConnectCronJob {
+  id: string;
+  project: string | null;
+  sessionKey: string;
+  cronExpr: string;
+  prompt: string | null;
+  exec: string | null;
+  workDir: string | null;
+  description: string | null;
+  enabled: boolean;
+  silent: boolean | null;
+  createdAt: string | null;
+  lastRun: string | null;
+  lastError: string | null;
+}
+
 export interface AgentsStatus {
   summary: AgentStatusSummary;
   agents: AgentStatusItem[];

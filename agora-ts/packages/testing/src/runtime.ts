@@ -1,39 +1,72 @@
 import { cpSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
+import {
+  ApprovalRequestRepository,
+  ArchiveJobRepository,
+  CraftsmanExecutionRepository,
+  CitizenRepository,
+  FlowLogRepository,
+  HumanAccountRepository,
+  InboxRepository,
+  NotificationOutboxRepository,
+  ParticipantBindingRepository,
+  ProgressLogRepository,
+  ProjectAgentRosterRepository,
+  ProjectMembershipRepository,
+  ProjectRepository,
+  ProjectWriteLockRepository,
+  RoleBindingRepository,
+  RoleDefinitionRepository,
+  RuntimeSessionBindingRepository,
+  SqliteGateCommandPort,
+  SqliteGateQueryPort,
+  SubtaskRepository,
+  TaskAuthorityRepository,
+  TaskBrainBindingRepository,
+  TaskContextBindingRepository,
+  TaskConversationReadCursorRepository,
+  TaskConversationRepository,
+  TaskRepository,
+  TemplateRepository,
+  TodoRepository,
+  createAgoraDatabase,
+  runMigrations,
+  type AgoraDatabase,
+} from '@agora-ts/db';
 import {
   CitizenService,
-  ClaudeCraftsmanAdapter,
-  CodexCraftsmanAdapter,
+  CraftsmanCallbackService,
   CraftsmanDispatcher,
   DashboardQueryService,
-  FilesystemProjectBrainQueryAdapter,
-  FilesystemProjectKnowledgeAdapter,
-  FilesystemTaskBrainWorkspaceAdapter,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
-  GeminiCraftsmanAdapter,
   InboxService,
-  OpenClawCitizenProjectionAdapter,
+  ProjectAgentRosterService,
   ProjectBrainAutomationService,
   ProjectBrainService,
+  ProjectContextWriter,
+  ProjectMembershipService,
   ProjectService,
   RolePackService,
   ShellCraftsmanAdapter,
   StubCraftsmanAdapter,
+  TaskAuthorityService,
   TaskBrainBindingService,
   TaskContextBindingService,
   TaskConversationService,
   TaskParticipationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
   type AgentRuntimePort,
   type CraftsmanAdapter,
-  type GeminiSessionDiscovery,
+  type InteractiveRuntimePort,
   type WorkdirIsolator,
 } from '@agora-ts/core';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
+import { TmuxRuntimeService, type GeminiSessionIdentity } from '@agora-ts/adapters-runtime';
 
 export interface CreateTestRuntimeOptions {
   taskIdGenerator?: () => string;
@@ -45,7 +78,7 @@ export interface CreateTestRuntimeOptions {
   workdirIsolator?: WorkdirIsolator;
   agentRuntimePort?: AgentRuntimePort;
   tmuxExec?: (args: string[]) => string;
-  geminiSessionDiscovery?: Pick<GeminiSessionDiscovery, 'resolveIdentity'>;
+  geminiSessionDiscovery?: { resolveIdentity(input: { workspaceRoot: string }): GeminiSessionIdentity | null };
 }
 
 export interface TestRuntime {
@@ -69,7 +102,7 @@ export interface TestRuntime {
   taskContextBindingService: TaskContextBindingService;
   taskConversationService: TaskConversationService;
   taskParticipationService: TaskParticipationService;
-  tmuxRuntimeService: TmuxRuntimeService;
+  tmuxRuntimeService: InteractiveRuntimePort;
   cleanup: () => void;
 }
 
@@ -95,14 +128,35 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   mkdirSync(tmuxRegistryDir, { recursive: true });
   cpSync(sourceTemplatesDir, templatesDir, { recursive: true });
   cpSync(sourceBrainPackDir, brainPackDir, { recursive: true });
-  const rolePackService = new RolePackService({ db, rolePacksDir });
-  const projectService = new ProjectService(db, {
+  const rolePackService = new RolePackService({
+    roleDefinitions: new RoleDefinitionRepository(db),
+    roleBindings: new RoleBindingRepository(db),
+    rolePacksDir,
+  });
+  const projectMembershipService = new ProjectMembershipService({
+    membershipRepository: new ProjectMembershipRepository(db),
+    accountRepository: new HumanAccountRepository(db),
+  });
+  const projectAgentRosterService = new ProjectAgentRosterService({
+    repository: new ProjectAgentRosterRepository(db),
+  });
+  const projectService = new ProjectService({
+    projectRepository: new ProjectRepository(db),
+    taskRepository: new TaskRepository(db),
+    membershipService: projectMembershipService,
+    agentRosterService: projectAgentRosterService,
+    transactionManager: {
+      begin: () => db.exec('BEGIN'),
+      commit: () => db.exec('COMMIT'),
+      rollback: () => db.exec('ROLLBACK'),
+    },
     knowledgePort: new FilesystemProjectKnowledgeAdapter({
       brainPackRoot: brainPackDir,
       projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
     }),
   });
-  const citizenService = new CitizenService(db, {
+  const citizenService = new CitizenService({
+    repository: new CitizenRepository(db),
     projectService,
     rolePackService,
     projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -146,15 +200,73 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   if (options.workdirIsolator !== undefined) {
     dispatcherOptions.workdirIsolator = options.workdirIsolator;
   }
-  const craftsmanDispatcher = new CraftsmanDispatcher(db, dispatcherOptions);
-  const taskContextBindingService = new TaskContextBindingService(db);
-  const taskBrainBindingService = new TaskBrainBindingService(db);
-  const taskConversationService = new TaskConversationService(db);
-  const taskParticipationService = new TaskParticipationService(db, {
+  const craftsmanDispatcher = new CraftsmanDispatcher({
+    executionRepository: new CraftsmanExecutionRepository(db),
+    subtaskRepository: new SubtaskRepository(db),
+    ...dispatcherOptions,
+  });
+  const taskContextBindingRepository = new TaskContextBindingRepository(db);
+  const taskConversationRepository = new TaskConversationRepository(db);
+  const taskContextBindingService = new TaskContextBindingService({ repository: taskContextBindingRepository });
+  const taskBrainBindingService = new TaskBrainBindingService({ repository: new TaskBrainBindingRepository(db) });
+  const taskConversationService = new TaskConversationService({
+    bindingRepository: taskContextBindingRepository,
+    conversationRepository: taskConversationRepository,
+    readCursorRepository: new TaskConversationReadCursorRepository(db),
+  });
+  const taskParticipationService = new TaskParticipationService({
+    participantRepository: new ParticipantBindingRepository(db),
+    runtimeSessionRepository: new RuntimeSessionBindingRepository(db),
+    taskBindingRepository: taskContextBindingRepository,
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
   });
-  const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[1] = {
+  const taskAuthorityService = new TaskAuthorityService({
+    repository: new TaskAuthorityRepository(db),
+  });
+  const projectContextWriter = new ProjectContextWriter({
+    writeLockRepository: new ProjectWriteLockRepository(db),
+    projectService,
+    taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+      brainPackRoot: brainPackDir,
+      projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
+    }),
+  });
+  const craftsmanCallbackService = new CraftsmanCallbackService({
+    executionRepository: new CraftsmanExecutionRepository(db),
+    subtaskRepository: new SubtaskRepository(db),
+    taskRepository: new TaskRepository(db),
+    flowLogRepository: new FlowLogRepository(db),
+    progressLogRepository: new ProgressLogRepository(db),
+    outboxRepository: new NotificationOutboxRepository(db),
+    bindingRepository: taskContextBindingRepository,
+    conversationRepository: taskConversationRepository,
+  });
+  const taskServiceOptionsWithRecovery: ConstructorParameters<typeof TaskService>[0] = {
     ...taskServiceOptions,
+    databasePort: db,
+    gateCommandPort: new SqliteGateCommandPort(db),
+    gateQueryPort: new SqliteGateQueryPort(db),
+    repositories: {
+      task: new TaskRepository(db),
+      flowLog: new FlowLogRepository(db),
+      progressLog: new ProgressLogRepository(db),
+      subtask: new SubtaskRepository(db),
+      taskContextBinding: taskContextBindingRepository,
+      taskConversation: taskConversationRepository,
+      todo: new TodoRepository(db),
+      archiveJob: new ArchiveJobRepository(db),
+      approvalRequest: new ApprovalRequestRepository(db),
+      inbox: new InboxRepository(db),
+      craftsmanExecution: new CraftsmanExecutionRepository(db),
+      template: new TemplateRepository(db),
+    },
+    subServices: {
+      taskAuthority: taskAuthorityService,
+      projectMembership: projectMembershipService,
+      projectAgentRoster: projectAgentRosterService,
+      craftsmanCallback: craftsmanCallbackService,
+      projectContextWriter,
+    },
     craftsmanDispatcher,
     taskBrainBindingService,
     taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -170,7 +282,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   if (options.isCraftsmanSessionAlive !== undefined) {
     taskServiceOptionsWithRecovery.isCraftsmanSessionAlive = options.isCraftsmanSessionAlive;
   }
-  const taskService = new TaskService(db, taskServiceOptionsWithRecovery);
+  const taskService = new TaskService(taskServiceOptionsWithRecovery);
   const tmuxRuntimeServiceOptions: ConstructorParameters<typeof TmuxRuntimeService>[0] = {
     exec: options.tmuxExec ?? createDefaultTmuxExec(),
     registryDir: tmuxRegistryDir,
@@ -184,13 +296,26 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     tmuxRuntimeServiceOptions.geminiSessionDiscovery = options.geminiSessionDiscovery;
   }
   const tmuxRuntimeService = new TmuxRuntimeService(tmuxRuntimeServiceOptions);
-  const dashboardQueryService = new DashboardQueryService(db, {
+  const dashboardQueryService = new DashboardQueryService({
     templatesDir,
+    taskRepository: new TaskRepository(db),
+    subtaskRepository: new SubtaskRepository(db),
+    archiveJobRepository: new ArchiveJobRepository(db),
+    todoRepository: new TodoRepository(db),
+    executionRepository: new CraftsmanExecutionRepository(db),
+    templateRepository: new TemplateRepository(db),
+    databasePort: db,
     archiveJobNotifier: new FileArchiveJobNotifier({ outboxDir: archiveOutboxDir }),
     archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({ receiptDir: archiveReceiptDir }),
   });
-  const inboxService = new InboxService(db, taskService);
-  const templateAuthoringService = new TemplateAuthoringService({ db, templatesDir });
+  const inboxService = new InboxService(taskService, {
+    inboxRepository: new InboxRepository(db),
+    todoRepository: new TodoRepository(db),
+  });
+  const templateAuthoringService = new TemplateAuthoringService({
+    templatesDir,
+    templateRepository: new TemplateRepository(db),
+  });
 
   return {
     dir,

@@ -1,4 +1,4 @@
-import { FlowLogRepository, ProgressLogRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { IFlowLogRepository, IProgressLogRepository } from '@agora-ts/contracts';
 
 type ActivityStreamItem = {
   layer: 'flow' | 'progress';
@@ -7,13 +7,18 @@ type ActivityStreamItem = {
   kind: string;
 };
 
-export class ProgressService {
-  private readonly flowLogRepository: FlowLogRepository;
-  private readonly progressLogRepository: ProgressLogRepository;
+export interface ProgressServiceOptions {
+  flowLogRepository: IFlowLogRepository;
+  progressLogRepository: IProgressLogRepository;
+}
 
-  constructor(db: AgoraDatabase) {
-    this.flowLogRepository = new FlowLogRepository(db);
-    this.progressLogRepository = new ProgressLogRepository(db);
+export class ProgressService {
+  private readonly flowLogRepository: IFlowLogRepository;
+  private readonly progressLogRepository: IProgressLogRepository;
+
+  constructor(options: ProgressServiceOptions) {
+    this.flowLogRepository = options.flowLogRepository;
+    this.progressLogRepository = options.progressLogRepository;
   }
 
   recordStateChange(taskId: string, fromState: string, toState: string, actor = 'system', detail?: unknown) {

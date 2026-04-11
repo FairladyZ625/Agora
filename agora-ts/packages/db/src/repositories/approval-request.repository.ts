@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { IApprovalRequestRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -18,7 +19,7 @@ export interface StoredApprovalRequest {
   metadata: Record<string, unknown> | null;
 }
 
-export class ApprovalRequestRepository {
+export class ApprovalRequestRepository implements IApprovalRequestRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

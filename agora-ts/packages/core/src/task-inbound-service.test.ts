@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, TaskConversationReadCursorRepository, TaskConversationRepository, TaskContextBindingRepository } from '@agora-ts/db';
+import { createTaskServiceFromDb } from '@agora-ts/testing';
 import { TaskContextBindingService } from './task-context-binding-service.js';
 import { TaskConversationService } from './task-conversation-service.js';
 import { TaskInboundService } from './task-inbound-service.js';
-import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
@@ -30,14 +30,21 @@ describe('task inbound service', () => {
   it('ingests a conversation entry and applies approve_current to the bound task', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: bindingRepository,
       idGenerator: () => 'binding-inbound-1',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       idGenerator: () => 'entry-inbound-1',
       now: () => new Date('2026-03-17T13:00:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-INBOUND-1',
       archonUsers: ['alice'],
@@ -56,7 +63,11 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-1',
     });
 
-    const inbound = new TaskInboundService(conversations, bindings, taskService);
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+    );
     const result = inbound.ingest({
       provider: 'discord',
       thread_ref: 'thread-inbound-1',
@@ -92,14 +103,21 @@ describe('task inbound service', () => {
   it('passes next_stage_id through inbound advance_current actions for branching stages', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: bindingRepository,
       idGenerator: () => 'binding-inbound-branch-1',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       idGenerator: () => 'entry-inbound-branch-1',
       now: () => new Date('2026-03-17T13:10:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-INBOUND-BRANCH-1',
       archonUsers: ['alice'],
@@ -143,7 +161,11 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-branch-1',
     });
 
-    const inbound = new TaskInboundService(conversations, bindings, taskService);
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+    );
     const result = inbound.ingest({
       provider: 'discord',
       thread_ref: 'thread-inbound-branch-1',
@@ -174,14 +196,21 @@ describe('task inbound service', () => {
   it('completes graph-backed tasks through inbound advance_current when the stage has a complete edge', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const bindings = new TaskContextBindingService(db, {
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: bindingRepository,
       idGenerator: () => 'binding-inbound-complete-1',
     });
-    const conversations = new TaskConversationService(db, {
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
       idGenerator: () => 'entry-inbound-complete-1',
       now: () => new Date('2026-03-17T13:20:01.000Z'),
     });
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-INBOUND-COMPLETE-1',
       archonUsers: ['alice'],
@@ -221,7 +250,11 @@ describe('task inbound service', () => {
       thread_ref: 'thread-inbound-complete-1',
     });
 
-    const inbound = new TaskInboundService(conversations, bindings, taskService);
+    const inbound = new TaskInboundService(
+      conversations,
+      bindings,
+      taskService as unknown as ConstructorParameters<typeof TaskInboundService>[2],
+    );
     const result = inbound.ingest({
       provider: 'discord',
       thread_ref: 'thread-inbound-complete-1',

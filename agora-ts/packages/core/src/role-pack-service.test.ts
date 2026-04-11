@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { RoleBindingRepository, RoleDefinitionRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { RolePackService } from './role-pack-service.js';
 
 const tempPaths: string[] = [];
@@ -63,14 +63,21 @@ afterEach(() => {
 });
 
 describe('role pack service', () => {
-  it('loads role definitions from the configured pack directory', () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+  function createRolePackService(dbPath = makeDbPath()) {
+    const db = createAgoraDatabase({ dbPath });
     runMigrations(db);
-
-    const service = new RolePackService({
+    return {
       db,
-      rolePacksDir: makeRolePackDir(),
-    });
+      service: new RolePackService({
+        roleDefinitions: new RoleDefinitionRepository(db),
+        roleBindings: new RoleBindingRepository(db),
+        rolePacksDir: makeRolePackDir(),
+      }),
+    };
+  }
+
+  it('loads role definitions from the configured pack directory', () => {
+    const { service } = createRolePackService();
 
     expect(service.listRoleDefinitions().map((role) => role.id)).toEqual(['architect', 'controller']);
     expect(service.getRoleDefinition('controller')?.payload.citizen_scaffold).toMatchObject({
@@ -80,12 +87,7 @@ describe('role pack service', () => {
   });
 
   it('resolves bindings by explicit scope precedence', () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    const service = new RolePackService({
-      db,
-      rolePacksDir: makeRolePackDir(),
-    });
+    const { service } = createRolePackService();
 
     service.saveBinding({
       id: 'binding-1',
@@ -116,12 +118,7 @@ describe('role pack service', () => {
   });
 
   it('resolves template team members from template and workspace bindings before suggested defaults', () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    const service = new RolePackService({
-      db,
-      rolePacksDir: makeRolePackDir(),
-    });
+    const { service } = createRolePackService();
 
     service.saveBinding({
       id: 'binding-3',
@@ -159,12 +156,7 @@ describe('role pack service', () => {
   });
 
   it('marks generated bindings as agora-managed delta briefing members', () => {
-    const db = createAgoraDatabase({ dbPath: makeDbPath() });
-    runMigrations(db);
-    const service = new RolePackService({
-      db,
-      rolePacksDir: makeRolePackDir(),
-    });
+    const { service } = createRolePackService();
 
     service.saveBinding({
       id: 'binding-generated-1',
@@ -198,4 +190,5 @@ describe('role pack service', () => {
       }),
     ]);
   });
+
 });

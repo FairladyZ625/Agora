@@ -1,7 +1,6 @@
-import { SubtaskRepository, type AgoraDatabase } from '@agora-ts/db';
-import type { CraftsmanModeDto } from '@agora-ts/contracts';
+import type { CraftsmanModeDto, ISubtaskRepository } from '@agora-ts/contracts';
 import type { CraftsmanDispatcher } from './craftsman-dispatcher.js';
-import { ProgressService } from './progress-service.js';
+import type { ProgressService } from './progress-service.js';
 
 export interface DiscussModeResult {
   mode: 'discuss';
@@ -29,17 +28,19 @@ export interface ExecuteModeResult {
 }
 
 export interface ModeControllerOptions {
+  subtaskRepository: ISubtaskRepository;
+  progressService: ProgressService;
   dispatcher?: CraftsmanDispatcher;
 }
 
 export class ModeController {
-  private readonly subtasks: SubtaskRepository;
+  private readonly subtasks: ISubtaskRepository;
   private readonly progress: ProgressService;
   private readonly dispatcher: CraftsmanDispatcher | undefined;
 
-  constructor(db: AgoraDatabase, options: ModeControllerOptions = {}) {
-    this.subtasks = new SubtaskRepository(db);
-    this.progress = new ProgressService(db);
+  constructor(options: ModeControllerOptions) {
+    this.subtasks = options.subtaskRepository;
+    this.progress = options.progressService;
     this.dispatcher = options.dispatcher;
   }
 

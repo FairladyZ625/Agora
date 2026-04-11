@@ -1,18 +1,20 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgoraDatabase, runMigrations, ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskBrainBindingRepository, TaskContextBindingRepository, TaskRepository } from '@agora-ts/db';
+import { createDashboardQueryServiceFromDb, createTaskServiceFromDb } from '@agora-ts/testing';
 import { FileArchiveJobNotifier, FileArchiveJobReceiptIngestor } from './archive-job-notifier.js';
-import { DashboardQueryService } from './dashboard-query-service.js';
 import { LiveSessionStore } from './live-session-store.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 import type { AgentInventorySource, PresenceSource } from './runtime-ports.js';
+import { TaskBrainBindingService } from './task-brain-binding-service.js';
+import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
-import { TaskService } from './task-service.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+type DashboardQueryBuilderOptions = NonNullable<Parameters<typeof createDashboardQueryServiceFromDb>[1]>;
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-core-'));
@@ -39,7 +41,7 @@ describe('dashboard query service', () => {
   it('lists locally resolved skills through the injected catalog port', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       skillCatalogPort: {
         listSkills: () => [
@@ -68,13 +70,13 @@ describe('dashboard query service', () => {
   it('aggregates active agents, craftsmen, and template summaries', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-400',
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir });
 
     taskService.createTask({
       title: '实现 dashboard agent pane',
@@ -150,7 +152,7 @@ describe('dashboard query service', () => {
   it('uses provider-tagged history events without core hardcoded channel heuristics', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       agentRegistry: {
         listAgents: () => [{
@@ -202,7 +204,7 @@ describe('dashboard query service', () => {
     runMigrations(db);
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir });
 
     tasks.insertTask({
       id: 'OC-401',
@@ -244,7 +246,7 @@ describe('dashboard query service', () => {
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
     const notifier = new FileArchiveJobNotifier({ outboxDir: makeTempDir('archive-outbox-') });
-    const queries = new DashboardQueryService(db, { templatesDir, archiveJobNotifier: notifier });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir, archiveJobNotifier: notifier });
 
     const task = tasks.insertTask({
       id: 'OC-403A',
@@ -288,7 +290,7 @@ describe('dashboard query service', () => {
     runMigrations(db);
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir });
 
     tasks.insertTask({
       id: 'OC-403',
@@ -331,16 +333,37 @@ describe('dashboard query service', () => {
       conversation_ref: 'discord-parent',
       thread_ref: 'discord-thread-destroy-1',
     });
-    const bindings = new TaskContextBindingService(db);
-    const taskService = new TaskService(db, {
+    const taskContextBindingRepository = new TaskContextBindingRepository(db);
+    const taskBrainBindingRepository = new TaskBrainBindingRepository(db);
+    const bindings = new TaskContextBindingService({
+      repository: taskContextBindingRepository,
+    });
+    const brainBindings = new TaskBrainBindingService({
+      repository: taskBrainBindingRepository,
+    });
+    const workspacePath = join(makeTempDir('agora-ts-archive-workspace-'), 'OC-ARCHIVE-CTX');
+    mkdirSync(workspacePath, { recursive: true });
+    const taskBrainWorkspacePort: TaskBrainWorkspacePort = {
+      createWorkspace: () => { throw new Error('unused'); },
+      updateWorkspace: () => {},
+      writeExecutionBrief: () => { throw new Error('unused'); },
+      writeTaskCloseRecap: () => {},
+      writeTaskHarvestDraft: () => {},
+      destroyWorkspace: vi.fn((binding) => {
+        rmSync(binding.workspace_path, { recursive: true, force: true });
+      }),
+    };
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-ARCHIVE-CTX',
       imProvisioningPort: provisioningPort,
-      taskContextBindingService: bindings,
+      taskContextBindingService: bindings as unknown as NonNullable<NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>['taskContextBindingService']>,
     });
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
-      taskContextBindingService: bindings,
+      taskBrainBindingService: brainBindings as unknown as NonNullable<DashboardQueryBuilderOptions['taskBrainBindingService']>,
+      taskBrainWorkspacePort,
+      taskContextBindingService: bindings as unknown as NonNullable<DashboardQueryBuilderOptions['taskContextBindingService']>,
       imProvisioningPort: provisioningPort,
     });
 
@@ -358,6 +381,12 @@ describe('dashboard query service', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     const binding = bindings.listBindings('OC-ARCHIVE-CTX')[0];
+    brainBindings.createBinding({
+      task_id: 'OC-ARCHIVE-CTX',
+      brain_pack_ref: 'agora-project-state',
+      brain_task_id: 'OC-ARCHIVE-CTX',
+      workspace_path: workspacePath,
+    });
     expect(binding?.status).toBe('active');
 
     taskService.cancelTask('OC-ARCHIVE-CTX', { reason: 'archive me' });
@@ -380,6 +409,13 @@ describe('dashboard query service', () => {
       ]),
     );
     expect(bindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('destroyed');
+    expect(taskBrainWorkspacePort.destroyWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspace_path: workspacePath,
+      }),
+    );
+    expect(existsSync(workspacePath)).toBe(false);
+    expect(brainBindings.listBindings('OC-ARCHIVE-CTX')[0]?.status).toBe('destroyed');
   });
 
   it('fails stale notified archive jobs through the dashboard query service scan', () => {
@@ -387,7 +423,7 @@ describe('dashboard query service', () => {
     runMigrations(db);
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir });
 
     tasks.insertTask({
       id: 'OC-404',
@@ -425,7 +461,7 @@ describe('dashboard query service', () => {
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
     const outboxDir = join(dirname(dbPath), 'archive-outbox');
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       archiveJobNotifier: new FileArchiveJobNotifier({
         outboxDir,
@@ -484,7 +520,7 @@ describe('dashboard query service', () => {
     const tasks = new TaskRepository(db);
     const archives = new ArchiveJobRepository(db);
     const receiptDir = join(dirname(dbPath), 'archive-receipts');
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       archiveJobReceiptIngestor: new FileArchiveJobReceiptIngestor({
         receiptDir,
@@ -536,12 +572,12 @@ describe('dashboard query service', () => {
   it('surfaces archive jobs that were auto-enqueued by task completion', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-402',
     });
     const subtasks = new SubtaskRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir });
 
     service.createTask({
       title: '归档自动入队',
@@ -589,7 +625,10 @@ describe('dashboard query service', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T06:10:30.000Z'),
     });
-    const queries = new DashboardQueryService(db, { templatesDir, liveSessions });
+    const queries = createDashboardQueryServiceFromDb(db, {
+      templatesDir,
+      liveSessions: liveSessions as unknown as NonNullable<DashboardQueryBuilderOptions['liveSessions']>,
+    });
 
     liveSessions.upsert({
       source: 'openclaw',
@@ -660,7 +699,11 @@ describe('dashboard query service', () => {
         },
       ],
     };
-    const queries = new DashboardQueryService(db, { templatesDir, liveSessions, agentRegistry });
+    const queries = createDashboardQueryServiceFromDb(db, {
+      templatesDir,
+      liveSessions: liveSessions as unknown as NonNullable<DashboardQueryBuilderOptions['liveSessions']>,
+      agentRegistry,
+    });
 
     liveSessions.upsert({
       source: 'openclaw',
@@ -740,7 +783,10 @@ describe('dashboard query service', () => {
       staleAfterMs: 60_000,
       now: () => new Date('2026-03-08T06:47:30.000Z'),
     });
-    const queries = new DashboardQueryService(db, { templatesDir, liveSessions });
+    const queries = createDashboardQueryServiceFromDb(db, {
+      templatesDir,
+      liveSessions: liveSessions as unknown as NonNullable<DashboardQueryBuilderOptions['liveSessions']>,
+    });
 
     liveSessions.upsert({
       source: 'openclaw',
@@ -850,7 +896,7 @@ describe('dashboard query service', () => {
         },
       ],
     };
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       agentRegistry,
       presenceSource,
@@ -934,7 +980,7 @@ describe('dashboard query service', () => {
   it('builds channel detail without querying the legacy runtime transport or craftsman execution history', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-410',
     });
@@ -984,7 +1030,7 @@ describe('dashboard query service', () => {
         },
       ],
     };
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       presenceSource,
       legacyRuntimeService,
@@ -1052,13 +1098,13 @@ describe('dashboard query service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     let nextTaskId = 420;
-    const taskService = new TaskService(db, {
+    const taskService = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => `OC-${nextTaskId++}`,
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const queries = new DashboardQueryService(db, { templatesDir });
+    const queries = createDashboardQueryServiceFromDb(db, { templatesDir });
     const internalSubtasks = (queries as unknown as { subtasks: SubtaskRepository }).subtasks;
     const internalExecutions = (queries as unknown as { executions: CraftsmanExecutionRepository }).executions;
     const listByTaskSpy = vi.spyOn(internalSubtasks, 'listByTask');
@@ -1126,7 +1172,7 @@ describe('dashboard query service', () => {
     const tail = (agent: string) => `tail:${agent}`;
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       legacyRuntimeService: {
         status: () => ({
@@ -1332,7 +1378,7 @@ describe('dashboard query service', () => {
         },
       ],
     };
-    const queries = new DashboardQueryService(db, {
+    const queries = createDashboardQueryServiceFromDb(db, {
       templatesDir,
       agentRegistry,
       presenceSource,

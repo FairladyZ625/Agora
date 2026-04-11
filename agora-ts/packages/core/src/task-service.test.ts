@@ -4,33 +4,44 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApprovalRequestRepository, ArchiveJobRepository, CraftsmanExecutionRepository, createAgoraDatabase, ProjectRepository, ProjectWriteLockRepository, runMigrations, SubtaskRepository, TaskBrainBindingRepository, TaskConversationRepository, TaskRepository, TaskContextBindingRepository, TemplateRepository, TodoRepository } from '@agora-ts/db';
+import {
+  createCitizenServiceFromDb,
+  createCraftsmanDispatcherFromDb,
+  createProjectServiceFromDb,
+  createRolePackServiceFromDb,
+  createTaskBrainBindingServiceFromDb,
+  createTaskContextBindingServiceFromDb,
+  createTaskParticipationServiceFromDb,
+  createTaskServiceFromDb,
+} from '@agora-ts/testing';
+import { AcpCraftsmanProbePort } from '@agora-ts/adapters-runtime';
 import { StubCraftsmanAdapter } from './craftsman-adapter.js';
-import { CitizenService } from './citizen-service.js';
-import { CraftsmanDispatcher } from './craftsman-dispatcher.js';
-import { FilesystemProjectBrainQueryAdapter } from './adapters/filesystem-project-brain-query-adapter.js';
-import { FilesystemProjectKnowledgeAdapter } from './adapters/filesystem-project-knowledge-adapter.js';
-import { AcpCraftsmanProbePort } from './adapters/acp-craftsman-probe-port.js';
-import { FilesystemTaskBrainWorkspaceAdapter } from './adapters/filesystem-task-brain-workspace-adapter.js';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
+import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
+import type { CraftsmanInputPortExecution } from './craftsman-input-port.js';
+import type { CraftsmanProbePortExecution } from './craftsman-probe-port.js';
+import type { CraftsmanTailPortExecution } from './craftsman-tail-port.js';
 import { LiveSessionStore } from './live-session-store.js';
 import { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import { ProjectBrainService } from './project-brain-service.js';
 import { ProjectContextWriter } from './project-context-writer.js';
-import { ProjectService } from './project-service.js';
-import { RolePackService } from './role-pack-service.js';
-import { TaskService } from './task-service.js';
-import { TaskBrainBindingService } from './task-brain-binding-service.js';
-import { TaskContextBindingService } from './task-context-binding-service.js';
-import { TaskParticipationService } from './task-participation-service.js';
+import type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 import { StubIMProvisioningPort } from './im-ports.js';
 
 const tempPaths: string[] = [];
 const templatesDir = resolve(process.cwd(), 'templates');
+type TaskServiceBuilderOptions = NonNullable<Parameters<typeof createTaskServiceFromDb>[1]>;
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-task-service-'));
   tempPaths.push(dir);
   return join(dir, 'tasks.db');
+}
+
+function makeTempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempPaths.push(dir);
+  return dir;
 }
 
 function makeEmptyTemplatesDir() {
@@ -86,7 +97,7 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const liveSessionStore = new LiveSessionStore({ staleAfterMs: 1234 });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-HEALTH-1',
       imProvisioningPort: new StubIMProvisioningPort({
@@ -94,12 +105,12 @@ describe('task service', () => {
         conversation_ref: 'discord-parent',
         thread_ref: 'thread-1',
       }),
-      craftsmanDispatcher: new CraftsmanDispatcher(db, {
+      craftsmanDispatcher: createCraftsmanDispatcherFromDb(db, {
         adapters: {
           claude: new StubCraftsmanAdapter('claude'),
         },
       }),
-      liveSessionStore,
+      liveSessionStore: liveSessionStore as unknown as NonNullable<TaskServiceBuilderOptions['liveSessionStore']>,
       hostResourcePort: {
         readSnapshot: () => ({
           observed_at: '2026-03-14T04:30:00.000Z',
@@ -271,7 +282,7 @@ describe('task service', () => {
   it('requests runtime diagnosis through the recovery port and records control-plane events', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-RUNTIME-DIAG-1',
       agentRuntimePort: {
@@ -334,13 +345,13 @@ describe('task service', () => {
   it('requests craftsman stop through the recovery port for a running execution', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-stop-1',
       adapters: {
         claude: new StubCraftsmanAdapter('claude'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-STOP-1',
       craftsmanDispatcher: dispatcher,
@@ -351,7 +362,7 @@ describe('task service', () => {
         restartCitizenRuntime: () => {
           throw new Error('not used');
         },
-        stopExecution: (input) => ({
+        stopExecution: (input: Parameters<RuntimeRecoveryPort['stopExecution']>[0]) => ({
           operation: 'stop_execution',
           status: 'accepted',
           task_id: input.taskId,
@@ -423,13 +434,13 @@ describe('task service', () => {
   it('rejects stop requests for terminal craftsman executions', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-stop-terminal-1',
       adapters: {
         claude: new StubCraftsmanAdapter('claude'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-STOP-TERM-1',
       craftsmanDispatcher: dispatcher,
@@ -507,7 +518,7 @@ describe('task service', () => {
   it('creates a task from template and exposes task status payloads', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-100',
     });
@@ -552,7 +563,7 @@ describe('task service', () => {
   it('builds task blueprint from workflow.graph when present', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GRAPH-BLUEPRINT',
     });
@@ -618,7 +629,7 @@ describe('task service', () => {
   it('retains branch and complete edges in task blueprints for graph-backed workflows', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GRAPH-BLUEPRINT-2',
     });
@@ -671,7 +682,7 @@ describe('task service', () => {
   it('uses workflow.graph entry_nodes[0] as the initial current stage for graph-backed tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GRAPH-ENTRY-1',
     });
@@ -714,7 +725,7 @@ describe('task service', () => {
   it('marks graph-backed tasks done when advance follows a complete edge into a terminal node', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GRAPH-COMPLETE-1',
       archonUsers: ['archon'],
@@ -767,7 +778,7 @@ describe('task service', () => {
     const templates = new TemplateRepository(db);
     templates.seedFromDir(templatesDir);
 
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir: makeEmptyTemplatesDir(),
       taskIdGenerator: () => 'OC-DB-TEMPLATE',
     });
@@ -791,7 +802,7 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
 
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir: makeEmptyTemplatesDir(),
       taskIdGenerator: () => 'OC-ADHOC-OVERRIDE',
     });
@@ -840,10 +851,10 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRAIN-100',
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -881,10 +892,10 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRAIN-ROSTER-1',
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-roster-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -942,11 +953,11 @@ describe('task service', () => {
     const brainPackDir = makeBrainPackDir();
     const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
     tempPaths.push(projectStateDir);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRAIN-PROJECT',
-      projectService: new ProjectService(db),
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      projectService: createProjectServiceFromDb(db),
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-project',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -987,7 +998,7 @@ describe('task service', () => {
     const brainPackDir = makeBrainPackDir();
     const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
     tempPaths.push(projectStateDir);
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -1007,7 +1018,7 @@ describe('task service', () => {
       body: 'Runtime adapters stay outside core and expose provider-neutral ports.',
       source_task_ids: ['OC-BOOT-0'],
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = createRolePackServiceFromDb(db);
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -1026,7 +1037,7 @@ describe('task service', () => {
       },
       metadata: {},
     });
-    const citizenService = new CitizenService(db, {
+    const citizenService = createCitizenServiceFromDb(db, {
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],
@@ -1048,28 +1059,28 @@ describe('task service', () => {
       },
     });
     const projectBrainService = new ProjectBrainService({
-      projectService,
-      citizenService,
+      projectService: projectService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['projectService']>,
+      citizenService: citizenService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainService>[0]['citizenService']>,
       projectBrainQueryPort: new FilesystemProjectBrainQueryAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
     });
     const automationService = new ProjectBrainAutomationService({
-      projectBrainService,
+      projectBrainService: projectBrainService as unknown as NonNullable<ConstructorParameters<typeof ProjectBrainAutomationService>[0]['projectBrainService']>,
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROJECT-BOOTSTRAP',
       projectService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-bootstrap',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
       }),
-      projectBrainAutomationService: automationService,
+      projectBrainAutomationService: automationService as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
     });
 
     service.createTask({
@@ -1111,7 +1122,7 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
       }),
@@ -1126,11 +1137,11 @@ describe('task service', () => {
       markdown: '# Bootstrap',
       source_documents: [],
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROJECT-CTX',
       projectService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-bootstrap',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -1140,7 +1151,7 @@ describe('task service', () => {
         buildBootstrapContext,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
-      } as unknown as ProjectBrainAutomationService,
+      } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
     });
 
     service.createTask({
@@ -1191,7 +1202,7 @@ describe('task service', () => {
     const brainPackDir = makeBrainPackDir();
     const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-writer-proposal-'));
     tempPaths.push(projectStateDir);
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -1208,10 +1219,10 @@ describe('task service', () => {
         },
       },
     });
-    const bindingService = new TaskBrainBindingService(db, {
+    const bindingService = createTaskBrainBindingServiceFromDb(db, {
       idGenerator: () => 'brain-binding-writer-proposal',
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir: makeEmptyTemplatesDir(),
       taskIdGenerator: () => 'OC-WRITER-PROPOSAL',
       projectService,
@@ -1242,7 +1253,8 @@ describe('task service', () => {
 
     const task = service.getTask('OC-WRITER-PROPOSAL')!;
     const binding = bindingService.getActiveBinding('OC-WRITER-PROPOSAL')!;
-    const writer = new ProjectContextWriter(db, {
+    const writer = new ProjectContextWriter({
+      writeLockRepository: new ProjectWriteLockRepository(db),
       projectService,
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
         brainPackRoot: brainPackDir,
@@ -1294,7 +1306,7 @@ describe('task service', () => {
     const brainPackDir = makeBrainPackDir();
     const projectStateDir = mkdtempSync(join(tmpdir(), 'agora-ts-project-state-'));
     tempPaths.push(projectStateDir);
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
         projectStateRootResolver: (projectId) => join(projectStateDir, projectId),
@@ -1304,11 +1316,11 @@ describe('task service', () => {
       id: 'proj-recap',
       name: 'Project Recap',
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir: makeEmptyTemplatesDir(),
       taskIdGenerator: () => 'OC-PROJECT-RECAP',
       projectService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-recap',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -1391,7 +1403,7 @@ describe('task service', () => {
       text: 'promote into task',
       project_id: 'proj-promote',
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-TODO-PROJECT',
     });
@@ -1410,10 +1422,10 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const tasks = new TaskRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRAIN-FAIL',
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-binding-fail',
       }),
       taskBrainWorkspacePort: {
@@ -1443,7 +1455,7 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const tasks = new TaskRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROJECT-MISSING',
     });
@@ -1484,7 +1496,7 @@ describe('task service', () => {
       now,
     );
 
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REPAIRED-TEMPLATE',
     });
@@ -1529,7 +1541,7 @@ describe('task service', () => {
   it('rejects advance before gate passes and advances once archon review is recorded', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-101',
     });
@@ -1571,7 +1583,7 @@ describe('task service', () => {
   it('treats concurrent stage advancement as success instead of returning a stale gate failure', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-101B',
     });
@@ -1609,7 +1621,7 @@ describe('task service', () => {
   it('uses allowAgents canAdvance config for non-controller command advances', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-104',
       archonUsers: ['archon'],
@@ -1648,7 +1660,7 @@ describe('task service', () => {
   it('requires advance callers to be active in the current stage roster unless they are controller or archon', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-STAGE-ADVANCE-1',
       archonUsers: ['archon'],
@@ -1707,7 +1719,7 @@ describe('task service', () => {
   it('requires next_stage_id when advancing from a branching stage and follows the selected branch', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BRANCH-ADVANCE-1',
       archonUsers: ['archon'],
@@ -1759,7 +1771,7 @@ describe('task service', () => {
   it('records archon approval, subtask completion, approval, and force advance actions', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-102',
     });
@@ -1864,7 +1876,7 @@ describe('task service', () => {
   it('auto-advances archon review stages and blocks repeated approval on the next gate', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-102A',
     });
@@ -1895,7 +1907,7 @@ describe('task service', () => {
   it('mirrors key task actions into task conversation when an active binding exists', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-103',
     });
@@ -1965,7 +1977,7 @@ describe('task service', () => {
   it('mirrors state transition actions into task conversation when an active binding exists', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-103B',
     });
@@ -2012,7 +2024,7 @@ describe('task service', () => {
   it('records gate result events for archon review decisions', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-108',
     });
@@ -2068,7 +2080,7 @@ describe('task service', () => {
   it('records quorum confirmations and supports pause/resume/cancel/unblock state transitions', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-103',
     });
@@ -2153,7 +2165,7 @@ describe('task service', () => {
   it('requires quorum voters to be active in the current stage roster unless they are archon', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-STAGE-CONFIRM-1',
       archonUsers: ['archon'],
@@ -2207,7 +2219,7 @@ describe('task service', () => {
   it('requires approval reviewers to be active in the current stage roster unless they are archon', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-STAGE-APPROVE-1',
       archonUsers: ['archon'],
@@ -2259,7 +2271,7 @@ describe('task service', () => {
   it('supports unblock retry by resetting failed subtasks in the current stage', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-110',
     });
@@ -2333,7 +2345,7 @@ describe('task service', () => {
   it('supports unblock skip by marking failed subtasks done in the current stage', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-111',
     });
@@ -2405,7 +2417,7 @@ describe('task service', () => {
   it('supports unblock reassign by resetting failed subtasks to a new assignee', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-112',
     });
@@ -2473,7 +2485,7 @@ describe('task service', () => {
   it('cancels active subtasks and craftsmen executions while capturing a scheduler snapshot', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-105',
     });
@@ -2602,7 +2614,7 @@ describe('task service', () => {
   it('cleans up craftsman executions when deleting orphaned tasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-106',
     });
@@ -2651,13 +2663,13 @@ describe('task service', () => {
   it('rejects craftsmen dispatch when the task is not active', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-paused-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-09T11:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-107',
       craftsmanDispatcher: dispatcher,
@@ -2698,7 +2710,7 @@ describe('task service', () => {
   it('flushes deferred craftsmen callbacks when resuming a paused task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-113',
     });
@@ -2783,12 +2795,12 @@ describe('task service', () => {
   it('enqueues a pending archive job when a task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-closeout',
       name: 'Closeout Project',
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-114',
       projectService,
@@ -2864,10 +2876,153 @@ describe('task service', () => {
     expect(archiveJobs[0]?.target_path).toContain('OC-114');
   });
 
+  it('notifies the controller to complete closeout convergence when a task reaches done', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-1',
+    });
+    const contextBindings = createTaskContextBindingServiceFromDb(db);
+    const brainBindings = createTaskBrainBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLOSEOUT-REMINDER-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: contextBindings,
+      taskBrainBindingService: brainBindings,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const contextBindingRepo = new TaskContextBindingRepository(db);
+    const workspacePath = join(makeTempDir('agora-ts-closeout-workspace-'), 'OC-CLOSEOUT-REMINDER-1');
+    mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
+    writeFileSync(join(workspacePath, '07-outputs', 'project-harvest-draft.md'), '# draft\n', 'utf8');
+
+    service.createTask({
+      title: 'Closeout reminder task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    contextBindingRepo.insert({
+      id: 'binding-closeout-1',
+      task_id: 'OC-CLOSEOUT-REMINDER-1',
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-1',
+      status: 'active',
+    });
+    brainBindings.createBinding({
+      task_id: 'OC-CLOSEOUT-REMINDER-1',
+      brain_pack_ref: 'agora-project-state',
+      brain_task_id: 'OC-CLOSEOUT-REMINDER-1',
+      workspace_path: workspacePath,
+    });
+
+    service.archonApproveTask('OC-CLOSEOUT-REMINDER-1', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    subtasks.insertSubtask({
+      id: 'write-doc',
+      task_id: 'OC-CLOSEOUT-REMINDER-1',
+      stage_id: 'write',
+      title: '写正文',
+      assignee: 'glm5',
+    });
+    service.completeSubtask('OC-CLOSEOUT-REMINDER-1', {
+      subtaskId: 'write-doc',
+      callerId: 'glm5',
+      output: '草稿完成',
+    });
+    service.advanceTask('OC-CLOSEOUT-REMINDER-1', { callerId: 'archon' });
+    service.approveTask('OC-CLOSEOUT-REMINDER-1', {
+      approverId: 'gpt52',
+      comment: 'ship it',
+    });
+    await service.drainBackgroundOperations();
+
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const reminder = broadcasts.find((message) => message.kind === 'controller_closeout_requested');
+    const controllerRef = service.getTask('OC-CLOSEOUT-REMINDER-1')?.team.members.find((member) => member.member_kind === 'controller')?.agentId;
+
+    expect(reminder).toMatchObject({
+      participant_refs: [controllerRef],
+    });
+    expect(reminder?.body).toContain('closeout');
+    expect(reminder?.body).toContain(workspacePath);
+    expect(reminder?.body).toContain('project-harvest-draft.md');
+  });
+
+  it('also emits the controller closeout reminder when force-advance reaches done', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-force-1',
+    });
+    const contextBindings = createTaskContextBindingServiceFromDb(db);
+    const brainBindings = createTaskBrainBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-CLOSEOUT-FORCE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: contextBindings,
+      taskBrainBindingService: brainBindings,
+    });
+    const contextBindingRepo = new TaskContextBindingRepository(db);
+    const workspacePath = join(makeTempDir('agora-ts-closeout-force-workspace-'), 'OC-CLOSEOUT-FORCE-1');
+    mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
+    writeFileSync(join(workspacePath, '07-outputs', 'project-harvest-draft.md'), '# draft\n', 'utf8');
+
+    service.createTask({
+      title: 'Closeout force reminder task',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    contextBindingRepo.insert({
+      id: 'binding-closeout-force-1',
+      task_id: 'OC-CLOSEOUT-FORCE-1',
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'thread-closeout-force-1',
+      status: 'active',
+    });
+    brainBindings.createBinding({
+      task_id: 'OC-CLOSEOUT-FORCE-1',
+      brain_pack_ref: 'agora-project-state',
+      brain_task_id: 'OC-CLOSEOUT-FORCE-1',
+      workspace_path: workspacePath,
+    });
+
+    let guard = 0;
+    while (guard < 8) {
+      const task = service.getTask('OC-CLOSEOUT-FORCE-1');
+      if (!task || task.state === 'done') break;
+      service.forceAdvanceTask('OC-CLOSEOUT-FORCE-1', { reason: 'force to done' });
+      guard += 1;
+    }
+    await service.drainBackgroundOperations();
+
+    const broadcasts = provisioningPort.published.flatMap((entry) => entry.messages);
+    const reminder = broadcasts.find((message) => message.kind === 'controller_closeout_requested');
+    const controllerRef = service.getTask('OC-CLOSEOUT-FORCE-1')?.team.members.find((member) => member.member_kind === 'controller')?.agentId;
+
+    expect(reminder).toMatchObject({
+      participant_refs: [controllerRef],
+    });
+    expect(reminder?.body).toContain(workspacePath);
+  });
+
   it('auto-refines a project nomos draft when a fixed authoring task reaches done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    new ProjectService(db).createProject({
+    createProjectServiceFromDb(db).createProject({
       id: 'proj-nomos-loop',
       name: 'Project Nomos Loop',
     });
@@ -2875,7 +3030,7 @@ describe('task service', () => {
       draftDir: '/tmp/project-nomos',
       draftProfilePath: '/tmp/project-nomos/profile.toml',
     }));
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-AUTHORING-1',
       projectNomosAuthoringPort: {
@@ -2934,7 +3089,7 @@ describe('task service', () => {
   it('auto-refines a project nomos draft when a fixed authoring task is force-advanced to done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    new ProjectService(db).createProject({
+    createProjectServiceFromDb(db).createProject({
       id: 'proj-nomos-loop-force',
       name: 'Project Nomos Loop Force',
     });
@@ -2942,7 +3097,7 @@ describe('task service', () => {
       draftDir: '/tmp/project-nomos',
       draftProfilePath: '/tmp/project-nomos/profile.toml',
     }));
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-AUTHORING-2',
       projectNomosAuthoringPort: {
@@ -3001,7 +3156,7 @@ describe('task service', () => {
   it('rejects project nomos authoring tasks that are not bound to a project', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-AUTHORING-3',
     });
@@ -3048,7 +3203,7 @@ describe('task service', () => {
   it('rejects project nomos authoring tasks when control and task project ids differ', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOMOS-AUTHORING-4',
     });
@@ -3096,7 +3251,7 @@ describe('task service', () => {
   it('clears current_stage and blocks further gate decisions after force advancing a terminal stage to done', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DONE-GATE-1',
       archonUsers: ['archon'],
@@ -3144,10 +3299,10 @@ describe('task service', () => {
   it('fails running craftsmen work on resume when the session is no longer alive', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-115',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
@@ -3210,10 +3365,10 @@ describe('task service', () => {
   it('blocks active tasks with dead craftsmen sessions during startup recovery scan', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-116',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
@@ -3282,10 +3437,10 @@ describe('task service', () => {
   it('mirrors startup recovery blocking into task conversation when an active binding exists', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-116B',
-      isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+      isCraftsmanSessionAlive: (sessionId: string) => sessionId !== 'tmux:dead',
     });
     const bindings = new TaskContextBindingRepository(db);
     const subtasks = new SubtaskRepository(db);
@@ -3346,8 +3501,8 @@ describe('task service', () => {
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-prov-1', 'pb-prov-2', 'pb-prov-3', 'pb-prov-4'];
         return () => ids.shift() ?? 'pb-prov-x';
@@ -3362,7 +3517,7 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROV-1',
       imProvisioningPort: provisioningPort,
@@ -3452,8 +3607,8 @@ describe('task service', () => {
       });
       await originalPublish(input);
     };
-    const bindingService = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-drain-1', 'pb-drain-2', 'pb-drain-3', 'pb-drain-4'];
         return () => ids.shift() ?? 'pb-drain-x';
@@ -3468,7 +3623,7 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROV-DRAIN-1',
       imProvisioningPort: provisioningPort,
@@ -3513,7 +3668,7 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-bootstrap-1',
     });
-    const bindingService = new TaskContextBindingService(db);
+    const bindingService = createTaskContextBindingServiceFromDb(db);
     const runtimePort = {
       resolveAgent(agentRef: string) {
         return {
@@ -3529,21 +3684,21 @@ describe('task service', () => {
         };
       },
     };
-    const taskParticipation = new TaskParticipationService(db, {
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-bootstrap-1', 'pb-bootstrap-2', 'pb-bootstrap-3', 'pb-bootstrap-4'];
         return () => ids.shift() ?? 'pb-bootstrap-x';
       })(),
       agentRuntimePort: runtimePort,
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BOOTSTRAP-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
       taskParticipationService: taskParticipation,
       agentRuntimePort: runtimePort,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-bootstrap-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -3700,7 +3855,7 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-bootstrap-refresh-1',
     });
-    const bindingService = new TaskContextBindingService(db);
+    const bindingService = createTaskContextBindingServiceFromDb(db);
     const runtimePort = {
       resolveAgent(agentRef: string) {
         return {
@@ -3710,7 +3865,7 @@ describe('task service', () => {
         };
       },
     };
-    const taskParticipation = new TaskParticipationService(db, {
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-refresh-1', 'pb-refresh-2'];
         return () => ids.shift() ?? 'pb-refresh-x';
@@ -3743,14 +3898,14 @@ describe('task service', () => {
           ]
         : []
     ));
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-BOOTSTRAP-REFRESH-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
       taskParticipationService: taskParticipation,
       agentRuntimePort: runtimePort,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-bootstrap-refresh-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -3815,13 +3970,13 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-smoke-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SMOKE-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-smoke-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -3866,13 +4021,13 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-regression-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REGRESSION-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-regression-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -3920,15 +4075,15 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-smoke-status-1',
     });
-    const bindingService = new TaskContextBindingService(db);
+    const bindingService = createTaskContextBindingServiceFromDb(db);
     const executions = new CraftsmanExecutionRepository(db);
     const subtasks = new SubtaskRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SMOKE-STATUS-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-smoke-status-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -4015,14 +4170,14 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-smoke-craftsman-loop-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-smoke-loop-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T10:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SMOKE-CRAFTSMAN-1',
       craftsmanDispatcher: dispatcher,
@@ -4033,7 +4188,7 @@ describe('task service', () => {
       },
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-smoke-craftsman-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -4139,8 +4294,8 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-smoke-probe-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SMOKE-PROBE-1',
       imProvisioningPort: provisioningPort,
@@ -4183,8 +4338,8 @@ describe('task service', () => {
       im_provider: 'discord',
       conversation_ref: 'discord-parent-channel',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROV-HUMAN',
       imProvisioningPort: provisioningPort,
@@ -4227,14 +4382,14 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-roster-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-roster-1', 'pb-roster-2', 'pb-roster-3'];
         return () => ids.shift() ?? 'pb-roster-x';
       })(),
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-ROSTER-1',
       imProvisioningPort: provisioningPort,
@@ -4344,8 +4499,8 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-roster-status-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-status-1', 'pb-status-2', 'pb-status-3'];
         return () => ids.shift() ?? 'pb-status-x';
@@ -4361,7 +4516,7 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-STAGE-STATUS-1',
       imProvisioningPort: provisioningPort,
@@ -4452,14 +4607,14 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-force-roster-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-force-1', 'pb-force-2', 'pb-force-3'];
         return () => ids.shift() ?? 'pb-force-x';
       })(),
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-FORCE-ROSTER-1',
       imProvisioningPort: provisioningPort,
@@ -4563,14 +4718,14 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-reject-roster-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const taskParticipation = new TaskParticipationService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const taskParticipation = createTaskParticipationServiceFromDb(db, {
       participantIdGenerator: (() => {
         const ids = ['pb-reject-1', 'pb-reject-2', 'pb-reject-3'];
         return () => ids.shift() ?? 'pb-reject-x';
       })(),
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REJECT-ROSTER-1',
       imProvisioningPort: provisioningPort,
@@ -4662,13 +4817,13 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-ctx-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CTX-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-ctx-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -4751,13 +4906,13 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-reject-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-REJECT-THREAD-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-reject-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -4827,8 +4982,8 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-probe-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROBE-1',
       imProvisioningPort: provisioningPort,
@@ -4895,8 +5050,8 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-probe-sqlite',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROBE-SQLITE-1',
       imProvisioningPort: provisioningPort,
@@ -4945,9 +5100,9 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-probe-echo',
     });
-    const bindingService = new TaskContextBindingService(db);
+    const bindingService = createTaskContextBindingServiceFromDb(db);
     const conversationRepository = new TaskConversationRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROBE-ECHO-1',
       imProvisioningPort: provisioningPort,
@@ -5023,16 +5178,92 @@ describe('task service', () => {
     ).toHaveLength(1);
   });
 
+  it('suppresses controller pings when task is at an approval gate even before advanceTask is called', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-approval-no-advance',
+    });
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-APPROVAL-NO-ADVANCE-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+      resolveHumanReminderParticipantRefs: ({ reason }: { reason: string }) =>
+        reason === 'approval_waiting' ? ['discord-user-123'] : [],
+    });
+
+    service.createTask({
+      title: 'Approval gate no advance',
+      type: 'custom',
+      creator: 'alice',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          { role: 'reviewer', agentId: 'glm5', member_kind: 'citizen', model_preference: 'review' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'review',
+            mode: 'discuss',
+            gate: { type: 'approval', approver: 'reviewer' },
+          },
+        ],
+      },
+      im_target: { provider: 'discord', visibility: 'private' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    provisioningPort.published.length = 0;
+
+    // Controller has NOT called advanceTask — no approval_request row exists yet.
+    // Task is idle and at an approval gate stage.
+    db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-NO-ADVANCE-1');
+    db.prepare('UPDATE flow_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-NO-ADVANCE-1');
+    db.prepare('UPDATE progress_log SET created_at = ? WHERE task_id = ?').run('2026-03-29T00:00:00.000Z', 'OC-APPROVAL-NO-ADVANCE-1');
+
+    const result = service.probeInactiveTasks({
+      controllerAfterMs: 1_000,
+      rosterAfterMs: 2_000,
+      inboxAfterMs: 3_000,
+      now: new Date('2026-03-29T01:00:00.000Z'),
+    });
+
+    // Should NOT ping the controller — the gate is waiting for human approval.
+    expect(result).toMatchObject({
+      scanned_tasks: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 1,
+      inbox_items: 0,
+    });
+    expect(
+      provisioningPort.published.flatMap((entry) => entry.messages).filter((m) => m.kind === 'controller_pinged'),
+    ).toHaveLength(0);
+    expect(provisioningPort.published.at(-1)?.messages[0]).toMatchObject({
+      kind: 'human_approval_pinged',
+      participant_refs: ['discord-user-123'],
+    });
+  });
+
   it('rejects craftsman dispatch when the current stage semantics do not allow craftsman work', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-disallowed-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T15:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GUARD-1',
       craftsmanDispatcher: dispatcher,
@@ -5072,13 +5303,13 @@ describe('task service', () => {
   it('allows craftsman dispatch when the active stage explicitly opts into craftsman execution', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-allowed-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T15:30:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GUARD-2',
       craftsmanDispatcher: dispatcher,
@@ -5140,13 +5371,13 @@ describe('task service', () => {
     tempPaths.push(repoDir, projectStateRoot, isolatedRoot);
     rmSync(isolatedRoot, { recursive: true, force: true });
     initCommittedRepo(repoDir);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-default-workdir-repo-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:00:00.000Z'),
       },
     });
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-repo-workdir',
       name: 'Repo Workdir',
@@ -5160,7 +5391,7 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-REPO',
       craftsmanDispatcher: dispatcher,
@@ -5206,7 +5437,7 @@ describe('task service', () => {
       mode: 'one_shot',
       interaction_expectation: 'one_shot',
       workdir: null,
-    });
+    }) as unknown as { execution: { workdir: string | null } };
 
     const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-repo-workdir', 'OC-DISPATCH-WORKDIR-REPO');
     expect(result.execution.workdir).toBe(expected);
@@ -5222,13 +5453,13 @@ describe('task service', () => {
     tempPaths.push(projectStateRoot, isolatedRoot);
     rmSync(isolatedRoot, { recursive: true, force: true });
     initCommittedRepo(projectStateRoot, { 'index.md': '# project\n' });
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-default-workdir-project-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-31T10:10:00.000Z'),
       },
     });
-    const projectService = new ProjectService(db);
+    const projectService = createProjectServiceFromDb(db);
     projectService.createProject({
       id: 'proj-project-workdir',
       name: 'Project Workdir',
@@ -5241,7 +5472,7 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-WORKDIR-PROJECT',
       craftsmanDispatcher: dispatcher,
@@ -5287,7 +5518,7 @@ describe('task service', () => {
       mode: 'one_shot',
       interaction_expectation: 'one_shot',
       workdir: null,
-    });
+    }) as unknown as { execution: { workdir: string | null } };
 
     const expected = join(tmpdir(), '.agora-task-worktrees', 'proj-project-workdir', 'OC-DISPATCH-WORKDIR-PROJECT');
     expect(result.execution.workdir).toBe(expected);
@@ -5298,13 +5529,13 @@ describe('task service', () => {
   it('normalizes craftsman adapter aliases for manual dispatch', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-allowed-alias-1',
       adapters: {
         claude: new StubCraftsmanAdapter('claude', () => '2026-03-14T11:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GUARD-ALIAS-1',
       craftsmanDispatcher: dispatcher,
@@ -5363,7 +5594,7 @@ describe('task service', () => {
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
     const captured: Array<{ brief_path: string | null; prompt: string | null }> = [];
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-auto-brief-1',
       adapters: {
         claude: {
@@ -5380,11 +5611,11 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-BRIEF-1',
       craftsmanDispatcher: dispatcher,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-brief-binding-1',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -5439,7 +5670,7 @@ describe('task service', () => {
       mode: 'one_shot',
       interaction_expectation: 'one_shot',
       workdir: '/tmp/brief-dispatch',
-    });
+    }) as unknown as { execution: { brief_path: string | null } };
 
     expect(captured).toHaveLength(1);
     expect(captured[0]?.brief_path).toBeTruthy();
@@ -5460,7 +5691,7 @@ describe('task service', () => {
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
     const captured: Array<{ brief_path: string | null; prompt: string | null }> = [];
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-audience-brief-1',
       adapters: {
         claude: {
@@ -5477,7 +5708,7 @@ describe('task service', () => {
         },
       },
     });
-    const projectService = new ProjectService(db, {
+    const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({
         brainPackRoot: brainPackDir,
       }),
@@ -5492,12 +5723,12 @@ describe('task service', () => {
       markdown: `---\ndoc_type: project_brain_bootstrap_context\naudience: ${input.audience}\n---\n# ${input.audience}\n`,
       source_documents: [],
     }));
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-AUDIENCE-BRIEF-1',
       craftsmanDispatcher: dispatcher,
       projectService,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-audience-brief-binding',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -5507,7 +5738,7 @@ describe('task service', () => {
         buildBootstrapContext,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
-      } as unknown as ProjectBrainAutomationService,
+      } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
     });
     const subtasks = new SubtaskRepository(db);
 
@@ -5571,7 +5802,7 @@ describe('task service', () => {
     runMigrations(db);
     const brainPackDir = makeBrainPackDir();
     const captured: Array<{ brief_path: string | null; prompt: string | null }> = [];
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-auto-brief-2',
       adapters: {
         claude: {
@@ -5588,11 +5819,11 @@ describe('task service', () => {
         },
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-BRIEF-1',
       craftsmanDispatcher: dispatcher,
-      taskBrainBindingService: new TaskBrainBindingService(db, {
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
         idGenerator: () => 'brain-brief-binding-2',
       }),
       taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
@@ -5660,13 +5891,13 @@ describe('task service', () => {
   it('rejects craftsman dispatch when the caller is not the controller', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-owner-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-12T16:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-OWNER-1',
       craftsmanDispatcher: dispatcher,
@@ -5716,7 +5947,7 @@ describe('task service', () => {
   it('rejects craftsman dispatch when per-agent concurrency exceeds the configured limit', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-governance-limit-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T14:00:00.000Z'),
@@ -5724,7 +5955,7 @@ describe('task service', () => {
     });
     const executions = new CraftsmanExecutionRepository(db);
     const subtasks = new SubtaskRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GOV-1',
       craftsmanDispatcher: dispatcher,
@@ -5796,7 +6027,7 @@ describe('task service', () => {
   it('rejects subtask creation when host resource limits are exceeded', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GOV-2',
       hostResourcePort: {
@@ -5861,11 +6092,11 @@ describe('task service', () => {
     runMigrations(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-DISPATCH-GOV-3',
       craftsmanExecutionProbePort: {
-        probe: ({ executionId }) => ({
+        probe: ({ executionId }: CraftsmanProbePortExecution) => ({
           execution_id: executionId,
           status: 'running',
           session_id: 'tmux:observed',
@@ -5942,7 +6173,7 @@ describe('task service', () => {
   it('applies staircase backoff to repeated craftsman auto-probes with no progress', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-OBSERVE-BACKOFF-1',
       craftsmanExecutionProbePort: {
@@ -6083,13 +6314,13 @@ describe('task service', () => {
   it('creates execute-mode subtasks through the formal service surface and auto-dispatches craftsmen specs', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-subtask-create-1',
       adapters: {
         codex: new StubCraftsmanAdapter('codex', () => '2026-03-13T10:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-CREATE-1',
       craftsmanDispatcher: dispatcher,
@@ -6169,13 +6400,13 @@ describe('task service', () => {
   it('normalizes craftsman adapter aliases during formal subtask creation and auto-dispatch', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const dispatcher = new CraftsmanDispatcher(db, {
+    const dispatcher = createCraftsmanDispatcherFromDb(db, {
       executionIdGenerator: () => 'exec-subtask-create-alias-1',
       adapters: {
         claude: new StubCraftsmanAdapter('claude', () => '2026-03-14T10:00:00.000Z'),
       },
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-CREATE-ALIAS-1',
       craftsmanDispatcher: dispatcher,
@@ -6237,7 +6468,7 @@ describe('task service', () => {
   it('rejects formal subtask creation when the caller is not the controller', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-CREATE-2',
     });
@@ -6278,7 +6509,7 @@ describe('task service', () => {
   it('requires explicit manual intent for non-craftsman subtasks', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-CREATE-MANUAL-1',
     });
@@ -6318,7 +6549,7 @@ describe('task service', () => {
   it('rejects manual subtasks in smoke mode when the stage is craftsman-capable', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-SMOKE-MANUAL-1',
     });
@@ -6360,7 +6591,7 @@ describe('task service', () => {
   it('rejects craftsman subtask creation when the per-agent concurrency limit would be exceeded', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-LIMIT-1',
       craftsmanGovernance: {
@@ -6431,7 +6662,7 @@ describe('task service', () => {
   it('rejects craftsman subtask creation when host memory utilization exceeds the configured limit', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-LIMIT-2',
       craftsmanGovernance: {
@@ -6494,7 +6725,7 @@ describe('task service', () => {
   it('uses macOS memory pressure instead of resident memory and swap for dispatch governance', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-MAC-1',
       craftsmanGovernance: {
@@ -6562,7 +6793,7 @@ describe('task service', () => {
     runMigrations(db);
     const subtasks = new SubtaskRepository(db);
     const executions = new CraftsmanExecutionRepository(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GOV-SNAPSHOT-1',
       craftsmanGovernance: {
@@ -6642,7 +6873,7 @@ describe('task service', () => {
   it('blocks macOS dispatch when memory pressure exceeds the configured limit', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-MAC-2',
       craftsmanGovernance: {
@@ -6707,7 +6938,7 @@ describe('task service', () => {
   it('rejects one_shot craftsman subtasks that declare interactive follow-up', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SUBTASK-GUARD-1',
     });
@@ -6754,7 +6985,7 @@ describe('task service', () => {
   it('applies team/workflow overrides when creating a task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-OVERRIDE-1',
     });
@@ -6819,10 +7050,10 @@ describe('task service', () => {
     });
   });
 
-  it('persists task skill policy when creating a task', () => {
+  it('persists task skill policy and control when creating a task', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-SKILL-POLICY-1',
     });
@@ -6833,6 +7064,9 @@ describe('task service', () => {
       creator: 'archon',
       description: '',
       priority: 'normal',
+      control: {
+        mode: 'smoke_test',
+      },
       skill_policy: {
         global_refs: ['planning-with-files'],
         role_refs: {
@@ -6851,12 +7085,15 @@ describe('task service', () => {
       },
       enforcement: 'required',
     });
+    expect(created.control).toMatchObject({
+      mode: 'smoke_test',
+    });
   });
 
   it('rejects workflow overrides whose graph semantics are not runtime-supported', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GRAPH-INVALID-1',
     });
@@ -6900,7 +7137,7 @@ describe('task service', () => {
   it('rejects graph-backed workflow overrides whose graph nodes and stages are out of sync', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-GRAPH-ALIGN-1',
     });
@@ -6945,8 +7182,8 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-notify-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-NOTIFY-1',
       imProvisioningPort: provisioningPort,
@@ -7023,6 +7260,89 @@ describe('task service', () => {
     });
   });
 
+  it('broadcasts summarized craftsman output instead of raw runtime transcript', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-notify-raw-1',
+    });
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOTIFY-RAW-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Immediate callback notify raw transcript',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    subtasks.insertSubtask({
+      id: 'notify-subtask-raw-1',
+      task_id: 'OC-NOTIFY-RAW-1',
+      stage_id: 'develop',
+      title: 'notify me without transcript spam',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'claude:notify-raw-1',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-notify-raw-1',
+      task_id: 'OC-NOTIFY-RAW-1',
+      subtask_id: 'notify-subtask-raw-1',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'claude:notify-raw-1',
+      status: 'running',
+      started_at: '2026-04-01T15:00:00.000Z',
+    });
+
+    const transcript = [
+      '[client] initialize (running)',
+      '[client] session/new (running)',
+      '我先读取 spec 文件和当前 constitution.md。',
+      '[client] session/request_permission (running)',
+      '内容已读取，现在填充 constitution.md。',
+      '[tool] Write /tmp/constitution.md (failed)',
+      '  output:',
+      '    User refused permission to run tool',
+      '[done] end_turn',
+    ].join('\n');
+
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-notify-raw-1',
+      status: 'succeeded',
+      session_id: 'claude:notify-raw-1',
+      payload: {
+        output: {
+          summary: null,
+          text: transcript,
+          artifacts: [],
+        },
+      },
+      error: null,
+      finished_at: '2026-04-01T15:01:00.000Z',
+    });
+
+    const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_completed');
+    expect(callbackMessage?.body).toContain('内容已读取，现在填充 constitution.md。');
+    expect(callbackMessage?.body).toContain('User refused permission to run tool');
+    expect(callbackMessage?.body).not.toContain('[client] session/new (running)');
+    expect(callbackMessage?.body).not.toContain('[tool] Write /tmp/constitution.md (failed)');
+  });
+
   it('routes craftsman input by execution id and records the input event', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -7031,20 +7351,20 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-input-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-INPUT-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
       craftsmanInputPort: {
-        sendText: (execution, text, submit = true) => {
+        sendText: (execution: CraftsmanInputPortExecution, text: string, submit = true) => {
           inputCalls.push({ kind: 'text', executionId: execution.executionId, payload: { text, submit } });
         },
-        sendKeys: (execution, keys) => {
+        sendKeys: (execution: CraftsmanInputPortExecution, keys: string[]) => {
           inputCalls.push({ kind: 'keys', executionId: execution.executionId, payload: keys });
         },
-        submitChoice: (execution, keys) => {
+        submitChoice: (execution: CraftsmanInputPortExecution, keys: string[]) => {
           inputCalls.push({ kind: 'choice', executionId: execution.executionId, payload: keys });
         },
       },
@@ -7106,8 +7426,8 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-probe-1',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROBE-1',
       imProvisioningPort: provisioningPort,
@@ -7183,11 +7503,11 @@ describe('task service', () => {
   it('returns execution-scoped tmux tail when a tail port is configured', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-TAIL-1',
       craftsmanExecutionTailPort: {
-        tail: (execution, lines) => ({
+        tail: (execution: CraftsmanTailPortExecution, lines: number) => ({
           execution_id: execution.executionId,
           available: true,
           output: `tail:${execution.adapter}:${lines}`,
@@ -7238,11 +7558,11 @@ describe('task service', () => {
   it('returns execution-scoped acpx tail when an acp tail port is configured', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-TAIL-ACP-1',
       craftsmanExecutionTailPort: {
-        tail: (execution, lines) => ({
+        tail: (execution: CraftsmanTailPortExecution, lines: number) => ({
           execution_id: execution.executionId,
           available: true,
           output: `acp-tail:${execution.adapter}:${execution.workdir}:${lines}`,
@@ -7296,11 +7616,11 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const calls: Array<{ kind: string; executionId: string; payload: unknown }> = [];
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-1',
       craftsmanInputPort: {
-        sendText: (execution, text, submit = true) => {
+        sendText: (execution: CraftsmanInputPortExecution, text: string, submit = true) => {
           calls.push({ kind: 'text', executionId: execution.executionId, payload: { text, submit } });
         },
         sendKeys: () => {},
@@ -7351,11 +7671,11 @@ describe('task service', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
     const calls: Array<{ kind: string; executionId: string; workdir: string | null; payload: unknown }> = [];
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-CONTINUOUS-INPUT-ACP-1',
       craftsmanInputPort: {
-        sendText: (execution, text, submit = true) => {
+        sendText: (execution: CraftsmanInputPortExecution, text: string, submit = true) => {
           calls.push({ kind: 'text', executionId: execution.executionId, workdir: execution.workdir, payload: { text, submit } });
         },
         sendKeys: () => {},
@@ -7417,19 +7737,19 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'thread-1',
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-PROBE-ACP-1',
       imProvisioningPort: provisioningPort,
       imMessagingPort: provisioningPort,
-      taskContextBindingService: new TaskContextBindingService(db),
+      taskContextBindingService: createTaskContextBindingServiceFromDb(db),
       craftsmanInputPort: {
         sendText: () => {},
         sendKeys: () => {},
         submitChoice: () => {},
       },
       craftsmanExecutionProbePort: {
-        probe: (execution) => ({
+        probe: (execution: CraftsmanProbePortExecution) => ({
           execution_id: execution.executionId,
           status: 'running',
           session_id: execution.sessionId,
@@ -7509,12 +7829,12 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'thread-1',
     });
-    const service = new TaskService(db, {
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-OBSERVE-ACP-DONE-1',
       imProvisioningPort: provisioningPort,
       imMessagingPort: provisioningPort,
-      taskContextBindingService: new TaskContextBindingService(db),
+      taskContextBindingService: createTaskContextBindingServiceFromDb(db),
       craftsmanExecutionProbePort: new AcpCraftsmanProbePort({
         probeExecution: () => ({
           sessionName: 'exec-observe-acp-done-1',

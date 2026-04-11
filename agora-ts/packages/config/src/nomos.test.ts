@@ -267,6 +267,104 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(join(refined.draftDir, 'prompts', 'bootstrap', 'interview.md'), 'utf8')).toContain('Should closeout require human signoff?');
   });
 
+  it('preserves manually edited constitution and lifecycle docs on refine-project by default', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const templateRoot = resolveInstalledCreateNomosPackTemplateDir({ userAgoraDir: agoraHomeDir });
+    mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(templateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(templateRoot, 'README.md'), '# Template\n', 'utf8');
+    writeFileSync(join(templateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(templateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const seeded = ensureProjectNomosAuthoringDraft('proj-safe-refine', 'Safe Refine Project', {
+      userAgoraDir: agoraHomeDir,
+      repoPath: '/tmp/safe-refine-repo',
+      nomosId: 'agora/default',
+    });
+
+    const constitutionPath = join(seeded.draftDir, 'constitution', 'constitution.md');
+    const lifecyclePath = join(seeded.draftDir, 'lifecycle', 'project-bootstrap.md');
+    writeFileSync(constitutionPath, '# Custom Constitution\n\nDo not overwrite me.\n', 'utf8');
+    writeFileSync(lifecyclePath, '# Custom Bootstrap\n\nHuman-authored workflow.\n', 'utf8');
+
+    writeFileSync(seeded.specPath, [
+      '---',
+      'project_id: "proj-safe-refine"',
+      'project_name: "Safe Refine Project"',
+      'base_nomos_id: "agora/default"',
+      'project_shape: "existing_repo"',
+      'repo_path: "/tmp/safe-refine-repo"',
+      'purpose: "Refined but safe."',
+      'lifecycle_modules:',
+      '  - project-bootstrap',
+      '  - task-closeout',
+      'doctor_checks:',
+      '  - constitution-present',
+      '  - bootstrap-prompts-present',
+      'methodology_keep:',
+      '  - preserve manual draft edits',
+      'methodology_change:',
+      '  - refresh generated docs only',
+      'open_questions: []',
+      '---',
+      '',
+      '# Project Nomos Authoring Spec',
+    ].join('\n'), 'utf8');
+
+    const refined = refineProjectNomosDraftFromSpec('proj-safe-refine', { userAgoraDir: agoraHomeDir });
+    expect(readFileSync(constitutionPath, 'utf8')).toContain('Do not overwrite me.');
+    expect(readFileSync(lifecyclePath, 'utf8')).toContain('Human-authored workflow.');
+    expect(readFileSync(join(refined.draftDir, 'docs', 'reference', 'methodologies.md'), 'utf8')).toContain('preserve manual draft edits');
+    expect(readFileSync(refined.draftProfilePath, 'utf8')).toContain('description = "Refined but safe."');
+  });
+
+  it('supports explicit destructive replace on refine-project when requested', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const templateRoot = resolveInstalledCreateNomosPackTemplateDir({ userAgoraDir: agoraHomeDir });
+    mkdirSync(join(templateRoot, 'docs', 'reference'), { recursive: true });
+    mkdirSync(join(templateRoot, 'prompts', 'bootstrap'), { recursive: true });
+    writeFileSync(join(templateRoot, 'README.md'), '# Template\n', 'utf8');
+    writeFileSync(join(templateRoot, 'docs', 'reference', 'methodologies.md'), 'template methods\n', 'utf8');
+    writeFileSync(join(templateRoot, 'prompts', 'bootstrap', 'interview.md'), 'template interview\n', 'utf8');
+
+    const seeded = ensureProjectNomosAuthoringDraft('proj-force-refine', 'Force Refine Project', {
+      userAgoraDir: agoraHomeDir,
+      repoPath: '/tmp/force-refine-repo',
+      nomosId: 'agora/default',
+    });
+
+    const constitutionPath = join(seeded.draftDir, 'constitution', 'constitution.md');
+    writeFileSync(constitutionPath, '# Custom Constitution\n\nOverwrite me when forced.\n', 'utf8');
+
+    writeFileSync(seeded.specPath, [
+      '---',
+      'project_id: "proj-force-refine"',
+      'project_name: "Force Refine Project"',
+      'base_nomos_id: "agora/default"',
+      'project_shape: "existing_repo"',
+      'repo_path: "/tmp/force-refine-repo"',
+      'purpose: "Forced replace."',
+      'lifecycle_modules:',
+      '  - project-bootstrap',
+      'doctor_checks:',
+      '  - constitution-present',
+      'methodology_keep: []',
+      'methodology_change: []',
+      'open_questions: []',
+      '---',
+      '',
+      '# Project Nomos Authoring Spec',
+    ].join('\n'), 'utf8');
+
+    refineProjectNomosDraftFromSpec('proj-force-refine', {
+      userAgoraDir: agoraHomeDir,
+      replaceExisting: true,
+    });
+
+    expect(readFileSync(constitutionPath, 'utf8')).not.toContain('Overwrite me when forced.');
+    expect(readFileSync(constitutionPath, 'utf8')).toContain('Force Refine Project Nomos');
+  });
+
   it('merges persisted project metadata with the installed Nomos boundary', () => {
     const agoraHomeDir = makeAgoraHomeDir();
     const profile = buildBuiltInAgoraNomosProjectProfile('proj-meta', { userAgoraDir: agoraHomeDir });

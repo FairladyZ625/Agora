@@ -1,28 +1,31 @@
-import {
-  NotificationOutboxRepository,
-  TaskConversationRepository,
-  TaskContextBindingRepository,
-  type AgoraDatabase,
-  type StoredNotificationOutbox,
-} from '@agora-ts/db';
+import type {
+  INotificationOutboxRepository,
+  ITaskConversationRepository,
+  ITaskContextBindingRepository,
+  NotificationOutboxRecord,
+} from '@agora-ts/contracts';
 import type { IMMessagingPort } from './im-ports.js';
+import { summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 
 export interface NotificationDispatcherOptions {
+  outboxRepository: INotificationOutboxRepository;
+  conversationRepository: ITaskConversationRepository;
+  bindingRepository: ITaskContextBindingRepository;
   messagingPort: IMMessagingPort;
   batchSize?: number;
 }
 
 export class NotificationDispatcher {
-  private readonly outbox: NotificationOutboxRepository;
-  private readonly conversations: TaskConversationRepository;
-  private readonly bindings: TaskContextBindingRepository;
+  private readonly outbox: INotificationOutboxRepository;
+  private readonly conversations: ITaskConversationRepository;
+  private readonly bindings: ITaskContextBindingRepository;
   private readonly messagingPort: IMMessagingPort;
   private readonly batchSize: number;
 
-  constructor(db: AgoraDatabase, options: NotificationDispatcherOptions) {
-    this.outbox = new NotificationOutboxRepository(db);
-    this.conversations = new TaskConversationRepository(db);
-    this.bindings = new TaskContextBindingRepository(db);
+  constructor(options: NotificationDispatcherOptions) {
+    this.outbox = options.outboxRepository;
+    this.conversations = options.conversationRepository;
+    this.bindings = options.bindingRepository;
     this.messagingPort = options.messagingPort;
     this.batchSize = options.batchSize ?? 50;
   }
@@ -57,7 +60,7 @@ export class NotificationDispatcher {
     return { delivered, failed };
   }
 
-  private resolveTarget(notification: StoredNotificationOutbox): string | null {
+  private resolveTarget(notification: NotificationOutboxRecord): string | null {
     if (!notification.target_binding_id) {
       return null;
     }
@@ -68,7 +71,7 @@ export class NotificationDispatcher {
     return binding.thread_ref ?? binding.conversation_ref ?? null;
   }
 
-  private mirrorDeliveredNotification(notification: StoredNotificationOutbox) {
+  private mirrorDeliveredNotification(notification: NotificationOutboxRecord) {
     if (!notification.target_binding_id) {
       return;
     }
@@ -97,15 +100,23 @@ export class NotificationDispatcher {
   }
 }
 
-function formatDeliveredNotificationBody(notification: StoredNotificationOutbox) {
+function formatDeliveredNotificationBody(notification: NotificationOutboxRecord) {
   if (notification.event_type === 'craftsman_completed') {
-    const output = notification.payload.output;
-    const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'completed';
+    const output = typeof notification.payload.display_output === 'string'
+      ? notification.payload.display_output
+      : notification.payload.output;
+    const summary = typeof output === 'string' && output.trim().length > 0
+      ? summarizeCraftsmanOutputForHuman(output, 'completed')
+      : 'completed';
     return `Notification delivered: craftsman finished: ${summary}`;
   }
   if (notification.event_type === 'craftsman_failed') {
-    const output = notification.payload.output;
-    const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'failed';
+    const output = typeof notification.payload.display_output === 'string'
+      ? notification.payload.display_output
+      : notification.payload.output;
+    const summary = typeof output === 'string' && output.trim().length > 0
+      ? summarizeCraftsmanOutputForHuman(output, 'failed')
+      : 'failed';
     return `Notification delivered: craftsman failed: ${summary}`;
   }
   return `Notification delivered: ${notification.event_type}`;

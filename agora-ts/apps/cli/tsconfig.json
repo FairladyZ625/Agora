@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@agora-ts/testing": ["packages/testing/src/index.ts"]
+    },
     "rootDir": "src",
     "outDir": "dist",
     "tsBuildInfoFile": "tsconfig.typecheck.tsbuildinfo"
@@ -11,6 +15,15 @@
     { "path": "../../packages/config" },
     { "path": "../../packages/contracts" },
     { "path": "../../packages/core" },
-    { "path": "../../packages/db" }
+    { "path": "../../packages/db" },
+    { "path": "../../packages/adapters-brain" },
+    { "path": "../../packages/adapters-craftsman" },
+    { "path": "../../packages/adapters-host" },
+    { "path": "../../packages/adapters-runtime" },
+    { "path": "../../packages/adapters-openclaw" },
+    { "path": "../../packages/adapters-cc-connect" },
+    { "path": "../../packages/adapters-obsidian" },
+    { "path": "../../packages/adapters-discord" },
+    { "path": "../../packages/testing" }
   ]
 }

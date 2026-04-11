@@ -1,18 +1,22 @@
-import type { PromoteInboxRequestDto, TaskPriority, UpdateInboxRequestDto } from '@agora-ts/contracts';
-import { InboxRepository, TodoRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { IInboxRepository, ITodoRepository, PromoteInboxRequestDto, TaskPriority, UpdateInboxRequestDto } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
 import type { TaskService } from './task-service.js';
 
+export interface InboxServiceOptions {
+  inboxRepository: IInboxRepository;
+  todoRepository: ITodoRepository;
+}
+
 export class InboxService {
-  private readonly inboxRepository: InboxRepository;
-  private readonly todoRepository: TodoRepository;
+  private readonly inboxRepository: IInboxRepository;
+  private readonly todoRepository: ITodoRepository;
 
   constructor(
-    db: AgoraDatabase,
     private readonly taskService: TaskService,
+    options: InboxServiceOptions,
   ) {
-    this.inboxRepository = new InboxRepository(db);
-    this.todoRepository = new TodoRepository(db);
+    this.inboxRepository = options.inboxRepository;
+    this.todoRepository = options.todoRepository;
   }
 
   listInboxItems(status?: string) {

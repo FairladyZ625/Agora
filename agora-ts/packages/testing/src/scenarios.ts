@@ -1,7 +1,29 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { HumanAccountService, TaskService, TaskContextBindingService } from '@agora-ts/core';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, SubtaskRepository, TaskRepository, NotificationOutboxRepository, TaskConversationRepository } from '@agora-ts/db';
+import { HumanAccountService, TaskService, TaskContextBindingService, CraftsmanCallbackService, ProjectContextWriter, ProjectMembershipService, ProjectAgentRosterService, TaskAuthorityService } from '@agora-ts/core';
+import {
+  ApprovalRequestRepository,
+  ArchiveJobRepository,
+  CraftsmanExecutionRepository,
+  FlowLogRepository,
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  InboxRepository,
+  NotificationOutboxRepository,
+  ProgressLogRepository,
+  ProjectAgentRosterRepository,
+  ProjectMembershipRepository,
+  ProjectWriteLockRepository,
+  SqliteGateCommandPort,
+  SqliteGateQueryPort,
+  SubtaskRepository,
+  TaskAuthorityRepository,
+  TaskContextBindingRepository,
+  TaskConversationRepository,
+  TaskRepository,
+  TemplateRepository,
+  TodoRepository,
+} from '@agora-ts/db';
 import type { CreateTestRuntimeOptions, TestRuntime } from './runtime.js';
 import { createTestRuntime } from './runtime.js';
 
@@ -646,11 +668,50 @@ function runPauseResumeDeferredCallbackScenario(runtime: TestRuntime): ScenarioR
 }
 
 function runPauseResumeMissingSessionScenario(runtime: TestRuntime): ScenarioResult {
-  const taskService = new TaskService(runtime.db, {
+  const taskService = new TaskService({
+    databasePort: runtime.db,
+    gateCommandPort: new SqliteGateCommandPort(runtime.db),
+    gateQueryPort: new SqliteGateQueryPort(runtime.db),
     templatesDir: runtime.templatesDir,
     taskIdGenerator: () => 'OC-DEAD',
     craftsmanDispatcher: runtime.craftsmanDispatcher,
     isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+    repositories: {
+      task: new TaskRepository(runtime.db),
+      flowLog: new FlowLogRepository(runtime.db),
+      progressLog: new ProgressLogRepository(runtime.db),
+      subtask: new SubtaskRepository(runtime.db),
+      taskContextBinding: new TaskContextBindingRepository(runtime.db),
+      taskConversation: new TaskConversationRepository(runtime.db),
+      todo: new TodoRepository(runtime.db),
+      archiveJob: new ArchiveJobRepository(runtime.db),
+      approvalRequest: new ApprovalRequestRepository(runtime.db),
+      inbox: new InboxRepository(runtime.db),
+      craftsmanExecution: new CraftsmanExecutionRepository(runtime.db),
+      template: new TemplateRepository(runtime.db),
+    },
+    subServices: {
+      taskAuthority: new TaskAuthorityService({ repository: new TaskAuthorityRepository(runtime.db) }),
+      projectMembership: new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(runtime.db),
+        accountRepository: new HumanAccountRepository(runtime.db),
+      }),
+      projectAgentRoster: new ProjectAgentRosterService({ repository: new ProjectAgentRosterRepository(runtime.db) }),
+      craftsmanCallback: new CraftsmanCallbackService({
+        executionRepository: new CraftsmanExecutionRepository(runtime.db),
+        subtaskRepository: new SubtaskRepository(runtime.db),
+        taskRepository: new TaskRepository(runtime.db),
+        flowLogRepository: new FlowLogRepository(runtime.db),
+        progressLogRepository: new ProgressLogRepository(runtime.db),
+        outboxRepository: new NotificationOutboxRepository(runtime.db),
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+      }),
+      projectContextWriter: new ProjectContextWriter({
+        writeLockRepository: new ProjectWriteLockRepository(runtime.db),
+        projectService: runtime.projectService,
+      }),
+    },
   });
   const task = taskService.createTask({
     title: 'Pause resume missing session scenario',
@@ -693,11 +754,50 @@ function runPauseResumeMissingSessionScenario(runtime: TestRuntime): ScenarioRes
 }
 
 function runStartupRecoveryMissingSessionScenario(runtime: TestRuntime): ScenarioResult {
-  const taskService = new TaskService(runtime.db, {
+  const taskService = new TaskService({
+    databasePort: runtime.db,
+    gateCommandPort: new SqliteGateCommandPort(runtime.db),
+    gateQueryPort: new SqliteGateQueryPort(runtime.db),
     templatesDir: runtime.templatesDir,
     taskIdGenerator: () => 'OC-STARTUP',
     craftsmanDispatcher: runtime.craftsmanDispatcher,
     isCraftsmanSessionAlive: (sessionId) => sessionId !== 'tmux:dead',
+    repositories: {
+      task: new TaskRepository(runtime.db),
+      flowLog: new FlowLogRepository(runtime.db),
+      progressLog: new ProgressLogRepository(runtime.db),
+      subtask: new SubtaskRepository(runtime.db),
+      taskContextBinding: new TaskContextBindingRepository(runtime.db),
+      taskConversation: new TaskConversationRepository(runtime.db),
+      todo: new TodoRepository(runtime.db),
+      archiveJob: new ArchiveJobRepository(runtime.db),
+      approvalRequest: new ApprovalRequestRepository(runtime.db),
+      inbox: new InboxRepository(runtime.db),
+      craftsmanExecution: new CraftsmanExecutionRepository(runtime.db),
+      template: new TemplateRepository(runtime.db),
+    },
+    subServices: {
+      taskAuthority: new TaskAuthorityService({ repository: new TaskAuthorityRepository(runtime.db) }),
+      projectMembership: new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(runtime.db),
+        accountRepository: new HumanAccountRepository(runtime.db),
+      }),
+      projectAgentRoster: new ProjectAgentRosterService({ repository: new ProjectAgentRosterRepository(runtime.db) }),
+      craftsmanCallback: new CraftsmanCallbackService({
+        executionRepository: new CraftsmanExecutionRepository(runtime.db),
+        subtaskRepository: new SubtaskRepository(runtime.db),
+        taskRepository: new TaskRepository(runtime.db),
+        flowLogRepository: new FlowLogRepository(runtime.db),
+        progressLogRepository: new ProgressLogRepository(runtime.db),
+        outboxRepository: new NotificationOutboxRepository(runtime.db),
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+      }),
+      projectContextWriter: new ProjectContextWriter({
+        writeLockRepository: new ProjectWriteLockRepository(runtime.db),
+        projectService: runtime.projectService,
+      }),
+    },
   });
   const task = taskService.createTask({
     title: 'Startup recovery missing session scenario',
@@ -1140,7 +1240,8 @@ function runCraftsmanCallbackNotifyOutboxScenario(runtime: TestRuntime): Scenari
     description: 'dispatch with binding, callback, scan outbox',
   });
   const subtasks = new SubtaskRepository(runtime.db);
-  const bindingService = new TaskContextBindingService(runtime.db, {
+  const bindingService = new TaskContextBindingService({
+    repository: new TaskContextBindingRepository(runtime.db),
     idGenerator: () => 'bind-notify-1',
   });
   const outbox = new NotificationOutboxRepository(runtime.db);
@@ -1313,7 +1414,10 @@ function runTaskConversationReadCursorScenario(runtime: TestRuntime): ScenarioRe
     im_provider: 'discord',
     thread_ref: 'scenario-read-thread',
   });
-  const humans = new HumanAccountService(runtime.db);
+  const humans = new HumanAccountService({
+    accountRepository: new HumanAccountRepository(runtime.db),
+    identityBindingRepository: new HumanIdentityBindingRepository(runtime.db),
+  });
   const account = humans.bootstrapAdmin({
     username: 'lizeyu',
     password: 'secret-pass',
@@ -1351,10 +1455,49 @@ function runTaskConversationReadCursorScenario(runtime: TestRuntime): ScenarioRe
 }
 
 function runControlPlaneLoopScenario(runtime: TestRuntime): ScenarioResult {
-  const taskService = new TaskService(runtime.db, {
+  const taskService = new TaskService({
+    databasePort: runtime.db,
+    gateCommandPort: new SqliteGateCommandPort(runtime.db),
+    gateQueryPort: new SqliteGateQueryPort(runtime.db),
     templatesDir: runtime.templatesDir,
     taskIdGenerator: () => 'OC-CONTROL-LOOP-1',
     craftsmanDispatcher: runtime.craftsmanDispatcher,
+    repositories: {
+      task: new TaskRepository(runtime.db),
+      flowLog: new FlowLogRepository(runtime.db),
+      progressLog: new ProgressLogRepository(runtime.db),
+      subtask: new SubtaskRepository(runtime.db),
+      taskContextBinding: new TaskContextBindingRepository(runtime.db),
+      taskConversation: new TaskConversationRepository(runtime.db),
+      todo: new TodoRepository(runtime.db),
+      archiveJob: new ArchiveJobRepository(runtime.db),
+      approvalRequest: new ApprovalRequestRepository(runtime.db),
+      inbox: new InboxRepository(runtime.db),
+      craftsmanExecution: new CraftsmanExecutionRepository(runtime.db),
+      template: new TemplateRepository(runtime.db),
+    },
+    subServices: {
+      taskAuthority: new TaskAuthorityService({ repository: new TaskAuthorityRepository(runtime.db) }),
+      projectMembership: new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(runtime.db),
+        accountRepository: new HumanAccountRepository(runtime.db),
+      }),
+      projectAgentRoster: new ProjectAgentRosterService({ repository: new ProjectAgentRosterRepository(runtime.db) }),
+      craftsmanCallback: new CraftsmanCallbackService({
+        executionRepository: new CraftsmanExecutionRepository(runtime.db),
+        subtaskRepository: new SubtaskRepository(runtime.db),
+        taskRepository: new TaskRepository(runtime.db),
+        flowLogRepository: new FlowLogRepository(runtime.db),
+        progressLogRepository: new ProgressLogRepository(runtime.db),
+        outboxRepository: new NotificationOutboxRepository(runtime.db),
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+      }),
+      projectContextWriter: new ProjectContextWriter({
+        writeLockRepository: new ProjectWriteLockRepository(runtime.db),
+        projectService: runtime.projectService,
+      }),
+    },
   });
   const subtasks = new SubtaskRepository(runtime.db);
   const task = taskService.createTask({

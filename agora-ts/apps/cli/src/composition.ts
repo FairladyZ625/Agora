@@ -13,55 +13,78 @@ import {
   syncBundledBrainPackContents,
   type AgoraConfig,
 } from '@agora-ts/config';
-import { createAgoraDatabase, runMigrations, type AgoraDatabase } from '@agora-ts/db';
+import {
+  createAgoraDatabase,
+  runMigrations,
+  type AgoraDatabase,
+  CraftsmanExecutionRepository,
+  SubtaskRepository,
+  TaskRepository,
+  TaskContextBindingRepository,
+  TaskBrainBindingRepository,
+  TaskConversationRepository,
+  TaskConversationReadCursorRepository,
+  ProjectBrainIndexJobRepository,
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  ProjectMembershipRepository,
+  ProjectAgentRosterRepository,
+  ProjectRepository,
+  CitizenRepository,
+  RoleDefinitionRepository,
+  RoleBindingRepository,
+  FlowLogRepository,
+  ProgressLogRepository,
+  TodoRepository,
+  ArchiveJobRepository,
+  ApprovalRequestRepository,
+  InboxRepository,
+  NotificationOutboxRepository,
+  TemplateRepository,
+  ParticipantBindingRepository,
+  RuntimeSessionBindingRepository,
+  TaskAuthorityRepository,
+  ProjectWriteLockRepository,
+  SqliteGateQueryPort,
+  SqliteGateCommandPort,
+} from '@agora-ts/db';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { createDashboardSessionClient, type DashboardSessionClient } from './dashboard-session-client.js';
 import {
   CitizenService,
-  AcpCraftsmanInputPort,
-  AcpCraftsmanProbePort,
-  AcpCraftsmanTailPort,
-  AcpRuntimeRecoveryPort,
-  ClaudeCraftsmanAdapter,
-  CodexCraftsmanAdapter,
-  createDefaultCraftsmanAdapters,
+  CompositeAgentInventorySource,
+  CraftsmanCallbackService,
   CraftsmanDispatcher,
-  DirectAcpxRuntimePort,
   DashboardQueryService,
   FileArchiveJobNotifier,
   FileArchiveJobReceiptIngestor,
-  FilesystemSkillCatalogAdapter,
-  FilesystemProjectBrainQueryAdapter,
-  FilesystemProjectKnowledgeAdapter,
-  FilesystemTaskBrainWorkspaceAdapter,
-  GeminiCraftsmanAdapter,
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
-  OpenClawCitizenProjectionAdapter,
+  ContextSourceBindingService,
   ProjectBrainAutomationService,
   ProjectBrainChunkingPolicy,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainRetrievalService,
-  OsHostResourcePort,
   ProjectBrainService,
+  ProjectContextWriter,
+  ProjectMembershipService,
+  ProjectAgentRosterService,
   ProjectService,
-  QdrantProjectBrainVectorIndexAdapter,
+  RetrievalRegistry,
+  RetrievalService,
   StubIMMessagingPort,
   RolePackService,
+  TaskAuthorityService,
   TaskBrainBindingService,
-  TmuxCraftsmanInputPort,
-  TmuxCraftsmanProbePort,
-  TmuxCraftsmanTailPort,
-  TmuxRuntimeRecoveryPort,
   type ProjectKnowledgePort,
   type ProjectBrainEmbeddingPort,
   type ProjectBrainVectorIndexPort,
   type CraftsmanInputPort,
   type CraftsmanExecutionProbePort,
   type CraftsmanExecutionTailPort,
+  type InteractiveRuntimePort,
   type RuntimeRecoveryPort,
   type TaskBrainWorkspacePort,
   resolveCraftsmanRuntimeMode,
@@ -70,13 +93,20 @@ import {
   TaskParticipationService,
   TaskService,
   TemplateAuthoringService,
-  TmuxRuntimeService,
+  type AgentInventorySource,
   type AgentRuntimePort,
   type IMMessagingPort,
   type IMProvisioningPort,
 } from '@agora-ts/core';
-import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry } from '@agora-ts/adapters-openclaw';
+import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
+import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter } from '@agora-ts/adapters-cc-connect';
+import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
+import { OsHostResourcePort } from '@agora-ts/adapters-host';
+import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
+import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { ObsidianContextSourceRetrievalAdapter } from '@agora-ts/adapters-obsidian';
+import type { TransactionManager } from '@agora-ts/contracts';
 
 export interface CreateCliCompositionOptions {
   configPath?: string;
@@ -118,7 +148,7 @@ export interface CliCompositionFactories {
       projectBrainService: ProjectBrainService;
       taskBrainBindingService: TaskBrainBindingService;
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
-      retrievalService?: ProjectBrainRetrievalService;
+      retrievalService?: Pick<RetrievalService, 'retrieve'>;
     },
   ) => ProjectBrainAutomationService;
   createCitizenService: (
@@ -149,8 +179,8 @@ export interface CliCompositionFactories {
       runtimeRecoveryPort: RuntimeRecoveryPort;
     },
   ) => TaskService;
-  createLegacyRuntimeService: (context: CliCompositionContext) => TmuxRuntimeService;
-  createTmuxRuntimeService?: (context: CliCompositionContext) => TmuxRuntimeService;
+  createLegacyRuntimeService: (context: CliCompositionContext) => InteractiveRuntimePort;
+  createTmuxRuntimeService?: (context: CliCompositionContext) => InteractiveRuntimePort;
   createDashboardSessionClient: (context: CliCompositionContext) => DashboardSessionClient;
   createHumanAccountService: (context: CliCompositionContext) => HumanAccountService;
   createTaskConversationService: (context: CliCompositionContext) => TaskConversationService;
@@ -161,9 +191,12 @@ export interface CliCompositionFactories {
   createDashboardQueryService: (
     context: CliCompositionContext,
     deps: {
+      agentRegistry: AgentInventorySource;
       archiveJobNotifier: FileArchiveJobNotifier;
       archiveJobReceiptIngestor: FileArchiveJobReceiptIngestor;
       imProvisioningPort: IMProvisioningPort | undefined;
+      taskBrainBindingService: TaskBrainBindingService;
+      taskBrainWorkspacePort: TaskBrainWorkspacePort;
       taskContextBindingService: TaskContextBindingService;
     },
   ) => DashboardQueryService;
@@ -201,9 +234,10 @@ export interface CliComposition {
   projectBrainAutomationService: ProjectBrainAutomationService;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
+  contextRetrievalService: RetrievalService;
   citizenService: CitizenService;
-  legacyRuntimeService: TmuxRuntimeService;
-  tmuxRuntimeService: TmuxRuntimeService;
+  legacyRuntimeService: InteractiveRuntimePort;
+  tmuxRuntimeService: InteractiveRuntimePort;
   dashboardSessionClient: DashboardSessionClient;
   humanAccountService: HumanAccountService;
   taskConversationService: TaskConversationService;
@@ -231,28 +265,34 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
     createCraftsmanDispatcher: (context, deps) => {
       const mode = resolveCraftsmanRuntimeMode('cli');
       const acpRuntime = mode === 'acp' ? (deps?.acpRuntime ?? new DirectAcpxRuntimePort()) : undefined;
-      const dispatcherOptions: ConstructorParameters<typeof CraftsmanDispatcher>[1] = {
+      const adapters = createDefaultCraftsmanAdapters({
+        mode,
+        callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
+        apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
+        ...(acpRuntime ? { acpRuntime } : {}),
+      });
+      const options: ConstructorParameters<typeof CraftsmanDispatcher>[0] = {
+        executionRepository: new CraftsmanExecutionRepository(context.db),
+        subtaskRepository: new SubtaskRepository(context.db),
         maxConcurrentRunning: context.config.craftsmen.max_concurrent_running,
-        adapters: createDefaultCraftsmanAdapters({
-          mode,
-          callbackUrl: `${context.runtimeEnv.apiBaseUrl}/api/craftsmen/callback`,
-          apiToken: context.config.api_auth.enabled ? context.config.api_auth.token : null,
-          ...(acpRuntime ? { acpRuntime } : {}),
-        }),
+        adapters,
       };
       if (context.config.craftsmen.isolate_git_worktrees) {
-        dispatcherOptions.workdirIsolator = new GitWorktreeWorkdirIsolator({
+        options.workdirIsolator = new GitWorktreeWorkdirIsolator({
           rootDir: resolvePath(context.config.craftsmen.isolated_root),
         });
       }
-      return new CraftsmanDispatcher(context.db, dispatcherOptions);
+      return new CraftsmanDispatcher(options);
     },
     createAgentRuntimePort: () => {
-      const registry = new OpenClawAgentRegistry(
-        process.env.AGORA_OPENCLAW_CONFIG_PATH
-          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
-          : {},
-      );
+      const registry = new CompositeAgentInventorySource([
+        new OpenClawAgentRegistry(
+          process.env.AGORA_OPENCLAW_CONFIG_PATH
+            ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+            : {},
+        ),
+        new CcConnectAgentRegistry(),
+      ]);
       return new InventoryBackedAgentRuntimePort(registry);
     },
     createIMMessagingPort: (context) => {
@@ -280,14 +320,28 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       }
       return undefined;
     },
-    createTaskContextBindingService: (context) => new TaskContextBindingService(context.db),
+    createTaskContextBindingService: (context) => new TaskContextBindingService({
+      repository: new TaskContextBindingRepository(context.db),
+    }),
     createProjectKnowledgePort: (context) => new FilesystemProjectKnowledgeAdapter({
       brainPackRoot: context.brainPackDir,
       projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
     }),
-    createProjectService: (context, deps) => new ProjectService(context.db, {
+    createProjectService: (context, deps) => new ProjectService({
+      projectRepository: new ProjectRepository(context.db),
+      taskRepository: new TaskRepository(context.db),
+      membershipService: new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(context.db),
+        accountRepository: new HumanAccountRepository(context.db),
+      }),
+      agentRosterService: new ProjectAgentRosterService({
+        repository: new ProjectAgentRosterRepository(context.db),
+      }),
+      transactionManager: createTransactionManager(context.db),
       knowledgePort: deps.projectKnowledgePort,
-      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService({
+        repository: new ProjectBrainIndexJobRepository(context.db),
+      }),
     }),
     createProjectBrainService: (context, deps) => new ProjectBrainService({
       projectService: deps.projectService,
@@ -296,12 +350,15 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
         brainPackRoot: context.brainPackDir,
         projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
       }),
-      projectBrainIndexQueueService: new ProjectBrainIndexQueueService(context.db),
+      projectBrainIndexQueueService: new ProjectBrainIndexQueueService({
+        repository: new ProjectBrainIndexJobRepository(context.db),
+      }),
     }),
-    createCitizenService: (context, deps) => new CitizenService(context.db, {
+    createCitizenService: (context, deps) => new CitizenService({
+      repository: new CitizenRepository(context.db),
       projectService: deps.projectService,
       rolePackService: deps.rolePackService,
-      projectionPorts: [new OpenClawCitizenProjectionAdapter()],
+      projectionPorts: [new OpenClawCitizenProjectionAdapter(), new CcConnectCitizenProjectionAdapter()],
     }),
     createProjectBrainAutomationService: (_context, deps) => new ProjectBrainAutomationService({
       projectBrainService: deps.projectBrainService,
@@ -309,10 +366,13 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
       ...(deps.retrievalService ? { retrievalService: deps.retrievalService } : {}),
     }),
-    createTaskParticipationService: (context, deps) => new TaskParticipationService(context.db, {
+    createTaskParticipationService: (context, deps) => new TaskParticipationService({
+      participantRepository: new ParticipantBindingRepository(context.db),
+      runtimeSessionRepository: new RuntimeSessionBindingRepository(context.db),
+      taskBindingRepository: new TaskContextBindingRepository(context.db),
       agentRuntimePort: deps.agentRuntimePort,
     }),
-    createTaskService: (context, deps) => new TaskService(context.db, {
+    createTaskService: (context, deps) => new TaskService({
       archonUsers: context.config.permissions.archonUsers,
       allowAgents: context.config.permissions.allowAgents,
       craftsmanDispatcher: deps.craftsmanDispatcher,
@@ -367,6 +427,50 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
         inboxAfterMs: context.config.scheduler.task_probe_inbox_after_sec * 1000,
       },
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
+      databasePort: context.db,
+      gateQueryPort: new SqliteGateQueryPort(context.db),
+      gateCommandPort: new SqliteGateCommandPort(context.db),
+      repositories: {
+        task: new TaskRepository(context.db),
+        flowLog: new FlowLogRepository(context.db),
+        progressLog: new ProgressLogRepository(context.db),
+        subtask: new SubtaskRepository(context.db),
+        taskContextBinding: new TaskContextBindingRepository(context.db),
+        taskConversation: new TaskConversationRepository(context.db),
+        todo: new TodoRepository(context.db),
+        archiveJob: new ArchiveJobRepository(context.db),
+        approvalRequest: new ApprovalRequestRepository(context.db),
+        inbox: new InboxRepository(context.db),
+        craftsmanExecution: new CraftsmanExecutionRepository(context.db),
+        template: new TemplateRepository(context.db),
+      },
+      subServices: {
+        taskAuthority: new TaskAuthorityService({
+          repository: new TaskAuthorityRepository(context.db),
+        }),
+        projectMembership: new ProjectMembershipService({
+          membershipRepository: new ProjectMembershipRepository(context.db),
+          accountRepository: new HumanAccountRepository(context.db),
+        }),
+        projectAgentRoster: new ProjectAgentRosterService({
+          repository: new ProjectAgentRosterRepository(context.db),
+        }),
+        craftsmanCallback: new CraftsmanCallbackService({
+          executionRepository: new CraftsmanExecutionRepository(context.db),
+          subtaskRepository: new SubtaskRepository(context.db),
+          taskRepository: new TaskRepository(context.db),
+          flowLogRepository: new FlowLogRepository(context.db),
+          progressLogRepository: new ProgressLogRepository(context.db),
+          outboxRepository: new NotificationOutboxRepository(context.db),
+          bindingRepository: new TaskContextBindingRepository(context.db),
+          conversationRepository: new TaskConversationRepository(context.db),
+        }),
+        projectContextWriter: new ProjectContextWriter({
+          writeLockRepository: new ProjectWriteLockRepository(context.db),
+          projectService: deps.projectService,
+          taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
+        }),
+      },
     }),
     createLegacyRuntimeService: () => new TmuxRuntimeService({
       adapters: {
@@ -386,14 +490,22 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       apiBaseUrl: context.runtimeEnv.apiBaseUrl,
       sessionFilePath: resolvePath(context.runtimeEnv.projectRoot, '.agora-ts/dashboard-session.json'),
     }),
-    createHumanAccountService: (context) => new HumanAccountService(context.db),
-    createTaskConversationService: (context) => new TaskConversationService(context.db),
+    createHumanAccountService: (context) => new HumanAccountService({
+      accountRepository: new HumanAccountRepository(context.db),
+      identityBindingRepository: new HumanIdentityBindingRepository(context.db),
+    }),
+    createTaskConversationService: (context) => new TaskConversationService({
+      bindingRepository: new TaskContextBindingRepository(context.db),
+      conversationRepository: new TaskConversationRepository(context.db),
+      readCursorRepository: new TaskConversationReadCursorRepository(context.db),
+    }),
     createTemplateAuthoringService: (context) => new TemplateAuthoringService({
-      db: context.db,
       templatesDir: context.templatesDir,
+      templateRepository: new TemplateRepository(context.db),
     }),
     createRolePackService: (context) => new RolePackService({
-      db: context.db,
+      roleDefinitions: new RoleDefinitionRepository(context.db),
+      roleBindings: new RoleBindingRepository(context.db),
       rolePacksDir: context.rolePackDir,
     }),
     createArchiveJobNotifier: (context) => {
@@ -406,15 +518,27 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
         ?? join(dirname(resolvePath(context.config.db_path)), 'archive-receipts');
       return new FileArchiveJobReceiptIngestor({ receiptDir });
     },
-    createDashboardQueryService: (context, deps) => new DashboardQueryService(context.db, {
+    createDashboardQueryService: (context, deps) => new DashboardQueryService({
       templatesDir: context.templatesDir,
+      taskRepository: new TaskRepository(context.db),
+      subtaskRepository: new SubtaskRepository(context.db),
+      archiveJobRepository: new ArchiveJobRepository(context.db),
+      todoRepository: new TodoRepository(context.db),
+      executionRepository: new CraftsmanExecutionRepository(context.db),
+      templateRepository: new TemplateRepository(context.db),
+      databasePort: context.db,
+      agentRegistry: deps.agentRegistry,
       archiveJobNotifier: deps.archiveJobNotifier,
       archiveJobReceiptIngestor: deps.archiveJobReceiptIngestor,
+      taskBrainBindingService: deps.taskBrainBindingService,
+      taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
       taskContextBindingService: deps.taskContextBindingService,
       ...(deps.imProvisioningPort ? { imProvisioningPort: deps.imProvisioningPort } : {}),
       skillCatalogPort: new FilesystemSkillCatalogAdapter(),
     }),
-    createTaskBrainBindingService: (context) => new TaskBrainBindingService(context.db),
+    createTaskBrainBindingService: (context) => new TaskBrainBindingService({
+      repository: new TaskBrainBindingRepository(context.db),
+    }),
     createTaskBrainWorkspacePort: (context) => new FilesystemTaskBrainWorkspaceAdapter({
       brainPackRoot: context.brainPackDir,
       projectStateRootResolver: (projectId) => resolveAgoraProjectStateLayout(projectId).root,
@@ -490,6 +614,9 @@ export function createCliComposition(
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const projectKnowledgePort = factories.createProjectKnowledgePort(context);
   const projectService = factories.createProjectService(context, { projectKnowledgePort });
+  const contextSourceBindingService = new ContextSourceBindingService({
+    projectService,
+  });
   const rolePackService = factories.createRolePackService(context);
   const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
   const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
@@ -509,6 +636,18 @@ export function createCliComposition(
     ...(projectBrainEmbeddingPort ? { embeddingPort: projectBrainEmbeddingPort } : {}),
     ...(projectBrainVectorIndexPort ? { vectorIndexPort: projectBrainVectorIndexPort } : {}),
   });
+  const retrievalRegistry = new RetrievalRegistry([
+    new FilesystemContextSourceRetrievalAdapter({
+      listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
+    }),
+    new ObsidianContextSourceRetrievalAdapter({
+      listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
+    }),
+    ...(projectBrainRetrievalService ? [projectBrainRetrievalService] : []),
+  ]);
+  const contextRetrievalService = new RetrievalService({
+    registry: retrievalRegistry,
+  });
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
@@ -527,7 +666,7 @@ export function createCliComposition(
     projectBrainService,
     taskBrainBindingService,
     taskBrainWorkspacePort,
-    ...(projectBrainRetrievalService ? { retrievalService: projectBrainRetrievalService } : {}),
+    retrievalService: contextRetrievalService,
   });
   const humanAccountService = factories.createHumanAccountService(context);
   const taskService = factories.createTaskService(context, {
@@ -551,9 +690,19 @@ export function createCliComposition(
   const archiveJobNotifier = factories.createArchiveJobNotifier(context);
   const archiveJobReceiptIngestor = factories.createArchiveJobReceiptIngestor(context);
   const dashboardQueryService = factories.createDashboardQueryService(context, {
+    agentRegistry: new CompositeAgentInventorySource([
+      new OpenClawAgentRegistry(
+        process.env.AGORA_OPENCLAW_CONFIG_PATH
+          ? { configPath: process.env.AGORA_OPENCLAW_CONFIG_PATH }
+          : {},
+      ),
+      new CcConnectAgentRegistry(),
+    ]),
     archiveJobNotifier,
     archiveJobReceiptIngestor,
     imProvisioningPort,
+    taskBrainBindingService,
+    taskBrainWorkspacePort,
     taskContextBindingService,
   });
   return {
@@ -567,6 +716,7 @@ export function createCliComposition(
     projectBrainAutomationService,
     ...(projectBrainIndexService ? { projectBrainIndexService } : {}),
     ...(projectBrainRetrievalService ? { projectBrainRetrievalService } : {}),
+    contextRetrievalService,
     citizenService,
     legacyRuntimeService,
     tmuxRuntimeService,
@@ -582,7 +732,7 @@ export function createCliComposition(
 
 function createCraftsmanTransportDeps(
   mode: ReturnType<typeof resolveCraftsmanRuntimeMode>,
-  legacyRuntimeService: TmuxRuntimeService,
+  legacyRuntimeService: InteractiveRuntimePort,
   acpRuntime?: DirectAcpxRuntimePort,
 ): {
   craftsmanInputPort: CraftsmanInputPort;
@@ -619,5 +769,13 @@ function buildVectorIndexOptions() {
   const vectorSize = parseOptionalInt(process.env.OPENAI_EMBEDDING_DIMENSION);
   return {
     ...(vectorSize !== null ? { vectorSize } : {}),
+  };
+}
+
+function createTransactionManager(db: AgoraDatabase): TransactionManager {
+  return {
+    begin: () => db.exec('BEGIN'),
+    commit: () => db.exec('COMMIT'),
+    rollback: () => db.exec('ROLLBACK'),
   };
 }

@@ -1,9 +1,8 @@
-import { taskStateSchema, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
-import { TaskRepository, type AgoraDatabase, type StoredTask } from '@agora-ts/db';
+import { taskStateSchema, type ITaskRepository, type TaskRecord, type TaskState, type WorkspaceBootstrapStatusDto } from '@agora-ts/contracts';
 import type { TaskService } from './task-service.js';
 
 export interface WorkspaceBootstrapServiceOptions {
-  db: AgoraDatabase;
+  taskRepository: ITaskRepository;
   taskService: Pick<TaskService, 'createTask'>;
   runtimeReady: boolean;
   runtimeReadinessReason?: string | null;
@@ -11,21 +10,21 @@ export interface WorkspaceBootstrapServiceOptions {
 }
 
 export class WorkspaceBootstrapService {
-  private readonly tasks: TaskRepository;
+  private readonly tasks: ITaskRepository;
   private readonly taskService: Pick<TaskService, 'createTask'>;
   private readonly runtimeReady: boolean;
   private readonly runtimeReadinessReason: string | null;
   private readonly creator: string;
 
   constructor(options: WorkspaceBootstrapServiceOptions) {
-    this.tasks = new TaskRepository(options.db);
+    this.tasks = options.taskRepository;
     this.taskService = options.taskService;
     this.runtimeReady = options.runtimeReady;
     this.runtimeReadinessReason = options.runtimeReadinessReason ?? null;
     this.creator = options.creator?.trim() || 'archon';
   }
 
-  initialize(): StoredTask | null {
+  initialize(): TaskRecord | null {
     if (!this.runtimeReady) {
       return null;
     }
@@ -45,6 +44,7 @@ export class WorkspaceBootstrapService {
         'Bootstrap goals:',
         '- confirm runtime and IM setup',
         '- capture org-wide working norms and decision boundaries',
+        '- identify shared docs, vaults, and external references worth treating as workspace-level context sources',
         '- identify the current project portfolio and review expectations',
       ].join('\n'),
       priority: 'high',
@@ -69,7 +69,7 @@ export class WorkspaceBootstrapService {
     };
   }
 
-  private findBootstrapTask(): StoredTask | null {
+  private findBootstrapTask(): TaskRecord | null {
     const tasks = this.tasks.listTasks();
     return tasks.find((task) => task.control?.workspace_bootstrap?.kind === 'orchestrator_onboarding') ?? null;
   }

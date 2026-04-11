@@ -2,11 +2,18 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, runMigrations, HumanAccountRepository, HumanIdentityBindingRepository } from '@agora-ts/db';
 import { HumanAccountService } from '@agora-ts/core';
 import { buildApp } from './app.js';
 
 const tempPaths: string[] = [];
+
+function createHumanAccountServiceFromDb(db: ReturnType<typeof createAgoraDatabase>) {
+  return new HumanAccountService({
+    accountRepository: new HumanAccountRepository(db),
+    identityBindingRepository: new HumanIdentityBindingRepository(db),
+  });
+}
 
 function makeDbPath() {
   const dir = mkdtempSync(join(tmpdir(), 'agora-ts-dashboard-users-'));
@@ -27,7 +34,7 @@ describe('dashboard user routes', () => {
   it('lets an admin list and create dashboard users via session auth', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',
@@ -100,7 +107,7 @@ describe('dashboard user routes', () => {
   it('rejects dashboard user management for non-admin sessions', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const humanAccountService = new HumanAccountService(db);
+    const humanAccountService = createHumanAccountServiceFromDb(db);
     humanAccountService.bootstrapAdmin({
       username: 'lizeyu',
       password: 'secret-pass',

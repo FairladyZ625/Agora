@@ -37,6 +37,7 @@ NC='\033[0m' # No Color
 BACKEND_PID=""
 FRONTEND_PID=""
 BUILD_WATCH_PID=""
+PLUGIN_BUILD_WATCH_PID=""
 
 cleanup() {
   echo ""
@@ -55,6 +56,11 @@ cleanup() {
     kill "$BUILD_WATCH_PID" 2>/dev/null || true
     wait "$BUILD_WATCH_PID" 2>/dev/null || true
     echo -e "${DIM}  ✓ TypeScript 构建监视已停止${NC}"
+  fi
+  if [ -n "$PLUGIN_BUILD_WATCH_PID" ] && kill -0 "$PLUGIN_BUILD_WATCH_PID" 2>/dev/null; then
+    kill "$PLUGIN_BUILD_WATCH_PID" 2>/dev/null || true
+    wait "$PLUGIN_BUILD_WATCH_PID" 2>/dev/null || true
+    echo -e "${DIM}  ✓ OpenClaw plugin 构建监视已停止${NC}"
   fi
   echo -e "${GREEN}所有服务已停止。${NC}"
   exit 0
@@ -101,6 +107,12 @@ if [ ! -d "$PROJECT_ROOT/dashboard/node_modules" ]; then
   (cd "$PROJECT_ROOT/dashboard" && npm install)
 fi
 
+# 检查 OpenClaw plugin 依赖
+if [ ! -d "$PROJECT_ROOT/extensions/agora-plugin/node_modules" ]; then
+  echo -e "${DIM}OpenClaw plugin 依赖未安装，正在执行 npm install...${NC}"
+  (cd "$PROJECT_ROOT/extensions/agora-plugin" && npm install)
+fi
+
 # ── 可选参数 ──────────────────────────────────────
 BACKEND_PORT="${AGORA_BACKEND_PORT:-18420}"
 FRONTEND_PORT="${AGORA_FRONTEND_PORT:-33173}"
@@ -109,6 +121,8 @@ CONFIG_PATH="${AGORA_CONFIG_PATH:-}"
 CLEAN_LEGACY_PORTS="${AGORA_CLEAN_LEGACY_PORTS:-1}"
 CRAFTSMAN_SERVER_MODE="${AGORA_CRAFTSMAN_SERVER_MODE:-${AGORA_CRAFTSMAN_ADAPTER_MODE:-watched}}"
 WATCH_WORKSPACE_BUILD="${AGORA_WATCH_WORKSPACE_BUILD:-1}"
+BUILD_OPENCLAW_PLUGIN="${AGORA_BUILD_OPENCLAW_PLUGIN:-1}"
+WATCH_OPENCLAW_PLUGIN="${AGORA_WATCH_OPENCLAW_PLUGIN:-0}"
 
 # ── 清理已知旧端口 ───────────────────────────────
 if [ "$CLEAN_LEGACY_PORTS" = "1" ] && command -v killport &>/dev/null; then
@@ -133,6 +147,15 @@ fi
 echo -e "${GREEN}▶ 预构建 agora-ts workspace${NC}"
 (cd "$PROJECT_ROOT/agora-ts" && npm run build)
 
+if [ "$BUILD_OPENCLAW_PLUGIN" = "1" ]; then
+  echo -e "${GREEN}▶ 预构建 OpenClaw Agora plugin${NC}"
+  echo -e "${DIM}  入口产物: extensions/agora-plugin/dist/index.js${NC}"
+  (
+    cd "$PROJECT_ROOT/extensions/agora-plugin"
+    ./node_modules/.bin/tsc -p tsconfig.json
+  )
+fi
+
 if [ "$WATCH_WORKSPACE_BUILD" = "1" ]; then
   echo -e "${GREEN}▶ 启动 TypeScript workspace 监视${NC}"
   echo -e "${DIM}  packages/* 变更将持续重编，避免 server 继续吃旧 dist${NC}"
@@ -141,6 +164,16 @@ if [ "$WATCH_WORKSPACE_BUILD" = "1" ]; then
     ./node_modules/.bin/tsc -b tsconfig.workspace.build.json --watch --preserveWatchOutput
   ) &
   BUILD_WATCH_PID=$!
+fi
+
+if [ "$WATCH_OPENCLAW_PLUGIN" = "1" ]; then
+  echo -e "${GREEN}▶ 启动 OpenClaw plugin 构建监视${NC}"
+  echo -e "${DIM}  plugin src 变更会持续重编到 dist；仍需重启 OpenClaw 才会加载新产物${NC}"
+  (
+    cd "$PROJECT_ROOT/extensions/agora-plugin"
+    ./node_modules/.bin/tsc -p tsconfig.json --watch --preserveWatchOutput
+  ) &
+  PLUGIN_BUILD_WATCH_PID=$!
 fi
 
 echo -e "${GREEN}▶ 启动后端 (agora-ts)${NC}  http://localhost:${BACKEND_PORT}"
@@ -186,6 +219,9 @@ echo -e "  后端 API:    http://localhost:${BACKEND_PORT}/api/health"
 echo -e "  前端页面:    http://localhost:${FRONTEND_PORT}/dashboard/"
 echo -e "  Dashboard:   http://localhost:${BACKEND_PORT}/dashboard/"
 echo -e "              ${DIM}(生产构建后可用)${NC}"
+if [ "$BUILD_OPENCLAW_PLUGIN" = "1" ]; then
+  echo -e "  Plugin dist: ${PROJECT_ROOT}/extensions/agora-plugin/dist/index.js"
+fi
 echo ""
 echo -e "${DIM}按 Ctrl+C 停止所有服务${NC}"
 echo ""

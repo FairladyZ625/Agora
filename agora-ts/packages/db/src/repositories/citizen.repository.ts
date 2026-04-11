@@ -1,4 +1,4 @@
-import type { CitizenDefinitionDto } from '@agora-ts/contracts';
+import type { CitizenDefinitionDto, ICitizenRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -17,7 +17,7 @@ export interface InsertCitizenInput {
   runtime_projection?: CitizenDefinitionDto['runtime_projection'];
 }
 
-export class CitizenRepository {
+export class CitizenRepository implements ICitizenRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertCitizen(input: InsertCitizenInput): StoredCitizenDefinition {

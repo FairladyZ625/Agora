@@ -1,3 +1,4 @@
+import type { IHumanIdentityBindingRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredHumanIdentityBinding {
@@ -8,7 +9,7 @@ export interface StoredHumanIdentityBinding {
   created_at: string;
 }
 
-export class HumanIdentityBindingRepository {
+export class HumanIdentityBindingRepository implements IHumanIdentityBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   bindIdentity(accountId: number, provider: string, externalUserId: string): StoredHumanIdentityBinding {

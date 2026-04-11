@@ -1,15 +1,4 @@
-import type {
-  AgentsStatusDto,
-  ArchiveJobDto,
-  ArchiveJobReceiptScanResponseDto,
-  ArchiveJobScanResponseDto,
-  ArchiveJobStatusUpdateRequestDto,
-  CreateTodoRequestDto,
-  TemplateDetailDto,
-  TemplateSummaryDto,
-  UpdateTodoRequestDto,
-} from '@agora-ts/contracts';
-import { ArchiveJobRepository, CraftsmanExecutionRepository, type AgoraDatabase, SubtaskRepository, TaskRepository, TemplateRepository, TodoRepository, type TodoRepository as TodoRepositoryType } from '@agora-ts/db';
+import type { AgentsStatusDto, ArchiveJobDto, ArchiveJobReceiptScanResponseDto, ArchiveJobScanResponseDto, ArchiveJobStatusUpdateRequestDto, CreateTodoRequestDto, CraftsmanExecutionRecord, DatabasePort, IArchiveJobRepository, ICraftsmanExecutionRepository, ISubtaskRepository, ITaskRepository, ITemplateRepository, ITodoRepository, SubtaskRecord, TemplateDetailDto, TemplateSummaryDto, UpdateTodoRequestDto } from '@agora-ts/contracts';
 import type { ArchiveJobNotifier, ArchiveJobReceiptIngestor } from './archive-job-notifier.js';
 import { NotFoundError } from './errors.js';
 import type { IMProvisioningPort } from './im-ports.js';
@@ -21,58 +10,70 @@ import type {
   PresenceSource,
 } from './runtime-ports.js';
 import type { SkillCatalogPort } from './skill-catalog-port.js';
+import type { TaskBrainBindingService } from './task-brain-binding-service.js';
+import type { TaskBrainWorkspacePort } from './task-brain-port.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
-import type { TmuxRuntimeService } from './tmux-runtime-service.js';
+import type { InteractiveRuntimePort } from './interactive-runtime-port.js';
 import { normalizeCraftsmanAdapter } from './craftsman-adapter-aliases.js';
-import { parseAcpSessionId } from './adapters/acp-session-ref.js';
+import { parseAcpSessionId } from './acp-session-ref.js';
 
 export interface DashboardQueryServiceOptions {
   templatesDir: string;
+  taskRepository: ITaskRepository;
+  subtaskRepository: ISubtaskRepository;
+  archiveJobRepository: IArchiveJobRepository;
+  todoRepository: ITodoRepository;
+  executionRepository: ICraftsmanExecutionRepository;
+  templateRepository: ITemplateRepository;
+  databasePort: DatabasePort;
   archiveJobNotifier?: ArchiveJobNotifier;
   archiveJobReceiptIngestor?: ArchiveJobReceiptIngestor;
   imProvisioningPort?: IMProvisioningPort;
+  taskBrainBindingService?: TaskBrainBindingService;
+  taskBrainWorkspacePort?: TaskBrainWorkspacePort;
   taskContextBindingService?: TaskContextBindingService;
   liveSessions?: LiveSessionStore;
   agentRegistry?: AgentInventorySource;
   presenceSource?: PresenceSource;
-  legacyRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
-  tmuxRuntimeService?: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>;
+  legacyRuntimeService?: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'>;
+  tmuxRuntimeService?: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'>;
   skillCatalogPort?: SkillCatalogPort;
   agentsStatusCacheTtlMs?: number;
   now?: () => Date;
 }
 
 export class DashboardQueryService {
-  private readonly tasks: TaskRepository;
-  private readonly subtasks: SubtaskRepository;
-  private readonly archives: ArchiveJobRepository;
-  private readonly todos: TodoRepositoryType;
-  private readonly executions: CraftsmanExecutionRepository;
-  private readonly templateRepository: TemplateRepository;
+  private readonly tasks: ITaskRepository;
+  private readonly subtasks: ISubtaskRepository;
+  private readonly archives: IArchiveJobRepository;
+  private readonly todos: ITodoRepository;
+  private readonly executions: ICraftsmanExecutionRepository;
+  private readonly templateRepository: ITemplateRepository;
+  private readonly db: DatabasePort;
   private readonly archiveJobNotifier: ArchiveJobNotifier | undefined;
   private readonly archiveJobReceiptIngestor: ArchiveJobReceiptIngestor | undefined;
   private readonly imProvisioningPort: IMProvisioningPort | undefined;
+  private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
+  private readonly taskBrainWorkspacePort: TaskBrainWorkspacePort | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly liveSessions: LiveSessionStore | undefined;
   private readonly agentRegistry: AgentInventorySource | undefined;
   private readonly presenceSource: PresenceSource | undefined;
-  private readonly legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined;
+  private readonly legacyRuntimeService: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'> | undefined;
   private readonly skillCatalogPort: SkillCatalogPort | undefined;
   private readonly agentsStatusCacheTtlMs: number;
   private readonly now: () => Date;
   private agentsStatusCache: { value: AgentsStatusDto; expiresAtMs: number } | null = null;
   private readonly backgroundOperations = new Set<Promise<void>>();
 
-  constructor(
-    private readonly db: AgoraDatabase,
-    options: DashboardQueryServiceOptions,
-  ) {
-    this.tasks = new TaskRepository(db);
-    this.subtasks = new SubtaskRepository(db);
-    this.archives = new ArchiveJobRepository(db);
-    this.todos = new TodoRepository(db);
-    this.executions = new CraftsmanExecutionRepository(db);
-    this.templateRepository = new TemplateRepository(db);
+  constructor(options: DashboardQueryServiceOptions) {
+    this.tasks = options.taskRepository;
+    this.subtasks = options.subtaskRepository;
+    this.archives = options.archiveJobRepository;
+    this.todos = options.todoRepository;
+    this.executions = options.executionRepository;
+    this.templateRepository = options.templateRepository;
+    this.db = options.databasePort;
     this.templateRepository.seedFromDir(options.templatesDir);
     this.templateRepository.repairMemberKindsFromDir(options.templatesDir);
     this.templateRepository.repairStageSemanticsFromDir(options.templatesDir);
@@ -80,6 +81,8 @@ export class DashboardQueryService {
     this.archiveJobNotifier = options.archiveJobNotifier;
     this.archiveJobReceiptIngestor = options.archiveJobReceiptIngestor;
     this.imProvisioningPort = options.imProvisioningPort;
+    this.taskBrainBindingService = options.taskBrainBindingService;
+    this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskContextBindingService = options.taskContextBindingService;
     this.liveSessions = options.liveSessions;
     this.agentRegistry = options.agentRegistry;
@@ -190,8 +193,8 @@ export class DashboardQueryService {
     const agents = new Map<string, AgentsStatusDto['agents'][number]>();
     const craftsmen = new Map<string, AgentsStatusDto['craftsmen'][number]>();
     const activityMap = new Map<string, string | null>();
-    const subtasksByTask = new Map<string, ReturnType<SubtaskRepository['listByTask']>>();
-    const executionsByTaskSubtask = new Map<string, ReturnType<CraftsmanExecutionRepository['listBySubtask']>>();
+    const subtasksByTask = new Map<string, SubtaskRecord[]>();
+    const executionsByTaskSubtask = new Map<string, CraftsmanExecutionRecord[]>();
 
     if (activeTasks.length > 0) {
       const placeholders = activeTasks.map(() => '?').join(', ');
@@ -307,6 +310,7 @@ export class DashboardQueryService {
     }
 
     for (const session of this.liveSessions?.listActive() ?? []) {
+      const sessionSource = session.source;
       const current = agents.get(session.agent_id) ?? {
         id: session.agent_id,
         role: null,
@@ -321,8 +325,8 @@ export class DashboardQueryService {
         last_active_at: session.last_event_at,
         last_seen_at: session.last_event_at,
         channel_providers: [] as string[],
-        host_framework: 'openclaw' as string | null,
-        inventory_sources: ['openclaw'] as string[],
+        host_framework: sessionSource as string | null,
+        inventory_sources: [sessionSource] as string[],
         account_id: null,
         primary_model: null as string | null,
         workspace_dir: null as string | null,
@@ -333,8 +337,8 @@ export class DashboardQueryService {
       current.last_active_at = session.last_event_at;
       current.last_seen_at = session.last_event_at;
       current.load = Math.max(current.load, 1);
-      current.host_framework = current.host_framework ?? 'openclaw';
-      mergeUnique(current.inventory_sources, 'openclaw');
+      current.host_framework = current.host_framework ?? sessionSource;
+      mergeUnique(current.inventory_sources, sessionSource);
       const channelProvider = normalizeChannelProvider(session.channel);
       if (channelProvider && channelProvider !== session.agent_id) {
         mergeUnique(current.channel_providers, channelProvider);
@@ -587,6 +591,21 @@ export class DashboardQueryService {
   }
 
   private finalizeImContextForArchivedTask(taskId: string) {
+    const brainBinding = this.taskBrainBindingService?.getActiveBinding(taskId);
+    if (brainBinding && this.taskBrainWorkspacePort) {
+      try {
+        this.taskBrainWorkspacePort.destroyWorkspace({
+          brain_pack_ref: brainBinding.brain_pack_ref,
+          brain_task_id: brainBinding.brain_task_id,
+          workspace_path: brainBinding.workspace_path,
+          metadata: brainBinding.metadata ?? null,
+        });
+        this.taskBrainBindingService?.updateStatus(brainBinding.id, 'destroyed');
+      } catch (err) {
+        console.error(`[DashboardQueryService] Task workspace destroy failed for task ${taskId}:`, err);
+        this.taskBrainBindingService?.updateStatus(brainBinding.id, 'failed');
+      }
+    }
     if (!this.imProvisioningPort || !this.taskContextBindingService) {
       return;
     }
@@ -642,7 +661,7 @@ type LegacyRuntimeTransportView = {
 } | null;
 
 function buildLegacyRuntimeView(
-  legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'> | undefined,
+  legacyRuntimeService: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'> | undefined,
   options: { includeTailPreview: boolean },
 ): LegacyRuntimeTransportView {
   if (!legacyRuntimeService) {
@@ -690,7 +709,7 @@ function buildLegacyRuntimeView(
 }
 
 function safeTail(
-  legacyRuntimeService: Pick<TmuxRuntimeService, 'status' | 'doctor' | 'tail'>,
+  legacyRuntimeService: Pick<InteractiveRuntimePort, 'status' | 'doctor' | 'tail'>,
   agent: string,
 ) {
   try {

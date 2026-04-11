@@ -1,3 +1,4 @@
+import type { INotificationOutboxRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -17,7 +18,7 @@ export interface StoredNotificationOutbox {
   delivered_at: string | null;
 }
 
-export class NotificationOutboxRepository {
+export class NotificationOutboxRepository implements INotificationOutboxRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

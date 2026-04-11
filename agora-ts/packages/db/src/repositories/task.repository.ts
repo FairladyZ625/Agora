@@ -1,5 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
-import type { TaskControlDto, TaskLocaleDto, TaskSkillPolicyDto, TeamDto, WorkflowDto } from '@agora-ts/contracts';
+import type { TaskControlDto, TaskLocaleDto, TaskSkillPolicyDto, TeamDto, WorkflowDto, ITaskRepository, SchedulerSnapshot } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -21,7 +21,7 @@ export interface StoredTask {
   workflow: WorkflowDto;
   control: TaskControlDto | null;
   scheduler: unknown;
-  scheduler_snapshot: unknown;
+  scheduler_snapshot: SchedulerSnapshot | null;
   discord: unknown;
   metrics: unknown;
   error_detail: string | null;
@@ -32,7 +32,7 @@ export interface StoredTask {
 export interface InsertTaskInput {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   type: string;
   priority: string;
   creator: string;
@@ -57,13 +57,13 @@ export interface UpdateTaskInput {
   workflow?: WorkflowDto;
   control?: TaskControlDto | null;
   scheduler?: unknown;
-  scheduler_snapshot?: unknown;
+  scheduler_snapshot?: SchedulerSnapshot | null;
   discord?: unknown;
   metrics?: unknown;
   error_detail?: string | null;
 }
 
-export class TaskRepository {
+export class TaskRepository implements ITaskRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   private readonly baseSelect = `

@@ -1,3 +1,4 @@
+import type { ITaskConversationReadCursorRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredTaskConversationReadCursor {
@@ -8,7 +9,7 @@ export interface StoredTaskConversationReadCursor {
   updated_at: string;
 }
 
-export class TaskConversationReadCursorRepository {
+export class TaskConversationReadCursorRepository implements ITaskConversationReadCursorRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   get(taskId: string, accountId: number): StoredTaskConversationReadCursor | null {

@@ -1,3 +1,4 @@
+import type { ITaskBrainBindingRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { parseJsonValue, stringifyJsonValue } from './json.js';
 
@@ -14,7 +15,7 @@ export interface StoredTaskBrainBinding {
   closed_at: string | null;
 }
 
-export class TaskBrainBindingRepository {
+export class TaskBrainBindingRepository implements ITaskBrainBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

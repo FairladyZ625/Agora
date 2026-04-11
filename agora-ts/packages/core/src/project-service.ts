@@ -1,13 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { ProjectRepository, TaskRepository, type AgoraDatabase, type StoredProject } from '@agora-ts/db';
-import type {
-  CreateProjectAdminDto,
-  CreateProjectAgentRosterEntryDto,
-  CreateProjectMembershipDto,
-} from '@agora-ts/contracts';
+import type { CreateProjectAdminDto, CreateProjectAgentRosterEntryDto, CreateProjectMembershipDto, IProjectRepository, ITaskRepository, ProjectRecord, TransactionManager } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
-import { ProjectAgentRosterService } from './project-agent-roster-service.js';
-import { ProjectMembershipService } from './project-membership-service.js';
+import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import type { ProjectMembershipService } from './project-membership-service.js';
 import type {
   ProjectKnowledgeDocument,
   ProjectKnowledgeEntryInput,
@@ -30,34 +25,41 @@ export interface CreateProjectInput {
 }
 
 export interface ProjectServiceOptions {
+  projectRepository: IProjectRepository;
+  taskRepository: ITaskRepository;
+  membershipService: ProjectMembershipService;
+  agentRosterService: ProjectAgentRosterService;
+  transactionManager: TransactionManager;
   knowledgePort?: ProjectKnowledgePort;
   projectBrainIndexQueueService?: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'>;
 }
 
 export class ProjectService {
-  private readonly projects: ProjectRepository;
-  private readonly tasks: TaskRepository;
+  private readonly projects: IProjectRepository;
+  private readonly tasks: ITaskRepository;
   private readonly memberships: ProjectMembershipService;
   private readonly agentRoster: ProjectAgentRosterService;
   private readonly knowledgePort: ProjectKnowledgePort | undefined;
   private readonly projectBrainIndexQueueService: Pick<ProjectBrainIndexQueueService, 'enqueueDocumentSync'> | undefined;
+  private readonly tx: TransactionManager;
 
-  constructor(private readonly db: AgoraDatabase, options: ProjectServiceOptions = {}) {
-    this.projects = new ProjectRepository(db);
-    this.tasks = new TaskRepository(db);
-    this.memberships = new ProjectMembershipService(db);
-    this.agentRoster = new ProjectAgentRosterService(db);
+  constructor(options: ProjectServiceOptions) {
+    this.projects = options.projectRepository;
+    this.tasks = options.taskRepository;
+    this.memberships = options.membershipService;
+    this.agentRoster = options.agentRosterService;
+    this.tx = options.transactionManager;
     this.knowledgePort = options.knowledgePort;
     this.projectBrainIndexQueueService = options.projectBrainIndexQueueService;
   }
 
-  createProject(input: CreateProjectInput): StoredProject {
+  createProject(input: CreateProjectInput): ProjectRecord {
     const projectId = input.id?.trim() || this.generateProjectId(input.name);
     if ((input.admins || input.members || input.default_agents) && (!input.admins || input.admins.length === 0)) {
       throw new Error('createProject requires at least one project admin when seeding memberships or default agents');
     }
-    let project: StoredProject;
-    this.db.exec('BEGIN');
+    let project: ProjectRecord;
+    this.tx.begin();
     try {
       project = this.projects.insertProject({
         id: projectId,
@@ -76,9 +78,9 @@ export class ProjectService {
       if (input.default_agents && input.default_agents.length > 0) {
         this.agentRoster.seedProjectRoster(projectId, input.default_agents);
       }
-      this.db.exec('COMMIT');
+      this.tx.commit();
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      this.tx.rollback();
       throw error;
     }
     this.knowledgePort?.ensureProject({
@@ -91,7 +93,7 @@ export class ProjectService {
     return project;
   }
 
-  getProject(projectId: string): StoredProject | null {
+  getProject(projectId: string): ProjectRecord | null {
     return this.projects.getProject(projectId);
   }
 
@@ -137,16 +139,16 @@ export class ProjectService {
     return this.memberships.removeProjectMembership(projectId, accountId);
   }
 
-  updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): StoredProject {
+  updateProjectMetadata(projectId: string, metadata: Record<string, unknown> | null): ProjectRecord {
     this.requireProject(projectId);
     return this.projects.updateProject(projectId, { metadata });
   }
 
-  listProjects(status?: string): StoredProject[] {
+  listProjects(status?: string): ProjectRecord[] {
     return this.projects.listProjects(status);
   }
 
-  requireProject(projectId: string): StoredProject {
+  requireProject(projectId: string): ProjectRecord {
     const project = this.projects.getProject(projectId);
     if (!project) {
       throw new NotFoundError(`Project not found: ${projectId}`);
@@ -258,7 +260,7 @@ export class ProjectService {
     return this.knowledgePort?.searchProjectKnowledge(projectId, query, kind) ?? [];
   }
 
-  archiveProject(projectId: string): StoredProject {
+  archiveProject(projectId: string): ProjectRecord {
     const project = this.requireProject(projectId);
     const blockingTasks = this.tasks.listTasks(undefined, projectId)
       .filter((task) => task.state !== 'done' && task.state !== 'cancelled');
@@ -280,6 +282,7 @@ export class ProjectService {
     if (remainingTasks.length > 0) {
       throw new Error(`Cannot delete project ${projectId} while tasks are still bound to it`);
     }
+    this.knowledgePort?.deleteProject(projectId);
     this.projects.deleteProject(projectId);
   }
 

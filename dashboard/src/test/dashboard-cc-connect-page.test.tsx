@@ -1,0 +1,405 @@
+import '@/lib/i18n';
+import { MemoryRouter } from 'react-router';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ExternalBridgesPage } from '@/pages/ExternalBridgesPage';
+
+const fetchSnapshot = vi.fn(async () => 'live');
+const selectProject = vi.fn(async () => undefined);
+const selectSession = vi.fn(async () => undefined);
+const sendMessage = vi.fn(async () => 'live');
+const createNamedSession = vi.fn(async () => 'live');
+const switchActiveSession = vi.fn(async () => 'live');
+const deleteSelectedSession = vi.fn(async () => 'live');
+const addProvider = vi.fn(async () => 'live');
+const removeProvider = vi.fn(async () => 'live');
+const activateProvider = vi.fn(async () => 'live');
+const setModel = vi.fn(async () => 'live');
+const pauseHeartbeat = vi.fn(async () => 'live');
+const resumeHeartbeat = vi.fn(async () => 'live');
+const runHeartbeat = vi.fn(async () => 'live');
+const updateHeartbeatInterval = vi.fn(async () => 'live');
+const createCronPrompt = vi.fn(async () => 'live');
+const deleteCronJob = vi.fn(async () => 'live');
+const showMessage = vi.fn();
+
+const storeState = {
+  inspection: {
+    binary: {
+      command: 'cc-connect',
+      found: true,
+      resolvedPath: '/opt/homebrew/bin/cc-connect',
+      version: 'v1.2.2',
+      reason: null,
+      error: null,
+    },
+    config: {
+      path: '/Users/lizeyu/.cc-connect/config.toml',
+      exists: true,
+      managementEnabled: true,
+      managementPort: 9820,
+      tokenPresent: true,
+    },
+    management: {
+      url: 'http://127.0.0.1:9820',
+      reachable: true,
+      version: 'v1.2.2-beta.5',
+      projectsCount: 1,
+      bridgeAdapterCount: 1,
+      connectedPlatforms: ['discord'],
+      reason: null,
+      error: null,
+    },
+  },
+  statusProjects: [
+    {
+      name: 'agora-codex',
+      agentType: 'codex',
+      platforms: ['discord'],
+      sessionsCount: 2,
+      heartbeatEnabled: true,
+    },
+  ],
+  projects: [
+    {
+      name: 'agora-codex',
+      agentType: 'codex',
+      platforms: ['discord'],
+      sessionsCount: 2,
+      heartbeatEnabled: true,
+    },
+  ],
+  bridges: [
+    {
+      platform: 'discord',
+      project: 'agora-codex',
+      capabilities: ['reply', 'thread'],
+      connectedAt: '2026-04-10T00:00:00.000Z',
+    },
+  ],
+  selectedProjectName: 'agora-codex',
+  selectedProject: {
+    name: 'agora-codex',
+    agentType: 'codex',
+    platforms: [{ type: 'discord', connected: true }],
+    platformConfigs: [{ type: 'discord', allowFrom: '*' }],
+    sessionsCount: 2,
+    activeSessionKeys: ['discord:thread:1'],
+    heartbeat: { enabled: true, paused: false, intervalMins: 30, sessionKey: 'discord:thread:1' },
+    settings: { language: 'zh-CN', adminFrom: null, disabledCommands: [], quiet: false },
+    workDir: '/Users/lizeyu/Projects/Agora',
+    agentMode: 'immediate',
+    mode: 'channel',
+    showContextIndicator: false,
+  },
+  sessionsByProject: {
+    'agora-codex': [
+      {
+        id: 'session-1',
+        sessionKey: 'discord:thread:1',
+        name: 'Main Thread',
+        platform: 'discord',
+        agentType: 'codex',
+        active: true,
+        live: true,
+        historyCount: 2,
+        createdAt: '2026-04-10T00:00:00.000Z',
+        updatedAt: '2026-04-10T00:05:00.000Z',
+        userName: 'FairladyZ',
+        chatName: 'main',
+        lastMessage: { role: 'assistant', content: 'hello', timestamp: '2026-04-10T00:05:00.000Z' },
+      },
+    ],
+  },
+  selectedSessionIdByProject: {
+    'agora-codex': 'session-1',
+  },
+  sessionDetailsByProject: {
+    'agora-codex': {
+      'session-1': {
+        id: 'session-1',
+        sessionKey: 'discord:thread:1',
+        name: 'Main Thread',
+        platform: 'discord',
+        agentType: 'codex',
+        agentSessionId: 'codex-session-1',
+        active: true,
+        live: true,
+        historyCount: 2,
+        createdAt: '2026-04-10T00:00:00.000Z',
+        updatedAt: '2026-04-10T00:05:00.000Z',
+        history: [
+          { role: 'assistant', content: 'hello', timestamp: '2026-04-10T00:05:00.000Z' },
+          { role: 'user', content: 'ping', timestamp: '2026-04-10T00:04:00.000Z' },
+        ],
+      },
+    },
+  },
+  providersByProject: {
+    'agora-codex': {
+      providers: [
+        { name: 'gac', active: true, model: 'gpt-5.4', baseUrl: 'https://gaccode.com/codex/v1' },
+        { name: 'relay', active: false, model: 'gpt-5.3-codex', baseUrl: 'https://relay.example.com' },
+      ],
+      activeProvider: 'gac',
+    },
+  },
+  modelsByProject: {
+    'agora-codex': {
+      models: ['gpt-5.4', 'gpt-5.3-codex'],
+      current: 'gpt-5.4',
+    },
+  },
+  heartbeatByProject: {
+    'agora-codex': {
+      enabled: true,
+      paused: false,
+      intervalMins: 30,
+      onlyWhenIdle: true,
+      sessionKey: 'discord:thread:1',
+      silent: true,
+      runCount: 4,
+      errorCount: 0,
+      skippedBusy: 1,
+      lastRun: '2026-04-10T00:10:00.000Z',
+      lastError: '',
+    },
+  },
+  cronJobsByProject: {
+    'agora-codex': [
+      {
+        id: 'cron-1',
+        project: 'agora-codex',
+        sessionKey: 'discord:thread:1',
+        cronExpr: '0 * * * *',
+        prompt: 'Summarize the latest thread state.',
+        exec: null,
+        workDir: null,
+        description: 'Hourly summary',
+        enabled: true,
+        silent: true,
+        createdAt: '2026-04-11T00:00:00.000Z',
+        lastRun: null,
+        lastError: null,
+      },
+    ],
+  },
+  loading: false,
+  detailLoading: false,
+  sendLoading: false,
+  sessionActionLoading: false,
+  controlActionLoading: false,
+  error: null,
+  sendReceipt: null,
+  fetchSnapshot,
+  selectProject,
+  selectSession,
+  sendMessage,
+  createNamedSession,
+  switchActiveSession,
+  deleteSelectedSession,
+  addProvider,
+  removeProvider,
+  activateProvider,
+  setModel,
+  pauseHeartbeat,
+  resumeHeartbeat,
+  runHeartbeat,
+  updateHeartbeatInterval,
+  createCronPrompt,
+  deleteCronJob,
+  clearError: vi.fn(),
+};
+
+vi.mock('@/stores/ccConnectStore', () => ({
+  useCcConnectStore: (selector?: (state: typeof storeState) => unknown) => (selector ? selector(storeState) : storeState),
+}));
+
+vi.mock('@/stores/feedbackStore', () => ({
+  useFeedbackStore: () => ({
+    showMessage,
+  }),
+}));
+
+describe('cc-connect dashboard page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders bridge inspection, projects, sessions, and session history', () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: /cc-connect Runtime Host/i })).toBeInTheDocument();
+    expect(screen.getByText('/opt/homebrew/bin/cc-connect')).toBeInTheDocument();
+    expect(screen.getAllByText(/agora-codex/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Main Thread/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/discord:thread:1/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('hello').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /create named session|创建命名 session/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /add provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /activate provider|切换 provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /update model|更新模型/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /trigger heartbeat now|立即触发 heartbeat/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create cron job|创建 cron job/i })).toBeInTheDocument();
+    expect(fetchSnapshot).toHaveBeenCalled();
+  });
+
+  it('sends a controlled message to the selected live session', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Send message/i), {
+      target: { value: 'hello cc-connect' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /live session/i }));
+    });
+
+    expect(sendMessage).toHaveBeenCalledWith('hello cc-connect');
+  });
+
+  it('creates, switches, and deletes sessions from the control surface', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/new session/i), {
+      target: { value: 'work' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /create named session|创建命名 session/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /switch as active session|切换为当前活跃 session/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /delete current session|删除当前 session/i }));
+    });
+
+    expect(createNamedSession).toHaveBeenCalledWith('work');
+    expect(switchActiveSession).toHaveBeenCalledWith('session-1');
+    expect(deleteSelectedSession).toHaveBeenCalled();
+  });
+
+  it('activates provider, updates model, and controls heartbeat', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /activate provider|切换 provider/i }));
+    });
+
+    fireEvent.change(screen.getByLabelText(/set model/i), {
+      target: { value: 'gpt-5.3-codex' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /update model|更新模型/i }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /trigger heartbeat now|立即触发 heartbeat/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /pause heartbeat|暂停 heartbeat/i }));
+    });
+    fireEvent.change(screen.getByLabelText(/heartbeat interval/i), {
+      target: { value: '15' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /update heartbeat interval|更新 heartbeat 间隔/i }));
+    });
+
+    expect(activateProvider).toHaveBeenCalledWith('relay');
+    expect(setModel).toHaveBeenCalledWith('gpt-5.3-codex');
+    expect(runHeartbeat).toHaveBeenCalled();
+    expect(pauseHeartbeat).toHaveBeenCalled();
+    expect(updateHeartbeatInterval).toHaveBeenCalledWith(15);
+  });
+
+  it('adds and removes providers from the control surface', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/provider name/i), {
+      target: { value: 'relay' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider api key/i), {
+      target: { value: 'sk-relay' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider base url/i), {
+      target: { value: 'https://relay.example.com' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider thinking/i), {
+      target: { value: 'disabled' },
+    });
+    fireEvent.change(screen.getByLabelText(/provider env json/i), {
+      target: { value: '{"AWS_PROFILE":"bedrock"}' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /add provider/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /remove provider/i })[1]!);
+    });
+
+    expect(addProvider).toHaveBeenCalledWith({
+      name: 'relay',
+      apiKey: 'sk-relay',
+      baseUrl: 'https://relay.example.com',
+      model: '',
+      thinking: 'disabled',
+      env: {
+        AWS_PROFILE: 'bedrock',
+      },
+    });
+    expect(removeProvider).toHaveBeenCalledWith('relay');
+  });
+
+  it('creates and deletes cron jobs from the control surface', async () => {
+    render(
+      <MemoryRouter>
+        <ExternalBridgesPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/cron expression|cron 表达式/i), {
+      target: { value: '*/30 * * * *' },
+    });
+    fireEvent.change(screen.getByLabelText(/cron prompt|cron 提示词/i), {
+      target: { value: 'Ping the live session.' },
+    });
+    fireEvent.change(screen.getByLabelText(/cron description|cron 描述/i), {
+      target: { value: 'Half-hour ping' },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /create cron job|创建 cron job/i }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /delete cron job|删除 cron job/i }));
+    });
+
+    expect(createCronPrompt).toHaveBeenCalledWith({
+      cronExpr: '*/30 * * * *',
+      prompt: 'Ping the live session.',
+      description: 'Half-hour ping',
+      silent: true,
+    });
+    expect(deleteCronJob).toHaveBeenCalledWith('cron-1');
+  });
+});

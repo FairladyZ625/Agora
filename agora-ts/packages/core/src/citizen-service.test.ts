@@ -2,9 +2,22 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
-import { OpenClawCitizenProjectionAdapter } from './adapters/openclaw-citizen-projection-adapter.js';
+import {
+  CitizenRepository,
+  createAgoraDatabase,
+  HumanAccountRepository,
+  ProjectAgentRosterRepository,
+  ProjectMembershipRepository,
+  ProjectRepository,
+  RoleBindingRepository,
+  RoleDefinitionRepository,
+  runMigrations,
+  TaskRepository,
+} from '@agora-ts/db';
+import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { CitizenService } from './citizen-service.js';
+import { ProjectAgentRosterService } from './project-agent-roster-service.js';
+import { ProjectMembershipService } from './project-membership-service.js';
 import { ProjectService } from './project-service.js';
 import { RolePackService } from './role-pack-service.js';
 
@@ -29,12 +42,30 @@ describe('citizen service', () => {
   it('creates project-scoped citizens and renders OpenClaw previews', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const projectService = new ProjectService(db);
+    const projectService = new ProjectService({
+      projectRepository: new ProjectRepository(db),
+      taskRepository: new TaskRepository(db),
+      membershipService: new ProjectMembershipService({
+        membershipRepository: new ProjectMembershipRepository(db),
+        accountRepository: new HumanAccountRepository(db),
+      }),
+      agentRosterService: new ProjectAgentRosterService({
+        repository: new ProjectAgentRosterRepository(db),
+      }),
+      transactionManager: {
+        begin: () => db.exec('BEGIN'),
+        commit: () => db.exec('COMMIT'),
+        rollback: () => db.exec('ROLLBACK'),
+      },
+    });
     projectService.createProject({
       id: 'proj-alpha',
       name: 'Project Alpha',
     });
-    const rolePackService = new RolePackService({ db });
+    const rolePackService = new RolePackService({
+      roleDefinitions: new RoleDefinitionRepository(db),
+      roleBindings: new RoleBindingRepository(db),
+    });
     rolePackService.saveRoleDefinition({
       id: 'architect',
       name: 'Architect',
@@ -53,7 +84,8 @@ describe('citizen service', () => {
       },
       metadata: {},
     });
-    const service = new CitizenService(db, {
+    const service = new CitizenService({
+      repository: new CitizenRepository(db),
       projectService,
       rolePackService,
       projectionPorts: [new OpenClawCitizenProjectionAdapter()],

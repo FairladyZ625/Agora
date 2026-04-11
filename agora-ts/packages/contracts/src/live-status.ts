@@ -3,8 +3,11 @@ import { z } from 'zod';
 export const liveSessionStatusSchema = z.enum(['active', 'idle', 'closed']);
 export type LiveSessionStatusDto = z.infer<typeof liveSessionStatusSchema>;
 
+export const liveSessionSourceSchema = z.enum(['openclaw', 'cc-connect']);
+export type LiveSessionSourceDto = z.infer<typeof liveSessionSourceSchema>;
+
 export const liveSessionSchema = z.object({
-  source: z.literal('openclaw'),
+  source: liveSessionSourceSchema,
   agent_id: z.string().min(1),
   session_key: z.string().min(1),
   channel: z.string().min(1).nullable(),

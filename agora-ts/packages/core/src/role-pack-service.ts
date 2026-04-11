@@ -1,32 +1,32 @@
-import type { RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto, TemplateDetailDto } from '@agora-ts/contracts';
-import { RoleBindingRepository, RoleDefinitionRepository, type AgoraDatabase } from '@agora-ts/db';
+import type { IRoleBindingRepository, IRoleDefinitionRepository, RoleBindingDto, RoleBindingScopeDto, RoleDefinitionDto, RoleDefinitionRecord, TemplateDetailDto } from '@agora-ts/contracts';
 
 export interface RolePackServiceOptions {
-  db: AgoraDatabase;
+  roleDefinitions: IRoleDefinitionRepository;
+  roleBindings: IRoleBindingRepository;
   rolePacksDir?: string | null;
 }
 
 export class RolePackService {
-  private readonly roleDefinitions: RoleDefinitionRepository;
-  private readonly roleBindings: RoleBindingRepository;
+  private readonly roleDefinitions: IRoleDefinitionRepository;
+  private readonly roleBindings: IRoleBindingRepository;
 
-  constructor(private readonly options: RolePackServiceOptions) {
-    this.roleDefinitions = new RoleDefinitionRepository(options.db);
-    this.roleBindings = new RoleBindingRepository(options.db);
+  constructor(options: RolePackServiceOptions) {
+    this.roleDefinitions = options.roleDefinitions;
+    this.roleBindings = options.roleBindings;
     if (options.rolePacksDir) {
       this.roleDefinitions.seedFromPackDir(options.rolePacksDir);
     }
   }
 
-  listRoleDefinitions(): ReturnType<RoleDefinitionRepository['listRoleDefinitions']> {
+  listRoleDefinitions(): RoleDefinitionRecord[] {
     return this.roleDefinitions.listRoleDefinitions();
   }
 
-  getRoleDefinition(roleId: string): ReturnType<RoleDefinitionRepository['getRoleDefinition']> {
+  getRoleDefinition(roleId: string): RoleDefinitionRecord | null {
     return this.roleDefinitions.getRoleDefinition(roleId);
   }
 
-  saveRoleDefinition(definition: RoleDefinitionDto): ReturnType<RoleDefinitionRepository['saveRoleDefinition']> {
+  saveRoleDefinition(definition: RoleDefinitionDto): RoleDefinitionRecord {
     return this.roleDefinitions.saveRoleDefinition(definition);
   }
 

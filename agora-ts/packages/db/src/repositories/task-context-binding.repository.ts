@@ -1,3 +1,4 @@
+import type { ITaskContextBindingRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
 export interface StoredTaskContextBinding {
@@ -12,7 +13,7 @@ export interface StoredTaskContextBinding {
   closed_at: string | null;
 }
 
-export class TaskContextBindingRepository {
+export class TaskContextBindingRepository implements ITaskContextBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insert(input: {

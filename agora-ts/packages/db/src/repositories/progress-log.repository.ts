@@ -1,3 +1,4 @@
+import type { IProgressLogRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { stringifyJsonValue } from './json.js';
 
@@ -23,7 +24,7 @@ export interface InsertProgressLogInput {
   actor: string;
 }
 
-export class ProgressLogRepository {
+export class ProgressLogRepository implements IProgressLogRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertProgressLog(input: InsertProgressLogInput): StoredProgressLog {

@@ -1,3 +1,4 @@
+import type { IFlowLogRepository } from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 import { stringifyJsonValue } from './json.js';
 
@@ -25,7 +26,7 @@ export interface InsertFlowLogInput {
   actor?: string | null;
 }
 
-export class FlowLogRepository {
+export class FlowLogRepository implements IFlowLogRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
   insertFlowLog(input: InsertFlowLogInput): StoredFlowLog {

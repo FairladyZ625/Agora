@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { TaskContextBindingRepository, type AgoraDatabase, type StoredTaskContextBinding } from '@agora-ts/db';
+import type { ITaskContextBindingRepository, TaskContextBindingRecord } from '@agora-ts/contracts';
 
 export interface TaskContextBindingServiceOptions {
+  repository: ITaskContextBindingRepository;
   idGenerator?: () => string;
 }
 
 export class TaskContextBindingService {
-  private readonly bindings: TaskContextBindingRepository;
+  private readonly bindings: ITaskContextBindingRepository;
   private readonly idGenerator: () => string;
 
-  constructor(db: AgoraDatabase, options: TaskContextBindingServiceOptions = {}) {
-    this.bindings = new TaskContextBindingRepository(db);
+  constructor(options: TaskContextBindingServiceOptions) {
+    this.bindings = options.repository;
     this.idGenerator = options.idGenerator ?? (() => randomUUID());
   }
 
@@ -20,7 +21,7 @@ export class TaskContextBindingService {
     conversation_ref?: string;
     thread_ref?: string;
     message_root_ref?: string;
-  }): StoredTaskContextBinding {
+  }): TaskContextBindingRecord {
     return this.bindings.insert({
       id: this.idGenerator(),
       task_id: input.task_id,
@@ -32,15 +33,15 @@ export class TaskContextBindingService {
     });
   }
 
-  getActiveBinding(taskId: string): StoredTaskContextBinding | null {
+  getActiveBinding(taskId: string): TaskContextBindingRecord | null {
     return this.bindings.getActiveByTask(taskId);
   }
 
-  getLatestBinding(taskId: string): StoredTaskContextBinding | null {
+  getLatestBinding(taskId: string): TaskContextBindingRecord | null {
     return this.bindings.listByTask(taskId)[0] ?? null;
   }
 
-  listBindings(taskId: string): StoredTaskContextBinding[] {
+  listBindings(taskId: string): TaskContextBindingRecord[] {
     return this.bindings.listByTask(taskId);
   }
 
@@ -48,7 +49,7 @@ export class TaskContextBindingService {
     provider?: string | null;
     thread_ref?: string | null;
     conversation_ref?: string | null;
-  }): StoredTaskContextBinding | null {
+  }): TaskContextBindingRecord | null {
     const candidates = this.bindings.listByTaskBindingsForRefs({
       thread_ref: input.thread_ref ?? null,
       conversation_ref: input.conversation_ref ?? null,

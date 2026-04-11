@@ -1,4 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import {
+  HumanAccountRepository,
+  HumanIdentityBindingRepository,
+  TaskContextBindingRepository,
+  TaskConversationReadCursorRepository,
+  TaskConversationRepository,
+} from '@agora-ts/db';
 import { createTestRuntime } from '@agora-ts/testing';
 import { HumanAccountService } from './human-account-service.js';
 import { TaskContextBindingService } from './task-context-binding-service.js';
@@ -8,7 +15,8 @@ describe('TaskConversationService', () => {
   it('ingests an entry by matching thread_ref to an active binding', () => {
     const runtime = createTestRuntime();
     try {
-      const bindings = new TaskContextBindingService(runtime.db, {
+      const bindings = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
         idGenerator: () => 'binding-1',
       });
       const task = runtime.taskService.createTask({
@@ -24,7 +32,10 @@ describe('TaskConversationService', () => {
         thread_ref: 'thread-1',
       });
 
-      const service = new TaskConversationService(runtime.db, {
+      const service = new TaskConversationService({
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+        readCursorRepository: new TaskConversationReadCursorRepository(runtime.db),
         idGenerator: () => 'entry-1',
         now: () => new Date('2026-03-10T12:00:01.000Z'),
       });
@@ -50,7 +61,8 @@ describe('TaskConversationService', () => {
   it('falls back to conversation_ref matching and dedupes repeated entries', () => {
     const runtime = createTestRuntime();
     try {
-      const bindings = new TaskContextBindingService(runtime.db, {
+      const bindings = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
         idGenerator: () => 'binding-2',
       });
       const task = runtime.taskService.createTask({
@@ -66,7 +78,10 @@ describe('TaskConversationService', () => {
         conversation_ref: 'conv-1',
       });
 
-      const service = new TaskConversationService(runtime.db, {
+      const service = new TaskConversationService({
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+        readCursorRepository: new TaskConversationReadCursorRepository(runtime.db),
         idGenerator: () => 'entry-2',
         now: () => new Date('2026-03-10T12:00:02.000Z'),
       });
@@ -99,7 +114,8 @@ describe('TaskConversationService', () => {
   it('builds a summary-first read model with latest excerpt and count', () => {
     const runtime = createTestRuntime();
     try {
-      const bindings = new TaskContextBindingService(runtime.db, {
+      const bindings = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
         idGenerator: () => 'binding-3',
       });
       const task = runtime.taskService.createTask({
@@ -115,7 +131,10 @@ describe('TaskConversationService', () => {
         thread_ref: 'thread-3',
       });
 
-      const service = new TaskConversationService(runtime.db, {
+      const service = new TaskConversationService({
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+        readCursorRepository: new TaskConversationReadCursorRepository(runtime.db),
         idGenerator: () => `entry-${Math.random()}`,
         now: () => new Date('2026-03-10T12:10:00.000Z'),
       });
@@ -156,7 +175,8 @@ describe('TaskConversationService', () => {
   it('tracks unread counts and clears them when a human marks the task conversation as read', () => {
     const runtime = createTestRuntime();
     try {
-      const bindings = new TaskContextBindingService(runtime.db, {
+      const bindings = new TaskContextBindingService({
+        repository: new TaskContextBindingRepository(runtime.db),
         idGenerator: () => 'binding-4',
       });
       const task = runtime.taskService.createTask({
@@ -171,14 +191,20 @@ describe('TaskConversationService', () => {
         im_provider: 'discord',
         thread_ref: 'thread-4',
       });
-      const humans = new HumanAccountService(runtime.db);
+      const humans = new HumanAccountService({
+        accountRepository: new HumanAccountRepository(runtime.db),
+        identityBindingRepository: new HumanIdentityBindingRepository(runtime.db),
+      });
       const account = humans.bootstrapAdmin({
         username: 'lizeyu',
         password: 'secret-pass',
       });
 
       let index = 0;
-      const service = new TaskConversationService(runtime.db, {
+      const service = new TaskConversationService({
+        bindingRepository: new TaskContextBindingRepository(runtime.db),
+        conversationRepository: new TaskConversationRepository(runtime.db),
+        readCursorRepository: new TaskConversationReadCursorRepository(runtime.db),
         idGenerator: () => `entry-${++index}`,
         now: () => new Date('2026-03-10T12:10:00.000Z'),
       });

@@ -1,4 +1,4 @@
-import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import { createAgoraDatabase, ProjectBrainIndexJobRepository, runMigrations } from '@agora-ts/db';
 import type { ServerCompositionFactories, ServerCompositionOptions } from './composition.js';
 import { buildServerComposition, ensureRuntimeBrainPackRoot } from './composition.js';
 import {
@@ -8,14 +8,13 @@ import {
   type AgoraConfig,
 } from '@agora-ts/config';
 import {
-  OpenAiCompatibleProjectBrainEmbeddingAdapter,
   ProjectBrainChunkingPolicy,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexService,
   ProjectBrainIndexWorkerService,
-  QdrantProjectBrainVectorIndexAdapter,
 } from '@agora-ts/core';
+import { OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { existsSync } from 'node:fs';
 
 export interface CreateServerRuntimeOptions extends ServerCompositionOptions {
@@ -152,7 +151,7 @@ function createDefaultProjectBrainIndexWorkerService(runtime: {
     vectorIndexPort: new QdrantProjectBrainVectorIndexAdapter(buildVectorIndexOptions()),
   });
   return new ProjectBrainIndexWorkerService({
-    queueService: new ProjectBrainIndexQueueService(runtime.db),
+    queueService: new ProjectBrainIndexQueueService({ repository: new ProjectBrainIndexJobRepository(runtime.db) }),
     indexService,
   });
 }
@@ -168,7 +167,7 @@ function createDefaultProjectBrainDoctorService(runtime: {
   return new ProjectBrainDoctorService({
     dbPath: runtime.config.db_path,
     projectBrainService: runtime.projectBrainService,
-    queueService: new ProjectBrainIndexQueueService(runtime.db),
+    queueService: new ProjectBrainIndexQueueService({ repository: new ProjectBrainIndexJobRepository(runtime.db) }),
     ...(embeddingPort ? { embeddingPort } : {}),
   });
 }
@@ -223,6 +222,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     ...(projectBrainIndexWorkerService ? { projectBrainIndexWorkerService } : {}),
   });
   const dispose = () => {
+    composition.ccConnectSessionMirrorService?.stop();
     composition.discordPresenceService?.stop();
     observationScheduler.stop();
   };
