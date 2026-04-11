@@ -36,6 +36,7 @@ import {
 } from '@agora-ts/db';
 import {
   CitizenService,
+  ContextMaterializationService,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
   DashboardQueryService,
@@ -64,6 +65,7 @@ import {
   type WorkdirIsolator,
 } from '@agora-ts/core';
 import { FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { TmuxRuntimeService, type GeminiSessionIdentity } from '@agora-ts/adapters-runtime';
@@ -172,6 +174,13 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
   const projectBrainAutomationService = new ProjectBrainAutomationService({
     projectBrainService,
   });
+  const contextMaterializationService = new ContextMaterializationService({
+    ports: [
+      new ProjectContextBriefingMaterializer({
+        projectBrainAutomationService,
+      }),
+    ],
+  });
   const taskServiceOptions: { templatesDir: string; taskIdGenerator?: () => string } = {
     templatesDir,
   };
@@ -275,6 +284,7 @@ export function createTestRuntime(options: CreateTestRuntimeOptions = {}) {
     }),
     taskContextBindingService,
     taskParticipationService,
+    contextMaterializationService,
     projectService,
     projectBrainAutomationService,
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),

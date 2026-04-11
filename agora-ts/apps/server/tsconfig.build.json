@@ -11,6 +11,7 @@
     { "path": "../../packages/db/tsconfig.build.json" },
     { "path": "../../packages/adapters-craftsman/tsconfig.build.json" },
     { "path": "../../packages/adapters-runtime/tsconfig.build.json" },
+    { "path": "../../packages/adapters-materialization/tsconfig.build.json" },
     { "path": "../../packages/adapters-openclaw/tsconfig.build.json" },
     { "path": "../../packages/adapters-cc-connect/tsconfig.build.json" },
     { "path": "../../packages/adapters-obsidian/tsconfig.build.json" },

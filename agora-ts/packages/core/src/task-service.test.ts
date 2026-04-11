@@ -1196,6 +1196,100 @@ describe('task service', () => {
     }));
   });
 
+  it('prefers synchronous context materialization for task brain workspace project contexts when configured', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const brainPackDir = makeBrainPackDir();
+    const projectService = createProjectServiceFromDb(db, {
+      knowledgePort: new FilesystemProjectKnowledgeAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+    });
+    projectService.createProject({
+      id: 'proj-bootstrap',
+      name: 'Project Bootstrap',
+    });
+    const contextMaterializationService = {
+      materializeSync: vi.fn(({ audience }: { audience: 'controller' | 'craftsman' | 'citizen' }) => ({
+        target: 'project_context_briefing',
+        artifact: {
+          project_id: 'proj-bootstrap',
+          audience,
+          markdown: `# ${audience}`,
+          source_documents: [],
+        },
+      })),
+    };
+    const buildBootstrapContext = vi.fn().mockReturnValue({
+      project_id: 'proj-bootstrap',
+      audience: 'controller',
+      markdown: '# Bootstrap',
+      source_documents: [],
+    });
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-PROJECT-CTX-MAT',
+      projectService,
+      taskBrainBindingService: createTaskBrainBindingServiceFromDb(db, {
+        idGenerator: () => 'brain-binding-bootstrap-materialized',
+      }),
+      taskBrainWorkspacePort: new FilesystemTaskBrainWorkspaceAdapter({
+        brainPackRoot: brainPackDir,
+      }),
+      contextMaterializationService: contextMaterializationService as never,
+      projectBrainAutomationService: {
+        buildBootstrapContext,
+        promoteKnowledge: vi.fn(),
+        recordTaskCloseRecap: vi.fn(),
+      } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
+    });
+
+    service.createTask({
+      title: 'Project bootstrap task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'bootstrap project context',
+      priority: 'high',
+      project_id: 'proj-bootstrap',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+          { role: 'citizen', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+        ],
+      },
+    });
+
+    expect(contextMaterializationService.materializeSync).toHaveBeenCalledTimes(3);
+    expect(contextMaterializationService.materializeSync).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'project_context_briefing',
+      project_id: 'proj-bootstrap',
+      task_id: 'OC-PROJECT-CTX-MAT',
+      task_title: 'Project bootstrap task',
+      task_description: 'bootstrap project context',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'controller',
+    }));
+    expect(contextMaterializationService.materializeSync).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'project_context_briefing',
+      project_id: 'proj-bootstrap',
+      task_id: 'OC-PROJECT-CTX-MAT',
+      task_title: 'Project bootstrap task',
+      task_description: 'bootstrap project context',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'craftsman',
+    }));
+    expect(contextMaterializationService.materializeSync).toHaveBeenCalledWith(expect.objectContaining({
+      target: 'project_context_briefing',
+      project_id: 'proj-bootstrap',
+      task_id: 'OC-PROJECT-CTX-MAT',
+      task_title: 'Project bootstrap task',
+      task_description: 'bootstrap project context',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'citizen',
+    }));
+    expect(buildBootstrapContext).not.toHaveBeenCalled();
+  });
+
   it('builds a structured project context write proposal for task closeout', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

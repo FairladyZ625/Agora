@@ -30,6 +30,7 @@ import type { IMMessagingPort, IMProvisioningPort } from './im-ports.js';
 import type { LiveSessionStore } from './live-session-store.js';
 import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import type { ContextMaterializationService } from './context-materialization-service.js';
 import type { ProjectContextWriter } from './project-context-writer.js';
 import type { ProjectMembershipService } from './project-membership-service.js';
 import type { ProjectNomosAuthoringPort } from './project-nomos-authoring-port.js';
@@ -85,6 +86,7 @@ export interface TaskServiceOptions {
   taskBrainBindingService?: TaskBrainBindingService;
   taskContextBindingService?: TaskContextBindingService;
   taskParticipationService?: TaskParticipationService;
+  contextMaterializationService?: Pick<ContextMaterializationService, 'materializeSync'>;
   projectBrainAutomationService?: ProjectBrainAutomationService;
   agentRuntimePort?: AgentRuntimePort;
   runtimeRecoveryPort?: RuntimeRecoveryPort;

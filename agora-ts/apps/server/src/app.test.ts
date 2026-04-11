@@ -1299,8 +1299,10 @@ describe('agora-ts server bootstrap', () => {
   });
 
   it('builds a project context briefing through the unified route surface', async () => {
-    const projectBrainAutomationService = {
-      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'project_context_briefing',
+        artifact: {
         project_id: 'proj-ctx',
         audience: 'craftsman',
         markdown: '# Project Brain Bootstrap Context',
@@ -1332,6 +1334,7 @@ describe('agora-ts server bootstrap', () => {
           routes: [],
         },
         source_documents: [],
+        },
       }),
     };
     const app = buildApp({
@@ -1347,7 +1350,7 @@ describe('agora-ts server bootstrap', () => {
       projectService: {
         requireProject: () => ({ id: 'proj-ctx' }),
       } as never,
-      projectBrainAutomationService: projectBrainAutomationService as never,
+      contextMaterializationService: contextMaterializationService as never,
     });
 
     const response = await app.inject({
@@ -1360,7 +1363,8 @@ describe('agora-ts server bootstrap', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'project_context_briefing',
       project_id: 'proj-ctx',
       audience: 'craftsman',
       task_id: 'OC-200',
@@ -1374,6 +1378,83 @@ describe('agora-ts server bootstrap', () => {
         audience: 'craftsman',
         markdown: '# Project Brain Bootstrap Context',
       }),
+    });
+  });
+
+  it('prefers context materialization service for project context briefing when configured', async () => {
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'project_context_briefing',
+        artifact: {
+          project_id: 'proj-ctx',
+          audience: 'craftsman',
+          markdown: '# Materialized Briefing',
+          source_documents: [],
+        },
+      }),
+    };
+    const app = buildApp({
+      taskService: {
+        getTask: () => ({
+          id: 'OC-200',
+          title: 'Implement hybrid retrieval',
+          description: 'Need vector recall and lexical rerank.',
+          project_id: 'proj-ctx',
+          team: { members: [] },
+        }),
+      } as never,
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextMaterializationService: contextMaterializationService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/briefing',
+      payload: {
+        audience: 'craftsman',
+        task_id: 'OC-200',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'project_context_briefing',
+      project_id: 'proj-ctx',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      briefing: expect.objectContaining({
+        project_id: 'proj-ctx',
+        audience: 'craftsman',
+        markdown: '# Materialized Briefing',
+      }),
+    });
+  });
+
+  it('returns 503 for project context briefing when materialization is not configured', async () => {
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/briefing',
+      payload: {
+        audience: 'craftsman',
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      message: 'Project context briefing is not configured',
     });
   });
 

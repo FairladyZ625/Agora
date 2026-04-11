@@ -32,6 +32,7 @@ import {
 } from '@agora-ts/db';
 import {
   CitizenService,
+  ContextMaterializationService,
   CraftsmanCallbackService,
   CraftsmanDispatcher,
   DashboardQueryService,
@@ -56,6 +57,7 @@ import {
   type TaskServiceOptions,
   type WorkspaceBootstrapServiceOptions,
 } from '@agora-ts/core';
+import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
 
 const DEFAULT_TEMPLATES_DIR = fileURLToPath(new URL('../../../templates', import.meta.url));
 
@@ -188,6 +190,16 @@ export function createTaskServiceFromDb(
     taskBindingRepository: taskContextBindingRepository,
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
   });
+  const contextMaterializationService = options.contextMaterializationService
+    ?? (options.projectBrainAutomationService
+      ? new ContextMaterializationService({
+        ports: [
+          new ProjectContextBriefingMaterializer({
+            projectBrainAutomationService: options.projectBrainAutomationService,
+          }),
+        ],
+      })
+      : undefined);
 
   return new TaskService({
     templatesDir: options.templatesDir ?? DEFAULT_TEMPLATES_DIR,
@@ -203,6 +215,7 @@ export function createTaskServiceFromDb(
     taskBrainBindingService,
     taskContextBindingService,
     taskParticipationService,
+    ...(contextMaterializationService ? { contextMaterializationService } : {}),
     ...(options.projectBrainAutomationService ? { projectBrainAutomationService: options.projectBrainAutomationService } : {}),
     ...(options.agentRuntimePort ? { agentRuntimePort: options.agentRuntimePort } : {}),
     ...(options.runtimeRecoveryPort ? { runtimeRecoveryPort: options.runtimeRecoveryPort } : {}),

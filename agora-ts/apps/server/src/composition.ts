@@ -17,7 +17,9 @@ import {
   NotificationDispatcher,
   HumanAccountService,
   ContextSourceBindingService,
+  ContextMaterializationService,
   ProjectAgentRosterService,
+  ProjectBrainAutomationService,
   ProjectBrainIndexQueueService,
   ProjectBrainRetrievalService,
   type ProjectBrainIndexWorkerService,
@@ -53,6 +55,7 @@ import {
 } from '@agora-ts/core';
 import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter, CcConnectManagementPresenceSource, CcConnectSessionMirrorService } from '@agora-ts/adapters-cc-connect';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
+import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
 import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
@@ -119,6 +122,7 @@ export interface ServerComposition {
   projectService: ProjectService;
   projectBrainService: ProjectBrainService;
   contextRetrievalService: RetrievalService;
+  contextMaterializationService: ContextMaterializationService;
   citizenService: CitizenService;
   dashboardQueryService: DashboardQueryService;
   templateAuthoringService: TemplateAuthoringService;
@@ -161,6 +165,7 @@ export interface ServerCompositionFactories {
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
       humanAccountService: HumanAccountService;
+      contextMaterializationService: ContextMaterializationService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
       craftsmanInputPort: CraftsmanInputPort;
@@ -212,6 +217,10 @@ export interface ServerCompositionFactories {
     context: ServerCompositionContext,
     deps: { projectService: ProjectService; projectBrainService: ProjectBrainService },
   ) => RetrievalService;
+  createContextMaterializationService: (
+    context: ServerCompositionContext,
+    deps: { projectBrainService: ProjectBrainService; contextRetrievalService: RetrievalService },
+  ) => ContextMaterializationService;
   createProjectBrainIndexWorkerService?: (
     context: ServerCompositionContext,
     deps: { projectBrainService: ProjectBrainService },
@@ -390,6 +399,7 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
         taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
         taskContextBindingService: deps.taskContextBindingService,
         taskParticipationService: deps.taskParticipationService,
+        contextMaterializationService: deps.contextMaterializationService,
         resolveHumanReminderParticipantRefs: ({ task, provider, reason }) => {
           if (reason !== 'approval_waiting') {
             return [];
@@ -572,6 +582,16 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
       ]);
       return new RetrievalService({ registry });
     },
+    createContextMaterializationService: (_context, deps) => new ContextMaterializationService({
+      ports: [
+        new ProjectContextBriefingMaterializer({
+          projectBrainAutomationService: new ProjectBrainAutomationService({
+            projectBrainService: deps.projectBrainService,
+            retrievalService: deps.contextRetrievalService,
+          }),
+        }),
+      ],
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService({
       participantRepository: new ParticipantBindingRepository(context.db),
       runtimeSessionRepository: new RuntimeSessionBindingRepository(context.db),
@@ -656,6 +676,10 @@ export function buildServerComposition(
   const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
   const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
   const contextRetrievalService = factories.createContextRetrievalService(context, { projectService, projectBrainService });
+  const contextMaterializationService = factories.createContextMaterializationService(context, {
+    projectBrainService,
+    contextRetrievalService,
+  });
   const taskParticipationService = factories.createTaskParticipationService(context, { agentRuntimePort });
   const humanAccountService = factories.createHumanAccountService(context);
   const imProvisioningPort = factories.createIMProvisioningPort(context);
@@ -671,6 +695,7 @@ export function buildServerComposition(
     taskContextBindingService,
     taskParticipationService,
     humanAccountService,
+    contextMaterializationService,
     projectService,
     agentRuntimePort,
     ...createCraftsmanTransportDeps(craftsmanMode, legacyRuntimeService, acpRuntime),
@@ -720,6 +745,7 @@ export function buildServerComposition(
     projectService,
     projectBrainService,
     contextRetrievalService,
+    contextMaterializationService,
     citizenService,
     dashboardQueryService,
     templateAuthoringService,
