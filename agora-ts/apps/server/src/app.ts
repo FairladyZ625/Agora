@@ -677,6 +677,33 @@ function recordTaskAction(metrics: MetricsState, action: string, result: string)
   incrementCounter(metrics.taskActionsByResult, `${action}:${result}`);
 }
 
+function recordHumanReviewTaskAction(options: {
+  metrics: MetricsState;
+  structuredLogs: boolean;
+  action: 'approve' | 'reject' | 'current-approve' | 'current-reject' | 'archon-approve' | 'archon-reject';
+  result: 'success' | 'error' | 'denied';
+  taskId: string;
+  actor?: string | null;
+  actorSource?: HumanActor['source'] | 'payload' | 'unknown';
+  state?: string | null;
+  stage?: string | null;
+  reason?: string | null;
+}) {
+  recordTaskAction(options.metrics, options.action, options.result);
+  emitStructuredLog(options.structuredLogs, {
+    module: 'task',
+    msg: 'task_action',
+    action: options.action,
+    result: options.result,
+    task_id: options.taskId,
+    ...(options.actor ? { actor: options.actor } : {}),
+    ...(options.actorSource ? { actor_source: options.actorSource } : {}),
+    ...(options.state ? { state: options.state } : {}),
+    ...(options.stage ? { stage: options.stage } : {}),
+    ...(options.reason ? { reason: options.reason } : {}),
+  });
+}
+
 function recordCraftsmanDispatch(metrics: MetricsState, adapter: string, result: string) {
   incrementCounter(metrics.craftsmanDispatchByAdapterAndResult, `${adapter}:${result}`);
 }
@@ -2685,23 +2712,54 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
+    let humanActor: HumanActor | null = null;
+    let approverId: string | null = null;
     try {
       const params = request.params as { taskId: string };
       const payload = approveTaskRequestSchema.parse(request.body);
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'approve',
+          result: 'denied',
+          taskId: params.taskId,
+          actorSource: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        });
         return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
-      const approverId = humanActor?.username ?? payload.approver_id;
-      return reply.send(
-        taskService.approveTask(params.taskId, {
+      approverId = humanActor?.username ?? payload.approver_id;
+      const task = taskService.approveTask(params.taskId, {
           approverId,
           approverAccountId: humanActor?.account_id ?? null,
           comment: payload.comment,
-        }),
-      );
+      });
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'approve',
+        result: 'success',
+        taskId: task.id,
+        actor: approverId,
+        actorSource: humanActor?.source ?? 'payload',
+        state: task.state,
+        stage: task.current_stage,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'approve',
+        result: 'error',
+        taskId: (request.params as { taskId: string }).taskId,
+        actor: approverId,
+        actorSource: humanActor?.source ?? (approverId ? 'payload' : 'unknown'),
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -2710,23 +2768,54 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
+    let humanActor: HumanActor | null = null;
+    let rejectorId: string | null = null;
     try {
       const params = request.params as { taskId: string };
       const payload = rejectTaskRequestSchema.parse(request.body);
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'reject',
+          result: 'denied',
+          taskId: params.taskId,
+          actorSource: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        });
         return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
-      const rejectorId = humanActor?.username ?? payload.rejector_id;
-      return reply.send(
-        taskService.rejectTask(params.taskId, {
+      rejectorId = humanActor?.username ?? payload.rejector_id;
+      const task = taskService.rejectTask(params.taskId, {
           rejectorId,
           rejectorAccountId: humanActor?.account_id ?? null,
           reason: payload.reason,
-        }),
-      );
+      });
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'reject',
+        result: 'success',
+        taskId: task.id,
+        actor: rejectorId,
+        actorSource: humanActor?.source ?? 'payload',
+        state: task.state,
+        stage: task.current_stage,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'reject',
+        result: 'error',
+        taskId: (request.params as { taskId: string }).taskId,
+        actor: rejectorId,
+        actorSource: humanActor?.source ?? (rejectorId ? 'payload' : 'unknown'),
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -2735,6 +2824,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService || !taskContextBindingService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
+    let humanActor: HumanActor | null = null;
+    let actorId: string | null = null;
+    let taskId: string | null = null;
     try {
       const payload = currentImTaskApproveRequestSchema.parse(request.body);
       const binding = taskContextBindingService.findLatestBindingByRefs({
@@ -2745,6 +2837,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!binding) {
         return reply.status(404).send({ message: 'task context binding not found for current IM context' });
       }
+      taskId = binding.task_id;
       const task = taskService.getTask(binding.task_id);
       if (!task?.current_stage) {
         return reply.status(400).send({ message: 'task has no active stage for approval' });
@@ -2753,16 +2846,24 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
         return reply.status(400).send({ message: 'current stage does not accept human approval' });
       }
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'current-approve',
+          result: 'denied',
+          taskId: binding.task_id,
+          actorSource: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        });
         return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
-      const actorId = humanActor?.username ?? payload.actor_id;
+      actorId = humanActor?.username ?? payload.actor_id ?? null;
       if (!actorId) {
         return reply.status(400).send({ message: 'missing actor identity for current IM approval' });
       }
-      return reply.send(
-        stage.gate.type === 'archon_review'
+      const updatedTask = stage.gate.type === 'archon_review'
           ? taskService.archonApproveTask(binding.task_id, {
               reviewerId: actorId,
               comment: payload.comment,
@@ -2770,10 +2871,33 @@ export function buildApp(options: BuildAppOptions = {}) {
           : taskService.approveTask(binding.task_id, {
               approverId: actorId,
               comment: payload.comment,
-            }),
-      );
+            });
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'current-approve',
+        result: 'success',
+        taskId: binding.task_id,
+        actor: actorId,
+        actorSource: humanActor?.source ?? 'payload',
+        state: updatedTask.state,
+        stage: updatedTask.current_stage,
+      });
+      return reply.send(updatedTask);
     } catch (error) {
       const translated = translateError(error);
+      if (taskId) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'current-approve',
+          result: 'error',
+          taskId,
+          actor: actorId,
+          actorSource: humanActor?.source ?? (actorId ? 'payload' : 'unknown'),
+          reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+        });
+      }
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -2782,6 +2906,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService || !taskContextBindingService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
+    let humanActor: HumanActor | null = null;
+    let actorId: string | null = null;
+    let taskId: string | null = null;
     try {
       const payload = currentImTaskRejectRequestSchema.parse(request.body);
       const binding = taskContextBindingService.findLatestBindingByRefs({
@@ -2792,6 +2919,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!binding) {
         return reply.status(404).send({ message: 'task context binding not found for current IM context' });
       }
+      taskId = binding.task_id;
       const task = taskService.getTask(binding.task_id);
       if (!task?.current_stage) {
         return reply.status(400).send({ message: 'task has no active stage for rejection' });
@@ -2800,16 +2928,24 @@ export function buildApp(options: BuildAppOptions = {}) {
       if (!stage?.gate?.type || (stage.gate.type !== 'approval' && stage.gate.type !== 'archon_review')) {
         return reply.status(400).send({ message: 'current stage does not accept human rejection' });
       }
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'current-reject',
+          result: 'denied',
+          taskId: binding.task_id,
+          actorSource: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        });
         return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
-      const actorId = humanActor?.username ?? payload.actor_id;
+      actorId = humanActor?.username ?? payload.actor_id ?? null;
       if (!actorId) {
         return reply.status(400).send({ message: 'missing actor identity for current IM rejection' });
       }
-      return reply.send(
-        stage.gate.type === 'archon_review'
+      const updatedTask = stage.gate.type === 'archon_review'
           ? taskService.archonRejectTask(binding.task_id, {
               reviewerId: actorId,
               reason: payload.reason,
@@ -2817,10 +2953,33 @@ export function buildApp(options: BuildAppOptions = {}) {
           : taskService.rejectTask(binding.task_id, {
               rejectorId: actorId,
               reason: payload.reason,
-            }),
-      );
+            });
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'current-reject',
+        result: 'success',
+        taskId: binding.task_id,
+        actor: actorId,
+        actorSource: humanActor?.source ?? 'payload',
+        state: updatedTask.state,
+        stage: updatedTask.current_stage,
+      });
+      return reply.send(updatedTask);
     } catch (error) {
       const translated = translateError(error);
+      if (taskId) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'current-reject',
+          result: 'error',
+          taskId,
+          actor: actorId,
+          actorSource: humanActor?.source ?? (actorId ? 'payload' : 'unknown'),
+          reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+        });
+      }
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -2829,22 +2988,53 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
+    let humanActor: HumanActor | null = null;
+    let reviewerId: string | null = null;
     try {
       const params = request.params as { taskId: string };
       const payload = archonApproveTaskRequestSchema.parse(request.body);
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'archon-approve',
+          result: 'denied',
+          taskId: params.taskId,
+          actorSource: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        });
         return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
-      const reviewerId = humanActor?.username ?? payload.reviewer_id;
-      return reply.send(
-        taskService.archonApproveTask(params.taskId, {
+      reviewerId = humanActor?.username ?? payload.reviewer_id;
+      const task = taskService.archonApproveTask(params.taskId, {
           reviewerId,
           comment: payload.comment,
-        }),
-      );
+      });
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'archon-approve',
+        result: 'success',
+        taskId: task.id,
+        actor: reviewerId,
+        actorSource: humanActor?.source ?? 'payload',
+        state: task.state,
+        stage: task.current_stage,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'archon-approve',
+        result: 'error',
+        taskId: (request.params as { taskId: string }).taskId,
+        actor: reviewerId,
+        actorSource: humanActor?.source ?? (reviewerId ? 'payload' : 'unknown'),
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });
@@ -2853,22 +3043,53 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (!taskService) {
       return reply.status(503).send({ message: 'Task service is not configured' });
     }
+    let humanActor: HumanActor | null = null;
+    let reviewerId: string | null = null;
     try {
       const params = request.params as { taskId: string };
       const payload = archonRejectTaskRequestSchema.parse(request.body);
-      const humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
+      humanActor = resolveHumanActor(request, dashboardSessions, humanAccountService);
       if (shouldRequireHumanActor({ apiAuth, dashboardAuth, humanAccountService }) && !humanActor) {
+        recordHumanReviewTaskAction({
+          metrics,
+          structuredLogs,
+          action: 'archon-reject',
+          result: 'denied',
+          taskId: params.taskId,
+          actorSource: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        });
         return reply.status(403).send({ message: 'missing authenticated human actor' });
       }
-      const reviewerId = humanActor?.username ?? payload.reviewer_id;
-      return reply.send(
-        taskService.archonRejectTask(params.taskId, {
+      reviewerId = humanActor?.username ?? payload.reviewer_id;
+      const task = taskService.archonRejectTask(params.taskId, {
           reviewerId,
           reason: payload.reason,
-        }),
-      );
+      });
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'archon-reject',
+        result: 'success',
+        taskId: task.id,
+        actor: reviewerId,
+        actorSource: humanActor?.source ?? 'payload',
+        state: task.state,
+        stage: task.current_stage,
+      });
+      return reply.send(task);
     } catch (error) {
       const translated = translateError(error);
+      recordHumanReviewTaskAction({
+        metrics,
+        structuredLogs,
+        action: 'archon-reject',
+        result: 'error',
+        taskId: (request.params as { taskId: string }).taskId,
+        actor: reviewerId,
+        actorSource: humanActor?.source ?? (reviewerId ? 'payload' : 'unknown'),
+        reason: typeof translated.body?.message === 'string' ? translated.body.message : null,
+      });
       return reply.status(translated.statusCode).send(translated.body);
     }
   });

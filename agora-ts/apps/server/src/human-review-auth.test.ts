@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgoraDatabase, runMigrations } from '@agora-ts/db';
 import { HumanAccountRepository, HumanIdentityBindingRepository } from '@agora-ts/db';
 import { HumanAccountService } from '@agora-ts/core';
@@ -353,6 +353,96 @@ describe('human review auth', () => {
     );
   });
 
+  it('records metrics and structured logs for a dashboard-backed human approval', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
+    humanAccounts.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HUMAN-METRICS',
+      archonUsers: ['lizeyu'],
+    });
+    taskService.createTask({
+      title: 'human review metrics',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    taskService.archonApproveTask('OC-HUMAN-METRICS', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-METRICS');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-METRICS', 'review');
+
+    const app = buildApp({
+      taskService,
+      humanAccountService: humanAccounts,
+      dashboardAuth: {
+        enabled: true,
+        method: 'session',
+        allowedUsers: [],
+        sessionTtlHours: 24,
+      },
+      observability: {
+        metricsEnabled: true,
+        structuredLogs: true,
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/dashboard/session/login',
+      payload: {
+        username: 'lizeyu',
+        password: 'secret-pass',
+      },
+    });
+    const cookie = login.headers['set-cookie'];
+    const headers = {
+      cookie: Array.isArray(cookie) ? cookie[0] : String(cookie),
+    };
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-METRICS/approve',
+      headers,
+      payload: {
+        approver_id: 'spoofed-approver',
+        comment: 'approved by session user',
+      },
+    });
+    const metrics = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    });
+
+    expect(approve.statusCode).toBe(200);
+    expect(metrics.statusCode).toBe(200);
+    expect(metrics.body).toContain('agora_task_actions_total{action="approve",result="success"} 1');
+
+    const parsedLogs = logSpy.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
+    expect(parsedLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module: 'task',
+          msg: 'task_action',
+          action: 'approve',
+          result: 'success',
+          task_id: 'OC-HUMAN-METRICS',
+          actor: 'lizeyu',
+          actor_source: 'dashboard',
+        }),
+      ]),
+    );
+    logSpy.mockRestore();
+  });
+
   it('rejects bare bearer-token calls for human-only approve and reject routes', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -414,5 +504,84 @@ describe('human review auth', () => {
     expect(approve.json()).toEqual({ message: 'missing authenticated human actor' });
     expect(reject.statusCode).toBe(403);
     expect(reject.json()).toEqual({ message: 'missing authenticated human actor' });
+  });
+
+  it('records denied human-review actions when authenticated human actor is missing', async () => {
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const humanAccounts = createHumanAccountServiceFromDb(db);
+    humanAccounts.bootstrapAdmin({
+      username: 'lizeyu',
+      password: 'secret-pass',
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-HUMAN-DENIED',
+      archonUsers: ['lizeyu'],
+    });
+    taskService.createTask({
+      title: 'human review denied metrics',
+      type: 'document',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    taskService.archonApproveTask('OC-HUMAN-DENIED', {
+      reviewerId: 'lizeyu',
+      comment: 'outline ok',
+    });
+    db.prepare('UPDATE tasks SET state = ?, current_stage = ? WHERE id = ?').run('active', 'review', 'OC-HUMAN-DENIED');
+    db.prepare('INSERT INTO stage_history (task_id, stage_id) VALUES (?, ?)').run('OC-HUMAN-DENIED', 'review');
+
+    const app = buildApp({
+      taskService,
+      humanAccountService: humanAccounts,
+      apiAuth: {
+        enabled: true,
+        token: 'test-token',
+      },
+      observability: {
+        metricsEnabled: true,
+        structuredLogs: true,
+      },
+    });
+
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-HUMAN-DENIED/approve',
+      headers: {
+        authorization: 'Bearer test-token',
+      },
+      payload: {
+        approver_id: 'spoofed-approver',
+        comment: 'approved from bearer',
+      },
+    });
+    const metrics = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    });
+
+    expect(approve.statusCode).toBe(403);
+    expect(approve.json()).toEqual({ message: 'missing authenticated human actor' });
+    expect(metrics.statusCode).toBe(200);
+    expect(metrics.body).toContain('agora_task_actions_total{action="approve",result="denied"} 1');
+
+    const parsedLogs = logSpy.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
+    expect(parsedLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          module: 'task',
+          msg: 'task_action',
+          action: 'approve',
+          result: 'denied',
+          task_id: 'OC-HUMAN-DENIED',
+          actor_source: 'unknown',
+          reason: 'missing_authenticated_human_actor',
+        }),
+      ]),
+    );
+    logSpy.mockRestore();
   });
 });
