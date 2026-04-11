@@ -77,6 +77,8 @@ import {
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
+  projectContextMaterializeRequestSchema,
+  projectContextMaterializeResponseSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
   projectContextReferenceBundleRequestSchema,
@@ -1994,6 +1996,31 @@ export function buildApp(options: BuildAppOptions = {}) {
       return reply.send(projectContextBriefingResponseSchema.parse({
         scope: 'project_context',
         briefing,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/materialize', async (request, reply) => {
+    if (!projectService || !options.contextMaterializationService) {
+      return reply.status(503).send({ message: 'Project context materialization is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextMaterializeRequestSchema.parse(request.body);
+      const materialization = await options.contextMaterializationService.materialize({
+        target: payload.target,
+        project_id: params.projectId,
+      });
+      if (materialization.target !== 'codex_repo_shim' && materialization.target !== 'claude_repo_shim') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      return reply.send(projectContextMaterializeResponseSchema.parse({
+        scope: 'project_context',
+        materialization,
       }));
     } catch (error) {
       const translated = translateError(error);

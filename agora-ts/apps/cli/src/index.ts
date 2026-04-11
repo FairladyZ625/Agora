@@ -2380,6 +2380,34 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, briefing.markdown.trimEnd());
     });
 
+  context
+    .command('materialize')
+    .description('通过统一 project_context surface 生成 runtime-facing materialization artifact')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--target <target>', 'codex_repo_shim|claude_repo_shim')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      target: 'codex_repo_shim' | 'claude_repo_shim';
+      json?: boolean;
+    }) => {
+      const materialization = await contextMaterializationService.materialize({
+        target: options.target,
+        project_id: options.project,
+      });
+      if (materialization.target !== 'codex_repo_shim' && materialization.target !== 'claude_repo_shim') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          materialization,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, materialization.artifact.content.trimEnd());
+    });
+
   projectKnowledge
     .command('add')
     .description('新增或更新 project knowledge doc')

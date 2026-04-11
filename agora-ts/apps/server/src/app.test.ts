@@ -1458,6 +1458,54 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('materializes a codex-facing repo shim through the project context surface', async () => {
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'codex_repo_shim',
+        artifact: {
+          project_id: 'proj-ctx',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          media_type: 'text/markdown',
+          content: '# AGENTS.md\n',
+        },
+      }),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextMaterializationService: contextMaterializationService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/materialize',
+      payload: {
+        target: 'codex_repo_shim',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'codex_repo_shim',
+      project_id: 'proj-ctx',
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      materialization: {
+        target: 'codex_repo_shim',
+        artifact: {
+          project_id: 'proj-ctx',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          media_type: 'text/markdown',
+          content: '# AGENTS.md\n',
+        },
+      },
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {

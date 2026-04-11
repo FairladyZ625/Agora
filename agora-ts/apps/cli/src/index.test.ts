@@ -2614,6 +2614,43 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"markdown": "# Materialized Briefing"');
   });
 
+  it('materializes a claude-facing repo shim through the unified cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'claude_repo_shim',
+        artifact: {
+          project_id: 'proj-ctx',
+          runtime: 'claude_code',
+          filename: 'CLAUDE.md',
+          media_type: 'text/markdown',
+          content: '# CLAUDE.md\n',
+        },
+      }),
+    };
+    const program = createCliProgram({
+      contextMaterializationService: contextMaterializationService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'materialize',
+      '--project', 'proj-ctx',
+      '--target', 'claude_repo_shim',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'claude_repo_shim',
+      project_id: 'proj-ctx',
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"filename": "CLAUDE.md"');
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
