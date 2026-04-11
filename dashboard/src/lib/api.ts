@@ -1200,7 +1200,7 @@ export function getCcConnectSession(
 ): Promise<ApiCcConnectSessionDetailDto> {
   const params = new URLSearchParams();
   if (historyLimit !== undefined) {
-    params.set('history_limit', String(historyLimit));
+    params.set('historyLimit', String(historyLimit));
   }
   const query = params.size > 0 ? `?${params.toString()}` : '';
   return request<ApiCcConnectSessionDetailDto>(

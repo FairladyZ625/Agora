@@ -222,6 +222,7 @@ export function createServerRuntime(options: CreateServerRuntimeOptions = {}) {
     ...(projectBrainIndexWorkerService ? { projectBrainIndexWorkerService } : {}),
   });
   const dispose = () => {
+    composition.ccConnectSessionMirrorService?.stop();
     composition.discordPresenceService?.stop();
     observationScheduler.stop();
   };
