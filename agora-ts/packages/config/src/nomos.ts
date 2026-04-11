@@ -106,6 +106,9 @@ export const nomosProjectProfileSchema = z.object({
 export type NomosProjectProfile = z.infer<typeof nomosProjectProfileSchema>;
 
 export type ResolveAgoraProjectStateOptions = Pick<EnsureBundledAgoraAssetsOptions, 'userAgoraDir'>;
+export interface RefineProjectNomosDraftOptions extends ResolveAgoraProjectStateOptions {
+  replaceExisting?: boolean;
+}
 
 export interface AgoraProjectStateLayout {
   userAgoraDir: string;
@@ -875,7 +878,7 @@ export function parseProjectNomosAuthoringSpec(path: string): ProjectNomosAuthor
 
 export function refineProjectNomosDraftFromSpec(
   projectId: string,
-  options: ResolveAgoraProjectStateOptions = {},
+  options: RefineProjectNomosDraftOptions = {},
 ): RefineProjectNomosDraftResult {
   const layout = resolveAgoraProjectStateLayout(projectId, options);
   const spec = parseProjectNomosAuthoringSpec(layout.docsReferenceProjectNomosSpecPath);
@@ -883,17 +886,59 @@ export function refineProjectNomosDraftFromSpec(
   if (!existsSync(templateDir)) {
     throw new Error(`Nomos pack template not found: ${templateDir}`);
   }
+  const replaceExisting = options.replaceExisting ?? false;
+  const draftName = `${spec.project_name} Nomos`;
+  const draftDescription = spec.purpose.trim() || `Project-specific Nomos draft for ${spec.project_name}.`;
 
-  const scaffolded = scaffoldNomosPack({
-    outputDir: layout.projectNomosDraftDir,
-    templateDir,
-    id: `project/${projectId}`,
-    name: `${spec.project_name} Nomos`,
-    description: spec.purpose.trim() || `Project-specific Nomos draft for ${spec.project_name}.`,
-    lifecycleModules: spec.lifecycle_modules,
-    doctorChecks: spec.doctor_checks,
-    replaceExisting: true,
-  });
+  if (replaceExisting || !existsSync(layout.projectNomosDraftProfilePath)) {
+    scaffoldNomosPack({
+      outputDir: layout.projectNomosDraftDir,
+      templateDir,
+      id: `project/${projectId}`,
+      name: draftName,
+      description: draftDescription,
+      lifecycleModules: spec.lifecycle_modules,
+      doctorChecks: spec.doctor_checks,
+      replaceExisting,
+    });
+  } else {
+    mkdirSync(resolve(layout.projectNomosDraftDir, 'constitution'), { recursive: true });
+    mkdirSync(resolve(layout.projectNomosDraftDir, 'docs', 'reference'), { recursive: true });
+    mkdirSync(resolve(layout.projectNomosDraftDir, 'lifecycle'), { recursive: true });
+    mkdirSync(resolve(layout.projectNomosDraftDir, 'prompts', 'bootstrap'), { recursive: true });
+
+    writeFileSync(layout.projectNomosDraftProfilePath, renderNomosPackTemplateProfileToml({
+      id: `project/${projectId}`,
+      name: draftName,
+      description: draftDescription,
+      version: '0.1.0',
+      lifecycleModules: spec.lifecycle_modules,
+      doctorChecks: spec.doctor_checks,
+    }), 'utf8');
+    writeFileSync(resolve(layout.projectNomosDraftDir, 'README.md'), renderCustomNomosReadme({
+      id: `project/${projectId}`,
+      name: draftName,
+      description: draftDescription,
+      version: '0.1.0',
+      lifecycleModules: spec.lifecycle_modules,
+    }), 'utf8');
+    writeFileIfMissing(
+      resolve(layout.projectNomosDraftDir, 'constitution', 'constitution.md'),
+      renderCustomNomosConstitution({
+        name: draftName,
+        description: draftDescription,
+      }),
+    );
+    for (const knownModule of NOMOS_LIFECYCLE_MODULES) {
+      if (!spec.lifecycle_modules.includes(knownModule)) {
+        continue;
+      }
+      writeFileIfMissing(
+        resolve(layout.projectNomosDraftDir, 'lifecycle', `${knownModule}.md`),
+        renderCustomNomosLifecycleDoc(knownModule, draftName),
+      );
+    }
+  }
 
   writeFileSync(
     resolve(layout.projectNomosDraftDir, 'docs', 'reference', 'methodologies.md'),
@@ -909,7 +954,7 @@ export function refineProjectNomosDraftFromSpec(
   return {
     spec,
     draftDir: layout.projectNomosDraftDir,
-    draftProfilePath: scaffolded.profilePath,
+    draftProfilePath: layout.projectNomosDraftProfilePath,
   };
 }
 

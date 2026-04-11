@@ -7260,6 +7260,89 @@ describe('task service', () => {
     });
   });
 
+  it('broadcasts summarized craftsman output instead of raw runtime transcript', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioningPort = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-notify-raw-1',
+    });
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-NOTIFY-RAW-1',
+      imProvisioningPort: provisioningPort,
+      taskContextBindingService: bindingService,
+    });
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+
+    service.createTask({
+      title: 'Immediate callback notify raw transcript',
+      type: 'coding',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    subtasks.insertSubtask({
+      id: 'notify-subtask-raw-1',
+      task_id: 'OC-NOTIFY-RAW-1',
+      stage_id: 'develop',
+      title: 'notify me without transcript spam',
+      assignee: 'claude',
+      status: 'in_progress',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'claude:notify-raw-1',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-notify-raw-1',
+      task_id: 'OC-NOTIFY-RAW-1',
+      subtask_id: 'notify-subtask-raw-1',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'claude:notify-raw-1',
+      status: 'running',
+      started_at: '2026-04-01T15:00:00.000Z',
+    });
+
+    const transcript = [
+      '[client] initialize (running)',
+      '[client] session/new (running)',
+      '我先读取 spec 文件和当前 constitution.md。',
+      '[client] session/request_permission (running)',
+      '内容已读取，现在填充 constitution.md。',
+      '[tool] Write /tmp/constitution.md (failed)',
+      '  output:',
+      '    User refused permission to run tool',
+      '[done] end_turn',
+    ].join('\n');
+
+    service.handleCraftsmanCallback({
+      execution_id: 'exec-notify-raw-1',
+      status: 'succeeded',
+      session_id: 'claude:notify-raw-1',
+      payload: {
+        output: {
+          summary: null,
+          text: transcript,
+          artifacts: [],
+        },
+      },
+      error: null,
+      finished_at: '2026-04-01T15:01:00.000Z',
+    });
+
+    const callbackMessage = provisioningPort.published.flatMap((entry) => entry.messages).find((message) => message.kind === 'craftsman_completed');
+    expect(callbackMessage?.body).toContain('内容已读取，现在填充 constitution.md。');
+    expect(callbackMessage?.body).toContain('User refused permission to run tool');
+    expect(callbackMessage?.body).not.toContain('[client] session/new (running)');
+    expect(callbackMessage?.body).not.toContain('[tool] Write /tmp/constitution.md (failed)');
+  });
+
   it('routes craftsman input by execution id and records the input event', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

@@ -1742,11 +1742,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
 
   nomos
     .command('refine-project')
-    .description('根据 project-nomos authoring spec 重写该 project 的 draft pack')
+    .description('根据 project-nomos authoring spec 刷新该 project 的 draft pack；默认保留已编辑正文')
     .requiredOption('--project-id <projectId>', 'project id')
+    .option('--replace-existing', 'destructively rebuild the draft pack from template', false)
     .option('--json', '输出 JSON', false)
-    .action((options: { projectId: string; json?: boolean }) => {
-      const refined = refineProjectNomosDraftFromSpec(options.projectId);
+    .action((options: { projectId: string; replaceExisting?: boolean; json?: boolean }) => {
+      const refined = refineProjectNomosDraftFromSpec(options.projectId, {
+        ...(options.replaceExisting ? { replaceExisting: true } : {}),
+      });
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           project_id: options.projectId,

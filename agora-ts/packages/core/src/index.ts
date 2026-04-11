@@ -60,7 +60,7 @@ export { CraftsmanCallbackService } from './craftsman-callback-service.js';
 export type { CraftsmanDispatcherOptions, DispatchSubtaskInput } from './craftsman-dispatcher.js';
 export { CraftsmanDispatcher } from './craftsman-dispatcher.js';
 export type { CraftsmanInputPort, CraftsmanInputPortExecution } from './craftsman-input-port.js';
-export { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
+export { formatCraftsmanOutput, normalizeCraftsmanOutput, summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 export type { CraftsmanExecutionProbePort, CraftsmanProbePortExecution } from './craftsman-probe-port.js';
 export { resolveCraftsmanRuntimeMode } from './craftsman-runtime-mode.js';
 export type { CraftsmanRuntimeMode, CraftsmanRuntimeTarget } from './craftsman-runtime-mode.js';

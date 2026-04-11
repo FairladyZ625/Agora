@@ -5,6 +5,7 @@ import type {
   NotificationOutboxRecord,
 } from '@agora-ts/contracts';
 import type { IMMessagingPort } from './im-ports.js';
+import { summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 
 export interface NotificationDispatcherOptions {
   outboxRepository: INotificationOutboxRepository;
@@ -101,13 +102,21 @@ export class NotificationDispatcher {
 
 function formatDeliveredNotificationBody(notification: NotificationOutboxRecord) {
   if (notification.event_type === 'craftsman_completed') {
-    const output = notification.payload.output;
-    const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'completed';
+    const output = typeof notification.payload.display_output === 'string'
+      ? notification.payload.display_output
+      : notification.payload.output;
+    const summary = typeof output === 'string' && output.trim().length > 0
+      ? summarizeCraftsmanOutputForHuman(output, 'completed')
+      : 'completed';
     return `Notification delivered: craftsman finished: ${summary}`;
   }
   if (notification.event_type === 'craftsman_failed') {
-    const output = notification.payload.output;
-    const summary = typeof output === 'string' && output.trim().length > 0 ? output : 'failed';
+    const output = typeof notification.payload.display_output === 'string'
+      ? notification.payload.display_output
+      : notification.payload.output;
+    const summary = typeof output === 'string' && output.trim().length > 0
+      ? summarizeCraftsmanOutputForHuman(output, 'failed')
+      : 'failed';
     return `Notification delivered: craftsman failed: ${summary}`;
   }
   return `Notification delivered: ${notification.event_type}`;

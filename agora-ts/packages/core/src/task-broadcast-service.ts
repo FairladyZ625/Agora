@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { ITaskContextBindingRepository, ITaskConversationRepository, TaskLocaleDto, TaskRecord, WorkflowDto } from '@agora-ts/contracts';
 import type { SkillCatalogEntry } from './skill-catalog-port.js';
+import { summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 
 export interface TaskBroadcastServiceOptions {
@@ -553,7 +554,7 @@ export class TaskBroadcastService {
         `Adapter: ${execution.adapter}`,
         `Execution: ${execution.execution_id}`,
         `Status: ${execution.status}`,
-        ...(subtask.output ? [`Output: ${subtask.output}`] : []),
+        ...(subtask.output ? [`Output: ${summarizeCraftsmanOutputForHuman(subtask.output, execution.status)}`] : []),
         ...(payload?.input_request?.hint ? [`Input Hint: ${payload.input_request.hint}`] : []),
         ...((payload?.input_request?.choice_options?.length ?? 0) > 0
           ? [`Choices: ${payload?.input_request?.choice_options?.map((option) => `${option.id}:${option.label}`).join(', ')}`]

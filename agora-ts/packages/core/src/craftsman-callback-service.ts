@@ -15,7 +15,7 @@ import type {
   TaskRecord,
 } from '@agora-ts/contracts';
 import { NotFoundError } from './errors.js';
-import { formatCraftsmanOutput, normalizeCraftsmanOutput } from './craftsman-output.js';
+import { formatCraftsmanOutput, normalizeCraftsmanOutput, summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'cancelled']);
 const INPUT_WAITING_STATUSES = new Set(['needs_input', 'awaiting_choice']);
@@ -303,6 +303,7 @@ export class CraftsmanCallbackService {
     if (!binding) {
       return;
     }
+    const displayOutput = summarizeCraftsmanOutputForHuman(subtask.output, `${execution.adapter} ${eventType}`);
     this.outbox.insert({
       id: randomUUID(),
       task_id: task.id,
@@ -314,6 +315,7 @@ export class CraftsmanCallbackService {
         adapter: execution.adapter,
         status: execution.status,
         output: subtask.output,
+        display_output: displayOutput,
       },
       sequence_no: Date.now(),
     });
@@ -326,7 +328,7 @@ export class CraftsmanCallbackService {
       author_kind: 'craftsman',
       author_ref: execution.adapter,
       display_name: execution.adapter,
-      body: subtask.output ?? `${execution.adapter} ${eventType}`,
+      body: displayOutput,
       body_format: 'plain_text',
       occurred_at: execution.finished_at ?? new Date().toISOString(),
       dedupe_key: `callback:${execution.execution_id}:${eventType}`,

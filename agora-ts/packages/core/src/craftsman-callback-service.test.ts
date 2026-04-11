@@ -474,6 +474,103 @@ describe('craftsman callback service', () => {
     ]);
   });
 
+  it('stores summarized craftsman transcript text in conversation/outbox while preserving raw subtask output', () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const tasks = new TaskRepository(db);
+    const subtasks = new SubtaskRepository(db);
+    const executions = new CraftsmanExecutionRepository(db);
+    const bindings = new TaskContextBindingRepository(db);
+    const outbox = new NotificationOutboxRepository(db);
+    const conversations = new TaskConversationRepository(db);
+    const callback = createCraftsmanCallbackServiceFromDb(db);
+
+    tasks.insertTask({
+      id: 'OC-976',
+      title: 'callback transcript summary',
+      description: '',
+      type: 'coding',
+      priority: 'normal',
+      creator: 'archon',
+      team: { members: [] },
+      workflow: { stages: [{ id: 'develop' }] },
+    });
+    bindings.insert({
+      id: 'bind-976',
+      task_id: 'OC-976',
+      im_provider: 'discord',
+      thread_ref: 'thread-976',
+      status: 'active',
+    });
+    subtasks.insertSubtask({
+      id: 'sub-claude-976',
+      task_id: 'OC-976',
+      stage_id: 'develop',
+      title: 'run claude',
+      assignee: 'opus',
+      craftsman_type: 'claude',
+      dispatch_status: 'running',
+      craftsman_session: 'claude-session-976',
+    });
+    executions.insertExecution({
+      execution_id: 'exec-976',
+      task_id: 'OC-976',
+      subtask_id: 'sub-claude-976',
+      adapter: 'claude',
+      mode: 'one_shot',
+      session_id: 'claude-session-976',
+      status: 'running',
+      started_at: '2026-04-01T15:00:00.000Z',
+    });
+
+    const transcript = [
+      '[client] initialize (running)',
+      '',
+      '[client] session/new (running)',
+      '我先读取 spec 文件和当前 constitution.md。',
+      '',
+      '[client] session/request_permission (running)',
+      '',
+      '内容已读取，现在填充 constitution.md。',
+      '',
+      '[tool] Write /tmp/constitution.md (failed)',
+      '  output:',
+      '    User refused permission to run tool',
+      '',
+      '[done] end_turn',
+    ].join('\n');
+
+    callback.handleCallback({
+      execution_id: 'exec-976',
+      status: 'succeeded',
+      session_id: 'claude-session-976',
+      payload: {
+        output: {
+          summary: null,
+          text: transcript,
+          artifacts: [],
+        },
+      },
+      error: null,
+      finished_at: '2026-04-01T15:01:00.000Z',
+    });
+
+    const storedSubtask = subtasks.listByTask('OC-976').find((item) => item.id === 'sub-claude-976');
+    expect(storedSubtask?.output).toContain('[client] session/new (running)');
+    expect(storedSubtask?.output).toContain('User refused permission to run tool');
+
+    const notification = outbox.listByTask('OC-976')[0];
+    expect(notification?.payload.output).toContain('[client] session/new (running)');
+    expect(notification?.payload.display_output).toContain('内容已读取，现在填充 constitution.md。');
+    expect(notification?.payload.display_output).toContain('User refused permission to run tool');
+    expect(notification?.payload.display_output).not.toContain('[tool]');
+
+    const conversation = conversations.listByTask('OC-976')[0];
+    expect(conversation?.body).toContain('内容已读取，现在填充 constitution.md。');
+    expect(conversation?.body).toContain('User refused permission to run tool');
+    expect(conversation?.body).not.toContain('[client]');
+  });
+
   it('records input-required callbacks without settling the subtask', () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

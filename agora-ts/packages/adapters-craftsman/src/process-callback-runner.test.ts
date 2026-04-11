@@ -2,9 +2,15 @@ import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('node:child_process', () => ({
-  spawn: vi.fn(),
-}));
+type ChildProcessModule = typeof import('node:child_process');
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<ChildProcessModule>();
+  return {
+    ...actual,
+    spawn: vi.fn(),
+  };
+});
 
 import { spawn } from 'node:child_process';
 import { parseRunnerPayloadArg, runCallbackProcess } from './process-callback-runner.js';
@@ -167,9 +173,9 @@ describe('process callback runner', () => {
       error: 'craftsman failed',
       payload: {
         output: {
-          summary: null,
+          summary: 'craftsman failed',
           text: null,
-          stderr: 'craftsman failed',
+          stderr: null,
         },
       },
     });

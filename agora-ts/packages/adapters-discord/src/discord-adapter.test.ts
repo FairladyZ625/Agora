@@ -907,4 +907,35 @@ describe('DiscordIMMessagingAdapter', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('sendNotification summarizes raw craftsman transcript output', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const adapter = new DiscordIMMessagingAdapter({ botToken: 'tok' });
+    const transcript = [
+      '[client] initialize (running)',
+      '[client] session/request_permission (running)',
+      '内容已读取，现在填充 constitution.md。',
+      '[tool] Write /tmp/constitution.md (failed)',
+      '  output:',
+      '    User refused permission to run tool',
+      '[done] end_turn',
+    ].join('\n');
+
+    await adapter.sendNotification('thread-xyz', {
+      task_id: 'OC-2',
+      event_type: 'craftsman_completed',
+      data: { output: transcript },
+    });
+
+    const body = JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body) as { content: string };
+    expect(body.content).toContain('OC-2');
+    expect(body.content).toContain('内容已读取，现在填充 constitution.md。');
+    expect(body.content).toContain('User refused permission to run tool');
+    expect(body.content).not.toContain('[client] session/request_permission (running)');
+    expect(body.content).not.toContain('[tool] Write /tmp/constitution.md (failed)');
+
+    vi.unstubAllGlobals();
+  });
 });
