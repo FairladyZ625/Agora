@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { FlowLogRepository, InboxRepository, TaskContextBindingRepository, TaskRepository, createAgoraDatabase, runMigrations } from '@agora-ts/db';
+import type { TaskRecord } from '@agora-ts/contracts';
 import { TaskRecoveryService } from './task-recovery-service.js';
 
 function makeDb() {
@@ -16,6 +17,14 @@ function makeDb() {
       rmSync(dir, { recursive: true, force: true });
     },
   };
+}
+
+function getCurrentStageOrThrowForTest(taskRecord: TaskRecord) {
+  const stage = taskRecord.workflow.stages?.find((candidate: NonNullable<TaskRecord['workflow']['stages']>[number]) => candidate.id === taskRecord.current_stage);
+  if (!stage) {
+    throw new Error(`missing stage ${taskRecord.current_stage ?? '<null>'}`);
+  }
+  return stage;
 }
 
 describe('TaskRecoveryService', () => {
@@ -113,6 +122,9 @@ describe('TaskRecoveryService', () => {
           inboxRaised: false,
         }),
         resolveApprovalWaitProbe: () => null,
+        getCurrentStageOrThrow: getCurrentStageOrThrowForTest,
+        checkGate: () => false,
+        advanceTimedOutTask: (taskRecord) => taskRecord,
       });
 
       const result = service.startupRecoveryScan();
@@ -243,6 +255,9 @@ describe('TaskRecoveryService', () => {
           request: { id: 'approval-1' },
           participantRefs: ['human-reviewer-1'],
         }),
+        getCurrentStageOrThrow: getCurrentStageOrThrowForTest,
+        checkGate: () => false,
+        advanceTimedOutTask: (taskRecord) => taskRecord,
       });
 
       const result = service.probeInactiveTasks({
@@ -254,6 +269,7 @@ describe('TaskRecoveryService', () => {
 
       expect(result).toEqual({
         scanned_tasks: 1,
+        timeout_advances: 0,
         controller_pings: 0,
         roster_pings: 0,
         human_pings: 1,
@@ -270,6 +286,123 @@ describe('TaskRecoveryService', () => {
       expect(flowLogRepository.listByTask('OC-RECOVERY-2').map((entry) => entry.event)).toEqual(
         expect.arrayContaining(['human_approval_pinged']),
       );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  it('auto-advances timed-out auto-timeout stages before human inactivity escalation', () => {
+    const fixture = makeDb();
+    try {
+      const { db } = fixture;
+      const taskRepository = new TaskRepository(db);
+      const taskContextBindingRepository = new TaskContextBindingRepository(db);
+      const flowLogRepository = new FlowLogRepository(db);
+      const inboxRepository = new InboxRepository(db);
+      const task = taskRepository.insertTask({
+        id: 'OC-RECOVERY-3',
+        title: 'timeout edge',
+        description: '',
+        type: 'custom',
+        creator: 'archon',
+        priority: 'normal',
+        locale: 'zh-CN',
+        workflow: {
+          type: 'custom',
+          stages: [
+            { id: 'wait', mode: 'discuss', gate: { type: 'auto_timeout', timeout_sec: 30 } },
+            { id: 'escalate', mode: 'discuss', gate: { type: 'command' } },
+          ],
+        },
+        team: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+          ],
+        },
+      });
+      taskRepository.updateTask(task.id, task.version, {
+        state: 'active',
+        current_stage: 'wait',
+      });
+
+      let advanced = false;
+      const service = new TaskRecoveryService({
+        databasePort: db,
+        taskRepository,
+        taskContextBindingRepository,
+        flowLogRepository,
+        inboxRepository,
+        escalationPolicy: {
+          controllerAfterMs: 1_000,
+          rosterAfterMs: 2_000,
+          inboxAfterMs: 3_000,
+        },
+        getCraftsmanGovernanceSnapshot: () => ({
+          active_executions: 0,
+          active_by_assignee: [],
+          active_execution_details: [],
+          host_pressure_status: 'healthy',
+          warnings: [],
+          host: null,
+        }),
+        assertTaskRuntimeControl: () => {},
+        resolveTaskRuntimeParticipant: () => ({
+          runtime_provider: null,
+          runtime_actor_ref: null,
+        }),
+        getCraftsmanExecution: () => ({
+          execution_id: 'exec-3',
+          task_id: 'OC-RECOVERY-3',
+          subtask_id: 'sub-3',
+          adapter: 'claude',
+          session_id: null,
+          workdir: null,
+          status: 'running',
+        }),
+        getSubtaskOrThrow: () => ({
+          id: 'sub-3',
+          assignee: 'opus',
+          stage_id: 'wait',
+        }),
+        assertSubtaskControl: () => {},
+        publishTaskStatusBroadcast: () => {},
+        mirrorConversationEntry: () => {},
+        buildSchedulerSnapshot: () => null,
+        failMissingCraftsmanSessions: () => [],
+        resolveLatestBusinessActivityMs: () => 0,
+        getProbeState: () => ({
+          controllerNotified: false,
+          rosterNotified: false,
+          humanApprovalNotified: false,
+          inboxRaised: false,
+        }),
+        resolveApprovalWaitProbe: () => null,
+        getCurrentStageOrThrow: getCurrentStageOrThrowForTest,
+        checkGate: () => true,
+        advanceTimedOutTask: (taskRecord) => {
+          advanced = true;
+          return taskRepository.updateTask(taskRecord.id, taskRecord.version, {
+            current_stage: 'escalate',
+          });
+        },
+      });
+
+      const result = service.probeInactiveTasks({
+        controllerAfterMs: 1_000,
+        rosterAfterMs: 2_000,
+        inboxAfterMs: 3_000,
+        now: new Date('2026-04-11T01:00:00.000Z'),
+      });
+
+      expect(advanced).toBe(true);
+      expect(result).toEqual({
+        scanned_tasks: 1,
+        timeout_advances: 1,
+        controller_pings: 0,
+        roster_pings: 0,
+        human_pings: 0,
+        inbox_items: 0,
+      });
     } finally {
       fixture.cleanup();
     }

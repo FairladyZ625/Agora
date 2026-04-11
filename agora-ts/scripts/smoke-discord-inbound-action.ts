@@ -34,7 +34,7 @@ async function main() {
     .option('--config <path>', 'Agora config path override')
     .option('--openclaw-config <path>', 'OpenClaw config path override')
     .option('--task-id <id>', 'task id override', `OC-INBOUND-SMOKE-${Date.now()}`)
-    .option('--scenario <kind>', 'linear|branch|complete', 'linear')
+    .option('--scenario <kind>', 'linear|branch|complete|timeout', 'linear')
     .option('--timeout-ms <ms>', 'overall wait timeout', '30000')
     .option('--poll-ms <ms>', 'poll interval', '1500')
     .option('--cleanup-mode <mode>', 'delete|archive', 'delete')
@@ -45,7 +45,7 @@ async function main() {
     config?: string;
     openclawConfig?: string;
     taskId: string;
-    scenario: 'linear' | 'branch' | 'complete';
+    scenario: 'linear' | 'branch' | 'complete' | 'timeout';
     timeoutMs: string;
     pollMs: string;
     cleanupMode: 'delete' | 'archive';
@@ -162,6 +162,19 @@ async function main() {
                   gate: { type: 'command' },
                 },
               ]
+          : options.scenario === 'timeout'
+            ? [
+                {
+                  id: 'wait',
+                  mode: 'discuss',
+                  gate: { type: 'auto_timeout', timeout_sec: 30 },
+                },
+                {
+                  id: 'escalate',
+                  mode: 'discuss',
+                  gate: { type: 'command' },
+                },
+              ]
           : [
               {
                 id: 'draft',
@@ -197,10 +210,24 @@ async function main() {
                   entry_nodes: ['deliver'],
                   nodes: [
                     { id: 'deliver', kind: 'stage', gate: { type: 'command' } },
-                    { id: 'done', kind: 'terminal' },
+                    { id: 'done', kind: 'terminal', terminal: { outcome: 'shipped', summary: 'Deliverable shipped' } },
                   ],
                   edges: [
                     { id: 'deliver__complete__done', from: 'deliver', to: 'done', kind: 'complete' },
+                  ],
+                },
+              }
+          : options.scenario === 'timeout'
+            ? {
+                graph: {
+                  graph_version: 1,
+                  entry_nodes: ['wait'],
+                  nodes: [
+                    { id: 'wait', kind: 'stage', gate: { type: 'auto_timeout', timeout_sec: 30 } },
+                    { id: 'escalate', kind: 'stage', gate: { type: 'command' } },
+                  ],
+                  edges: [
+                    { id: 'wait__timeout__escalate', from: 'wait', to: 'escalate', kind: 'timeout' },
                   ],
                 },
               }
@@ -222,6 +249,10 @@ async function main() {
     bindingId = binding.id;
     if (!threadRef) {
       throw new Error('task binding has no thread_ref');
+    }
+    if (options.scenario === 'timeout') {
+      db.prepare('UPDATE stage_history SET entered_at = ? WHERE task_id = ? AND stage_id = ?')
+        .run('2026-04-11T00:00:00.000Z', options.taskId, 'wait');
     }
 
     const ingest = await app.inject({
@@ -261,7 +292,11 @@ async function main() {
         throw new Error(`expected state=done, got ${status.task.state}`);
       }
     } else {
-      const expectedStage = options.scenario === 'branch' ? 'deep-review' : 'execute';
+      const expectedStage = options.scenario === 'branch'
+        ? 'deep-review'
+        : options.scenario === 'timeout'
+          ? 'escalate'
+          : 'execute';
       if (status.task.current_stage !== expectedStage) {
         throw new Error(`expected current_stage=${expectedStage}, got ${status.task.current_stage}`);
       }

@@ -149,19 +149,24 @@ export type WorkflowDto = z.infer<typeof workflowSchema>;
 
 export const taskBlueprintNodeSchema = z.object({
   id: z.string().min(1),
+  kind: z.enum(['stage', 'terminal']).default('stage'),
   name: z.string().nullable(),
   mode: workflowModeSchema.nullable(),
   execution_kind: workflowExecutionKindSchema.nullable().optional(),
   allowed_actions: z.array(workflowActionSchema).optional(),
   roster: workflowStageRosterSchema.nullable().optional(),
   gate_type: workflowGateTypeSchema.nullable(),
+  terminal: z.object({
+    outcome: z.string().min(1),
+    summary: z.string().min(1).optional(),
+  }).strict().nullable().optional(),
 });
 export type TaskBlueprintNodeDto = z.infer<typeof taskBlueprintNodeSchema>;
 
 export const taskBlueprintEdgeSchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
-  kind: z.enum(['advance', 'reject', 'branch', 'complete']),
+  kind: z.enum(['advance', 'reject', 'timeout', 'branch', 'complete']),
 });
 export type TaskBlueprintEdgeDto = z.infer<typeof taskBlueprintEdgeSchema>;
 

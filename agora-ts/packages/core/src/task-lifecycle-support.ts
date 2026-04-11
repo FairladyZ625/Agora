@@ -166,17 +166,22 @@ export class TaskLifecycleSupport {
         controller_ref: resolveControllerRef(task.team.members),
         nodes: graph.nodes.map((node) => ({
           id: node.id,
+          kind: node.kind ?? 'stage',
           name: node.name ?? null,
-          mode: resolveStageModeFromExecutionKind(node.execution_kind ?? null),
+          mode: (node.kind ?? 'stage') === 'terminal'
+            ? null
+            : resolveStageModeFromExecutionKind(node.execution_kind ?? null),
           execution_kind: node.execution_kind ?? null,
           ...(node.allowed_actions?.length ? { allowed_actions: node.allowed_actions } : {}),
           ...(node.roster ? { roster: node.roster } : {}),
           gate_type: node.gate?.type ?? null,
+          ...(node.terminal ? { terminal: node.terminal } : {}),
         })),
         edges: graph.edges
-          .filter((edge): edge is typeof edge & { kind: 'advance' | 'reject' | 'branch' | 'complete' } => (
+          .filter((edge): edge is typeof edge & { kind: 'advance' | 'reject' | 'timeout' | 'branch' | 'complete' } => (
             edge.kind === 'advance'
             || edge.kind === 'reject'
+            || edge.kind === 'timeout'
             || edge.kind === 'branch'
             || edge.kind === 'complete'
           ))
@@ -198,6 +203,7 @@ export class TaskLifecycleSupport {
     const stages = task.workflow.stages ?? [];
     const nodes: TaskBlueprintDto['nodes'] = stages.map((stage) => ({
       id: stage.id,
+      kind: 'stage',
       name: stage.name ?? null,
       mode: stage.mode ?? null,
       execution_kind: resolveStageExecutionKind(stage),

@@ -171,11 +171,13 @@ describe('agora-ts state machine', () => {
       currentStage: { id: 'discuss' },
       nextStage: { id: 'develop' },
       completesTask: false,
+      terminalNode: null,
     });
     expect(sm.advance(buildTask().workflow, 'review')).toMatchObject({
       currentStage: { id: 'review' },
       nextStage: null,
       completesTask: true,
+      terminalNode: null,
     });
   });
 
@@ -195,7 +197,7 @@ describe('agora-ts state machine', () => {
             nodes: [
               { id: 'implement' },
               { id: 'review' },
-              { id: 'done' },
+              { id: 'done', kind: 'terminal', terminal: { outcome: 'shipped', summary: 'Completed successfully' } },
             ],
             edges: [
               { from: 'implement', to: 'done', kind: 'complete' },
@@ -209,6 +211,86 @@ describe('agora-ts state machine', () => {
       currentStage: { id: 'implement' },
       nextStage: null,
       completesTask: true,
+      terminalNode: {
+        id: 'done',
+        terminal: {
+          outcome: 'shipped',
+          summary: 'Completed successfully',
+        },
+      },
+    });
+  });
+
+  it('resolves timeout edges when an auto-timeout stage advances through timeout semantics', () => {
+    const sm = new StateMachine();
+
+    expect(
+      sm.advance(
+        {
+          stages: [
+            { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_sec: 30 } },
+            { id: 'escalate', gate: { type: GateType.COMMAND } },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['wait'],
+            nodes: [
+              { id: 'wait', kind: 'stage' },
+              { id: 'escalate', kind: 'stage' },
+            ],
+            edges: [
+              { from: 'wait', to: 'escalate', kind: 'timeout' },
+            ],
+          },
+        },
+        'wait',
+        undefined,
+        'timeout',
+      ),
+    ).toMatchObject({
+      currentStage: { id: 'wait' },
+      nextStage: { id: 'escalate' },
+      completesTask: false,
+      terminalNode: null,
+    });
+  });
+
+  it('treats timeout edges into terminal nodes as task completion with terminal contract', () => {
+    const sm = new StateMachine();
+
+    expect(
+      sm.advance(
+        {
+          stages: [
+            { id: 'wait', gate: { type: GateType.AUTO_TIMEOUT, timeout_sec: 30 } },
+          ],
+          graph: {
+            graph_version: 1,
+            entry_nodes: ['wait'],
+            nodes: [
+              { id: 'wait', kind: 'stage' },
+              { id: 'expired', kind: 'terminal', terminal: { outcome: 'timed_out', summary: 'Timed out into closure' } },
+            ],
+            edges: [
+              { from: 'wait', to: 'expired', kind: 'timeout' },
+            ],
+          },
+        },
+        'wait',
+        undefined,
+        'timeout',
+      ),
+    ).toMatchObject({
+      currentStage: { id: 'wait' },
+      nextStage: null,
+      completesTask: true,
+      terminalNode: {
+        id: 'expired',
+        terminal: {
+          outcome: 'timed_out',
+          summary: 'Timed out into closure',
+        },
+      },
     });
   });
 

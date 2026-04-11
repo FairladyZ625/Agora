@@ -752,13 +752,33 @@ describe('task service', () => {
           entry_nodes: ['deliver'],
           nodes: [
             { id: 'deliver', kind: 'stage', gate: { type: 'command' } },
-            { id: 'done', kind: 'terminal' },
+            { id: 'done', kind: 'terminal', terminal: { outcome: 'shipped', summary: 'Deliverable shipped' } },
           ],
           edges: [
             { id: 'deliver__complete__done', from: 'deliver', to: 'done', kind: 'complete' },
           ],
         },
       },
+    });
+
+    expect(service.getTaskStatus('OC-GRAPH-COMPLETE-1').task_blueprint).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'done',
+          kind: 'terminal',
+          terminal: {
+            outcome: 'shipped',
+            summary: 'Deliverable shipped',
+          },
+        }),
+      ]),
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          from: 'deliver',
+          to: 'done',
+          kind: 'complete',
+        }),
+      ]),
     });
 
     const advanced = service.advanceTask('OC-GRAPH-COMPLETE-1', {
@@ -769,6 +789,15 @@ describe('task service', () => {
       id: 'OC-GRAPH-COMPLETE-1',
       state: 'done',
       current_stage: null,
+    });
+    expect(service.getTaskStatus('OC-GRAPH-COMPLETE-1').flow_log.at(-1)).toMatchObject({
+      event: 'state_changed',
+      detail: JSON.stringify({
+        transition_kind: 'advance',
+        terminal_node_id: 'done',
+        terminal_outcome: 'shipped',
+        terminal_summary: 'Deliverable shipped',
+      }),
     });
   });
 
@@ -5133,6 +5162,92 @@ describe('task service', () => {
     expect(inboxRows[0]).toMatchObject({
       text: 'Task OC-PROBE-1 appears stuck',
       source: 'inbox_escalated',
+    });
+  });
+
+  it('auto-advances graph-backed auto-timeout stages through timeout edges during inactive probes', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const service = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-TIMEOUT-PROBE-1',
+      archonUsers: ['archon'],
+    });
+
+    service.createTask({
+      title: 'Timeout edge probe',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'wait', mode: 'discuss', gate: { type: 'auto_timeout', timeout_sec: 30 } },
+          { id: 'escalate', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['wait'],
+          nodes: [
+            { id: 'wait', kind: 'stage', gate: { type: 'auto_timeout', timeout_sec: 30 } },
+            { id: 'escalate', kind: 'stage', gate: { type: 'command' } },
+          ],
+          edges: [
+            { id: 'wait__timeout__escalate', from: 'wait', to: 'escalate', kind: 'timeout' },
+          ],
+        },
+      },
+    });
+
+    expect(service.getTaskStatus('OC-TIMEOUT-PROBE-1').task_blueprint).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'wait',
+          kind: 'stage',
+          gate_type: 'auto_timeout',
+        }),
+      ]),
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          from: 'wait',
+          to: 'escalate',
+          kind: 'timeout',
+        }),
+      ]),
+    });
+
+    db.prepare('UPDATE stage_history SET entered_at = ? WHERE task_id = ? AND stage_id = ?')
+      .run('2026-04-11T00:00:00.000Z', 'OC-TIMEOUT-PROBE-1', 'wait');
+
+    const result = service.probeInactiveTasks({
+      controllerAfterMs: 60_000,
+      rosterAfterMs: 120_000,
+      inboxAfterMs: 180_000,
+      now: new Date('2026-04-11T00:01:00.000Z'),
+    });
+
+    expect(result).toMatchObject({
+      scanned_tasks: 1,
+      timeout_advances: 1,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 0,
+      inbox_items: 0,
+    });
+    expect(service.getTaskStatus('OC-TIMEOUT-PROBE-1').task.current_stage).toBe('escalate');
+    expect(service.getTaskStatus('OC-TIMEOUT-PROBE-1').flow_log.at(-1)).toMatchObject({
+      event: 'stage_advanced',
+      detail: JSON.stringify({
+        from_stage: 'wait',
+        to_stage: 'escalate',
+        transition_kind: 'timeout',
+      }),
     });
   });
 

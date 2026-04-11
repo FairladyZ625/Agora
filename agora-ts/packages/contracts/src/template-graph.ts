@@ -10,6 +10,12 @@ export type TemplateGraphNodeKindDto = z.infer<typeof templateGraphNodeKindSchem
 export const templateGraphEdgeKindSchema = z.enum(allowedGraphEdgeKinds);
 export type TemplateGraphEdgeKindDto = z.infer<typeof templateGraphEdgeKindSchema>;
 
+export const templateGraphTerminalSchema = z.object({
+  outcome: z.string().min(1),
+  summary: z.string().min(1).optional(),
+}).strict();
+export type TemplateGraphTerminalDto = z.infer<typeof templateGraphTerminalSchema>;
+
 export const templateGraphNodeSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
@@ -28,6 +34,7 @@ export const templateGraphNodeSchema = z.object({
     x: z.number(),
     y: z.number(),
   }).strict().nullish(),
+  terminal: templateGraphTerminalSchema.optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 export type TemplateGraphNodeDto = z.infer<typeof templateGraphNodeSchema>;
@@ -37,7 +44,6 @@ export const templateGraphEdgeSchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
   kind: templateGraphEdgeKindSchema,
-  condition: z.string().optional(),
   priority: z.number().int().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).strict();
@@ -60,6 +66,20 @@ export const templateGraphSchema = z.object({
       continue;
     }
     nodeIds.add(node.id);
+    if (node.kind === 'terminal' && !node.terminal) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `terminal node '${node.id}' must declare terminal contract`,
+        path: ['nodes', index, 'terminal'],
+      });
+    }
+    if (node.kind !== 'terminal' && node.terminal) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `stage node '${node.id}' must not declare terminal contract`,
+        path: ['nodes', index, 'terminal'],
+      });
+    }
   }
   for (const [index, nodeId] of value.entry_nodes.entries()) {
     if (!nodeIds.has(nodeId)) {

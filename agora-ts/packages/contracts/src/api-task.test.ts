@@ -501,6 +501,89 @@ describe('task api contracts', () => {
     ).toThrow(/duplicate stage id/i);
   });
 
+  it('rejects graph branch condition fields because explicit next_stage_id remains the only supported branch selector', () => {
+    expect(() =>
+      workflowSchema.parse({
+        type: 'custom',
+        stages: [
+          { id: 'triage', gate: { type: 'command' } },
+          { id: 'fast-path', gate: { type: 'command' } },
+          { id: 'deep-review', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['triage'],
+          nodes: [
+            { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+            { id: 'fast-path', kind: 'stage', gate: { type: 'command' } },
+            { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          edges: [
+            { id: 'triage__branch__fast-path', from: 'triage', to: 'fast-path', kind: 'branch', condition: 'score < 0.5' },
+            { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+          ],
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('parses timeout edges and terminal contracts in task blueprints', () => {
+    expect(
+      taskStatusSchema.parse({
+        task: {
+          id: 'OC-TIMEOUT-BLUEPRINT',
+          version: 1,
+          title: 'timeout blueprint',
+          description: null,
+          type: 'custom',
+          priority: 'normal',
+          creator: 'archon',
+          locale: 'zh-CN',
+          state: 'active',
+          archive_status: null,
+          current_stage: 'wait',
+          team: { members: [] },
+          workflow: { stages: [] },
+          scheduler: null,
+          scheduler_snapshot: null,
+          discord: null,
+          metrics: null,
+          error_detail: null,
+          created_at: '2026-04-11T00:00:00Z',
+          updated_at: '2026-04-11T00:00:00Z',
+        },
+        task_blueprint: {
+          graph_version: 1,
+          entry_nodes: ['wait'],
+          nodes: [
+            { id: 'wait', kind: 'stage', name: 'Wait', mode: 'discuss', gate_type: 'auto_timeout' },
+            { id: 'escalate', kind: 'stage', name: 'Escalate', mode: 'discuss', gate_type: 'command' },
+            {
+              id: 'done',
+              kind: 'terminal',
+              name: 'Done',
+              mode: null,
+              gate_type: null,
+              terminal: {
+                outcome: 'timed_out_done',
+                summary: 'Timed out into terminal closeout',
+              },
+            },
+          ],
+          edges: [
+            { from: 'wait', to: 'escalate', kind: 'timeout' },
+            { from: 'escalate', to: 'done', kind: 'complete' },
+          ],
+          artifact_contracts: [],
+          role_bindings: [],
+        },
+        flow_log: [],
+        progress_log: [],
+        subtasks: [],
+      }).task_blueprint?.nodes[2]?.terminal?.outcome,
+    ).toBe('timed_out_done');
+  });
+
   it('supports reject_target backedges to earlier stages and rejects invalid targets', () => {
     expect(
       workflowSchema.parse({

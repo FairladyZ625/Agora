@@ -71,6 +71,13 @@ function createStageService() {
       currentStage,
       nextStage,
       completesTask: false,
+      terminalNode: null,
+    }),
+    advanceTimedWorkflow: () => ({
+      currentStage,
+      nextStage,
+      completesTask: false,
+      terminalNode: null,
     }),
     getRejectStage: () => nextStage,
     reconcileStageExitSubtasks: () => [],
@@ -157,6 +164,7 @@ describe('TaskStageService', () => {
         currentStage: fixture.nextStage,
         nextStage: null,
         completesTask: true,
+        terminalNode: { id: 'done', kind: 'terminal', terminal: { outcome: 'forced_done', summary: 'Forced done' } },
       }),
       updateTask: vi.fn((taskId: string, version: number, patch: Record<string, unknown>) => ({
         ...doneTask,

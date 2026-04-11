@@ -12,12 +12,25 @@ type WorkflowStage = {
   } | null | undefined;
 };
 
+type WorkflowTerminal = {
+  outcome: string;
+  summary?: string | undefined;
+};
+
+type WorkflowGraphNode = {
+  id: string;
+  kind?: 'stage' | 'terminal' | undefined;
+  terminal?: WorkflowTerminal | undefined;
+};
+
+type AdvanceKind = 'advance' | 'timeout';
+
 type WorkflowDefinition = {
   stages?: WorkflowStage[] | undefined;
   graph?: {
     graph_version?: number;
     entry_nodes: string[];
-    nodes: Array<{ id: string }>;
+    nodes: WorkflowGraphNode[];
     edges: Array<{ from: string; to: string; kind: string }>;
   } | undefined;
 };
@@ -52,14 +65,29 @@ export class StateMachine {
   }
 
   getNextStage(workflow: WorkflowDefinition, currentStageId: string, nextStageId?: string): WorkflowStage | null {
+    return this.resolveAdvance(workflow, currentStageId, nextStageId).nextStage;
+  }
+
+  private resolveAdvance(
+    workflow: WorkflowDefinition,
+    currentStageId: string,
+    nextStageId?: string,
+    advanceKind: AdvanceKind = 'advance',
+  ): {
+    nextStage: WorkflowStage | null;
+    terminalNode: WorkflowGraphNode | null;
+  } {
     const stages = workflow.stages ?? [];
     const currentIndex = stages.findIndex((item) => item.id === currentStageId);
     if (currentIndex === -1) {
       throw new Error(`Stage '${currentStageId}' not found in workflow`);
     }
-    const graphCompleteTarget = resolveGraphNextStageId(workflow, currentStageId, 'complete');
+    const graphCompleteTarget = resolveGraphNextNode(workflow, currentStageId, 'complete');
     if (graphCompleteTarget) {
-      return null;
+      return {
+        nextStage: null,
+        terminalNode: graphCompleteTarget,
+      };
     }
     const branchTargets = resolveGraphBranchTargets(workflow, currentStageId);
     if (branchTargets.length > 0) {
@@ -69,17 +97,44 @@ export class StateMachine {
       if (!branchTargets.includes(nextStageId)) {
         throw new Error(`next_stage_id '${nextStageId}' does not match a branch target for stage '${currentStageId}'`);
       }
-      return stages.find((item) => item.id === nextStageId) ?? null;
+      return {
+        nextStage: stages.find((item) => item.id === nextStageId) ?? null,
+        terminalNode: null,
+      };
     }
-    const graphNextId = resolveGraphNextStageId(workflow, currentStageId, 'advance');
+    if (advanceKind === 'timeout') {
+      const timeoutTarget = resolveGraphNextNode(workflow, currentStageId, 'timeout');
+      if (timeoutTarget) {
+        if ((timeoutTarget.kind ?? 'stage') === 'terminal') {
+          return {
+            nextStage: null,
+            terminalNode: timeoutTarget,
+          };
+        }
+        return {
+          nextStage: stages.find((item) => item.id === timeoutTarget.id) ?? null,
+          terminalNode: null,
+        };
+      }
+    }
+    const graphNextId = resolveGraphNextNode(workflow, currentStageId, 'advance')?.id;
     if (graphNextId) {
-      return stages.find((item) => item.id === graphNextId) ?? null;
+      return {
+        nextStage: stages.find((item) => item.id === graphNextId) ?? null,
+        terminalNode: null,
+      };
     }
     const current = stages[currentIndex]!;
     if (current.next && current.next.length > 0) {
-      return stages.find((item) => item.id === current.next?.[0]) ?? null;
+      return {
+        nextStage: stages.find((item) => item.id === current.next?.[0]) ?? null,
+        terminalNode: null,
+      };
     }
-    return stages[currentIndex + 1] ?? null;
+    return {
+      nextStage: stages[currentIndex + 1] ?? null,
+      terminalNode: null,
+    };
   }
 
   getRejectStage(workflow: WorkflowDefinition, currentStageId: string): WorkflowStage | null {
@@ -88,7 +143,7 @@ export class StateMachine {
     if (currentIndex === -1) {
       throw new Error(`Stage '${currentStageId}' not found in workflow`);
     }
-    const graphRejectId = resolveGraphNextStageId(workflow, currentStageId, 'reject');
+    const graphRejectId = resolveGraphNextNode(workflow, currentStageId, 'reject')?.id;
     if (graphRejectId) {
       assertGraphRejectRewindsToEarlierStage(workflow, currentStageId, graphRejectId);
       return stages.find((item) => item.id === graphRejectId) ?? null;
@@ -108,17 +163,19 @@ export class StateMachine {
     return stages[targetIndex] ?? null;
   }
 
-  advance(workflow: WorkflowDefinition, currentStageId: string, nextStageId?: string): {
+  advance(workflow: WorkflowDefinition, currentStageId: string, nextStageId?: string, advanceKind: AdvanceKind = 'advance'): {
     currentStage: WorkflowStage;
     nextStage: WorkflowStage | null;
     completesTask: boolean;
+    terminalNode: WorkflowGraphNode | null;
   } {
     const currentStage = this.getCurrentStage(workflow, currentStageId);
-    const nextStage = this.getNextStage(workflow, currentStageId, nextStageId);
+    const resolved = this.resolveAdvance(workflow, currentStageId, nextStageId, advanceKind);
     return {
       currentStage,
-      nextStage,
-      completesTask: nextStage === null,
+      nextStage: resolved.nextStage,
+      completesTask: resolved.nextStage === null,
+      terminalNode: resolved.terminalNode,
     };
   }
 
@@ -175,17 +232,20 @@ export class StateMachine {
   }
 }
 
-function resolveGraphNextStageId(
+function resolveGraphNextNode(
   workflow: WorkflowDefinition,
   currentStageId: string,
-  kind: 'advance' | 'reject' | 'complete',
+  kind: 'advance' | 'reject' | 'complete' | 'timeout',
 ) {
   const graph = workflow.graph;
   if (!graph) {
     return null;
   }
   const edge = graph.edges.find((candidate) => candidate.from === currentStageId && candidate.kind === kind);
-  return edge?.to ?? null;
+  if (!edge) {
+    return null;
+  }
+  return graph.nodes.find((node) => node.id === edge.to) ?? null;
 }
 
 function resolveGraphBranchTargets(workflow: WorkflowDefinition, currentStageId: string) {

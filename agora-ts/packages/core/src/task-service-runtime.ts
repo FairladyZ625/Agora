@@ -234,6 +234,9 @@ export function buildTaskServiceRuntime(deps: TaskServiceRuntimeDeps): TaskServi
     resolveLatestBusinessActivityMs: (task) => taskCoreSupport.resolveLatestBusinessActivityMs(task),
     getProbeState: (taskId, latestActivityMs) => taskCoreSupport.getProbeState(taskId, latestActivityMs),
     resolveApprovalWaitProbe: (task) => taskCoreSupport.resolveApprovalWaitProbe(task),
+    getCurrentStageOrThrow: (task) => taskCoreSupport.getCurrentStageOrThrow(task),
+    checkGate: (task, stage, callerId, now) => deps.stateMachine.checkGate(deps.gateQueryPort, task, stage, callerId, now),
+    advanceTimedOutTask: (task) => taskStageServiceRef.current!.advanceSatisfiedStage(task, 'system', undefined, 'timeout'),
   });
 
   const taskLifecycleService = new TaskLifecycleService({
@@ -356,6 +359,7 @@ export function buildTaskServiceRuntime(deps: TaskServiceRuntimeDeps): TaskServi
     ensureApprovalRequestForGate: (task, stage, requester) => taskStageSupport.ensureApprovalRequestForGate(task, stage, requester),
     publishTaskStatusBroadcast: (task, input) => taskStageSupport.publishTaskStatusBroadcast(task, input),
     advanceWorkflow: (task, nextStageId) => deps.stateMachine.advance(task.workflow, task.current_stage!, nextStageId),
+    advanceTimedWorkflow: (task) => deps.stateMachine.advance(task.workflow, task.current_stage!, undefined, 'timeout'),
     getRejectStage: (task, currentStageId) => deps.stateMachine.getRejectStage(task.workflow, currentStageId),
     reconcileStageExitSubtasks: (taskId, stageId, targetStatus, reason) => taskStageSupport.reconcileStageExitSubtasks(taskId, stageId, targetStatus, reason),
     exitStage: (taskId, stageId, reason) => taskStageSupport.exitStage(taskId, stageId, reason),

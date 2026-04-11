@@ -37,6 +37,7 @@ interface InactiveTaskProbeOptions {
 
 interface InactiveTaskProbeResult {
   scanned_tasks: number;
+  timeout_advances: number;
   controller_pings: number;
   roster_pings: number;
   human_pings: number;
@@ -126,6 +127,14 @@ export interface TaskRecoveryServiceOptions {
     inboxRaised: boolean;
   };
   resolveApprovalWaitProbe: (task: TaskRecord) => ApprovalWaitProbe;
+  getCurrentStageOrThrow: (task: TaskRecord) => NonNullable<TaskRecord['workflow']['stages']>[number];
+  checkGate: (
+    task: TaskRecord,
+    stage: NonNullable<TaskRecord['workflow']['stages']>[number],
+    callerId: string,
+    now?: string,
+  ) => boolean;
+  advanceTimedOutTask: (task: TaskRecord) => TaskRecord;
 }
 
 export class TaskRecoveryService {
@@ -151,6 +160,9 @@ export class TaskRecoveryService {
   private readonly resolveLatestBusinessActivityMs: (task: TaskRecord) => number;
   private readonly getProbeState: TaskRecoveryServiceOptions['getProbeState'];
   private readonly resolveApprovalWaitProbe: (task: TaskRecord) => ApprovalWaitProbe;
+  private readonly getCurrentStageOrThrow: TaskRecoveryServiceOptions['getCurrentStageOrThrow'];
+  private readonly checkGate: TaskRecoveryServiceOptions['checkGate'];
+  private readonly advanceTimedOutTask: TaskRecoveryServiceOptions['advanceTimedOutTask'];
 
   constructor(options: TaskRecoveryServiceOptions) {
     this.db = options.databasePort;
@@ -175,6 +187,9 @@ export class TaskRecoveryService {
     this.resolveLatestBusinessActivityMs = options.resolveLatestBusinessActivityMs;
     this.getProbeState = options.getProbeState;
     this.resolveApprovalWaitProbe = options.resolveApprovalWaitProbe;
+    this.getCurrentStageOrThrow = options.getCurrentStageOrThrow;
+    this.checkGate = options.checkGate;
+    this.advanceTimedOutTask = options.advanceTimedOutTask;
   }
 
   getHealthSnapshot(): UnifiedHealthSnapshotDto {
@@ -523,8 +538,10 @@ export class TaskRecoveryService {
   probeInactiveTasks(options: InactiveTaskProbeOptions): InactiveTaskProbeResult {
     const thresholds = this.resolveEscalationPolicy(options);
     const now = options.now ?? new Date();
+    const nowIso = now.toISOString();
     const result: InactiveTaskProbeResult = {
       scanned_tasks: 0,
+      timeout_advances: 0,
       controller_pings: 0,
       roster_pings: 0,
       human_pings: 0,
@@ -533,6 +550,17 @@ export class TaskRecoveryService {
 
     for (const task of this.taskRepository.listTasks(TaskState.ACTIVE)) {
       result.scanned_tasks += 1;
+      if (task.current_stage) {
+        const currentStage = this.getCurrentStageOrThrow(task);
+        if (
+          currentStage.gate?.type === 'auto_timeout'
+          && this.checkGate(task, currentStage, 'system', nowIso)
+        ) {
+          this.advanceTimedOutTask(task);
+          result.timeout_advances += 1;
+          continue;
+        }
+      }
       const latestActivityMs = this.resolveLatestBusinessActivityMs(task);
       const idleMs = now.getTime() - latestActivityMs;
       const controllerRef = resolveControllerRef(task.team.members);

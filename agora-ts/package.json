@@ -32,6 +32,7 @@
     "smoke:nomos:remote-share": "npm run build && tsx scripts/smoke-nomos-remote-share.ts",
     "smoke:nomos:registry": "npm run build && tsx scripts/smoke-nomos-registry.ts",
     "smoke:discord:inbound-action": "npm run build && tsx scripts/smoke-discord-inbound-action.ts",
+    "smoke:discord:graph-runtime": "npm run build && tsx scripts/smoke-discord-graph-runtime.ts",
     "smoke:discord:regression": "AGORA_DEV_REGRESSION_MODE=true npm run build && tsx scripts/smoke-discord-regression.ts",
     "smoke:orchestrator:direct-create": "npm run build && tsx scripts/smoke-orchestrator-direct-create.ts",
     "smoke:project-context-retrieve": "npm run build && tsx scripts/smoke-project-context-retrieve.ts",

@@ -2232,6 +2232,63 @@ describe('task routes', () => {
     });
   });
 
+  it('fails closed on advance when a branching stage omits next_stage_id', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-201B-MISS',
+      archonUsers: ['archon'],
+    });
+    taskService.createTask({
+      title: 'branching advance route missing selector',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'triage', mode: 'discuss', gate: { type: 'command' } },
+          { id: 'fast-path', mode: 'execute', gate: { type: 'all_subtasks_done' } },
+          { id: 'deep-review', mode: 'discuss', gate: { type: 'approval', approver: 'reviewer' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['triage'],
+          nodes: [
+            { id: 'triage', kind: 'stage', gate: { type: 'command' } },
+            { id: 'fast-path', kind: 'stage', gate: { type: 'all_subtasks_done' } },
+            { id: 'deep-review', kind: 'stage', gate: { type: 'approval', approver: 'reviewer' } },
+          ],
+          edges: [
+            { id: 'triage__branch__fast-path', from: 'triage', to: 'fast-path', kind: 'branch' },
+            { id: 'triage__branch__deep-review', from: 'triage', to: 'deep-review', kind: 'branch' },
+          ],
+        },
+      },
+    });
+
+    const app = buildApp({ taskService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-201B-MISS/advance',
+      payload: {
+        caller_id: 'archon',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      message: expect.stringMatching(/next_stage_id/),
+    });
+  });
+
   it('marks graph-backed tasks done when advance follows a complete edge into a terminal node', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
@@ -2261,7 +2318,7 @@ describe('task routes', () => {
           entry_nodes: ['deliver'],
           nodes: [
             { id: 'deliver', kind: 'stage', gate: { type: 'command' } },
-            { id: 'done', kind: 'terminal' },
+            { id: 'done', kind: 'terminal', terminal: { outcome: 'shipped', summary: 'Deliverable shipped' } },
           ],
           edges: [
             { id: 'deliver__complete__done', from: 'deliver', to: 'done', kind: 'complete' },
@@ -2284,6 +2341,64 @@ describe('task routes', () => {
       id: 'OC-201C',
       state: 'done',
       current_stage: null,
+    });
+  });
+
+  it('routes auto-timeout stages through timeout edges once the timeout gate is satisfied', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-201D',
+      archonUsers: ['archon'],
+    });
+    taskService.createTask({
+      title: 'timeout edge route',
+      type: 'custom',
+      creator: 'archon',
+      description: '',
+      priority: 'normal',
+      team_override: {
+        members: [
+          { role: 'architect', agentId: 'opus', member_kind: 'controller', model_preference: 'strong_reasoning' },
+        ],
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          { id: 'wait', mode: 'discuss', gate: { type: 'auto_timeout', timeout_sec: 30 } },
+          { id: 'escalate', mode: 'discuss', gate: { type: 'command' } },
+        ],
+        graph: {
+          graph_version: 1,
+          entry_nodes: ['wait'],
+          nodes: [
+            { id: 'wait', kind: 'stage', gate: { type: 'auto_timeout', timeout_sec: 30 } },
+            { id: 'escalate', kind: 'stage', gate: { type: 'command' } },
+          ],
+          edges: [
+            { id: 'wait__timeout__escalate', from: 'wait', to: 'escalate', kind: 'timeout' },
+          ],
+        },
+      },
+    });
+    db.prepare('UPDATE stage_history SET entered_at = ? WHERE task_id = ? AND stage_id = ?')
+      .run('2026-04-11T00:00:00.000Z', 'OC-201D', 'wait');
+
+    const app = buildApp({ taskService });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/tasks/OC-201D/advance',
+      payload: {
+        caller_id: 'archon',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: 'OC-201D',
+      current_stage: 'escalate',
+      state: 'active',
     });
   });
 

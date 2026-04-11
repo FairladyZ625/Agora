@@ -3,11 +3,20 @@ import { PermissionDeniedError } from './errors.js';
 import { TaskState } from './enums.js';
 
 type WorkflowStageLike = NonNullable<WorkflowDto['stages']>[number];
+type WorkflowTerminalNodeLike = {
+  id: string;
+  kind?: 'stage' | 'terminal' | undefined;
+  terminal?: {
+    outcome: string;
+    summary?: string | undefined;
+  } | undefined;
+};
 
 type AdvanceResult = {
   currentStage: WorkflowStageLike;
   nextStage: WorkflowStageLike | null;
   completesTask: boolean;
+  terminalNode: WorkflowTerminalNodeLike | null;
 };
 
 type UpdateTaskStateOptionsLike = {
@@ -41,6 +50,7 @@ export interface TaskStageServiceOptions {
     },
   ) => void;
   advanceWorkflow: (task: TaskRecord, nextStageId?: string) => AdvanceResult;
+  advanceTimedWorkflow: (task: TaskRecord) => AdvanceResult;
   getRejectStage: (task: TaskRecord, currentStageId: string) => WorkflowStageLike | null;
   reconcileStageExitSubtasks: (
     taskId: string,
@@ -172,17 +182,25 @@ export class TaskStageService {
       );
     }
 
-    return this.advanceSatisfiedStage(task, options.callerId, options.nextStageId);
+    const transitionKind = currentStage.gate?.type === 'auto_timeout' ? 'timeout' : 'advance';
+    return this.advanceSatisfiedStage(task, options.callerId, options.nextStageId, transitionKind);
   }
 
-  advanceSatisfiedStage(task: TaskRecord, actor: string, nextStageId?: string): TaskRecord {
+  advanceSatisfiedStage(
+    task: TaskRecord,
+    actor: string,
+    nextStageId?: string,
+    transitionKind: 'advance' | 'timeout' = 'advance',
+  ): TaskRecord {
     if (task.state !== TaskState.ACTIVE) {
       throw new Error(`Task ${task.id} is in state '${task.state}', expected 'active'`);
     }
     if (!task.current_stage) {
       throw new Error(`Task ${task.id} has no current_stage set`);
     }
-    const advance = this.options.advanceWorkflow(task, nextStageId);
+    const advance = transitionKind === 'timeout'
+      ? this.options.advanceTimedWorkflow(task)
+      : this.options.advanceWorkflow(task, nextStageId);
     this.options.reconcileStageExitSubtasks(task.id, advance.currentStage.id, 'archived', 'stage_advanced');
     this.options.exitStage(task.id, advance.currentStage.id, 'advance');
 
@@ -202,6 +220,14 @@ export class TaskStageService {
         stage_id: advance.currentStage.id,
         from_state: TaskState.ACTIVE,
         to_state: TaskState.DONE,
+        detail: {
+          transition_kind: transitionKind,
+          ...(advance.terminalNode ? {
+            terminal_node_id: advance.terminalNode.id,
+            terminal_outcome: advance.terminalNode.terminal?.outcome ?? null,
+            terminal_summary: advance.terminalNode.terminal?.summary ?? null,
+          } : {}),
+        },
         actor,
       });
       this.options.mirrorConversationEntry(task.id, {
@@ -211,11 +237,21 @@ export class TaskStageService {
           event: 'state_changed',
           from_state: TaskState.ACTIVE,
           to_state: TaskState.DONE,
+          transition_kind: transitionKind,
+          ...(advance.terminalNode ? {
+            terminal_node_id: advance.terminalNode.id,
+            terminal_outcome: advance.terminalNode.terminal?.outcome ?? null,
+            terminal_summary: advance.terminalNode.terminal?.summary ?? null,
+          } : {}),
         },
       });
       this.options.publishTaskStatusBroadcast(done, {
         kind: 'task_completed',
-        bodyLines: this.options.getDoneStateBroadcastLines(),
+        bodyLines: [
+          ...this.options.getDoneStateBroadcastLines(),
+          ...(advance.terminalNode?.terminal?.outcome ? [`Outcome: ${advance.terminalNode.terminal.outcome}`] : []),
+          ...(advance.terminalNode?.terminal?.summary ? [`Summary: ${advance.terminalNode.terminal.summary}`] : []),
+        ],
       });
       this.options.publishControllerCloseoutReminder(done, archiveJob);
       return done;
@@ -237,6 +273,7 @@ export class TaskStageService {
       detail: {
         from_stage: advance.currentStage.id,
         to_stage: nextStage?.id ?? 'done',
+        transition_kind: transitionKind,
       },
       actor,
     });

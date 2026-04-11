@@ -2,7 +2,14 @@ import type { TemplateDetailDto, TemplateGraphDto, TemplateStageDto, WorkflowSta
 
 type RuntimeGraphShape = {
   entry_nodes: string[];
-  nodes: Array<{ id: string; kind?: string }>;
+  nodes: Array<{
+    id: string;
+    kind?: string | undefined;
+    terminal?: {
+      outcome: string;
+      summary?: string | undefined;
+    } | undefined;
+  }>;
   edges: Array<{ from: string; to: string; kind: string }>;
 };
 
@@ -95,6 +102,8 @@ export function validateTemplateGraph(graph: TemplateGraphDto): string[] {
   const advanceByFrom = new Map<string, number>();
   const branchByFrom = new Map<string, number>();
   const rejectByFrom = new Map<string, number>();
+  const timeoutByFrom = new Map<string, number>();
+  const completeByFrom = new Map<string, number>();
   if (graph.nodes.length === 0) {
     errors.push('graph must include at least one node');
   }
@@ -112,7 +121,7 @@ export function validateTemplateGraph(graph: TemplateGraphDto): string[] {
     }
   }
   for (const edge of graph.edges) {
-    if (edge.kind !== 'advance' && edge.kind !== 'reject' && edge.kind !== 'branch' && edge.kind !== 'complete') {
+    if (edge.kind !== 'advance' && edge.kind !== 'reject' && edge.kind !== 'timeout' && edge.kind !== 'branch' && edge.kind !== 'complete') {
       errors.push(`unsupported graph edge kind: ${edge.kind}`);
       continue;
     }
@@ -131,6 +140,12 @@ export function validateTemplateGraph(graph: TemplateGraphDto): string[] {
     if (edge.kind === 'reject') {
       rejectByFrom.set(edge.from, (rejectByFrom.get(edge.from) ?? 0) + 1);
     }
+    if (edge.kind === 'timeout') {
+      timeoutByFrom.set(edge.from, (timeoutByFrom.get(edge.from) ?? 0) + 1);
+    }
+    if (edge.kind === 'complete') {
+      completeByFrom.set(edge.from, (completeByFrom.get(edge.from) ?? 0) + 1);
+    }
   }
   const nodeKindById = new Map(graph.nodes.map((node) => [node.id, node.kind]));
   for (const [from, count] of advanceByFrom.entries()) {
@@ -143,15 +158,33 @@ export function validateTemplateGraph(graph: TemplateGraphDto): string[] {
       errors.push(`multiple reject edges from node: ${from}`);
     }
   }
+  for (const [from, count] of timeoutByFrom.entries()) {
+    if (count > 1) {
+      errors.push(`multiple timeout edges from node: ${from}`);
+    }
+    if ((advanceByFrom.get(from) ?? 0) > 0 || (branchByFrom.get(from) ?? 0) > 0 || (completeByFrom.get(from) ?? 0) > 0) {
+      errors.push(`cannot mix timeout edges with other forward edges from node: ${from}`);
+    }
+  }
   for (const [from, count] of branchByFrom.entries()) {
     if (count < 2) {
       errors.push(`branching node must declare at least two branch edges: ${from}`);
     }
-    if ((advanceByFrom.get(from) ?? 0) > 0) {
+    if ((advanceByFrom.get(from) ?? 0) > 0 || (timeoutByFrom.get(from) ?? 0) > 0) {
       errors.push(`cannot mix advance and branch edges from node: ${from}`);
     }
   }
   for (const edge of graph.edges) {
+    if (edge.kind === 'timeout') {
+      const fromNode = graph.nodes.find((node) => node.id === edge.from);
+      const toNodeKind = nodeKindById.get(edge.to);
+      if (fromNode?.gate?.type !== 'auto_timeout') {
+        errors.push(`timeout edges require auto_timeout gate on source node: ${edge.from}`);
+      }
+      if (toNodeKind !== 'stage' && toNodeKind !== 'terminal') {
+        errors.push(`timeout edges must target stage or terminal nodes: ${edge.from} -> ${edge.to}`);
+      }
+    }
     if (edge.kind !== 'complete') {
       continue;
     }
@@ -206,11 +239,20 @@ export function validateRuntimeSupportedGraphSemantics(graph: RuntimeGraphShape)
   }
   const nodeKindById = new Map(graph.nodes.map((node) => [node.id, node.kind ?? 'stage']));
   const branchByFrom = new Map<string, number>();
+  const timeoutByFrom = new Map<string, number>();
   const orderedIds = orderedRuntimeGraphStageIds(graph);
   const stageIndex = new Map(orderedIds.map((id, index) => [id, index]));
   for (const edge of graph.edges) {
     if (edge.kind === 'branch') {
       branchByFrom.set(edge.from, (branchByFrom.get(edge.from) ?? 0) + 1);
+    }
+    if (edge.kind === 'timeout') {
+      timeoutByFrom.set(edge.from, (timeoutByFrom.get(edge.from) ?? 0) + 1);
+      const fromIndex = stageIndex.get(edge.from);
+      const toIndex = stageIndex.get(edge.to);
+      if (fromIndex !== undefined && toIndex !== undefined && nodeKindById.get(edge.to) !== 'terminal' && toIndex <= fromIndex) {
+        errors.push(`timeout edge ${edge.from} -> ${edge.to} must reference a later stage`);
+      }
     }
     if (edge.kind === 'complete' && nodeKindById.get(edge.to) !== 'terminal') {
       errors.push(`complete edges must target terminal nodes: ${edge.from} -> ${edge.to}`);
@@ -230,6 +272,11 @@ export function validateRuntimeSupportedGraphSemantics(graph: RuntimeGraphShape)
   for (const [from, count] of branchByFrom.entries()) {
     if (count < 2) {
       errors.push(`branching node must declare at least two branch edges: ${from}`);
+    }
+  }
+  for (const [from, count] of timeoutByFrom.entries()) {
+    if (count > 1) {
+      errors.push(`multiple timeout edges from node: ${from}`);
     }
   }
   return errors;
