@@ -61,6 +61,7 @@ import {
   GitWorktreeWorkdirIsolator,
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
+  ContextSourceBindingService,
   ProjectBrainAutomationService,
   ProjectBrainChunkingPolicy,
   ProjectBrainIndexQueueService,
@@ -71,6 +72,8 @@ import {
   ProjectMembershipService,
   ProjectAgentRosterService,
   ProjectService,
+  RetrievalRegistry,
+  RetrievalService,
   StubIMMessagingPort,
   RolePackService,
   TaskAuthorityService,
@@ -95,13 +98,14 @@ import {
   type IMMessagingPort,
   type IMProvisioningPort,
 } from '@agora-ts/core';
+import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter } from '@agora-ts/adapters-cc-connect';
-import { FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
 import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
 import { loadOpenClawDiscordAccountTokens, OpenClawAgentRegistry, OpenClawCitizenProjectionAdapter } from '@agora-ts/adapters-openclaw';
 import { DiscordIMMessagingAdapter, DiscordIMProvisioningAdapter } from '@agora-ts/adapters-discord';
+import { ObsidianContextSourceRetrievalAdapter } from '@agora-ts/adapters-obsidian';
 import type { TransactionManager } from '@agora-ts/contracts';
 
 export interface CreateCliCompositionOptions {
@@ -144,7 +148,7 @@ export interface CliCompositionFactories {
       projectBrainService: ProjectBrainService;
       taskBrainBindingService: TaskBrainBindingService;
       taskBrainWorkspacePort: TaskBrainWorkspacePort;
-      retrievalService?: ProjectBrainRetrievalService;
+      retrievalService?: Pick<RetrievalService, 'retrieve'>;
     },
   ) => ProjectBrainAutomationService;
   createCitizenService: (
@@ -230,6 +234,7 @@ export interface CliComposition {
   projectBrainAutomationService: ProjectBrainAutomationService;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
+  contextRetrievalService: RetrievalService;
   citizenService: CitizenService;
   legacyRuntimeService: InteractiveRuntimePort;
   tmuxRuntimeService: InteractiveRuntimePort;
@@ -609,6 +614,9 @@ export function createCliComposition(
   const taskContextBindingService = factories.createTaskContextBindingService(context);
   const projectKnowledgePort = factories.createProjectKnowledgePort(context);
   const projectService = factories.createProjectService(context, { projectKnowledgePort });
+  const contextSourceBindingService = new ContextSourceBindingService({
+    projectService,
+  });
   const rolePackService = factories.createRolePackService(context);
   const citizenService = factories.createCitizenService(context, { projectService, rolePackService });
   const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
@@ -628,6 +636,18 @@ export function createCliComposition(
     ...(projectBrainEmbeddingPort ? { embeddingPort: projectBrainEmbeddingPort } : {}),
     ...(projectBrainVectorIndexPort ? { vectorIndexPort: projectBrainVectorIndexPort } : {}),
   });
+  const retrievalRegistry = new RetrievalRegistry([
+    new FilesystemContextSourceRetrievalAdapter({
+      listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
+    }),
+    new ObsidianContextSourceRetrievalAdapter({
+      listProjectBindings: (projectId: string) => contextSourceBindingService.listProjectBindings(projectId),
+    }),
+    ...(projectBrainRetrievalService ? [projectBrainRetrievalService] : []),
+  ]);
+  const contextRetrievalService = new RetrievalService({
+    registry: retrievalRegistry,
+  });
   const taskParticipationService = factories.createTaskParticipationService(context, {
     agentRuntimePort,
   });
@@ -646,7 +666,7 @@ export function createCliComposition(
     projectBrainService,
     taskBrainBindingService,
     taskBrainWorkspacePort,
-    ...(projectBrainRetrievalService ? { retrievalService: projectBrainRetrievalService } : {}),
+    retrievalService: contextRetrievalService,
   });
   const humanAccountService = factories.createHumanAccountService(context);
   const taskService = factories.createTaskService(context, {
@@ -696,6 +716,7 @@ export function createCliComposition(
     projectBrainAutomationService,
     ...(projectBrainIndexService ? { projectBrainIndexService } : {}),
     ...(projectBrainRetrievalService ? { projectBrainRetrievalService } : {}),
+    contextRetrievalService,
     citizenService,
     legacyRuntimeService,
     tmuxRuntimeService,

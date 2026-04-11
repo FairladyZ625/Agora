@@ -242,6 +242,15 @@ export const taskControlSchema = z.object({
   workspace_bootstrap: z.object({
     kind: z.literal('orchestrator_onboarding'),
   }).strict().optional(),
+  orchestrator_intake: z.object({
+    kind: z.literal('direct_create'),
+    source: z.literal('conversation'),
+    confirmation_mode: z.literal('oral'),
+    orchestrator_ref: z.string().min(1),
+    confirmed_by: z.string().min(1),
+    confirmed_at: z.string().datetime(),
+    source_ref: z.string().min(1).nullable().optional(),
+  }).strict().optional(),
 }).strict();
 export type TaskControlDto = z.infer<typeof taskControlSchema>;
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process from 'node:process';
@@ -371,22 +371,80 @@ describe('cli composition', () => {
     const dir = makeTempDir();
     const configPath = join(dir, 'agora.json');
     const dbPath = join(dir, 'runtime.db');
+    const docsRoot = join(dir, 'docs');
     process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
     process.env.OPENAI_API_KEY = 'test-key';
     process.env.OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
     process.env.OPENAI_EMBEDDING_DIMENSION = '8';
     process.env.QDRANT_URL = 'http://127.0.0.1:6333';
+    mkdirSync(docsRoot, { recursive: true });
+    writeFileSync(join(docsRoot, 'architecture.md'), '# Runtime Boundary\n\nKeep runtime adapters outside core.\n');
     writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
 
     const composition = createCliComposition({ configPath });
+    const projectId = `proj-context-source-${Date.now()}`;
+    composition.projectService.createProject({
+      id: projectId,
+      name: 'Context Source Project',
+      metadata: {
+        agora: {
+          context_harness: {
+            project_context_sources: [{
+              source_id: 'docs-architecture',
+              scope: 'project',
+              project_id: projectId,
+              kind: 'docs_repo',
+              label: 'Architecture Docs',
+              location: docsRoot,
+              access: 'read_only',
+              enabled: true,
+            }],
+          },
+        },
+      },
+    });
 
     expect(composition.projectBrainIndexService?.constructor.name).toBe('ProjectBrainIndexService');
     expect(composition.projectBrainRetrievalService?.constructor.name).toBe('ProjectBrainRetrievalService');
+    expect(composition.contextRetrievalService?.constructor.name).toBe('RetrievalService');
     expect(Reflect.get(composition.projectBrainAutomationService as object, 'options')).toEqual(
       expect.objectContaining({
-        retrievalService: composition.projectBrainRetrievalService,
+        retrievalService: composition.contextRetrievalService,
       }),
     );
+      return composition.contextRetrievalService?.retrieve({
+        scope: 'context_source',
+        mode: 'project_context',
+        query: { text: 'runtime boundary' },
+        limit: 5,
+        context: {
+          project_id: projectId,
+        },
+      }).then((results) => {
+      expect(results).toEqual([
+        expect.objectContaining({
+          provider: 'filesystem_context_source',
+          path: join(docsRoot, 'architecture.md'),
+        }),
+      ]);
+      composition.db.close();
+    });
+  });
+
+  it('registers obsidian context source provider in the unified retrieval registry', () => {
+    const dir = makeTempDir();
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    process.env.AGORA_BRAIN_PACK_ROOT = join(dir, 'brain-pack');
+    writeFileSync(configPath, JSON.stringify({ db_path: dbPath }));
+
+    const composition = createCliComposition({ configPath });
+    const registry = Reflect.get(
+      Reflect.get(composition.contextRetrievalService as object, 'options') as object,
+      'registry',
+    ) as { listProviders(): Array<{ provider: string }> };
+
+    expect(registry.listProviders().map((provider) => provider.provider)).toContain('obsidian_context_source');
     composition.db.close();
   });
 

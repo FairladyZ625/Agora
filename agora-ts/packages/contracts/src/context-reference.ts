@@ -20,13 +20,6 @@ export const contextInventorySchema = z.object({
   entries: z.array(contextInventoryEntrySchema),
 });
 
-export const attentionAnchorSchema = z.object({
-  reference_key: z.string().trim().min(1),
-  reason: z.string().trim().min(1),
-  score: z.number().nullable().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-
 export const referenceBundleProjectMapSchema = z.object({
   index_reference_key: z.string().nullable(),
   timeline_reference_key: z.string().nullable(),
@@ -41,11 +34,9 @@ export const referenceBundleSchema = z.object({
   project_map: referenceBundleProjectMapSchema,
   inventory: contextInventorySchema,
   references: z.array(contextInventoryEntrySchema),
-  attention_anchors: z.array(attentionAnchorSchema),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type ContextInventoryEntryDto = z.infer<typeof contextInventoryEntrySchema>;
 export type ContextInventoryDto = z.infer<typeof contextInventorySchema>;
-export type AttentionAnchorDto = z.infer<typeof attentionAnchorSchema>;
 export type ReferenceBundleDto = z.infer<typeof referenceBundleSchema>;

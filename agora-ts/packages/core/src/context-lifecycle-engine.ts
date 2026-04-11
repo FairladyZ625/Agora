@@ -1,4 +1,5 @@
 import type {
+  AttentionRoutingPlanDto,
   ContextLifecyclePhaseSnapshotDto,
   ContextLifecycleSnapshotDto,
   ProjectWriteLockRecord,
@@ -11,6 +12,7 @@ import type { ProjectBootstrapService } from './project-bootstrap-service.js';
 import type { ProjectContextWriter } from './project-context-writer.js';
 import type { ReferenceBundleDto } from '@agora-ts/contracts';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
+import type { AttentionRoutingService } from './attention-routing-service.js';
 import type { ReferenceBundleService } from './reference-bundle-service.js';
 import type { TaskWorktreeService } from './task-worktree-service.js';
 import type { WorkspaceBootstrapService } from './workspace-bootstrap-service.js';
@@ -30,6 +32,7 @@ export interface ContextLifecycleEngineOptions {
   workspaceBootstrapService?: Pick<WorkspaceBootstrapService, 'getStatus'>;
   projectBootstrapService?: Pick<ProjectBootstrapService, 'createHarnessBootstrapTask'>;
   referenceBundleService?: Pick<ReferenceBundleService, 'buildReferenceBundleAsync'>;
+  attentionRoutingService?: Pick<AttentionRoutingService, 'buildPlanAsync'>;
   taskWorktreeService?: Pick<TaskWorktreeService, 'resolveBaseWorkdir'>;
   projectBrainAutomationService?: Pick<ProjectBrainAutomationService, 'recordTaskCloseRecap'>;
   projectContextWriter?: Pick<ProjectContextWriter, 'getLock'>;
@@ -60,6 +63,17 @@ export class ContextLifecycleEngine {
     const doctorReport = this.options.projectBrainDoctorService
       ? await this.options.projectBrainDoctorService.diagnoseProject(input.project_id)
       : null;
+    const attentionRoutingPlan = referenceBundle && this.options.attentionRoutingService
+      ? await this.options.attentionRoutingService.buildPlanAsync({
+        project_id: input.project_id,
+        mode: 'disclose',
+        audience: input.audience,
+        reference_bundle: referenceBundle,
+        ...(input.task?.id ? { task_id: input.task.id } : {}),
+        ...(input.task_title ? { task_title: input.task_title } : {}),
+        ...(input.task_description ? { task_description: input.task_description } : {}),
+      })
+      : null;
 
     return {
       project_id: input.project_id,
@@ -71,7 +85,7 @@ export class ContextLifecycleEngine {
           projectBootstrapAvailable: Boolean(this.options.projectBootstrapService),
           referenceBundle,
         }),
-        buildDisclosePhase(referenceBundle),
+        buildDisclosePhase(referenceBundle, attentionRoutingPlan),
         buildExecutePhase(input.task, this.options.taskWorktreeService),
         buildCapturePhase(input.task, Boolean(this.options.projectBrainAutomationService)),
         buildHarvestPhase(input.project_id, input.task, this.options.projectContextWriter?.getLock(input.project_id) ?? null, Boolean(this.options.projectContextWriter)),
@@ -122,7 +136,10 @@ function buildBootstrapPhase(input: {
   };
 }
 
-function buildDisclosePhase(referenceBundle: ReferenceBundleDto | null): ContextLifecyclePhaseSnapshotDto {
+function buildDisclosePhase(
+  referenceBundle: ReferenceBundleDto | null,
+  attentionRoutingPlan: AttentionRoutingPlanDto | null,
+): ContextLifecyclePhaseSnapshotDto {
   if (!referenceBundle) {
     return {
       phase: 'disclose',
@@ -131,13 +148,18 @@ function buildDisclosePhase(referenceBundle: ReferenceBundleDto | null): Context
       reference_keys: [],
     };
   }
+  const routedReferenceKeys = attentionRoutingPlan?.routes.map((route) => route.reference_key)
+    ?? referenceBundle.references.map((reference) => reference.reference_key);
   return {
     phase: 'disclose',
     status: 'ready',
     summary: 'Reference-first delivery bundle is available.',
-    reference_keys: referenceBundle.references.map((reference) => reference.reference_key),
+    reference_keys: routedReferenceKeys,
     metadata: {
-      attention_anchor_keys: referenceBundle.attention_anchors.map((anchor) => anchor.reference_key),
+      ...(attentionRoutingPlan ? {
+        attention_route_keys: attentionRoutingPlan.routes.map((route) => route.reference_key),
+        attention_summary: attentionRoutingPlan.summary,
+      } : {}),
       inventory_count: referenceBundle.inventory.entries.length,
     },
   };

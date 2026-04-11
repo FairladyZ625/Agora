@@ -69,6 +69,7 @@ import {
   createTaskRequestSchema,
   createSubtasksRequestSchema,
   createTaskContextBindingRequestSchema,
+  orchestratorDirectCreateRequestSchema,
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
@@ -114,6 +115,7 @@ import {
   type NotificationDispatcher,
   type CitizenService,
   type InteractiveRuntimePort,
+  OrchestratorDirectCreateService,
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
@@ -724,6 +726,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     logger: false,
   });
   const taskService = options.taskService;
+  const orchestratorDirectCreateService = taskService
+    ? new OrchestratorDirectCreateService({ taskService })
+    : undefined;
   app.addHook('onClose', async () => {
     await taskService?.drainBackgroundOperations?.();
   });
@@ -1546,6 +1551,31 @@ export function buildApp(options: BuildAppOptions = {}) {
     } catch (error) {
       const translated = translateError(error);
       recordTaskAction(metrics, 'create', 'error');
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/orchestrator/direct-create', async (request, reply) => {
+    if (!orchestratorDirectCreateService) {
+      return reply.status(503).send({ message: 'Task service is not configured' });
+    }
+    try {
+      const payload = orchestratorDirectCreateRequestSchema.parse(request.body);
+      const created = orchestratorDirectCreateService.createFromConversationConfirmation(payload);
+      recordTaskAction(metrics, 'orchestrator_direct_create', 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'task',
+        msg: 'task_action',
+        action: 'orchestrator_direct_create',
+        task_id: created.id,
+        state: created.state,
+        stage: created.current_stage,
+        creator: created.creator,
+      });
+      return created;
+    } catch (error) {
+      const translated = translateError(error);
+      recordTaskAction(metrics, 'orchestrator_direct_create', 'error');
       return reply.status(translated.statusCode).send(translated.body);
     }
   });

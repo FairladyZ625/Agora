@@ -2442,6 +2442,58 @@ describe('agora-ts cli', () => {
     });
   });
 
+  it('creates tasks through the orchestrator direct-create cli command', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-DIRECT-CLI',
+    });
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const program = createCliProgram({ taskService, stdout, stderr }).exitOverride();
+
+    await program.parseAsync([
+      'orchestrator',
+      'direct-create',
+      '--request-json',
+      JSON.stringify({
+        orchestrator_ref: 'agora-executive-controller',
+        confirmation: {
+          kind: 'conversation_confirmation',
+          confirmation_mode: 'oral',
+          confirmed_by: 'lizeyu',
+          confirmed_at: '2026-04-10T09:30:00.000Z',
+          source: 'conversation',
+          source_ref: 'discord:thread-2',
+        },
+        create: {
+          title: 'CLI direct create',
+          type: 'coding',
+          creator: 'agora-executive-controller',
+          description: '',
+          priority: 'normal',
+        },
+      }),
+    ], {
+      from: 'user',
+    });
+
+    const created = taskService.getTask('OC-DIRECT-CLI');
+    expect(stderr.value).toBe('');
+    expect(stdout.value).toContain('任务已创建: OC-DIRECT-CLI');
+    expect(stdout.value).toContain('CLI direct create');
+    expect(created?.control?.orchestrator_intake).toEqual({
+      kind: 'direct_create',
+      source: 'conversation',
+      confirmation_mode: 'oral',
+      orchestrator_ref: 'agora-executive-controller',
+      confirmed_by: 'lizeyu',
+      confirmed_at: '2026-04-10T09:30:00.000Z',
+      source_ref: 'discord:thread-2',
+    });
+  });
+
   it('rejects cli task creation when authority targets are outside the active project membership', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);

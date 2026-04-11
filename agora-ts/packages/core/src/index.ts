@@ -72,6 +72,13 @@ export { isDeveloperRegressionEnabled, isRegressionOperatorProxyEnabled } from '
 export { ActivityKind, AgentRole, CollaborationMode, CraftsmanType, DispatchStatus, EscalationLevel, GateType, GovernancePreset, SubtaskState, TaskPriority, TaskState, TaskType } from './enums.js';
 export { NotFoundError, PermissionDeniedError } from './errors.js';
 export { GateService } from './gate-service.js';
+export type { BuildAttentionRoutingPlanInput, AttentionRoutingServiceOptions } from './attention-routing-service.js';
+export { AttentionRoutingService } from './attention-routing-service.js';
+export type { BuildReferenceBundleInput, ContextDeliveryPort } from './context-delivery-port.js';
+export type { RetrievalPort } from './context-retrieval-port.js';
+export { RetrievalRegistry } from './context-retrieval-registry.js';
+export type { RetrievalServiceOptions } from './context-retrieval-service.js';
+export { RetrievalService } from './context-retrieval-service.js';
 
 export type { HostResourcePort, HostResourceSnapshot } from './host-resource-port.js';
 export type {
@@ -126,6 +133,8 @@ export type { NotificationDispatcherOptions } from './notification-dispatcher.js
 export { NotificationDispatcher } from './notification-dispatcher.js';
 export type { AgentPermission, PermissionServiceOptions } from './permission-service.js';
 export { PermissionService } from './permission-service.js';
+export type { OrchestratorDirectCreateServiceOptions } from './orchestrator-direct-create-service.js';
+export { OrchestratorDirectCreateService } from './orchestrator-direct-create-service.js';
 export type { ProgressServiceOptions } from './progress-service.js';
 export { ProgressService } from './progress-service.js';
 
@@ -176,6 +185,10 @@ export type {
 export { ProjectBrainRetrievalService } from './project-brain-retrieval-service.js';
 export type { ProjectBrainServiceOptions } from './project-brain-service.js';
 export { ProjectBrainService } from './project-brain-service.js';
+export type { ReferenceBundleServiceOptions } from './reference-bundle-service.js';
+export { ReferenceBundleService } from './reference-bundle-service.js';
+export type { ReferenceIndexServiceOptions } from './reference-index-service.js';
+export { ReferenceIndexService, toReferenceKey } from './reference-index-service.js';
 export type {
   ProjectBrainVectorIndexPort,
   ProjectBrainVectorIndexStatus,
@@ -205,6 +218,12 @@ export { ProjectMembershipService } from './project-membership-service.js';
 export type { ProjectAgentRosterServiceOptions } from './project-agent-roster-service.js';
 export { ProjectAgentRosterService } from './project-agent-roster-service.js';
 export type { ProjectNomosAuthoringPort, ProjectNomosRuntimeContext } from './project-nomos-authoring-port.js';
+export type { ContextSourceBindingServiceOptions } from './context-source-binding-service.js';
+export { ContextSourceBindingService } from './context-source-binding-service.js';
+export type { ContextHarvestServiceOptions } from './context-harvest-service.js';
+export { ContextHarvestService } from './context-harvest-service.js';
+export type { BuildContextLifecycleSnapshotInput, ContextLifecycleEngineOptions } from './context-lifecycle-engine.js';
+export { ContextLifecycleEngine } from './context-lifecycle-engine.js';
 export type { CreateProjectInput, ProjectServiceOptions } from './project-service.js';
 export { ProjectService } from './project-service.js';
 export type { EnsureCanonicalProjectRootOptions } from './project-state-root.js';

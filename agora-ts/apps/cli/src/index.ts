@@ -52,6 +52,7 @@ import {
   CcConnectInspectionService,
   CcConnectManagementService,
   type InteractiveRuntimePort,
+  OrchestratorDirectCreateService,
   ProjectBootstrapService,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
@@ -87,6 +88,7 @@ import type {
   CraftsmanInputKeyDto,
   CraftsmanRuntimeIdentitySourceDto,
   CreateCitizenRequestDto,
+  OrchestratorDirectCreateRequestDto,
   CreateProjectRequestDto,
   CreateSubtasksRequestDto,
   TaskPriority,
@@ -684,6 +686,29 @@ export function createCliProgram(deps: CliDependencies = {}) {
         options.controller,
         parseRoleBindings(options.bind),
       ));
+      writeLine(stdout, `任务已创建: ${task.id}`);
+      writeLine(stdout, `标题: ${task.title}`);
+      writeLine(stdout, `类型: ${task.type}`);
+      writeLine(stdout, `Project: ${task.project_id ?? '-'}`);
+      writeLine(stdout, `状态: ${task.state}`);
+      writeLine(stdout, `阶段: ${task.current_stage ?? '-'}`);
+    });
+
+  const orchestrator = program
+    .command('orchestrator')
+    .description('orchestrator entry commands');
+
+  orchestrator
+    .command('direct-create')
+    .description('create a task from an orchestrator confirmation payload')
+    .requiredOption('--request-json <json>', 'direct-create request JSON')
+    .action((options: { requestJson: string }) => {
+      const request = parseJsonString(
+        options.requestJson,
+        '--request-json',
+      ) as unknown as OrchestratorDirectCreateRequestDto;
+      const service = new OrchestratorDirectCreateService({ taskService });
+      const task = service.createFromConversationConfirmation(request);
       writeLine(stdout, `任务已创建: ${task.id}`);
       writeLine(stdout, `标题: ${task.title}`);
       writeLine(stdout, `类型: ${task.type}`);
