@@ -5186,13 +5186,13 @@ describe('task service', () => {
       conversation_ref: 'discord-parent-channel',
       thread_ref: 'discord-thread-approval-no-advance',
     });
-    const bindingService = new TaskContextBindingService(db);
-    const service = new TaskService(db, {
+    const bindingService = createTaskContextBindingServiceFromDb(db);
+    const service = createTaskServiceFromDb(db, {
       templatesDir,
       taskIdGenerator: () => 'OC-APPROVAL-NO-ADVANCE-1',
       imProvisioningPort: provisioningPort,
       taskContextBindingService: bindingService,
-      resolveHumanReminderParticipantRefs: ({ reason }) =>
+      resolveHumanReminderParticipantRefs: ({ reason }: { reason: string }) =>
         reason === 'approval_waiting' ? ['discord-user-123'] : [],
     });
 
