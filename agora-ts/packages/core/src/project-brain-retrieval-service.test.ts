@@ -321,4 +321,50 @@ describe('project brain retrieval service', () => {
       }),
     ]);
   });
+
+  it('supports project_context lookup for project-scoped lexical retrieval', async () => {
+    const service = new ProjectBrainRetrievalService({
+      taskLookup: {
+        getTask: () => null,
+      } as never,
+      projectBrainService: {
+        queryDocuments: () => [
+          makeFallbackResult(),
+        ],
+      } as never,
+      embeddingPort: undefined as never,
+      vectorIndexPort: undefined as never,
+    });
+
+    const results = await service.retrieve({
+      scope: 'project_context',
+      mode: 'lookup',
+      query: {
+        text: 'runtime boundary',
+      },
+      context: {
+        project_id: 'proj-brain',
+      },
+      limit: 5,
+    });
+
+    expect(service.supports({
+      scope: 'project_context',
+      mode: 'lookup',
+      query: {
+        text: 'runtime boundary',
+      },
+      context: {
+        project_id: 'proj-brain',
+      },
+    })).toBe(true);
+    expect(results).toEqual([
+      expect.objectContaining({
+        scope: 'project_context',
+        provider: 'project_brain',
+        project_id: 'proj-brain',
+        reference_key: 'decision:runtime-boundary',
+      }),
+    ]);
+  });
 });

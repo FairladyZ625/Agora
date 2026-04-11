@@ -65,7 +65,7 @@ export class FilesystemContextSourceRetrievalAdapter implements RetrievalPort {
   }
 
   private resolveBindings(plan: RetrievalPlanDto): ContextSourceBindingDto[] {
-    if (plan.scope !== 'context_source') {
+    if (plan.scope !== 'context_source' && plan.scope !== 'project_context') {
       return [];
     }
     const projectId = plan.context.project_id;
@@ -112,7 +112,7 @@ function buildFileResult(
   }
   const documentKey = `context_source:${binding.source_id}:${relativePath || basename(filePath)}`;
   return {
-    scope: 'context_source',
+    scope: binding.project_id && projectId ? 'project_context' : 'context_source',
     provider: 'filesystem_context_source',
     ...(projectId ? { project_id: projectId } : {}),
     reference_key: documentKey,

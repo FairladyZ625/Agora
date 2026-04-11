@@ -57,6 +57,7 @@ import {
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
+  type RetrievalService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
 import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
@@ -132,6 +133,7 @@ export interface CliDependencies {
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   projectBrainIndexWorkerService?: ProjectBrainIndexWorkerServiceContract;
+  contextRetrievalService?: Pick<RetrievalService, 'retrieve'>;
   citizenService?: CitizenService;
   legacyRuntimeService?: LegacyRuntimeServiceLike;
   tmuxRuntimeService?: LegacyRuntimeServiceLike;
@@ -190,6 +192,14 @@ function parseRequiredNumericOption(rawValue: string, optionName: string): numbe
   const [parsed] = parseNumericOptionList([rawValue], optionName);
   if (parsed === undefined) {
     throw new Error(`missing ${optionName} value`);
+  }
+  return parsed;
+}
+
+function parseIntegerOption(rawValue: string): number {
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`invalid integer value: ${rawValue}`);
   }
   return parsed;
 }
@@ -516,6 +526,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const getCcConnectInspectionService = () => deps.ccConnectInspectionService ?? new CcConnectInspectionService();
   const getCcConnectManagementService = () => deps.ccConnectManagementService ?? new CcConnectManagementService();
   const getImProvisioningPort = () => deps.imProvisioningPort ?? resolveComposition().imProvisioningPort;
+  const getContextRetrievalService = () => deps.contextRetrievalService ?? resolveComposition().contextRetrievalService;
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
@@ -1021,6 +1032,9 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const citizens = program
     .command('citizens')
     .description('citizen definition and projection preview commands');
+  const context = program
+    .command('context')
+    .description('project-scoped unified context retrieval commands');
 
   const graph = program
     .command('graph')
@@ -2025,6 +2039,58 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projectBrain = projects
     .command('brain')
     .description('project brain query / append commands');
+
+  context
+    .command('retrieve')
+    .description('通过统一 retrieval surface 检索 project context')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--query <query>', 'search query')
+    .option('--task <taskId>', 'optional task id for task-aware lookup')
+    .option('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'lookup|task_context', 'lookup')
+    .option('--limit <n>', 'max result count', parseIntegerOption)
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      query: string;
+      task?: string;
+      audience?: 'controller' | 'citizen' | 'craftsman';
+      mode?: string;
+      limit?: number;
+      json?: boolean;
+    }) => {
+      const retrievalService = getContextRetrievalService();
+      const mode = options.task ? (options.mode ?? 'task_context') : (options.mode ?? 'lookup');
+      const results = await retrievalService.retrieve({
+        scope: 'project_context',
+        mode,
+        query: {
+          text: options.query,
+        },
+        ...(options.limit !== undefined ? { limit: options.limit } : {}),
+        context: {
+          project_id: options.project,
+          ...(options.task ? { task_id: options.task } : {}),
+          ...(options.audience ? { audience: options.audience } : {}),
+        },
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          mode,
+          results,
+        }, null, 2));
+        return;
+      }
+      if (results.length === 0) {
+        writeLine(stdout, '没有匹配结果');
+        return;
+      }
+      for (const item of results) {
+        writeLine(stdout, `${item.provider}\t${item.reference_key}\t${item.path}`);
+        writeLine(stdout, `  ${item.preview}`);
+      }
+    });
 
   projectKnowledge
     .command('add')

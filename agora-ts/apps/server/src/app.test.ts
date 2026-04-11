@@ -949,6 +949,69 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('routes project context retrieval through the unified retrieval surface', async () => {
+    const contextRetrievalService = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          scope: 'project_context',
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          preview: 'Keep runtime-specific logic out of core.',
+          score: 9,
+          metadata: {
+            kind: 'decision',
+            slug: 'runtime-boundary',
+          },
+        },
+      ]),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextRetrievalService: contextRetrievalService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/retrieve',
+      payload: {
+        mode: 'lookup',
+        query: {
+          text: 'runtime boundary',
+        },
+        limit: 5,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextRetrievalService.retrieve).toHaveBeenCalledWith({
+      scope: 'project_context',
+      mode: 'lookup',
+      query: {
+        text: 'runtime boundary',
+      },
+      limit: 5,
+      context: {
+        project_id: 'proj-ctx',
+      },
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      mode: 'lookup',
+      results: [
+        expect.objectContaining({
+          provider: 'project_brain',
+          reference_key: 'decision:runtime-boundary',
+          project_id: 'proj-ctx',
+        }),
+      ],
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {
