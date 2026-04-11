@@ -58,6 +58,7 @@ import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskContextBindingService } from './task-context-binding-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
 import type { TaskParticipantSyncService } from './task-participant-sync-service.js';
+import type { ContextMaterializationService } from './context-materialization-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import type { ProjectContextWriter } from './project-context-writer.js';
@@ -102,6 +103,7 @@ export class TaskService {
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskContextBindingService: TaskContextBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   private readonly resolveHumanReminderParticipantRefs:
     | ((input: HumanReminderParticipantResolverInput) => string[])
     | undefined;
@@ -162,6 +164,7 @@ export class TaskService {
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskContextBindingService = options.taskContextBindingService;
     this.taskParticipationService = options.taskParticipationService;
+    this.contextMaterializationService = options.contextMaterializationService;
     this.resolveHumanReminderParticipantRefs = options.resolveHumanReminderParticipantRefs;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.projectContextWriter = subs.projectContextWriter;
@@ -236,6 +239,7 @@ export class TaskService {
       taskBrainBindingService: this.taskBrainBindingService,
       taskContextBindingService: this.taskContextBindingService,
       taskParticipationService: this.taskParticipationService,
+      contextMaterializationService: this.contextMaterializationService,
       projectBrainAutomationService: this.projectBrainAutomationService,
       agentRuntimePort: this.agentRuntimePort,
       runtimeRecoveryPort: this.runtimeRecoveryPort,

@@ -19,6 +19,7 @@ import type {
 import type { TaskBrainBindingService } from './task-brain-binding-service.js';
 import type { TaskBroadcastService } from './task-broadcast-service.js';
 import type { TaskParticipationService } from './task-participation-service.js';
+import type { ContextMaterializationService } from './context-materialization-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import type { StageRosterService } from './stage-roster-service.js';
 import { resolveControllerRef } from './team-member-kind.js';
@@ -51,6 +52,7 @@ export interface TaskLifecycleSupportOptions {
   taskBrainWorkspacePort: TaskBrainWorkspacePort | undefined;
   taskBrainBindingService: TaskBrainBindingService | undefined;
   taskParticipationService: TaskParticipationService | undefined;
+  contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   skillCatalogPort: SkillCatalogPort | undefined;
 }
@@ -64,6 +66,7 @@ export class TaskLifecycleSupport {
   private readonly taskBrainWorkspacePort: TaskBrainWorkspacePort | undefined;
   private readonly taskBrainBindingService: TaskBrainBindingService | undefined;
   private readonly taskParticipationService: TaskParticipationService | undefined;
+  private readonly contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   private readonly projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   private readonly skillCatalogPort: SkillCatalogPort | undefined;
 
@@ -76,6 +79,7 @@ export class TaskLifecycleSupport {
     this.taskBrainWorkspacePort = options.taskBrainWorkspacePort;
     this.taskBrainBindingService = options.taskBrainBindingService;
     this.taskParticipationService = options.taskParticipationService;
+    this.contextMaterializationService = options.contextMaterializationService;
     this.projectBrainAutomationService = options.projectBrainAutomationService;
     this.skillCatalogPort = options.skillCatalogPort;
   }
@@ -280,7 +284,7 @@ export class TaskLifecycleSupport {
   }
 
   private buildProjectBrainContexts(task: TaskRecord): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
-    if (!task.project_id || !this.projectBrainAutomationService) {
+    if (!task.project_id || (!this.contextMaterializationService && !this.projectBrainAutomationService)) {
       return null;
     }
     const allowedCitizenIds = task.team.members
@@ -288,14 +292,24 @@ export class TaskLifecycleSupport {
       .map((member) => member.agentId);
     const contexts: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> = {};
     for (const audience of TASK_BRAIN_CONTEXT_AUDIENCES) {
-      const context = this.projectBrainAutomationService.buildBootstrapContext({
-        project_id: task.project_id,
-        task_id: task.id,
-        task_title: task.title,
-        ...(task.description ? { task_description: task.description } : {}),
-        ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
-        audience,
-      });
+      const context = this.contextMaterializationService
+        ? this.contextMaterializationService.materializeSync({
+          target: 'project_context_briefing',
+          project_id: task.project_id,
+          task_id: task.id,
+          task_title: task.title,
+          ...(task.description ? { task_description: task.description } : {}),
+          ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
+          audience,
+        }).artifact
+        : this.projectBrainAutomationService!.buildBootstrapContext({
+          project_id: task.project_id,
+          task_id: task.id,
+          task_title: task.title,
+          ...(task.description ? { task_description: task.description } : {}),
+          ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
+          audience,
+        });
       contexts[audience] = {
         audience: context.audience,
         source_documents: context.source_documents,

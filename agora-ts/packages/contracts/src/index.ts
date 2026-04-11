@@ -2,6 +2,7 @@ export * from './craftsman.js';
 export * from './attention-routing.js';
 export * from './attention-routing-api.js';
 export * from './context-briefing-api.js';
+export * from './context-materialization.js';
 export * from './context-reference.js';
 export * from './context-reference-api.js';
 export * from './context-retrieval.js';

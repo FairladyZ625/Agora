@@ -62,6 +62,7 @@ import {
   HumanAccountService,
   InventoryBackedAgentRuntimePort,
   ContextSourceBindingService,
+  ContextMaterializationService,
   ProjectBrainAutomationService,
   ProjectBrainChunkingPolicy,
   ProjectBrainIndexQueueService,
@@ -99,6 +100,7 @@ import {
   type IMProvisioningPort,
 } from '@agora-ts/core';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
+import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
 import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter } from '@agora-ts/adapters-cc-connect';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
@@ -151,6 +153,12 @@ export interface CliCompositionFactories {
       retrievalService?: Pick<RetrievalService, 'retrieve'>;
     },
   ) => ProjectBrainAutomationService;
+  createContextMaterializationService: (
+    context: CliCompositionContext,
+    deps: {
+      projectBrainAutomationService: ProjectBrainAutomationService;
+    },
+  ) => ContextMaterializationService;
   createCitizenService: (
     context: CliCompositionContext,
     deps: { projectService: ProjectService; rolePackService: RolePackService },
@@ -170,6 +178,7 @@ export interface CliCompositionFactories {
       taskContextBindingService: TaskContextBindingService;
       taskParticipationService: TaskParticipationService;
       humanAccountService: HumanAccountService;
+      contextMaterializationService: ContextMaterializationService;
       projectBrainAutomationService: ProjectBrainAutomationService;
       projectService: ProjectService;
       agentRuntimePort: AgentRuntimePort;
@@ -232,6 +241,7 @@ export interface CliComposition {
   projectService: ProjectService;
   projectBrainService: ProjectBrainService;
   projectBrainAutomationService: ProjectBrainAutomationService;
+  contextMaterializationService: ContextMaterializationService;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   contextRetrievalService: RetrievalService;
@@ -366,6 +376,13 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
       ...(deps.retrievalService ? { retrievalService: deps.retrievalService } : {}),
     }),
+    createContextMaterializationService: (_context, deps) => new ContextMaterializationService({
+      ports: [
+        new ProjectContextBriefingMaterializer({
+          projectBrainAutomationService: deps.projectBrainAutomationService,
+        }),
+      ],
+    }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService({
       participantRepository: new ParticipantBindingRepository(context.db),
       runtimeSessionRepository: new RuntimeSessionBindingRepository(context.db),
@@ -381,6 +398,7 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       imMessagingPort: deps.messagingPort,
       taskContextBindingService: deps.taskContextBindingService,
       taskParticipationService: deps.taskParticipationService,
+      contextMaterializationService: deps.contextMaterializationService,
       resolveHumanReminderParticipantRefs: ({ task, provider, reason }) => {
         if (reason !== 'approval_waiting') {
           return [];
@@ -668,6 +686,9 @@ export function createCliComposition(
     taskBrainWorkspacePort,
     retrievalService: contextRetrievalService,
   });
+  const contextMaterializationService = factories.createContextMaterializationService(context, {
+    projectBrainAutomationService,
+  });
   const humanAccountService = factories.createHumanAccountService(context);
   const taskService = factories.createTaskService(context, {
     craftsmanDispatcher,
@@ -678,6 +699,7 @@ export function createCliComposition(
     taskContextBindingService,
     taskParticipationService,
     humanAccountService,
+    contextMaterializationService,
     projectBrainAutomationService,
     projectService,
     agentRuntimePort,
@@ -714,6 +736,7 @@ export function createCliComposition(
     projectService,
     projectBrainService,
     projectBrainAutomationService,
+    contextMaterializationService,
     ...(projectBrainIndexService ? { projectBrainIndexService } : {}),
     ...(projectBrainRetrievalService ? { projectBrainRetrievalService } : {}),
     contextRetrievalService,

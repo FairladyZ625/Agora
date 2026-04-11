@@ -16,6 +16,7 @@
     "@agora-ts/adapters-cc-connect": "0.0.0",
     "@agora-ts/adapters-discord": "0.0.0",
     "@agora-ts/adapters-host": "0.0.0",
+    "@agora-ts/adapters-materialization": "0.0.0",
     "@agora-ts/adapters-openclaw": "0.0.0",
     "@agora-ts/adapters-runtime": "0.0.0",
     "@agora-ts/config": "0.0.0",

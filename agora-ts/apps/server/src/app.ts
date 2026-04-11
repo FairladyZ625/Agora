@@ -124,15 +124,14 @@ import {
   type LiveSessionStore,
   type NotificationDispatcher,
   AttentionRoutingService,
+  type ContextMaterializationService,
   type CitizenService,
   type InteractiveRuntimePort,
   OrchestratorDirectCreateService,
   ProjectBrainAutomationPolicy,
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
-  type ProjectBrainAutomationService as ProjectBrainAutomationServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
-  ProjectBrainAutomationService,
   type RetrievalService,
   type ProjectService,
   ProjectService as ProjectServiceImpl,
@@ -163,7 +162,7 @@ export interface BuildAppOptions {
   taskService?: TaskService;
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
-  projectBrainAutomationService?: Pick<ProjectBrainAutomationServiceContract, 'buildBootstrapContext' | 'buildBootstrapContextAsync'>;
+  contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
   contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   workspaceBootstrapService?: WorkspaceBootstrapService;
@@ -1937,40 +1936,28 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
 
   app.post('/api/projects/:projectId/context/briefing', async (request, reply) => {
-    if (!projectService || (!projectBrainService && !options.projectBrainAutomationService)) {
+    if (!projectService || !options.contextMaterializationService) {
       return reply.status(503).send({ message: 'Project context briefing is not configured' });
     }
     try {
       const params = request.params as { projectId: string };
       projectService.requireProject(params.projectId);
       const payload = projectContextBriefingRequestSchema.parse(request.body);
-      const service = options.projectBrainAutomationService ?? new ProjectBrainAutomationService({
-        projectBrainService: projectBrainService!,
-        ...(contextRetrievalService ? { retrievalService: contextRetrievalService } : {}),
-      });
       const task = payload.task_id ? taskService?.getTask(payload.task_id) : null;
       const taskTitle = payload.task_title ?? task?.title;
       const taskDescription = payload.task_description ?? task?.description;
-      const briefing = payload.task_id
-        ? await service.buildBootstrapContextAsync({
-          project_id: params.projectId,
-          audience: payload.audience,
-          task_id: payload.task_id,
-          ...(taskTitle ? { task_title: taskTitle } : {}),
-          ...(taskDescription ? { task_description: taskDescription } : {}),
-          ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
-          ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
-            ? { allowed_citizen_ids: payload.allowed_citizen_ids }
-            : {}),
-        })
-        : service.buildBootstrapContext({
-          project_id: params.projectId,
-          audience: payload.audience,
-          ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
-          ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
-            ? { allowed_citizen_ids: payload.allowed_citizen_ids }
-            : {}),
-        });
+      const briefing = (await options.contextMaterializationService.materialize({
+        target: 'project_context_briefing',
+        project_id: params.projectId,
+        audience: payload.audience,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      })).artifact;
       return reply.send(projectContextBriefingResponseSchema.parse({
         scope: 'project_context',
         briefing,

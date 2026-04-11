@@ -28,6 +28,7 @@ import type { LiveSessionStore } from './live-session-store.js';
 import { ModeController } from './mode-controller.js';
 import type { PermissionService } from './permission-service.js';
 import { ProgressService } from './progress-service.js';
+import type { ContextMaterializationService } from './context-materialization-service.js';
 import type { ProjectAgentRosterService } from './project-agent-roster-service.js';
 import type { ProjectBrainAutomationService } from './project-brain-automation-service.js';
 import type { ProjectContextWriter } from './project-context-writer.js';
@@ -95,6 +96,7 @@ export interface TaskServiceRuntimeDeps {
   taskBrainBindingService: TaskBrainBindingService | undefined;
   taskContextBindingService: TaskContextBindingService | undefined;
   taskParticipationService: TaskParticipationService | undefined;
+  contextMaterializationService: Pick<ContextMaterializationService, 'materializeSync'> | undefined;
   projectBrainAutomationService: ProjectBrainAutomationService | undefined;
   agentRuntimePort: AgentRuntimePort | undefined;
   runtimeRecoveryPort: RuntimeRecoveryPort | undefined;
@@ -153,6 +155,7 @@ export function buildTaskServiceRuntime(deps: TaskServiceRuntimeDeps): TaskServi
     taskBrainWorkspacePort: deps.taskBrainWorkspacePort,
     taskBrainBindingService: deps.taskBrainBindingService,
     taskParticipationService: deps.taskParticipationService,
+    contextMaterializationService: deps.contextMaterializationService,
     projectBrainAutomationService: deps.projectBrainAutomationService,
     skillCatalogPort: deps.skillCatalogPort,
   });

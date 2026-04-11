@@ -2556,6 +2556,64 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"markdown": "# Project Brain Bootstrap Context"');
   });
 
+  it('prefers context materialization service for project context briefing when configured', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-200',
+        title: 'Implement hybrid retrieval',
+        description: 'Need vector recall and lexical rerank.',
+        project_id: 'proj-ctx',
+        team: { members: [] },
+      }),
+    };
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'project_context_briefing',
+        artifact: {
+          project_id: 'proj-ctx',
+          audience: 'craftsman',
+          markdown: '# Materialized Briefing',
+          source_documents: [],
+        },
+      }),
+    };
+    const projectBrainAutomationService = {
+      buildBootstrapContextAsync: vi.fn(),
+      buildBootstrapContext: vi.fn(),
+    };
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectBrainAutomationService: projectBrainAutomationService as never,
+      contextMaterializationService: contextMaterializationService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'briefing',
+      '--project', 'proj-ctx',
+      '--audience', 'craftsman',
+      '--task', 'OC-200',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-200');
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'project_context_briefing',
+      project_id: 'proj-ctx',
+      audience: 'craftsman',
+      task_id: 'OC-200',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+    });
+    expect(projectBrainAutomationService.buildBootstrapContextAsync).not.toHaveBeenCalled();
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"markdown": "# Materialized Briefing"');
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
@@ -2695,6 +2753,69 @@ describe('agora-ts cli', () => {
       allowed_citizen_ids: ['citizen-alpha'],
       audience: 'controller',
     });
+  });
+
+  it('prefers context materialization service for legacy bootstrap-context command when configured', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const taskService = {
+      getTask: vi.fn().mockReturnValue({
+        id: 'OC-HYBRID-1',
+        title: 'Implement hybrid retrieval',
+        description: 'Need vector recall and lexical rerank.',
+        project_id: 'proj-brain',
+        team: {
+          members: [
+            { role: 'architect', agentId: 'opus', member_kind: 'controller' },
+            { role: 'citizen', agentId: 'citizen-alpha', member_kind: 'citizen' },
+          ],
+        },
+      }),
+    };
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'project_context_briefing',
+        artifact: {
+          project_id: 'proj-brain',
+          audience: 'controller',
+          markdown: '# Materialized Briefing',
+          source_documents: [],
+        },
+      }),
+    };
+    const projectBrainAutomationService = {
+      buildBootstrapContextAsync: vi.fn(),
+      buildBootstrapContext: vi.fn(),
+    };
+    const program = createCliProgram({
+      taskService: taskService as never,
+      projectBrainAutomationService: projectBrainAutomationService as never,
+      contextMaterializationService: contextMaterializationService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'projects', 'brain', 'bootstrap-context',
+      '--task', 'OC-HYBRID-1',
+      '--audience', 'controller',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-HYBRID-1');
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'project_context_briefing',
+      project_id: 'proj-brain',
+      task_id: 'OC-HYBRID-1',
+      task_title: 'Implement hybrid retrieval',
+      task_description: 'Need vector recall and lexical rerank.',
+      allowed_citizen_ids: ['citizen-alpha'],
+      audience: 'controller',
+    });
+    expect(projectBrainAutomationService.buildBootstrapContextAsync).not.toHaveBeenCalled();
+    expect(projectBrainAutomationService.buildBootstrapContext).not.toHaveBeenCalled();
+    expect(stdout.value).toContain('"markdown": "# Materialized Briefing"');
   });
 
   it('prints runtime diagnosis results through the cli', async () => {

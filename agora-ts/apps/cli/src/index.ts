@@ -49,6 +49,7 @@ import type { CliCompositionFactories } from './composition.js';
 import { createCliComposition } from './composition.js';
 import {
   AttentionRoutingService,
+  ContextMaterializationService,
   deriveGraphFromStages,
   CcConnectInspectionService,
   CcConnectManagementService,
@@ -64,6 +65,7 @@ import {
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
 import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
+import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
 import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
@@ -132,6 +134,7 @@ export interface CliDependencies {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   projectBrainAutomationService?: ProjectBrainAutomationService;
+  contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
@@ -554,6 +557,21 @@ export function createCliProgram(deps: CliDependencies = {}) {
   const projectService = createLazyObject(() => deps.projectService ?? resolveComposition().projectService);
   const projectBrainService = createLazyObject(() => deps.projectBrainService ?? resolveComposition().projectBrainService);
   const projectBrainAutomationService = createLazyObject(() => deps.projectBrainAutomationService ?? resolveComposition().projectBrainAutomationService);
+  const contextMaterializationService = createLazyObject(() => {
+    if (deps.contextMaterializationService) {
+      return deps.contextMaterializationService;
+    }
+    if (deps.projectBrainAutomationService) {
+      return new ContextMaterializationService({
+        ports: [
+          new ProjectContextBriefingMaterializer({
+            projectBrainAutomationService: deps.projectBrainAutomationService,
+          }),
+        ],
+      });
+    }
+    return resolveComposition().contextMaterializationService;
+  });
   const getProjectBrainIndexService = () => deps.projectBrainIndexService ?? resolveComposition().projectBrainIndexService;
   const getProjectBrainRetrievalService = () => deps.projectBrainRetrievalService ?? resolveComposition().projectBrainRetrievalService;
   let projectBrainDoctorService: ProjectBrainDoctorServiceContract | null | undefined;
@@ -2336,26 +2354,18 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const task = options.task ? taskService.getTask(options.task) : null;
       const taskTitle = options.taskTitle ?? task?.title;
       const taskDescription = options.taskDescription ?? task?.description;
-      const briefing = options.task
-        ? await projectBrainAutomationService.buildBootstrapContextAsync({
-          project_id: options.project,
-          audience: options.audience,
-          task_id: options.task,
-          ...(taskTitle ? { task_title: taskTitle } : {}),
-          ...(taskDescription ? { task_description: taskDescription } : {}),
-          ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
-          ...(options.allowedCitizen && options.allowedCitizen.length > 0
-            ? { allowed_citizen_ids: options.allowedCitizen }
-            : {}),
-        })
-        : projectBrainAutomationService.buildBootstrapContext({
-          project_id: options.project,
-          audience: options.audience,
-          ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
-          ...(options.allowedCitizen && options.allowedCitizen.length > 0
-            ? { allowed_citizen_ids: options.allowedCitizen }
-            : {}),
-        });
+      const briefing = (await contextMaterializationService.materialize({
+        target: 'project_context_briefing',
+        project_id: options.project,
+        audience: options.audience,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(taskTitle ? { task_title: taskTitle } : {}),
+        ...(taskDescription ? { task_description: taskDescription } : {}),
+        ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+        ...(options.allowedCitizen && options.allowedCitizen.length > 0
+          ? { allowed_citizen_ids: options.allowedCitizen }
+          : {}),
+      })).artifact;
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           scope: 'project_context',
@@ -2816,9 +2826,10 @@ export function createCliProgram(deps: CliDependencies = {}) {
         audience: options.audience ?? 'controller',
         ...(options.citizen ? { citizen_id: options.citizen } : {}),
       };
-      const context = options.task
-        ? await projectBrainAutomationService.buildBootstrapContextAsync(bootstrapInput)
-        : projectBrainAutomationService.buildBootstrapContext(bootstrapInput);
+      const context = (await contextMaterializationService.materialize({
+        target: 'project_context_briefing',
+        ...bootstrapInput,
+      })).artifact;
       if (options.json) {
         writeLine(stdout, JSON.stringify(context, null, 2));
         return;
