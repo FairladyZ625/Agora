@@ -43,6 +43,8 @@ import {
   scaffoldNomosPack,
   renderNomosProjectProfileToml,
   renderRepoAgentsShim,
+  renderRepoClaudeShim,
+  loadNomosProjectProfile,
   resolveAgoraProjectStateLayout,
   resolveProjectNomosState,
 } from './nomos.js';
@@ -126,6 +128,29 @@ describe('nomos pack model freeze', () => {
     expect(shim).toContain('Agora Default Nomos (`agora/default@0.1.0`)');
     expect(shim).toContain(profile.project.state_root);
     expect(shim).toContain('never back into `AGENTS.md`');
+  });
+
+  it('loads a Nomos project profile back from profile.toml', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const profile = buildBuiltInAgoraNomosProjectProfile('proj-load', { userAgoraDir: agoraHomeDir });
+    const layout = ensureAgoraProjectStateLayout('proj-load', { userAgoraDir: agoraHomeDir });
+    writeFileSync(layout.profilePath, renderNomosProjectProfileToml(profile), 'utf8');
+
+    const loaded = loadNomosProjectProfile(layout.profilePath);
+
+    expect(loaded).toEqual(profile);
+  });
+
+  it('renders a repo-root CLAUDE shim as an index-only runtime-facing artifact', () => {
+    const profile = buildBuiltInAgoraNomosProjectProfile('proj-claude', { userAgoraDir: makeAgoraHomeDir() });
+
+    const shim = renderRepoClaudeShim({ profile });
+
+    expect(shim).toContain('# CLAUDE.md');
+    expect(shim).toContain('repo-facing shim for Claude Code');
+    expect(shim).toContain('## Pack Index');
+    expect(shim).toContain(profile.project.state_root);
+    expect(shim).toContain('`CLAUDE.md` stays thin and index-only');
   });
 
   it('renders profile.toml with the frozen Nomos fields', () => {

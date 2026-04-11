@@ -1975,7 +1975,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       const task = payload.task_id ? taskService?.getTask(payload.task_id) : null;
       const taskTitle = payload.task_title ?? task?.title;
       const taskDescription = payload.task_description ?? task?.description;
-      const briefing = (await options.contextMaterializationService.materialize({
+      const materialization = await options.contextMaterializationService.materialize({
         target: 'project_context_briefing',
         project_id: params.projectId,
         audience: payload.audience,
@@ -1986,7 +1986,11 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
           ? { allowed_citizen_ids: payload.allowed_citizen_ids }
           : {}),
-      })).artifact;
+      });
+      if (materialization.target !== 'project_context_briefing') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      const briefing = materialization.artifact;
       return reply.send(projectContextBriefingResponseSchema.parse({
         scope: 'project_context',
         briefing,

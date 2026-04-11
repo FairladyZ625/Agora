@@ -55,7 +55,7 @@ import {
 } from '@agora-ts/core';
 import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter, CcConnectManagementPresenceSource, CcConnectSessionMirrorService } from '@agora-ts/adapters-cc-connect';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter } from '@agora-ts/adapters-brain';
-import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
+import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
 import { AcpCraftsmanInputPort, AcpCraftsmanProbePort, AcpCraftsmanTailPort, AcpRuntimeRecoveryPort, createDefaultCraftsmanAdapters, DirectAcpxRuntimePort, TmuxCraftsmanInputPort, TmuxCraftsmanProbePort, TmuxCraftsmanTailPort, TmuxRuntimeRecoveryPort, TmuxRuntimeService } from '@agora-ts/adapters-runtime';
@@ -219,7 +219,7 @@ export interface ServerCompositionFactories {
   ) => RetrievalService;
   createContextMaterializationService: (
     context: ServerCompositionContext,
-    deps: { projectBrainService: ProjectBrainService; contextRetrievalService: RetrievalService },
+    deps: { projectService: ProjectService; projectBrainService: ProjectBrainService; contextRetrievalService: RetrievalService },
   ) => ContextMaterializationService;
   createProjectBrainIndexWorkerService?: (
     context: ServerCompositionContext,
@@ -590,6 +590,9 @@ export function createDefaultServerCompositionFactories(): ServerCompositionFact
             retrievalService: deps.contextRetrievalService,
           }),
         }),
+        new RuntimeRepoShimMaterializer({
+          projectService: deps.projectService,
+        }),
       ],
     }),
     createTaskParticipationService: (context, deps) => new TaskParticipationService({
@@ -677,6 +680,7 @@ export function buildServerComposition(
   const projectBrainService = factories.createProjectBrainService(context, { projectService, citizenService });
   const contextRetrievalService = factories.createContextRetrievalService(context, { projectService, projectBrainService });
   const contextMaterializationService = factories.createContextMaterializationService(context, {
+    projectService,
     projectBrainService,
     contextRetrievalService,
   });

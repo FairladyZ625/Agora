@@ -293,7 +293,8 @@ export class TaskLifecycleSupport {
     const contexts: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> = {};
     for (const audience of TASK_BRAIN_CONTEXT_AUDIENCES) {
       const context = this.contextMaterializationService
-        ? this.contextMaterializationService.materializeSync({
+        ? (() => {
+          const result = this.contextMaterializationService.materializeSync({
           target: 'project_context_briefing',
           project_id: task.project_id,
           task_id: task.id,
@@ -301,7 +302,12 @@ export class TaskLifecycleSupport {
           ...(task.description ? { task_description: task.description } : {}),
           ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
           audience,
-        }).artifact
+          });
+          if (result.target !== 'project_context_briefing') {
+            throw new Error(`Unexpected materialization target: ${result.target}`);
+          }
+          return result.artifact;
+        })()
         : this.projectBrainAutomationService!.buildBootstrapContext({
           project_id: task.project_id,
           task_id: task.id,

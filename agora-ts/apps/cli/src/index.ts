@@ -2354,7 +2354,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const task = options.task ? taskService.getTask(options.task) : null;
       const taskTitle = options.taskTitle ?? task?.title;
       const taskDescription = options.taskDescription ?? task?.description;
-      const briefing = (await contextMaterializationService.materialize({
+      const materialization = await contextMaterializationService.materialize({
         target: 'project_context_briefing',
         project_id: options.project,
         audience: options.audience,
@@ -2365,7 +2365,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.allowedCitizen && options.allowedCitizen.length > 0
           ? { allowed_citizen_ids: options.allowedCitizen }
           : {}),
-      })).artifact;
+      });
+      if (materialization.target !== 'project_context_briefing') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      const briefing = materialization.artifact;
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           scope: 'project_context',
@@ -2826,10 +2830,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
         audience: options.audience ?? 'controller',
         ...(options.citizen ? { citizen_id: options.citizen } : {}),
       };
-      const context = (await contextMaterializationService.materialize({
+      const materialization = await contextMaterializationService.materialize({
         target: 'project_context_briefing',
         ...bootstrapInput,
-      })).artifact;
+      });
+      if (materialization.target !== 'project_context_briefing') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      const context = materialization.artifact;
       if (options.json) {
         writeLine(stdout, JSON.stringify(context, null, 2));
         return;

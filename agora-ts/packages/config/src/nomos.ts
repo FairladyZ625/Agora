@@ -2697,6 +2697,66 @@ export function renderNomosProjectProfileToml(profile: NomosProjectProfile): str
   return lines.join('\n') + '\n';
 }
 
+export function loadNomosProjectProfile(profilePath: string): NomosProjectProfile {
+  if (!existsSync(profilePath)) {
+    throw new Error(`Nomos project profile is missing: ${profilePath}`);
+  }
+  const parsed = parseSimpleToml(readFileSync(profilePath, 'utf8'));
+  return nomosProjectProfileSchema.parse({
+    schema_version: asTomlRequiredNumber(parsed.root.schema_version, 'schema_version'),
+    project: {
+      id: asTomlRequiredString(parsed.sections.project?.id, 'project.id'),
+      state_root: asTomlRequiredString(parsed.sections.project?.state_root, 'project.state_root'),
+    },
+    pack: {
+      id: asTomlRequiredString(parsed.sections.pack?.id, 'pack.id'),
+      name: asTomlRequiredString(parsed.sections.pack?.name, 'pack.name'),
+      version: asTomlRequiredString(parsed.sections.pack?.version, 'pack.version'),
+      description: asTomlRequiredString(parsed.sections.pack?.description, 'pack.description'),
+      source: asTomlRequiredString(parsed.sections.pack?.source, 'pack.source'),
+      install_mode: asTomlRequiredString(parsed.sections.pack?.install_mode, 'pack.install_mode'),
+    },
+    repository_shim: {
+      entry: asTomlRequiredString(parsed.sections.repository_shim?.entry, 'repository_shim.entry'),
+      required_sections: asTomlStringArray(parsed.sections.repository_shim?.required_sections, 'repository_shim.required_sections'),
+    },
+    project_state: {
+      root_template: asTomlRequiredString(parsed.sections.project_state?.root_template, 'project_state.root_template'),
+      directories: asTomlStringArray(parsed.sections.project_state?.directories, 'project_state.directories'),
+      versioning: {
+        mode: asTomlRequiredString(parsed.sections['project_state.versioning']?.mode, 'project_state.versioning.mode'),
+        auto_init: asTomlRequiredBoolean(parsed.sections['project_state.versioning']?.auto_init, 'project_state.versioning.auto_init'),
+      },
+    },
+    bootstrap: {
+      methodology_mode: asTomlRequiredString(parsed.sections.bootstrap?.methodology_mode, 'bootstrap.methodology_mode'),
+      shim_fields_only: asTomlRequiredBoolean(parsed.sections.bootstrap?.shim_fields_only, 'bootstrap.shim_fields_only'),
+      prompts_dir: asTomlRequiredString(parsed.sections.bootstrap?.prompts_dir, 'bootstrap.prompts_dir'),
+    },
+    constitution: {
+      entry: asTomlRequiredString(parsed.sections.constitution?.entry, 'constitution.entry'),
+    },
+    docs: {
+      root: asTomlRequiredString(parsed.sections.docs?.root, 'docs.root'),
+      skeleton: {
+        create_if_missing: asTomlStringArray(parsed.sections['docs.skeleton']?.create_if_missing, 'docs.skeleton.create_if_missing'),
+      },
+    },
+    lifecycle: {
+      modules: asTomlStringArray(parsed.sections.lifecycle?.modules, 'lifecycle.modules'),
+    },
+    doctor: {
+      checks: asTomlStringArray(parsed.sections.doctor?.checks, 'doctor.checks'),
+    },
+    provenance: {
+      pack_source: asTomlRequiredString(parsed.sections.provenance?.pack_source, 'provenance.pack_source'),
+      ...(typeof parsed.sections.provenance?.docs_repo_remote === 'string'
+        ? { docs_repo_remote: parsed.sections.provenance.docs_repo_remote }
+        : {}),
+    },
+  });
+}
+
 export function renderRepoAgentsShim(options: RenderRepoAgentsShimOptions) {
   const { profile } = options;
   const sectionOrder = profile.repository_shim.required_sections.map((section) => ({
@@ -2710,6 +2770,45 @@ export function renderRepoAgentsShim(options: RenderRepoAgentsShimOptions) {
     '_This file is a repo-facing shim. Treat it as an index and bootstrap protocol, not as the project body._',
     '',
     ...sectionOrder.flatMap(({ id, title }) => renderRepoAgentsShimSection(id, title, profile)),
+  ];
+
+  return lines.join('\n').trimEnd() + '\n';
+}
+
+export function renderRepoClaudeShim(options: RenderRepoAgentsShimOptions) {
+  const { profile } = options;
+  const lines = [
+    '# CLAUDE.md',
+    '',
+    '_This file is a repo-facing shim for Claude Code. Treat it as an index and bootstrap protocol, not as the project body._',
+    '',
+    '## General Constitution',
+    '',
+    '- Use first-principles reasoning before proposing changes.',
+    '- Do not assume missing requirements, context, or constraints.',
+    '- Do not present uncertain claims as confirmed facts.',
+    '- Do not claim completion without verification.',
+    '- Keep durable project knowledge in global project state, not in `CLAUDE.md`.',
+    '',
+    '## Pack Index',
+    '',
+    `- Nomos Pack: ${profile.pack.name} (\`${profile.pack.id}@${profile.pack.version}\`)`,
+    `- Global Project State: \`${profile.project.state_root}\``,
+    `- Constitution Entry: \`${profile.constitution.entry}\``,
+    `- Primary References: \`${profile.project.state_root}/docs/reference\`, \`${profile.project.state_root}/brain\`, \`${profile.project.state_root}/lifecycle\``,
+    '',
+    '## Bootstrap Method',
+    '',
+    '- Treat this repo as the execution surface and the global project state as the harness body.',
+    `- Start with \`${profile.project.state_root}/${profile.bootstrap.prompts_dir}\` when the harness still needs bootstrap fill-in.`,
+    '- Write interview outputs and project-specific context into project-state references, never back into `CLAUDE.md`.',
+    '',
+    '## Fill Policy',
+    '',
+    '- `CLAUDE.md` stays thin and index-only.',
+    '- Put durable project context in `brain/`, `docs/reference/`, `docs/architecture/`, planning, and walkthrough artifacts.',
+    '- Update routing pointers here only when the harness entry protocol changes.',
+    '',
   ];
 
   return lines.join('\n').trimEnd() + '\n';
@@ -3546,6 +3645,32 @@ function removeDirectoryTree(
 function asTomlRequiredString(value: unknown, field: string) {
   if (typeof value === 'string' && value.trim().length > 0) {
     return value;
+  }
+  throw new Error(`Nomos pack profile is missing ${field}`);
+}
+
+function asTomlRequiredNumber(value: unknown, field: string) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  throw new Error(`Nomos pack profile is missing ${field}`);
+}
+
+function asTomlRequiredBoolean(value: unknown, field: string) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
   }
   throw new Error(`Nomos pack profile is missing ${field}`);
 }

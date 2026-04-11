@@ -100,7 +100,7 @@ import {
   type IMProvisioningPort,
 } from '@agora-ts/core';
 import { FilesystemContextSourceRetrievalAdapter, FilesystemSkillCatalogAdapter, FilesystemProjectBrainQueryAdapter, FilesystemProjectKnowledgeAdapter, FilesystemTaskBrainWorkspaceAdapter, OpenAiCompatibleProjectBrainEmbeddingAdapter, QdrantProjectBrainVectorIndexAdapter } from '@agora-ts/adapters-brain';
-import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
+import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer } from '@agora-ts/adapters-materialization';
 import { CcConnectAgentRegistry, CcConnectCitizenProjectionAdapter } from '@agora-ts/adapters-cc-connect';
 import { ClaudeCraftsmanAdapter, CodexCraftsmanAdapter, GeminiCraftsmanAdapter } from '@agora-ts/adapters-craftsman';
 import { OsHostResourcePort } from '@agora-ts/adapters-host';
@@ -156,6 +156,7 @@ export interface CliCompositionFactories {
   createContextMaterializationService: (
     context: CliCompositionContext,
     deps: {
+      projectService: ProjectService;
       projectBrainAutomationService: ProjectBrainAutomationService;
     },
   ) => ContextMaterializationService;
@@ -380,6 +381,9 @@ export function createDefaultCliCompositionFactories(): CliCompositionFactories 
       ports: [
         new ProjectContextBriefingMaterializer({
           projectBrainAutomationService: deps.projectBrainAutomationService,
+        }),
+        new RuntimeRepoShimMaterializer({
+          projectService: deps.projectService,
         }),
       ],
     }),
@@ -687,6 +691,7 @@ export function createCliComposition(
     retrievalService: contextRetrievalService,
   });
   const contextMaterializationService = factories.createContextMaterializationService(context, {
+    projectService,
     projectBrainAutomationService,
   });
   const humanAccountService = factories.createHumanAccountService(context);
