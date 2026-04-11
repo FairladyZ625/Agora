@@ -53,10 +53,12 @@ import {
   CcConnectManagementService,
   type InteractiveRuntimePort,
   OrchestratorDirectCreateService,
+  ProjectBrainAutomationPolicy,
   ProjectBootstrapService,
   ProjectBrainDoctorService,
   ProjectBrainIndexQueueService,
   ProjectBrainIndexWorkerService,
+  ReferenceBundleService,
   type RetrievalService,
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
@@ -2166,6 +2168,53 @@ export function createCliProgram(deps: CliDependencies = {}) {
       for (const item of health) {
         writeLine(stdout, `${item.provider}\t${item.status}\t${item.message ?? '-'}`);
       }
+    });
+
+  context
+    .command('bundle')
+    .description('通过统一 reference bundle surface 生成 project context bundle')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
+    .option('--mode <mode>', 'bootstrap|disclose', 'bootstrap')
+    .option('--task <taskId>', 'optional task id')
+    .option('--citizen <citizenId>', 'optional citizen id')
+    .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      audience: 'controller' | 'citizen' | 'craftsman';
+      mode: 'bootstrap' | 'disclose';
+      task?: string;
+      citizen?: string;
+      allowedCitizen?: string[];
+      json?: boolean;
+    }) => {
+      const service = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const bundle = await service.buildReferenceBundleAsync({
+        project_id: options.project,
+        mode: options.mode,
+        audience: options.audience,
+        ...(options.task ? { task_id: options.task } : {}),
+        ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
+        ...(options.allowedCitizen && options.allowedCitizen.length > 0
+          ? { allowed_citizen_ids: options.allowedCitizen }
+          : {}),
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          bundle,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `bundle scope: project_context`);
+      writeLine(stdout, `project: ${bundle.project_id}`);
+      writeLine(stdout, `mode: ${bundle.mode}`);
+      writeLine(stdout, `references: ${bundle.references.length}`);
+      writeLine(stdout, `inventory: ${bundle.inventory.entries.length}`);
     });
 
   projectKnowledge

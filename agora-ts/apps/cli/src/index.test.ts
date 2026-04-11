@@ -2311,6 +2311,67 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"status": "ready"');
   });
 
+  it('builds a project context reference bundle through the unified cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const projectBrainService = {
+      listDocuments: vi.fn().mockReturnValue([
+        {
+          project_id: 'proj-ctx',
+          kind: 'index',
+          slug: 'index',
+          title: 'Project Index',
+          path: '/brain/index.md',
+          content: '# Index',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+          source_task_ids: [],
+        },
+        {
+          project_id: 'proj-ctx',
+          kind: 'timeline',
+          slug: 'timeline',
+          title: 'Timeline',
+          path: '/brain/timeline.md',
+          content: '# Timeline',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+          source_task_ids: [],
+        },
+        {
+          project_id: 'proj-ctx',
+          kind: 'decision',
+          slug: 'runtime-boundary',
+          title: 'Runtime Boundary',
+          path: '/brain/decision/runtime-boundary.md',
+          content: '# Runtime Boundary',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:00:00.000Z',
+          source_task_ids: [],
+        },
+      ]),
+    } satisfies Pick<ProjectBrainService, 'listDocuments'>;
+    const program = createCliProgram({
+      projectBrainService: projectBrainService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'bundle',
+      '--project', 'proj-ctx',
+      '--audience', 'controller',
+      '--mode', 'bootstrap',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(projectBrainService.listDocuments).toHaveBeenCalledWith('proj-ctx');
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"index_reference_key": "index:index"');
+    expect(stdout.value).toContain('"reference_key": "decision:runtime-boundary"');
+  });
+
   it('keeps task query on the raw path when mode=raw', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();

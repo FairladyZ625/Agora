@@ -75,6 +75,8 @@ import {
   ingestTaskConversationEntryRequestSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
+  projectContextReferenceBundleRequestSchema,
+  projectContextReferenceBundleResponseSchema,
   projectContextHealthRequestSchema,
   projectContextHealthResponseSchema,
   projectContextRetrieveRequestSchema,
@@ -120,6 +122,7 @@ import {
   type CitizenService,
   type InteractiveRuntimePort,
   OrchestratorDirectCreateService,
+  ProjectBrainAutomationPolicy,
   type ProjectBrainDoctorService as ProjectBrainDoctorServiceContract,
   type ProjectBrainService,
   ProjectBootstrapService,
@@ -128,6 +131,7 @@ import {
   ProjectService as ProjectServiceImpl,
   ProjectMembershipService,
   ProjectAgentRosterService,
+  ReferenceBundleService,
   type TaskConversationService,
   type TaskInboundService,
   type TaskParticipationService,
@@ -1717,6 +1721,38 @@ export function buildApp(options: BuildAppOptions = {}) {
         scope: 'project_context',
         mode,
         health,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/reference-bundle', async (request, reply) => {
+    if (!projectService || !projectBrainService) {
+      return reply.status(503).send({ message: 'Project reference bundle is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextReferenceBundleRequestSchema.parse(request.body);
+      const service = new ReferenceBundleService({
+        projectBrainService,
+        policy: new ProjectBrainAutomationPolicy(),
+      });
+      const bundle = await service.buildReferenceBundleAsync({
+        project_id: params.projectId,
+        mode: payload.mode,
+        audience: payload.audience,
+        ...(payload.task_id ? { task_id: payload.task_id } : {}),
+        ...(payload.citizen_id !== undefined ? { citizen_id: payload.citizen_id } : {}),
+        ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
+          ? { allowed_citizen_ids: payload.allowed_citizen_ids }
+          : {}),
+      });
+      return reply.send(projectContextReferenceBundleResponseSchema.parse({
+        scope: 'project_context',
+        bundle,
       }));
     } catch (error) {
       const translated = translateError(error);

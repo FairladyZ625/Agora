@@ -1117,6 +1117,77 @@ describe('agora-ts server bootstrap', () => {
     });
   });
 
+  it('builds a project context reference bundle through the unified route surface', async () => {
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      projectBrainService: {
+        listDocuments: () => [
+          {
+            project_id: 'proj-ctx',
+            kind: 'index',
+            slug: 'index',
+            title: 'Project Index',
+            path: '/brain/index.md',
+            content: '# Index',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'timeline',
+            slug: 'timeline',
+            title: 'Timeline',
+            path: '/brain/timeline.md',
+            content: '# Timeline',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+          {
+            project_id: 'proj-ctx',
+            kind: 'decision',
+            slug: 'runtime-boundary',
+            title: 'Runtime Boundary',
+            path: '/brain/decision/runtime-boundary.md',
+            content: '# Runtime Boundary',
+            created_at: '2026-04-11T00:00:00.000Z',
+            updated_at: '2026-04-11T00:00:00.000Z',
+            source_task_ids: [],
+          },
+        ],
+      } as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/reference-bundle',
+      payload: {
+        mode: 'bootstrap',
+        audience: 'controller',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      bundle: expect.objectContaining({
+        project_id: 'proj-ctx',
+        mode: 'bootstrap',
+        project_map: expect.objectContaining({
+          index_reference_key: 'index:index',
+          timeline_reference_key: 'timeline:timeline',
+        }),
+        references: expect.arrayContaining([
+          expect.objectContaining({ reference_key: 'index:index' }),
+          expect.objectContaining({ reference_key: 'decision:runtime-boundary' }),
+        ]),
+      }),
+    });
+  });
+
   it('enforces bearer auth on api routes when enabled but leaves health and ready open', async () => {
     const app = buildApp({
       apiAuth: {
