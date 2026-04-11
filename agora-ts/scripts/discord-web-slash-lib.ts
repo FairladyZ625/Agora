@@ -84,6 +84,10 @@ export function resolveSmokeCommandTemplate(command: string, replacements: {
 
 export function expectedMarkersForSlashCommand(command: string) {
   const trimmed = command.trim();
+  const createMatch = trimmed.match(/^\/task\s+create\s+["“]?(.+?)["”]?\s+(coding|coding_heavy|research|document|quick|brainstorm)\s*$/i);
+  if (createMatch) {
+    return ["Created OC-", createMatch[1]];
+  }
   if (/^\/project\s+list\b/i.test(trimmed)) {
     return ["| active |"];
   }
