@@ -94,8 +94,8 @@ export class CompositeAgentInventorySource implements AgentInventorySource {
           inventory_sources: mergeUniqueSorted(current.inventory_sources, agent.inventory_sources),
           primary_model: current.primary_model ?? agent.primary_model,
           workspace_dir: current.workspace_dir ?? agent.workspace_dir,
-          agent_origin: current.agent_origin ?? agent.agent_origin,
-          briefing_mode: current.briefing_mode ?? agent.briefing_mode,
+          ...((current.agent_origin ?? agent.agent_origin) ? { agent_origin: current.agent_origin ?? agent.agent_origin } : {}),
+          ...((current.briefing_mode ?? agent.briefing_mode) ? { briefing_mode: current.briefing_mode ?? agent.briefing_mode } : {}),
         });
       }
     }

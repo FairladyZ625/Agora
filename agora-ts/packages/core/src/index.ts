@@ -244,7 +244,11 @@ export type {
   RuntimeBriefingMode,
   RuntimeParticipantResolution,
 } from './runtime-ports.js';
-export { InventoryBackedAgentRuntimePort } from './runtime-ports.js';
+export {
+  CompositeAgentInventorySource,
+  CompositePresenceSource,
+  InventoryBackedAgentRuntimePort,
+} from './runtime-ports.js';
 export type { RuntimeRecoveryPort } from './runtime-recovery-port.js';
 export type { ListSkillsInput, SkillCatalogEntry, SkillCatalogPort } from './skill-catalog-port.js';
 export { StateMachine } from './state-machine.js';

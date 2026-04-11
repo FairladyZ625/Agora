@@ -1,20 +1,9 @@
+import type { LiveSessionDto } from '@agora-ts/contracts';
 import { existsSync, readFileSync } from 'node:fs';
 import { loadCcConnectProjectTargets, type CcConnectProjectTarget } from './config-targets.js';
 import { buildCcConnectAgentId } from './agent-registry.js';
 
-export interface MirroredLiveSessionDto {
-  source: 'openclaw' | 'cc-connect';
-  agent_id: string;
-  session_key: string;
-  channel: string | null;
-  account_id?: string | null;
-  conversation_id?: string | null;
-  thread_id?: string | null;
-  status: 'active' | 'idle' | 'closed';
-  last_event: string;
-  last_event_at: string;
-  metadata: Record<string, unknown>;
-}
+export type MirroredLiveSessionDto = LiveSessionDto;
 
 export interface CcConnectSessionSummary {
   id: string;
