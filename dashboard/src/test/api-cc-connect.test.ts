@@ -333,6 +333,35 @@ describe('cc-connect api client', () => {
     expect(bridges[0]?.platform).toBe('discord');
   });
 
+  it('accepts project detail responses when heartbeat and context indicator are omitted', async () => {
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/external-bridges/cc-connect/projects/agora-codex')) {
+        return {
+          ok: true,
+          json: async () => ({
+            name: 'agora-codex',
+            agent_type: 'codex',
+            platforms: [{ type: 'discord', connected: true }],
+            platform_configs: [{ type: 'discord', allow_from: '*' }],
+            sessions_count: 2,
+            active_session_keys: ['discord:thread:1'],
+            settings: { language: 'zh-CN', admin_from: null, disabled_commands: [], quiet: false },
+            work_dir: '/Users/lizeyu/Projects/Agora',
+            agent_mode: 'immediate',
+            mode: 'channel',
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as unknown as typeof fetch;
+
+    const project = await getCcConnectProject('agora-codex');
+
+    expect(project.heartbeat).toBeNull();
+    expect(project.show_context_indicator).toBeNull();
+  });
+
   it('reads, creates, and deletes cron jobs', async () => {
     const jobs = await listCcConnectCronJobs('agora-codex');
     const createReceipt = await createCcConnectCronPrompt({

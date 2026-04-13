@@ -445,7 +445,7 @@ const ccConnectProjectDetailSchema = z.object({
     paused: z.boolean(),
     interval_mins: z.number().nullable(),
     session_key: z.string().nullable(),
-  }).nullable(),
+  }).nullable().optional().transform((value) => value ?? null),
   settings: z.object({
     language: z.string().nullable(),
     admin_from: z.string().nullable(),
@@ -455,7 +455,7 @@ const ccConnectProjectDetailSchema = z.object({
   work_dir: z.string().nullable(),
   agent_mode: z.string().nullable(),
   mode: z.string().nullable(),
-  show_context_indicator: z.boolean().nullable(),
+  show_context_indicator: z.boolean().nullable().optional().transform((value) => value ?? null),
 });
 
 const ccConnectSessionDetailSchema = z.object({
