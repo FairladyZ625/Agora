@@ -31,6 +31,8 @@ interface ProjectStore {
   clearError: () => void;
 }
 
+let projectDetailRequestToken = 0;
+
 export const useProjectStore = create<ProjectStore>()((set) => ({
   projects: [],
   projectMembershipsByProject: {},
@@ -129,12 +131,16 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
       set({ selectedProjectId: null, selectedProject: null });
       return;
     }
+    const requestToken = ++projectDetailRequestToken;
     set({ selectedProjectId: projectId, detailLoading: true, error: null });
     try {
       const [nomosDto, workbenchDto] = await Promise.all([
         api.getProjectNomosState(projectId),
         api.getProjectWorkbench(projectId),
       ]);
+      if (requestToken !== projectDetailRequestToken) {
+        return;
+      }
       const detail = mapProjectWorkbenchDto(workbenchDto);
       set({
         selectedProject: {
@@ -144,6 +150,9 @@ export const useProjectStore = create<ProjectStore>()((set) => ({
         detailLoading: false,
       });
     } catch (error) {
+      if (requestToken !== projectDetailRequestToken) {
+        return;
+      }
       set({
         selectedProject: null,
         detailLoading: false,

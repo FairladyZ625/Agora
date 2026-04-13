@@ -111,7 +111,7 @@ function mapProjectDetail(dto: api.ApiCcConnectProjectDetailDto): CcConnectProje
     workDir: dto.work_dir,
     agentMode: dto.agent_mode,
     mode: dto.mode,
-    showContextIndicator: dto.show_context_indicator,
+    showContextIndicator: dto.show_context_indicator ?? null,
   };
 }
 

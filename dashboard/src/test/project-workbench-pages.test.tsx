@@ -7,7 +7,316 @@ import { ProjectsPage } from '@/pages/ProjectsPage';
 import { WorkspaceBootstrapPage } from '@/pages/WorkspaceBootstrapPage';
 
 const fetchProjects = vi.fn(async () => 'live');
-const fetchProjectDetail = vi.fn(async () => 'live');
+const PROJECTS_PAGE_SELECTION_KEY = 'agora-projects-selected-project';
+let projectStoreState: {
+  selectedProjectId: string | null;
+  selectedProject: Record<string, unknown> | null;
+};
+
+function buildProjectWorkbench(project: {
+  id: string;
+  name: string;
+  summary: string | null;
+  owner: string | null;
+  status: string;
+  nomosId: string | null;
+  repoPath: string | null;
+  createdAt: string;
+  updatedAt: string;
+}, stats: {
+  knowledgeCount: number;
+  citizenCount: number;
+  recapCount: number;
+  taskCount: number;
+  activeTaskCount: number;
+  reviewTaskCount: number;
+  todoCount: number;
+  pendingTodoCount: number;
+}, taskPrefix: string) {
+  return {
+    project,
+    nomos: project.nomosId
+      ? {
+          nomosId: project.nomosId,
+          activationStatus: 'active_builtin',
+          projectStateRoot: `/Users/example/.agora/projects/${project.id}`,
+          profilePath: `/Users/example/.agora/projects/${project.id}/profile.toml`,
+          profileInstalled: true,
+          repoPath: project.repoPath,
+          repoShimInstalled: Boolean(project.repoPath),
+          bootstrapPromptsDir: `/Users/example/.agora/projects/${project.id}/prompts/bootstrap`,
+          lifecycleModules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
+          draftRoot: `/Users/example/.agora/projects/${project.id}/nomos/project-nomos`,
+          draftProfilePath: `/Users/example/.agora/projects/${project.id}/nomos/project-nomos/profile.toml`,
+          draftProfileInstalled: true,
+          activeRoot: `/Users/example/.agora/projects/${project.id}`,
+          activeProfilePath: `/Users/example/.agora/projects/${project.id}/profile.toml`,
+          activeProfileInstalled: true,
+        }
+      : null,
+    overview: {
+      status: project.status,
+      owner: project.owner,
+      updatedAt: project.updatedAt,
+      stats,
+    },
+    surfaces: {
+      index: {
+        kind: 'index',
+        slug: 'index',
+        title: project.name,
+        path: `/brain/projects/${project.id}/index.md`,
+        content: `# ${project.name}`,
+        updatedAt: project.updatedAt,
+      },
+      timeline: {
+        kind: 'timeline',
+        slug: 'timeline',
+        title: `${project.name} Timeline`,
+        path: `/brain/projects/${project.id}/timeline.md`,
+        content: `# Timeline\n\n- 2026-03-16 | task_recap | ${taskPrefix}-100`,
+        sourceTaskIds: [`${taskPrefix}-100`],
+        updatedAt: project.updatedAt,
+      },
+    },
+    index: {
+      kind: 'index',
+      slug: 'index',
+      title: project.name,
+      path: `/brain/projects/${project.id}/index.md`,
+      content: `# ${project.name}`,
+      updatedAt: project.updatedAt,
+    },
+    timeline: {
+      kind: 'timeline',
+      slug: 'timeline',
+      title: `${project.name} Timeline`,
+      path: `/brain/projects/${project.id}/timeline.md`,
+      content: `# Timeline\n\n- 2026-03-16 | task_recap | ${taskPrefix}-100`,
+      updatedAt: project.updatedAt,
+    },
+    recaps: [
+      {
+        taskId: `${taskPrefix}-100`,
+        title: `${project.name} recap`,
+        summaryPath: `/brain/projects/${project.id}/recaps/${taskPrefix}-100.md`,
+        content: `# ${project.name} recap\n\nRecent checkpoint.`,
+        updatedAt: project.updatedAt,
+      },
+    ],
+    knowledge: [
+      {
+        kind: 'decision',
+        slug: `${project.id}-boundary`,
+        title: `${project.name} Boundary`,
+        path: `/brain/projects/${project.id}/knowledge/decisions/${project.id}-boundary.md`,
+        content: `Keep ${project.name} focused.`,
+        sourceTaskIds: [`${taskPrefix}-100`],
+        updatedAt: project.updatedAt,
+      },
+    ],
+    citizens: [
+      {
+        citizenId: `citizen-${project.id}`,
+        roleId: 'architect',
+        displayName: `${project.name} Architect`,
+        status: 'active',
+        persona: 'Think in systems.',
+        boundaries: ['Keep adapters outside core.'],
+        skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
+        channelPolicies: { discord: { posting: 'human_gate' } },
+        brainScaffoldMode: 'role_default',
+        runtimeAdapter: 'openclaw',
+        runtimeMetadata: { mode: 'preview', version: 1 },
+      },
+    ],
+    work: {
+      tasks: [
+        { id: `${taskPrefix}-100`, title: `${project.name} Bootstrap`, state: 'in_progress', projectId: project.id },
+        { id: `${taskPrefix}-101`, title: `${project.name} Review`, state: 'gate_waiting', projectId: project.id },
+      ],
+      todos: [
+        { id: stats.taskCount, text: `Organize ${project.name} workspace`, status: 'pending', projectId: project.id },
+        { id: stats.taskCount + 1, text: `Archive ${project.name} recap`, status: 'done', projectId: project.id },
+      ],
+      recaps: [
+        {
+          taskId: `${taskPrefix}-100`,
+          title: `${project.name} recap`,
+          summaryPath: `/brain/projects/${project.id}/recaps/${taskPrefix}-100.md`,
+          content: `# ${project.name} recap\n\nRecent checkpoint.`,
+          updatedAt: project.updatedAt,
+        },
+      ],
+      knowledge: [
+        {
+          kind: 'decision',
+          slug: `${project.id}-boundary`,
+          title: `${project.name} Boundary`,
+          path: `/brain/projects/${project.id}/knowledge/decisions/${project.id}-boundary.md`,
+          content: `Keep ${project.name} focused.`,
+          sourceTaskIds: [`${taskPrefix}-100`],
+          updatedAt: project.updatedAt,
+        },
+      ],
+    },
+    operator: {
+      nomosId: project.nomosId,
+      repoPath: project.repoPath,
+      citizens: [
+        {
+          citizenId: `citizen-${project.id}`,
+          roleId: 'architect',
+          displayName: `${project.name} Architect`,
+          status: 'active',
+          persona: 'Think in systems.',
+          boundaries: ['Keep adapters outside core.'],
+          skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
+          channelPolicies: { discord: { posting: 'human_gate' } },
+          brainScaffoldMode: 'role_default',
+          runtimeAdapter: 'openclaw',
+          runtimeMetadata: { mode: 'preview', version: 1 },
+        },
+      ],
+    },
+    tasks: [
+      { id: `${taskPrefix}-100`, title: `${project.name} Bootstrap`, state: 'in_progress', projectId: project.id },
+      { id: `${taskPrefix}-101`, title: `${project.name} Review`, state: 'gate_waiting', projectId: project.id },
+    ],
+    todos: [
+      { id: stats.taskCount, text: `Organize ${project.name} workspace`, status: 'pending', projectId: project.id },
+      { id: stats.taskCount + 1, text: `Archive ${project.name} recap`, status: 'done', projectId: project.id },
+    ],
+  };
+}
+
+const PROJECT_ALPHA = {
+  id: 'proj-alpha',
+  name: 'Project Alpha',
+  summary: 'Core + brain baseline',
+  owner: 'archon',
+  status: 'active',
+  nomosId: 'agora/default',
+  repoPath: '/repo/proj-alpha',
+  createdAt: '2026-03-16T00:00:00.000Z',
+  updatedAt: '2026-03-16T01:00:00.000Z',
+};
+
+const PROJECT_BETA = {
+  id: 'proj-beta',
+  name: 'Beta Delivery',
+  summary: 'Delivery slice for customer rollout',
+  owner: 'helios',
+  status: 'active',
+  nomosId: 'agora/default',
+  repoPath: null,
+  createdAt: '2026-03-15T00:00:00.000Z',
+  updatedAt: '2026-03-18T09:00:00.000Z',
+};
+
+const PROJECT_GAMMA = {
+  id: 'proj-gamma',
+  name: 'Gamma Research',
+  summary: 'Research backlog and discovery stream',
+  owner: 'atlas',
+  status: 'paused',
+  nomosId: null,
+  repoPath: '/repo/proj-gamma',
+  createdAt: '2026-03-14T00:00:00.000Z',
+  updatedAt: '2026-03-17T09:00:00.000Z',
+};
+
+const PROJECT_DETAILS = {
+  'proj-alpha': buildProjectWorkbench(PROJECT_ALPHA, {
+    knowledgeCount: 1,
+    citizenCount: 1,
+    recapCount: 1,
+    taskCount: 2,
+    activeTaskCount: 2,
+    reviewTaskCount: 1,
+    todoCount: 2,
+    pendingTodoCount: 1,
+  }, 'OC'),
+  'proj-beta': buildProjectWorkbench(PROJECT_BETA, {
+    knowledgeCount: 3,
+    citizenCount: 2,
+    recapCount: 2,
+    taskCount: 6,
+    activeTaskCount: 4,
+    reviewTaskCount: 2,
+    todoCount: 5,
+    pendingTodoCount: 3,
+  }, 'BD'),
+  'proj-gamma': buildProjectWorkbench(PROJECT_GAMMA, {
+    knowledgeCount: 5,
+    citizenCount: 1,
+    recapCount: 4,
+    taskCount: 1,
+    activeTaskCount: 0,
+    reviewTaskCount: 0,
+    todoCount: 1,
+    pendingTodoCount: 1,
+  }, 'GR'),
+};
+
+PROJECT_DETAILS['proj-alpha'].recaps = [
+  {
+    taskId: 'OC-100',
+    title: 'Bootstrap recap',
+    summaryPath: '/brain/projects/proj-alpha/recaps/OC-100.md',
+    content: '# Bootstrap recap\n\nTask recap line.\n\nNext step: wire dashboard reader.',
+    updatedAt: '2026-03-16T01:00:00.000Z',
+  },
+];
+PROJECT_DETAILS['proj-alpha'].work.recaps = PROJECT_DETAILS['proj-alpha'].recaps;
+PROJECT_DETAILS['proj-alpha'].knowledge = [
+  {
+    kind: 'decision',
+    slug: 'runtime-boundary',
+    title: 'Runtime Boundary',
+    path: '/brain/projects/proj-alpha/knowledge/decisions/runtime-boundary.md',
+    content: 'Keep runtime adapters outside core.',
+    sourceTaskIds: ['OC-100'],
+    updatedAt: '2026-03-16T01:00:00.000Z',
+  },
+];
+PROJECT_DETAILS['proj-alpha'].work.knowledge = PROJECT_DETAILS['proj-alpha'].knowledge;
+PROJECT_DETAILS['proj-alpha'].tasks = [
+  { id: 'OC-100', title: 'Bootstrap flow', state: 'in_progress', projectId: 'proj-alpha' },
+  { id: 'OC-101', title: 'Review handoff', state: 'gate_waiting', projectId: 'proj-alpha' },
+];
+PROJECT_DETAILS['proj-alpha'].work.tasks = PROJECT_DETAILS['proj-alpha'].tasks;
+PROJECT_DETAILS['proj-alpha'].todos = [
+  { id: 3, text: '补 Project 入口', status: 'pending', projectId: 'proj-alpha' },
+  { id: 4, text: '整理 recap', status: 'done', projectId: 'proj-alpha' },
+];
+PROJECT_DETAILS['proj-alpha'].work.todos = PROJECT_DETAILS['proj-alpha'].todos;
+PROJECT_DETAILS['proj-alpha'].citizens = [
+  {
+    citizenId: 'citizen-alpha',
+    roleId: 'architect',
+    displayName: 'Alpha Architect',
+    status: 'active',
+    persona: 'Think in systems.',
+    boundaries: ['Keep adapters outside core.'],
+    skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
+    channelPolicies: { discord: { posting: 'human_gate' } },
+    brainScaffoldMode: 'role_default',
+    runtimeAdapter: 'openclaw',
+    runtimeMetadata: { mode: 'preview', version: 1 },
+  },
+];
+PROJECT_DETAILS['proj-alpha'].operator.citizens = PROJECT_DETAILS['proj-alpha'].citizens;
+
+const fetchProjectDetail = vi.fn(async (projectId: string | null) => {
+  if (!projectId) {
+    projectStoreState.selectedProjectId = null;
+    projectStoreState.selectedProject = null;
+    return;
+  }
+  projectStoreState.selectedProjectId = projectId;
+  projectStoreState.selectedProject = PROJECT_DETAILS[projectId as keyof typeof PROJECT_DETAILS] ?? null;
+});
 const fetchProjectMembers = vi.fn(async () => ([
   {
     id: 'pm-1',
@@ -657,19 +966,11 @@ const updateTodo = vi.fn(async () => undefined);
 const deleteTodo = vi.fn(async () => undefined);
 const promoteTodo = vi.fn(async () => ({ task: { id: 'OC-401' } }));
 
-const projectStoreState = {
+projectStoreState = {
   projects: [
-    {
-      id: 'proj-alpha',
-      name: 'Project Alpha',
-      summary: 'Core + brain baseline',
-      owner: 'archon',
-      status: 'active',
-      nomosId: 'agora/default',
-      repoPath: '/repo/proj-alpha',
-      createdAt: '2026-03-16T00:00:00.000Z',
-      updatedAt: '2026-03-16T01:00:00.000Z',
-    },
+    PROJECT_ALPHA,
+    PROJECT_BETA,
+    PROJECT_GAMMA,
   ],
   selectedProjectId: 'proj-alpha',
   projectMembershipsByProject: {
@@ -696,218 +997,7 @@ const projectStoreState = {
       },
     ],
   },
-  selectedProject: {
-    project: {
-      id: 'proj-alpha',
-      name: 'Project Alpha',
-      summary: 'Core + brain baseline',
-      owner: 'archon',
-      status: 'active',
-      nomosId: 'agora/default',
-      repoPath: '/repo/proj-alpha',
-      createdAt: '2026-03-16T00:00:00.000Z',
-      updatedAt: '2026-03-16T01:00:00.000Z',
-    },
-    nomos: {
-      nomosId: 'agora/default',
-      activationStatus: 'active_builtin',
-      projectStateRoot: '/Users/example/.agora/projects/proj-alpha',
-      profilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
-      profileInstalled: true,
-      repoPath: '/repo/proj-alpha',
-      repoShimInstalled: true,
-      bootstrapPromptsDir: '/Users/example/.agora/projects/proj-alpha/prompts/bootstrap',
-      lifecycleModules: ['project-bootstrap', 'task-context-delivery', 'task-closeout'],
-      draftRoot: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
-      draftProfilePath: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
-      draftProfileInstalled: true,
-      activeRoot: '/Users/example/.agora/projects/proj-alpha',
-      activeProfilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
-      activeProfileInstalled: true,
-    },
-    overview: {
-      status: 'active',
-      owner: 'archon',
-      updatedAt: '2026-03-16T01:00:00.000Z',
-      stats: {
-        knowledgeCount: 1,
-        citizenCount: 1,
-        recapCount: 1,
-        taskCount: 2,
-        activeTaskCount: 2,
-        reviewTaskCount: 1,
-        todoCount: 2,
-        pendingTodoCount: 1,
-      },
-    },
-    surfaces: {
-      index: {
-        kind: 'index',
-        slug: 'index',
-        title: 'Project Alpha',
-        path: '/brain/projects/proj-alpha/index.md',
-        content: '# Project Alpha',
-        updatedAt: '2026-03-16T01:00:00.000Z',
-      },
-      timeline: {
-        kind: 'timeline',
-        slug: 'timeline',
-        title: 'Project Alpha Timeline',
-        path: '/brain/projects/proj-alpha/timeline.md',
-        content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
-        sourceTaskIds: ['OC-100'],
-        updatedAt: '2026-03-16T01:30:00.000Z',
-      },
-    },
-    index: {
-      kind: 'index',
-      slug: 'index',
-      title: 'Project Alpha',
-      path: '/brain/projects/proj-alpha/index.md',
-      content: '# Project Alpha',
-      updatedAt: '2026-03-16T01:00:00.000Z',
-    },
-    timeline: {
-      kind: 'timeline',
-      slug: 'timeline',
-      title: 'Project Alpha Timeline',
-      path: '/brain/projects/proj-alpha/timeline.md',
-      content: '# Timeline\n\n- 2026-03-16 | task_recap | OC-100',
-      updatedAt: '2026-03-16T01:30:00.000Z',
-    },
-    recaps: [
-      {
-        taskId: 'OC-100',
-        title: 'Bootstrap recap',
-        summaryPath: '/brain/projects/proj-alpha/recaps/OC-100.md',
-        content: '# Bootstrap recap\n\nTask recap line.\n\nNext step: wire dashboard reader.',
-        updatedAt: '2026-03-16T01:00:00.000Z',
-      },
-    ],
-    knowledge: [
-      {
-        kind: 'decision',
-        slug: 'runtime-boundary',
-        title: 'Runtime Boundary',
-        path: '/brain/projects/proj-alpha/knowledge/decisions/runtime-boundary.md',
-        content: 'Keep runtime adapters outside core.',
-        sourceTaskIds: ['OC-100'],
-        updatedAt: '2026-03-16T01:00:00.000Z',
-      },
-    ],
-    citizens: [
-      {
-        citizenId: 'citizen-alpha',
-        roleId: 'architect',
-        displayName: 'Alpha Architect',
-        status: 'active',
-        persona: 'Think in systems.',
-        boundaries: ['Keep adapters outside core.'],
-        skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
-        channelPolicies: { discord: { posting: 'human_gate' } },
-        brainScaffoldMode: 'role_default',
-        runtimeAdapter: 'openclaw',
-        runtimeMetadata: { mode: 'preview', version: 1 },
-      },
-    ],
-    work: {
-      tasks: [
-        {
-          id: 'OC-100',
-          title: 'Bootstrap flow',
-          state: 'in_progress',
-          projectId: 'proj-alpha',
-        },
-        {
-          id: 'OC-101',
-          title: 'Review handoff',
-          state: 'gate_waiting',
-          projectId: 'proj-alpha',
-        },
-      ],
-      todos: [
-        {
-          id: 3,
-          text: '补 Project 入口',
-          status: 'pending',
-          projectId: 'proj-alpha',
-        },
-        {
-          id: 4,
-          text: '清理旧按钮',
-          status: 'done',
-          projectId: 'proj-alpha',
-        },
-      ],
-      recaps: [
-        {
-          taskId: 'OC-100',
-          title: 'Bootstrap recap',
-          summaryPath: '/brain/projects/proj-alpha/recaps/OC-100.md',
-          content: '# Bootstrap recap\n\nTask recap line.\n\nNext step: wire dashboard reader.',
-          updatedAt: '2026-03-16T01:00:00.000Z',
-        },
-      ],
-      knowledge: [
-        {
-          kind: 'decision',
-          slug: 'runtime-boundary',
-          title: 'Runtime Boundary',
-          path: '/brain/projects/proj-alpha/knowledge/decisions/runtime-boundary.md',
-          content: 'Keep runtime adapters outside core.',
-          sourceTaskIds: ['OC-100'],
-          updatedAt: '2026-03-16T01:00:00.000Z',
-        },
-      ],
-    },
-    operator: {
-      nomosId: 'agora/default',
-      repoPath: '/repo/proj-alpha',
-      citizens: [
-        {
-          citizenId: 'citizen-alpha',
-          roleId: 'architect',
-          displayName: 'Alpha Architect',
-          status: 'active',
-          persona: 'Think in systems.',
-          boundaries: ['Keep adapters outside core.'],
-          skillsRef: ['acpx-agent-delegate', 'planning-with-files'],
-          channelPolicies: { discord: { posting: 'human_gate' } },
-          brainScaffoldMode: 'role_default',
-          runtimeAdapter: 'openclaw',
-          runtimeMetadata: { mode: 'preview', version: 1 },
-        },
-      ],
-    },
-    tasks: [
-      {
-        id: 'OC-100',
-        title: 'Bootstrap flow',
-        state: 'in_progress',
-        projectId: 'proj-alpha',
-      },
-      {
-        id: 'OC-101',
-        title: 'Review handoff',
-        state: 'gate_waiting',
-        projectId: 'proj-alpha',
-      },
-    ],
-    todos: [
-      {
-        id: 3,
-        text: '补 Project 入口',
-        status: 'pending',
-        projectId: 'proj-alpha',
-      },
-      {
-        id: 4,
-        text: '整理 recap',
-        status: 'done',
-        projectId: 'proj-alpha',
-      },
-    ],
-  },
+  selectedProject: PROJECT_DETAILS['proj-alpha'],
   loading: false,
   detailLoading: false,
   error: null,
@@ -956,6 +1046,9 @@ describe('project workbench pages', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    localStorage.clear();
+    projectStoreState.selectedProjectId = 'proj-alpha';
+    projectStoreState.selectedProject = PROJECT_DETAILS['proj-alpha'];
     await setLocale('en-US');
   });
 
@@ -968,10 +1061,66 @@ describe('project workbench pages', () => {
 
     expect(screen.getByRole('heading', { name: 'Projects' })).toBeInTheDocument();
     expect(screen.getByText('Project Alpha')).toBeInTheDocument();
-    expect(screen.getByText('Nomos: agora/default')).toBeInTheDocument();
-    expect(screen.getByText('Repo Bound')).toBeInTheDocument();
+    expect(screen.getAllByText('Beta Delivery').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Create Project' })).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Open workspace bootstrap' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Open workspace bootstrap' })).toBeInTheDocument();
+  });
+
+  it('renders a persistent project preview pane and restores the remembered selection', async () => {
+    localStorage.setItem(PROJECTS_PAGE_SELECTION_KEY, 'proj-beta');
+
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(fetchProjectDetail).toHaveBeenCalledWith('proj-beta');
+    });
+
+    const previewPane = screen.getByTestId('projects-preview-pane');
+
+    expect(screen.getAllByText('Beta Delivery').length).toBeGreaterThan(0);
+    expect(within(previewPane).getByText('Delivery slice for customer rollout')).toBeInTheDocument();
+    expect(within(previewPane).getByText('Current Work Brief')).toBeInTheDocument();
+    expect(within(previewPane).getByText('Project Surfaces Brief')).toBeInTheDocument();
+    expect(within(previewPane).getByRole('link', { name: 'Open Project Workspace' })).toHaveAttribute('href', '/projects/proj-beta');
+    expect(within(previewPane).getByRole('link', { name: 'Open Brain' })).toHaveAttribute('href', '/projects/proj-beta/brain');
+  });
+
+  it('filters and reorders the project pool without navigating away from the page', async () => {
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    const listPanel = screen.getByTestId('projects-list-panel');
+
+    fireEvent.change(screen.getByLabelText('Search Projects'), {
+      target: { value: 'beta' },
+    });
+
+    expect(within(listPanel).getByText('Beta Delivery')).toBeInTheDocument();
+    expect(within(listPanel).queryByText('Gamma Research')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Sort Projects'), {
+      target: { value: 'tasks' },
+    });
+
+    const projectOptions = screen.getAllByRole('button', { name: /Select project /i });
+    expect(projectOptions[0]).toHaveTextContent('Beta Delivery');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select project Beta Delivery' }));
+
+    await waitFor(() => {
+      expect(fetchProjectDetail).toHaveBeenCalledWith('proj-beta');
+    });
+
+    const previewPane = screen.getByTestId('projects-preview-pane');
+    expect(within(previewPane).getAllByText('6 tasks').length).toBeGreaterThan(0);
+    expect(within(previewPane).getAllByText('3 pending todos').length).toBeGreaterThan(0);
   });
 
   it('renders the workspace bootstrap page with runtime readiness guidance', async () => {
