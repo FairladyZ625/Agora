@@ -26,9 +26,7 @@ export function useShellCopy() {
     railSummary: t('shell.railSummary'),
     navItems: [
       { to: '/', key: 'overview', label: t('shell.nav.overview.label'), hint: t('shell.nav.overview.hint') },
-      { to: '/board', key: 'board', label: t('shell.nav.board.label'), hint: t('shell.nav.board.hint') },
       { to: '/projects', key: 'projects', label: t('shell.nav.projects.label'), hint: t('shell.nav.projects.hint') },
-      { to: '/tasks', key: 'tasks', label: t('shell.nav.tasks.label'), hint: t('shell.nav.tasks.hint') },
       { to: '/agents', key: 'agents', label: t('shell.nav.agents.label'), hint: t('shell.nav.agents.hint') },
       { to: '/bridges', key: 'bridges', label: t('shell.nav.bridges.label'), hint: t('shell.nav.bridges.hint') },
       { to: '/todos', key: 'todos', label: t('shell.nav.todos.label'), hint: t('shell.nav.todos.hint') },
@@ -59,6 +57,20 @@ export function usePageMetaCopy() {
     '/reviews': { title: t('pageMeta.reviews.title') },
     '/settings': { title: t('pageMeta.settings.title') },
   } as const;
+}
+
+export function useProjectWorkspaceCopy() {
+  return {
+    ariaLabel: 'Project workspace',
+    items: [
+      { to: '/projects/:projectId', label: 'Overview', end: true },
+      { to: '/projects/:projectId/work', label: 'Current Work' },
+      { to: '/projects/:projectId/brain', label: 'Brain' },
+      { to: '/projects/:projectId/knowledge', label: 'Knowledge' },
+      { to: '/projects/:projectId/archive', label: 'Archive' },
+      { to: '/projects/:projectId/operator', label: 'Operator' },
+    ],
+  };
 }
 
 export function useDashboardHomeCopy() {

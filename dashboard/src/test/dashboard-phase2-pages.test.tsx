@@ -1,10 +1,17 @@
 import { MemoryRouter } from 'react-router';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '@/App';
 import type { Task, TaskStatus } from '@/types/task';
 
 const createTask = vi.fn(async () => ({ id: 'OC-009' }));
+const createProject = vi.fn(async () => ({
+  id: 'proj-alpha',
+  name: 'Project Alpha',
+}));
+const updateTodo = vi.fn(async () => undefined);
+const deleteTodo = vi.fn(async () => undefined);
+const promoteTodo = vi.fn(async () => ({ task: { id: 'OC-009' } }));
 
 interface TaskStoreMockState {
   tasks: Task[];
@@ -44,6 +51,7 @@ const taskStoreState: TaskStoreMockState = {
     {
       id: 'OC-001',
       version: 1,
+      projectId: 'proj-alpha',
       title: 'API 收口',
       description: '任务一',
       type: 'coding',
@@ -102,6 +110,160 @@ vi.mock('@/stores/taskStore', () => ({
     selector ? selector(taskStoreState) : taskStoreState,
 }));
 
+const projectStoreState = {
+  projects: [
+    {
+      id: 'proj-alpha',
+      name: 'Project Alpha',
+      summary: 'Core + brain baseline',
+      owner: 'archon',
+      status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      createdAt: '2026-03-16T00:00:00.000Z',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+    },
+  ],
+  selectedProjectId: 'proj-alpha',
+  projectMembershipsByProject: {
+    'proj-alpha': [],
+  },
+  selectedProject: {
+    project: {
+      id: 'proj-alpha',
+      name: 'Project Alpha',
+      summary: 'Core + brain baseline',
+      owner: 'archon',
+      status: 'active',
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      createdAt: '2026-03-16T00:00:00.000Z',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+    },
+    nomos: {
+      nomosId: 'agora/default',
+      activationStatus: 'active_builtin',
+      projectStateRoot: '/Users/example/.agora/projects/proj-alpha',
+      profilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
+      profileInstalled: true,
+      repoPath: '/repo/proj-alpha',
+      repoShimInstalled: true,
+      bootstrapPromptsDir: '/Users/example/.agora/projects/proj-alpha/prompts/bootstrap',
+      lifecycleModules: ['project-bootstrap'],
+      draftRoot: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos',
+      draftProfilePath: '/Users/example/.agora/projects/proj-alpha/nomos/project-nomos/profile.toml',
+      draftProfileInstalled: true,
+      activeRoot: '/Users/example/.agora/projects/proj-alpha',
+      activeProfilePath: '/Users/example/.agora/projects/proj-alpha/profile.toml',
+      activeProfileInstalled: true,
+    },
+    overview: {
+      status: 'active',
+      owner: 'archon',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+      stats: {
+        knowledgeCount: 1,
+        citizenCount: 1,
+        recapCount: 1,
+        taskCount: 1,
+        activeTaskCount: 1,
+        reviewTaskCount: 0,
+        todoCount: 1,
+        pendingTodoCount: 1,
+      },
+    },
+    surfaces: {
+      index: {
+        kind: 'index',
+        slug: 'index',
+        title: 'Project Alpha',
+        path: '/brain/projects/proj-alpha/index.md',
+        content: '# Project Alpha',
+        updatedAt: '2026-03-16T01:00:00.000Z',
+      },
+      timeline: null,
+    },
+    work: {
+      tasks: [
+        {
+          id: 'OC-001',
+          title: 'API 收口',
+          state: 'in_progress',
+          projectId: 'proj-alpha',
+        },
+      ],
+      todos: [
+        {
+          id: 1,
+          text: '整理 project workspace',
+          status: 'pending',
+          projectId: 'proj-alpha',
+        },
+      ],
+      recaps: [],
+      knowledge: [],
+    },
+    operator: {
+      nomosId: 'agora/default',
+      repoPath: '/repo/proj-alpha',
+      citizens: [],
+    },
+    index: {
+      kind: 'index',
+      slug: 'index',
+      title: 'Project Alpha',
+      path: '/brain/projects/proj-alpha/index.md',
+      content: '# Project Alpha',
+      updatedAt: '2026-03-16T01:00:00.000Z',
+    },
+    timeline: null,
+    recaps: [],
+    knowledge: [],
+    citizens: [],
+    tasks: [
+      {
+        id: 'OC-001',
+        title: 'API 收口',
+        state: 'in_progress',
+        projectId: 'proj-alpha',
+      },
+    ],
+    todos: [
+      {
+        id: 1,
+        text: '整理 project workspace',
+        status: 'pending',
+        projectId: 'proj-alpha',
+      },
+    ],
+  },
+  loading: false,
+  detailLoading: false,
+  creating: false,
+  error: null,
+  fetchProjects: vi.fn(async () => 'live'),
+  fetchProjectMembers: vi.fn(async () => []),
+  createProject,
+  selectProject: vi.fn(async () => undefined),
+  clearError: vi.fn(),
+};
+
+vi.mock('@/stores/projectStore', () => ({
+  useProjectStore: (selector?: (state: typeof projectStoreState) => unknown) =>
+    selector ? selector(projectStoreState) : projectStoreState,
+}));
+
+vi.mock('@/stores/todoStore', () => ({
+  useTodoStore: (selector?: (state: {
+    updateTodo: typeof updateTodo;
+    deleteTodo: typeof deleteTodo;
+    promoteTodo: typeof promoteTodo;
+  }) => unknown) =>
+    selector
+      ? selector({ updateTodo, deleteTodo, promoteTodo })
+      : { updateTodo, deleteTodo, promoteTodo },
+}));
+
 vi.mock('@/stores/themeStore', () => ({
   useThemeStore: () => ({
     mode: 'system',
@@ -154,27 +316,159 @@ vi.mock('@/stores/sessionStore', () => ({
 }));
 
 describe('dashboard phase 2 routes', () => {
-  it('adds board and create-task routes to the main app shell', () => {
-    taskStoreState.tasks = [
-      ...taskStoreState.tasks,
-      {
-        ...taskStoreState.tasks[0],
-        id: 'OC-002',
-        title: '暂停中的任务',
-        state: 'paused',
-        sourceState: 'paused',
-      },
-    ];
+  beforeEach(() => {
+    taskStoreState.selectedTaskId = null;
+    taskStoreState.selectedTaskStatus = null;
+    taskStoreState.executionTailById = {};
+    taskStoreState.executionTailLoadingById = {};
+    taskStoreState.error = null;
+  });
+
+  it('treats project detail as the primary workspace entry and removes board/tasks from global navigation', () => {
     render(
-      <MemoryRouter initialEntries={['/board']}>
+      <MemoryRouter initialEntries={['/projects/proj-alpha']}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: '任务看板' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /创建 任务入口/i })).toBeInTheDocument();
-    expect(screen.getAllByText('中断 / 停滞').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('暂停中的任务').length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Project Alpha' })).toBeInTheDocument();
+
+    const globalNavigation = screen.getByRole('navigation', { name: 'Global navigation' });
+    expect(within(globalNavigation).getByRole('link', { name: /项目/i })).toBeInTheDocument();
+    expect(within(globalNavigation).queryByRole('link', { name: /看板/i })).not.toBeInTheDocument();
+    expect(within(globalNavigation).queryByRole('link', { name: /^任务/ })).not.toBeInTheDocument();
+  });
+
+  it('shows a project workspace sub-navigation on project routes', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const workspaceNavigation = screen.getByRole('navigation', { name: 'Project workspace' });
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Overview' })).toBeInTheDocument();
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Current Work' })).toBeInTheDocument();
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Brain' })).toBeInTheDocument();
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Knowledge' })).toBeInTheDocument();
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Archive' })).toBeInTheDocument();
+    expect(within(workspaceNavigation).getByRole('link', { name: 'Operator' })).toBeInTheDocument();
+  });
+
+  it('renders project-scoped current work and keeps task links inside the workspace route', () => {
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha/work']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Current Work' })).toBeInTheDocument();
+    const taskLink = screen.getByRole('link', { name: /API 收口/ });
+    expect(taskLink).toHaveAttribute('href', '/projects/proj-alpha/work/OC-001');
+  });
+
+  it('renders selected task detail inside the project workspace route', () => {
+    taskStoreState.selectedTaskId = 'OC-001';
+    taskStoreState.selectedTaskStatus = {
+      task: {
+        ...taskStoreState.tasks[0],
+      },
+      flow_log: [],
+      progress_log: [],
+      subtasks: [],
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha/work/OC-001']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Current Work' })).toBeInTheDocument();
+    expect(screen.getByText('任务一')).toBeInTheDocument();
+    expect(screen.getAllByText('discuss-execute-review').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('develop').length).toBeGreaterThan(0);
+  });
+
+  it('surfaces task execution controls inside project-scoped current work', () => {
+    taskStoreState.selectedTaskId = 'OC-001';
+    taskStoreState.executionTailById = {
+      'exec-1': {
+        output: '\u001b[32mBuild passed\u001b[0m\nNext step ready',
+        available: true,
+        fetchedAt: '2026-03-07T00:15:00.000Z',
+        live: true,
+      },
+    };
+    taskStoreState.selectedTaskStatus = {
+      task: {
+        ...taskStoreState.tasks[0],
+      },
+      flow_log: [],
+      progress_log: [],
+      subtasks: [
+        {
+          id: 'dev-api',
+          task_id: 'OC-001',
+          stage_id: 'develop',
+          title: '后端 API',
+          assignee: 'sonnet',
+          status: 'running',
+          output: null,
+          craftsman_type: 'backend',
+          dispatch_status: 'running',
+          dispatched_at: '2026-03-07T00:10:00.000Z',
+          done_at: null,
+        },
+      ],
+      subtaskExecutions: {
+        'dev-api': [
+          {
+            executionId: 'exec-1',
+            taskId: 'OC-001',
+            subtaskId: 'dev-api',
+            adapter: 'codex',
+            mode: 'one_shot',
+            sessionId: 'tmux:1',
+            status: 'needs_input',
+            briefPath: null,
+            workdir: '/tmp/agora',
+            callbackPayload: {
+              inputRequest: {
+                transport: 'text',
+                hint: 'Please provide the next coding instruction.',
+                textPlaceholder: null,
+                keys: [],
+                choiceOptions: [],
+              },
+            },
+            error: null,
+            startedAt: '2026-03-07T00:10:00.000Z',
+            finishedAt: null,
+            createdAt: '2026-03-07T00:10:00.000Z',
+            updatedAt: '2026-03-07T00:10:00.000Z',
+          },
+        ],
+      },
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/projects/proj-alpha/work/OC-001']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: '执行控制面' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '运行观察' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '暂停任务' })).toBeInTheDocument();
+    expect(screen.getAllByText('后端 API').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('exec-1').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '探测执行' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /获取执行输出|刷新输出/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('log', { name: 'Agent runtime output' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '发送输入' })).toBeInTheDocument();
   });
 
   it('renders the create task workspace on the dedicated route', () => {
@@ -329,7 +623,7 @@ describe('dashboard phase 2 routes', () => {
     };
 
     render(
-      <MemoryRouter initialEntries={['/tasks/OC-001']}>
+      <MemoryRouter initialEntries={['/projects/proj-alpha/work/OC-001']}>
         <App />
       </MemoryRouter>,
     );
@@ -341,7 +635,7 @@ describe('dashboard phase 2 routes', () => {
     expect(screen.getByRole('button', { name: '运行观察' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '探测执行' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '发送输入' })).toBeInTheDocument();
-    expect(screen.getByText('会话消息内容')).toBeInTheDocument();
+    expect(screen.getByText(/会话消息内容/)).toBeInTheDocument();
     expect(screen.getAllByText('craftsman_completed').length).toBeGreaterThan(0);
     expect(screen.getByText(/execution: craftsman_dispatch/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '执行控制面' })).toBeInTheDocument();
@@ -370,7 +664,7 @@ describe('dashboard phase 2 routes', () => {
     };
 
     render(
-      <MemoryRouter initialEntries={['/tasks/OC-001']}>
+      <MemoryRouter initialEntries={['/projects/proj-alpha/work/OC-001']}>
         <App />
       </MemoryRouter>,
     );
@@ -387,5 +681,17 @@ describe('dashboard phase 2 routes', () => {
     );
 
     expect(screen.getByRole('button', { name: '清理 orphaned' })).toBeInTheDocument();
+  });
+
+  it('rewrites legacy task deep links into the project workspace shell', () => {
+    render(
+      <MemoryRouter initialEntries={['/tasks/OC-001']}>
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Current Work' })).toBeInTheDocument();
+    expect(screen.getByText('任务一')).toBeInTheDocument();
+    expect(screen.getByText('Project Alpha')).toBeInTheDocument();
   });
 });

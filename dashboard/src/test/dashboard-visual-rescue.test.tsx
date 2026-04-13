@@ -128,7 +128,7 @@ describe('dashboard visual rescue target structure', () => {
     expect(screen.getByTestId('home-signal-field')).toBeInTheDocument();
     expect(screen.getByText('待决议队列')).toBeInTheDocument();
     expect(screen.getByText(/待处理 1 个审批/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /打开任务总线/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /打开 Project 工作区/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /进入裁决台|进入审批队列/i })).toBeInTheDocument();
     expect(screen.queryByText(/Agora 不是普通控制台/)).not.toBeInTheDocument();
     expect(screen.queryByText('广场，而不是后台')).not.toBeInTheDocument();

@@ -224,11 +224,11 @@ describe('project brain page', () => {
     expect(screen.getAllByText('Foundation doc').length).toBeGreaterThan(0);
     expect(screen.getByText('/brain/projects/proj-alpha/timeline.md')).toBeInTheDocument();
     expect(screen.getByText(/task_recap \| OC-100/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Source Task OC-100' })).toHaveAttribute('href', '/tasks/OC-100');
+    expect(screen.getByRole('link', { name: 'Open Source Task OC-100' })).toHaveAttribute('href', '/projects/proj-alpha/work/OC-100');
 
     fireEvent.click(screen.getByRole('button', { name: 'Open brain item Runtime Boundary' }));
     expect(screen.getByText('Source Tasks')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Open Source Task OC-100' })).toHaveAttribute('href', '/tasks/OC-100');
+    expect(screen.getByRole('link', { name: 'Open Source Task OC-100' })).toHaveAttribute('href', '/projects/proj-alpha/work/OC-100');
     expect(screen.getByText('Continue from this surface')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to Project overview' })).toHaveAttribute('href', '/projects/proj-alpha');
     expect(screen.getByRole('link', { name: 'Create Task From Surface' }).getAttribute('href')).toContain('source_kind=knowledge');

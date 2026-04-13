@@ -6,7 +6,7 @@ import { Sidebar } from '@/components/layouts/Sidebar';
 describe('dashboard sidebar motion shell', () => {
   it('renders a telemetry seam and active-node cue for the desktop sidebar', () => {
     const { container } = render(
-      <MemoryRouter initialEntries={['/tasks']}>
+      <MemoryRouter initialEntries={['/projects']}>
         <Sidebar
           collapsed={false}
           onToggle={vi.fn()}

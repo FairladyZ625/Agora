@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router';
 import { WorkbenchDetailSheet } from '@/components/ui/WorkbenchDetailSheet';
 import * as api from '@/lib/api';
 import { useProjectDetailPageCopy } from '@/lib/dashboardCopy';
+import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
 import {
   mapProjectNomosActivationDto,
   mapProjectNomosDiffDto,
@@ -413,7 +414,7 @@ export function ProjectDetailPage() {
                   <div key={task.id} className="data-row">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link className="type-heading-sm" to={`/tasks/${task.id}`}>{task.title}</Link>
+                        <Link className="type-heading-sm" to={buildProjectTaskHref(task.id, project.id)}>{task.title}</Link>
                         <span className="status-pill status-pill--neutral">{formatTaskState(task.state)}</span>
                       </div>
                       <div className="type-text-xs mt-3">

@@ -189,7 +189,7 @@ export function Sidebar({
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-5">
-            <nav className="space-y-1.5">
+            <nav aria-label="Global navigation" className="space-y-1.5">
               {shellCopy.navItems.map(({ to, key, label, hint }) => {
                 const Icon = navIcons[key as keyof typeof navIcons];
 
