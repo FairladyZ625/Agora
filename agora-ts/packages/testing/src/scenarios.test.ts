@@ -41,6 +41,7 @@ describe('agora-ts testing scenarios', () => {
       'control-plane-loop',
       'graph-driven-path',
       'project-brain-bootstrap',
+      'nomos-lifecycle-closeout',
     ]);
   });
 
@@ -136,6 +137,29 @@ describe('agora-ts testing scenarios', () => {
         'citizen-alpha',
       ]),
     );
+  });
+
+  it('runs a nomos lifecycle closeout scenario across done, archive sync, and project archive', () => {
+    runtime = createTestRuntime({
+      taskIdGenerator: () => 'OC-NOMOS-LIFECYCLE',
+    });
+
+    const result = runScenario(runtime, 'nomos-lifecycle-closeout');
+
+    expect(result.name).toBe('nomos-lifecycle-closeout');
+    expect(result.taskId).toBe('OC-NOMOS-LIFECYCLE');
+    expect(result.finalState).toBe('done');
+    expect(result.projectId).toBe('proj-lifecycle-closeout');
+    expect(result.contextFiles).toEqual({
+      controller: true,
+      craftsman: true,
+      citizen: true,
+    });
+    expect(result.harvestDraftPresent).toBe(true);
+    expect(result.archiveJobStatus).toBe('synced');
+    expect(result.projectArchived).toBe(true);
+    expect(result.deleteBlocked).toBe(true);
+    expect(result.events).toContain('state_changed');
   });
 
   it('runs a quorum scenario and advances after the required votes are met', () => {

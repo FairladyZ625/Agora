@@ -57,6 +57,7 @@ export const scenarioNames = [
   'control-plane-loop',
   'graph-driven-path',
   'project-brain-bootstrap',
+  'nomos-lifecycle-closeout',
 ] as const;
 
 export type ScenarioName = (typeof scenarioNames)[number];
@@ -86,6 +87,19 @@ export interface ScenarioResult {
   unreadAfter?: number;
   bootstrapContextPath?: string;
   bootstrapContextContains?: string[];
+  projectId?: string;
+  archiveJobId?: number;
+  archiveJobStatus?: string;
+  harvestDraftPath?: string | null;
+  harvestDraftPresent?: boolean;
+  workspaceDestroyedAfterSync?: boolean;
+  projectArchived?: boolean;
+  deleteBlocked?: boolean;
+  contextFiles?: {
+    controller: boolean;
+    craftsman: boolean;
+    citizen: boolean;
+  };
 }
 
 export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioResult {
@@ -148,6 +162,8 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runGraphDrivenPathScenario(runtime);
     case 'project-brain-bootstrap':
       return runProjectBrainBootstrapScenario(runtime);
+    case 'nomos-lifecycle-closeout':
+      return runNomosLifecycleCloseoutScenario(runtime);
   }
 }
 
@@ -243,6 +259,7 @@ function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult 
       members: [
         { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
         { role: 'developer', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+        { role: 'reviewer', agentId: 'gpt52', model_preference: 'review', member_kind: 'citizen' },
       ],
     },
   });
@@ -266,6 +283,105 @@ function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult 
       'citizen-alpha',
     ].filter((needle) => bootstrapContext.includes(needle)),
   };
+}
+
+function runNomosLifecycleCloseoutScenario(runtime: TestRuntime): ScenarioResult {
+  const projectId = 'proj-lifecycle-closeout';
+  runtime.projectService.createProject({
+    id: projectId,
+    name: 'Nomos Lifecycle Closeout',
+    summary: 'Scenario for project-bound done path lifecycle closeout',
+  });
+  runtime.citizenService.createCitizen({
+    citizen_id: 'citizen-alpha',
+    project_id: projectId,
+    role_id: 'architect',
+    display_name: 'Alpha Architect',
+    persona: null,
+    boundaries: [],
+    skills_ref: [],
+    channel_policies: {},
+    brain_scaffold_mode: 'role_default',
+    runtime_projection: {
+      adapter: 'openclaw',
+      auto_provision: false,
+      metadata: {},
+    },
+  });
+  runtime.projectService.upsertKnowledgeEntry({
+    project_id: projectId,
+    kind: 'decision',
+    slug: 'closeout-boundary',
+    title: 'Closeout Boundary',
+    summary: 'Archive must follow harvest draft materialization.',
+    body: 'Project-bound tasks should materialize harvest drafts before archive sync and project archive.',
+    source_task_ids: ['OC-NOMOS-LIFECYCLE'],
+  });
+
+  const task = runtime.taskService.createTask({
+    title: 'Nomos lifecycle closeout scenario',
+    type: 'quick',
+    creator: 'archon',
+    description: 'Exercise project-bound done-path lifecycle closeout',
+    priority: 'high',
+    project_id: projectId,
+    team_override: {
+      members: [
+        { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
+        { role: 'developer', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+      ],
+    },
+  });
+
+  const workspaceRoot = join(runtime.projectStateDir, projectId, 'tasks', task.id);
+  const contextFiles = {
+    controller: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-controller.md')),
+    craftsman: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-craftsman.md')),
+    citizen: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-citizen.md')),
+  };
+
+  runtime.taskService.advanceTask(task.id, { callerId: 'archon' });
+
+  const archives = new ArchiveJobRepository(runtime.db);
+  const archiveJob = archives.listArchiveJobs({ taskId: task.id })[0];
+  if (!archiveJob) {
+    throw new Error(`Archive job for ${task.id} was not enqueued`);
+  }
+  const closeoutReview = (archiveJob.payload as Record<string, unknown>).closeout_review as Record<string, unknown> | undefined;
+  const harvestDraftPath = typeof closeoutReview?.harvest_draft_path === 'string'
+    ? closeoutReview.harvest_draft_path
+    : join(workspaceRoot, '07-outputs', 'project-harvest-draft.md');
+  const harvestDraftPresent = existsSync(harvestDraftPath);
+  const syncedJob = runtime.dashboardQueryService.updateArchiveJob(archiveJob.id, {
+    status: 'synced',
+    commit_hash: 'nomos-lifecycle-closeout-commit',
+  });
+  const workspaceDestroyedAfterSync = !existsSync(workspaceRoot);
+  const archivedProject = runtime.projectService.archiveProject(projectId);
+
+  let deleteBlocked = false;
+  try {
+    runtime.projectService.deleteProject(projectId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/tasks are still bound/i.test(message)) {
+      deleteBlocked = true;
+    } else {
+      throw error;
+    }
+  }
+
+  return buildScenarioResult(runtime, 'nomos-lifecycle-closeout', task.id, {
+    projectId,
+    archiveJobId: archiveJob.id,
+    archiveJobStatus: syncedJob.status,
+    harvestDraftPath,
+    harvestDraftPresent,
+    workspaceDestroyedAfterSync,
+    projectArchived: archivedProject.status === 'archived',
+    deleteBlocked,
+    contextFiles,
+  });
 }
 
 function runRejectReworkScenario(runtime: TestRuntime): ScenarioResult {

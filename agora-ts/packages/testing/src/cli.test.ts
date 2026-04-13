@@ -39,6 +39,7 @@ describe('agora-ts scenario cli', () => {
     expect(stdout.value).toContain('control-plane-loop');
     expect(stdout.value).toContain('graph-driven-path');
     expect(stdout.value).toContain('project-brain-bootstrap');
+    expect(stdout.value).toContain('nomos-lifecycle-closeout');
   });
 
   it('runs a single scenario and prints json output', async () => {
@@ -96,6 +97,7 @@ describe('agora-ts scenario cli', () => {
         'control-plane-loop',
         'graph-driven-path',
         'project-brain-bootstrap',
+        'nomos-lifecycle-closeout',
       ]),
     );
   }, 30000);
