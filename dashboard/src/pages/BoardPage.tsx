@@ -5,6 +5,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import { StateBadge, PriorityBadge } from '@/components/ui/StateBadge';
 import { formatRelativeTimestamp } from '@/lib/mockDashboard';
 import { useBoardPageCopy } from '@/lib/dashboardCopy';
+import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
 import {
   ALL_PROJECTS_FILTER_VALUE,
   buildTaskProjectGroups,
@@ -133,7 +134,7 @@ export function BoardPage() {
 
                       <div className="board-task-group__stack">
                         {group.tasks.map((task) => (
-                          <Link key={task.id} to={`/tasks/${task.id}`} className="decision-card board-task-card">
+                          <Link key={task.id} to={buildProjectTaskHref(task.id, task.projectId)} className="decision-card board-task-card">
                             <div className="board-task-card__meta">
                               <span className="type-mono-sm board-task-card__id">{task.id}</span>
                               <div className="board-task-card__badges">

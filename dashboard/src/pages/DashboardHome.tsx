@@ -464,7 +464,7 @@ export function DashboardHome() {
                 </div>
               </div>
               <div className="home-os__header-actions">
-                <Link to="/tasks" className="button-primary">
+                <Link to="/projects" className="button-primary">
                   {homeCopy.primaryAction}
                   <ArrowRight size={16} />
                 </Link>

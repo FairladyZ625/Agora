@@ -131,7 +131,7 @@ export const resources = {
         kicker: 'AGORA / 指挥广场',
         title: 'Agora',
         summary:
-          '先看待审批事项、活跃任务和运行治理，再决定下一步进入任务总线、审批队列或 Agent 监测。',
+          '先看待审批事项、活跃项目和运行治理，再决定下一步进入 Project workspace、审批队列或 Agent 监测。',
         slogan: 'Agents debate. Humans decide. Machines execute.',
         heroStatusLabel: '当前总览',
         heroStackLabels: {
@@ -141,7 +141,7 @@ export const resources = {
         },
         heroBriefs: {
           pending: '待处理 {{count}} 个审批，当前焦点是 {{title}}。',
-          idle: '当前没有待审批事项，可以先检查任务总线和运行治理。',
+          idle: '当前没有待审批事项，可以先检查 Project workspace 和运行治理。',
           active: '{{count}} 个任务仍在推进，{{executions}} 个执行单元处于活跃或待输入状态。',
           governance: '运行治理 {{runtime}}，当前主机负载 {{load}}。',
         },
@@ -153,11 +153,11 @@ export const resources = {
         commandAuthorityLabel: '当前裁决',
         pendingResolutionLabel: '待决议对象',
         executionLabel: '当前任务回路',
-        topologyLabel: '任务总线',
+        topologyLabel: 'Project workspace',
         terminalLabel: '运营输出',
         systemLoadLabel: '编排负载估算',
         architectureLabel: '实时态势总览',
-        primaryAction: '打开任务总线',
+        primaryAction: '打开 Project 工作区',
         secondaryAction: '进入审批队列',
         tertiaryAction: '查看 Agent 监测',
         syncErrorMessage: '任务服务暂不可达，当前展示最近一次已知态势。',
@@ -1557,7 +1557,7 @@ export const resources = {
         kicker: 'Agora / Operational overview',
         title: 'Agora',
         summary:
-          'Start with pending reviews, active tasks, and runtime health, then decide whether to jump into the task bus, review queue, or agent monitor.',
+          'Start with pending reviews, active projects, and runtime health, then decide whether to jump into the project workspace, review queue, or agent monitor.',
         slogan: 'Agents debate. Humans decide. Machines execute.',
         heroStatusLabel: 'Current overview',
         heroStackLabels: {
@@ -1567,7 +1567,7 @@ export const resources = {
         },
         heroBriefs: {
           pending: '{{count}} reviews are waiting. The current focus is {{title}}.',
-          idle: 'No review is waiting right now. Check the task bus and runtime governance next.',
+          idle: 'No review is waiting right now. Check the project workspace and runtime governance next.',
           active: '{{count}} tasks are still moving and {{executions}} execution units remain active or waiting for input.',
           governance: 'Runtime governance is {{runtime}} and current host load is {{load}}.',
         },
@@ -1579,11 +1579,11 @@ export const resources = {
         commandAuthorityLabel: 'Current arbitration',
         pendingResolutionLabel: 'Pending resolution',
         executionLabel: 'Current task loop',
-        topologyLabel: 'Task bus',
+        topologyLabel: 'Project workspace',
         terminalLabel: 'Operational log',
         systemLoadLabel: 'Orchestration load estimate',
         architectureLabel: 'Live operational overview',
-        primaryAction: 'Open task bus',
+        primaryAction: 'Open project workspace',
         secondaryAction: 'Open review queue',
         tertiaryAction: 'Inspect telemetry',
         syncErrorMessage: 'The task service is currently unavailable. Showing the latest known situation.',

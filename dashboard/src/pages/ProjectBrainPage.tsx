@@ -6,6 +6,7 @@ import {
   summarizeProjectBrainContent,
   type ProjectBrainSourceContext,
 } from '@/lib/projectBrainContext';
+import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
 import { useProjectStore } from '@/stores/projectStore';
 
 type BrainFilter = 'all' | 'core' | 'knowledge' | 'recaps' | 'citizens';
@@ -283,7 +284,7 @@ export function ProjectBrainPage() {
                     {selectedItem.detail.sourceTaskIds.length > 0 ? (
                       <div className="mt-4 flex flex-wrap gap-2">
                         {selectedItem.detail.sourceTaskIds.map((taskId) => (
-                          <Link key={taskId} className="button-secondary" to={`/tasks/${taskId}`}>
+                          <Link key={taskId} className="button-secondary" to={buildProjectTaskHref(taskId, projectId)}>
                             {copy.openSourceTaskAction(taskId)}
                           </Link>
                         ))}
@@ -297,7 +298,7 @@ export function ProjectBrainPage() {
                   <section className="sheet-section">
                     <h4 className="section-title">{copy.actionBridgeTitle}</h4>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <Link className="button-secondary" to={`/tasks/${selectedItem.detail.taskId}`}>
+                      <Link className="button-secondary" to={buildProjectTaskHref(selectedItem.detail.taskId, projectId)}>
                         {copy.openSourceTaskAction(selectedItem.detail.taskId)}
                       </Link>
                       {selectedItemTaskHref ? (

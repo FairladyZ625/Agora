@@ -428,7 +428,7 @@ describe('create task page', () => {
     expect(fetchTemplates).toHaveBeenCalled();
     expect(fetchProjects).toHaveBeenCalled();
     expect(fetchStatus).toHaveBeenCalled();
-    expect(navigate).toHaveBeenCalledWith('/tasks/OC-200');
+    expect(navigate).toHaveBeenCalledWith('/projects/proj-alpha/work/OC-200');
   });
 
   it('hydrates source context from project brain query params and prepends it to the task draft', async () => {

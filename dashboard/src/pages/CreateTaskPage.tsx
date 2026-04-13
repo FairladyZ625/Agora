@@ -7,6 +7,7 @@ import { buildCreateTaskInput, buildInitialRoleAssignments } from '@/lib/createT
 import { listSkills } from '@/lib/api';
 import { buildCraftsmanInventory, isCraftsmanRole, normalizeRoleBindingId } from '@/lib/orchestrationRoles';
 import { buildProjectBrainDraftPreamble, parseProjectBrainSourceContext } from '@/lib/projectBrainContext';
+import { buildProjectTaskHref } from '@/lib/projectTaskRoutes';
 import { getPriorityMeta } from '@/lib/taskMeta';
 import { useCreateTaskPageCopy } from '@/lib/dashboardCopy';
 import { useLocale } from '@/lib/i18n';
@@ -557,7 +558,7 @@ export function CreateTaskPage() {
         t('feedback.taskCreatedDetail', { id: task.id }),
         'success',
       );
-      navigate(`/tasks/${task.id}`);
+      navigate(buildProjectTaskHref(task.id, projectId || null));
     } catch (error) {
       showMessage(
         t('feedback.taskCreateFailureTitle'),
