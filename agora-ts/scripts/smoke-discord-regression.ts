@@ -10,7 +10,7 @@ async function main() {
     .option('--config <path>', 'Agora config path override')
     .option('--task-id <id>', 'task id override', `OC-REG-SMOKE-${Date.now()}`)
     .option('--title <title>', 'task title override')
-    .option('--recipe <name>', 'command-gated|approval-gated|quorum-gated', 'command-gated')
+    .option('--recipe <name>', 'command-gated|approval-gated|archon-review-gated|quorum-gated|auto-timeout-gated', 'command-gated')
     .option('--goal <goal>', 'regression goal override')
     .option('--message <message>', 'operator prompt message override')
     .option('--wait-stage <stage>', 'wait until the task reaches this stage')
@@ -59,7 +59,7 @@ async function main() {
 
   let bindingId: string | null = null;
   let threadRef: string | null = null;
-  const waitFor = (
+  const overrideWaitFor = (
     options.waitStage
     || options.waitState
     || options.waitBodyIncludes
@@ -82,6 +82,12 @@ async function main() {
       ...(options.goal ? { goal: options.goal } : {}),
       ...(options.message ? { message: options.message } : {}),
     });
+    const waitFor = overrideWaitFor
+      ? {
+          ...(recipe.waitFor ?? {}),
+          ...overrideWaitFor,
+        }
+      : recipe.waitFor;
     const result = await actor.run({
       target: recipe.target,
       actorRef: 'agora-bot',

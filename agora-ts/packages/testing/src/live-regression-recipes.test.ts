@@ -51,6 +51,29 @@ describe('buildLiveRegressionRecipe', () => {
     expect(recipe.taskAction).toBeUndefined();
   });
 
+  it('builds an archon-review-gated recipe that relies on automatic archon approval', () => {
+    const recipe = buildLiveRegressionRecipe('archon-review-gated', {
+      taskId: 'OC-REG-RECIPE-ARCHON',
+    });
+
+    expect(recipe).toMatchObject({
+      name: 'archon-review-gated',
+      expectCurrentStage: 'execute',
+      participantRefs: ['glm5'],
+      target: {
+        createTask: {
+          workflow_override: {
+            stages: [
+              { id: 'review', gate: { type: 'archon_review' } },
+              { id: 'execute', gate: { type: 'all_subtasks_done' } },
+            ],
+          },
+        },
+      },
+    });
+    expect(recipe.taskAction).toBeUndefined();
+  });
+
   it('builds a quorum-gated recipe that relies on automatic in-roster voting', () => {
     const recipe = buildLiveRegressionRecipe('quorum-gated', {
       taskId: 'OC-REG-RECIPE-3',
@@ -70,6 +93,35 @@ describe('buildLiveRegressionRecipe', () => {
                 roster: { include_roles: ['reviewer'], keep_controller: false },
               },
               { id: 'execute', gate: { type: 'all_subtasks_done' } },
+            ],
+          },
+        },
+      },
+    });
+    expect(recipe.taskAction).toBeUndefined();
+  });
+
+  it('builds an auto-timeout-gated recipe with deterministic wait settings', () => {
+    const recipe = buildLiveRegressionRecipe('auto-timeout-gated', {
+      taskId: 'OC-REG-RECIPE-TIMEOUT',
+    });
+
+    expect(recipe).toMatchObject({
+      name: 'auto-timeout-gated',
+      expectCurrentStage: 'escalate',
+      participantRefs: ['glm5'],
+      waitFor: {
+        currentStage: 'escalate',
+        timeoutMs: 4000,
+        pollIntervalMs: 250,
+        driveAutoTimeouts: true,
+      },
+      target: {
+        createTask: {
+          workflow_override: {
+            stages: [
+              { id: 'wait', gate: { type: 'auto_timeout', timeout_sec: 1 } },
+              { id: 'escalate', gate: { type: 'command' } },
             ],
           },
         },

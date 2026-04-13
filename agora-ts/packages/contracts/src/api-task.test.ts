@@ -321,6 +321,58 @@ describe('task api contracts', () => {
     }).conversation_ref).toBe('channel-1');
   });
 
+  it('rejects invalid participant/runtime state values in current stage roster payloads', () => {
+    expect(() => taskStatusSchema.parse({
+      task: {
+        id: 'OC-BAD-ROSTER',
+        version: 1,
+        title: 'bad roster',
+        description: null,
+        type: 'coding',
+        priority: 'normal',
+        creator: 'archon',
+        locale: 'zh-CN',
+        project_id: null,
+        state: 'active',
+        archive_status: null,
+        controller_ref: 'glm5',
+        current_stage: 'draft',
+        skill_policy: null,
+        team: { members: [] },
+        workflow: { stages: [] },
+        scheduler: null,
+        scheduler_snapshot: null,
+        discord: null,
+        metrics: null,
+        control: null,
+        authority: null,
+        error_detail: null,
+        created_at: '2026-04-13T00:00:00.000Z',
+        updated_at: '2026-04-13T00:00:00.000Z',
+      },
+      flow: [],
+      progress: [],
+      subtasks: [],
+      current_stage_roster: {
+        stage_id: 'draft',
+        desired_participant_refs: ['glm5'],
+        joined_participant_refs: ['glm5'],
+        participant_states: [
+          {
+            agent_ref: 'glm5',
+            task_role: 'citizen',
+            join_status: 'waiting',
+            desired_exposure: 'in_thread',
+            exposure_reason: 'stage_roster_selected',
+            runtime_provider: 'relay',
+            runtime_session_ref: null,
+            presence_state: 'running',
+          },
+        ],
+      },
+    })).toThrow();
+  });
+
   it('parses probe inactive tasks payloads', () => {
     expect(probeInactiveTasksRequestSchema.parse({
       controller_after_ms: 1000,

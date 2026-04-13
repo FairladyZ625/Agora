@@ -1,44 +1,19 @@
-import type { IParticipantBindingRepository } from '@agora-ts/contracts';
+import {
+  type InsertParticipantBindingInput,
+  type IParticipantBindingRepository,
+  participantBindingJoinStatusSchema,
+  participantTaskRoleSchema,
+  runtimeProviderSchema,
+  type ParticipantBindingRecord,
+} from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
-export interface StoredParticipantBinding {
-  id: string;
-  task_id: string;
-  binding_id: string | null;
-  agent_ref: string;
-  runtime_provider: string | null;
-  task_role: string;
-  source: string;
-  join_status: string;
-  desired_exposure: string;
-  exposure_reason: string | null;
-  exposure_stage_id: string | null;
-  reconciled_at: string | null;
-  created_at: string;
-  joined_at: string | null;
-  left_at: string | null;
-}
+export type StoredParticipantBinding = ParticipantBindingRecord;
 
 export class ParticipantBindingRepository implements IParticipantBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
-  insert(input: {
-    id: string;
-    task_id: string;
-    binding_id?: string | null;
-    agent_ref: string;
-    runtime_provider?: string | null;
-    task_role: string;
-    source?: string;
-    join_status?: string;
-    desired_exposure?: string;
-    exposure_reason?: string | null;
-    exposure_stage_id?: string | null;
-    reconciled_at?: string | null;
-    created_at?: string;
-    joined_at?: string | null;
-    left_at?: string | null;
-  }): StoredParticipantBinding {
+  insert(input: InsertParticipantBindingInput): StoredParticipantBinding {
     const createdAt = input.created_at ?? new Date().toISOString();
     this.db.prepare(`
       INSERT INTO participant_bindings (
@@ -92,7 +67,11 @@ export class ParticipantBindingRepository implements IParticipantBindingReposito
     ).run(bindingId, taskId);
   }
 
-  updateJoinState(id: string, joinStatus: string, timestamps: { joined_at?: string | null; left_at?: string | null } = {}): void {
+  updateJoinState(
+    id: string,
+    joinStatus: ReturnType<typeof participantBindingJoinStatusSchema.parse>,
+    timestamps: { joined_at?: string | null; left_at?: string | null } = {},
+  ): void {
     const current = this.getById(id);
     if (!current) {
       return;
@@ -137,10 +116,10 @@ export class ParticipantBindingRepository implements IParticipantBindingReposito
       task_id: String(row.task_id),
       binding_id: row.binding_id === null ? null : String(row.binding_id),
       agent_ref: String(row.agent_ref),
-      runtime_provider: row.runtime_provider === null ? null : String(row.runtime_provider),
-      task_role: String(row.task_role),
+      runtime_provider: row.runtime_provider === null ? null : runtimeProviderSchema.parse(String(row.runtime_provider)),
+      task_role: participantTaskRoleSchema.parse(String(row.task_role)),
       source: String(row.source),
-      join_status: String(row.join_status),
+      join_status: participantBindingJoinStatusSchema.parse(String(row.join_status)),
       desired_exposure: row.desired_exposure === undefined ? 'hidden' : String(row.desired_exposure),
       exposure_reason: row.exposure_reason === null || row.exposure_reason === undefined ? null : String(row.exposure_reason),
       exposure_stage_id: row.exposure_stage_id === null || row.exposure_stage_id === undefined ? null : String(row.exposure_stage_id),

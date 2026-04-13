@@ -242,7 +242,7 @@ function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult 
     team_override: {
       members: [
         { role: 'architect', agentId: 'opus', model_preference: 'strong_reasoning', member_kind: 'controller' },
-        { role: 'citizen', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
+        { role: 'developer', agentId: 'citizen-alpha', model_preference: 'balanced', member_kind: 'citizen' },
       ],
     },
   });

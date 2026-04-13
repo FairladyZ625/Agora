@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import type {
-  IParticipantBindingRepository,
-  IRuntimeSessionBindingRepository,
-  ITaskContextBindingRepository,
-  LiveSessionDto,
-  ParticipantBindingRecord,
-  RuntimeSessionBindingRecord,
-  TeamDto,
+import {
+  participantTaskRoleSchema,
+  runtimeProviderSchema,
+  type IParticipantBindingRepository,
+  type IRuntimeSessionBindingRepository,
+  type ITaskContextBindingRepository,
+  type LiveSessionDto,
+  type ParticipantBindingRecord,
+  type RuntimeSessionBindingRecord,
+  type TeamDto,
 } from '@agora-ts/contracts';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import { isInteractiveParticipant } from './team-member-kind.js';
@@ -62,8 +64,10 @@ export class TaskParticipationService {
         task_id: taskId,
         binding_id: bindingId ?? null,
         agent_ref: member.agentId,
-        runtime_provider: resolved?.runtime_provider ?? null,
-        task_role: member.role,
+        runtime_provider: resolved?.runtime_provider === null || resolved?.runtime_provider === undefined
+          ? null
+          : runtimeProviderSchema.parse(resolved.runtime_provider),
+        task_role: participantTaskRoleSchema.parse(member.role),
         source: 'template',
         join_status: 'pending',
       });

@@ -38,6 +38,7 @@ export interface LiveRegressionWaitFor {
   latestConversationBodyIncludes?: string;
   timeoutMs?: number;
   pollIntervalMs?: number;
+  driveAutoTimeouts?: boolean;
 }
 
 export interface LiveRegressionRunResult {
@@ -307,6 +308,14 @@ export class LiveRegressionActor {
 
     while (true) {
       await this.options.taskService.drainBackgroundOperations();
+      if (waitFor.driveAutoTimeouts) {
+        this.options.taskService.probeInactiveTasks({
+          controllerAfterMs: Number.MAX_SAFE_INTEGER,
+          rosterAfterMs: Number.MAX_SAFE_INTEGER,
+          inboxAfterMs: Number.MAX_SAFE_INTEGER,
+          now: this.now(),
+        });
+      }
       attempts += 1;
       const observation = this.captureObservation(taskId, fallbackConversation, {
         matched: false,

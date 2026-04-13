@@ -1,7 +1,13 @@
 import type { TaskConversationInboundActionDto } from '@agora-ts/contracts';
 import type { TaskService } from '@agora-ts/core';
+import type { LiveRegressionWaitFor } from './live-regression.js';
 
-export type LiveRegressionRecipeName = 'command-gated' | 'approval-gated' | 'quorum-gated';
+export type LiveRegressionRecipeName =
+  | 'command-gated'
+  | 'approval-gated'
+  | 'archon-review-gated'
+  | 'quorum-gated'
+  | 'auto-timeout-gated';
 
 export interface BuildLiveRegressionRecipeOptions {
   taskId: string;
@@ -16,6 +22,7 @@ export interface LiveRegressionRecipe {
   message: string;
   participantRefs: string[];
   expectCurrentStage: string;
+  waitFor?: LiveRegressionWaitFor;
   target: {
     createTask: Parameters<TaskService['createTask']>[0];
   };
@@ -104,6 +111,72 @@ export function buildLiveRegressionRecipe(
                 id: 'execute',
                 mode: 'execute',
                 gate: { type: 'all_subtasks_done' },
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  if (recipeName === 'archon-review-gated') {
+    return {
+      name: recipeName,
+      goal: options.goal ?? 'verify archon-review-gated discord regression recipe',
+      message: options.message ?? 'AgoraBot regression smoke: trigger the archon review path and report blockers here.',
+      participantRefs: ['glm5'],
+      expectCurrentStage: 'execute',
+      target: {
+        createTask: {
+          ...baseCreateTask,
+          workflow_override: {
+            type: 'custom',
+            stages: [
+              {
+                id: 'review',
+                mode: 'discuss',
+                gate: { type: 'archon_review' },
+              },
+              {
+                id: 'execute',
+                mode: 'execute',
+                gate: { type: 'all_subtasks_done' },
+              },
+            ],
+          },
+        },
+      },
+    };
+  }
+
+  if (recipeName === 'auto-timeout-gated') {
+    return {
+      name: recipeName,
+      goal: options.goal ?? 'verify auto-timeout-gated discord regression recipe',
+      message: options.message ?? 'AgoraBot regression smoke: observe this timeout-gated task until it automatically escalates.',
+      participantRefs: ['glm5'],
+      expectCurrentStage: 'escalate',
+      waitFor: {
+        currentStage: 'escalate',
+        timeoutMs: 4_000,
+        pollIntervalMs: 250,
+        driveAutoTimeouts: true,
+      },
+      target: {
+        createTask: {
+          ...baseCreateTask,
+          workflow_override: {
+            type: 'custom',
+            stages: [
+              {
+                id: 'wait',
+                mode: 'discuss',
+                gate: { type: 'auto_timeout', timeout_sec: 1 },
+              },
+              {
+                id: 'escalate',
+                mode: 'discuss',
+                gate: { type: 'command' },
               },
             ],
           },

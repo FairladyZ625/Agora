@@ -1,42 +1,18 @@
-import type { IRuntimeSessionBindingRepository } from '@agora-ts/contracts';
+import {
+  type IRuntimeSessionBindingRepository,
+  runtimeProviderSchema,
+  runtimeSessionPresenceStateSchema,
+  type RuntimeSessionBindingRecord,
+  type UpsertRuntimeSessionBindingInput,
+} from '@agora-ts/contracts';
 import type { AgoraDatabase } from '../database.js';
 
-export interface StoredRuntimeSessionBinding {
-  id: string;
-  participant_binding_id: string;
-  runtime_provider: string;
-  runtime_session_ref: string;
-  runtime_actor_ref: string | null;
-  continuity_ref: string | null;
-  presence_state: string;
-  binding_reason: string | null;
-  desired_runtime_presence: string;
-  reconcile_stage_id: string | null;
-  reconciled_at: string | null;
-  last_seen_at: string;
-  created_at: string;
-  updated_at: string;
-  closed_at: string | null;
-}
+export type StoredRuntimeSessionBinding = RuntimeSessionBindingRecord;
 
 export class RuntimeSessionBindingRepository implements IRuntimeSessionBindingRepository {
   constructor(private readonly db: AgoraDatabase) {}
 
-  upsertByParticipant(input: {
-    id: string;
-    participant_binding_id: string;
-    runtime_provider: string;
-    runtime_session_ref: string;
-    runtime_actor_ref?: string | null;
-    continuity_ref?: string | null;
-    presence_state: string;
-    binding_reason?: string | null;
-    desired_runtime_presence?: string;
-    reconcile_stage_id?: string | null;
-    reconciled_at?: string | null;
-    last_seen_at: string;
-    created_at?: string;
-  }): StoredRuntimeSessionBinding {
+  upsertByParticipant(input: UpsertRuntimeSessionBindingInput): StoredRuntimeSessionBinding {
     const now = input.last_seen_at;
     const createdAt = input.created_at ?? now;
     this.db.prepare(`
@@ -127,11 +103,11 @@ export class RuntimeSessionBindingRepository implements IRuntimeSessionBindingRe
     return {
       id: String(row.id),
       participant_binding_id: String(row.participant_binding_id),
-      runtime_provider: String(row.runtime_provider),
+      runtime_provider: runtimeProviderSchema.parse(String(row.runtime_provider)),
       runtime_session_ref: String(row.runtime_session_ref),
       runtime_actor_ref: row.runtime_actor_ref === null ? null : String(row.runtime_actor_ref),
       continuity_ref: row.continuity_ref === null ? null : String(row.continuity_ref),
-      presence_state: String(row.presence_state),
+      presence_state: runtimeSessionPresenceStateSchema.parse(String(row.presence_state)),
       binding_reason: row.binding_reason === null || row.binding_reason === undefined ? null : String(row.binding_reason),
       desired_runtime_presence: row.desired_runtime_presence === undefined ? 'attached' : String(row.desired_runtime_presence),
       reconcile_stage_id: row.reconcile_stage_id === null || row.reconcile_stage_id === undefined ? null : String(row.reconcile_stage_id),

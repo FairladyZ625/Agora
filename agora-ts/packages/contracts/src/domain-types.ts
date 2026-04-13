@@ -167,6 +167,9 @@ export interface TaskBrainBindingRecord {
 
 // ─── Task authority ──────────────────────────────────────────────────────
 
+import type { ParticipantBindingJoinStatusDto, ParticipantTaskRoleDto } from './participant-binding.js';
+import type { RuntimeProviderDto, RuntimeSessionPresenceStateDto } from './runtime-session-binding.js';
+
 export interface TaskAuthorityRecord {
   task_id: string;
   requester_account_id: number | null;
@@ -185,10 +188,10 @@ export interface ParticipantBindingRecord {
   task_id: string;
   binding_id: string | null;
   agent_ref: string;
-  runtime_provider: string | null;
-  task_role: string;
+  runtime_provider: RuntimeProviderDto | null;
+  task_role: ParticipantTaskRoleDto;
   source: string;
-  join_status: string;
+  join_status: ParticipantBindingJoinStatusDto;
   desired_exposure: string;
   exposure_reason: string | null;
   exposure_stage_id: string | null;
@@ -201,11 +204,11 @@ export interface ParticipantBindingRecord {
 export interface RuntimeSessionBindingRecord {
   id: string;
   participant_binding_id: string;
-  runtime_provider: string;
+  runtime_provider: RuntimeProviderDto;
   runtime_session_ref: string;
   runtime_actor_ref: string | null;
   continuity_ref: string | null;
-  presence_state: string;
+  presence_state: RuntimeSessionPresenceStateDto;
   binding_reason: string | null;
   desired_runtime_presence: string;
   reconcile_stage_id: string | null;
@@ -605,10 +608,10 @@ export interface InsertParticipantBindingInput {
   task_id: string;
   binding_id?: string | null;
   agent_ref: string;
-  runtime_provider?: string | null;
-  task_role: string;
+  runtime_provider?: RuntimeProviderDto | null;
+  task_role: ParticipantTaskRoleDto;
   source?: string;
-  join_status?: string;
+  join_status?: ParticipantBindingJoinStatusDto;
   desired_exposure?: string;
   exposure_reason?: string | null;
   exposure_stage_id?: string | null;
@@ -621,11 +624,11 @@ export interface InsertParticipantBindingInput {
 export interface UpsertRuntimeSessionBindingInput {
   id: string;
   participant_binding_id: string;
-  runtime_provider: string;
+  runtime_provider: RuntimeProviderDto;
   runtime_session_ref: string;
   runtime_actor_ref?: string | null;
   continuity_ref?: string | null;
-  presence_state: string;
+  presence_state: RuntimeSessionPresenceStateDto;
   binding_reason?: string | null;
   desired_runtime_presence?: string;
   reconcile_stage_id?: string | null;

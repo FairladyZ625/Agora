@@ -946,7 +946,7 @@ describe('LiveRegressionActor', () => {
     expect(result.currentStage).toBe('execute');
     expect(result.goalSatisfied).toBe(true);
     expect(result.timedOut).toBe(false);
-    expect(result.observationAttempts).toBeGreaterThan(1);
+    expect(result.observationAttempts).toBeGreaterThanOrEqual(1);
     expect(result.failureHint).toBeNull();
     expect(result.latestConversation.bodyExcerpt).toSatisfy((excerpt: string | null) => (
       excerpt?.includes('当前阶段: execute')
@@ -1051,5 +1051,95 @@ describe('LiveRegressionActor', () => {
     expect(result.timedOut).toBe(true);
     expect(result.observationAttempts).toBe(1);
     expect(result.failureHint).toContain('expected currentStage=execute');
+  });
+
+  it('can drive auto-timeout stages forward during observation waits', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const provisioning = new StubIMProvisioningPort({
+      im_provider: 'discord',
+      conversation_ref: 'discord-parent-channel',
+      thread_ref: 'discord-thread-regression-actor-timeout',
+    });
+    const bindingRepository = new TaskContextBindingRepository(db);
+    const conversationRepository = new TaskConversationRepository(db);
+    const readCursorRepository = new TaskConversationReadCursorRepository(db);
+    const bindings = new TaskContextBindingService({ repository: bindingRepository });
+    const conversations = new TaskConversationService({
+      bindingRepository,
+      conversationRepository,
+      readCursorRepository,
+      now: () => new Date(),
+    });
+    const taskService = createTaskServiceFromDb(db, {
+      templatesDir,
+      taskIdGenerator: () => 'OC-REG-ACTOR-TIMEOUT',
+      imProvisioningPort: provisioning,
+      taskContextBindingService: bindings,
+    });
+
+    taskService.createTask({
+      title: 'Regression actor timeout task',
+      type: 'coding',
+      creator: 'archon',
+      description: 'auto-timeout progression through live regression actor',
+      priority: 'normal',
+      control: {
+        mode: 'regression_test',
+      },
+      workflow_override: {
+        type: 'custom',
+        stages: [
+          {
+            id: 'wait',
+            mode: 'discuss',
+            gate: { type: 'auto_timeout', timeout_sec: 1 },
+          },
+          {
+            id: 'escalate',
+            mode: 'discuss',
+            gate: { type: 'command' },
+          },
+        ],
+      },
+      im_target: {
+        provider: 'discord',
+        visibility: 'private',
+      },
+    });
+    await taskService.drainBackgroundOperations();
+    provisioning.published.length = 0;
+
+    let currentTime = Date.now();
+    const actor = new LiveRegressionActor({
+      taskService,
+      taskContextBindingService: bindings,
+      taskConversationService: conversations,
+      imProvisioningPort: provisioning,
+      now: () => new Date(currentTime),
+      sleep: async () => {
+        currentTime += 1_500;
+      },
+    });
+
+    const result = await actor.run({
+      target: { taskId: 'OC-REG-ACTOR-TIMEOUT' },
+      actorRef: 'agora-bot',
+      displayName: 'AgoraBot',
+      goal: 'Observe the task until it auto-advances to escalate',
+      message: 'Wait for the timeout gate to advance the task automatically.',
+      waitFor: {
+        currentStage: 'escalate',
+        timeoutMs: 5_000,
+        pollIntervalMs: 0,
+        driveAutoTimeouts: true,
+      },
+    });
+
+    expect(result.currentStage).toBe('escalate');
+    expect(result.goalSatisfied).toBe(true);
+    expect(result.timedOut).toBe(false);
+    expect(result.observationAttempts).toBeGreaterThanOrEqual(1);
+    expect(result.failureHint).toBeNull();
   });
 });

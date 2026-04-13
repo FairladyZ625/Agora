@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { craftsmanExecutionSchema, craftsmanExecutionStatusSchema, craftsmanInteractionExpectationSchema, craftsmanModeSchema } from './craftsman.js';
-import { runtimeSessionDesiredPresenceSchema } from './runtime-session-binding.js';
+import { participantBindingJoinStatusSchema, participantTaskRoleSchema } from './participant-binding.js';
+import { runtimeProviderSchema, runtimeSessionDesiredPresenceSchema, runtimeSessionPresenceStateSchema } from './runtime-session-binding.js';
 import { taskControlModeSchema, taskPrioritySchema, taskStateSchema } from './task.js';
 import { validateWorkflowStages } from './workflow-rules.js';
 import { templateGraphSchema } from './template-graph.js';
@@ -194,13 +195,13 @@ export const currentStageRosterSchema = z.object({
   joined_participant_refs: z.array(z.string().min(1)),
   participant_states: z.array(z.object({
     agent_ref: z.string().min(1),
-    task_role: z.string().min(1),
-    join_status: z.string().min(1),
+    task_role: participantTaskRoleSchema,
+    join_status: participantBindingJoinStatusSchema,
     desired_exposure: z.enum(['in_thread', 'hidden']),
     exposure_reason: z.string().nullable(),
-    runtime_provider: z.string().nullable(),
+    runtime_provider: runtimeProviderSchema.nullable(),
     runtime_session_ref: z.string().nullable(),
-    presence_state: z.string().nullable(),
+    presence_state: runtimeSessionPresenceStateSchema.nullable(),
     runtime_binding_reason: z.string().nullable().optional(),
     desired_runtime_presence: runtimeSessionDesiredPresenceSchema.nullable().optional(),
     runtime_reconcile_stage_id: z.string().nullable().optional(),
