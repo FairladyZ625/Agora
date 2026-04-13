@@ -208,6 +208,18 @@ export interface BuildAppOptions {
     readyPath?: string;
     metricsEnabled?: boolean;
     structuredLogs?: boolean;
+    backgroundMetrics?: {
+      getMetricsSnapshot: () => {
+        observationTicksByResult: {
+          success: number;
+          error: number;
+        };
+        projectBrainIndexWorkerTicksByResult: {
+          success: number;
+          error: number;
+        };
+      };
+    };
   };
   workspaceBootstrap?: {
     runtimeReady?: boolean;
@@ -223,6 +235,19 @@ interface MetricsState {
   dashboardHumanActionsByResult: Map<string, number>;
   craftsmanDispatchByAdapterAndResult: Map<string, number>;
   craftsmanCallbacksByStatus: Map<string, number>;
+}
+
+interface BackgroundMetricsProvider {
+  getMetricsSnapshot: () => {
+    observationTicksByResult: {
+      success: number;
+      error: number;
+    };
+    projectBrainIndexWorkerTicksByResult: {
+      success: number;
+      error: number;
+    };
+  };
 }
 
 interface RequestTimingState {
@@ -775,6 +800,7 @@ function renderMetrics(options: {
   metrics: MetricsState;
   taskService: TaskService | undefined;
   legacyRuntimeService: Pick<InteractiveRuntimePort, 'up' | 'status' | 'doctor' | 'send' | 'sendText' | 'sendKeys' | 'submitChoice' | 'task' | 'tail' | 'down' | 'recordIdentity'> | undefined;
+  backgroundMetrics?: BackgroundMetricsProvider;
 }) {
   const lines: string[] = [
     '# HELP agora_http_requests_total Total HTTP requests served by agora-ts server.',
@@ -825,6 +851,17 @@ function renderMetrics(options: {
   for (const [status, value] of options.metrics.craftsmanCallbacksByStatus.entries()) {
     lines.push(`agora_craftsman_callbacks_total{status="${status}"} ${value}`);
   }
+
+  const backgroundMetrics = options.backgroundMetrics?.getMetricsSnapshot();
+  lines.push('# HELP agora_background_observation_ticks_total Total background observation scheduler ticks grouped by result.');
+  lines.push('# TYPE agora_background_observation_ticks_total counter');
+  lines.push(`agora_background_observation_ticks_total{result="success"} ${backgroundMetrics?.observationTicksByResult.success ?? 0}`);
+  lines.push(`agora_background_observation_ticks_total{result="error"} ${backgroundMetrics?.observationTicksByResult.error ?? 0}`);
+
+  lines.push('# HELP agora_project_brain_index_worker_ticks_total Total background project brain index worker ticks grouped by result.');
+  lines.push('# TYPE agora_project_brain_index_worker_ticks_total counter');
+  lines.push(`agora_project_brain_index_worker_ticks_total{result="success"} ${backgroundMetrics?.projectBrainIndexWorkerTicksByResult.success ?? 0}`);
+  lines.push(`agora_project_brain_index_worker_ticks_total{result="error"} ${backgroundMetrics?.projectBrainIndexWorkerTicksByResult.error ?? 0}`);
 
   const tmuxPanes = options.legacyRuntimeService?.status().panes.length ?? 0;
   lines.push('# HELP agora_craftsmen_sessions_active Current active legacy/runtime execution slots observed by the server.');
@@ -893,6 +930,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   const readyPath = options.observability?.readyPath ?? '/ready';
   const metricsEnabled = options.observability?.metricsEnabled ?? false;
   const structuredLogs = options.observability?.structuredLogs ?? false;
+  const backgroundMetrics = options.observability?.backgroundMetrics;
   const rateCounters = new Map<string, { count: number; resetAt: number }>();
   const metrics: MetricsState = {
     requestsByMethodAndStatus: new Map(),
@@ -997,7 +1035,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     app.get('/metrics', async (request, reply) => {
       return reply
         .type('text/plain; version=0.0.4; charset=utf-8')
-        .send(renderMetrics({ metrics, taskService, legacyRuntimeService }));
+        .send(renderMetrics({
+          metrics,
+          taskService,
+          legacyRuntimeService,
+          ...(backgroundMetrics ? { backgroundMetrics } : {}),
+        }));
     });
   }
 

@@ -1514,6 +1514,18 @@ describe('agora-ts server bootstrap', () => {
       observability: {
         readyPath: '/ready',
         metricsEnabled: true,
+        backgroundMetrics: {
+          getMetricsSnapshot: () => ({
+            observationTicksByResult: {
+              success: 3,
+              error: 1,
+            },
+            projectBrainIndexWorkerTicksByResult: {
+              success: 2,
+              error: 1,
+            },
+          }),
+        },
       },
       legacyRuntimeService: {
         up: () => ({ session: 'agora-craftsmen', panes: [] }),
@@ -1597,6 +1609,10 @@ describe('agora-ts server bootstrap', () => {
     expect(response.body).toContain('agora_tasks_active 0');
     expect(response.body).toContain('agora_craftsmen_sessions_active 2');
     expect(response.body).toContain('agora_task_actions_total{action="pause",result="success"} 1');
+    expect(response.body).toContain('agora_background_observation_ticks_total{result="success"} 3');
+    expect(response.body).toContain('agora_background_observation_ticks_total{result="error"} 1');
+    expect(response.body).toContain('agora_project_brain_index_worker_ticks_total{result="success"} 2');
+    expect(response.body).toContain('agora_project_brain_index_worker_ticks_total{result="error"} 1');
   });
 
   it('does not emit structured request logs unless enabled', async () => {

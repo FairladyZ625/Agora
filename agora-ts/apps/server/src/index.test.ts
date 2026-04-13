@@ -125,4 +125,56 @@ describe('server index wiring', () => {
 
     expect(dispose).toHaveBeenCalledTimes(1);
   });
+
+  it('passes observation scheduler metrics into the metrics endpoint', async () => {
+    const app = createAppFromRuntime({
+      db: undefined,
+      taskService: undefined,
+      projectService: undefined,
+      dashboardQueryService: undefined,
+      inboxService: undefined,
+      templateAuthoringService: undefined,
+      liveSessionStore: undefined,
+      legacyRuntimeService: undefined,
+      tmuxRuntimeService: undefined,
+      taskContextBindingService: undefined,
+      taskConversationService: undefined,
+      taskParticipationService: undefined,
+      humanAccountService: undefined,
+      notificationDispatcher: undefined,
+      apiAuth: undefined,
+      dashboardAuth: undefined,
+      rateLimit: undefined,
+      observability: {
+        ready_path: '/ready',
+        metrics_enabled: true,
+        structured_logs: false,
+      },
+      observationScheduler: {
+        enabled: true,
+        interval_ms: 5_000,
+        tick: () => ({
+          observed_at: new Date().toISOString(),
+          craftsman: { scanned: 0, probed: 0, progressed: 0 },
+          tasks: { scanned_tasks: 0, controller_pings: 0, roster_pings: 0, human_pings: 0, inbox_items: 0 },
+        }),
+        getMetricsSnapshot: () => ({
+          observationTicksByResult: { success: 4, error: 1 },
+          projectBrainIndexWorkerTicksByResult: { success: 2, error: 0 },
+        }),
+        stop: () => undefined,
+      },
+      dashboardDir: undefined,
+      dispose: async () => {},
+    } as unknown as ReturnType<typeof createServerRuntime>);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/metrics',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('agora_background_observation_ticks_total{result="success"} 4');
+    expect(response.body).toContain('agora_project_brain_index_worker_ticks_total{result="success"} 2');
+  });
 });

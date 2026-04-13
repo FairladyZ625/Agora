@@ -405,13 +405,23 @@ describe('server runtime', () => {
       rosterAfterMs: 22_000,
       inboxAfterMs: 33_000,
     });
+    expect(runtime.observationScheduler.getMetricsSnapshot()).toEqual({
+      observationTicksByResult: {
+        success: 1,
+        error: 0,
+      },
+      projectBrainIndexWorkerTicksByResult: {
+        success: 0,
+        error: 0,
+      },
+    });
 
     runtime.observationScheduler.stop();
     runtime.db.close();
     vi.useRealTimers();
   });
 
-  it('drains project brain index jobs during observation ticks when an index worker is provided', () => {
+  it('drains project brain index jobs during observation ticks when an index worker is provided', async () => {
     vi.useFakeTimers();
     const dir = makeTempDir();
     configureRuntimeEnv(dir);
@@ -465,8 +475,161 @@ describe('server runtime', () => {
     vi.advanceTimersByTime(5000);
 
     expect(drainPendingJobs).toHaveBeenCalledWith({ limit: 25 });
+    await Promise.resolve();
+    expect(runtime.observationScheduler.getMetricsSnapshot()).toEqual({
+      observationTicksByResult: {
+        success: 1,
+        error: 0,
+      },
+      projectBrainIndexWorkerTicksByResult: {
+        success: 1,
+        error: 0,
+      },
+    });
     runtime.observationScheduler.stop();
     runtime.db.close();
+    vi.useRealTimers();
+  });
+
+  it('records failed observation ticks in scheduler metrics and structured logs', () => {
+    vi.useFakeTimers();
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const dir = makeTempDir();
+    configureRuntimeEnv(dir);
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        observability: {
+          structured_logs: true,
+        },
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+          startup_recovery_on_boot: false,
+        },
+      }),
+    );
+
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 0,
+      probed: 0,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => {
+      throw new Error('probe boom');
+    });
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+      },
+    });
+
+    vi.advanceTimersByTime(5000);
+
+    expect(runtime.observationScheduler.getMetricsSnapshot()).toEqual({
+      observationTicksByResult: {
+        success: 0,
+        error: 1,
+      },
+      projectBrainIndexWorkerTicksByResult: {
+        success: 0,
+        error: 0,
+      },
+    });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"module":"scheduler"'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"result":"error"'));
+    expect(errorSpy).toHaveBeenCalledWith('[agora] observation scheduler tick failed', expect.any(Error));
+
+    runtime.observationScheduler.stop();
+    runtime.db.close();
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('records failed project brain index worker ticks in scheduler metrics and structured logs', async () => {
+    vi.useFakeTimers();
+    const logSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const dir = makeTempDir();
+    configureRuntimeEnv(dir);
+    const configPath = join(dir, 'agora.json');
+    const dbPath = join(dir, 'runtime.db');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        db_path: dbPath,
+        observability: {
+          structured_logs: true,
+        },
+        scheduler: {
+          enabled: true,
+          scan_interval_sec: 5,
+          startup_recovery_on_boot: false,
+        },
+      }),
+    );
+
+    const observeCraftsmanExecutions = vi.fn(() => ({
+      scanned: 0,
+      probed: 0,
+      progressed: 0,
+    }));
+    const probeInactiveTasks = vi.fn(() => ({
+      scanned_tasks: 0,
+      controller_pings: 0,
+      roster_pings: 0,
+      human_pings: 0,
+      inbox_items: 0,
+    }));
+    const drainPendingJobs = vi.fn().mockRejectedValue(new Error('index boom'));
+
+    const runtime = createServerRuntime({
+      configPath,
+      factories: {
+        createTaskService: () => ({
+          observeCraftsmanExecutions,
+          probeInactiveTasks,
+          startupRecoveryScan: vi.fn(),
+        } as unknown as TaskService),
+        createProjectBrainIndexWorkerService: () => ({
+          drainPendingJobs,
+        }) as never,
+      },
+    });
+
+    vi.advanceTimersByTime(5000);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(runtime.observationScheduler.getMetricsSnapshot()).toEqual({
+      observationTicksByResult: {
+        success: 1,
+        error: 0,
+      },
+      projectBrainIndexWorkerTicksByResult: {
+        success: 0,
+        error: 1,
+      },
+    });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"msg":"project_brain_index_tick"'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"result":"error"'));
+    expect(errorSpy).toHaveBeenCalledWith('[agora] project brain index worker tick failed', expect.any(Error));
+
+    runtime.observationScheduler.stop();
+    runtime.db.close();
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
     vi.useRealTimers();
   });
 

@@ -38,11 +38,34 @@ export interface ObservationSchedulerTickResult {
   };
 }
 
+export interface ObservationSchedulerMetricsSnapshot {
+  observationTicksByResult: {
+    success: number;
+    error: number;
+  };
+  projectBrainIndexWorkerTicksByResult: {
+    success: number;
+    error: number;
+  };
+}
+
 export interface ObservationSchedulerController {
   enabled: boolean;
   interval_ms: number | null;
   tick: () => ObservationSchedulerTickResult;
+  getMetricsSnapshot: () => ObservationSchedulerMetricsSnapshot;
   stop: () => void;
+}
+
+function incrementCounter(counter: Map<string, number>, key: string) {
+  counter.set(key, (counter.get(key) ?? 0) + 1);
+}
+
+function emitStructuredLog(enabled: boolean, payload: Record<string, unknown>) {
+  if (!enabled) {
+    return;
+  }
+  console.info(JSON.stringify(payload));
 }
 
 function resolveDashboardDir() {
@@ -77,7 +100,10 @@ function createObservationScheduler(runtime: {
 }): ObservationSchedulerController {
   const { scheduler } = runtime.config;
   const intervalMs = scheduler.enabled ? scheduler.scan_interval_sec * 1000 : null;
-  const tick = (): ObservationSchedulerTickResult => ({
+  const structuredLogs = runtime.config.observability.structured_logs;
+  const observationTicksByResult = new Map<string, number>();
+  const projectBrainIndexWorkerTicksByResult = new Map<string, number>();
+  const executeTick = (): ObservationSchedulerTickResult => ({
     observed_at: new Date().toISOString(),
     craftsman: runtime.taskService.observeCraftsmanExecutions({
       runningAfterMs: scheduler.craftsman_running_after_sec * 1000,
@@ -89,6 +115,30 @@ function createObservationScheduler(runtime: {
       inboxAfterMs: scheduler.task_probe_inbox_after_sec * 1000,
     }),
   });
+  const tick = (): ObservationSchedulerTickResult => {
+    try {
+      const result = executeTick();
+      incrementCounter(observationTicksByResult, 'success');
+      emitStructuredLog(structuredLogs, {
+        module: 'scheduler',
+        msg: 'observation_tick',
+        result: 'success',
+        observed_at: result.observed_at,
+        craftsman: result.craftsman,
+        tasks: result.tasks,
+      });
+      return result;
+    } catch (error) {
+      incrementCounter(observationTicksByResult, 'error');
+      emitStructuredLog(structuredLogs, {
+        module: 'scheduler',
+        msg: 'observation_tick',
+        result: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  };
 
   let timer: NodeJS.Timeout | null = null;
   if (intervalMs !== null) {
@@ -98,7 +148,26 @@ function createObservationScheduler(runtime: {
         if (runtime.projectBrainIndexWorkerService) {
           void runtime.projectBrainIndexWorkerService
             .drainPendingJobs({ limit: 25 })
-            .catch((error) => {
+            .then((result: { processed: number; succeeded: number; failed: number; pending: number }) => {
+              incrementCounter(projectBrainIndexWorkerTicksByResult, 'success');
+              emitStructuredLog(structuredLogs, {
+                module: 'scheduler',
+                msg: 'project_brain_index_tick',
+                result: 'success',
+                processed: result.processed,
+                succeeded: result.succeeded,
+                failed: result.failed,
+                pending: result.pending,
+              });
+            })
+            .catch((error: unknown) => {
+              incrementCounter(projectBrainIndexWorkerTicksByResult, 'error');
+              emitStructuredLog(structuredLogs, {
+                module: 'scheduler',
+                msg: 'project_brain_index_tick',
+                result: 'error',
+                error: error instanceof Error ? error.message : String(error),
+              });
               console.error('[agora] project brain index worker tick failed', error);
             });
         }
@@ -113,6 +182,16 @@ function createObservationScheduler(runtime: {
     enabled: scheduler.enabled,
     interval_ms: intervalMs,
     tick,
+    getMetricsSnapshot: () => ({
+      observationTicksByResult: {
+        success: observationTicksByResult.get('success') ?? 0,
+        error: observationTicksByResult.get('error') ?? 0,
+      },
+      projectBrainIndexWorkerTicksByResult: {
+        success: projectBrainIndexWorkerTicksByResult.get('success') ?? 0,
+        error: projectBrainIndexWorkerTicksByResult.get('error') ?? 0,
+      },
+    }),
     stop: () => {
       if (timer) {
         clearInterval(timer);

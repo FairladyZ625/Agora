@@ -29,6 +29,7 @@ export function createAppFromRuntime(runtime: ReturnType<typeof createServerRunt
       readyPath: runtime.observability.ready_path,
       metricsEnabled: runtime.observability.metrics_enabled,
       structuredLogs: runtime.observability.structured_logs,
+      backgroundMetrics: runtime.observationScheduler,
     },
     ...(runtime.dashboardDir ? { dashboardDir: runtime.dashboardDir } : {}),
   });
