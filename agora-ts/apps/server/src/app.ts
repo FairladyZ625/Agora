@@ -77,6 +77,10 @@ import {
   currentImTaskApproveRequestSchema,
   currentImTaskRejectRequestSchema,
   ingestTaskConversationEntryRequestSchema,
+  projectContextMaterializeRequestSchema,
+  projectContextMaterializeResponseSchema,
+  projectContextWriteRepoShimRequestSchema,
+  projectContextWriteRepoShimResponseSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
   projectContextReferenceBundleRequestSchema,
@@ -113,6 +117,7 @@ import {
   validateWorkflowRequestSchema,
   workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
+import { RuntimeRepoShimWritebackService } from '@agora-ts/adapters-materialization';
 import {
   CcConnectInspectionService,
   CcConnectManagementService,
@@ -163,6 +168,7 @@ export interface BuildAppOptions {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
+  runtimeRepoShimWritebackService?: Pick<RuntimeRepoShimWritebackService, 'write'>;
   contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   workspaceBootstrapService?: WorkspaceBootstrapService;
@@ -906,6 +912,30 @@ export function buildApp(options: BuildAppOptions = {}) {
       : undefined
   );
   workspaceBootstrapService?.initialize();
+  const runtimeRepoShimWritebackService = options.runtimeRepoShimWritebackService ?? (
+    projectService && options.contextMaterializationService
+      ? new RuntimeRepoShimWritebackService({
+          projectService,
+          contextMaterializationService: options.contextMaterializationService,
+        })
+      : undefined
+  );
+  async function writeDefaultRepoShims(projectId: string, force = false) {
+    if (!runtimeRepoShimWritebackService) {
+      return [];
+    }
+    const codex = await runtimeRepoShimWritebackService.write({
+      project_id: projectId,
+      target: 'codex_repo_shim',
+      force,
+    });
+    const claude = await runtimeRepoShimWritebackService.write({
+      project_id: projectId,
+      target: 'claude_repo_shim',
+      force,
+    });
+    return [codex, claude];
+  }
   const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
   const contextRetrievalService = options.contextRetrievalService;
@@ -2020,8 +2050,12 @@ export function buildApp(options: BuildAppOptions = {}) {
         repoPath: payload.repo_path,
         ...(payload.bootstrap_methodology ? { bootstrapMethodology: payload.bootstrap_methodology } : {}),
         initializeRepo: payload.initialize_repo ?? false,
+        writeRepoShim: runtimeRepoShimWritebackService ? false : true,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
+      if (payload.repo_path && runtimeRepoShimWritebackService) {
+        await writeDefaultRepoShims(project.id, false);
+      }
       if (taskService) {
         new ProjectBootstrapService({
           projectService,
@@ -2227,7 +2261,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       const task = payload.task_id ? taskService?.getTask(payload.task_id) : null;
       const taskTitle = payload.task_title ?? task?.title;
       const taskDescription = payload.task_description ?? task?.description;
-      const briefing = (await options.contextMaterializationService.materialize({
+      const materialization = await options.contextMaterializationService.materialize({
         target: 'project_context_briefing',
         project_id: params.projectId,
         audience: payload.audience,
@@ -2238,10 +2272,62 @@ export function buildApp(options: BuildAppOptions = {}) {
         ...(payload.allowed_citizen_ids && payload.allowed_citizen_ids.length > 0
           ? { allowed_citizen_ids: payload.allowed_citizen_ids }
           : {}),
-      })).artifact;
+      });
+      if (materialization.target !== 'project_context_briefing') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      const briefing = materialization.artifact;
       return reply.send(projectContextBriefingResponseSchema.parse({
         scope: 'project_context',
         briefing,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/materialize', async (request, reply) => {
+    if (!projectService || !options.contextMaterializationService) {
+      return reply.status(503).send({ message: 'Project context materialization is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextMaterializeRequestSchema.parse(request.body);
+      const materialization = await options.contextMaterializationService.materialize({
+        target: payload.target,
+        project_id: params.projectId,
+      });
+      if (materialization.target !== 'codex_repo_shim' && materialization.target !== 'claude_repo_shim') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      return reply.send(projectContextMaterializeResponseSchema.parse({
+        scope: 'project_context',
+        materialization,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
+  app.post('/api/projects/:projectId/context/write-repo-shim', async (request, reply) => {
+    if (!projectService || !runtimeRepoShimWritebackService) {
+      return reply.status(503).send({ message: 'Project repo shim writeback is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextWriteRepoShimRequestSchema.parse(request.body);
+      const writeback = await runtimeRepoShimWritebackService.write({
+        project_id: params.projectId,
+        target: payload.target,
+        force: payload.force ?? false,
+      });
+      return reply.send(projectContextWriteRepoShimResponseSchema.parse({
+        scope: 'project_context',
+        writeback,
       }));
     } catch (error) {
       const translated = translateError(error);
@@ -2455,6 +2541,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         allowReviewRequired: humanActor?.source === 'dashboard',
       });
       projectService.updateProjectMetadata(project.id, activation.metadata);
+      const repoPath = projectService.getProjectRepoPath(project.id);
+      if (repoPath && runtimeRepoShimWritebackService) {
+        await writeDefaultRepoShims(project.id, true);
+      }
       return reply.send({
         project_id: activation.project_id,
         nomos_id: activation.nomos_id,
@@ -2496,9 +2586,13 @@ export function buildApp(options: BuildAppOptions = {}) {
         repoPath: effectiveRepoPath,
         ...(payload.bootstrap_methodology ? { bootstrapMethodology: payload.bootstrap_methodology } : {}),
         initializeRepo: payload.initialize_repo ?? false,
+        writeRepoShim: runtimeRepoShimWritebackService ? false : true,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
+      if (effectiveRepoPath && runtimeRepoShimWritebackService) {
+        await writeDefaultRepoShims(project.id, payload.force_write_repo_shim ?? false);
+      }
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
         const bootstrapTask = new ProjectBootstrapService({

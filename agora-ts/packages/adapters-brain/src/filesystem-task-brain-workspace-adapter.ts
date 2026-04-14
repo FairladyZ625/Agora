@@ -1,5 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import {
+  TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH,
+  renderMarkdownFrontmatter,
+} from '@agora-ts/core';
 import type {
   TaskBrainContextAudience,
   TaskBrainCloseRecapRequest,
@@ -11,7 +15,6 @@ import type {
   TaskBrainWorkspaceRequest,
   TaskBrainWorkspaceResult,
 } from '@agora-ts/core';
-import { renderMarkdownFrontmatter } from '@agora-ts/core';
 
 export interface FilesystemTaskBrainWorkspaceAdapterOptions {
   brainPackRoot: string;
@@ -29,6 +32,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
     mkdirSync(join(workspacePath, '04-context'), { recursive: true });
     mkdirSync(join(workspacePath, '05-agents'), { recursive: true });
     mkdirSync(join(workspacePath, '06-artifacts'), { recursive: true });
+    mkdirSync(join(workspacePath, '06-artifacts', 'briefs'), { recursive: true });
     mkdirSync(join(workspacePath, '07-outputs'), { recursive: true });
 
     const binding = {
@@ -122,6 +126,11 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
         writeFileSync(join(agentDir, '02-outputs.md'), '', 'utf8');
       }
     }
+    writeFileSync(
+      resolveRuntimeDeliveryManifestPath(workspacePath),
+      renderRuntimeDeliveryManifest(input, workspacePath, currentStage),
+      'utf8',
+    );
   }
 
   private resolveProjectRoot(projectId: string) {
@@ -142,6 +151,7 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
     `brain_task_id: "${binding.brain_task_id}"`,
     `brain_pack_ref: "${binding.brain_pack_ref}"`,
     `workspace_path: "${binding.workspace_path}"`,
+    `runtime_delivery_manifest_path: "${resolveRuntimeDeliveryManifestPath(binding.workspace_path)}"`,
     `locale: "${input.locale}"`,
     `template_id: "${input.template_id}"`,
     `control_mode: "${input.control_mode}"`,
@@ -171,6 +181,7 @@ function renderCurrent(
     `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
     `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `- ${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
+    `- ${brainText(input.locale, 'Runtime Delivery Manifest', 'Runtime Delivery Manifest')}: ${resolveRuntimeDeliveryManifestPath(workspacePath)}`,
     ...renderProjectBrainContextLinks(input, workspacePath, brainText(input.locale, 'Project Brain 上下文', 'Project Brain Context')),
     '',
   ].join('\n');
@@ -193,13 +204,12 @@ function renderBootstrap(
     `${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     '',
+    `${brainText(input.locale, 'Canonical runtime 入口', 'Canonical runtime entrypoint')}: ${resolveRuntimeDeliveryManifestPath(workspacePath)}`,
+    '',
     `${brainText(input.locale, '执行前请先阅读以下文件', 'Read these files before acting')}:`,
     `- ~/.agora/skills/agora-bootstrap/SKILL.md`,
     `- ~/.codex/skills/agora-bootstrap/SKILL.md`,
-    `- ${join(workspacePath, '01-task-brief.md')}`,
-    `- ${join(workspacePath, '02-roster.md')}`,
-    `- ${join(workspacePath, '03-stage-state.md')}`,
-    ...renderProjectBrainContextPaths(input, workspacePath),
+    `- ${resolveRuntimeDeliveryManifestPath(workspacePath)}`,
     '',
   ].join('\n');
 }
@@ -275,6 +285,14 @@ function resolveProjectBrainContextPaths(
   return paths;
 }
 
+function resolveRuntimeDeliveryManifestPath(workspacePath: string) {
+  return join(workspacePath, TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH);
+}
+
+function resolveRoleBriefPath(workspacePath: string, agentId: string) {
+  return join(workspacePath, '05-agents', agentId, '00-role-brief.md');
+}
+
 function resolveAudienceProjectBrainContextPath(
   input: TaskBrainWorkspaceRequest,
   workspacePath: string,
@@ -295,12 +313,73 @@ function renderProjectBrainContextLinks(
     .map((audience) => `- ${label} (${audience}): ${join(workspacePath, '04-context', `project-brain-context-${audience}.md`)}`);
 }
 
-function renderProjectBrainContextPaths(
+function renderRuntimeDeliveryManifest(
   input: TaskBrainWorkspaceRequest,
   workspacePath: string,
+  currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
-  return (Object.keys(input.project_brain_contexts ?? {}) as TaskBrainContextAudience[])
-    .map((audience) => `- ${join(workspacePath, '04-context', `project-brain-context-${audience}.md`)}`);
+  const manifestPath = resolveRuntimeDeliveryManifestPath(workspacePath);
+  const projectBrainContextPaths = resolveProjectBrainContextPaths(workspacePath, input);
+  return [
+    renderMarkdownFrontmatter({
+      doc_type: 'runtime_delivery_manifest',
+      task_id: input.task_id,
+      project_id: input.project_id ?? '',
+      current_stage: input.current_stage ?? '',
+      control_mode: input.control_mode,
+      controller_ref: input.controller_ref ?? '',
+      project_brain_audiences: Object.keys(input.project_brain_contexts ?? {}),
+      agent_refs: input.team_members.map((member) => member.agentId),
+    }),
+    `# ${brainText(input.locale, 'Runtime Delivery Manifest', 'Runtime Delivery Manifest')}`,
+    '',
+    brainText(
+      input.locale,
+      '这是 runtime 的 canonical reference-first 入口。先读这份 manifest，再按需深入具体上下文文件。',
+      'This is the canonical reference-first runtime entrypoint. Read this manifest first, then drill into the concrete context files as needed.',
+    ),
+    '',
+    `- ${brainText(input.locale, 'Manifest', 'Manifest')}: ${manifestPath}`,
+    `- ${brainText(input.locale, '任务', 'Task')}: ${input.task_id}`,
+    `- ${brainText(input.locale, 'Project', 'Project')}: ${input.project_id ?? '-'}`,
+    `- ${brainText(input.locale, '主控', 'Controller')}: ${input.controller_ref ?? '-'}`,
+    `- ${brainText(input.locale, '当前阶段', 'Current Stage')}: ${input.current_stage ?? '-'}`,
+    `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
+    '',
+    `## ${brainText(input.locale, 'Canonical Read Order', 'Canonical Read Order')}`,
+    '',
+    `1. ${join(workspacePath, '01-task-brief.md')}`,
+    `2. ${join(workspacePath, '03-stage-state.md')}`,
+    `3. ${join(workspacePath, '02-roster.md')}`,
+    `4. ${brainText(input.locale, '按需阅读对应角色简报和 audience-specific project context', 'Read the matching role brief and audience-specific project context as needed')}`,
+    '',
+    `## ${brainText(input.locale, 'Workspace Core Documents', 'Workspace Core Documents')}`,
+    '',
+    `- Bootstrap: ${join(workspacePath, '00-bootstrap.md')}`,
+    `- Current: ${join(workspacePath, '00-current.md')}`,
+    `- Task Brief: ${join(workspacePath, '01-task-brief.md')}`,
+    `- Roster: ${join(workspacePath, '02-roster.md')}`,
+    `- Stage State: ${join(workspacePath, '03-stage-state.md')}`,
+    '',
+    `## ${brainText(input.locale, 'Project Context Artifacts', 'Project Context Artifacts')}`,
+    '',
+    ...((Object.keys(projectBrainContextPaths) as TaskBrainContextAudience[]).length > 0
+      ? (Object.keys(projectBrainContextPaths) as TaskBrainContextAudience[])
+        .map((audience) => `- ${audience}: ${projectBrainContextPaths[audience]}`)
+      : [`- ${brainText(input.locale, '无 project context artifact', 'No project context artifact')}`]),
+    '',
+    `## ${brainText(input.locale, 'Role Briefs', 'Role Briefs')}`,
+    '',
+    ...input.team_members.map((member) => (
+      `- ${member.agentId} (${member.member_kind ?? 'citizen'} / ${member.role}): ${resolveRoleBriefPath(workspacePath, member.agentId)}`
+    )),
+    '',
+    `## ${brainText(input.locale, 'Generated Artifact Roots', 'Generated Artifact Roots')}`,
+    '',
+    `- ${brainText(input.locale, 'Execution Briefs Directory', 'Execution Briefs Directory')}: ${join(workspacePath, '06-artifacts', 'briefs')}`,
+    `- ${brainText(input.locale, 'Outputs Directory', 'Outputs Directory')}: ${join(workspacePath, '07-outputs')}`,
+    '',
+  ].join('\n');
 }
 
 function renderRoleBrief(
@@ -312,6 +391,7 @@ function renderRoleBrief(
   roleDocPath: string,
 ) {
   const scaffoldPath = join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md');
+  const runtimeDeliveryManifestPath = resolveRuntimeDeliveryManifestPath(workspacePath);
   const projectBrainContextPath = resolveAudienceProjectBrainContextPath(
     input,
     workspacePath,
@@ -351,6 +431,7 @@ function renderRoleBrief(
       : brainText(input.locale, '该 Agent 需要为本任务加载完整的 Agora 角色覆盖上下文。', 'This agent needs the full Agora role overlay for this task context.'),
     '',
     `${brainText(input.locale, '首先阅读', 'Read first')}: ${roleDocPath}`,
+    `${brainText(input.locale, 'Runtime Delivery Manifest', 'Runtime Delivery Manifest')}: ${runtimeDeliveryManifestPath}`,
     `${brainText(input.locale, '任务工作区', 'Task workspace')}: ${workspacePath}`,
     `${brainText(input.locale, '任务简报', 'Task brief')}: ${join(workspacePath, '01-task-brief.md')}`,
     `${brainText(input.locale, '阶段状态', 'Stage state')}: ${join(workspacePath, '03-stage-state.md')}`,
@@ -381,6 +462,7 @@ function renderExecutionBrief(input: TaskExecutionBriefRequest) {
     '',
     'Use this brief as the canonical execution input.',
     'Do not assume the full discussion thread is authoritative; off-stage discussion may contain noise.',
+    'Start from the runtime delivery manifest before drilling into individual context files.',
     '',
     'Task Goal:',
     input.description.trim() || '(empty description)',
@@ -389,6 +471,7 @@ function renderExecutionBrief(input: TaskExecutionBriefRequest) {
     input.prompt?.trim() || '(no explicit controller prompt)',
     '',
     'References:',
+    ...(input.references.runtime_delivery_manifest_path ? [`- Runtime Delivery Manifest: ${input.references.runtime_delivery_manifest_path}`] : []),
     `- Current: ${input.references.current_path}`,
     `- Task Brief: ${input.references.task_brief_path}`,
     `- Roster: ${input.references.roster_path}`,

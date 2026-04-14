@@ -261,6 +261,7 @@ export type { CreateTaskAuthorityInput, TaskAuthorityServiceOptions } from './ta
 export { TaskAuthorityService } from './task-authority-service.js';
 export type { TaskBrainBindingServiceOptions } from './task-brain-binding-service.js';
 export { TaskBrainBindingService } from './task-brain-binding-service.js';
+export { TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH } from './task-brain-port.js';
 export type {
   TaskBrainCloseRecapRequest,
   TaskBrainContextArtifact,

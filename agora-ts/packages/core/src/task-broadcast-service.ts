@@ -5,6 +5,7 @@ import type { IMPublishMessageInput, IMProvisioningPort } from './im-ports.js';
 import type { ITaskContextBindingRepository, ITaskConversationRepository, TaskLocaleDto, TaskRecord, WorkflowDto } from '@agora-ts/contracts';
 import type { SkillCatalogEntry } from './skill-catalog-port.js';
 import { summarizeCraftsmanOutputForHuman } from './craftsman-output.js';
+import { TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH } from './task-brain-port.js';
 import { isInteractiveParticipant, resolveControllerRef } from './team-member-kind.js';
 
 export interface TaskBroadcastServiceOptions {
@@ -361,6 +362,9 @@ export class TaskBroadcastService {
     }
     const stage = getStageByIdOrThrow(task, task.current_stage);
     const controllerRef = resolveControllerRef(task.team.members);
+    const runtimeDeliveryManifestPath = workspacePath
+      ? join(workspacePath, TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH)
+      : null;
     const globalSkillLines = this.renderResolvedSkillLines(task.skill_policy?.global_refs ?? [], skillCatalog);
     const mentionMapLines = task.team.members
       .filter(isInteractiveParticipant)
@@ -389,9 +393,7 @@ export class TaskBroadcastService {
           ...(workspacePath
             ? [
                 `- ${join(workspacePath, '00-bootstrap.md')}`,
-                `- ${join(workspacePath, '01-task-brief.md')}`,
-                `- ${join(workspacePath, '02-roster.md')}`,
-                `- ${join(workspacePath, '03-stage-state.md')}`,
+                ...(runtimeDeliveryManifestPath ? [`- ${runtimeDeliveryManifestPath}`] : []),
               ]
             : []),
           ...(globalSkillLines.length > 0
@@ -508,6 +510,7 @@ export class TaskBroadcastService {
           ...(member.briefing_mode === 'overlay_delta'
             ? [taskText(task, '该 Agent 已自带 Agora 托管的基础角色上下文；以下 role brief 只提供本任务增量。', 'This agent already carries Agora-managed base role context; use the role brief below as task delta.')]
             : [taskText(task, '该 Agent 应在行动前加载完整的 Agora 角色覆盖上下文。', 'This agent should load the full Agora role overlay before acting.')]),
+          ...(runtimeDeliveryManifestPath ? [`${taskText(task, '阅读 Runtime Delivery Manifest', 'Read runtime delivery manifest')}: ${runtimeDeliveryManifestPath}`] : []),
           ...(citizenScaffoldPath ? [`${taskText(task, '阅读 Citizen Scaffold', 'Read citizen scaffold')}: ${citizenScaffoldPath}`] : []),
           ...(roleBriefPath ? [`${taskText(task, '阅读角色简报', 'Read role brief')}: ${roleBriefPath}`] : []),
           ...(roleSkillLines.length > 0

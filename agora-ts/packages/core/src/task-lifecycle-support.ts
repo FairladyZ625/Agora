@@ -11,6 +11,9 @@ import type { IMPublishMessageInput } from './im-ports.js';
 import type { AgentRuntimePort } from './runtime-ports.js';
 import type { SkillCatalogEntry, SkillCatalogPort } from './skill-catalog-port.js';
 import type { TaskAuthorityService } from './task-authority-service.js';
+import {
+  TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH,
+} from './task-brain-port.js';
 import type {
   TaskBrainContextArtifact,
   TaskBrainContextAudience,
@@ -299,7 +302,8 @@ export class TaskLifecycleSupport {
     const contexts: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> = {};
     for (const audience of TASK_BRAIN_CONTEXT_AUDIENCES) {
       const context = this.contextMaterializationService
-        ? this.contextMaterializationService.materializeSync({
+        ? (() => {
+          const result = this.contextMaterializationService.materializeSync({
           target: 'project_context_briefing',
           project_id: task.project_id,
           task_id: task.id,
@@ -307,7 +311,12 @@ export class TaskLifecycleSupport {
           ...(task.description ? { task_description: task.description } : {}),
           ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
           audience,
-        }).artifact
+          });
+          if (result.target !== 'project_context_briefing') {
+            throw new Error(`Unexpected materialization target: ${result.target}`);
+          }
+          return result.artifact;
+        })()
         : this.projectBrainAutomationService!.buildBootstrapContext({
           project_id: task.project_id,
           task_id: task.id,
@@ -362,6 +371,7 @@ export class TaskLifecycleSupport {
     }
     const workspacePath = binding.workspace_path;
     const roleBriefPath = join(workspacePath, '05-agents', input.assignee, '00-role-brief.md');
+    const runtimeDeliveryManifestPath = join(workspacePath, TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH);
     const projectBrainContextPath = resolveProjectBrainContextPath(
       workspacePath,
       resolveTaskBrainContextAudienceForAssignee(task, input.assignee),
@@ -398,6 +408,7 @@ export class TaskLifecycleSupport {
         task_brief_path: join(workspacePath, '01-task-brief.md'),
         roster_path: join(workspacePath, '02-roster.md'),
         stage_state_path: join(workspacePath, '03-stage-state.md'),
+        runtime_delivery_manifest_path: existsSync(runtimeDeliveryManifestPath) ? runtimeDeliveryManifestPath : null,
         role_brief_path: existsSync(roleBriefPath) ? roleBriefPath : null,
         project_brain_context_path: existsSync(projectBrainContextPath) ? projectBrainContextPath : null,
       },

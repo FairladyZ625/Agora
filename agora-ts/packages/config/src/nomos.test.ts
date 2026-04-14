@@ -43,6 +43,8 @@ import {
   scaffoldNomosPack,
   renderNomosProjectProfileToml,
   renderRepoAgentsShim,
+  renderRepoClaudeShim,
+  loadNomosProjectProfile,
   resolveAgoraProjectStateLayout,
   resolveProjectNomosState,
 } from './nomos.js';
@@ -128,6 +130,29 @@ describe('nomos pack model freeze', () => {
     expect(shim).toContain('never back into `AGENTS.md`');
   });
 
+  it('loads a Nomos project profile back from profile.toml', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const profile = buildBuiltInAgoraNomosProjectProfile('proj-load', { userAgoraDir: agoraHomeDir });
+    const layout = ensureAgoraProjectStateLayout('proj-load', { userAgoraDir: agoraHomeDir });
+    writeFileSync(layout.profilePath, renderNomosProjectProfileToml(profile), 'utf8');
+
+    const loaded = loadNomosProjectProfile(layout.profilePath);
+
+    expect(loaded).toEqual(profile);
+  });
+
+  it('renders a repo-root CLAUDE shim as an index-only runtime-facing artifact', () => {
+    const profile = buildBuiltInAgoraNomosProjectProfile('proj-claude', { userAgoraDir: makeAgoraHomeDir() });
+
+    const shim = renderRepoClaudeShim({ profile });
+
+    expect(shim).toContain('# CLAUDE.md');
+    expect(shim).toContain('repo-facing shim for Claude Code');
+    expect(shim).toContain('## Pack Index');
+    expect(shim).toContain(profile.project.state_root);
+    expect(shim).toContain('`CLAUDE.md` stays thin and index-only');
+  });
+
   it('renders profile.toml with the frozen Nomos fields', () => {
     const profile = buildBuiltInAgoraNomosProjectProfile('proj-toml', { userAgoraDir: makeAgoraHomeDir() });
     const toml = renderNomosProjectProfileToml(profile);
@@ -181,6 +206,25 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(installed.layout.lifecycleProjectArchivePath, 'utf8')).toContain('Project Archive Lifecycle');
     expect(readFileSync(installed.layout.lifecycleGovernanceDoctorPath, 'utf8')).toContain('Governance Doctor Lifecycle');
     expect(readFileSync(installed.layout.doctorProjectPromptPath, 'utf8')).toContain('Project Doctor');
+  });
+
+  it('can prepare built-in Agora Nomos without writing the repo shim immediately', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const repoRoot = join(makeAgoraHomeDir(), 'repo-no-shim');
+
+    const installed = installBuiltInAgoraNomosForProject('proj-no-shim', {
+      userAgoraDir: agoraHomeDir,
+      repoPath: repoRoot,
+      initializeRepo: true,
+      writeRepoShim: false,
+    });
+
+    expect(installed.repoRoot).toBe(repoRoot);
+    expect(installed.repoShimPath).toBe(join(repoRoot, 'AGENTS.md'));
+    expect(installed.repoShimWritten).toBe(false);
+    expect(existsSync(join(repoRoot, 'AGENTS.md'))).toBe(false);
+    expect(existsSync(join(repoRoot, '.git'))).toBe(true);
+    expect(existsSync(join(installed.layout.root, '.git'))).toBe(true);
   });
 
   it('creates a project-nomos authoring spec and draft pack inside global project state', () => {

@@ -498,6 +498,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain(`Project Nomos Spec: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'docs', 'reference', 'project-nomos-authoring-spec.md')}`);
     expect(stdout.value).toContain(`Project Nomos Draft: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'nomos', 'project-nomos')}`);
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Bootstrap Method');
+    expect(readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8')).toContain('# CLAUDE.md');
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-nomos', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-nomos"',
     );
@@ -593,6 +594,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain(`repo_path: ${repoRoot}`);
     expect(stdout.value).toContain('repo_shim_installed: true');
     expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('## Pack Index');
+    expect(readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8')).toContain('# CLAUDE.md');
     expect(readFileSync(join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-existing-nomos', 'profile.toml'), 'utf8')).toContain(
       'id = "proj-existing-nomos"',
     );
@@ -651,6 +653,8 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('nomos: project/proj-activate');
     expect(stdout.value).toContain('activation_status: active_project');
     expect(stdout.value).toContain(`active_root: ${join(process.env.AGORA_HOME_DIR!, 'projects', 'proj-activate', 'nomos', 'project-nomos')}`);
+    expect(readFileSync(join(repoRoot, 'AGENTS.md'), 'utf8')).toContain('project/proj-activate');
+    expect(readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8')).toContain('project/proj-activate');
   });
 
   it('validates and diffs project nomos through explicit cli commands', async () => {
@@ -2622,6 +2626,81 @@ describe('agora-ts cli', () => {
     expect(projectBrainAutomationService.buildBootstrapContextAsync).not.toHaveBeenCalled();
     expect(stdout.value).toContain('"scope": "project_context"');
     expect(stdout.value).toContain('"markdown": "# Materialized Briefing"');
+  });
+
+  it('materializes a claude-facing repo shim through the unified cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'claude_repo_shim',
+        artifact: {
+          project_id: 'proj-ctx',
+          runtime: 'claude_code',
+          filename: 'CLAUDE.md',
+          media_type: 'text/markdown',
+          content: '# CLAUDE.md\n',
+        },
+      }),
+    };
+    const program = createCliProgram({
+      contextMaterializationService: contextMaterializationService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'materialize',
+      '--project', 'proj-ctx',
+      '--target', 'claude_repo_shim',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'claude_repo_shim',
+      project_id: 'proj-ctx',
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"filename": "CLAUDE.md"');
+  });
+
+  it('writes a codex-facing repo shim into the project repo through the unified cli command', async () => {
+    const stdout = createBuffer();
+    const stderr = createBuffer();
+    const runtimeRepoShimWritebackService = {
+      write: vi.fn().mockResolvedValue({
+        project_id: 'proj-ctx',
+        target: 'codex_repo_shim',
+        runtime: 'codex',
+        filename: 'AGENTS.md',
+        repo_path: '/tmp/proj-ctx-repo',
+        file_path: '/tmp/proj-ctx-repo/AGENTS.md',
+        status: 'written',
+      }),
+    };
+    const program = createCliProgram({
+      runtimeRepoShimWritebackService: runtimeRepoShimWritebackService as never,
+      stdout,
+      stderr,
+    }).exitOverride();
+
+    await program.parseAsync([
+      'context', 'write-repo-shim',
+      '--project', 'proj-ctx',
+      '--target', 'codex_repo_shim',
+      '--json',
+    ], { from: 'user' });
+
+    expect(stderr.value).toBe('');
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenCalledWith({
+      project_id: 'proj-ctx',
+      target: 'codex_repo_shim',
+      force: false,
+    });
+    expect(stdout.value).toContain('"scope": "project_context"');
+    expect(stdout.value).toContain('"status": "written"');
+    expect(stdout.value).toContain('"filename": "AGENTS.md"');
   });
 
   it('keeps task query on the raw path when mode=raw', async () => {

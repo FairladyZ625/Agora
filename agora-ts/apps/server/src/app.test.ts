@@ -34,6 +34,12 @@ function makeDashboardDir() {
   return dir;
 }
 
+function makeTempDir(prefix: string) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempPaths.push(dir);
+  return dir;
+}
+
 afterEach(() => {
   while (tempPaths.length > 0) {
     const dir = tempPaths.pop();
@@ -606,6 +612,61 @@ describe('agora-ts server bootstrap', () => {
     expect(removeMember.statusCode).toBe(200);
     expect(removeMember.json()).toMatchObject({
       membership: expect.objectContaining({ account_id: 3, status: 'removed' }),
+    });
+  });
+
+  it('writes the default codex repo shim through writeback when POST /api/projects binds a repo', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repoRoot = join(makeTempDir('agora-ts-app-create-repo-'), 'repo');
+    const runtimeRepoShimWritebackService = {
+      write: vi.fn()
+        .mockResolvedValueOnce({
+          project_id: 'proj-repo-rest',
+          target: 'codex_repo_shim',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'AGENTS.md'),
+          status: 'written',
+        })
+        .mockResolvedValueOnce({
+          project_id: 'proj-repo-rest',
+          target: 'claude_repo_shim',
+          runtime: 'claude_code',
+          filename: 'CLAUDE.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'CLAUDE.md'),
+          status: 'written',
+        }),
+    };
+    const app = buildApp({
+      db,
+      runtimeRepoShimWritebackService: runtimeRepoShimWritebackService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-repo-rest',
+        name: 'Repo Project REST',
+        repo_path: repoRoot,
+        initialize_repo: true,
+        nomos_id: 'agora/default',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenNthCalledWith(1, {
+      project_id: 'proj-repo-rest',
+      target: 'codex_repo_shim',
+      force: false,
+    });
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenNthCalledWith(2, {
+      project_id: 'proj-repo-rest',
+      target: 'claude_repo_shim',
+      force: false,
     });
   });
 
@@ -1455,6 +1516,242 @@ describe('agora-ts server bootstrap', () => {
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({
       message: 'Project context briefing is not configured',
+    });
+  });
+
+  it('materializes a codex-facing repo shim through the project context surface', async () => {
+    const contextMaterializationService = {
+      materialize: vi.fn().mockResolvedValue({
+        target: 'codex_repo_shim',
+        artifact: {
+          project_id: 'proj-ctx',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          media_type: 'text/markdown',
+          content: '# AGENTS.md\n',
+        },
+      }),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      contextMaterializationService: contextMaterializationService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/materialize',
+      payload: {
+        target: 'codex_repo_shim',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(contextMaterializationService.materialize).toHaveBeenCalledWith({
+      target: 'codex_repo_shim',
+      project_id: 'proj-ctx',
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      materialization: {
+        target: 'codex_repo_shim',
+        artifact: {
+          project_id: 'proj-ctx',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          media_type: 'text/markdown',
+          content: '# AGENTS.md\n',
+        },
+      },
+    });
+  });
+
+  it('writes a codex-facing repo shim into the project repo through the project context surface', async () => {
+    const runtimeRepoShimWritebackService = {
+      write: vi.fn().mockResolvedValue({
+        project_id: 'proj-ctx',
+        target: 'codex_repo_shim',
+        runtime: 'codex',
+        filename: 'AGENTS.md',
+        repo_path: '/tmp/proj-ctx-repo',
+        file_path: '/tmp/proj-ctx-repo/AGENTS.md',
+        status: 'written',
+      }),
+    };
+    const app = buildApp({
+      projectService: {
+        requireProject: () => ({ id: 'proj-ctx' }),
+      } as never,
+      runtimeRepoShimWritebackService: runtimeRepoShimWritebackService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-ctx/context/write-repo-shim',
+      payload: {
+        target: 'codex_repo_shim',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenCalledWith({
+      project_id: 'proj-ctx',
+      target: 'codex_repo_shim',
+      force: false,
+    });
+    expect(response.json()).toEqual({
+      scope: 'project_context',
+      writeback: {
+        project_id: 'proj-ctx',
+        target: 'codex_repo_shim',
+        runtime: 'codex',
+        filename: 'AGENTS.md',
+        repo_path: '/tmp/proj-ctx-repo',
+        file_path: '/tmp/proj-ctx-repo/AGENTS.md',
+        status: 'written',
+      },
+    });
+  });
+
+  it('writes the default codex repo shim through writeback when POST /api/projects/:id/nomos/install binds a repo', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repoRoot = join(makeTempDir('agora-ts-app-install-repo-'), 'repo');
+    const projectService = createProjectServiceFromDb(db);
+    projectService.createProject({
+      id: 'proj-install-rest',
+      name: 'Install Repo REST',
+      owner: 'archon',
+    });
+    const runtimeRepoShimWritebackService = {
+      write: vi.fn()
+        .mockResolvedValueOnce({
+          project_id: 'proj-install-rest',
+          target: 'codex_repo_shim',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'AGENTS.md'),
+          status: 'written',
+        })
+        .mockResolvedValueOnce({
+          project_id: 'proj-install-rest',
+          target: 'claude_repo_shim',
+          runtime: 'claude_code',
+          filename: 'CLAUDE.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'CLAUDE.md'),
+          status: 'written',
+        }),
+    };
+    const app = buildApp({
+      db,
+      projectService,
+      runtimeRepoShimWritebackService: runtimeRepoShimWritebackService as never,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-install-rest/nomos/install',
+      payload: {
+        repo_path: repoRoot,
+        initialize_repo: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenNthCalledWith(1, {
+      project_id: 'proj-install-rest',
+      target: 'codex_repo_shim',
+      force: false,
+    });
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenNthCalledWith(2, {
+      project_id: 'proj-install-rest',
+      target: 'claude_repo_shim',
+      force: false,
+    });
+  });
+
+  it('writes the refreshed codex repo shim through writeback when POST /api/projects/:id/nomos/activate switches the active project pack', async () => {
+    const db = createAgoraDatabase({ dbPath: makeDbPath() });
+    runMigrations(db);
+    const repoRoot = join(makeTempDir('agora-ts-app-activate-repo-'), 'repo');
+    const runtimeRepoShimWritebackService = {
+      write: vi.fn()
+        .mockResolvedValueOnce({
+          project_id: 'proj-activate-rest',
+          target: 'codex_repo_shim',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'AGENTS.md'),
+          status: 'written',
+        })
+        .mockResolvedValueOnce({
+          project_id: 'proj-activate-rest',
+          target: 'claude_repo_shim',
+          runtime: 'claude_code',
+          filename: 'CLAUDE.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'CLAUDE.md'),
+          status: 'written',
+        })
+        .mockResolvedValueOnce({
+          project_id: 'proj-activate-rest',
+          target: 'codex_repo_shim',
+          runtime: 'codex',
+          filename: 'AGENTS.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'AGENTS.md'),
+          status: 'written',
+        })
+        .mockResolvedValueOnce({
+          project_id: 'proj-activate-rest',
+          target: 'claude_repo_shim',
+          runtime: 'claude_code',
+          filename: 'CLAUDE.md',
+          repo_path: repoRoot,
+          file_path: join(repoRoot, 'CLAUDE.md'),
+          status: 'written',
+        }),
+    };
+    const app = buildApp({
+      db,
+      runtimeRepoShimWritebackService: runtimeRepoShimWritebackService as never,
+    });
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects',
+      payload: {
+        id: 'proj-activate-rest',
+        name: 'Activate REST Project',
+        repo_path: repoRoot,
+        initialize_repo: true,
+        nomos_id: 'agora/default',
+      },
+    });
+    expect(createResponse.statusCode).toBe(200);
+
+    const activateResponse = await app.inject({
+      method: 'POST',
+      url: '/api/projects/proj-activate-rest/nomos/activate',
+      payload: {
+        actor: 'archon',
+      },
+    });
+
+    expect(activateResponse.statusCode).toBe(200);
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenNthCalledWith(3, {
+      project_id: 'proj-activate-rest',
+      target: 'codex_repo_shim',
+      force: true,
+    });
+    expect(runtimeRepoShimWritebackService.write).toHaveBeenNthCalledWith(4, {
+      project_id: 'proj-activate-rest',
+      target: 'claude_repo_shim',
+      force: true,
     });
   });
 

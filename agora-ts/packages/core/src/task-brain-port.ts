@@ -1,6 +1,7 @@
 import type { WorkflowStageRosterDto } from '@agora-ts/contracts';
 
 export type TaskBrainContextAudience = 'controller' | 'citizen' | 'craftsman';
+export const TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH = '04-context/runtime-delivery-manifest.md';
 
 export interface TaskBrainContextArtifact {
   audience: TaskBrainContextAudience;
@@ -104,6 +105,7 @@ export interface TaskExecutionBriefRequest {
     task_brief_path: string;
     roster_path: string;
     stage_state_path: string;
+    runtime_delivery_manifest_path?: string | null;
     role_brief_path?: string | null;
     project_brain_context_path?: string | null;
   };

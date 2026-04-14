@@ -67,7 +67,7 @@ import {
   isDeveloperRegressionEnabled,
 } from '@agora-ts/core';
 import { OpenAiCompatibleProjectBrainEmbeddingAdapter } from '@agora-ts/adapters-brain';
-import { ProjectContextBriefingMaterializer } from '@agora-ts/adapters-materialization';
+import { ProjectContextBriefingMaterializer, RuntimeRepoShimMaterializer, RuntimeRepoShimWritebackService } from '@agora-ts/adapters-materialization';
 import { ProjectBrainIndexJobRepository } from '@agora-ts/db';
 import { LiveRegressionActor } from '@agora-ts/testing';
 import type { DashboardSessionClient } from './dashboard-session-client.js';
@@ -137,6 +137,7 @@ export interface CliDependencies {
   projectBrainService?: ProjectBrainService;
   projectBrainAutomationService?: ProjectBrainAutomationService;
   contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
+  runtimeRepoShimWritebackService?: Pick<RuntimeRepoShimWritebackService, 'write'>;
   projectBrainIndexService?: ProjectBrainIndexService;
   projectBrainRetrievalService?: ProjectBrainRetrievalService;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
@@ -572,17 +573,53 @@ export function createCliProgram(deps: CliDependencies = {}) {
     if (deps.contextMaterializationService) {
       return deps.contextMaterializationService;
     }
+    const ports = [];
     if (deps.projectBrainAutomationService) {
+      ports.push(
+        new ProjectContextBriefingMaterializer({
+          projectBrainAutomationService: deps.projectBrainAutomationService,
+        }),
+      );
+    }
+    if (deps.projectService) {
+      ports.push(
+        new RuntimeRepoShimMaterializer({
+          projectService: deps.projectService,
+        }),
+      );
+    }
+    if (ports.length > 0) {
       return new ContextMaterializationService({
-        ports: [
-          new ProjectContextBriefingMaterializer({
-            projectBrainAutomationService: deps.projectBrainAutomationService,
-          }),
-        ],
+        ports,
       });
     }
     return resolveComposition().contextMaterializationService;
   });
+  const runtimeRepoShimWritebackService = createLazyObject(() => {
+    if (deps.runtimeRepoShimWritebackService) {
+      return deps.runtimeRepoShimWritebackService;
+    }
+    return new RuntimeRepoShimWritebackService({
+      projectService,
+      contextMaterializationService,
+    });
+  });
+  async function writeRepoShim(
+    projectId: string,
+    target: 'codex_repo_shim' | 'claude_repo_shim',
+    force = false,
+  ) {
+    return runtimeRepoShimWritebackService.write({
+      project_id: projectId,
+      target,
+      force,
+    });
+  }
+  async function writeDefaultRepoShims(projectId: string, force = false) {
+    const codex = await writeRepoShim(projectId, 'codex_repo_shim', force);
+    const claude = await writeRepoShim(projectId, 'claude_repo_shim', force);
+    return { codex, claude };
+  }
   const getProjectBrainIndexService = () => deps.projectBrainIndexService ?? resolveComposition().projectBrainIndexService;
   const getProjectBrainRetrievalService = () => deps.projectBrainRetrievalService ?? resolveComposition().projectBrainRetrievalService;
   let projectBrainDoctorService: ProjectBrainDoctorServiceContract | null | undefined;
@@ -1744,13 +1781,17 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .requiredOption('--project-id <projectId>', 'project id')
     .requiredOption('--actor <actor>', 'activation actor')
     .option('--json', '输出 JSON', false)
-    .action((options: { projectId: string; actor: string; json?: boolean }) => {
+    .action(async (options: { projectId: string; actor: string; json?: boolean }) => {
       const project = projectService.requireProject(options.projectId);
       const activation = activateProjectNomosDraft(project.id, {
         metadata: project.metadata ?? null,
         actor: options.actor,
       });
       projectService.updateProjectMetadata(project.id, activation.metadata);
+      const repoPath = projectService.getProjectRepoPath(project.id);
+      if (repoPath) {
+        await writeDefaultRepoShims(project.id, true);
+      }
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           project_id: activation.project_id,
@@ -1804,7 +1845,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--skip-bootstrap-task', 'do not create a bootstrap task after install', false)
     .option('--creator <creator>', 'creator used for bootstrap task', 'archon')
     .option('--json', '输出 JSON', false)
-    .action((options: {
+    .action(async (options: {
       projectId: string;
       repoPath?: string;
       bootstrapMethodology?: string;
@@ -1824,9 +1865,13 @@ export function createCliProgram(deps: CliDependencies = {}) {
         repoPath: options.repoPath,
         ...(bootstrapMethodology ? { bootstrapMethodology } : {}),
         initializeRepo: options.initializeRepo ?? false,
+        writeRepoShim: false,
         forceWriteRepoShim: options.forceWriteRepoShim ?? false,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
+      const repoShimWriteback = options.repoPath
+        ? await writeDefaultRepoShims(project.id, options.forceWriteRepoShim ?? false)
+        : null;
       let bootstrapTaskId: string | null = null;
       if (!options.skipBootstrapTask && taskService) {
         const bootstrapTask = new ProjectBootstrapService({
@@ -1852,7 +1897,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
           project_id: project.id,
           nomos: preparedNomos.installedNomos.profile.pack,
           project_state_root: preparedNomos.installedNomos.layout.root,
-          repo_shim_path: preparedNomos.installedNomos.repoShimPath,
+          repo_shim_path: repoShimWriteback?.codex.file_path ?? preparedNomos.installedNomos.repoShimPath,
+          repo_shim_write_status: repoShimWriteback?.codex.status ?? null,
           repo_git_initialized: preparedNomos.installedNomos.repoGitInitialized,
           project_state_git_initialized: preparedNomos.installedNomos.projectStateGitInitialized,
           project_nomos_spec_path: preparedNomos.authoringDraft.specPath,
@@ -1864,8 +1910,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `Nomos 已安装: ${preparedNomos.installedNomos.profile.pack.id}@${preparedNomos.installedNomos.profile.pack.version}`);
       writeLine(stdout, `Project: ${project.id}`);
       writeLine(stdout, `Project State: ${preparedNomos.installedNomos.layout.root}`);
-      if (preparedNomos.installedNomos.repoShimPath) {
-        writeLine(stdout, `Repo Shim: ${preparedNomos.installedNomos.repoShimPath}`);
+      if (repoShimWriteback?.codex.file_path ?? preparedNomos.installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${repoShimWriteback?.codex.file_path ?? preparedNomos.installedNomos.repoShimPath}`);
       }
       writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
       writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
@@ -1930,7 +1976,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--nomos-id <nomosId>', 'Nomos pack id (currently only agora/default)', DEFAULT_AGORA_NOMOS_ID)
     .option('--bootstrap-methodology <methodology>', 'layered|lean_delivery|discovery_first')
     .option('--metadata-json <json>', 'project metadata JSON')
-    .action((options: {
+    .action(async (options: {
       id: string;
       name: string;
       summary?: string;
@@ -1971,8 +2017,12 @@ export function createCliProgram(deps: CliDependencies = {}) {
         repoPath: input.repo_path,
         ...(input.bootstrap_methodology ? { bootstrapMethodology: input.bootstrap_methodology } : {}),
         initializeRepo: input.initialize_repo ?? false,
+        writeRepoShim: false,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
+      const repoShimWriteback = input.repo_path
+        ? await writeDefaultRepoShims(project.id)
+        : null;
       const bootstrapTask = taskService
         ? new ProjectBootstrapService({
           projectService,
@@ -1996,8 +2046,8 @@ export function createCliProgram(deps: CliDependencies = {}) {
       writeLine(stdout, `状态: ${project.status}`);
       writeLine(stdout, `Nomos: ${preparedNomos.installedNomos.profile.pack.id}@${preparedNomos.installedNomos.profile.pack.version}`);
       writeLine(stdout, `Project State: ${preparedNomos.installedNomos.layout.root}`);
-      if (preparedNomos.installedNomos.repoShimPath) {
-        writeLine(stdout, `Repo Shim: ${preparedNomos.installedNomos.repoShimPath}`);
+      if (repoShimWriteback?.codex.file_path ?? preparedNomos.installedNomos.repoShimPath) {
+        writeLine(stdout, `Repo Shim: ${repoShimWriteback?.codex.file_path ?? preparedNomos.installedNomos.repoShimPath}`);
       }
       writeLine(stdout, `Project Nomos Spec: ${preparedNomos.authoringDraft.specPath}`);
       writeLine(stdout, `Project Nomos Draft: ${preparedNomos.authoringDraft.draftDir}`);
@@ -2378,7 +2428,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
       const task = options.task ? taskService.getTask(options.task) : null;
       const taskTitle = options.taskTitle ?? task?.title;
       const taskDescription = options.taskDescription ?? task?.description;
-      const briefing = (await contextMaterializationService.materialize({
+      const materialization = await contextMaterializationService.materialize({
         target: 'project_context_briefing',
         project_id: options.project,
         audience: options.audience,
@@ -2389,7 +2439,11 @@ export function createCliProgram(deps: CliDependencies = {}) {
         ...(options.allowedCitizen && options.allowedCitizen.length > 0
           ? { allowed_citizen_ids: options.allowedCitizen }
           : {}),
-      })).artifact;
+      });
+      if (materialization.target !== 'project_context_briefing') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      const briefing = materialization.artifact;
       if (options.json) {
         writeLine(stdout, JSON.stringify({
           scope: 'project_context',
@@ -2398,6 +2452,62 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, briefing.markdown.trimEnd());
+    });
+
+  context
+    .command('materialize')
+    .description('通过统一 project_context surface 生成 runtime-facing materialization artifact')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--target <target>', 'codex_repo_shim|claude_repo_shim')
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      target: 'codex_repo_shim' | 'claude_repo_shim';
+      json?: boolean;
+    }) => {
+      const materialization = await contextMaterializationService.materialize({
+        target: options.target,
+        project_id: options.project,
+      });
+      if (materialization.target !== 'codex_repo_shim' && materialization.target !== 'claude_repo_shim') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          materialization,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, materialization.artifact.content.trimEnd());
+    });
+
+  context
+    .command('write-repo-shim')
+    .description('将 runtime-facing repo shim 写入项目 repo 根目录')
+    .requiredOption('--project <projectId>', 'project id')
+    .requiredOption('--target <target>', 'codex_repo_shim|claude_repo_shim')
+    .option('--force', 'overwrite an existing shim with different content', false)
+    .option('--json', '输出 JSON', false)
+    .action(async (options: {
+      project: string;
+      target: 'codex_repo_shim' | 'claude_repo_shim';
+      force?: boolean;
+      json?: boolean;
+    }) => {
+      const writeback = await runtimeRepoShimWritebackService.write({
+        project_id: options.project,
+        target: options.target,
+        force: options.force ?? false,
+      });
+      if (options.json) {
+        writeLine(stdout, JSON.stringify({
+          scope: 'project_context',
+          writeback,
+        }, null, 2));
+        return;
+      }
+      writeLine(stdout, `${writeback.status}: ${writeback.file_path}`);
     });
 
   projectKnowledge
@@ -2850,10 +2960,14 @@ export function createCliProgram(deps: CliDependencies = {}) {
         audience: options.audience ?? 'controller',
         ...(options.citizen ? { citizen_id: options.citizen } : {}),
       };
-      const context = (await contextMaterializationService.materialize({
+      const materialization = await contextMaterializationService.materialize({
         target: 'project_context_briefing',
         ...bootstrapInput,
-      })).artifact;
+      });
+      if (materialization.target !== 'project_context_briefing') {
+        throw new Error(`Unexpected materialization target: ${materialization.target}`);
+      }
+      const context = materialization.artifact;
       if (options.json) {
         writeLine(stdout, JSON.stringify(context, null, 2));
         return;
