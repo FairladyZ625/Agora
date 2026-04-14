@@ -79,6 +79,8 @@ import {
   ingestTaskConversationEntryRequestSchema,
   projectContextMaterializeRequestSchema,
   projectContextMaterializeResponseSchema,
+  projectContextWriteRepoShimRequestSchema,
+  projectContextWriteRepoShimResponseSchema,
   taskConversationMarkReadRequestSchema,
   duplicateTemplateRequestSchema,
   projectContextReferenceBundleRequestSchema,
@@ -115,6 +117,7 @@ import {
   validateWorkflowRequestSchema,
   workspaceBootstrapStatusSchema,
 } from '@agora-ts/contracts';
+import { RuntimeRepoShimWritebackService } from '@agora-ts/adapters-materialization';
 import {
   CcConnectInspectionService,
   CcConnectManagementService,
@@ -165,6 +168,7 @@ export interface BuildAppOptions {
   projectService?: ProjectService;
   projectBrainService?: ProjectBrainService;
   contextMaterializationService?: Pick<ContextMaterializationService, 'materialize'>;
+  runtimeRepoShimWritebackService?: Pick<RuntimeRepoShimWritebackService, 'write'>;
   contextRetrievalService?: Pick<RetrievalService, 'retrieve' | 'checkHealth'>;
   projectBrainDoctorService?: ProjectBrainDoctorServiceContract;
   workspaceBootstrapService?: WorkspaceBootstrapService;
@@ -804,6 +808,30 @@ export function buildApp(options: BuildAppOptions = {}) {
       : undefined
   );
   workspaceBootstrapService?.initialize();
+  const runtimeRepoShimWritebackService = options.runtimeRepoShimWritebackService ?? (
+    projectService && options.contextMaterializationService
+      ? new RuntimeRepoShimWritebackService({
+          projectService,
+          contextMaterializationService: options.contextMaterializationService,
+        })
+      : undefined
+  );
+  async function writeDefaultRepoShims(projectId: string, force = false) {
+    if (!runtimeRepoShimWritebackService) {
+      return [];
+    }
+    const codex = await runtimeRepoShimWritebackService.write({
+      project_id: projectId,
+      target: 'codex_repo_shim',
+      force,
+    });
+    const claude = await runtimeRepoShimWritebackService.write({
+      project_id: projectId,
+      target: 'claude_repo_shim',
+      force,
+    });
+    return [codex, claude];
+  }
   const projectBrainDoctorService = options.projectBrainDoctorService;
   const projectBrainService = options.projectBrainService;
   const contextRetrievalService = options.contextRetrievalService;
@@ -1771,8 +1799,12 @@ export function buildApp(options: BuildAppOptions = {}) {
         metadata: payload.metadata ?? {},
         repoPath: payload.repo_path,
         initializeRepo: payload.initialize_repo ?? false,
+        writeRepoShim: runtimeRepoShimWritebackService ? false : true,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
+      if (payload.repo_path && runtimeRepoShimWritebackService) {
+        await writeDefaultRepoShims(project.id, false);
+      }
       if (taskService) {
         new ProjectBootstrapService({
           projectService,
@@ -2028,6 +2060,29 @@ export function buildApp(options: BuildAppOptions = {}) {
     }
   });
 
+  app.post('/api/projects/:projectId/context/write-repo-shim', async (request, reply) => {
+    if (!projectService || !runtimeRepoShimWritebackService) {
+      return reply.status(503).send({ message: 'Project repo shim writeback is not configured' });
+    }
+    try {
+      const params = request.params as { projectId: string };
+      projectService.requireProject(params.projectId);
+      const payload = projectContextWriteRepoShimRequestSchema.parse(request.body);
+      const writeback = await runtimeRepoShimWritebackService.write({
+        project_id: params.projectId,
+        target: payload.target,
+        force: payload.force ?? false,
+      });
+      return reply.send(projectContextWriteRepoShimResponseSchema.parse({
+        scope: 'project_context',
+        writeback,
+      }));
+    } catch (error) {
+      const translated = translateError(error);
+      return reply.status(translated.statusCode).send(translated.body);
+    }
+  });
+
   app.get('/api/workspace/bootstrap', async (_request, reply) => {
     if (!workspaceBootstrapService) {
       return reply.status(503).send({ message: 'workspace bootstrap service is not configured' });
@@ -2234,6 +2289,10 @@ export function buildApp(options: BuildAppOptions = {}) {
         allowReviewRequired: humanActor?.source === 'dashboard',
       });
       projectService.updateProjectMetadata(project.id, activation.metadata);
+      const repoPath = projectService.getProjectRepoPath(project.id);
+      if (repoPath && runtimeRepoShimWritebackService) {
+        await writeDefaultRepoShims(project.id, true);
+      }
       return reply.send({
         project_id: activation.project_id,
         nomos_id: activation.nomos_id,
@@ -2273,9 +2332,13 @@ export function buildApp(options: BuildAppOptions = {}) {
         metadata: project.metadata ?? {},
         repoPath: effectiveRepoPath,
         initializeRepo: payload.initialize_repo ?? false,
+        writeRepoShim: runtimeRepoShimWritebackService ? false : true,
         forceWriteRepoShim: payload.force_write_repo_shim ?? false,
       });
       projectService.updateProjectMetadata(project.id, preparedNomos.persistedMetadata);
+      if (effectiveRepoPath && runtimeRepoShimWritebackService) {
+        await writeDefaultRepoShims(project.id, payload.force_write_repo_shim ?? false);
+      }
       let bootstrapTaskId: string | null = null;
       if (!payload.skip_bootstrap_task && taskService) {
         const bootstrapTask = new ProjectBootstrapService({

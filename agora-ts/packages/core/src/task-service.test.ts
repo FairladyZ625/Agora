@@ -1102,18 +1102,25 @@ describe('task service', () => {
     const controllerContextPath = join(workspacePath, '04-context', 'project-brain-context-controller.md');
     const craftsmanContextPath = join(workspacePath, '04-context', 'project-brain-context-craftsman.md');
     const citizenContextPath = join(workspacePath, '04-context', 'project-brain-context-citizen.md');
+    const runtimeDeliveryManifestPath = join(workspacePath, '04-context', 'runtime-delivery-manifest.md');
     expect(existsSync(controllerContextPath)).toBe(true);
     expect(existsSync(craftsmanContextPath)).toBe(true);
     expect(existsSync(citizenContextPath)).toBe(true);
+    expect(existsSync(runtimeDeliveryManifestPath)).toBe(true);
     expect(readFileSync(controllerContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
     expect(readFileSync(controllerContextPath, 'utf8')).toContain('Runtime Boundary');
     expect(readFileSync(controllerContextPath, 'utf8')).toContain('citizen-alpha');
     expect(readFileSync(craftsmanContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
     expect(readFileSync(citizenContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
-    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(controllerContextPath);
-    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(craftsmanContextPath);
-    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(citizenContextPath);
+    expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain('doc_type: runtime_delivery_manifest');
+    expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain(controllerContextPath);
+    expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain(craftsmanContextPath);
+    expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain(citizenContextPath);
+    expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'));
+    expect(readFileSync(join(workspacePath, '00-bootstrap.md'), 'utf8')).toContain(runtimeDeliveryManifestPath);
+    expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(runtimeDeliveryManifestPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'opus', '00-role-brief.md'), 'utf8')).toContain(controllerContextPath);
+    expect(readFileSync(join(workspacePath, '05-agents', 'citizen-alpha', '00-role-brief.md'), 'utf8')).toContain(runtimeDeliveryManifestPath);
     expect(readFileSync(join(workspacePath, '05-agents', 'citizen-alpha', '00-role-brief.md'), 'utf8')).toContain(citizenContextPath);
     expect(existsSync(join(brainPackDir, 'project-index', 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP'))).toBe(false);
   });
@@ -3892,8 +3899,10 @@ describe('task service', () => {
     const rootBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_root');
     const runbookBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_runbook');
     const mentionBrief = provisioningPort.published[0]?.messages.find((message) => message.kind === 'bootstrap_mentions');
+    const runtimeDeliveryManifestPath = join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '04-context', 'runtime-delivery-manifest.md');
     expect(rootBrief?.body).toContain('主控: opus');
     expect(rootBrief?.body).toContain(join(brainPackDir, 'tasks', 'OC-BOOTSTRAP-1', '00-bootstrap.md'));
+    expect(rootBrief?.body).toContain(runtimeDeliveryManifestPath);
     expect(rootBrief?.body).toContain('opus | architect | controller | agora_managed | overlay_delta');
     expect(rootBrief?.body).toContain('Task Skills:');
     expect(rootBrief?.body).toContain('planning-with-files -> /tmp/skills/planning-with-files/SKILL.md');
@@ -3920,6 +3929,7 @@ describe('task service', () => {
     expect(opusBrief?.body).toContain('agora craftsman probe <executionId>');
     expect(opusBrief?.body).toContain('Discord 提及规则：使用真实 `<@USER_ID>` mention');
     expect(opusBrief?.body).toContain('成员 mention: {{participant:opus}}');
+    expect(opusBrief?.body).toContain(runtimeDeliveryManifestPath);
     expect(opusBrief?.body).toContain('Role Skills:');
     expect(opusBrief?.body).toContain('brainstorming -> /tmp/skills/brainstorming/SKILL.md');
     expect(opusBrief?.body).not.toContain('Read role doc:');
@@ -5778,6 +5788,8 @@ describe('task service', () => {
     expect(briefBody).toContain('Controller: opus');
     expect(briefBody).toContain('Current Stage: implement');
     expect(briefBody).toContain('Current Stage Participants: opus, sonnet');
+    expect(briefBody).toContain('Runtime Delivery Manifest:');
+    expect(briefBody).toContain(join(brainPackDir, 'tasks', 'OC-DISPATCH-BRIEF-1', '04-context', 'runtime-delivery-manifest.md'));
   });
 
   it('routes a project-bound craftsman execution brief to the craftsman context artifact', () => {
@@ -5887,6 +5899,17 @@ describe('task service', () => {
 
     expect(captured).toHaveLength(1);
     const briefBody = readFileSync(captured[0]!.brief_path!, 'utf8');
+    const runtimeDeliveryManifestPath = join(
+      brainPackDir,
+      'project-index',
+      'proj-brief-audience',
+      'tasks',
+      'OC-AUDIENCE-BRIEF-1',
+      '04-context',
+      'runtime-delivery-manifest.md',
+    );
+    expect(briefBody).toContain('Runtime Delivery Manifest:');
+    expect(briefBody).toContain(runtimeDeliveryManifestPath);
     expect(briefBody).toContain('project-brain-context-craftsman.md');
     expect(briefBody).not.toContain('project-brain-context-controller.md');
   });
@@ -5980,6 +6003,8 @@ describe('task service', () => {
     expect(briefBody).toContain('sub-auto-brief-1');
     expect(briefBody).toContain('Implement execution brief path');
     expect(briefBody).toContain('Current Stage Participants: opus, sonnet');
+    expect(briefBody).toContain('Runtime Delivery Manifest:');
+    expect(briefBody).toContain(join(brainPackDir, 'tasks', 'OC-SUBTASK-BRIEF-1', '04-context', 'runtime-delivery-manifest.md'));
   });
 
   it('rejects craftsman dispatch when the caller is not the controller', () => {

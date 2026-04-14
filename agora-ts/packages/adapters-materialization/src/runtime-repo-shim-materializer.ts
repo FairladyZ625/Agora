@@ -1,8 +1,7 @@
 import {
-  loadNomosProjectProfile,
   renderRepoAgentsShim,
   renderRepoClaudeShim,
-  resolveProjectNomosState,
+  resolveRepoShimNomosProjectProfile,
 } from '@agora-ts/config';
 import type {
   ContextMaterializationRequestDto,
@@ -35,10 +34,9 @@ export class RuntimeRepoShimMaterializer implements ContextMaterializationPort {
       throw new Error(`Unsupported materialization target: ${request.target}`);
     }
     const project = this.options.projectService.requireProject(request.project_id);
-    const nomosState = resolveProjectNomosState(project.id, project.metadata ?? null, {
+    const profile = resolveRepoShimNomosProjectProfile(project.id, project.metadata ?? null, {
       ...(this.options.userAgoraDir ? { userAgoraDir: this.options.userAgoraDir } : {}),
     });
-    const profile = loadNomosProjectProfile(nomosState.active_profile_path);
     if (request.target === 'codex_repo_shim') {
       return {
         target: 'codex_repo_shim',

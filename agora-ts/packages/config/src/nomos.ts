@@ -174,6 +174,7 @@ export interface RenderRepoAgentsShimOptions {
 export interface InstallBuiltInAgoraNomosOptions extends ResolveAgoraProjectStateOptions {
   repoPath?: string | null;
   initializeRepo?: boolean;
+  writeRepoShim?: boolean;
   forceWriteRepoShim?: boolean;
   initializeProjectStateGit?: boolean;
 }
@@ -185,6 +186,7 @@ export interface PrepareProjectNomosInstallOptions extends ResolveAgoraProjectSt
   metadata?: Record<string, unknown> | null | undefined;
   repoPath?: string | null | undefined;
   initializeRepo?: boolean;
+  writeRepoShim?: boolean;
   forceWriteRepoShim?: boolean;
 }
 
@@ -1147,9 +1149,13 @@ export function installBuiltInAgoraNomosForProject(
   const repoExistedBeforeInstall = options.repoPath ? existsSync(resolve(options.repoPath)) : false;
   const repoRoot = resolveRepoRoot(options.repoPath, options.initializeRepo ?? false);
   const repoShimPath = repoRoot ? resolve(repoRoot, 'AGENTS.md') : null;
+  const shouldWriteRepoShim = options.writeRepoShim ?? true;
   const forceWriteRepoShim = options.forceWriteRepoShim ?? false;
   const repoShimWritten = Boolean(
-    repoShimPath && (forceWriteRepoShim || !existsSync(repoShimPath)) && writeRepoShim(repoShimPath, profile),
+    shouldWriteRepoShim
+      && repoShimPath
+      && (forceWriteRepoShim || !existsSync(repoShimPath))
+      && writeRepoShim(repoShimPath, profile),
   );
   const repoGitInitialized = Boolean(repoRoot && (options.initializeRepo ?? false) && ensureGitRepository(repoRoot));
   const projectStateGitInitialized = (options.initializeProjectStateGit ?? profile.project_state.versioning.auto_init)
@@ -1463,6 +1469,7 @@ export function prepareProjectNomosInstall(
   const installedNomos = installBuiltInAgoraNomosForProject(options.projectId, {
     ...(options.repoPath ? { repoPath: options.repoPath } : {}),
     initializeRepo: options.initializeRepo ?? false,
+    writeRepoShim: options.writeRepoShim ?? true,
     forceWriteRepoShim: options.forceWriteRepoShim ?? false,
     ...(options.userAgoraDir ? { userAgoraDir: options.userAgoraDir } : {}),
   });
@@ -2755,6 +2762,44 @@ export function loadNomosProjectProfile(profilePath: string): NomosProjectProfil
         : {}),
     },
   });
+}
+
+export function resolveRepoShimNomosProjectProfile(
+  projectId: string,
+  metadata: Record<string, unknown> | null | undefined,
+  options: ResolveAgoraProjectStateOptions = {},
+): NomosProjectProfile {
+  const state = resolveProjectNomosState(projectId, metadata, options);
+  if (state.activation_status !== 'active_project') {
+    return loadNomosProjectProfile(state.profile_path);
+  }
+
+  const activePack = resolveProjectNomosPackForTarget(projectId, state, 'active');
+  if (!activePack) {
+    throw new Error(`Active project Nomos pack is missing for ${projectId}`);
+  }
+
+  const base = buildBuiltInAgoraNomosProjectProfile(projectId, options);
+  return {
+    ...base,
+    project: {
+      ...base.project,
+      id: projectId,
+      state_root: state.project_state_root,
+    },
+    pack: {
+      id: activePack.pack_id,
+      name: activePack.name,
+      version: activePack.version,
+      description: activePack.description,
+      source: activePack.source,
+      install_mode: 'copy_on_install',
+    },
+    provenance: {
+      ...base.provenance,
+      pack_source: activePack.source,
+    },
+  };
 }
 
 export function renderRepoAgentsShim(options: RenderRepoAgentsShimOptions) {

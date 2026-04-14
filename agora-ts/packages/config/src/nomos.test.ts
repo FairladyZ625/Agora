@@ -205,6 +205,25 @@ describe('nomos pack model freeze', () => {
     expect(readFileSync(installed.layout.doctorProjectPromptPath, 'utf8')).toContain('Project Doctor');
   });
 
+  it('can prepare built-in Agora Nomos without writing the repo shim immediately', () => {
+    const agoraHomeDir = makeAgoraHomeDir();
+    const repoRoot = join(makeAgoraHomeDir(), 'repo-no-shim');
+
+    const installed = installBuiltInAgoraNomosForProject('proj-no-shim', {
+      userAgoraDir: agoraHomeDir,
+      repoPath: repoRoot,
+      initializeRepo: true,
+      writeRepoShim: false,
+    });
+
+    expect(installed.repoRoot).toBe(repoRoot);
+    expect(installed.repoShimPath).toBe(join(repoRoot, 'AGENTS.md'));
+    expect(installed.repoShimWritten).toBe(false);
+    expect(existsSync(join(repoRoot, 'AGENTS.md'))).toBe(false);
+    expect(existsSync(join(repoRoot, '.git'))).toBe(true);
+    expect(existsSync(join(installed.layout.root, '.git'))).toBe(true);
+  });
+
   it('creates a project-nomos authoring spec and draft pack inside global project state', () => {
     const agoraHomeDir = makeAgoraHomeDir();
     const templateRoot = resolveInstalledCreateNomosPackTemplateDir({ userAgoraDir: agoraHomeDir });
