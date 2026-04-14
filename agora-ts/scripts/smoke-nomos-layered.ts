@@ -464,9 +464,9 @@ async function main() {
     ], { configPath, dbPath });
     const lifecycleTaskId = requireLineValue(lifecycleTaskCreate.stdout, '任务已创建: ');
     const lifecycleWorkspaceRoot = join(agoraHomeDir, 'agora-ai-brain', 'projects', lifecycleProjectId, 'tasks', lifecycleTaskId);
-    const lifecycleCraftsmanContextPath = join(lifecycleWorkspaceRoot, '04-context', 'project-brain-context-craftsman.md');
-    const lifecycleCitizenContextPath = join(lifecycleWorkspaceRoot, '04-context', 'project-brain-context-citizen.md');
-    const lifecycleControllerContextPath = join(lifecycleWorkspaceRoot, '04-context', 'project-brain-context-controller.md');
+    const lifecycleCraftsmanContextPath = join(lifecycleWorkspaceRoot, '04-context', 'project-context-craftsman.md');
+    const lifecycleCitizenContextPath = join(lifecycleWorkspaceRoot, '04-context', 'project-context-citizen.md');
+    const lifecycleControllerContextPath = join(lifecycleWorkspaceRoot, '04-context', 'project-context-controller.md');
 
     await runCli(['advance', lifecycleTaskId, '--caller-id', 'archon'], { configPath, dbPath });
 

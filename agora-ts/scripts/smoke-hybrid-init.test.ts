@@ -157,7 +157,7 @@ describe("resolveHybridSmokeDefaults", () => {
           }));
           return;
         }
-        if (args[0] === "projects" && args[1] === "brain" && args[2] === "bootstrap-context") {
+        if (args[0] === "context" && args[1] === "briefing") {
           stdout.write(JSON.stringify({
             source_documents: [{ kind: "decision", slug: "runtime-boundary" }],
           }));

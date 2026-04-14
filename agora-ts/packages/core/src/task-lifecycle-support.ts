@@ -252,7 +252,7 @@ export class TaskLifecycleSupport {
   }
 
   buildTaskBrainWorkspaceRequest(task: TaskRecord, templateId: string) {
-    const projectBrainContexts = this.buildProjectBrainContexts(task);
+    const projectContextArtifacts = this.buildProjectContextArtifacts(task);
     return {
       task_id: task.id,
       project_id: task.project_id ?? null,
@@ -288,11 +288,11 @@ export class TaskLifecycleSupport {
         ...(member.agent_origin ? { agent_origin: member.agent_origin } : {}),
         ...(member.briefing_mode ? { briefing_mode: member.briefing_mode } : {}),
       })),
-      ...(projectBrainContexts ? { project_brain_contexts: projectBrainContexts } : {}),
+      ...(projectContextArtifacts ? { project_context_artifacts: projectContextArtifacts } : {}),
     } satisfies Parameters<NonNullable<TaskBrainWorkspacePort>['createWorkspace']>[0];
   }
 
-  private buildProjectBrainContexts(task: TaskRecord): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
+  private buildProjectContextArtifacts(task: TaskRecord): Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null {
     if (!task.project_id || (!this.contextMaterializationService && !this.projectBrainAutomationService)) {
       return null;
     }
@@ -317,7 +317,7 @@ export class TaskLifecycleSupport {
           }
           return result.artifact;
         })()
-        : this.projectBrainAutomationService!.buildBootstrapContext({
+        : this.projectBrainAutomationService!.buildProjectContextBriefing({
           project_id: task.project_id,
           task_id: task.id,
           task_title: task.title,
@@ -372,7 +372,7 @@ export class TaskLifecycleSupport {
     const workspacePath = binding.workspace_path;
     const roleBriefPath = join(workspacePath, '05-agents', input.assignee, '00-role-brief.md');
     const runtimeDeliveryManifestPath = join(workspacePath, TASK_BRAIN_RUNTIME_DELIVERY_MANIFEST_RELATIVE_PATH);
-    const projectBrainContextPath = resolveProjectBrainContextPath(
+    const projectContextArtifactPath = resolveProjectContextArtifactPath(
       workspacePath,
       resolveTaskBrainContextAudienceForAssignee(task, input.assignee),
     );
@@ -410,7 +410,7 @@ export class TaskLifecycleSupport {
         stage_state_path: join(workspacePath, '03-stage-state.md'),
         runtime_delivery_manifest_path: existsSync(runtimeDeliveryManifestPath) ? runtimeDeliveryManifestPath : null,
         role_brief_path: existsSync(roleBriefPath) ? roleBriefPath : null,
-        project_brain_context_path: existsSync(projectBrainContextPath) ? projectBrainContextPath : null,
+        project_context_artifact_path: existsSync(projectContextArtifactPath) ? projectContextArtifactPath : null,
       },
     }).brief_path;
   }
@@ -535,6 +535,6 @@ function resolveTaskBrainContextAudienceForAssignee(task: TaskRecord, assignee: 
   }
 }
 
-function resolveProjectBrainContextPath(workspacePath: string, audience: TaskBrainContextAudience) {
-  return join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
+function resolveProjectContextArtifactPath(workspacePath: string, audience: TaskBrainContextAudience) {
+  return join(workspacePath, '04-context', `project-context-${audience}.md`);
 }

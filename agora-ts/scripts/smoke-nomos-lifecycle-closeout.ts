@@ -140,9 +140,9 @@ export async function runSmokeNomosLifecycleCloseoutMain() {
     const taskId = requireLineValue(taskCreate.stdout, '任务已创建: ');
     const workspaceRoot = join(projectStateRoot, 'tasks', taskId);
     const contextFiles = {
-      controller: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-controller.md')),
-      craftsman: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-craftsman.md')),
-      citizen: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-citizen.md')),
+      controller: existsSync(join(workspaceRoot, '04-context', 'project-context-controller.md')),
+      craftsman: existsSync(join(workspaceRoot, '04-context', 'project-context-craftsman.md')),
+      citizen: existsSync(join(workspaceRoot, '04-context', 'project-context-citizen.md')),
     };
 
     await runCli(['advance', taskId, '--caller-id', 'archon'], { configPath, dbPath });

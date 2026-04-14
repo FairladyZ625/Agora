@@ -1462,10 +1462,10 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('Brain 已追加');
   });
 
-  it('supports project brain bootstrap-context and promote through the cli', async () => {
+  it('supports project context briefing and promote through the cli', async () => {
     const db = createAgoraDatabase({ dbPath: makeDbPath() });
     runMigrations(db);
-    const brainPackRoot = makeTempDir('agora-ts-cli-project-brain-bootstrap-');
+    const brainPackRoot = makeTempDir('agora-ts-cli-project-context-briefing-');
     const projectService = createProjectServiceFromDb(db, {
       knowledgePort: new FilesystemProjectKnowledgeAdapter({ brainPackRoot }),
     });
@@ -1545,7 +1545,7 @@ describe('agora-ts cli', () => {
     }).exitOverride();
 
     await program.parseAsync([
-      'projects', 'brain', 'bootstrap-context',
+      'context', 'briefing',
       '--project', 'proj-bootstrap',
       '--audience', 'controller',
     ], { from: 'user' });
@@ -1560,7 +1560,7 @@ describe('agora-ts cli', () => {
     ], { from: 'user' });
 
     expect(stderr.value).toBe('');
-    expect(stdout.value).toContain('project_brain_bootstrap_context');
+    expect(stdout.value).toContain('project_context_briefing');
     expect(stdout.value).toContain('Alpha Architect');
     expect(stdout.value).toContain('Brain 已提升');
   });
@@ -2508,10 +2508,10 @@ describe('agora-ts cli', () => {
       }),
     };
     const projectBrainAutomationService = {
-      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+      buildProjectContextBriefingAsync: vi.fn().mockResolvedValue({
         project_id: 'proj-ctx',
         audience: 'craftsman',
-        markdown: '# Project Brain Bootstrap Context',
+        markdown: '# Project Context Briefing',
         reference_bundle: {
           scope: 'project_brain',
           mode: 'bootstrap',
@@ -2559,7 +2559,7 @@ describe('agora-ts cli', () => {
 
     expect(stderr.value).toBe('');
     expect(taskService.getTask).toHaveBeenCalledWith('OC-200');
-    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+    expect(projectBrainAutomationService.buildProjectContextBriefingAsync).toHaveBeenCalledWith({
       project_id: 'proj-ctx',
       audience: 'craftsman',
       task_id: 'OC-200',
@@ -2567,7 +2567,7 @@ describe('agora-ts cli', () => {
       task_description: 'Need vector recall and lexical rerank.',
     });
     expect(stdout.value).toContain('"scope": "project_context"');
-    expect(stdout.value).toContain('"markdown": "# Project Brain Bootstrap Context"');
+    expect(stdout.value).toContain('"markdown": "# Project Context Briefing"');
   });
 
   it('prefers context materialization service for project context briefing when configured', async () => {
@@ -2594,8 +2594,8 @@ describe('agora-ts cli', () => {
       }),
     };
     const projectBrainAutomationService = {
-      buildBootstrapContextAsync: vi.fn(),
-      buildBootstrapContext: vi.fn(),
+      buildProjectContextBriefingAsync: vi.fn(),
+      buildProjectContextBriefing: vi.fn(),
     };
     const program = createCliProgram({
       taskService: taskService as never,
@@ -2623,7 +2623,7 @@ describe('agora-ts cli', () => {
       task_title: 'Implement hybrid retrieval',
       task_description: 'Need vector recall and lexical rerank.',
     });
-    expect(projectBrainAutomationService.buildBootstrapContextAsync).not.toHaveBeenCalled();
+    expect(projectBrainAutomationService.buildProjectContextBriefingAsync).not.toHaveBeenCalled();
     expect(stdout.value).toContain('"scope": "project_context"');
     expect(stdout.value).toContain('"markdown": "# Materialized Briefing"');
   });
@@ -2789,7 +2789,7 @@ describe('agora-ts cli', () => {
     expect(stdout.value).toContain('"retrieval_mode": "raw"');
   });
 
-  it('routes task-aware bootstrap-context through task metadata when task is provided', async () => {
+  it('routes task-aware context briefing through task metadata when task is provided', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const taskService = {
@@ -2807,16 +2807,16 @@ describe('agora-ts cli', () => {
       }),
     };
     const projectBrainAutomationService = {
-      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+      buildProjectContextBriefingAsync: vi.fn().mockResolvedValue({
         project_id: 'proj-brain',
         audience: 'controller',
-        markdown: '# Project Brain Bootstrap Context',
+        markdown: '# Project Context Briefing',
         source_documents: [],
       }),
-      buildBootstrapContext: vi.fn().mockReturnValue({
+      buildProjectContextBriefing: vi.fn().mockReturnValue({
         project_id: 'proj-brain',
         audience: 'controller',
-        markdown: '# Project Brain Bootstrap Context',
+        markdown: '# Project Context Briefing',
         source_documents: [],
       }),
     };
@@ -2828,13 +2828,15 @@ describe('agora-ts cli', () => {
     }).exitOverride();
 
     await program.parseAsync([
-      'projects', 'brain', 'bootstrap-context',
+      'context', 'briefing',
       '--task', 'OC-HYBRID-1',
       '--audience', 'controller',
+      '--json',
     ], { from: 'user' });
 
     expect(stderr.value).toBe('');
-    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+    expect(taskService.getTask).toHaveBeenCalledWith('OC-HYBRID-1');
+    expect(projectBrainAutomationService.buildProjectContextBriefingAsync).toHaveBeenCalledWith({
       project_id: 'proj-brain',
       task_id: 'OC-HYBRID-1',
       task_title: 'Implement hybrid retrieval',
@@ -2844,7 +2846,7 @@ describe('agora-ts cli', () => {
     });
   });
 
-  it('prefers context materialization service for legacy bootstrap-context command when configured', async () => {
+  it('prefers context materialization service for task-aware context briefing when configured', async () => {
     const stdout = createBuffer();
     const stderr = createBuffer();
     const taskService = {
@@ -2873,8 +2875,8 @@ describe('agora-ts cli', () => {
       }),
     };
     const projectBrainAutomationService = {
-      buildBootstrapContextAsync: vi.fn(),
-      buildBootstrapContext: vi.fn(),
+      buildProjectContextBriefingAsync: vi.fn(),
+      buildProjectContextBriefing: vi.fn(),
     };
     const program = createCliProgram({
       taskService: taskService as never,
@@ -2885,7 +2887,7 @@ describe('agora-ts cli', () => {
     }).exitOverride();
 
     await program.parseAsync([
-      'projects', 'brain', 'bootstrap-context',
+      'context', 'briefing',
       '--task', 'OC-HYBRID-1',
       '--audience', 'controller',
       '--json',
@@ -2902,8 +2904,8 @@ describe('agora-ts cli', () => {
       allowed_citizen_ids: ['citizen-alpha'],
       audience: 'controller',
     });
-    expect(projectBrainAutomationService.buildBootstrapContextAsync).not.toHaveBeenCalled();
-    expect(projectBrainAutomationService.buildBootstrapContext).not.toHaveBeenCalled();
+    expect(projectBrainAutomationService.buildProjectContextBriefingAsync).not.toHaveBeenCalled();
+    expect(projectBrainAutomationService.buildProjectContextBriefing).not.toHaveBeenCalled();
     expect(stdout.value).toContain('"markdown": "# Materialized Briefing"');
   });
 

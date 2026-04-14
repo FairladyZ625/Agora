@@ -87,7 +87,7 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
   ) {
     const workspacePath = binding.workspace_path;
     const currentStage = input.workflow_stages.find((stage) => stage.id === input.current_stage) ?? null;
-    const projectBrainContextPaths = resolveProjectBrainContextPaths(workspacePath, input);
+    const projectContextArtifactPaths = resolveProjectContextArtifactPaths(workspacePath, input);
     writeFileSync(join(workspacePath, 'task.meta.yaml'), renderTaskMeta(input, binding), 'utf8');
     writeFileSync(join(workspacePath, '00-current.md'), renderCurrent(input, workspacePath, currentStage), 'utf8');
     writeFileSync(join(workspacePath, '00-bootstrap.md'), renderBootstrap(input, workspacePath, currentStage), 'utf8');
@@ -99,8 +99,8 @@ export class FilesystemTaskBrainWorkspaceAdapter implements TaskBrainWorkspacePo
       writeFileSync(join(workspacePath, '04-context', 'references.md'), '', 'utf8');
       writeFileSync(join(workspacePath, '04-context', 'linked-docs.md'), '', 'utf8');
     }
-    for (const [audience, context] of Object.entries(input.project_brain_contexts ?? {}) as Array<[TaskBrainContextAudience, NonNullable<TaskBrainWorkspaceRequest['project_brain_contexts']>[TaskBrainContextAudience]]>) {
-      const contextPath = projectBrainContextPaths[audience];
+    for (const [audience, context] of Object.entries(input.project_context_artifacts ?? {}) as Array<[TaskBrainContextAudience, NonNullable<TaskBrainWorkspaceRequest['project_context_artifacts']>[TaskBrainContextAudience]]>) {
+      const contextPath = projectContextArtifactPaths[audience];
       if (!context?.markdown || !contextPath) {
         continue;
       }
@@ -159,7 +159,7 @@ function renderTaskMeta(input: TaskBrainWorkspaceRequest, binding: TaskBrainWork
     `task_state: "${input.state}"`,
     `current_stage: "${input.current_stage ?? ''}"`,
     `execution_kind: "${resolveStageExecutionKind(currentStage) ?? ''}"`,
-    `project_brain_audiences: [${Object.keys(input.project_brain_contexts ?? {}).map((audience) => `"${audience}"`).join(', ')}]`,
+    `project_context_audiences: [${Object.keys(input.project_context_artifacts ?? {}).map((audience) => `"${audience}"`).join(', ')}]`,
     '',
   ].join('\n');
 }
@@ -182,7 +182,7 @@ function renderCurrent(
     `- ${brainText(input.locale, '执行语义', 'Execution Kind')}: ${resolveStageExecutionKind(currentStage) ?? '-'}`,
     `- ${brainText(input.locale, '允许动作', 'Allowed Actions')}: ${(resolveStageAllowedActions(currentStage).join(', ') || '-')}`,
     `- ${brainText(input.locale, 'Runtime Delivery Manifest', 'Runtime Delivery Manifest')}: ${resolveRuntimeDeliveryManifestPath(workspacePath)}`,
-    ...renderProjectBrainContextLinks(input, workspacePath, brainText(input.locale, 'Project Brain 上下文', 'Project Brain Context')),
+    ...renderProjectContextArtifactLinks(input, workspacePath, brainText(input.locale, 'Project Context Artifact', 'Project Context Artifact')),
     '',
   ].join('\n');
 }
@@ -274,13 +274,13 @@ function renderStageState(
   ].join('\n');
 }
 
-function resolveProjectBrainContextPaths(
+function resolveProjectContextArtifactPaths(
   workspacePath: string,
   input: TaskBrainWorkspaceRequest,
 ): Partial<Record<TaskBrainContextAudience, string>> {
   const paths: Partial<Record<TaskBrainContextAudience, string>> = {};
-  for (const audience of Object.keys(input.project_brain_contexts ?? {}) as TaskBrainContextAudience[]) {
-    paths[audience] = join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
+  for (const audience of Object.keys(input.project_context_artifacts ?? {}) as TaskBrainContextAudience[]) {
+    paths[audience] = join(workspacePath, '04-context', `project-context-${audience}.md`);
   }
   return paths;
 }
@@ -293,24 +293,24 @@ function resolveRoleBriefPath(workspacePath: string, agentId: string) {
   return join(workspacePath, '05-agents', agentId, '00-role-brief.md');
 }
 
-function resolveAudienceProjectBrainContextPath(
+function resolveAudienceProjectContextArtifactPath(
   input: TaskBrainWorkspaceRequest,
   workspacePath: string,
   audience: TaskBrainContextAudience,
 ) {
-  if (!input.project_brain_contexts?.[audience]) {
+  if (!input.project_context_artifacts?.[audience]) {
     return null;
   }
-  return join(workspacePath, '04-context', `project-brain-context-${audience}.md`);
+  return join(workspacePath, '04-context', `project-context-${audience}.md`);
 }
 
-function renderProjectBrainContextLinks(
+function renderProjectContextArtifactLinks(
   input: TaskBrainWorkspaceRequest,
   workspacePath: string,
   label: string,
 ) {
-  return (Object.keys(input.project_brain_contexts ?? {}) as TaskBrainContextAudience[])
-    .map((audience) => `- ${label} (${audience}): ${join(workspacePath, '04-context', `project-brain-context-${audience}.md`)}`);
+  return (Object.keys(input.project_context_artifacts ?? {}) as TaskBrainContextAudience[])
+    .map((audience) => `- ${label} (${audience}): ${join(workspacePath, '04-context', `project-context-${audience}.md`)}`);
 }
 
 function renderRuntimeDeliveryManifest(
@@ -319,7 +319,7 @@ function renderRuntimeDeliveryManifest(
   currentStage: TaskBrainWorkspaceRequest['workflow_stages'][number] | null,
 ) {
   const manifestPath = resolveRuntimeDeliveryManifestPath(workspacePath);
-  const projectBrainContextPaths = resolveProjectBrainContextPaths(workspacePath, input);
+  const projectContextArtifactPaths = resolveProjectContextArtifactPaths(workspacePath, input);
   return [
     renderMarkdownFrontmatter({
       doc_type: 'runtime_delivery_manifest',
@@ -328,7 +328,7 @@ function renderRuntimeDeliveryManifest(
       current_stage: input.current_stage ?? '',
       control_mode: input.control_mode,
       controller_ref: input.controller_ref ?? '',
-      project_brain_audiences: Object.keys(input.project_brain_contexts ?? {}),
+      project_context_audiences: Object.keys(input.project_context_artifacts ?? {}),
       agent_refs: input.team_members.map((member) => member.agentId),
     }),
     `# ${brainText(input.locale, 'Runtime Delivery Manifest', 'Runtime Delivery Manifest')}`,
@@ -363,9 +363,9 @@ function renderRuntimeDeliveryManifest(
     '',
     `## ${brainText(input.locale, 'Project Context Artifacts', 'Project Context Artifacts')}`,
     '',
-    ...((Object.keys(projectBrainContextPaths) as TaskBrainContextAudience[]).length > 0
-      ? (Object.keys(projectBrainContextPaths) as TaskBrainContextAudience[])
-        .map((audience) => `- ${audience}: ${projectBrainContextPaths[audience]}`)
+    ...((Object.keys(projectContextArtifactPaths) as TaskBrainContextAudience[]).length > 0
+      ? (Object.keys(projectContextArtifactPaths) as TaskBrainContextAudience[])
+        .map((audience) => `- ${audience}: ${projectContextArtifactPaths[audience]}`)
       : [`- ${brainText(input.locale, '无 project context artifact', 'No project context artifact')}`]),
     '',
     `## ${brainText(input.locale, 'Role Briefs', 'Role Briefs')}`,
@@ -392,7 +392,7 @@ function renderRoleBrief(
 ) {
   const scaffoldPath = join(workspacePath, '05-agents', member.agentId, '03-citizen-scaffold.md');
   const runtimeDeliveryManifestPath = resolveRuntimeDeliveryManifestPath(workspacePath);
-  const projectBrainContextPath = resolveAudienceProjectBrainContextPath(
+  const projectContextArtifactPath = resolveAudienceProjectContextArtifactPath(
     input,
     workspacePath,
     member.member_kind === 'craftsman'
@@ -435,8 +435,8 @@ function renderRoleBrief(
     `${brainText(input.locale, '任务工作区', 'Task workspace')}: ${workspacePath}`,
     `${brainText(input.locale, '任务简报', 'Task brief')}: ${join(workspacePath, '01-task-brief.md')}`,
     `${brainText(input.locale, '阶段状态', 'Stage state')}: ${join(workspacePath, '03-stage-state.md')}`,
-    ...(projectBrainContextPath
-      ? [`${brainText(input.locale, 'Project Brain Context', 'Project Brain Context')}: ${projectBrainContextPath}`]
+    ...(projectContextArtifactPath
+      ? [`${brainText(input.locale, 'Project Context Artifact', 'Project Context Artifact')}: ${projectContextArtifactPath}`]
       : []),
     `${brainText(input.locale, 'Citizen Scaffold', 'Citizen Scaffold')}: ${scaffoldPath}`,
     '',
@@ -477,7 +477,7 @@ function renderExecutionBrief(input: TaskExecutionBriefRequest) {
     `- Roster: ${input.references.roster_path}`,
     `- Stage State: ${input.references.stage_state_path}`,
     ...(input.references.role_brief_path ? [`- Role Brief: ${input.references.role_brief_path}`] : []),
-    ...(input.references.project_brain_context_path ? [`- Project Brain Context: ${input.references.project_brain_context_path}`] : []),
+    ...(input.references.project_context_artifact_path ? [`- Project Context Artifact: ${input.references.project_context_artifact_path}`] : []),
     ...(input.workdir ? ['', `Suggested Workdir: ${input.workdir}`] : []),
     '',
   ].join('\n');

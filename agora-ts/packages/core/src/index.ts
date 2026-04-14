@@ -151,9 +151,9 @@ export type {
 export type { ProjectBrainAutomationAudience, ProjectBrainBootstrapSelectionInput } from './project-brain-automation-policy.js';
 export { ProjectBrainAutomationPolicy } from './project-brain-automation-policy.js';
 export type {
-  BuildProjectBrainBootstrapContextInput,
+  BuildProjectContextBriefingInput,
   ProjectBrainAutomationServiceOptions,
-  ProjectBrainBootstrapContext,
+  ProjectContextBriefing,
   PromoteProjectBrainKnowledgeInput,
 } from './project-brain-automation-service.js';
 export { ProjectBrainAutomationService } from './project-brain-automation-service.js';

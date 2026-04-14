@@ -56,7 +56,7 @@ export const scenarioNames = [
   'task-conversation-read-cursor',
   'control-plane-loop',
   'graph-driven-path',
-  'project-brain-bootstrap',
+  'project-context-briefing',
   'nomos-lifecycle-closeout',
 ] as const;
 
@@ -85,8 +85,8 @@ export interface ScenarioResult {
   conversationBodies?: string[];
   unreadBefore?: number;
   unreadAfter?: number;
-  bootstrapContextPath?: string;
-  bootstrapContextContains?: string[];
+  projectContextPath?: string;
+  projectContextContains?: string[];
   projectId?: string;
   archiveJobId?: number;
   archiveJobStatus?: string;
@@ -160,7 +160,7 @@ export function runScenario(runtime: TestRuntime, name: ScenarioName): ScenarioR
       return runControlPlaneLoopScenario(runtime);
     case 'graph-driven-path':
       return runGraphDrivenPathScenario(runtime);
-    case 'project-brain-bootstrap':
+    case 'project-context-briefing':
       return runProjectBrainBootstrapScenario(runtime);
     case 'nomos-lifecycle-closeout':
       return runNomosLifecycleCloseoutScenario(runtime);
@@ -220,7 +220,7 @@ function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult 
   runtime.projectService.createProject({
     id: 'proj-bootstrap',
     name: 'Project Bootstrap',
-    summary: 'Scenario project brain bootstrap coverage',
+    summary: 'Scenario project context briefing coverage',
   });
   runtime.citizenService.createCitizen({
     citizen_id: 'citizen-alpha',
@@ -264,24 +264,24 @@ function runProjectBrainBootstrapScenario(runtime: TestRuntime): ScenarioResult 
     },
   });
 
-  const bootstrapContextPath = join(
+  const projectContextPath = join(
     runtime.projectStateDir,
     'proj-bootstrap',
     'tasks',
     task.id,
     '04-context',
-    'project-brain-context-controller.md',
+    'project-context-controller.md',
   );
-  const bootstrapContext = existsSync(bootstrapContextPath) ? readFileSync(bootstrapContextPath, 'utf8') : '';
+  const projectContext = existsSync(projectContextPath) ? readFileSync(projectContextPath, 'utf8') : '';
 
   return {
-    ...buildScenarioResult(runtime, 'project-brain-bootstrap', task.id),
-    bootstrapContextPath,
-    bootstrapContextContains: [
-      'project_brain_bootstrap_context',
+    ...buildScenarioResult(runtime, 'project-context-briefing', task.id),
+    projectContextPath,
+    projectContextContains: [
+      'project_context_briefing',
       'Runtime Boundary',
       'citizen-alpha',
-    ].filter((needle) => bootstrapContext.includes(needle)),
+    ].filter((needle) => projectContext.includes(needle)),
   };
 }
 
@@ -335,9 +335,9 @@ function runNomosLifecycleCloseoutScenario(runtime: TestRuntime): ScenarioResult
 
   const workspaceRoot = join(runtime.projectStateDir, projectId, 'tasks', task.id);
   const contextFiles = {
-    controller: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-controller.md')),
-    craftsman: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-craftsman.md')),
-    citizen: existsSync(join(workspaceRoot, '04-context', 'project-brain-context-citizen.md')),
+    controller: existsSync(join(workspaceRoot, '04-context', 'project-context-controller.md')),
+    craftsman: existsSync(join(workspaceRoot, '04-context', 'project-context-craftsman.md')),
+    citizen: existsSync(join(workspaceRoot, '04-context', 'project-context-citizen.md')),
   };
 
   runtime.taskService.advanceTask(task.id, { callerId: 'archon' });

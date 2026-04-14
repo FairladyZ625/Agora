@@ -1128,19 +1128,19 @@ describe('task service', () => {
     });
 
     const workspacePath = join(projectStateDir, 'proj-bootstrap', 'tasks', 'OC-PROJECT-BOOTSTRAP');
-    const controllerContextPath = join(workspacePath, '04-context', 'project-brain-context-controller.md');
-    const craftsmanContextPath = join(workspacePath, '04-context', 'project-brain-context-craftsman.md');
-    const citizenContextPath = join(workspacePath, '04-context', 'project-brain-context-citizen.md');
+    const controllerContextPath = join(workspacePath, '04-context', 'project-context-controller.md');
+    const craftsmanContextPath = join(workspacePath, '04-context', 'project-context-craftsman.md');
+    const citizenContextPath = join(workspacePath, '04-context', 'project-context-citizen.md');
     const runtimeDeliveryManifestPath = join(workspacePath, '04-context', 'runtime-delivery-manifest.md');
     expect(existsSync(controllerContextPath)).toBe(true);
     expect(existsSync(craftsmanContextPath)).toBe(true);
     expect(existsSync(citizenContextPath)).toBe(true);
     expect(existsSync(runtimeDeliveryManifestPath)).toBe(true);
-    expect(readFileSync(controllerContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(controllerContextPath, 'utf8')).toContain('doc_type: project_context_briefing');
     expect(readFileSync(controllerContextPath, 'utf8')).toContain('Runtime Boundary');
     expect(readFileSync(controllerContextPath, 'utf8')).toContain('citizen-alpha');
-    expect(readFileSync(craftsmanContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
-    expect(readFileSync(citizenContextPath, 'utf8')).toContain('doc_type: project_brain_bootstrap_context');
+    expect(readFileSync(craftsmanContextPath, 'utf8')).toContain('doc_type: project_context_briefing');
+    expect(readFileSync(citizenContextPath, 'utf8')).toContain('doc_type: project_context_briefing');
     expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain('doc_type: runtime_delivery_manifest');
     expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain(controllerContextPath);
     expect(readFileSync(runtimeDeliveryManifestPath, 'utf8')).toContain(craftsmanContextPath);
@@ -1167,7 +1167,7 @@ describe('task service', () => {
       id: 'proj-bootstrap',
       name: 'Project Bootstrap',
     });
-    const buildBootstrapContext = vi.fn().mockReturnValue({
+    const buildProjectContextBriefing = vi.fn().mockReturnValue({
       project_id: 'proj-bootstrap',
       audience: 'controller',
       markdown: '# Bootstrap',
@@ -1184,7 +1184,7 @@ describe('task service', () => {
         brainPackRoot: brainPackDir,
       }),
       projectBrainAutomationService: {
-        buildBootstrapContext,
+        buildProjectContextBriefing,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
       } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
@@ -1205,8 +1205,8 @@ describe('task service', () => {
       },
     });
 
-    expect(buildBootstrapContext).toHaveBeenCalledTimes(3);
-    expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
+    expect(buildProjectContextBriefing).toHaveBeenCalledTimes(3);
+    expect(buildProjectContextBriefing).toHaveBeenCalledWith(expect.objectContaining({
       project_id: 'proj-bootstrap',
       task_id: 'OC-PROJECT-CTX',
       task_title: 'Project bootstrap task',
@@ -1214,7 +1214,7 @@ describe('task service', () => {
       allowed_citizen_ids: ['citizen-alpha'],
       audience: 'controller',
     }));
-    expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
+    expect(buildProjectContextBriefing).toHaveBeenCalledWith(expect.objectContaining({
       project_id: 'proj-bootstrap',
       task_id: 'OC-PROJECT-CTX',
       task_title: 'Project bootstrap task',
@@ -1222,7 +1222,7 @@ describe('task service', () => {
       allowed_citizen_ids: ['citizen-alpha'],
       audience: 'craftsman',
     }));
-    expect(buildBootstrapContext).toHaveBeenCalledWith(expect.objectContaining({
+    expect(buildProjectContextBriefing).toHaveBeenCalledWith(expect.objectContaining({
       project_id: 'proj-bootstrap',
       task_id: 'OC-PROJECT-CTX',
       task_title: 'Project bootstrap task',
@@ -1256,7 +1256,7 @@ describe('task service', () => {
         },
       })),
     };
-    const buildBootstrapContext = vi.fn().mockReturnValue({
+    const buildProjectContextBriefing = vi.fn().mockReturnValue({
       project_id: 'proj-bootstrap',
       audience: 'controller',
       markdown: '# Bootstrap',
@@ -1274,7 +1274,7 @@ describe('task service', () => {
       }),
       contextMaterializationService: contextMaterializationService as never,
       projectBrainAutomationService: {
-        buildBootstrapContext,
+        buildProjectContextBriefing,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
       } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
@@ -1323,7 +1323,7 @@ describe('task service', () => {
       allowed_citizen_ids: ['citizen-alpha'],
       audience: 'citizen',
     }));
-    expect(buildBootstrapContext).not.toHaveBeenCalled();
+    expect(buildProjectContextBriefing).not.toHaveBeenCalled();
   });
 
   it('builds a structured project context write proposal for task closeout', () => {
@@ -5938,10 +5938,10 @@ describe('task service', () => {
       id: 'proj-brief-audience',
       name: 'Audience Brief Project',
     });
-    const buildBootstrapContext = vi.fn((input: { audience: 'controller' | 'citizen' | 'craftsman' }) => ({
+    const buildProjectContextBriefing = vi.fn((input: { audience: 'controller' | 'citizen' | 'craftsman' }) => ({
       project_id: 'proj-brief-audience',
       audience: input.audience,
-      markdown: `---\ndoc_type: project_brain_bootstrap_context\naudience: ${input.audience}\n---\n# ${input.audience}\n`,
+      markdown: `---\ndoc_type: project_context_briefing\naudience: ${input.audience}\n---\n# ${input.audience}\n`,
       source_documents: [],
     }));
     const service = createTaskServiceFromDb(db, {
@@ -5956,7 +5956,7 @@ describe('task service', () => {
         brainPackRoot: brainPackDir,
       }),
       projectBrainAutomationService: {
-        buildBootstrapContext,
+        buildProjectContextBriefing,
         promoteKnowledge: vi.fn(),
         recordTaskCloseRecap: vi.fn(),
       } as unknown as NonNullable<TaskServiceBuilderOptions['projectBrainAutomationService']>,
@@ -6025,8 +6025,8 @@ describe('task service', () => {
     );
     expect(briefBody).toContain('Runtime Delivery Manifest:');
     expect(briefBody).toContain(runtimeDeliveryManifestPath);
-    expect(briefBody).toContain('project-brain-context-craftsman.md');
-    expect(briefBody).not.toContain('project-brain-context-controller.md');
+    expect(briefBody).toContain('project-context-craftsman.md');
+    expect(briefBody).not.toContain('project-context-controller.md');
   });
 
   it('auto-dispatches craftsman subtasks with a materialized execution brief when no brief_path is provided', () => {

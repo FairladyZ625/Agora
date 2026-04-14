@@ -4,8 +4,8 @@ import { ProjectContextBriefingMaterializer } from './project-context-briefing-m
 describe('ProjectContextBriefingMaterializer', () => {
   it('delegates task-aware requests to async bootstrap context building', async () => {
     const projectBrainAutomationService = {
-      buildBootstrapContext: vi.fn(),
-      buildBootstrapContextAsync: vi.fn().mockResolvedValue({
+      buildProjectContextBriefing: vi.fn(),
+      buildProjectContextBriefingAsync: vi.fn().mockResolvedValue({
         project_id: 'proj-ctx',
         audience: 'craftsman',
         markdown: '# Briefing',
@@ -25,7 +25,7 @@ describe('ProjectContextBriefingMaterializer', () => {
       task_description: 'Need vector recall and lexical rerank.',
     });
 
-    expect(projectBrainAutomationService.buildBootstrapContextAsync).toHaveBeenCalledWith({
+    expect(projectBrainAutomationService.buildProjectContextBriefingAsync).toHaveBeenCalledWith({
       project_id: 'proj-ctx',
       audience: 'craftsman',
       task_id: 'OC-200',
@@ -45,13 +45,13 @@ describe('ProjectContextBriefingMaterializer', () => {
 
   it('supports synchronous task-aware materialization', () => {
     const projectBrainAutomationService = {
-      buildBootstrapContext: vi.fn().mockReturnValue({
+      buildProjectContextBriefing: vi.fn().mockReturnValue({
         project_id: 'proj-ctx',
         audience: 'controller',
         markdown: '# Sync briefing',
         source_documents: [],
       }),
-      buildBootstrapContextAsync: vi.fn(),
+      buildProjectContextBriefingAsync: vi.fn(),
     };
     const materializer = new ProjectContextBriefingMaterializer({
       projectBrainAutomationService,
@@ -67,7 +67,7 @@ describe('ProjectContextBriefingMaterializer', () => {
       allowed_citizen_ids: ['citizen-alpha'],
     });
 
-    expect(projectBrainAutomationService.buildBootstrapContext).toHaveBeenCalledWith({
+    expect(projectBrainAutomationService.buildProjectContextBriefing).toHaveBeenCalledWith({
       project_id: 'proj-ctx',
       audience: 'controller',
       task_id: 'OC-123',

@@ -169,7 +169,7 @@ async function main() {
     if (!executionBrief.includes(`Runtime Delivery Manifest: ${manifestPath}`)) {
       throw new Error('execution brief did not point to runtime delivery manifest');
     }
-    if (!executionBrief.includes('project-brain-context-craftsman.md')) {
+    if (!executionBrief.includes('project-context-craftsman.md')) {
       throw new Error('execution brief did not keep the craftsman audience context');
     }
 

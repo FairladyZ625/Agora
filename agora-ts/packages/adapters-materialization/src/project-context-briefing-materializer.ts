@@ -7,13 +7,13 @@ import type {
 import type { ContextMaterializationPort } from '@agora-ts/core';
 
 type ProjectBrainAutomationServiceLike = {
-  buildBootstrapContext(input: {
+  buildProjectContextBriefing(input: {
     project_id: string;
     audience: 'controller' | 'citizen' | 'craftsman';
     citizen_id?: string | null;
     allowed_citizen_ids?: string[];
   }): ProjectContextBriefingArtifactDto;
-  buildBootstrapContextAsync(input: {
+  buildProjectContextBriefingAsync(input: {
     project_id: string;
     audience: 'controller' | 'citizen' | 'craftsman';
     task_id: string;
@@ -41,7 +41,7 @@ export class ProjectContextBriefingMaterializer implements ContextMaterializatio
     }
     return {
       target: 'project_context_briefing',
-      artifact: this.options.projectBrainAutomationService.buildBootstrapContext({
+      artifact: this.options.projectBrainAutomationService.buildProjectContextBriefing({
         project_id: request.project_id,
         audience: request.audience,
         ...(request.task_id ? { task_id: request.task_id } : {}),
@@ -60,7 +60,7 @@ export class ProjectContextBriefingMaterializer implements ContextMaterializatio
       throw new Error(`Unsupported materialization target: ${request.target}`);
     }
     const artifact = request.task_id
-      ? await this.options.projectBrainAutomationService.buildBootstrapContextAsync({
+      ? await this.options.projectBrainAutomationService.buildProjectContextBriefingAsync({
         project_id: request.project_id,
         audience: request.audience,
         task_id: request.task_id,
@@ -71,7 +71,7 @@ export class ProjectContextBriefingMaterializer implements ContextMaterializatio
           ? { allowed_citizen_ids: request.allowed_citizen_ids }
           : {}),
       })
-      : this.options.projectBrainAutomationService.buildBootstrapContext({
+      : this.options.projectBrainAutomationService.buildProjectContextBriefing({
         project_id: request.project_id,
         audience: request.audience,
         ...(request.citizen_id !== undefined ? { citizen_id: request.citizen_id } : {}),

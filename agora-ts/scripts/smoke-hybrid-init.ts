@@ -168,7 +168,7 @@ export async function runSmokeHybridInitMain() {
       '--json',
     ], { configPath, dbPath });
     const bootstrap = await runCli([
-      'projects', 'brain', 'bootstrap-context',
+      'context', 'briefing',
       '--task', taskId,
       '--audience', 'craftsman',
       '--json',

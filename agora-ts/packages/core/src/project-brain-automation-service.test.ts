@@ -138,7 +138,7 @@ describe('project brain automation service', () => {
       policy: new ProjectBrainAutomationPolicy(),
     });
 
-    const context = service.buildBootstrapContext({
+    const context = service.buildProjectContextBriefing({
       project_id: 'proj-automation',
       audience: 'controller',
     });
@@ -151,7 +151,7 @@ describe('project brain automation service', () => {
         expect.objectContaining({ kind: 'citizen_scaffold', slug: 'citizen-alpha' }),
       ]),
     );
-    expect(context.markdown).toContain('doc_type: project_brain_bootstrap_context');
+    expect(context.markdown).toContain('doc_type: project_context_briefing');
     expect(context.markdown).toContain('Automation Project');
     expect(context.markdown).toContain('citizen-alpha');
     expect(context.markdown).toContain('Core First');
@@ -214,7 +214,7 @@ describe('project brain automation service', () => {
       policy: policy as never,
     });
 
-    service.buildBootstrapContext({
+    service.buildProjectContextBriefing({
       project_id: 'proj-automation',
       task_id: 'OC-100',
       task_title: 'Implement hybrid retrieval',
@@ -342,7 +342,7 @@ describe('project brain automation service', () => {
       retrievalService: retrievalService as never,
     });
 
-    const context = await service.buildBootstrapContextAsync({
+    const context = await service.buildProjectContextBriefingAsync({
       project_id: 'proj-automation',
       task_id: 'OC-100',
       task_title: 'Implement hybrid retrieval',

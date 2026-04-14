@@ -48,7 +48,7 @@ export interface TaskBrainWorkspaceRequest {
     agent_origin?: 'agora_managed' | 'user_managed';
     briefing_mode?: 'overlay_full' | 'overlay_delta';
   }>;
-  project_brain_contexts?: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null;
+  project_context_artifacts?: Partial<Record<TaskBrainContextAudience, TaskBrainContextArtifact>> | null;
 }
 
 export interface TaskBrainWorkspaceResult {
@@ -107,7 +107,7 @@ export interface TaskExecutionBriefRequest {
     stage_state_path: string;
     runtime_delivery_manifest_path?: string | null;
     role_brief_path?: string | null;
-    project_brain_context_path?: string | null;
+    project_context_artifact_path?: string | null;
   };
 }
 

@@ -1366,7 +1366,7 @@ describe('agora-ts server bootstrap', () => {
         artifact: {
         project_id: 'proj-ctx',
         audience: 'craftsman',
-        markdown: '# Project Brain Bootstrap Context',
+        markdown: '# Project Context Briefing',
         reference_bundle: {
           scope: 'project_brain',
           mode: 'bootstrap',
@@ -1437,7 +1437,7 @@ describe('agora-ts server bootstrap', () => {
       briefing: expect.objectContaining({
         project_id: 'proj-ctx',
         audience: 'craftsman',
-        markdown: '# Project Brain Bootstrap Context',
+        markdown: '# Project Context Briefing',
       }),
     });
   });

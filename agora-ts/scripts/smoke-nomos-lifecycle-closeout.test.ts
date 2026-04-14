@@ -91,9 +91,9 @@ describe('smoke-nomos-lifecycle-closeout', () => {
     const projectStateRoot = mkdtempSync(join(tmpdir(), 'agora-nomos-lifecycle-state-'));
     tempDirs.push(projectStateRoot);
     const harvestDraftPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '07-outputs', 'project-harvest-draft.md');
-    const controllerContextPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '04-context', 'project-brain-context-controller.md');
-    const craftsmanContextPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '04-context', 'project-brain-context-craftsman.md');
-    const citizenContextPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '04-context', 'project-brain-context-citizen.md');
+    const controllerContextPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '04-context', 'project-context-controller.md');
+    const craftsmanContextPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '04-context', 'project-context-craftsman.md');
+    const citizenContextPath = join(projectStateRoot, 'tasks', 'OC-NOMOS-LIFECYCLE-SMOKE', '04-context', 'project-context-citizen.md');
 
     createCliProgram.mockImplementation(({ stdout, stderr }) => ({
       parseAsync: vi.fn(async (args: string[]) => {

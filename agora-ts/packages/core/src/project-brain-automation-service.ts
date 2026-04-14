@@ -13,7 +13,7 @@ import {
   type ProjectBrainAutomationAudience,
 } from './project-brain-automation-policy.js';
 
-export interface ProjectBrainBootstrapContext {
+export interface ProjectContextBriefing {
   project_id: string;
   audience: ProjectBrainAutomationAudience;
   markdown: string;
@@ -27,7 +27,7 @@ export interface ProjectBrainBootstrapContext {
   }>;
 }
 
-export interface BuildProjectBrainBootstrapContextInput {
+export interface BuildProjectContextBriefingInput {
   project_id: string;
   audience: ProjectBrainAutomationAudience;
   citizen_id?: string | null;
@@ -74,7 +74,7 @@ export class ProjectBrainAutomationService {
     });
   }
 
-  buildBootstrapContext(input: BuildProjectBrainBootstrapContextInput): ProjectBrainBootstrapContext {
+  buildProjectContextBriefing(input: BuildProjectContextBriefingInput): ProjectContextBriefing {
     const bundle = this.referenceBundleService.buildReferenceBundle({
       project_id: input.project_id,
       mode: 'bootstrap',
@@ -94,10 +94,10 @@ export class ProjectBrainAutomationService {
       ...(input.task_title ? { task_title: input.task_title } : {}),
       ...(input.task_description ? { task_description: input.task_description } : {}),
     });
-    return this.renderBootstrapContext(input, bundle, attentionRoutingPlan);
+    return this.renderProjectContextBriefing(input, bundle, attentionRoutingPlan);
   }
 
-  async buildBootstrapContextAsync(input: BuildProjectBrainBootstrapContextInput): Promise<ProjectBrainBootstrapContext> {
+  async buildProjectContextBriefingAsync(input: BuildProjectContextBriefingInput): Promise<ProjectContextBriefing> {
     const bundle = await this.referenceBundleService.buildReferenceBundleAsync({
       project_id: input.project_id,
       mode: 'bootstrap',
@@ -117,14 +117,14 @@ export class ProjectBrainAutomationService {
       ...(input.task_title ? { task_title: input.task_title } : {}),
       ...(input.task_description ? { task_description: input.task_description } : {}),
     });
-    return this.renderBootstrapContext(input, bundle, attentionRoutingPlan);
+    return this.renderProjectContextBriefing(input, bundle, attentionRoutingPlan);
   }
 
-  private renderBootstrapContext(
-    input: BuildProjectBrainBootstrapContextInput,
+  private renderProjectContextBriefing(
+    input: BuildProjectContextBriefingInput,
     bundle: ReferenceBundleDto,
     attentionRoutingPlan: AttentionRoutingPlanDto,
-  ): ProjectBrainBootstrapContext {
+  ): ProjectContextBriefing {
     const selected = bundle.references
       .map((reference) => this.options.projectBrainService.getDocument(
         input.project_id,
@@ -143,7 +143,7 @@ export class ProjectBrainAutomationService {
         title: doc.title,
         path: doc.path,
       })),
-      markdown: renderBootstrapMarkdown(input.project_id, input.audience, selected, attentionRoutingPlan),
+      markdown: renderProjectContextBriefingMarkdown(input.project_id, input.audience, selected, attentionRoutingPlan),
     };
   }
 
@@ -195,7 +195,7 @@ export class ProjectBrainAutomationService {
   }
 }
 
-function renderBootstrapMarkdown(
+function renderProjectContextBriefingMarkdown(
   projectId: string,
   audience: ProjectBrainAutomationAudience,
   documents: ProjectBrainDocument[],
@@ -203,14 +203,14 @@ function renderBootstrapMarkdown(
 ) {
   const projectName = documents.find((doc) => doc.kind === 'index')?.title ?? projectId;
   const frontmatter = renderMarkdownFrontmatter({
-    doc_type: 'project_brain_bootstrap_context',
+    doc_type: 'project_context_briefing',
     project_id: projectId,
     audience,
     source_doc_kinds: documents.map((doc) => doc.kind),
     source_doc_slugs: documents.map((doc) => `${doc.kind}:${doc.slug}`),
   });
   const sections = [
-    '# Project Brain Bootstrap Context',
+    '# Project Context Briefing',
     '',
     `- Project: ${projectName}`,
     `- Audience: ${audience}`,

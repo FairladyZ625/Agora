@@ -2407,7 +2407,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
   context
     .command('briefing')
     .description('通过统一 project_context surface 生成 reference-first briefing artifact')
-    .requiredOption('--project <projectId>', 'project id')
+    .option('--project <projectId>', 'project id')
     .requiredOption('--audience <audience>', 'controller|citizen|craftsman')
     .option('--task <taskId>', 'optional task id')
     .option('--task-title <text>', 'optional task title override')
@@ -2416,7 +2416,7 @@ export function createCliProgram(deps: CliDependencies = {}) {
     .option('--allowed-citizen <citizenId>', 'allowed citizen id', collectOption, [])
     .option('--json', '输出 JSON', false)
     .action(async (options: {
-      project: string;
+      project?: string;
       audience: 'controller' | 'citizen' | 'craftsman';
       task?: string;
       taskTitle?: string;
@@ -2426,18 +2426,28 @@ export function createCliProgram(deps: CliDependencies = {}) {
       json?: boolean;
     }) => {
       const task = options.task ? taskService.getTask(options.task) : null;
+      const projectId = options.project ?? task?.project_id ?? null;
       const taskTitle = options.taskTitle ?? task?.title;
       const taskDescription = options.taskDescription ?? task?.description;
+      const allowedCitizenIds = options.allowedCitizen && options.allowedCitizen.length > 0
+        ? options.allowedCitizen
+        : (task?.team.members
+          .filter((member) => member.member_kind === 'citizen')
+          .map((member) => member.agentId)
+        ?? []);
+      if (!projectId) {
+        throw new Error('context briefing requires either --project or --task');
+      }
       const materialization = await contextMaterializationService.materialize({
         target: 'project_context_briefing',
-        project_id: options.project,
+        project_id: projectId,
         audience: options.audience,
         ...(options.task ? { task_id: options.task } : {}),
         ...(taskTitle ? { task_title: taskTitle } : {}),
         ...(taskDescription ? { task_description: taskDescription } : {}),
         ...(options.citizen !== undefined ? { citizen_id: options.citizen } : {}),
-        ...(options.allowedCitizen && options.allowedCitizen.length > 0
-          ? { allowed_citizen_ids: options.allowedCitizen }
+        ...(allowedCitizenIds.length > 0
+          ? { allowed_citizen_ids: allowedCitizenIds }
           : {}),
       });
       if (materialization.target !== 'project_context_briefing') {
@@ -2915,64 +2925,6 @@ export function createCliProgram(deps: CliDependencies = {}) {
         return;
       }
       writeLine(stdout, payload.message);
-    });
-
-  projectBrain
-    .command('bootstrap-context')
-    .description('生成 agent-facing project brain bootstrap context')
-    .option('--project <projectId>', 'project id')
-    .option('--task <taskId>', 'task id for task-aware bootstrap')
-    .option('--audience <audience>', 'controller|citizen|craftsman', 'controller')
-    .option('--citizen <citizenId>', 'citizen id for citizen-scoped bootstrap')
-    .option('--json', '输出 JSON', false)
-    .action(async (options: {
-      project?: string;
-      task?: string;
-      audience?: 'controller' | 'citizen' | 'craftsman';
-      citizen?: string;
-      json?: boolean;
-    }) => {
-      let projectId = options.project;
-      let taskTitle: string | undefined;
-      let taskDescription: string | undefined;
-      let allowedCitizenIds: string[] = [];
-      if (options.task) {
-        const task = taskService.getTask(options.task);
-        if (!task?.project_id) {
-          throw new Error(`task ${options.task} is not bound to a project`);
-        }
-        projectId = task.project_id;
-        taskTitle = task.title;
-        taskDescription = task.description ?? undefined;
-        allowedCitizenIds = task.team.members
-          .filter((member) => member.member_kind === 'citizen')
-          .map((member) => member.agentId);
-      }
-      if (!projectId) {
-        throw new Error('brain bootstrap-context requires either --project or --task');
-      }
-      const bootstrapInput = {
-        project_id: projectId,
-        ...(options.task ? { task_id: options.task } : {}),
-        ...(taskTitle ? { task_title: taskTitle } : {}),
-        ...(taskDescription ? { task_description: taskDescription } : {}),
-        ...(allowedCitizenIds.length > 0 ? { allowed_citizen_ids: allowedCitizenIds } : {}),
-        audience: options.audience ?? 'controller',
-        ...(options.citizen ? { citizen_id: options.citizen } : {}),
-      };
-      const materialization = await contextMaterializationService.materialize({
-        target: 'project_context_briefing',
-        ...bootstrapInput,
-      });
-      if (materialization.target !== 'project_context_briefing') {
-        throw new Error(`Unexpected materialization target: ${materialization.target}`);
-      }
-      const context = materialization.artifact;
-      if (options.json) {
-        writeLine(stdout, JSON.stringify(context, null, 2));
-        return;
-      }
-      writeLine(stdout, context.markdown.trimEnd());
     });
 
   projectBrain

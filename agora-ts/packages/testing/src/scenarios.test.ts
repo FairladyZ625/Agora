@@ -40,7 +40,7 @@ describe('agora-ts testing scenarios', () => {
       'task-conversation-read-cursor',
       'control-plane-loop',
       'graph-driven-path',
-      'project-brain-bootstrap',
+      'project-context-briefing',
       'nomos-lifecycle-closeout',
     ]);
   });
@@ -121,18 +121,18 @@ describe('agora-ts testing scenarios', () => {
     expect(result.templateChecks?.validated).toBe(true);
   });
 
-  it('runs a project brain bootstrap scenario and materializes the project context artifact', () => {
+  it('runs a project context briefing scenario and materializes the project context artifact', () => {
     runtime = createTestRuntime({
       taskIdGenerator: () => 'OC-SCENARIO-BOOTSTRAP',
     });
 
-    const result = runScenario(runtime, 'project-brain-bootstrap');
+    const result = runScenario(runtime, 'project-context-briefing');
 
-    expect(result.name).toBe('project-brain-bootstrap');
-    expect(result.bootstrapContextPath).toContain('project-brain-context-controller.md');
-    expect(result.bootstrapContextContains).toEqual(
+    expect(result.name).toBe('project-context-briefing');
+    expect(result.projectContextPath).toContain('project-context-controller.md');
+    expect(result.projectContextContains).toEqual(
       expect.arrayContaining([
-        'project_brain_bootstrap_context',
+        'project_context_briefing',
         'Runtime Boundary',
         'citizen-alpha',
       ]),
