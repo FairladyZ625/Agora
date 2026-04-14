@@ -1,6 +1,7 @@
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ApiProjectWorkbenchDto } from '@/lib/api';
 import { setLocale } from '@/lib/i18n';
 import { ProjectDetailPage } from '@/pages/ProjectDetailPage';
 import { ProjectsPage } from '@/pages/ProjectsPage';
@@ -257,6 +258,122 @@ const PROJECT_DETAILS = {
     todoCount: 1,
     pendingTodoCount: 1,
   }, 'GR'),
+};
+
+function buildProjectWorkbenchDto(workbench: typeof PROJECT_DETAILS['proj-alpha']): ApiProjectWorkbenchDto {
+  return {
+    project: {
+      id: workbench.project.id,
+      name: workbench.project.name,
+      summary: workbench.project.summary,
+      owner: workbench.project.owner,
+      status: workbench.project.status,
+      nomos_id: workbench.project.nomosId,
+      repo_path: workbench.project.repoPath,
+      created_at: workbench.project.createdAt,
+      updated_at: workbench.project.updatedAt,
+    },
+    overview: {
+      status: workbench.overview.status,
+      owner: workbench.overview.owner,
+      updated_at: workbench.overview.updatedAt,
+      counts: {
+        knowledge: workbench.overview.stats.knowledgeCount,
+        citizens: workbench.overview.stats.citizenCount,
+        recaps: workbench.overview.stats.recapCount,
+        tasks_total: workbench.overview.stats.taskCount,
+        active_tasks: workbench.overview.stats.activeTaskCount,
+        review_tasks: workbench.overview.stats.reviewTaskCount,
+        todos_total: workbench.overview.stats.todoCount,
+        pending_todos: workbench.overview.stats.pendingTodoCount,
+      },
+    },
+    surfaces: {
+      index: workbench.surfaces.index ? {
+        title: workbench.surfaces.index.title,
+        path: workbench.surfaces.index.path,
+        content: workbench.surfaces.index.content,
+        updated_at: workbench.surfaces.index.updatedAt,
+      } : null,
+      timeline: workbench.surfaces.timeline ? {
+        title: workbench.surfaces.timeline.title,
+        path: workbench.surfaces.timeline.path,
+        content: workbench.surfaces.timeline.content,
+        source_task_ids: workbench.surfaces.timeline.sourceTaskIds,
+        updated_at: workbench.surfaces.timeline.updatedAt,
+      } : null,
+    },
+    work: {
+      recaps: workbench.work.recaps.map((recap) => ({
+        task_id: recap.taskId,
+        title: recap.title,
+        path: recap.summaryPath,
+        content: recap.content,
+        updated_at: recap.updatedAt,
+      })),
+      knowledge: workbench.work.knowledge.map((knowledge) => ({
+        kind: knowledge.kind,
+        slug: knowledge.slug,
+        title: knowledge.title,
+        path: knowledge.path,
+        content: knowledge.content,
+        source_task_ids: knowledge.sourceTaskIds,
+        updated_at: knowledge.updatedAt,
+      })),
+      tasks: workbench.work.tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        state: task.state,
+        stage: 'delivery',
+        priority: 'P1',
+        assignee: null,
+        craftsman_label: null,
+        created_at: workbench.project.createdAt,
+        updated_at: workbench.project.updatedAt,
+        awaiting_approval: false,
+        participant_count: 0,
+        pending_review_count: 0,
+        next_action: null,
+        project_id: task.projectId,
+      })),
+      todos: workbench.work.todos.map((todo) => ({
+        id: todo.id,
+        text: todo.text,
+        status: todo.status,
+        due_date: null,
+        priority: null,
+        tags: [],
+        project_id: todo.projectId,
+        created_at: workbench.project.createdAt,
+        updated_at: workbench.project.updatedAt,
+      })),
+    },
+    operator: {
+      nomos_id: workbench.operator.nomosId,
+      repo_path: workbench.operator.repoPath,
+      citizens: workbench.operator.citizens.map((citizen) => ({
+        citizen_id: citizen.citizenId,
+        role_id: citizen.roleId,
+        display_name: citizen.displayName,
+        status: citizen.status,
+        persona: citizen.persona,
+        boundaries: citizen.boundaries,
+        skills_ref: citizen.skillsRef,
+        channel_policies: citizen.channelPolicies,
+        brain_scaffold_mode: citizen.brainScaffoldMode,
+        runtime_projection: {
+          adapter: citizen.runtimeAdapter,
+          metadata: citizen.runtimeMetadata,
+        },
+      })),
+    },
+  };
+}
+
+const PROJECT_WORKBENCH_DTOS = {
+  'proj-alpha': buildProjectWorkbenchDto(PROJECT_DETAILS['proj-alpha']),
+  'proj-beta': buildProjectWorkbenchDto(PROJECT_DETAILS['proj-beta']),
+  'proj-gamma': buildProjectWorkbenchDto(PROJECT_DETAILS['proj-gamma']),
 };
 
 PROJECT_DETAILS['proj-alpha'].recaps = [
@@ -935,12 +1052,16 @@ const { getWorkspaceBootstrapStatus } = vi.hoisted(() => ({
     bootstrap_completed: false,
   })),
 }));
+const { getProjectWorkbench } = vi.hoisted(() => ({
+  getProjectWorkbench: vi.fn(async (projectId: string) => PROJECT_WORKBENCH_DTOS[projectId as keyof typeof PROJECT_WORKBENCH_DTOS]),
+}));
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
   return {
     ...actual,
     getWorkspaceBootstrapStatus,
+    getProjectWorkbench,
     installProjectNomos,
     runProjectNomosDoctor,
     reviewProjectNomos,
@@ -1121,6 +1242,27 @@ describe('project workbench pages', () => {
     const previewPane = screen.getByTestId('projects-preview-pane');
     expect(within(previewPane).getAllByText('6 tasks').length).toBeGreaterThan(0);
     expect(within(previewPane).getAllByText('3 pending todos').length).toBeGreaterThan(0);
+  });
+
+  it('prefetches project pool stats without requiring manual selection', async () => {
+    render(
+      <MemoryRouter>
+        <ProjectsPage />
+      </MemoryRouter>,
+    );
+
+    const listPanel = screen.getByTestId('projects-list-panel');
+
+    await waitFor(() => {
+      expect(getProjectWorkbench).toHaveBeenCalledWith('proj-beta');
+      expect(getProjectWorkbench).toHaveBeenCalledWith('proj-gamma');
+    });
+
+    await waitFor(() => {
+      expect(within(listPanel).getByText('6 tasks')).toBeInTheDocument();
+      expect(within(listPanel).getByText('3 pending todos')).toBeInTheDocument();
+      expect(within(listPanel).getByText('1 tasks')).toBeInTheDocument();
+    });
   });
 
   it('renders the workspace bootstrap page with runtime readiness guidance', async () => {

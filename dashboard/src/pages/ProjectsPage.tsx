@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import * as api from '@/lib/api';
 import { useProjectsPageCopy } from '@/lib/dashboardCopy';
@@ -9,7 +9,7 @@ import {
   type ProjectsPageSortKey,
   writeProjectsPageSelection,
 } from '@/lib/projectsWorkbenchList';
-import { mapWorkspaceBootstrapStatusDto } from '@/lib/projectMappers';
+import { mapProjectWorkbenchDto, mapWorkspaceBootstrapStatusDto } from '@/lib/projectMappers';
 import { useProjectStore } from '@/stores/projectStore';
 import type { ProjectWorkbench, WorkspaceBootstrapStatus } from '@/types/project';
 
@@ -63,6 +63,8 @@ export function ProjectsPage() {
   const [sortKey, setSortKey] = useState<ProjectsPageSortKey>('updated');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => pickProjectsPageSelection(projects, 'updated'));
   const [briefingsByProject, setBriefingsByProject] = useState<Record<string, ProjectWorkbench>>({});
+  const prefetchingProjectIdsRef = useRef<Set<string>>(new Set());
+  const projectsPageMountedRef = useRef(true);
 
   useEffect(() => {
     void fetchProjects();
@@ -86,6 +88,10 @@ export function ProjectsPage() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => () => {
+    projectsPageMountedRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -145,6 +151,57 @@ export function ProjectsPage() {
     writeProjectsPageSelection(selectedProjectId);
     void selectProject(selectedProjectId);
   }, [selectedProjectId, selectProject]);
+
+  useEffect(() => {
+    const projectsToPrefetch = projects.filter((project) => (
+      !briefingsByProject[project.id] && !prefetchingProjectIdsRef.current.has(project.id)
+    ));
+    if (!projectsToPrefetch.length) {
+      return;
+    }
+
+    for (const project of projectsToPrefetch) {
+      prefetchingProjectIdsRef.current.add(project.id);
+    }
+
+    void Promise.allSettled(projectsToPrefetch.map(async (project) => ({
+      projectId: project.id,
+      workbench: buildProjectCache(mapProjectWorkbenchDto(await api.getProjectWorkbench(project.id))),
+    }))).then((results) => {
+      if (!projectsPageMountedRef.current) {
+        return;
+      }
+
+      setBriefingsByProject((current) => {
+        const next = { ...current };
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value.workbench) {
+            next[result.value.projectId] = result.value.workbench;
+            continue;
+          }
+
+          if (result.status === 'fulfilled') {
+            prefetchingProjectIdsRef.current.delete(result.value.projectId);
+          }
+        }
+        return next;
+      });
+
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          prefetchingProjectIdsRef.current.delete(projectsToPrefetch[index]?.id ?? '');
+          return;
+        }
+        if (!result.value.workbench) {
+          prefetchingProjectIdsRef.current.delete(result.value.projectId);
+        }
+      });
+    }).catch(() => {
+      for (const project of projectsToPrefetch) {
+        prefetchingProjectIdsRef.current.delete(project.id);
+      }
+    });
+  }, [briefingsByProject, projects]);
 
   const previewProject = selectedProjectId
     ? (selectedProject?.project.id === selectedProjectId
